@@ -7,9 +7,20 @@ and communicates via standard HTTP (POST /synthesize, GET /health,
 POST /quit).
 
 Protocol:
-  POST /synthesize  {"text":"...", "lang":"en", "voice":"...", "out":"/path.mp3"}
-    → {"ok":true, "voice":"en-US-RogerNeural", "path":"/abs/path.mp3"}
+  POST /synthesize  {"text":"...", "lang":"en", "voice":"...", "out":"/path.mp3",
+                    "boundary":"word"}
+    → {"ok":true, "voice":"en-US-RogerNeural", "path":"/abs/path.mp3",
+       "metadata_path":"/abs/path.mp3.metadata.jsonl", "boundary_count":187}
     → {"ok":false, "error":"Edge TTS error message"}
+
+Timing capture: WordBoundary is requested EXPLICITLY (edge-tts defaults
+synthetically to SentenceBoundary) and audio + word boundaries are
+captured from the SAME stream in one synthesis pass. Audio is streamed
+to <out>.part and boundaries are normalized once from Edge ticks (100ns)
+to microseconds into <out>.metadata.jsonl.part; on success both partials
+are atomically renamed, on any failure both are removed so no half-valid
+artifact survives. metadata_path is empty when zero boundaries were
+captured (callers decide required vs best-effort from their policy).
 
   GET /health  → 200 {"status":"ok"}
   POST /quit   → 200 {"status":"shutting_down"} (then exits)
@@ -27,6 +38,7 @@ sends quit, waits 5s, then sends SIGKILL if still alive.
 
 import argparse
 import asyncio
+import json
 import os
 import socket
 import sys
@@ -34,7 +46,8 @@ import sys
 from aiohttp import web
 from edge_tts import Communicate
 
-from .request import SynthesizeRequest, SynthesizeRequestError
+from .boundaries import boundary_line, remove_partials
+from .request import SynthesizeRequest, SynthesizeRequestError, edge_boundary_mode
 from .voice_resolver import resolve_voice
 
 
@@ -43,6 +56,12 @@ async def handle_synthesize(request: web.Request) -> web.Response:
 
     JSON-RPC body schema is enforced by SynthesizeRequest.from_dict;
     the 400 surfaces a structured `error` message.
+
+    Timing capture (one synthesis pass): audio chunks are streamed to
+    <out>.part while WordBoundary chunks are normalized once from Edge
+    ticks to microseconds and appended to <out>.metadata.jsonl.part.
+    Success atomically renames both; failure removes both partials so
+    no half-valid artifact survives.
     """
     try:
         body = await request.json()
@@ -68,25 +87,52 @@ async def handle_synthesize(request: web.Request) -> web.Response:
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
+    out_path = os.path.abspath(parsed.out)
+    audio_part = out_path + ".part"
+    meta_path = out_path + ".metadata.jsonl"
+    meta_part = meta_path + ".part"
+
+    boundary_count = 0
     try:
-        communicate = Communicate(parsed.text, voice)
-        await communicate.save(parsed.out)
+        communicate = Communicate(
+            parsed.text, voice, boundary=edge_boundary_mode(parsed.boundary))
+        with open(audio_part, "wb") as audio_fh, \
+                open(meta_part, "w", encoding="utf-8") as meta_fh:
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_fh.write(chunk["data"])
+                elif chunk["type"] == "WordBoundary":
+                    meta_fh.write(boundary_line(chunk))
+                    meta_fh.write("\n")
+                    boundary_count += 1
     except Exception as exc:  # pylint: disable=broad-except
+        remove_partials(audio_part, meta_part)
         return web.json_response({
             "ok": False,
             "error": str(exc),
         })
 
-    if not os.path.exists(parsed.out) or os.path.getsize(parsed.out) == 0:
+    if not os.path.exists(audio_part) or os.path.getsize(audio_part) == 0:
+        remove_partials(audio_part, meta_part)
         return web.json_response({
             "ok": False,
             "error": "generated file is empty or missing",
         })
 
+    os.replace(audio_part, out_path)
+    if boundary_count > 0 and os.path.exists(meta_part):
+        os.replace(meta_part, meta_path)
+    else:
+        # Zero boundaries: drop the empty/stale metadata file so callers
+        # can distinguish "timing unavailable" from "timing captured".
+        remove_partials(meta_part, meta_path)
+
     return web.json_response({
         "ok": True,
         "voice": voice,
-        "path": os.path.abspath(parsed.out),
+        "path": out_path,
+        "metadata_path": meta_path if boundary_count > 0 else "",
+        "boundary_count": boundary_count,
     })
 
 

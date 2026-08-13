@@ -6,7 +6,8 @@ import sys
 
 from edge_tts import Communicate
 
-from edge_tts_bridge.request import normalize_language
+from edge_tts_bridge.boundaries import boundary_line, remove_partials
+from edge_tts_bridge.request import edge_boundary_mode, normalize_language
 from edge_tts_bridge.voice_resolver import resolve_voice
 
 
@@ -16,6 +17,7 @@ async def main():
     p.add_argument("--lang", default="it")
     p.add_argument("--out", required=True)
     p.add_argument("--voice")
+    p.add_argument("--boundary", default="word", choices=("word", "sentence"))
     a = p.parse_args()
 
     text = a.text
@@ -28,14 +30,47 @@ async def main():
     lang = normalize_language(a.lang)
     voice = a.voice or await resolve_voice(lang)
 
+    out_path = os.path.abspath(a.out)
+    audio_part = out_path + ".part"
+    meta_path = out_path + ".metadata.jsonl"
+    meta_part = meta_path + ".part"
+
+    boundary_count = 0
     try:
-        communicate = Communicate(text, voice)
-        await communicate.save(a.out)
-        if not os.path.exists(a.out) or os.path.getsize(a.out) == 0:
+        # WordBoundary is requested EXPLICITLY (edge-tts defaults to
+        # SentenceBoundary) and audio + boundaries come from the SAME
+        # stream in one synthesis pass.
+        communicate = Communicate(text, voice, boundary=edge_boundary_mode(a.boundary))
+        with open(audio_part, "wb") as audio_fh, \
+                open(meta_part, "w", encoding="utf-8") as meta_fh:
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_fh.write(chunk["data"])
+                elif chunk["type"] == "WordBoundary":
+                    meta_fh.write(boundary_line(chunk))
+                    meta_fh.write("\n")
+                    boundary_count += 1
+
+        if not os.path.exists(audio_part) or os.path.getsize(audio_part) == 0:
+            remove_partials(audio_part, meta_part)
             print(json.dumps({"ok": False, "error": "Empty file"}))
             sys.exit(1)
-        print(json.dumps({"ok": True, "voice": voice, "path": os.path.abspath(a.out)}))
+
+        os.replace(audio_part, out_path)
+        if boundary_count > 0 and os.path.exists(meta_part):
+            os.replace(meta_part, meta_path)
+        else:
+            remove_partials(meta_part, meta_path)
+
+        print(json.dumps({
+            "ok": True,
+            "voice": voice,
+            "path": out_path,
+            "metadata_path": meta_path if boundary_count > 0 else "",
+            "boundary_count": boundary_count,
+        }))
     except Exception as exc:  # pylint: disable=broad-except
+        remove_partials(audio_part, meta_part)
         print(json.dumps({"ok": False, "error": str(exc)}))
         sys.exit(1)
 
