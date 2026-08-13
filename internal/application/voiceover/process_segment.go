@@ -300,6 +300,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	emitTTS("completed")
 	out.LocalPath = ttsOut.LocalPath
 	out.CleanedPath = ttsOut.CleanedPath
+	out.DurationMs = ttsOut.Duration.Milliseconds()
 	if ttsOut.Voice != "" {
 		out.Voice = ttsOut.Voice
 	}

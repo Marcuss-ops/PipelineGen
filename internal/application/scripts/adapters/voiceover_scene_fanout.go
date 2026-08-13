@@ -82,6 +82,7 @@ type SceneOutcome struct {
 	Status     string
 	Link       string
 	LocalPath  string
+	DurationMs int64
 	// Error carries the error message when Status == "failed"; empty otherwise.
 	Error string
 }
@@ -198,6 +199,7 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		if result != nil {
 			out.Link = result.DriveLink
 			out.LocalPath = result.LocalPath
+			out.DurationMs = result.DurationMs
 		}
 		return out
 	})

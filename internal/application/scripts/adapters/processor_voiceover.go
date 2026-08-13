@@ -156,10 +156,6 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return &PostProcessResult{}, nil
 	}
 
-	if input.Text == "" {
-		return &PostProcessResult{}, nil
-	}
-
 	sourceLanguage := strings.TrimSpace(plan.Language)
 	if sourceLanguage == "" {
 		sourceLanguage = strings.TrimSpace(p.defaultLanguage)
@@ -173,8 +169,12 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}
 	requestedPrimary := strings.TrimSpace(plan.TranslateTo)
 	if requestedPrimary != "" && !strings.EqualFold(primaryLanguage, requestedPrimary) {
+		voiceovers := make([]SceneVoiceover, 0, len(scenes))
+		for i := range scenes {
+			voiceovers = append(voiceovers, SceneVoiceover{SceneIndex: i, Language: requestedPrimary, Status: "skipped"})
+		}
 		return &PostProcessResult{
-			Voiceovers: []SceneVoiceover{{SceneIndex: 0, Language: requestedPrimary, Status: "skipped"}},
+			Voiceovers: voiceovers,
 			Warnings: []string{fmt.Sprintf(
 				"voiceover skipped: requested translation to %q was not completed; effective text language is %q",
 				requestedPrimary, primaryLanguage,
@@ -312,6 +312,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Status:     out.Status,
 				Link:       out.Link,
 				LocalPath:  out.LocalPath,
+				DurationMs: out.DurationMs,
 			})
 			if out.Status == "failed" {
 				warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d (language %s): %s", out.SceneIndex, language, out.Error))

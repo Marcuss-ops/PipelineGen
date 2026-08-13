@@ -10,5 +10,6 @@ type SceneVoiceover struct {
 	Language   string
 	Status     string // "completed" | "failed" | "empty_result"
 	Link       string // DriveLink for the produced audio
-	LocalPath  string // local on-disk path (debugging)
+	LocalPath  string // local on-disk path
+	DurationMs int64  // synthesized audio duration
 }
