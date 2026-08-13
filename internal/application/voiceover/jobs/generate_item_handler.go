@@ -248,5 +248,49 @@ func toItemResultMap(res *voiceover.VoiceoverItemResult, item *voiceover.Generat
 	if len(res.StageProgress) > 0 {
 		m["stage_progress"] = res.StageProgress
 	}
+	if res.Timing != nil {
+		m["timing"] = toTimingResultMap(res.Timing)
+	}
+	return m
+}
+
+// toTimingResultMap projects a per-item timing bundle into the job
+// result map. The nested "timing" object mirrors the canonical
+// VoiceoverTimingBinding surface (status + links + counts + hashes) so
+// the dispatcher persists timing availability alongside the item — a
+// best-effort item whose provider returned no word boundaries still
+// surfaces timing.status="unavailable" instead of silently dropping the
+// fact (godlike/07 no-fake-availability).
+func toTimingResultMap(t *voiceover.VoiceoverTimingResult) map[string]any {
+	if t == nil {
+		return nil
+	}
+	m := map[string]any{
+		"status": string(t.Status),
+	}
+	if t.JSONLink != "" {
+		m["json_link"] = t.JSONLink
+	}
+	if t.SRTLink != "" {
+		m["srt_link"] = t.SRTLink
+	}
+	if t.VTTLink != "" {
+		m["vtt_link"] = t.VTTLink
+	}
+	if t.BoundaryMode != "" {
+		m["boundary_mode"] = t.BoundaryMode
+	}
+	if t.WordCount != 0 {
+		m["word_count"] = t.WordCount
+	}
+	if t.DurationUS != 0 {
+		m["duration_us"] = t.DurationUS
+	}
+	if t.TextSHA256 != "" {
+		m["text_sha256"] = t.TextSHA256
+	}
+	if t.AudioSHA256 != "" {
+		m["audio_sha256"] = t.AudioSHA256
+	}
 	return m
 }
