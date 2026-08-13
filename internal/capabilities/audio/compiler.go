@@ -28,8 +28,12 @@ func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, 
 		Automation:      append([]AudioAutomation(nil), automation...),
 	}
 	for _, s := range t.Segments {
-		for _, intent := range s.EffectiveAudioIntents() {
-			e := AudioEvent{EventID: fmt.Sprintf("%s-%s", s.ID, strings.ToLower(string(intent.Mode))), TimelineStartUS: s.TimelineStartUS, DurationUS: s.DurationUS, SourceInUS: intent.SourceInUS, SourceDurationUS: intent.SourceDurationUS, UseOriginalAudio: intent.UseOriginalAudio, GainDB: intent.GainDB}
+		for i, intent := range s.EffectiveAudioIntents() {
+			durationUS := s.DurationUS
+			if intent.TimelineDurationUS > 0 {
+				durationUS = intent.TimelineDurationUS
+			}
+			e := AudioEvent{EventID: fmt.Sprintf("%s-%s-%d", s.ID, strings.ToLower(string(intent.Mode)), i), TimelineStartUS: s.TimelineStartUS + intent.TimelineOffsetUS, DurationUS: durationUS, SourceInUS: intent.SourceInUS, SourceDurationUS: intent.SourceDurationUS, UseOriginalAudio: intent.UseOriginalAudio, GainDB: intent.GainDB}
 			var role AudioTrackRole
 			switch intent.Mode {
 			case AudioVoiceover:

@@ -102,3 +102,10 @@ func (a SpeechTimingArtifact) DeepCopy() SpeechTimingArtifact {
 	}
 	return clone
 }
+
+// AudioFileHasher is the narrow port for computing the SHA-256 digest of the
+// final audio file. Concrete adapters live in the platform layer; the
+// application layer must never open files directly (I/O binder gate).
+type AudioFileHasher interface {
+	SHA256File(path string) (string, error)
+}
