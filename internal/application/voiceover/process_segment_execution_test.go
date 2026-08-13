@@ -1041,12 +1041,16 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 	assert.Equal(t, 3, out.Timing.WordCount)
 	assert.NotEmpty(t, out.Timing.TextSHA256)
 	assert.NotEmpty(t, out.Timing.AudioSHA256)
-	// Audio publish + 3 timing projections = 4 Publisher calls.
+	// Audio publish + 3 timing projections = 4 Publisher calls. The audio
+	// is always published first; the three projection formats are
+	// published in a non-deterministic order, so assert the set rather
+	// than a positional slice.
 	require.Len(t, pub.published, 4, "audio + json + srt + vtt must all be published")
 	assert.Equal(t, cmd.Filename, pub.published[0].Filename)
-	assert.Equal(t, "timing-forward-timing.json", pub.published[1].Filename)
-	assert.Equal(t, "timing-forward.srt", pub.published[2].Filename)
-	assert.Equal(t, "timing-forward.vtt", pub.published[3].Filename)
+	require.ElementsMatch(t,
+		[]string{"timing-forward-timing.json", "timing-forward.srt", "timing-forward.vtt"},
+		[]string{pub.published[1].Filename, pub.published[2].Filename, pub.published[3].Filename},
+		"the three timing projections must all be published (order is not part of the contract)")
 
 	// nil cmd.Timing stays nil on the input (defaults applied by the
 	// provider); the default best-effort policy still completes when the
