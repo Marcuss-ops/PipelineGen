@@ -186,6 +186,11 @@ type VoiceoverItemResult struct {
 	// SSOT + optional SRT/VTT projections). nil when the timing policy is
 	// disabled (legacy behavior preserved byte-for-byte).
 	Timing *VoiceoverTimingResult
+
+	// SilenceCleanup is the observability summary of post-TTS silence
+	// removal (original duration, leading/trailing trims, clean duration).
+	// nil when RemoveSilence was false or no edits were reported.
+	SilenceCleanup *SilenceCleanupReport `json:"silence_cleanup,omitempty"`
 }
 
 // VoiceoverTimingStatus is the canonical per-item timing bundle state.

@@ -400,6 +400,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			out.CleanedPath = postOut.CleanedPath
 		}
 		post = &postOut
+		// Summarize the silence removal for observability: the original
+		// pre-clean duration, the leading/trailing trims, and the cleaned
+		// duration the timeline must use.
+		out.SilenceCleanup = BuildSilenceCleanupReport(ttsOut.Duration.Microseconds(), postOut.DurationUS, postOut.EditMap)
 	}
 
 	if out.LocalPath == "" && out.CleanedPath == "" {

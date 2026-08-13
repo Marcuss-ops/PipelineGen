@@ -106,3 +106,42 @@ type AudioPostOutput struct {
 	// (required fails closed, best-effort marks timing unavailable).
 	EditMap []audio.AudioEdit
 }
+
+// SilenceCleanupReport is the observability summary of post-TTS silence
+// removal for one voiceover: the original (pre-clean) duration, the leading
+// and trailing trims, and the resulting clean duration. The renderer never
+// consumes it — it exists so operators can verify that the timeline uses the
+// cleaned duration rather than a clip-derived or pre-clean value.
+type SilenceCleanupReport struct {
+	OriginalDurationUS int64 `json:"original_duration_us"`
+	TrimStartUS        int64 `json:"trim_start_us"`
+	TrimEndUS          int64 `json:"trim_end_us"`
+	CleanDurationUS    int64 `json:"clean_duration_us"`
+}
+
+// BuildSilenceCleanupReport summarizes a silence-removal edit map into the
+// four-field report. Leading/trailing trims are derived from the edits
+// (an edit at source 0 is the leading trim; an edit ending at the original
+// duration is the trailing trim). Returns nil when no edits were reported.
+func BuildSilenceCleanupReport(originalUS, cleanUS int64, edits []audio.AudioEdit) *SilenceCleanupReport {
+	if len(edits) == 0 {
+		return nil
+	}
+	report := &SilenceCleanupReport{
+		OriginalDurationUS: originalUS,
+		CleanDurationUS:    cleanUS,
+	}
+	for _, e := range edits {
+		removed := e.SourceEndUS - e.SourceStartUS
+		if removed <= 0 {
+			continue
+		}
+		if e.SourceStartUS == 0 {
+			report.TrimStartUS += removed
+		}
+		if e.SourceEndUS == originalUS {
+			report.TrimEndUS += removed
+		}
+	}
+	return report
+}
