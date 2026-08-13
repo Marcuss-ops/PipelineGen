@@ -267,13 +267,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		// document got an empty storyboard, persistence stored
 		// an empty SpecScene row.
 		if currentInput != nil {
-			currentInput.SpecScene.Scenes = src.SynthesizedScenes
-			for i := range currentInput.SpecScene.Scenes {
-				if i >= len(prevScenes) {
-					break
-				}
-				currentInput.SpecScene.Scenes[i].Bindings = prevScenes[i].Bindings
-			}
+			// A synthesized scene may carry bindings produced by the
+			// processor that emitted it (for example a locked visual clip),
+			// while the previous scene surface may already carry stock,
+			// subtitle, or other bindings. Merge by stable scene identity so
+			// the write-back cannot erase either side of the contract.
+			currentInput.SpecScene.Scenes = preserveSceneBindings(prevScenes, src.SynthesizedScenes)
 		}
 	}
 	// PR-CLIP-SEARCH-WIRING (July 2026): propagate Artlist clip
@@ -461,6 +460,12 @@ func preserveSceneBindings(previous, replacement []scriptpkg.SpecScene) []script
 func preserveBindings(previous, replacement scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 	previous = cloneSceneBindings(previous)
 	replacement = cloneSceneBindings(replacement)
+	if replacement.Stock == nil {
+		replacement.Stock = previous.Stock
+	}
+	if len(replacement.Media) == 0 {
+		replacement.Media = append([]scriptpkg.ResolvedMediaBinding(nil), previous.Media...)
+	}
 
 	switch {
 	case len(replacement.Clips) > 0:

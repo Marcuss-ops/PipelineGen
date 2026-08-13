@@ -34,6 +34,26 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+func TestMergePostProcessResult_SynthesizedScenesPreserveNewClipBindings(t *testing.T) {
+	currentInput := &ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", SegmentID: "segment-0", Index: 0,
+		Bindings: scriptpkg.SceneBindings{Stock: &scriptpkg.StockBinding{AssetID: "visual-0"}},
+	}}}}
+	src := &PostProcessResult{SynthesizedScenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", SegmentID: "segment-0", Index: 0,
+		Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "clip-0"}},
+	}}}
+
+	mergePostProcessResult(&PipelineResult{}, src, currentInput)
+	scene := currentInput.SpecScene.Scenes[0]
+	if scene.Bindings.Clip == nil || scene.Bindings.Clip.ClipID != "clip-0" {
+		t.Fatalf("synthesized clip binding was lost: %+v", scene.Bindings.Clip)
+	}
+	if scene.Bindings.Stock == nil || scene.Bindings.Stock.AssetID != "visual-0" {
+		t.Fatalf("previous stock binding was lost: %+v", scene.Bindings.Stock)
+	}
+}
+
 func TestMergeVidRushSegments_PreservesCandidatesAcrossProviderDeltas(t *testing.T) {
 	dst := []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "main",
