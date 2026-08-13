@@ -40,6 +40,7 @@ const (
 	StageTTS                Stage = "tts"
 	StageAudioPost          Stage = "audio_post"
 	StageUpload             Stage = "upload"
+	StageTiming             Stage = "timing"
 	StageTxBegin            Stage = "tx_begin"
 	StageDBDelete           Stage = "db_delete"
 	StageDBInsert           Stage = "db_insert"
