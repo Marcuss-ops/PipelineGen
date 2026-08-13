@@ -152,8 +152,35 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 	prose string,
 	req scriptgen.GenerateRequest,
 ) ([]scriptgen.Scene, error) {
-	if plan == nil || plan.ClipEvidence == nil {
-		return nil, fmt.Errorf("clip prose requires clip evidence")
+	if plan == nil {
+		return nil, fmt.Errorf("prose scene conversion requires a generation plan")
+	}
+	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
+		count := len(plan.Segments)
+		if count == 0 {
+			count = 1
+		}
+		draft := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+		if len(draft) != count {
+			return nil, fmt.Errorf("planned %d text scenes, synthesized %d", count, len(draft))
+		}
+		scenes := make([]scriptgen.Scene, 0, count)
+		for i, raw := range draft {
+			text := strings.TrimSpace(raw.Text)
+			if text == "" {
+				return nil, fmt.Errorf("text scene %d has empty prose", i)
+			}
+			scenes = append(scenes, scriptgen.Scene{
+				ID:    fmt.Sprintf("scene-%d", i),
+				Index: i,
+				Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
+				Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+				AudioIntents: []capabilityaudio.AudioIntent{{
+					Mode: capabilityaudio.AudioVoiceover,
+				}},
+			})
+		}
+		return scenes, nil
 	}
 	clipIDs := plan.ClipEvidence.AcceptedClipIDs
 	count := len(clipIDs)
