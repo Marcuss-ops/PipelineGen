@@ -11,7 +11,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-func TestBuildSpecSceneDocumentHTML_RendersVisibleScenesAndLinks(t *testing.T) {
+func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndVoiceoverOnly(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{
@@ -33,45 +33,64 @@ func TestBuildSpecSceneDocumentHTML_RendersVisibleScenesAndLinks(t *testing.T) {
 							SubtitleFileID: "subtitle-1",
 							SubtitleLink:   "https://drive.google.com/file/d/subtitle-1/view",
 						},
+						Voiceover: &scriptpkg.VoiceoverBinding{
+							Status: "completed",
+							Links:  map[string]string{"it": "https://drive.google.com/file/d/voice-1/view"},
+						},
 					},
 				},
 			},
 		},
 	}
-	html := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Canonical Script"})
 
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title:           "Canonical Script",
+		Language:        "it",
+		DefaultLanguage: "it",
+	})
+
+	human := humanDocumentHTML(t, out)
 	for _, want := range []string{
 		"<h1>Canonical Script</h1>",
-		"<h2>Scenes</h2>",
-		"<h2>SpecScene JSON</h2><pre><code>",
-		"scene-clip-1",
+		"<h2>Scene 1</h2>",
 		"Canonical scene text.",
-		"clip-1",
-		"https://drive.google.com/file/d/clip-1/view",
-		"Subtitles ASS",
-		"https://drive.google.com/file/d/subtitle-1/view",
+		"<strong>Voiceover:</strong>",
+		"https://drive.google.com/file/d/voice-1/view",
 	} {
-		if !strings.Contains(html, want) {
-			t.Errorf("expected canonical document HTML to contain %q; HTML=%s", want, html)
+		if !strings.Contains(human, want) {
+			t.Errorf("expected human document section to contain %q; human=%s", want, human)
 		}
 	}
 
 	for _, unwanted := range []string{
-		"<h2>Script</h2>",
-		"<h2>Entities</h2>",
-		"<h2>Video Metadata</h2>",
-		"<h2>Technical Provenance</h2>",
-		"PIPELINEGEN-PROVENANCE",
-		"doc-1",
+		"<h2>Scenes</h2>",
+		"scene-clip-1",
+		"<strong>Clip:</strong>",
+		"Subtitles ASS",
+		"https://drive.google.com/file/d/clip-1/view",
+		"https://drive.google.com/file/d/subtitle-1/view",
 		"This prose must not be duplicated in the document.",
 	} {
-		if strings.Contains(html, unwanted) {
-			t.Errorf("canonical SpecScene document must not contain %q; HTML=%s", unwanted, html)
+		if strings.Contains(human, unwanted) {
+			t.Errorf("human document section must not contain %q; human=%s", unwanted, human)
+		}
+	}
+
+	// Technical bindings still live inside the SpecScene JSON snapshot.
+	specJSON := extractSpecSceneJSON(t, out)
+	for _, want := range []string{
+		"scene-clip-1",
+		"clip-1",
+		"https://drive.google.com/file/d/clip-1/view",
+		"https://drive.google.com/file/d/subtitle-1/view",
+	} {
+		if !strings.Contains(specJSON, want) {
+			t.Errorf("SpecScene JSON snapshot must contain %q; JSON=%s", want, specJSON)
 		}
 	}
 }
 
-func TestBuildSpecSceneDocumentHTML_RendersConciseEntityImageLinks(t *testing.T) {
+func TestBuildSpecSceneDocumentHTML_EntityLinksOnlyInSpecSceneJSON(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
@@ -85,12 +104,19 @@ func TestBuildSpecSceneDocumentHTML_RendersConciseEntityImageLinks(t *testing.T)
 	}}}}
 
 	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Famous people"})
-	require.Contains(t, out, "<strong>Entità:</strong> John Cena")
-	require.Contains(t, out, "<strong>Image link Drive:</strong>")
-	require.Contains(t, out, "https://drive.google.com/file/d/cena/view")
-	require.Contains(t, out, "Describe John Cena")
-	require.Contains(t, out, "primary_entities")
-	require.Contains(t, out, "drive_link")
+
+	human := humanDocumentHTML(t, out)
+	require.NotContains(t, human, "<strong>Entità:</strong>")
+	require.NotContains(t, human, "<strong>Image link Drive:</strong>")
+	require.NotContains(t, human, "Describe John Cena")
+	require.NotContains(t, human, "https://drive.google.com/file/d/cena/view")
+	require.Contains(t, human, "John Cena enters the arena.")
+
+	specJSON := extractSpecSceneJSON(t, out)
+	require.Contains(t, specJSON, "primary_entities")
+	require.Contains(t, specJSON, "drive_link")
+	require.Contains(t, specJSON, "https://drive.google.com/file/d/cena/view")
+	require.Contains(t, specJSON, "Describe John Cena")
 }
 
 func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
@@ -100,27 +126,14 @@ func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape is the
-// regression pin for the Stock binding visible link: it asserts
-// (1) the stock drive_link is visible inside the per-scene <section>
-// as a "Clip:" anchor (mirror of the JSON SpecScene block); (2) the
-// drive_link URL is wrapped through html.EscapeString so a payload
-// containing '&', '<', '>' or quote characters cannot leak the
-// raw form into the rendered HTML; (3) the empty-DriveLink case
-// surfaces renderDocumentLink's "(no link)" fallback rather than
-// silently dropping the section; (4) the Stock binding is rendered
-// independently from — not in conflict with — the Clip binding
-// above (when both are present on the same scene, both links render).
-func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
+// TestBuildSpecSceneDocumentHTML_TechnicalBindingsStayOutOfHumanSection pins
+// that clip, stock, and other technical bindings never leak into the human
+// document surface — they only live inside the SpecScene JSON snapshot.
+func TestBuildSpecSceneDocumentHTML_TechnicalBindingsStayOutOfHumanSection(t *testing.T) {
 	t.Parallel()
 
-	// Drive a DriveLink URL containing the canonical HTML-special
-	// characters. The renderer MUST emit the html.EscapeString form
-	// and MUST NOT leak the raw form into the rendered output.
 	const maliciousDriveLink = `https://drive.google.com/file/d/stock-1/view?a=1&b=2<script>alert("x")</script>`
 	const stockLabel = `Stock <Round 1> & "Quotes"`
-	escapedDriveLink := html.EscapeString(maliciousDriveLink)
-	escapedLabel := html.EscapeString(stockLabel)
 
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
@@ -143,32 +156,8 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 					},
 				},
 				{
-					ID:    "scene-stock-empty",
-					Index: 1,
-					Text:  "Scena stock senza drive link ne label.",
-					Kind:  scriptpkg.SceneNarration,
-					Bindings: scriptpkg.SceneBindings{
-						Stock: &scriptpkg.StockBinding{
-							// All three empty so renderDocumentLink's
-							// empty-url branch produces "(no link)".
-							AssetID:   "",
-							Name:      "",
-							DriveLink: "",
-						},
-					},
-				},
-				{
-					ID:    "scene-stock-nil",
-					Index: 2,
-					Text:  "Scena senza stock.",
-					Kind:  scriptpkg.SceneNarration,
-					Bindings: scriptpkg.SceneBindings{
-						Stock: nil,
-					},
-				},
-				{
 					ID:    "scene-clip-and-stock",
-					Index: 3,
+					Index: 1,
 					Text:  "Scena con entrambi i binding.",
 					Kind:  scriptpkg.SceneClip,
 					Bindings: scriptpkg.SceneBindings{
@@ -190,24 +179,56 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 
 	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Stock HTML test"})
 
-	// Stock metadata remains in the escaped JSON snapshot, but it must
-	// not be rendered as a synthetic visible Clip note or link.
-	if strings.Contains(out, escapedDriveLink) || strings.Contains(out, escapedLabel) {
-		t.Errorf("stock file metadata leaked into visible document HTML; HTML=%s", out)
+	human := humanDocumentHTML(t, out)
+	if strings.Contains(human, "<strong>Clip:</strong>") {
+		t.Errorf("clip binding leaked into the human document section; human=%s", human)
 	}
-	if strings.Contains(out, maliciousDriveLink) || strings.Contains(out, stockLabel) {
-		t.Errorf("raw stock metadata leaked into HTML; HTML=%s", out)
+	if strings.Contains(human, maliciousDriveLink) || strings.Contains(human, stockLabel) {
+		t.Errorf("stock metadata leaked into the human document section; human=%s", human)
 	}
-	// Only the actual Clip binding may produce a Clip label.
-	if got := strings.Count(out, "<strong>Clip:</strong>"); got != 1 {
-		t.Errorf("expected exactly one Clip label for the actual Clip binding, got %d; HTML=%s", got, out)
+	if strings.Contains(human, "https://drive.google.com/file/d/clip-9/view") {
+		t.Errorf("clip drive_link leaked into the human document section; human=%s", human)
 	}
-	if !strings.Contains(out, "https://drive.google.com/file/d/clip-9/view") {
-		t.Errorf("expected Clip binding drive_link in HTML; HTML=%s", out)
-	}
-	if !strings.Contains(out, "https://drive.google.com/file/d/stock-9/view") {
-		t.Errorf("expected Stock binding drive_link in SpecScene JSON; HTML=%s", out)
-	}
+
+	// The raw malicious URL is never emitted verbatim anywhere in the HTML.
+	require.NotContains(t, out, maliciousDriveLink)
+
+	// The technical bindings are preserved in the JSON snapshot (the stock
+	// drive_link value survives; json escaping of <>& is expected).
+	specJSON := extractSpecSceneJSON(t, out)
+	require.Contains(t, specJSON, "stock-asset-1")
+	require.Contains(t, specJSON, "stock-1")
+	require.Contains(t, specJSON, "https://drive.google.com/file/d/stock-9/view")
+	require.Contains(t, specJSON, "clip-9")
+}
+
+// TestDocument_VoiceoverLinkIsHTMLEscaped keeps the XSS regression pin on the
+// one link the human surface still renders: the voiceover URL. The raw
+// malicious string must never appear; only its html.EscapeString form.
+func TestDocument_VoiceoverLinkIsHTMLEscaped(t *testing.T) {
+	t.Parallel()
+
+	const maliciousLink = `https://drive.google.com/file?a=1&x="<script>`
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{
+			ID:   "scene-0",
+			Text: "Scena.",
+			Bindings: scriptpkg.SceneBindings{
+				Voiceover: &scriptpkg.VoiceoverBinding{Links: map[string]string{"it": maliciousLink}},
+			},
+		}},
+	}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title:           "XSS",
+		Language:        "it",
+		DefaultLanguage: "it",
+	})
+
+	require.NotContains(t, out, maliciousLink)
+	require.Contains(t, out, html.EscapeString(maliciousLink))
 }
 
 func TestBuildSpecSceneDocumentHTML_UsesOptionsTitleOnly(t *testing.T) {
@@ -243,6 +264,19 @@ func TestBuildSpecSceneDocumentHTML_PrintsOneTitleOnly(t *testing.T) {
 
 	require.Equal(t, 1, strings.Count(html, "<h1>"))
 	require.Contains(t, html, "<h1>Titolo video</h1>")
+}
+
+// humanDocumentHTML isolates the human-facing section of a rendered document
+// body: everything before the SpecScene JSON snapshot.
+func humanDocumentHTML(t *testing.T, output string) string {
+	t.Helper()
+
+	const marker = "<h2>SpecScene JSON</h2>"
+	index := strings.Index(output, marker)
+	if index < 0 {
+		t.Fatal("SpecScene JSON marker missing")
+	}
+	return output[:index]
 }
 
 // extractSpecSceneJSON isolates the embedded SpecScene JSON snapshot from a

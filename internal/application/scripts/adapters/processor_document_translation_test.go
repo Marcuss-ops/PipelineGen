@@ -44,25 +44,36 @@ func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 		SpecSceneDocumentOptions{Title: "Translated Script"},
 	)
 
+	marker := "<h2>SpecScene JSON</h2>"
+	markerIdx := strings.Index(html, marker)
+	if markerIdx < 0 {
+		t.Fatalf("canonical document has no SpecScene JSON block")
+	}
+	human := html[:markerIdx]
+	jsonPart := html[markerIdx:]
+
 	for _, want := range []string{
 		"<h1>Translated Script</h1>",
-		"<h2>Scenes</h2>",
-		"<h2>SpecScene JSON</h2><pre><code>",
+		"<h2>Scene 1</h2>",
 		"Prima scena tradotta.",
+	} {
+		if !strings.Contains(human, want) {
+			t.Errorf("expected human document section to contain %q; human=%s", want, human)
+		}
+	}
+
+	if strings.Contains(human, "https://drive.google.com/file/d/clip-1/view") {
+		t.Errorf("clip drive link leaked into the human document section: %s", human)
+	}
+
+	for _, want := range []string{
+		"<h2>SpecScene JSON</h2><pre><code>",
 		"https://drive.google.com/file/d/clip-1/view",
 		"&#34;clip_id&#34;",
 		"&#34;drive_link&#34;",
 	} {
-		if !strings.Contains(html, want) {
-			t.Errorf("expected canonical translated document to contain %q; HTML=%s", want, html)
+		if !strings.Contains(jsonPart, want) {
+			t.Errorf("expected SpecScene JSON to contain %q; JSON=%s", want, jsonPart)
 		}
-	}
-
-	preStart := strings.Index(html, "<h2>SpecScene JSON</h2><pre><code>")
-	if preStart < 0 {
-		t.Fatalf("canonical document has no SpecScene JSON block")
-	}
-	if !strings.Contains(html[preStart:], "&#34;clip_id&#34;") {
-		t.Fatalf("SpecScene JSON block lost canonical clip_id key: %s", html)
 	}
 }
