@@ -187,11 +187,16 @@ func TestPublishTimingBundle_HappyPath_PublishesJSONAndSRT(t *testing.T) {
 	assert.Equal(t, files.SHA256String("fake-mp3-bytes"), res.AudioSHA256)
 
 	// Two projection uploads with canonical filenames + distinct idem keys.
+	// The projections are published in non-deterministic order, so assert
+	// the filename set and per-projection metadata independently.
 	require.Len(t, pub.published, 2)
-	assert.Equal(t, "scene-0-it-timing.json", pub.published[0].Filename)
-	assert.Equal(t, "scene-0-it.srt", pub.published[1].Filename)
-	assert.Equal(t, "it", pub.published[0].Language)
-	assert.Equal(t, "progetto-storia", pub.published[0].Project)
+	require.ElementsMatch(t,
+		[]string{"scene-0-it-timing.json", "scene-0-it.srt"},
+		[]string{pub.published[0].Filename, pub.published[1].Filename})
+	for _, p := range pub.published {
+		assert.Equal(t, "it", p.Language)
+		assert.Equal(t, "progetto-storia", p.Project)
+	}
 	assert.NotEqual(t, pub.published[0].IdempotencyKey, pub.published[1].IdempotencyKey,
 		"each timing projection must have its own idempotency key")
 
