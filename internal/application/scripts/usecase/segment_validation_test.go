@@ -141,6 +141,28 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	}
 }
 
+func TestEngineGenerate_ExplicitSegmentSourceFallbackPreservesCardinality(t *testing.T) {
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
+		proseResult("one paragraph"), proseResult("still one paragraph"),
+	}}
+	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
+	engine.ConfigureSegmentValidation(15, 10, 1)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 20,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "one", SourceText: "caller scene one"},
+			{ID: "two", SourceText: "caller scene two"},
+		},
+	}
+	result, err := engine.Generate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	if result.Output.Text != "caller scene one\n\ncaller scene two" {
+		t.Fatalf("fallback text = %q", result.Output.Text)
+	}
+}
+
 func TestAssembleFrozenSegmentsDoesNotChangeOrder(t *testing.T) {
 	texts := []string{"first frozen text", "second frozen text", "third frozen text"}
 	if got := assembleFrozenSegments(texts); got != strings.Join(texts, "\n\n") {

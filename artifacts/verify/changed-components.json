@@ -5,15 +5,15 @@
   "base_available": true,
   "base_fallback": false,
   "changed_files": [
-    "internal/application/scripts/adapters/processor_visual_planning.go",
-    "internal/application/scripts/adapters/processor_visual_planning_test.go"
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go",
+    "internal/application/scripts/adapters/postprocessor_composite_merge_test.go"
   ],
   "file_components": {
-    "internal/application/scripts/adapters/processor_visual_planning.go": [
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go": [
       "script",
       "translation"
     ],
-    "internal/application/scripts/adapters/processor_visual_planning_test.go": [
+    "internal/application/scripts/adapters/postprocessor_composite_merge_test.go": [
       "script",
       "translation"
     ]
@@ -53,7 +53,7 @@
   "components": {
     "script": {
       "status": "PASS",
-      "duration_ms": 5738,
+      "duration_ms": 5873,
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/domain/script/...",
@@ -65,7 +65,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 454,
+          "duration_ms": 483,
           "timed_out": false,
           "command": "go test ./internal/domain/script/...",
           "kind": "go",
@@ -74,7 +74,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2538,
+          "duration_ms": 2434,
           "timed_out": false,
           "command": "go test ./internal/application/scripts/...",
           "kind": "go",
@@ -83,7 +83,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2745,
+          "duration_ms": 2955,
           "timed_out": false,
           "command": "go test ./internal/api/script/...",
           "kind": "go",
@@ -97,7 +97,7 @@
     },
     "database": {
       "status": "PASS",
-      "duration_ms": 2114,
+      "duration_ms": 2073,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/infrastructure/database/..."
@@ -107,7 +107,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2114,
+          "duration_ms": 2073,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/database/...",
           "kind": "go",
@@ -121,7 +121,7 @@
     },
     "ollama": {
       "status": "PASS",
-      "duration_ms": 1905,
+      "duration_ms": 2110,
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/infrastructure/ai/ollama/..."
@@ -131,7 +131,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 1905,
+          "duration_ms": 2109,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/ai/ollama/...",
           "kind": "go",
@@ -145,7 +145,7 @@
     },
     "translation": {
       "status": "PASS",
-      "duration_ms": 3583,
+      "duration_ms": 2443,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/translation/...",
@@ -157,7 +157,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 286,
+          "duration_ms": 315,
           "timed_out": false,
           "command": "go test ./internal/application/translation/...",
           "kind": "go",
@@ -166,7 +166,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 1063,
+          "duration_ms": 1034,
           "timed_out": false,
           "command": "go test ./internal/application/scripts/adapters/...",
           "kind": "go",
@@ -175,7 +175,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2233,
+          "duration_ms": 1093,
           "timed_out": false,
           "command": "go test ./internal/application/scripts/usecase/...",
           "kind": "go",
@@ -208,14 +208,14 @@
       "ollama",
       "translation"
     ],
-    "started_at": "2026-08-13T07:12:43.415063Z",
-    "finished_at": "2026-08-13T07:12:56.758034Z",
-    "git_sha": "1392a2437712a447d882d96809c7dd37bbe5937b",
-    "duration_ms": 13347,
+    "started_at": "2026-08-13T07:32:48.162542Z",
+    "finished_at": "2026-08-13T07:33:00.663291Z",
+    "git_sha": "8e09d942e48705346fe5f742b357dccabc91b794",
+    "duration_ms": 12504,
     "components": {
       "script": {
         "status": "PASS",
-        "duration_ms": 5738,
+        "duration_ms": 5873,
         "timeout_seconds": 300.0,
         "commands": [
           "go test ./internal/domain/script/...",
@@ -227,7 +227,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 454,
+            "duration_ms": 483,
             "timed_out": false,
             "command": "go test ./internal/domain/script/...",
             "kind": "go",
@@ -236,7 +236,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2538,
+            "duration_ms": 2434,
             "timed_out": false,
             "command": "go test ./internal/application/scripts/...",
             "kind": "go",
@@ -245,7 +245,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2745,
+            "duration_ms": 2955,
             "timed_out": false,
             "command": "go test ./internal/api/script/...",
             "kind": "go",
@@ -259,7 +259,7 @@
       },
       "database": {
         "status": "PASS",
-        "duration_ms": 2114,
+        "duration_ms": 2073,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/infrastructure/database/..."
@@ -269,7 +269,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2114,
+            "duration_ms": 2073,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/database/...",
             "kind": "go",
@@ -283,7 +283,7 @@
       },
       "ollama": {
         "status": "PASS",
-        "duration_ms": 1905,
+        "duration_ms": 2110,
         "timeout_seconds": 300.0,
         "commands": [
           "go test ./internal/infrastructure/ai/ollama/..."
@@ -293,7 +293,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 1905,
+            "duration_ms": 2109,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/ai/ollama/...",
             "kind": "go",
@@ -307,7 +307,7 @@
       },
       "translation": {
         "status": "PASS",
-        "duration_ms": 3583,
+        "duration_ms": 2443,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/application/translation/...",
@@ -319,7 +319,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 286,
+            "duration_ms": 315,
             "timed_out": false,
             "command": "go test ./internal/application/translation/...",
             "kind": "go",
@@ -328,7 +328,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 1063,
+            "duration_ms": 1034,
             "timed_out": false,
             "command": "go test ./internal/application/scripts/adapters/...",
             "kind": "go",
@@ -337,7 +337,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2233,
+            "duration_ms": 1093,
             "timed_out": false,
             "command": "go test ./internal/application/scripts/usecase/...",
             "kind": "go",
@@ -378,10 +378,10 @@
     "dry_run": false,
     "include_live": false
   },
-  "started_at": "2026-08-13T07:12:43.410366Z",
-  "finished_at": "2026-08-13T07:12:56.762407Z",
-  "git_sha": "1392a2437712a447d882d96809c7dd37bbe5937b",
-  "duration_ms": 13347,
+  "started_at": "2026-08-13T07:32:48.158725Z",
+  "finished_at": "2026-08-13T07:33:00.667511Z",
+  "git_sha": "8e09d942e48705346fe5f742b357dccabc91b794",
+  "duration_ms": 12504,
   "dry_run": false,
   "final": "PASS"
 }
