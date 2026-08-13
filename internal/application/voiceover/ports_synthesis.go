@@ -88,7 +88,21 @@ type AudioPostInput struct {
 	Filename  string
 }
 
-// AudioPostOutput carries the cleaned-path surface.
+// AudioPostOutput carries the cleaned-path surface plus the silence-
+// removal edit map. When EditMap is populated, raw TTS word boundaries
+// (which refer to the ORIGINAL timeline) can be remapped onto the
+// cleaned timeline so timing stays accurate after silence removal.
 type AudioPostOutput struct {
 	CleanedPath string
+
+	// DurationUS is the FINAL cleaned audio duration in microseconds.
+	// Required (together with EditMap) to build a valid timing artifact
+	// after silence removal.
+	DurationUS int64
+
+	// EditMap describes the silence-removal edits in source→cleaned
+	// timeline terms (see audio.AudioEdit). Empty when the processor
+	// does not report edits — timing capture then degrades per policy
+	// (required fails closed, best-effort marks timing unavailable).
+	EditMap []audio.AudioEdit
 }

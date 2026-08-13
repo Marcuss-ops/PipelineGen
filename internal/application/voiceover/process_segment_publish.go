@@ -43,6 +43,7 @@ func (u *ProcessSegmentUseCase) publishStage(
 	cmd *ProcessSegmentCommand,
 	out *VoiceoverItemResult,
 	tts *TTSOutput,
+	post *AudioPostOutput,
 	log *zap.Logger,
 ) (*publishStageResult, error) {
 	// Build metadata JSON envelope.
@@ -125,7 +126,7 @@ func (u *ProcessSegmentUseCase) publishStage(
 	// with a typed PipelineError; best-effort failures degrade the timing
 	// status while the audio stays completed; disabled preserves the
 	// legacy behavior (no timing work at all).
-	timingRes, err := u.publishTimingBundle(ctx, cmd, out, tts, uploadPath, log)
+	timingRes, err := u.publishTimingBundle(ctx, cmd, out, tts, post, uploadPath, log)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +154,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	cmd *ProcessSegmentCommand,
 	out *VoiceoverItemResult,
 	tts *TTSOutput,
+	post *AudioPostOutput,
 	uploadPath string,
 	log *zap.Logger,
 ) (*VoiceoverTimingResult, error) {
@@ -170,20 +172,6 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 
 	emitTiming := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "timing", string(cmd.Language))
 
-	// MVP guard (design step 6): raw provider boundaries describe the
-	// PRE-clean audio. Until the audio edit-map remap lands, silence
-	// removal makes accurate timestamps impossible — never fabricate
-	// them. required fails closed; best-effort degrades explicitly.
-	if cmd.RemoveSilence {
-		if policy.Mode == audio.TimingRequired {
-			emitTiming("failed")
-			return nil, newPipelineErrorCode(StageTiming, false, FailureTimingIncompatible,
-				fmt.Errorf("timing required + remove_silence: accurate timestamps are impossible after silence removal until the audio edit-map remap is implemented"))
-		}
-		emitTiming("unavailable")
-		return &VoiceoverTimingResult{Status: TimingStatusUnavailable}, nil
-	}
-
 	if len(tts.WordBoundaries) == 0 {
 		if policy.Mode == audio.TimingRequired {
 			emitTiming("failed")
@@ -192,6 +180,25 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		}
 		emitTiming("unavailable")
 		return &VoiceoverTimingResult{Status: TimingStatusUnavailable}, nil
+	}
+
+	// Silence removal: raw provider boundaries describe the PRE-clean
+	// timeline. With an edit map + final duration from the post-processor
+	// the boundaries are remapped onto the cleaned timeline; without them
+	// accurate timestamps are impossible, so required fails closed and
+	// best-effort degrades explicitly (never fabricate timestamps).
+	var postEditMap []audio.AudioEdit
+	if cmd.RemoveSilence {
+		if post == nil || len(post.EditMap) == 0 || post.DurationUS <= 0 {
+			if policy.Mode == audio.TimingRequired {
+				emitTiming("failed")
+				return nil, newPipelineErrorCode(StageTiming, false, FailureTimingIncompatible,
+					fmt.Errorf("timing required + remove_silence: the audio post-processor reported no edit map, so accurate timestamps are impossible"))
+			}
+			emitTiming("unavailable")
+			return &VoiceoverTimingResult{Status: TimingStatusUnavailable}, nil
+		}
+		postEditMap = post.EditMap
 	}
 
 	// Build the canonical artifact bound to the FINAL audio bytes.
@@ -204,6 +211,15 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 			EndUS:   b.EndUS,
 		})
 	}
+	durationUS := tts.Duration.Microseconds()
+	if len(postEditMap) > 0 {
+		remapped, err := audio.RemapSpeechTiming(words, postEditMap)
+		if err != nil {
+			return u.timingBuildFailure(policy, fmt.Errorf("remap speech timing after silence removal: %w", err))
+		}
+		words = remapped
+		durationUS = post.DurationUS
+	}
 	audioSHA, err := files.HashFile(uploadPath, sha256.New())
 	if err != nil {
 		return u.timingBuildFailure(policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))
@@ -214,7 +230,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		out.Voice,
 		files.SHA256String(cmd.Text),
 		audioSHA,
-		tts.Duration.Microseconds(),
+		durationUS,
 		words,
 	)
 	if err != nil {
