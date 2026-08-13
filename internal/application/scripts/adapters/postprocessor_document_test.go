@@ -100,6 +100,54 @@ func TestDocumentsProcessor_UsesMetadataTitleOnly(t *testing.T) {
 	}
 }
 
+func TestResolveDocumentTitle_MetadataTitleWins(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:         "Titolo piano",
+		VideoMetadata: &scriptpkg.VideoMetadata{Title: "Titolo YouTube"},
+	}
+	if got := resolveDocumentTitle(plan); got != "Titolo YouTube" {
+		t.Fatalf("resolveDocumentTitle() = %q, want %q", got, "Titolo YouTube")
+	}
+}
+
+func TestResolveDocumentTitle_FallsBackToPlanTitle(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *scriptpkg.ResolvedGenerationPlan
+		want string
+	}{
+		{
+			name: "no metadata",
+			plan: &scriptpkg.ResolvedGenerationPlan{Title: "  Titolo piano  "},
+			want: "Titolo piano",
+		},
+		{
+			name: "whitespace metadata title",
+			plan: &scriptpkg.ResolvedGenerationPlan{
+				Title:         "Titolo piano",
+				VideoMetadata: &scriptpkg.VideoMetadata{Title: "   "},
+			},
+			want: "Titolo piano",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveDocumentTitle(tt.plan); got != tt.want {
+				t.Fatalf("resolveDocumentTitle() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveDocumentTitle_EmptyReturnsEmpty(t *testing.T) {
+	if got := resolveDocumentTitle(nil); got != "" {
+		t.Fatalf("resolveDocumentTitle(nil) = %q, want empty", got)
+	}
+	if got := resolveDocumentTitle(&scriptpkg.ResolvedGenerationPlan{}); got != "" {
+		t.Fatalf("resolveDocumentTitle(empty plan) = %q, want empty", got)
+	}
+}
+
 func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T) {
 	stub := &documentServiceStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-2", Title: "With subtitles", DocsLanguages: []string{"en"}, DocsEnabled: true}
