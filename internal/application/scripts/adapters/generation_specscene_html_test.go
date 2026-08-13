@@ -244,3 +244,20 @@ func TestBuildSpecSceneDocumentHTML_PrintsOneTitleOnly(t *testing.T) {
 	require.Equal(t, 1, strings.Count(html, "<h1>"))
 	require.Contains(t, html, "<h1>Titolo video</h1>")
 }
+
+// extractSpecSceneJSON isolates the embedded SpecScene JSON snapshot from a
+// rendered document body and unescapes it so it can be re-parsed and compared
+// byte-faithfully against the canonical wire representation.
+func extractSpecSceneJSON(t *testing.T, output string) string {
+	t.Helper()
+
+	const startMarker = "<h2>SpecScene JSON</h2><pre><code>"
+	start := strings.Index(output, startMarker)
+	require.NotEqual(t, -1, start, "SpecScene JSON marker missing")
+	start += len(startMarker)
+
+	end := strings.Index(output[start:], "</code></pre>")
+	require.NotEqual(t, -1, end, "SpecScene JSON closing marker missing")
+
+	return html.UnescapeString(output[start : start+end])
+}
