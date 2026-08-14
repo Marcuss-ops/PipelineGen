@@ -582,19 +582,22 @@ main() {
     done
 
     # Failure counters must NOT increase on a completed job.
-    before=$(metric_value "$WORK_DIR/metrics.before" 'drive_upload_failures_total' '')
-    after=$(metric_value "$WORK_DIR/metrics.after" 'drive_upload_failures_total' '')
-    before_n=${before:-0}; before_n=${before_n/MISSING/0}; after_n=${after:-0}; after_n=${after_n/MISSING/0}
-    delta=$(( after_n - before_n ))
-    if (( delta == 0 )); then
-        printf '  %sOK: drive_upload_failures_total unchanged (%s → %s)%s\n' \
-            "$GREEN" "$before" "$after" "$RESET"
-    else
-        fail "delta_drive_upload_failures_${delta}"
-        printf '%sFAIL: drive_upload_failures_total delta=%s (expected 0; before=%s after=%s)%s\n' \
-            "$RED" "$delta" "$before" "$after" "$RESET" >&2
-        rc=1
-    fi
+    local fail_counter
+    for fail_counter in drive_upload_failures_total tts_failures_total translation_failures_total; do
+        before=$(metric_value "$WORK_DIR/metrics.before" "$fail_counter" '')
+        after=$(metric_value "$WORK_DIR/metrics.after" "$fail_counter" '')
+        before_n=${before:-0}; before_n=${before_n/MISSING/0}; after_n=${after:-0}; after_n=${after_n/MISSING/0}
+        delta=$(( after_n - before_n ))
+        if (( delta == 0 )); then
+            printf '  %sOK: %s unchanged (%s → %s)%s\n' \
+                "$GREEN" "$fail_counter" "$before" "$after" "$RESET"
+        else
+            fail "delta_${fail_counter}_${delta}"
+            printf '%sFAIL: %s delta=%s (expected 0; before=%s after=%s)%s\n' \
+                "$RED" "$fail_counter" "$delta" "$before" "$after" "$RESET" >&2
+            rc=1
+        fi
+    done
 
     # ── Durable timing assertions ────────────────────────────────
     verify_durable_timings || rc=1
