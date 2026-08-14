@@ -101,6 +101,62 @@ class VerifyComponentTests(unittest.TestCase):
             with self.assertRaisesRegex(verify_component.RegistryError, "invalid shell quoting"):
                 verify_component.load_registry(path)
 
+    @staticmethod
+    def minimal_definition(**overrides: object) -> dict[str, object]:
+        definition: dict[str, object] = {
+            "paths": ["internal/minimal/"],
+            "go_packages": [],
+            "node_tests": [],
+            "python_tests": [],
+            "dependencies": [],
+            "timeout_seconds": 30,
+            "race_timeout_seconds": 30,
+            "race_enabled": False,
+            "live_tests": [],
+        }
+        definition.update(overrides)
+        return definition
+
+    @staticmethod
+    def load_registry_json(registry: dict[str, object]) -> dict[str, dict[str, object]]:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "registry.json"
+            path.write_text(json.dumps(registry), encoding="utf-8")
+            return verify_component.load_registry(path)
+
+    def test_cacheable_policy_defaults_fail_closed(self) -> None:
+        loaded = self.load_registry_json(
+            {
+                "plain": self.minimal_definition(),
+                "cached": self.minimal_definition(cacheable=True, cache_scope="content"),
+            }
+        )
+        self.assertFalse(loaded["plain"]["cacheable"])
+        self.assertEqual(loaded["plain"]["cache_scope"], "content")
+        self.assertTrue(loaded["cached"]["cacheable"])
+
+    def test_cacheable_must_be_boolean(self) -> None:
+        registry = {"x": self.minimal_definition(cacheable="yes")}
+        with self.assertRaisesRegex(verify_component.RegistryError, "cacheable must be boolean"):
+            self.load_registry_json(registry)
+
+    def test_cacheable_live_gate_rejected(self) -> None:
+        registry = {
+            "x": self.minimal_definition(
+                cacheable=True,
+                live_tests=[["make", "verify-x-live"]],
+            )
+        }
+        with self.assertRaisesRegex(
+            verify_component.RegistryError, "cacheable must be false when live_tests is non-empty"
+        ):
+            self.load_registry_json(registry)
+
+    def test_cache_scope_must_be_non_empty_string(self) -> None:
+        registry = {"x": self.minimal_definition(cache_scope="")}
+        with self.assertRaisesRegex(verify_component.RegistryError, "cache_scope must be a non-empty string"):
+            self.load_registry_json(registry)
+
     def test_deduplicates_shared_commands_across_components(self) -> None:
         registry = self.registry()
         with tempfile.TemporaryDirectory() as directory:
