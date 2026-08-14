@@ -166,6 +166,54 @@ func TestIncrementalCoordinator_FinalBarrierWaitsOnlyForPendingScenes(t *testing
 	}
 }
 
+func TestIncrementalCoordinator_DoesNotMutateSharedSceneConcurrently(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 8)
+
+	scenes := []struct {
+		id    string
+		index int
+		text  string
+	}{
+		{"scene-0", 0, "First scene text"},
+		{"scene-1", 1, "Second scene text"},
+		{"scene-2", 2, "Third scene text"},
+	}
+
+	// Commit and enrich concurrently; the coordinator must never let one
+	// scene's enrichment write into another scene's result or into any shared
+	// scene envelope.
+	var wg sync.WaitGroup
+	for _, s := range scenes {
+		wg.Add(1)
+		go func(id string, idx int, text string) {
+			defer wg.Done()
+			err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{
+				RunID: "run-1", SceneID: id, SceneIndex: idx,
+				Text: text, TextHash: SceneTextHash(text), Revision: 1, Language: "en",
+			})
+			if err != nil {
+				t.Errorf("OnSceneCommitted(%s): %v", id, err)
+			}
+		}(s.id, s.index, s.text)
+	}
+	wg.Wait()
+
+	results, err := coordinator.Wait(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+
+	byID := make(map[string]string, len(results))
+	for _, r := range results {
+		byID[r.SceneID] = r.Text
+	}
+	for _, s := range scenes {
+		if byID[s.id] != s.text {
+			t.Fatalf("scene %s text = %q, want %q (concurrent contamination or mutation)", s.id, byID[s.id], s.text)
+		}
+	}
+}
+
 func TestIncrementalCoordinator_FailureAttributedToCorrectScene(t *testing.T) {
 	enricher := &fakeSegmentEnricher{errs: map[string]error{"scene-1": errors.New("extraction exploded")}}
 	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)

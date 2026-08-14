@@ -124,6 +124,10 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 // the immutable results in canonical SceneIndex order. It waits only for
 // scenes that were committed (never re-runs a whole-document extraction) and
 // fails on the first enrichment error, attributed to its scene.
+//
+// Wait must be called after all OnSceneCommitted calls for the run have
+// completed: the barrier observes the committed set at the moment it is
+// awaited, so a scene committed after Wait has returned is not included.
 func (c *VidRushIncrementalCoordinator) Wait(ctx context.Context) ([]scriptpkg.VidRushSegmentResult, error) {
 	done := make(chan struct{})
 	go func() {
