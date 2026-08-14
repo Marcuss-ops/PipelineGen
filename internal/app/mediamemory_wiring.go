@@ -70,7 +70,10 @@ func EnsureConceptCollection(ctx context.Context, transportClient *transport.Cli
 		return fmt.Errorf("mediamemory: EnsureConceptCollection transport is nil: %w",
 			mediamemory.ErrSemanticNotConfigured)
 	}
-	mgr := collections.NewCollectionManager(transportClient, qdrantschema.ConceptIndexSchema(), log)
+	mgr, err := collections.NewProjectionManagerFor(qdrantschema.MediaConceptsProjection(), transportClient, log)
+	if err != nil {
+		return fmt.Errorf("mediamemory: EnsureConceptCollection: %w", err)
+	}
 	if err := mgr.CreateCollection(ctx, qdrantschema.ConceptCollectionName); err != nil {
 		return fmt.Errorf("mediamemory: EnsureConceptCollection: %w", err)
 	}
