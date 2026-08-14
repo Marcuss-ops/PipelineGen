@@ -31,6 +31,8 @@ func (b *limitCapturingBackend) Capabilities() []Capability {
 	return []Capability{CapVideo}
 }
 
+func (b *limitCapturingBackend) Universe() SearchUniverse { return SearchCatalog }
+
 func (b *limitCapturingBackend) Search(_ context.Context, q Query) ([]Candidate, error) {
 	b.mu.Lock()
 	b.seenLimits = append(b.seenLimits, q.Limit)

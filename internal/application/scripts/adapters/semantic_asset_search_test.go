@@ -43,6 +43,7 @@ type fakeSearcher struct {
 
 func (f *fakeSearcher) Name() string                      { return f.name }
 func (f *fakeSearcher) Capabilities() []search.Capability { return f.caps }
+func (f *fakeSearcher) Universe() search.SearchUniverse   { return search.SearchCatalog }
 func (f *fakeSearcher) Search(_ context.Context, q search.Query) ([]search.Candidate, error) {
 	f.lastQuery = q
 	f.searchCalls++

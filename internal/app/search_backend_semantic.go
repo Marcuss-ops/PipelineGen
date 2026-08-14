@@ -47,7 +47,7 @@ import (
 // Canonical vector names for the semantic backend. Mirrors the
 // Qdrant IndexSchema (see AGENTS.md §Qdrant Entity Associations):
 //
-//	text      = 768-dim nomic-embed-text (semantic meaning)
+//	text      = 768-dim intfloat/multilingual-e5-base (semantic meaning)
 //	bm25_text = sparse BM25 (lexical exact-match)
 const (
 	semanticDenseVectorName  = "text"
@@ -112,6 +112,12 @@ func (b *semanticSearchBackend) Capabilities() []search.Capability {
 		search.CapAudio,
 		search.CapMusic,
 	}
+}
+
+// Universe reports SearchCatalog: the semantic backend searches Qdrant
+// and hydrates from SQLite (no live provider call).
+func (b *semanticSearchBackend) Universe() search.SearchUniverse {
+	return search.SearchCatalog
 }
 
 // Search runs the full semantic pipeline. Hash-only queries are

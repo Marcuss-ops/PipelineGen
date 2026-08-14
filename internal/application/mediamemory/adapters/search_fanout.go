@@ -101,6 +101,7 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 		Text:           q.Text,
 		Limit:          clampLimit(policy.MaxCandidates),
 		Mode:           mode,
+		Universe:       universeFromAllowExternal(policy.AllowExternal),
 		MediaTypes:     append([]string(nil), policy.MediaTypes...),
 		Sources:        append([]string(nil), policy.AllowedProviders...),
 		AllowExternal:  policy.AllowExternal,
@@ -160,6 +161,21 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 	}
 
 	return out, nil
+}
+
+// universeFromAllowExternal maps the mediamemory ResolutionSearchPolicy
+// AllowExternal flag onto the canonical search.SearchUniverse axis:
+//   - AllowExternal=false → SearchCatalog  (no live provider call)
+//   - AllowExternal=true  → SearchBlended  (catalog + live providers)
+//
+// This preserves the historical AllowExternal semantics ("external
+// providers may be consulted") while routing through the canonical
+// universe filter instead of the advisory hint.
+func universeFromAllowExternal(allowExternal bool) search.SearchUniverse {
+	if allowExternal {
+		return search.SearchBlended
+	}
+	return search.SearchCatalog
 }
 
 // clampLimit normalizes the limit input to the canonical bounds.

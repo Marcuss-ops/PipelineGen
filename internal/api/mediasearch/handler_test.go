@@ -488,7 +488,7 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 		},
 	}
 
-	resp := resultToResponse(r, "sunset", search.SearchModeHybrid, "")
+	resp := resultToResponse(r, "sunset", search.SearchModeHybrid, search.SearchCatalog, "")
 
 	if !resp.OK {
 		t.Error("partial with items should have OK=true")
@@ -525,7 +525,7 @@ func TestMediaSearchResponse_DoesNotSerializeRawDriveLink(t *testing.T) {
 		PreviewURL: "https://signed.example.test/assets/asset-stale",
 	}}}
 
-	resp := resultToResponse(r, "stale", search.SearchModeANN, "")
+	resp := resultToResponse(r, "stale", search.SearchModeANN, search.SearchCatalog, "")
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("marshal search response: %v", err)

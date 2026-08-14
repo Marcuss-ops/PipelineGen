@@ -48,8 +48,9 @@ import (
 // the Filters round-trip; delay+err hooks exist for future
 // partial-failure coverage (out of scope for this PR).
 type filterSpyBackend struct {
-	name string
-	caps []Capability
+	name     string
+	caps     []Capability
+	universe SearchUniverse
 
 	mu          sync.Mutex
 	lastFilters Filters
@@ -65,6 +66,13 @@ func (f *filterSpyBackend) Capabilities() []Capability {
 		return f.caps
 	}
 	return []Capability{CapVideo}
+}
+
+func (f *filterSpyBackend) Universe() SearchUniverse {
+	if f.universe != "" {
+		return f.universe
+	}
+	return SearchCatalog
 }
 
 // Search records the inbound Filters+Query and returns the stub's

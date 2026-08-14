@@ -87,6 +87,16 @@ type SearchBackend interface {
 	// Eg. a video-only provider returns []Capability{CapVideo}.
 	Capabilities() []Capability
 
+	// Universe reports which search universe this backend serves.
+	//   - SearchCatalog   : canonical index (semantic Qdrant backend +
+	//     local SQLite backend); never makes a live provider call.
+	//   - SearchDiscovery: live providers (artlist, youtube, stock,
+	//     images); never queries Qdrant.
+	// SearchBlended is a QUERY-level value only and MUST NOT be
+	// returned here. BackendRegistry.Eligible filters by this value
+	// according to Query.EffectiveUniverse().
+	Universe() SearchUniverse
+
 	// Search runs the query and returns up to req.Limit candidates
 	// matching q. The aggregator respects ctx.Done(): the backend
 	// MUST honour cancellation and avoid leaking goroutines after
@@ -167,8 +177,8 @@ type QueryEmbedder interface {
 // (see internal/infrastructure/qdrant/client_search.go::SparseText
 // + SparseVectorName pair semantics).
 const (
-	ChannelText       = "text"       // 768d nomic-embed-text (semantic meaning)
-	ChannelTranscript = "transcript" // 768d nomic-embed-text (Whisper transcript content)
+	ChannelText       = "text"       // 768d intfloat/multilingual-e5-base (semantic meaning)
+	ChannelTranscript = "transcript" // 768d intfloat/multilingual-e5-base (Whisper transcript content)
 	ChannelVisual     = "visual"     // 768d SigLIP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
 	ChannelAudio      = "audio"      // 512d CLAP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
 	ChannelSparse     = "bm25_text"  // sparse BM25; server-side inference; ERR_NOT_APPLICABLE on query-time

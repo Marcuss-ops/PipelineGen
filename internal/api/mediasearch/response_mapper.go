@@ -23,7 +23,7 @@ import (
 // IndexVersionSource port (parameter `indexVer`), replacing the
 // is rendered as JSON omitempty so callers do not get a stale
 // static string.
-func resultToResponse(r *search.Result, query string, mode search.SearchMode, indexVer string) *searchResponse {
+func resultToResponse(r *search.Result, query string, mode search.SearchMode, universe search.SearchUniverse, indexVer string) *searchResponse {
 	ok := true
 	items := make([]searchResultItem, 0)
 	var degraded bool
@@ -76,6 +76,7 @@ func resultToResponse(r *search.Result, query string, mode search.SearchMode, in
 		OK:            ok,
 		Query:         strings.TrimSpace(query),
 		Mode:          string(mode),
+		Universe:      string(universe),
 		Count:         len(items),
 		Items:         items,
 		Partial:       partial,
@@ -116,6 +117,7 @@ func searchQueryFromRequest(req searchRequest, mode search.SearchMode, limit int
 	return search.Query{
 		Text:       strings.TrimSpace(req.Query),
 		Mode:       mode,
+		Universe:   search.ParseUniverse(req.Universe),
 		Limit:      limit,
 		Sources:    sources,
 		MediaTypes: mediaTypes,
