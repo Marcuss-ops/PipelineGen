@@ -68,6 +68,7 @@ type Runner struct {
 	recorder              ExecutionRecorder
 	sceneCommitObserver   SceneCommitObserver
 	vidRushBarrier        VidRushBarrier
+	generationGate        *GenerationGate
 	log                   *zap.Logger
 }
 
@@ -151,6 +152,16 @@ func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
 func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	if r != nil {
 		r.vidRushBarrier = barrier
+	}
+}
+
+// SetGenerationGate wires the single-slot priority gate shared with VidRush
+// entity extraction. Scene generation acquires it with high priority, so when
+// the text generator and the entity extractor share the same local Ollama
+// model, generation preempts extraction instead of queuing behind it.
+func (r *Runner) SetGenerationGate(gate *GenerationGate) {
+	if r != nil {
+		r.generationGate = gate
 	}
 }
 

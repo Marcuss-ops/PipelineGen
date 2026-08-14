@@ -29,18 +29,22 @@ type VidRushBarrier interface {
 // merged in canonical SceneIndex order at the barrier. Enrichment is bounded
 // by a concurrency limit so a slow provider cannot spawn unbounded goroutines.
 type VidRushIncrementalCoordinator struct {
-	enricher       SegmentEnricher
-	resolver       SegmentProviderResolver
-	plan           *scriptpkg.ResolvedGenerationPlan
-	maxConcurrency int
+	enricher     SegmentEnricher
+	resolver     SegmentProviderResolver
+	materializer SegmentMaterializer
+	plan         *scriptpkg.ResolvedGenerationPlan
+	backpressure VidRushBackpressure
+	gate         *GenerationGate
 
-	mu         sync.Mutex
-	runID      string
-	latest     map[int]SceneCommitted
-	records    map[int]segmentResultRecord
-	staleCount int
-	sem        chan struct{}
-	wg         sync.WaitGroup
+	mu             sync.Mutex
+	runID          string
+	latest         map[int]SceneCommitted
+	records        map[int]segmentResultRecord
+	staleCount     int
+	extractSem     chan struct{}
+	providerSem    chan struct{}
+	materializeSem chan struct{}
+	wg             sync.WaitGroup
 }
 
 // segmentResultRecord is the immutable per-scene enrichment outcome. revision
@@ -54,18 +58,30 @@ type segmentResultRecord struct {
 }
 
 // NewVidRushIncrementalCoordinator constructs an incremental coordinator.
-// maxConcurrency bounds concurrent enrichments; values <= 0 default to 4.
+// maxConcurrency bounds the provider-search stage; values <= 0 default to 4.
+// Extraction is single-slot by default (the local Ollama model) and
+// materialization is bounded at 2.
 func NewVidRushIncrementalCoordinator(enricher SegmentEnricher, plan *scriptpkg.ResolvedGenerationPlan, maxConcurrency int) *VidRushIncrementalCoordinator {
-	if maxConcurrency <= 0 {
-		maxConcurrency = 4
+	backpressure := DefaultVidRushBackpressure()
+	if maxConcurrency > 0 {
+		backpressure.ProviderSearchLimit = maxConcurrency
 	}
+	return NewVidRushIncrementalCoordinatorWithBackpressure(enricher, plan, backpressure)
+}
+
+// NewVidRushIncrementalCoordinatorWithBackpressure constructs an incremental
+// coordinator with explicit per-stage concurrency limits.
+func NewVidRushIncrementalCoordinatorWithBackpressure(enricher SegmentEnricher, plan *scriptpkg.ResolvedGenerationPlan, backpressure VidRushBackpressure) *VidRushIncrementalCoordinator {
+	bp := backpressure.resolved()
 	return &VidRushIncrementalCoordinator{
 		enricher:       enricher,
 		plan:           plan,
-		maxConcurrency: maxConcurrency,
+		backpressure:   bp,
 		latest:         make(map[int]SceneCommitted),
 		records:        make(map[int]segmentResultRecord),
-		sem:            make(chan struct{}, maxConcurrency),
+		extractSem:     make(chan struct{}, bp.ExtractionLimit),
+		providerSem:    make(chan struct{}, bp.ProviderSearchLimit),
+		materializeSem: make(chan struct{}, bp.MaterializationLimit),
 	}
 }
 
@@ -81,6 +97,24 @@ var _ VidRushBarrier = (*VidRushIncrementalCoordinator)(nil)
 func (c *VidRushIncrementalCoordinator) SetSegmentProviderResolver(resolver SegmentProviderResolver) {
 	if c != nil {
 		c.resolver = resolver
+	}
+}
+
+// SetSegmentMaterializer wires the per-segment acquire/verify/finalize stage
+// that runs after provider search. A nil materializer is safe and leaves the
+// enrichment at the search stage (candidates are not downloaded/persisted).
+func (c *VidRushIncrementalCoordinator) SetSegmentMaterializer(materializer SegmentMaterializer) {
+	if c != nil {
+		c.materializer = materializer
+	}
+}
+
+// SetGenerationGate wires the single-slot priority gate shared with scene
+// generation. Entity extraction acquires it with low priority, so generation
+// can preempt extraction when both use the same local Ollama model.
+func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) {
+	if c != nil {
+		c.gate = gate
 	}
 }
 
@@ -114,24 +148,77 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	}
 	go func() {
 		defer c.wg.Done()
-		select {
-		case c.sem <- struct{}{}:
-		case <-ctx.Done():
-			c.recordResult(event, scriptpkg.VidRushSegmentResult{}, ctx.Err())
-			return
-		}
-		defer func() { <-c.sem }()
 
-		result, err := c.enricher.Enrich(ctx, c.plan, scene)
-		if err == nil && c.resolver != nil {
-			// Provider fan-out starts only after entity extraction has produced
-			// the segment's retrieval queries; generation of the next scene
-			// continues meanwhile because this runs inside the bounded worker.
-			result, err = c.resolver.ResolveProviders(ctx, c.plan, result)
+		// Stage 1 — entity extraction. Single-slot by default (local Ollama),
+		// and low-priority against the generation gate so scene generation is
+		// never starved when both share the same model.
+		result, err := c.enrichSegment(ctx, scene)
+		if err == nil {
+			result, err = c.searchProviders(ctx, result)
+		}
+		if err == nil {
+			result, err = c.materializeSegment(ctx, result)
 		}
 		c.recordResult(event, result, err)
 	}()
 	return nil
+}
+
+// enrichSegment runs the entity-extraction stage under its own bounded
+// semaphore, with low priority against the shared generation gate.
+func (c *VidRushIncrementalCoordinator) enrichSegment(ctx context.Context, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	if c.gate != nil {
+		if err := c.gate.AcquireLow(ctx); err != nil {
+			return scriptpkg.VidRushSegmentResult{}, err
+		}
+		defer c.gate.Release()
+	}
+	if err := c.acquire(ctx, c.extractSem); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	defer c.release(c.extractSem)
+	return c.enricher.Enrich(ctx, c.plan, scene)
+}
+
+// searchProviders runs the provider fan-out stage under its own bounded
+// semaphore, independent of the extraction limit.
+func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, result scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if c.resolver == nil {
+		return result, nil
+	}
+	if err := c.acquire(ctx, c.providerSem); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	defer c.release(c.providerSem)
+	return c.resolver.ResolveProviders(ctx, c.plan, result)
+}
+
+// materializeSegment runs the acquire/verify/finalize stage under its own
+// bounded semaphore, independent of extraction and search limits.
+func (c *VidRushIncrementalCoordinator) materializeSegment(ctx context.Context, result scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if c.materializer == nil {
+		return result, nil
+	}
+	if err := c.acquire(ctx, c.materializeSem); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	defer c.release(c.materializeSem)
+	return c.materializer.Materialize(ctx, c.plan, result)
+}
+
+// acquire takes a slot from a bounded semaphore or returns ctx.Err().
+func (c *VidRushIncrementalCoordinator) acquire(ctx context.Context, sem chan struct{}) error {
+	select {
+	case sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// release returns a slot to a bounded semaphore.
+func (c *VidRushIncrementalCoordinator) release(sem chan struct{}) {
+	<-sem
 }
 
 // recordResult stores an immutable enrichment outcome only when it still

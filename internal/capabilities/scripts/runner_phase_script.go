@@ -22,7 +22,17 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 			return result, false
 		}
+		if r.generationGate != nil {
+			if gateErr := r.generationGate.AcquireHigh(ctx); gateErr != nil {
+				r.failExecutionStep(ctx, exec, scriptStep, gateErr)
+				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, gateErr)
+				return result, false
+			}
+		}
 		scenes, err := r.textGen.GenerateSceneText(ctx, req)
+		if r.generationGate != nil {
+			r.generationGate.Release()
+		}
 		if err != nil {
 			cause := fmt.Errorf("generate scene text failed: %w", err)
 			r.failExecutionStep(ctx, exec, scriptStep, cause)
