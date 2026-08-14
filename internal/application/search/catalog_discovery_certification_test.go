@@ -6,7 +6,7 @@ package search
 // properties the plan requires:
 //
 //	1. CATALOG reproducibility — the same query, dataset revision and
-//	   embedding contract always return the identical ordered top-k
+//	   embedding contract always return the identical ordered top-10
 //	   (ten consecutive runs are byte-identical).
 //	2. CATALOG separation    — a catalog query makes Qdrant calls > 0 and
 //	   live-provider calls == 0.
@@ -88,8 +88,16 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	semantic := &countingBackend{
 		name: "semantic", universe: SearchCatalog, caps: []Capability{CapVideo}, counters: counters,
 		results: []Candidate{
-			{AssetID: "asset-A", Source: "semantic", Title: "Jackie Chan Interview", Score: 0.95},
-			{AssetID: "asset-B", Source: "semantic", Title: "Jackie Chan Behind the Scenes", Score: 0.88},
+			{AssetID: "asset-A", Source: "semantic", Title: "Jackie Chan Interview", Score: 0.99},
+			{AssetID: "asset-B", Source: "semantic", Title: "Jackie Chan Behind the Scenes", Score: 0.98},
+			{AssetID: "asset-C", Source: "semantic", Title: "Jackie Chan Stunts", Score: 0.97},
+			{AssetID: "asset-D", Source: "semantic", Title: "Jackie Chan Training", Score: 0.96},
+			{AssetID: "asset-E", Source: "semantic", Title: "Jackie Chan Awards", Score: 0.95},
+			{AssetID: "asset-F", Source: "semantic", Title: "Jackie Chan Family", Score: 0.94},
+			{AssetID: "asset-G", Source: "semantic", Title: "Jackie Chan Comedy", Score: 0.93},
+			{AssetID: "asset-H", Source: "semantic", Title: "Jackie Chan Drama", Score: 0.92},
+			{AssetID: "asset-I", Source: "semantic", Title: "Jackie Chan Documentary", Score: 0.91},
+			{AssetID: "asset-J", Source: "semantic", Title: "Jackie Chan Retrospective", Score: 0.90},
 		},
 	}
 	artlist := &countingBackend{
@@ -135,6 +143,9 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	}
 	if len(first) == 0 {
 		t.Fatal("CATALOG returned no results; certification needs a non-empty catalog")
+	}
+	if len(first) != 10 {
+		t.Fatalf("CATALOG top-10 length = %d, want exactly 10 (got %v)", len(first), first)
 	}
 
 	if got := counters.qdrant.Load() - qdrantBefore; got == 0 {
