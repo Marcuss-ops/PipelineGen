@@ -28,6 +28,8 @@ const (
 	AssetSFX            AssetKind = "sfx"
 	AssetClipAudio      AssetKind = "clip_audio"
 	AssetFinalAudio     AssetKind = "final_audio"
+	AssetMetadata       AssetKind = "metadata"
+	AssetDocument       AssetKind = "document"
 )
 
 type AssetTaxonomy struct {
@@ -39,14 +41,24 @@ type AssetTaxonomy struct {
 	SemanticRole string
 }
 
+// IsZero reports whether the taxonomy carries none of its canonical
+// dimensions. The MediaCommitter skips the taxonomy upsert for a zero
+// taxonomy so legacy producers can converge incrementally.
+func (t AssetTaxonomy) IsZero() bool {
+	return t.AssetID == "" && t.Namespace == "" && t.MediaType == "" &&
+		t.AssetKind == "" && t.SourceType == "" && t.SemanticRole == ""
+}
+
 func (t AssetTaxonomy) Validate() error {
 	if t.AssetID == "" || t.Namespace == "" || t.MediaType == "" || t.AssetKind == "" || t.SourceType == "" {
 		return fmt.Errorf("media taxonomy: asset identity and five dimensions are required")
 	}
 	valid := map[MediaType]map[AssetKind]bool{
-		MediaVideo: {AssetClip: true, AssetStockVideo: true, AssetGeneratedVideo: true, AssetRenderedVideo: true},
-		MediaImage: {AssetStockImage: true, AssetWebImage: true, AssetAIImage: true, AssetGraphic: true},
-		MediaAudio: {AssetVoiceover: true, AssetBGM: true, AssetSFX: true, AssetClipAudio: true, AssetFinalAudio: true},
+		MediaVideo:    {AssetClip: true, AssetStockVideo: true, AssetGeneratedVideo: true, AssetRenderedVideo: true},
+		MediaImage:    {AssetStockImage: true, AssetWebImage: true, AssetAIImage: true, AssetGraphic: true},
+		MediaAudio:    {AssetVoiceover: true, AssetBGM: true, AssetSFX: true, AssetClipAudio: true, AssetFinalAudio: true},
+		MediaText:     {AssetMetadata: true},
+		MediaDocument: {AssetDocument: true},
 	}
 	if !valid[t.MediaType][t.AssetKind] {
 		return fmt.Errorf("media taxonomy: asset_kind %q is invalid for media_type %q", t.AssetKind, t.MediaType)
