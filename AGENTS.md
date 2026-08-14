@@ -31,11 +31,11 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
 - Keep services headless and CPU-first unless a GPU path is explicitly requested.
 - Never commit credentials, tokens, cookies, or private keys.
 - Generated API documentation must match registered routes.
-- Run `make verify-main` before pushing (the pre-push hook runs `make verify-main` automatically).
+- Run `make verify-main` before pushing (the pre-push hook runs `make -j4 verify-main` automatically — parallel legs, overridable with `VERIFY_MAIN_JOBS`).
 - DO NOT use `git push --no-verify` to bypass the pre-push gate — bypass is reserved for unblocking CI emergencies and must be paired with a fixup! followup.
-- **Agent constraints during development**: NON eseguire `make verify-main` durante le iterazioni. Dopo ogni modifica:
-    1. Esegui il test del package modificato.
-    2. Esegui `make verify-agent` (foundation + static + test dei soli componenti impattati, ~1-3 min).
+- **Agent constraints during development**: NON eseguire `make verify-main` durante le iterazioni. Gerarchia dei gate: `verify-agent` (loop agent, dopo ogni modifica) → `verify-fast` (milestone) → `verify-main` (UNA sola volta, prima del push). Dopo ogni modifica:
+    1. Esegui il test del package modificato, es. `go test ./internal/capabilities/audio/... -count=1` (oppure `-run TestNome` per un singolo test).
+    2. Esegui `make verify-agent` (foundation + static + verifica dei soli componenti impattati; sonda Node + architecture solo se cambiano `make/**`/hook — ~1-3 min).
     3. Esegui `make verify-fast` solo dopo una milestone significativa.
     4. Quando TUTTO il task è completo, esegui UNA SOLA VOLTA `make verify-main`, immediatamente prima del push.
     5. Se `verify-main` è già passato e working tree/commit non sono cambiati, NON ripeterlo.
