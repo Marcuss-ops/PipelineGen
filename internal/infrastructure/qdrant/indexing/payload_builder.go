@@ -16,8 +16,9 @@
 //	payload_builder_canonical.go— canonical SSOT block + text-track
 //	                              projection
 //	payload_builder_vlm.go      — VLM visual-summary block
-//	payload_builder_search.go   — buildCanonicalSearchDocument +
-//	                              composeMultilingualTranscriptBlock
+//	payload_builder_search.go   — composeSemanticDocument adapter
+//	                              (delegates to the canonical
+//	                              SemanticDocumentComposer, item 7)
 package indexing
 
 import (
@@ -59,16 +60,14 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if semanticTitle == "" {
 		semanticTitle = buildSemanticTitle(doc.Metadata.Title, doc.Metadata.Event, doc.Metadata.Round, doc.Metadata.Scene, doc.Metadata.Subject)
 	}
-	// PR-CATALOG-MULTILINGUA step 6 (July 2026): the canonical SEARCH
-	// DOCUMENT is ALWAYS composed via buildCanonicalSearchDocument;
-	// the pre-existing pre-fill override
-	// (`if doc.Metadata.EmbeddingText != ""`) is REMOVED so no caller
-	// can evade the forward-prevention check by sneaking
-	// link/locator text into doc.Metadata.EmbeddingText. The
-	// canonical composer reads ONLY the 8 sanctioned fields and
-	// emits an empty string when none are populated; that is the
-	// SINGLE source of truth for the embedding shape on the wire.
-	embeddingText := buildCanonicalSearchDocument(doc)
+	// PR-CATALOG-MULTILINGUA step 6 + item 7: the canonical SEARCH DOCUMENT
+	// is ALWAYS composed by the SemanticDocumentComposer (the single owner,
+	// internal/application/indexing/semanticdoc). No caller can evade the
+	// forward-prevention check by sneaking link/locator text into
+	// doc.Metadata.EmbeddingText: the composer reads ONLY the 8 sanctioned
+	// fields and emits an empty string when none are populated.
+	semanticDoc := composeSemanticDocument(doc)
+	embeddingText := semanticDoc.DocumentText
 	sourceURL := firstNonEmpty(doc.Metadata.SourceURL, doc.Metadata.YouTubeURL)
 	sourceVideoID := firstNonEmpty(doc.Metadata.SourceVideoID, doc.Metadata.YouTubeID)
 	name := firstNonEmpty(doc.Metadata.Name, doc.Metadata.Title, doc.Metadata.SemanticTitle, doc.AssetID)
@@ -91,6 +90,10 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	// mutates the same map so the emitted payload is byte-identical to
 	// the pre-split flat emitter (same keys, same omitempty guards).
 	payload := make(map[string]any, 64)
+	// item 7: stamp the semantic-document identity so the index state can
+	// record exactly which document text was embedded.
+	payload["semantic_document_version"] = semanticDoc.Version
+	payload["semantic_document_hash"] = semanticDoc.Hash
 	fillIdentityPayload(payload, doc, name, destination, origin, sourceProvider, sourceURL, semanticTitle, embeddingText)
 	fillContentPayload(payload, doc)
 	fillSemanticPayload(payload, doc, entities)
