@@ -301,6 +301,33 @@ func (cm *CollectionManager) Rollback(ctx context.Context, projectionID, rollbac
 	return cm.RollbackProjection(ctx, projectionID, rollbackTarget)
 }
 
+// MarkFailedCleaned transitions a FAILED projection to FAILED_CLEANED after
+// its physical collection has been verified cleaned up. It fails closed
+// unless: the projection exists and is FAILED, and the runtime alias does
+// NOT point at its collection (the live write target is never marked
+// cleaned). The attempt history is preserved — only the status changes.
+func (cm *CollectionManager) MarkFailedCleaned(ctx context.Context, projectionID string) error {
+	projection, err := cm.requireProjection(projectionID)
+	if err != nil {
+		return err
+	}
+	if capregistry.ProjectionStatus(projection.Status) != capregistry.ProjectionFailed {
+		return fmt.Errorf("%w: mark failed-cleaned %q: status is %s, want FAILED", ErrProjectionInvalidState, projectionID, projection.Status)
+	}
+	target, err := cm.client.GetAliasTarget(ctx, projection.AliasName)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("mark failed-cleaned %q: resolve alias target: %w", projectionID, err)
+		}
+		// Alias unwritten: there is no target, so the collection is
+		// definitely not the live write target.
+	} else if target == projection.CollectionName {
+		return fmt.Errorf("%w: mark failed-cleaned %q: collection %q is still the runtime alias target", ErrProjectionInvalidState, projectionID, projection.CollectionName)
+	}
+	return cm.transitionProjection(ctx, projectionID, capregistry.ProjectionFailedCleaned)
+}
+
 // RollbackProjection atomically restores the alias to rollbackTarget. A
 // failed rollback leaves the currently active projection ACTIVE; a successful
 // rollback retires the candidate and marks a known rollback build ACTIVE.
@@ -453,7 +480,8 @@ func validateHydratedProjections(projections []capregistry.Projection, registryS
 		switch capregistry.ProjectionStatus(projection.Status) {
 		case capregistry.ProjectionBuilding, capregistry.ProjectionValidating,
 			capregistry.ProjectionReady, capregistry.ProjectionActive,
-			capregistry.ProjectionRetired, capregistry.ProjectionFailed:
+			capregistry.ProjectionRetired, capregistry.ProjectionFailed,
+			capregistry.ProjectionFailedCleaned:
 		default:
 			return fmt.Errorf("hydrate projection registry: unknown status %q for %q", projection.Status, projection.ProjectionID)
 		}

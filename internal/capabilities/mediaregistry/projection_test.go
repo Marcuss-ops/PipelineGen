@@ -15,8 +15,11 @@ func TestValidateProjectionTransition_FailureOriented(t *testing.T) {
 		{ProjectionValidating, ProjectionReady, true},
 		{ProjectionReady, ProjectionActive, true},
 		{ProjectionActive, ProjectionRetired, true},
+		{ProjectionFailed, ProjectionFailedCleaned, true},
 		{ProjectionBuilding, ProjectionActive, false},
 		{ProjectionFailed, ProjectionActive, false},
+		{ProjectionFailedCleaned, ProjectionActive, false},
+		{ProjectionFailedCleaned, ProjectionRetired, false},
 		{ProjectionRetired, ProjectionBuilding, false},
 	}
 	for _, tt := range tests {

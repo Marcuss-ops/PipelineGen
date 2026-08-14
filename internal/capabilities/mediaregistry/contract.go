@@ -57,6 +57,11 @@ const (
 	ProjectionActive     ProjectionStatus = "ACTIVE"
 	ProjectionRetired    ProjectionStatus = "RETIRED"
 	ProjectionFailed     ProjectionStatus = "FAILED"
+	// ProjectionFailedCleaned marks a FAILED projection whose physical
+	// collection has been verified cleaned up. Terminal: the attempt
+	// history is preserved (the row is retained), but the record is no
+	// longer indistinguishable from an un-cleaned FAILED partial.
+	ProjectionFailedCleaned ProjectionStatus = "FAILED_CLEANED"
 )
 
 var (
@@ -97,8 +102,9 @@ func ValidateProjectionTransition(from, to ProjectionStatus) error {
 		ProjectionActive:     {ProjectionRetired: true},
 		// A retired projection may be reactivated only by an explicit
 		// rollback to a previously known-good target.
-		ProjectionRetired: {ProjectionActive: true},
-		ProjectionFailed:  {},
+		ProjectionRetired:       {ProjectionActive: true},
+		ProjectionFailed:        {ProjectionFailedCleaned: true},
+		ProjectionFailedCleaned: {},
 	}
 	if allowed[from][to] {
 		return nil
