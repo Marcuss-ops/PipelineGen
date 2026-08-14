@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
@@ -43,6 +44,12 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// The single-segment VidRush enricher is the canonical adapter implementing
+// the capability's SegmentEnricher port. Asserted here (composition root)
+// because the migration-zone adapters package must not import the capability
+// package (that would invert the application → capability migration direction).
+var _ scriptgen.SegmentEnricher = (*adapters.VidRushSegmentEnricher)(nil)
 
 // registerAIBackedProcessors registers the AI-backed postprocessors:
 // entities, metadata, translation, clip_search, and internet_images.

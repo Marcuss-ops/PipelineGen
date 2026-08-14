@@ -13,8 +13,20 @@ import (
 )
 
 // EntitiesProcessor extracts entities and visual search terms for each
-// canonical VidRush segment. Extraction is required when registered.
+// canonical VidRush segment. Extraction is required when registered. It is
+// the non-streaming batch consumer of VidRushSegmentEnricher: it materializes
+// canonical segments from the whole document, then reuses the single-segment
+// enricher so extraction/query/cache/metrics logic is implemented exactly once.
 type EntitiesProcessor struct {
+	*VidRushSegmentEnricher
+}
+
+// VidRushSegmentEnricher is the reusable single-segment VidRush owner. Its
+// Enrich method implements the SegmentEnricher port consumed by the
+// incremental coordinator (asserted at the composition root, since the
+// migration-zone adapters package must not import the capability package); it
+// is embedded by the batch EntitiesProcessor for non-streaming workflows.
+type VidRushSegmentEnricher struct {
 	extractor EntityExtractor
 	metrics   VidRushMetrics
 	cache     scriptports.VidRushCachePort
@@ -30,11 +42,16 @@ func NewEntitiesProcessor(extractor EntityExtractor, metrics ...VidRushMetrics) 
 }
 
 func NewEntitiesProcessorWithCache(extractor EntityExtractor, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *EntitiesProcessor {
+	return &EntitiesProcessor{VidRushSegmentEnricher: NewVidRushSegmentEnricher(extractor, cache, metrics...)}
+}
+
+// NewVidRushSegmentEnricher constructs the single-segment enrichment owner.
+func NewVidRushSegmentEnricher(extractor EntityExtractor, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushSegmentEnricher {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &EntitiesProcessor{extractor: extractor, metrics: m, cache: cache, extractionGate: make(chan struct{}, 1)}
+	return &VidRushSegmentEnricher{extractor: extractor, metrics: m, cache: cache, extractionGate: make(chan struct{}, 1)}
 }
 
 func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
@@ -69,27 +86,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		}
 	})
 
-	limits := segmentExtractionLimits{entities: 5, phrases: 5, words: 5, artlist: 5, images: 5}
-	if plan.MediaPlan.Extraction.MaxEntitiesPerSegment > 0 {
-		limits.entities = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
-	}
-	if plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment > 0 {
-		limits.phrases = plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
-	}
-	// The annotation contract is scene-level: retain at most one key
-	// statement per scene, regardless of a wider legacy extraction limit.
-	if limits.phrases > 1 {
-		limits.phrases = 1
-	}
-	if plan.MediaPlan.Extraction.MaxImportantWordsPerSegment > 0 {
-		limits.words = plan.MediaPlan.Extraction.MaxImportantWordsPerSegment
-	}
-	if plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment > 0 {
-		limits.artlist = plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment
-	}
-	if plan.MediaPlan.Extraction.MaxImageQueriesPerSegment > 0 {
-		limits.images = plan.MediaPlan.Extraction.MaxImageQueriesPerSegment
-	}
+	limits := resolveExtractionLimits(plan)
 
 	agg := &scriptpkg.EntityResult{
 		Persons:          []scriptpkg.Entity{},
@@ -498,11 +495,11 @@ type segmentEnrichmentOutcome struct {
 // it returns an immutable segment result. The batch transport path shares the
 // same query/result builders but skips per-segment caching for its serialized
 // model call.
-func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, specScene scriptpkg.SpecSceneOutput, canonicalSeg scriptpkg.CanonicalSegment, limits segmentExtractionLimits) segmentEnrichmentOutcome {
+func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, specScene scriptpkg.SpecSceneOutput, canonicalSeg scriptpkg.CanonicalSegment, limits segmentExtractionLimits) segmentEnrichmentOutcome {
 	outcome := segmentEnrichmentOutcome{}
 	device := extractionDevice(plan)
-	if p.metrics != nil {
-		p.metrics.IncSegments()
+	if e.metrics != nil {
+		e.metrics.IncSegments()
 	}
 	cacheKey := segmentCacheKey(
 		"extraction-v4-local-v1",
@@ -522,8 +519,8 @@ func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.R
 			if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
 				seg = cloneVidRushSegmentResult(seg)
 				seg.Cache.Extraction = "HIT_EXACT"
-				if p.metrics != nil {
-					p.metrics.IncExtractionCache(true)
+				if e.metrics != nil {
+					e.metrics.IncExtractionCache(true)
 				}
 				outcome.segment = seg
 				outcome.cached = true
@@ -531,15 +528,15 @@ func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.R
 			}
 		}
 		var persisted scriptpkg.VidRushSegmentResult
-		if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
+		if hit, cacheErr := loadVidRushPersistentJSON(ctx, e.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
 			outcome.err = cacheErr
 			return outcome
 		} else if hit {
 			persisted = cloneVidRushSegmentResult(persisted)
 			persisted.Cache.Extraction = "HIT_EXACT"
 			cacheStore(&vidrushExtractionCache, cacheKey, persisted)
-			if p.metrics != nil {
-				p.metrics.IncExtractionCache(true)
+			if e.metrics != nil {
+				e.metrics.IncExtractionCache(true)
 			}
 			outcome.segment = persisted
 			outcome.cached = true
@@ -548,12 +545,12 @@ func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.R
 	}
 
 	select {
-	case p.extractionGate <- struct{}{}:
+	case e.extractionGate <- struct{}{}:
 	case <-ctx.Done():
 		outcome.err = ctx.Err()
 		return outcome
 	}
-	res, err := p.extractor.ExtractEntities(ctx, scriptpkg.EntityExtractionRequest{
+	res, err := e.extractor.ExtractEntities(ctx, scriptpkg.EntityExtractionRequest{
 		SegmentID:   canonicalSeg.ID,
 		Text:        canonicalSeg.Text,
 		Title:       plan.Title,
@@ -563,7 +560,7 @@ func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.R
 		EntityCount: limits.entities,
 		SpecScene:   segmentSpecSceneContext(specScene, canonicalSeg),
 	})
-	<-p.extractionGate
+	<-e.extractionGate
 	if err != nil {
 		if errors.Is(err, ErrEntityExtractorUnavailable) {
 			outcome.unavailable = err
@@ -580,14 +577,85 @@ func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.R
 	if plan.MediaPlan.ForceRefreshExtraction {
 		seg.Cache.Extraction = "REFRESHED"
 	}
-	if p.metrics != nil {
-		p.metrics.IncExtractionCache(false)
+	if e.metrics != nil {
+		e.metrics.IncExtractionCache(false)
 	}
 	cacheStore(&vidrushExtractionCache, cacheKey, seg)
-	if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
+	if cacheErr := storeVidRushPersistentJSON(ctx, e.cache, "extraction", cacheKey, seg); cacheErr != nil {
 		outcome.err = cacheErr
 		return outcome
 	}
 	outcome.segment = seg
 	return outcome
+}
+
+// Enrich implements the SegmentEnricher contract for a single stable scene.
+// It converts the scene into its canonical segment identity, then runs the
+// shared single-segment enrichment. The returned result is immutable and
+// keyed by the scene content hash.
+func (e *VidRushSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	if e.extractor == nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("%w: entities enricher: EntityExtractor not configured", scriptpkg.ErrPostprocessFailed)
+	}
+	if plan == nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("%w: entities enricher: nil ResolvedGenerationPlan", scriptpkg.ErrPostprocessFailed)
+	}
+	if strings.TrimSpace(scene.Text) == "" {
+		return scriptpkg.VidRushSegmentResult{}, nil
+	}
+	canonicalSeg := canonicalSegmentFromScene(scene)
+	envelope := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{scene}}
+	outcome := e.enrichSegment(ctx, plan, envelope, canonicalSeg, resolveExtractionLimits(plan))
+	if outcome.unavailable != nil {
+		return scriptpkg.VidRushSegmentResult{}, outcome.unavailable
+	}
+	if outcome.err != nil {
+		return scriptpkg.VidRushSegmentResult{}, outcome.err
+	}
+	return outcome.segment, nil
+}
+
+// resolveExtractionLimits derives the bounded per-segment extraction limits
+// from the plan. It is the single source of truth shared by the batch
+// processor and the single-segment Enrich path.
+func resolveExtractionLimits(plan *scriptpkg.ResolvedGenerationPlan) segmentExtractionLimits {
+	limits := segmentExtractionLimits{entities: 5, phrases: 5, words: 5, artlist: 5, images: 5}
+	if plan.MediaPlan.Extraction.MaxEntitiesPerSegment > 0 {
+		limits.entities = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
+	}
+	if plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment > 0 {
+		limits.phrases = plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+	}
+	// The annotation contract is scene-level: retain at most one key
+	// statement per scene, regardless of a wider legacy extraction limit.
+	if limits.phrases > 1 {
+		limits.phrases = 1
+	}
+	if plan.MediaPlan.Extraction.MaxImportantWordsPerSegment > 0 {
+		limits.words = plan.MediaPlan.Extraction.MaxImportantWordsPerSegment
+	}
+	if plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment > 0 {
+		limits.artlist = plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment
+	}
+	if plan.MediaPlan.Extraction.MaxImageQueriesPerSegment > 0 {
+		limits.images = plan.MediaPlan.Extraction.MaxImageQueriesPerSegment
+	}
+	return limits
+}
+
+// canonicalSegmentFromScene builds the stable segment identity for one scene,
+// preserving the scene's canonical index and computing its content hash.
+func canonicalSegmentFromScene(scene scriptpkg.SpecScene) scriptpkg.CanonicalSegment {
+	segText := strings.TrimSpace(scene.Text)
+	id := strings.TrimSpace(scene.SegmentID)
+	if id == "" {
+		id = strings.TrimSpace(scene.ID)
+	}
+	return scriptpkg.CanonicalSegment{
+		ID:       id,
+		SceneID:  strings.TrimSpace(scene.ID),
+		Position: scene.Index,
+		Text:     segText,
+		TextHash: segmentTextHash(segText),
+	}
 }
