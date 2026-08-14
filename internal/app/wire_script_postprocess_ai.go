@@ -52,6 +52,7 @@ import (
 var _ scriptgen.SegmentEnricher = (*adapters.VidRushSegmentEnricher)(nil)
 var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
 var _ scriptgen.SegmentSceneMerger = (*adapters.VidRushSceneMerger)(nil)
+var _ scriptgen.VidRushMetrics = (*observability.VidRushMetricsAdapter)(nil)
 
 // registerAIBackedProcessors registers the AI-backed postprocessors:
 // entities, metadata, translation, clip_search, and internet_images.

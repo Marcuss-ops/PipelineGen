@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -36,6 +37,8 @@ type VidRushIncrementalCoordinator struct {
 	backpressure VidRushBackpressure
 	gate         *GenerationGate
 
+	metrics VidRushMetrics
+
 	mu             sync.Mutex
 	runID          string
 	latest         map[int]SceneCommitted
@@ -45,6 +48,14 @@ type VidRushIncrementalCoordinator struct {
 	providerSem    chan struct{}
 	materializeSem chan struct{}
 	wg             sync.WaitGroup
+
+	// Timing surface (guarded by mu). genStart/genEnd are marked by the
+	// runner; firstEnrichmentStart/barrierStart/barrierEnd by the coordinator.
+	genStart             time.Time
+	genEnd               time.Time
+	firstEnrichmentStart time.Time
+	barrierStart         time.Time
+	barrierEnd           time.Time
 }
 
 // segmentResultRecord is the immutable per-scene enrichment outcome. revision
@@ -90,6 +101,7 @@ func NewVidRushIncrementalCoordinatorWithBackpressure(enricher SegmentEnricher, 
 // awaits once generation completes.
 var _ SceneCommitObserver = (*VidRushIncrementalCoordinator)(nil)
 var _ VidRushBarrier = (*VidRushIncrementalCoordinator)(nil)
+var _ VidRushTimingRecorder = (*VidRushIncrementalCoordinator)(nil)
 
 // SetSegmentProviderResolver wires the per-segment provider fanout that runs
 // after entity extraction. A nil resolver is safe and leaves the enrichment
@@ -118,6 +130,86 @@ func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) 
 	}
 }
 
+// SetMetrics wires the bounded per-scene VidRush metrics recorder. A nil
+// recorder is safe and disables emission.
+func (c *VidRushIncrementalCoordinator) SetMetrics(metrics VidRushMetrics) {
+	if c != nil {
+		c.metrics = metrics
+	}
+}
+
+// MarkGenerationStart records the moment scene-text generation began. Only
+// the first mark wins (resume/retry must not reset an earlier window).
+func (c *VidRushIncrementalCoordinator) MarkGenerationStart(t time.Time) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.genStart.IsZero() {
+		c.genStart = t
+	}
+	c.mu.Unlock()
+}
+
+// MarkGenerationComplete records the moment generation finished emitting
+// stable scenes. The latest mark wins.
+func (c *VidRushIncrementalCoordinator) MarkGenerationComplete(t time.Time) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.genEnd.IsZero() || t.After(c.genEnd) {
+		c.genEnd = t
+	}
+	c.mu.Unlock()
+}
+
+// markEnrichmentStart records the first time an enrichment goroutine began
+// actual work. It is called from enrichment goroutines; only the first wins.
+func (c *VidRushIncrementalCoordinator) markEnrichmentStart() {
+	c.mu.Lock()
+	if c.firstEnrichmentStart.IsZero() {
+		c.firstEnrichmentStart = time.Now()
+	}
+	c.mu.Unlock()
+}
+
+// RunTimings returns the per-run wall-clock timing surface. It is safe to
+// call after the barrier has completed (before that, barrier fields are zero
+// and VidRushTotalMS/BarrierWaitMS are not yet known).
+func (c *VidRushIncrementalCoordinator) RunTimings() VidRushRunTimings {
+	if c == nil {
+		return VidRushRunTimings{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := VidRushRunTimings{}
+	if !c.genStart.IsZero() && !c.genEnd.IsZero() {
+		t.GenerationTotalMS = c.genEnd.Sub(c.genStart).Milliseconds()
+	}
+	if !c.firstEnrichmentStart.IsZero() && !c.barrierEnd.IsZero() {
+		t.VidRushTotalMS = c.barrierEnd.Sub(c.firstEnrichmentStart).Milliseconds()
+	}
+	if !c.barrierStart.IsZero() && !c.barrierEnd.IsZero() {
+		t.BarrierWaitMS = c.barrierEnd.Sub(c.barrierStart).Milliseconds()
+	}
+	t.OverlapMS = c.overlapMSLocked()
+	return t
+}
+
+// overlapMSLocked computes the generation↔VidRush overlap. It is non-zero
+// only when the first enrichment began before generation finished. Callers
+// must hold c.mu.
+func (c *VidRushIncrementalCoordinator) overlapMSLocked() int64 {
+	if c.firstEnrichmentStart.IsZero() || c.genEnd.IsZero() {
+		return 0
+	}
+	if !c.firstEnrichmentStart.Before(c.genEnd) {
+		return 0
+	}
+	return c.genEnd.Sub(c.firstEnrichmentStart).Milliseconds()
+}
+
 // OnSceneCommitted records the stable scene and launches its enrichment
 // asynchronously so generation can continue while VidRush works on the
 // previous scene. It fails closed on a missing enricher or an invalid event;
@@ -141,6 +233,10 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	c.wg.Add(1)
 	c.mu.Unlock()
 
+	if c.metrics != nil {
+		c.metrics.SceneCommitted()
+	}
+
 	scene := scriptpkg.SpecScene{
 		ID:    event.SceneID,
 		Index: event.SceneIndex,
@@ -148,6 +244,11 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	}
 	go func() {
 		defer c.wg.Done()
+		c.markEnrichmentStart()
+		if c.metrics != nil {
+			c.metrics.EnrichmentStarted()
+		}
+		start := time.Now()
 
 		// Stage 1 — entity extraction. Single-slot by default (local Ollama),
 		// and low-priority against the generation gate so scene generation is
@@ -160,6 +261,9 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 			result, err = c.materializeSegment(ctx, result)
 		}
 		c.recordResult(event, result, err)
+		if c.metrics != nil {
+			c.metrics.EnrichmentCompleted(time.Since(start))
+		}
 	}()
 	return nil
 }
@@ -230,6 +334,9 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 	latest, ok := c.latest[event.SceneIndex]
 	if !ok || latest.Revision != event.Revision || latest.TextHash != event.TextHash {
 		c.staleCount++
+		if c.metrics != nil {
+			c.metrics.StaleResult()
+		}
 		return
 	}
 	c.records[event.SceneIndex] = segmentResultRecord{
@@ -273,6 +380,7 @@ func (c *VidRushIncrementalCoordinator) WaitForVidRush(ctx context.Context, runI
 // scene's enrichment has finished, then return the fenced, canonically ordered
 // results. Pending scenes only — no re-extraction of the full document.
 func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]scriptpkg.VidRushSegmentResult, error) {
+	barrierStart := time.Now()
 	done := make(chan struct{})
 	go func() {
 		c.wg.Wait()
@@ -283,8 +391,12 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+	barrierEnd := time.Now()
 
 	c.mu.Lock()
+	c.barrierStart = barrierStart
+	c.barrierEnd = barrierEnd
+	overlapMS := c.overlapMSLocked()
 	defer c.mu.Unlock()
 	indexes := make([]int, 0, len(c.latest))
 	for idx := range c.latest {
@@ -308,6 +420,10 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 			continue
 		}
 		results = append(results, record.result)
+	}
+	if c.metrics != nil {
+		c.metrics.BarrierWait(barrierEnd.Sub(barrierStart).Seconds())
+		c.metrics.GenerationOverlap(float64(overlapMS) / 1000.0)
 	}
 	return results, nil
 }

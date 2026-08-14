@@ -22,6 +22,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
@@ -68,6 +69,7 @@ type Runner struct {
 	recorder              ExecutionRecorder
 	sceneCommitObserver   SceneCommitObserver
 	vidRushBarrier        VidRushBarrier
+	vidRushTiming         VidRushTimingRecorder
 	generationGate        *GenerationGate
 	log                   *zap.Logger
 }
@@ -162,6 +164,31 @@ func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 func (r *Runner) SetGenerationGate(gate *GenerationGate) {
 	if r != nil {
 		r.generationGate = gate
+	}
+}
+
+// SetVidRushTimingRecorder wires the recorder that receives the scene-
+// generation wall-clock window, enabling the generation↔VidRush overlap
+// metric. A nil recorder is safe and disables timing.
+func (r *Runner) SetVidRushTimingRecorder(recorder VidRushTimingRecorder) {
+	if r != nil {
+		r.vidRushTiming = recorder
+	}
+}
+
+// markGenerationStart reports the start of scene-text generation to the
+// timing recorder, when one is wired.
+func (r *Runner) markGenerationStart(t time.Time) {
+	if r.vidRushTiming != nil {
+		r.vidRushTiming.MarkGenerationStart(t)
+	}
+}
+
+// markGenerationComplete reports that generation finished emitting stable
+// scenes to the timing recorder, when one is wired.
+func (r *Runner) markGenerationComplete(t time.Time) {
+	if r.vidRushTiming != nil {
+		r.vidRushTiming.MarkGenerationComplete(t)
 	}
 }
 

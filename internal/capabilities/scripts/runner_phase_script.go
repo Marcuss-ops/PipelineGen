@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -29,6 +30,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				return result, false
 			}
 		}
+		r.markGenerationStart(time.Now())
 		scenes, err := r.textGen.GenerateSceneText(ctx, req)
 		if r.generationGate != nil {
 			r.generationGate.Release()
@@ -53,6 +55,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
+		r.markGenerationComplete(time.Now())
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
 	} else {
 		r.log.Info("skipping completed stage", zap.String("stage", string(StageGeneratingSceneText)))
