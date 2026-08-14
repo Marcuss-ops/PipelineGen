@@ -58,6 +58,11 @@ func (u *ProcessSegmentUseCase) publishStage(
 	if cmd.Dest != nil && !cmd.Dest.StyleGroup.IsEmpty() {
 		metaBuf["style_group"] = cmd.Dest.StyleGroup
 	}
+	// Persist the silence-cleanup summary alongside the voiceover row so
+	// the cleaned-duration proof survives beyond the in-memory result.
+	if out.SilenceCleanup != nil {
+		metaBuf["silence_cleanup"] = out.SilenceCleanup
+	}
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
 
 	// Semantic enrichment belongs to the canonical pipeline, immediately
@@ -409,4 +414,27 @@ func timingEvent(log *zap.Logger, event string, cmd *ProcessSegmentCommand, prov
 		fields = append(fields, zap.Int64("duration_us", durationUS))
 	}
 	log.Info(event, fields...)
+}
+
+// silenceCleanupEvent emits the structured voiceover.silence_cleanup event
+// when silence removal produced a cleanup report. It carries only the four
+// summary durations (original, leading trim, trailing trim, clean) so
+// operators can verify the timeline used the cleaned duration — never any
+// audio content or per-edit detail.
+func silenceCleanupEvent(log *zap.Logger, cmd *ProcessSegmentCommand, report *SilenceCleanupReport) {
+	if log == nil || cmd == nil || report == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("scene_id", cmd.ID),
+		zap.String("language", string(cmd.Language)),
+		zap.Int64("original_duration_us", report.OriginalDurationUS),
+		zap.Int64("trim_start_us", report.TrimStartUS),
+		zap.Int64("trim_end_us", report.TrimEndUS),
+		zap.Int64("clean_duration_us", report.CleanDurationUS),
+	}
+	if cmd.Project != "" {
+		fields = append(fields, zap.String("project", cmd.Project))
+	}
+	log.Info("voiceover.silence_cleanup", fields...)
 }
