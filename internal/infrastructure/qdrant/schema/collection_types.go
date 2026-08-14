@@ -71,6 +71,13 @@ type Config struct {
 	// names is selected by this tag.
 	CollectionVersion string `yaml:"collection_version"`
 
+	// ProjectionRetention is the number of known-good projection
+	// collections to retain after an alias switch (active + N-1 rollback).
+	// Plumbed from config.QdrantConfig.ProjectionRetention
+	// (QDRANT_PROJECTION_RETENTION). 0 disables the automatic post-switch
+	// retention sweep.
+	ProjectionRetention int `yaml:"projection_retention"`
+
 	// CollectionRetentionDays is how many days to keep old collections
 	// after a reindex switch. (The OldTarget retention policy is
 	// advisory today: operator runbooks track the canonical

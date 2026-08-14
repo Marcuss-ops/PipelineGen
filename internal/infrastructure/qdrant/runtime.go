@@ -28,6 +28,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -197,8 +198,34 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	}
 	// QDRANT-ALIAS-CACHE (July 2026): wire the cache invalidation so
 	// PromoteCandidate resets the Searcher's alias-target cache
-	// atomically with every alias switch.
-	manager.OnAliasSwitch = searcher.ResetSearchCache
+	// atomically with every alias switch. Chain the automatic projection
+	// retention sweep after the cache reset so a blue-green switch closes
+	// its own lifecycle instead of leaving retired collections forever.
+	manager.OnAliasSwitch = func() {
+		searcher.ResetSearchCache()
+		if cfg.QdrantCfg == nil || cfg.QdrantCfg.ProjectionRetention <= 0 {
+			return
+		}
+		// Best-effort post-switch retention: drop retired collections
+		// beyond the configured rollback keep-count. This runs AFTER the
+		// alias switch has committed, so a failure here never affects the
+		// switch itself.
+		sweepCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		res, err := manager.CleanupWithConfig(sweepCtx, collections.RetentionConfig{
+			RetentionDays: 1, // keep-last-N sweep; the day gate is not the limiter
+			KeepLastN:     cfg.QdrantCfg.ProjectionRetention,
+		})
+		if err != nil {
+			log.Warn("post-switch projection retention sweep failed", zap.Error(err))
+			return
+		}
+		if res.CollectionsDropped > 0 {
+			log.Info("post-switch projection retention swept retired collections",
+				zap.Int("dropped", res.CollectionsDropped),
+				zap.Strings("names", res.DroppedNames))
+		}
+	}
 	health := disasterrecovery.NewHealthProbe(client)
 	cleaner := maintenance.NewLocatorCleaner(client, schema, log)
 	searchAdapter := search.NewSearchAdapter(searcher, log)

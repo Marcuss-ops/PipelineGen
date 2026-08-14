@@ -22,6 +22,13 @@ type QdrantConfig struct {
 	// QDRANT-005 Phase 1 (June 2026): propagated to both the
 	// composition-root client and the admin reindex/clean-locators commands.
 	APIKey string `yaml:"api_key" env:"VELOX_QDRANT_API_KEY" default:""`
+	// ProjectionRetention is the number of known-good projection collections
+	// to retain after an alias switch (active target + N-1 rollback targets).
+	// It drives the automatic post-switch retention sweep via the canonical
+	// capabilities/projectionretention policy. 0 disables the sweep; the
+	// hard floor in the policy lifts anything below 2 back to 2. Default 2
+	// keeps the active target plus one rollback.
+	ProjectionRetention int `yaml:"projection_retention" env:"QDRANT_PROJECTION_RETENTION" default:"2"`
 }
 
 // OutboxConfig tunes the outbox_events worker pool. Defaults follow the

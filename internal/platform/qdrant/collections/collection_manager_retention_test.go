@@ -31,6 +31,7 @@ import (
 	"testing"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/projectionretention"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 
@@ -560,17 +561,17 @@ func TestCleanupWithConfig_DryRun_NoDeletion(t *testing.T) {
 func TestRetentionPrefixes_RejectsOverlappingPrefix(t *testing.T) {
 	current := qdrantSchema.DefaultV3Schema().CanonicalName()
 
-	if _, err := retentionPrefixes(current, []string{"media_assets"}); err == nil {
+	if _, err := projectionretention.RetentionPrefixes(current, []string{"media_assets"}); err == nil {
 		t.Fatalf("expected error for overlapping prefix %q", "media_assets")
 	}
-	if _, err := retentionPrefixes(current, []string{"media_assets_v3"}); err == nil {
+	if _, err := projectionretention.RetentionPrefixes(current, []string{"media_assets_v3"}); err == nil {
 		t.Fatalf("expected error for overlapping prefix %q", "media_assets_v3")
 	}
-	if _, err := retentionPrefixes(current, []string{current}); err == nil {
+	if _, err := projectionretention.RetentionPrefixes(current, []string{current}); err == nil {
 		t.Fatalf("expected error for prefix equal to the current canonical name")
 	}
 
-	got, err := retentionPrefixes(current, []string{"media_assets_v3_e5_768_siglip_768", "", "media_assets_v3_e5_768_siglip_768"})
+	got, err := projectionretention.RetentionPrefixes(current, []string{"media_assets_v3_e5_768_siglip_768", "", "media_assets_v3_e5_768_siglip_768"})
 	if err != nil {
 		t.Fatalf("unexpected error for valid retired prefix: %v", err)
 	}

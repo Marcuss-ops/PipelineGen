@@ -213,9 +213,10 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 		var rerr error
 		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
 			QdrantCfg: &schema.Config{
-				BaseURL: cfg.Qdrant.BaseURL,
-				APIKey:  cfg.Qdrant.APIKey,
-				Timeout: cfg.Qdrant.Timeout,
+				BaseURL:             cfg.Qdrant.BaseURL,
+				APIKey:              cfg.Qdrant.APIKey,
+				Timeout:             cfg.Qdrant.Timeout,
+				ProjectionRetention: cfg.Qdrant.ProjectionRetention,
 			},
 			DB:             dbs.DualPool.Writer,
 			Logger:         log,
