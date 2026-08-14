@@ -533,6 +533,18 @@ measurements:
     migration_adapter: "ObservedFFmpeg records the render operation and projects render status/fallback metadata"
     removal_condition: "ObservedFFmpeg is the sole render timer and the metric is fed only from its canonical observation"
 
+  - current_symbol: "FFmpegExecCount/FFprobeExecCount/FramesDecoded/FramesEncoded"
+    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_writer: "media/rustexec/client_transport.go::Client.call (media-plane dispatch boundary)"
+    current_storage: "Prometheus counters"
+    current_metric: "ffmpeg_exec_count, ffprobe_exec_count, frames_decoded, frames_encoded"
+    canonical_type: counter
+    canonical_stage: "process"
+    canonical_component: "ffmpeg"
+    canonical_operation: "render"
+    migration_adapter: "ffmpeg_exec_count/ffprobe_exec_count count media-plane subprocess dispatches (probe = ffprobe, every other operation = ffmpeg). frames_decoded/frames_encoded stay 0 on the copy-only mux (mux_audio_copy uses -c:v copy -c:a copy) and will be fed by encode-plane frame accounting"
+    removal_condition: "Copy-only certification asserts frames_decoded==0 and frames_encoded==0 after a mux_audio_copy, and ffmpeg_exec_count increments by the dispatched mux without an ffprobe increment"
+
   - current_symbol: "MediaIndexDuration"
     current_owner: "internal/infrastructure/observability/metrics_media.go"
     current_writer: "application/jobs/outbox/indexing_handle.go:44"
