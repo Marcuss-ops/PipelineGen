@@ -280,6 +280,36 @@ func TestVidRushSegmentEnricherEnrichFailsClosedWithoutExtractor(t *testing.T) {
 	}
 }
 
+func TestVidRushSegmentEnricher_EnrichCacheHitSkipsEntityProviderCall(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &boundaryEntityExtractor{}
+	enricher := NewVidRushSegmentEnricher(extractor, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "cache", Model: "fake"}
+	scene := scriptpkg.SpecScene{ID: "scene-0", SegmentID: "segment-0", Index: 0, Text: "An astronaut walks on the moon."}
+
+	first, err := enricher.Enrich(context.Background(), plan, scene)
+	if err != nil {
+		t.Fatalf("first Enrich error: %v", err)
+	}
+	if first.Cache.Extraction != "MISS" {
+		t.Fatalf("first extraction cache state = %q, want MISS", first.Cache.Extraction)
+	}
+	if len(extractor.calls) != 1 {
+		t.Fatalf("extractor calls after first Enrich = %d, want 1", len(extractor.calls))
+	}
+
+	second, err := enricher.Enrich(context.Background(), plan, scene)
+	if err != nil {
+		t.Fatalf("second Enrich error: %v", err)
+	}
+	if second.Cache.Extraction != "HIT_EXACT" {
+		t.Fatalf("second extraction cache state = %q, want HIT_EXACT", second.Cache.Extraction)
+	}
+	if len(extractor.calls) != 1 {
+		t.Fatalf("extractor calls after cache hit = %d, want 1 (a cache hit must not call the entity provider)", len(extractor.calls))
+	}
+}
+
 func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
 	artlist := buildArtlistQueries(
 		"In the summer of 1969, millions watched as American astronauts prepared for one of the most important missions in human history.",
