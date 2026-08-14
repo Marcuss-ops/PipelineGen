@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -103,6 +104,77 @@ func TestCompileCanonicalAudioPlanAppliesDuckedMixPolicyWithExplicitVOTiming(t *
 	}
 }
 
+func TestValidateVoiceoverSourceDurationsMatchesCertifiedProbe(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-vo", Index: 0, DurationUS: 4_500_000,
+		Audio:     audio.AudioIntent{Mode: audio.AudioVoiceover},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 3.2}},
+	}}}
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateVoiceoverSourceDurations(result, "it", timeline, plan); err != nil {
+		t.Fatalf("certified probe 3.2s must match source_duration_us: %v", err)
+	}
+}
+
+func TestValidateVoiceoverSourceDurationsAllowsWindowClamp(t *testing.T) {
+	// Certified file longer than the scene window is legitimately clamped.
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-clip", Index: 0, DurationUS: 2_000_000,
+		Clip:      &ClipReference{ID: "clip-a", AudioPath: "/video/a.mp4"},
+		Audio:     audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceInUS: 0, SourceDurationUS: 2_000_000, UseOriginalAudio: true},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 12.5}},
+	}}}
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateVoiceoverSourceDurations(result, "it", timeline, plan); err != nil {
+		t.Fatalf("clamped source_duration_us must pass certification: %v", err)
+	}
+}
+
+func TestValidateVoiceoverSourceDurationsLenientWithoutCertifiedProbe(t *testing.T) {
+	// No certified probe: the compile window fallback is allowed, and the
+	// cert-time check stays lenient too.
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-unprobed", Index: 0, DurationUS: 4_000_000,
+		Audio:     audio.AudioIntent{Mode: audio.AudioVoiceover},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a"}},
+	}}}
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateVoiceoverSourceDurations(result, "it", timeline, plan); err != nil {
+		t.Fatalf("unprobed voiceover must pass lenient certification: %v", err)
+	}
+}
+
+func TestValidateVoiceoverSourceDurationsFailsClosedOnDrift(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-vo", Index: 0, DurationUS: 4_500_000,
+		Audio:     audio.AudioIntent{Mode: audio.AudioVoiceover},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 3.2}},
+	}}}
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range plan.Tracks {
+		for j := range plan.Tracks[i].Events {
+			if plan.Tracks[i].Events[j].Type == audio.EventVoiceover {
+				plan.Tracks[i].Events[j].SourceDurationUS = 4_000_000
+			}
+		}
+	}
+	if err := ValidateVoiceoverSourceDurations(result, "it", timeline, plan); err == nil {
+		t.Fatal("drifted source_duration_us must fail certification")
+	}
+}
+
 func TestCompileCanonicalAudioPlanFailsClosedForMissingClipAudio(t *testing.T) {
 	_, _, _, err := CompileCanonicalAudioPlan(GenerateResult{Scenes: []Scene{{
 		ID: "scene-1", Index: 0, DurationMS: 1000, Clip: &ClipReference{ID: "clip-1"}, Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-1"},
@@ -157,6 +229,93 @@ func TestCompileCanonicalAudioPlanUsesEveryClipOwnedByScene(t *testing.T) {
 	}
 	if len(assets) != 2 {
 		t.Fatalf("multi-clip audio assets = %+v, want both clip assets", assets)
+	}
+}
+
+// TestFinalAudioCanonicalTimelineAndRenderPlanShareOneAsset certifies the
+// three audio-side artifacts of a generation agree on a single master asset:
+//
+//	final_audio.m4a   (GenerateResult.FinalAudio)
+//	CanonicalTimeline (the timing SSOT the mix was compiled from)
+//	RenderPlan.FinalAudio (the asset the video executor must mux in)
+//
+// The link is the audio_asset_id plus the audio_plan_sha256 chain: the
+// compiled plan hash is derived from the canonical timeline, stamped onto the
+// certified final audio file, and carried verbatim into the render plan so the
+// renderer consumes exactly the same asset (never a re-generated copy).
+func TestFinalAudioCanonicalTimelineAndRenderPlanShareOneAsset(t *testing.T) {
+	clipSHA := strings.Repeat("a", 64)
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-combined", Index: 0, DurationUS: 5_000_000,
+		Clip:      &ClipReference{ID: "clip-a", Path: "/video/a.mp4", SHA256: clipSHA, AudioPath: "/video/a.mp4", SourceInMS: 0, SourceOutMS: 5000, Duration: 5},
+		Audio:     audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceInUS: 0, SourceDurationUS: 5_000_000, UseOriginalAudio: true},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-a", FilePath: "/audio/a.m4a", Duration: 4.0}},
+	}}}
+
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The combined-audio renderer certifies the master file (final_audio.m4a)
+	// against the compiled plan derived from the canonical timeline.
+	ref := FinalAudioReference{
+		AssetID:              "final-audio-it-abc",
+		Path:                 "/tmp/final_audio_it.m4a",
+		AudioContractVersion: audio.AudioContractVersion,
+		AudioPlanVersion:     plan.Version,
+		PlanSHA256:           plan.PlanSHA256,
+		FinalAudioSHA256:     strings.Repeat("0", 64),
+		Codec:                plan.Output.Codec,
+		Profile:              plan.Output.Profile,
+		SampleRate:           plan.Output.SampleRate,
+		Channels:             plan.Output.Channels,
+		ChannelLayout:        plan.Output.ChannelLayout,
+		Bitrate:              128000,
+		DurationMS:           plan.DurationUS / 1000,
+		StartPTS:             0,
+		SizeBytes:            1,
+		FinalMix:             true,
+		CopyEligible:         true,
+	}
+	if err := ValidateFinalAudioReference(ref, plan); err != nil {
+		t.Fatalf("final_audio.m4a must certify against the canonical plan: %v", err)
+	}
+	result.FinalAudio = &ref
+
+	renderPlan, err := CompileCanonicalRenderPlan(result, timeline, "job-1", "rev-1", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renderPlan.FinalAudio == nil {
+		t.Fatal("render plan must carry the final audio asset")
+	}
+
+	// 1) final_audio.m4a and RenderPlan.FinalAudio share one audio_asset_id.
+	if renderPlan.FinalAudio.AssetID != ref.AssetID {
+		t.Fatalf("render plan final audio asset_id=%q, want %q (final_audio.m4a)", renderPlan.FinalAudio.AssetID, ref.AssetID)
+	}
+
+	// 2) The render plan's final audio is the very same master: same plan
+	//    hash, same file hash, same path.
+	if renderPlan.FinalAudio.PlanSHA256 != plan.PlanSHA256 || renderPlan.FinalAudio.SHA256 != ref.FinalAudioSHA256 || renderPlan.FinalAudio.Path != ref.Path {
+		t.Fatalf("render plan final audio diverges from final_audio.m4a: plan_sha256=%q file_sha256=%q path=%q", renderPlan.FinalAudio.PlanSHA256, renderPlan.FinalAudio.SHA256, renderPlan.FinalAudio.Path)
+	}
+
+	// 3) The plan hash recorded on final_audio.m4a is derived from this exact
+	//    canonical timeline (not some other timeline or a re-mixed copy).
+	if ref.PlanSHA256 != plan.PlanSHA256 {
+		t.Fatalf("final_audio.m4a plan_sha256=%q, want %q", ref.PlanSHA256, plan.PlanSHA256)
+	}
+
+	// 4) The render plan embeds the same canonical timeline the audio plan was
+	//    compiled from (verified by the sealed timeline hash).
+	timelineHash, err := timeline.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renderPlan.TimelineHash != timelineHash {
+		t.Fatalf("render plan timeline hash=%q, want canonical %q", renderPlan.TimelineHash, timelineHash)
 	}
 }
 

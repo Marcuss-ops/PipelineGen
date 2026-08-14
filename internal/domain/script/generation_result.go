@@ -141,6 +141,7 @@ type GenerationResult struct {
 type FinalAudioArtifact struct {
 	AssetID              string `json:"audio_asset_id"`
 	Path                 string `json:"path"`
+	DriveLink            string `json:"drive_link,omitempty"`
 	AudioContractVersion string `json:"audio_contract_version"`
 	AudioPlanVersion     string `json:"audio_plan_version"`
 	AudioPlanSHA256      string `json:"audio_plan_sha256"`
@@ -156,6 +157,17 @@ type FinalAudioArtifact struct {
 	SizeBytes            int64  `json:"size_bytes"`
 	FinalMix             bool   `json:"final_mix"`
 	CopyEligible         bool   `json:"copy_eligible"`
+}
+
+// DocumentAudioRef is the already-published, language-scoped final audio
+// reference projected into a document. It contains no local path and is
+// intentionally independent from the audio compiler.
+type DocumentAudioRef struct {
+	AssetID    string `json:"audio_asset_id"`
+	Language   string `json:"language"`
+	DriveLink  string `json:"drive_link"`
+	DurationMS int64  `json:"duration_ms"`
+	SHA256     string `json:"sha256,omitempty"`
 }
 
 // GenerationModeInfo describes the requested and actual generation
@@ -329,11 +341,24 @@ type VoiceoverLanguageArtifact struct {
 
 // DocumentArtifact is the stable result surface for a published Google Doc.
 type DocumentArtifact struct {
-	DocID   string `json:"doc_id"`
-	DocLink string `json:"doc_link"`
+	DocID           string `json:"doc_id"`
+	DocLink         string `json:"doc_link"`
+	Renderer        string `json:"renderer,omitempty"`
+	SpecSceneSHA256 string `json:"specscene_sha256,omitempty"`
+	SceneCount      int    `json:"scene_count,omitempty"`
+	Language        string `json:"language,omitempty"`
 }
 
 // GenerationTimings holds elapsed-time metrics for each generation phase.
+//
+// Migration note: the audio-* fields below (tts_total_ms, audio_mix_ms,
+// audio_encode_ms, audio_probe_ms, audio_hash_ms, audio_pipeline_total_ms,
+// final_audio_duration_ms, and the audio_plan/timeline/clip_audio_prepare
+// triple) are a legacy projection. The canonical durable audio timing
+// contract is scriptgeneration.AudioPipelineMetrics
+// (internal/capabilities/scripts/model.go, JSON "audio_metrics"). Add new
+// audio timing fields there, not here; this struct is migration-only and must
+// converge onto that capability contract.
 type GenerationTimings struct {
 	SourceResolveMs int64 `json:"source_resolve_ms,omitempty"`
 	PlanBuildMs     int64 `json:"plan_build_ms,omitempty"`

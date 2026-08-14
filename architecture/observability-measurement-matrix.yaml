@@ -173,6 +173,18 @@ measurements:
     migration_adapter: "Use canonical Stage scopes for orchestration and observed provider Operation scopes for external calls; expose legacy fields as projections"
     removal_condition: "All timing consumers read StageReport/OperationReport and no use case times a wrapper-owned operation twice"
 
+  - current_symbol: "GenerationTimings audio fields vs AudioPipelineMetrics"
+    current_owner: "internal/domain/script/generation_result.go (legacy) / internal/capabilities/scripts/model.go (canonical)"
+    current_writer: "generate_one_usecase.go renderCombinedAudio (legacy) / runner_phase_render.go + rustexec.CombinedAudioRenderer (canonical)"
+    current_storage: "GenerationTimings.timings JSON in the migration-only result envelope / AudioPipelineMetrics.audio_metrics JSON in GenerateResult"
+    current_metric: "legacy: tts_total_ms, audio_mix_ms, audio_encode_ms, audio_probe_ms, audio_hash_ms, audio_pipeline_total_ms, final_audio_duration_ms / canonical: tts_ms, mix_ms, aac_encode_ms, probe_ms, hash_ms, total_ms, audio_duration_ms"
+    canonical_type: stage
+    canonical_stage: "audio compile/mix/encode/probe/hash/upload"
+    canonical_component: "audio"
+    canonical_operation: "combined audio render"
+    migration_adapter: "AudioPipelineMetrics is the canonical audio timing contract; the GenerationTimings audio fields are a legacy projection that maps 1:1 onto it (see the field map on AudioPipelineMetrics). Add new audio timing fields only to AudioPipelineMetrics and converge the legacy fields there"
+    removal_condition: "The migration-only GenerateOneUseCase path no longer writes GenerationTimings audio fields and every durable/API consumer reads AudioPipelineMetrics.audio_metrics"
+
   - current_symbol: "script_generation_logs.duration_ms"
     current_owner: "internal/infrastructure/database/sqlite/scripts"
     current_writer: "ScriptRepository.SaveGenerationLog in scripts/logs.go"

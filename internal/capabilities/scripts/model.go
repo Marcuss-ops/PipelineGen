@@ -90,6 +90,7 @@ type RenderReference struct {
 type FinalAudioReference struct {
 	AssetID              string `json:"audio_asset_id"`
 	Path                 string `json:"path,omitempty"`
+	DriveLink            string `json:"drive_link,omitempty"`
 	AudioContractVersion string `json:"audio_contract_version,omitempty"`
 	AudioPlanVersion     string `json:"audio_plan_version,omitempty"`
 	PlanSHA256           string `json:"audio_plan_sha256"`
@@ -107,6 +108,35 @@ type FinalAudioReference struct {
 	CopyEligible         bool   `json:"copy_eligible"`
 }
 
+// AudioPipelineMetrics is the canonical durable timing contract for the
+// combined-audio pipeline (COMBINED_TIMELINE). It is owned by this capability
+// package and is the surface the script runner persists under
+// GenerateResult.AudioMetrics (JSON "audio_metrics").
+//
+// Relationship to the legacy domain contract: internal/domain/script
+// .GenerationTimings carries an overlapping set of flat *_ms audio fields used
+// only by the migration-only internal/application/scripts/usecase path. That
+// struct is a legacy projection; this struct is the authority. Field map:
+//
+//	GenerationTimings (domain, legacy)  AudioPipelineMetrics (canonical)
+//	tts_total_ms                          tts_ms
+//	audio_mix_ms                          mix_ms
+//	audio_encode_ms                       aac_encode_ms
+//	audio_probe_ms                        probe_ms
+//	audio_hash_ms                         hash_ms
+//	audio_pipeline_total_ms               total_ms
+//	final_audio_duration_ms               audio_duration_ms
+//	audio_encode_passes                   audio_encode_passes (unchanged)
+//	tts_calls                             tts_calls (unchanged)
+//	timeline_compile_ms                   timeline_compile_ms (unchanged)
+//	audio_plan_compile_ms                 audio_plan_compile_ms (unchanged)
+//	clip_audio_prepare_ms                 clip_audio_prepare_ms (unchanged)
+//
+// Canonical-only fields with no legacy equivalent: media_fetch_ms, upload_ms,
+// audio_rtf, audio_speed, tts_scenes.
+//
+// Do NOT add new audio timing fields to GenerationTimings; extend this struct
+// instead. The legacy struct is migration-only and must converge here.
 type AudioPipelineMetrics struct {
 	TTSMS              int64             `json:"tts_ms"`
 	MediaFetchMS       int64             `json:"media_fetch_ms"`
@@ -237,6 +267,7 @@ type Scene struct {
 	// as a legacy wire field at the boundary.
 	DurationUS   int64                         `json:"duration_us,omitempty"`
 	Clip         *ClipReference                `json:"clip,omitempty"`
+	Clips        []*ClipReference              `json:"clips,omitempty"`
 	Text         map[Language]string           `json:"text"`
 	Voiceover    map[Language]AudioReference   `json:"voiceover,omitempty"`
 	Audio        capabilityaudio.AudioIntent   `json:"audio"`
@@ -246,6 +277,10 @@ type Scene struct {
 // GenerateResult is the complete output of a script generation run.
 // It carries every artifact produced by the workflow.
 type GenerateResult struct {
+	// SourceTrace is the durable retrieval trace. It is kept alongside the
+	// capability result so the broker/API cannot lose the accepted Qdrant
+	// clip IDs between the durable runner and the legacy job envelope.
+	SourceTrace scriptpkg.SourceTrace `json:"source,omitempty"`
 	// Scenes is the ordered list of generated scenes.
 	Scenes []Scene `json:"scenes"`
 	// ResolvedScenes is the sealed technical projection consumed by canonical
@@ -260,7 +295,10 @@ type GenerateResult struct {
 	RenderPlan        *capabilityrender.RenderPlan       `json:"render_plan,omitempty"`
 
 	// Documents maps each language to the published Google Doc.
-	Documents map[Language]DocumentReference `json:"documents,omitempty"`
+	Documents               map[Language]DocumentReference `json:"documents,omitempty"`
+	DocumentRenderers       map[Language]string            `json:"document_renderers,omitempty"`
+	DocumentSpecSceneSHA256 map[Language]string            `json:"document_specscene_sha256,omitempty"`
+	DocumentSceneCounts     map[Language]int               `json:"document_scene_counts,omitempty"`
 
 	// RenderJob is non-nil when the workflow enqueued a render.
 	RenderJob *RenderReference `json:"render_job,omitempty"`
@@ -469,8 +507,8 @@ var stageOrder = []Stage{
 	StageGeneratingSceneText,
 	StageTranslatingScenes,
 	StageGeneratingVoiceovers,
-	StagePublishingDocuments,
 	StageBuildingRenderPayload,
+	StagePublishingDocuments,
 	StageEnqueuingRender,
 }
 
