@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
@@ -60,6 +61,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	platformembeddings "github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
 	"github.com/gin-gonic/gin"
@@ -296,13 +298,12 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
 		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
 		var embedder search.TextEmbedder
-		if root.AI != nil && root.AI.OllamaEmbedClient != nil {
-			// Qdrant readiness must use the dedicated embedding client.
-			// OllamaClient is the chat model (for example gemma4:e4b) and
-			// cannot serve /api/embeddings; source.search already uses this
-			// dedicated client through wire_script_resolvers.go.
-			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaEmbedClient)
-			embedder = search.NewTextEmbedderAdapter(ollamaEmb)
+		if cfg.ClipIndexer.ServerURL != "" {
+			// Qdrant readiness must use the canonical E5 sidecar embedder —
+			// the same vector space as the indexed document vectors. Ollama
+			// is a chat/legacy embedder and must not silently create a second
+			// vector space.
+			embedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
 		}
 		qdrantEndpointPort := newQdrantEndpointAdapter(
 			root.Process.QdrantHealthProbe,
@@ -369,7 +370,7 @@ func newEmbeddingContractProbe(cfg *config.Config, cm *collections.CollectionMan
 }
 
 func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID string, cm *collections.CollectionManager) error {
-	sidecar, err := embeddings.NewContractProbe(sidecarURL).Fetch(ctx)
+	sidecar, err := platformembeddings.NewContractProbe(sidecarURL).Fetch(ctx)
 	if err != nil {
 		return fmt.Errorf("embedding contract handshake: %w", err)
 	}
@@ -384,6 +385,13 @@ func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID strin
 	qdrant, ok := collections.CollectionContract(info, "text")
 	if !ok {
 		return fmt.Errorf("embedding contract handshake: active collection %q has no \"text\" vector", active)
+	}
+	if strings.TrimSpace(queryModelID) == "" {
+		return &coreembedding.MismatchError{
+			Component: coreembedding.ComponentQuery,
+			Expected:  coreembedding.CanonicalText,
+			Got:       coreembedding.Contract{},
+		}
 	}
 	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: queryModelID})
 }

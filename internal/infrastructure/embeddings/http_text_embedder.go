@@ -106,6 +106,7 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembeddin
 		Dimensions   int       `json:"dimensions"`
 		Model        string    `json:"model"`
 		ModelVersion string    `json:"model_version"`
+		ContractHash string    `json:"contract_hash"`
 		Error        string    `json:"error"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -150,5 +151,6 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembeddin
 		Dimensions:   envelope.Dimensions,
 		Model:        envelope.Model,
 		ModelVersion: envelope.ModelVersion,
+		ContractHash: envelope.ContractHash,
 	}, nil
 }

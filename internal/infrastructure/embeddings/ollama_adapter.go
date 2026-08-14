@@ -63,5 +63,6 @@ func (a *OllamaEmbedderAdapter) Embed(ctx context.Context, text string) (coreemb
 		Dimensions:   len(vec),
 		Model:        "",
 		ModelVersion: "",
+		ContractHash: "",
 	}, nil
 }
