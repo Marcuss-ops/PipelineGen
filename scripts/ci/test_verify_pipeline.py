@@ -275,6 +275,37 @@ class VerifyPipelineTests(unittest.TestCase):
             ("script", "clips", "drive", "docs", "database", "jobs", "api"),
         )
 
+    def test_cached_pass_component_status_is_accepted(self) -> None:
+        def cached_report_runner(argv: Sequence[str], timeout: float, cwd: Path):
+            if "--report" in argv:
+                report_index = argv.index("--report") + 1
+                Path(argv[report_index]).write_text(
+                    json.dumps({
+                        "final": "PASS",
+                        "resolved_components": ["script", "stock", "drive"],
+                        "components": {
+                            "script": {"status": "CACHED_PASS"},
+                            "stock": {"status": "PASS"},
+                            "drive": {"status": "PASS"},
+                        },
+                    }),
+                    encoding="utf-8",
+                )
+            return verify_pipeline.ProcessResult("PASS", 0, 1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            report, code = verify_pipeline.run_pipeline(
+                self.registry(),
+                {"script", "stock", "drive"},
+                ["stock-only"],
+                component_runner=Path("scripts/ci/verify-component.py"),
+                repo_root=Path(directory),
+                runner=cached_report_runner,
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(report["components"]["status"], "PASS")
+        self.assertEqual(report["final"], "PASS")
+
 
 if __name__ == "__main__":
     unittest.main()

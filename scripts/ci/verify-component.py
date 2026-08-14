@@ -20,10 +20,12 @@ default; use ``--include-live`` explicitly for those future registry entries.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import threading
 import time
@@ -49,6 +51,16 @@ DEFAULT_REPORT = Path("artifacts/verify/latest.json")
 EXIT_CONFIG_ERROR = 2
 EXIT_FAILURE = 1
 EXIT_TIMEOUT = 124
+
+# Bump this whenever the fingerprint input contract changes (new inputs, a
+# different ordering, or a different hashing strategy).  A cache entry produced
+# under an older schema must never be treated as a hit.
+FINGERPRINT_SCHEMA_VERSION = "verify-fingerprint-schema-v1"
+
+# Cache record schema version and on-disk location.  This is local tooling
+# state (Git-ignored and fully rebuildable), never business state.
+CACHE_SCHEMA_VERSION = 1
+CACHE_DIR = ".cache/pipelinegen/verify"
 
 
 class RegistryError(ValueError):
@@ -109,10 +121,13 @@ class ComponentRun:
     command_results: list[dict[str, Any]] | None = None
     skipped_live: list[str] | None = None
     race_skipped: bool = False
+    fingerprint: str | None = None
+    cache_hit: bool = False
+    original_duration_ms: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         command_results = self.command_results or []
-        return {
+        result: dict[str, Any] = {
             "status": self.status,
             "duration_ms": self.duration_ms,
             "timeout_seconds": self.timeout_seconds,
@@ -123,7 +138,12 @@ class ComponentRun:
             "blocked_by": self.blocked_by,
             "skipped_live": self.skipped_live or [],
             "race_skipped": self.race_skipped,
+            "fingerprint": self.fingerprint,
+            "cache_hit": self.cache_hit,
         }
+        if self.original_duration_ms is not None:
+            result["original_duration_ms"] = self.original_duration_ms
+        return result
 
 
 # Do not put command output in the JSON artifact: tool output can contain
@@ -213,6 +233,9 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         live_entries = _require_list(value.get("live_tests"), "live_tests", name)
         if cacheable and live_entries:
             raise RegistryError(f"component={name}: cacheable must be false when live_tests is non-empty")
+        required_artifacts = _require_list(value.get("required_artifacts"), "required_artifacts", name)
+        if any(not isinstance(entry, str) or not entry.strip() for entry in required_artifacts):
+            raise RegistryError(f"component={name}: required_artifacts entries must be non-empty strings")
 
         # Validate command-bearing fields now, rather than after dependencies
         # have already started running.
@@ -229,6 +252,7 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         registry[name]["utility"] = utility
         registry[name]["cacheable"] = cacheable
         registry[name]["cache_scope"] = cache_scope
+        registry[name]["required_artifacts"] = required_artifacts
 
     for name, definition in registry.items():
         for dependency in definition["dependencies"]:
@@ -352,6 +376,344 @@ def build_commands(
     return commands, skipped_live, race_skipped
 
 
+def _update(hasher: Any, data: bytes) -> None:
+    """Feed length-prefixed bytes so concatenation is unambiguous."""
+    hasher.update(len(data).to_bytes(8, "big"))
+    hasher.update(data)
+
+
+def _read_bytes(path: Path) -> bytes:
+    """Read a file, returning a stable marker when it is missing/unreadable."""
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b"<unreadable>"
+
+
+def _iter_regular_files(directory: Path) -> list[str]:
+    """Return sorted relative paths of regular (non-symlink) files under a directory."""
+    rel_paths: list[str] = []
+    for current, dirnames, filenames in os.walk(directory):
+        dirnames.sort()
+        filenames.sort()
+        current_path = Path(current)
+        for filename in filenames:
+            file_path = current_path / filename
+            if file_path.is_file() and not file_path.is_symlink():
+                rel_paths.append(str(file_path.relative_to(directory)))
+    return rel_paths
+
+
+def _hash_path(root: Path, entry: str) -> str:
+    """Hash the real working-tree content of one registry path.
+
+    Content is read straight from the filesystem, so committed, staged, and
+    untracked files are all represented — never just ``git rev-parse HEAD``.
+    Missing or unreadable paths degrade to a stable marker so the fingerprint
+    stays deterministic instead of silently dropping inputs.
+    """
+    target = root / entry
+    hasher = hashlib.sha256()
+    if target.is_file() and not target.is_symlink():
+        _update(hasher, entry.encode("utf-8"))
+        _update(hasher, _read_bytes(target))
+    elif target.is_dir() and not target.is_symlink():
+        for rel in _iter_regular_files(target):
+            _update(hasher, f"{entry}/{rel}".encode("utf-8"))
+            _update(hasher, _read_bytes(target / rel))
+    else:
+        _update(hasher, f"<missing:{entry}>".encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def _go_package_dir(package: str) -> str:
+    """Derive the filesystem directory a Go package pattern points at."""
+    value = package
+    if value.startswith("./"):
+        value = value[2:]
+    if value.endswith("/..."):
+        value = value[:-4]
+    elif value.endswith("..."):
+        value = value[:-3]
+    return value.rstrip("/")
+
+
+def detect_toolchain(root: Path) -> dict[str, str]:
+    """Probe toolchain versions that influence builds, best effort.
+
+    Probes are intentionally best effort: a missing tool simply drops out of
+    the fingerprint, and its commands would fail anyway.  Python's version is
+    taken from the interpreter instead of a subprocess.
+    """
+    toolchain: dict[str, str] = {}
+    for key, argv in (("go", ("go", "version")), ("node", ("node", "--version"))):
+        try:
+            completed = subprocess.run(
+                list(argv),
+                cwd=str(root),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        value = (completed.stdout + completed.stderr).strip()
+        if value:
+            toolchain[key] = value
+    toolchain["python"] = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
+    return toolchain
+
+
+def component_fingerprint(
+    registry: Mapping[str, Mapping[str, Any]],
+    name: str,
+    mode: str,
+    include_live: bool,
+    root: Path,
+    toolchain: Mapping[str, str] | None = None,
+    _memo: dict[tuple[str, str, bool], str] | None = None,
+) -> str:
+    """Compute a deterministic content-addressed fingerprint for one component.
+
+    The fingerprint covers: registered path contents (working tree), the exact
+    command list, dependency fingerprints (transitively), Go/Node manifests,
+    toolchain versions, GOOS/GOARCH, the verification mode, and the runner
+    schema version.  Anything that can change a deterministic result changes
+    the fingerprint; environment-dependent live state is excluded by design.
+    """
+    if _memo is None:
+        _memo = {}
+    key = (name, mode, include_live)
+    if key in _memo:
+        return _memo[key]
+
+    definition = registry[name]
+    hasher = hashlib.sha256()
+    _update(hasher, FINGERPRINT_SCHEMA_VERSION.encode("utf-8"))
+    _update(hasher, name.encode("utf-8"))
+    _update(hasher, mode.encode("utf-8"))
+
+    # Dependencies contribute their own content fingerprint, so a change deep
+    # in the DAG invalidates every dependent component transitively.
+    for dependency in sorted(definition.get("dependencies", [])):
+        _update(hasher, b"dependency")
+        _update(hasher, dependency.encode("utf-8"))
+        _update(
+            hasher,
+            component_fingerprint(
+                registry, dependency, mode, include_live, root, toolchain, _memo
+            ).encode("utf-8"),
+        )
+
+    for entry in sorted(definition.get("paths", [])):
+        _update(hasher, b"path")
+        _update(hasher, entry.encode("utf-8"))
+        _update(hasher, _hash_path(root, entry).encode("utf-8"))
+
+    # Go package source directories can live outside the registered paths
+    # (e.g. a Node component that also runs one Go package).  Hash them too so
+    # a source or test change in those packages still invalidates the cache.
+    for package in sorted(definition.get("go_packages", [])):
+        directory = _go_package_dir(package)
+        if not directory:
+            continue
+        _update(hasher, b"go-package-source")
+        _update(hasher, directory.encode("utf-8"))
+        _update(hasher, _hash_path(root, directory).encode("utf-8"))
+
+    commands, _, _ = build_commands(name, definition, mode, include_live)
+    for command in commands:
+        _update(hasher, b"command")
+        _update(hasher, shlex.join(command.argv).encode("utf-8"))
+
+    _update(hasher, b"race_enabled")
+    _update(hasher, ("true" if definition.get("race_enabled") else "false").encode("utf-8"))
+    _update(hasher, b"timeout_seconds")
+    _update(hasher, str(definition.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)).encode("utf-8"))
+    _update(hasher, b"race_timeout_seconds")
+    _update(
+        hasher,
+        str(
+            definition.get(
+                "race_timeout_seconds", definition.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
+            )
+        ).encode("utf-8"),
+    )
+
+    if definition.get("go_packages"):
+        for manifest in ("go.mod", "go.sum"):
+            _update(hasher, manifest.encode("utf-8"))
+            _update(hasher, _read_bytes(root / manifest))
+    if definition.get("node_tests"):
+        for manifest in ("package.json", "package-lock.json", "npm-shrinkwrap.json"):
+            target = root / manifest
+            if target.is_file():
+                _update(hasher, manifest.encode("utf-8"))
+                _update(hasher, _read_bytes(target))
+
+    for tool in sorted(toolchain or {}):
+        _update(hasher, tool.encode("utf-8"))
+        _update(hasher, toolchain[tool].encode("utf-8"))
+    _update(hasher, ("GOOS=" + os.environ.get("GOOS", "")).encode("utf-8"))
+    _update(hasher, ("GOARCH=" + os.environ.get("GOARCH", "")).encode("utf-8"))
+
+    fingerprint = hasher.hexdigest()
+    _memo[key] = fingerprint
+    return fingerprint
+
+
+def cache_root(root: Path) -> Path:
+    """Return the Git-ignored directory holding verification cache records."""
+    return root / CACHE_DIR
+
+
+def cache_entry_path(root: Path, component: str, fingerprint: str) -> Path:
+    """Return the record path for one component/fingerprint pair."""
+    return cache_root(root) / component / f"{fingerprint}.json"
+
+
+def read_cache_entry(root: Path, component: str, fingerprint: str) -> dict[str, Any] | None:
+    """Read a cache record, failing closed on any structural problem.
+
+    Only well-formed PASS records with the exact requested fingerprint are
+    returned.  Missing, corrupt, non-dict, non-PASS, or fingerprint-mismatched
+    entries all resolve to ``None`` so the caller re-runs the gate.
+    """
+    path = cache_entry_path(root, component, fingerprint)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("status") != "PASS":
+        return None
+    if raw.get("fingerprint") != fingerprint:
+        return None
+    return raw
+
+
+def write_cache_entry(
+    root: Path, component: str, fingerprint: str, record: Mapping[str, Any]
+) -> bool:
+    """Atomically write a cache record, returning success."""
+    path = cache_entry_path(root, component, fingerprint)
+    try:
+        write_json_report(path, record)
+    except OSError:
+        return False
+    return True
+
+
+def store_cache_pass(
+    root: Path,
+    component: str,
+    fingerprint: str,
+    duration_ms: int,
+    mode: str,
+    toolchain: Mapping[str, str] | None,
+) -> bool:
+    """Persist a successful deterministic verification, and only a success.
+
+    FAIL/TIMEOUT/CANCELLED outcomes are deliberately never cached: a failed
+    gate must be re-run on the next invocation rather than remembered as a
+    reason to skip it.
+    """
+    record: dict[str, Any] = {
+        "schema_version": CACHE_SCHEMA_VERSION,
+        "cache_schema_version": FINGERPRINT_SCHEMA_VERSION,
+        "gate": component,
+        "fingerprint": fingerprint,
+        "status": "PASS",
+        "mode": mode,
+        "duration_ms": duration_ms,
+        "toolchain": dict(toolchain or {}),
+        "completed_at": _now_utc(),
+    }
+    return write_cache_entry(root, component, fingerprint, record)
+
+
+def cache_hit_entry(root: Path, component: str, fingerprint: str) -> dict[str, Any] | None:
+    """Return a usable cache record for a hit, or ``None`` on a miss.
+
+    A hit requires a PASS record with the exact fingerprint and a compatible
+    cache schema.  Anything else is a miss and forces a re-run.
+    """
+    entry = read_cache_entry(root, component, fingerprint)
+    if entry is None:
+        return None
+    if entry.get("cache_schema_version") != FINGERPRINT_SCHEMA_VERSION:
+        return None
+    return entry
+
+
+def missing_required_artifacts(root: Path, definition: Mapping[str, Any]) -> list[str]:
+    """Return required output artifacts that are absent from the working tree.
+
+    A cache hit must never hide a missing artifact that a later gate depends
+    on (for example the web component's ``web/dist``).  Any absent artifact
+    turns the hit into a miss so the gate re-runs and regenerates it.
+    """
+    missing = []
+    for artifact in definition.get("required_artifacts", []):
+        if not (root / artifact).is_file():
+            missing.append(artifact)
+    return missing
+
+
+def cache_summary(components: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Aggregate cache observability across resolved components.
+
+    ``hits`` counts CACHED_PASS gates, ``misses`` (== ``executed``) counts
+    gates whose commands actually ran, and ``saved_ms`` is the wall-clock time
+    the hits avoided re-running.
+    """
+    hits = 0
+    misses = 0
+    saved_ms = 0
+    gates: list[dict[str, Any]] = []
+    for name in sorted(components):
+        result = components[name]
+        if result.get("cache_hit"):
+            original = int(result.get("original_duration_ms") or 0)
+            hits += 1
+            saved_ms += original
+            gates.append({"gate": name, "result": "HIT", "duration_ms": original})
+        elif result.get("status") in {"PASS", "FAIL", "TIMEOUT"}:
+            misses += 1
+            gates.append(
+                {"gate": name, "result": "MISS", "duration_ms": int(result.get("duration_ms") or 0)}
+            )
+    return {
+        "hits": hits,
+        "misses": misses,
+        "executed": misses,
+        "saved_ms": saved_ms,
+        "gates": gates,
+    }
+
+
+def format_cache_summary(summary: Mapping[str, Any]) -> str:
+    """Format the human-readable VERIFY CACHE block for terminal output."""
+    lines = ["VERIFY CACHE", ""]
+    lines.append(f"hits={summary.get('hits', 0)}")
+    lines.append(f"misses={summary.get('misses', 0)}")
+    lines.append(f"executed={summary.get('executed', 0)}")
+    lines.append(f"saved_ms={summary.get('saved_ms', 0)}")
+    lines.append("")
+    for gate in summary.get("gates", []):
+        duration_s = int(gate.get("duration_ms", 0)) / 1000.0
+        if gate.get("result") == "HIT":
+            lines.append(f"{gate['gate']:<18} HIT   saved {duration_s:.1f}s")
+        else:
+            lines.append(f"{gate['gate']:<18} MISS  {duration_s:.1f}s")
+    return "\n".join(lines)
+
+
 def _text_output(value: str | bytes | None) -> str:
     """Compatibility wrapper for callers that used the old local helper."""
     return _runtime_text_output(value)
@@ -403,12 +765,31 @@ def run_components(
     include_live: bool = False,
     dry_run: bool = False,
     runner: Callable[[Sequence[str], float, Path], Execution] = _run_subprocess,
+    toolchain: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Execute resolved components and return ``(report, exit_code)``."""
     if mode not in {"fast", "race"}:
         raise RegistryError(f"unsupported mode={mode}")
     root = (repo_root or Path.cwd()).resolve()
     ordered = resolve_components(registry, requested)
+    toolchain_versions = (
+        dict(toolchain)
+        if toolchain is not None
+        else (
+            detect_toolchain(root)
+            if any(registry[name].get("cacheable") for name in ordered)
+            else {}
+        )
+    )
+    fingerprint_memo: dict[tuple[str, str, bool], str] = {}
+    fingerprints = {
+        name: component_fingerprint(
+            registry, name, mode, include_live, root, toolchain_versions, fingerprint_memo
+        )
+        if registry[name].get("cacheable")
+        else None
+        for name in ordered
+    }
     started_at = _now_utc()
     started = time.monotonic()
     executions: dict[tuple[str, ...], Execution] = {}
@@ -436,19 +817,48 @@ def run_components(
             command_results=[],
             skipped_live=skipped_live,
             race_skipped=race_skipped,
+            fingerprint=fingerprints[name],
         )
         component_runs[name] = component
 
         failed_dependencies = [
             dependency
             for dependency in component.dependencies
-            if component_runs[dependency].status != "PASS"
+            if component_runs[dependency].status not in {"PASS", "CACHED_PASS"}
         ]
         if failed_dependencies:
             component.blocked_by = failed_dependencies
             component.status = "BLOCKED"
             component.command_results = []
             diagnostics.append(f"component={name} blocked_by={','.join(failed_dependencies)}")
+            with state_lock:
+                completed.add(name)
+                state_lock.notify_all()
+            return
+
+        # Content-addressed cache hit: a previous run already passed these exact
+        # inputs (same fingerprint, PASS record, compatible schema), so skip
+        # re-executing the component's commands.  CACHED_PASS aggregates as PASS.
+        # A gate whose required output artifact is missing is a miss: the cache
+        # must not hide a missing artifact that later steps depend on.
+        cached_entry = None
+        if not dry_run and definition.get("cacheable") and fingerprints.get(name):
+            missing = missing_required_artifacts(root, definition)
+            if missing:
+                diagnostics.append(
+                    f"component={name} cache_miss missing_artifact={','.join(missing)}"
+                )
+            else:
+                cached_entry = cache_hit_entry(root, name, fingerprints[name])
+        if cached_entry is not None:
+            component.cache_hit = True
+            component.status = "CACHED_PASS"
+            component.original_duration_ms = int(cached_entry.get("duration_ms") or 0)
+            component.command_results = []
+            diagnostics.append(
+                f"component={name} status=CACHED_PASS "
+                f"original_duration_ms={component.original_duration_ms}"
+            )
             with state_lock:
                 completed.add(name)
                 state_lock.notify_all()
@@ -541,6 +951,15 @@ def run_components(
         if component.status == "PENDING":
             component.status = "PASS"
         component.duration_ms = int((time.monotonic() - component_started) * 1000)
+        if (
+            component.status == "PASS"
+            and not dry_run
+            and definition.get("cacheable")
+            and fingerprints.get(name)
+        ):
+            store_cache_pass(
+                root, name, fingerprints[name], component.duration_ms, mode, toolchain_versions
+            )
         with state_lock:
             completed.add(name)
             state_lock.notify_all()
@@ -592,10 +1011,14 @@ def run_components(
             for future in futures:
                 future.result()
 
-    final_status = "PASS" if all(component_runs[name].status == "PASS" for name in ordered) else "FAIL"
+    final_status = "PASS" if all(
+        component_runs[name].status in {"PASS", "CACHED_PASS"} for name in ordered
+    ) else "FAIL"
     finished_at = _now_utc()
+    components = {name: component_runs[name].as_dict() for name in ordered}
     report: dict[str, Any] = {
         "schema_version": 1,
+        "cache_schema_version": FINGERPRINT_SCHEMA_VERSION,
         "mode": mode,
         "requested": list(dict.fromkeys(requested)),
         "requested_components": list(dict.fromkeys(requested)),
@@ -604,7 +1027,8 @@ def run_components(
         "finished_at": finished_at,
         "git_sha": _git_sha(root),
         "duration_ms": int((time.monotonic() - started) * 1000),
-        "components": {name: component_runs[name].as_dict() for name in ordered},
+        "components": components,
+        "cache_summary": cache_summary(components),
         "skipped": [
             name for name in registry if name not in ordered
         ],
@@ -697,6 +1121,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"verify-component mode={report['mode']} components={','.join(report['resolved_components'])} "
         f"final={report['final']} duration_ms={report['duration_ms']} report={report_path}"
     )
+    cache = report.get("cache_summary")
+    if cache:
+        print(format_cache_summary(cache))
     for diagnostic in report.get("diagnostics", []):
         if diagnostic:
             print(diagnostic, file=sys.stderr)

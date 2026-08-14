@@ -478,7 +478,7 @@ def run_changed_components(
         and isinstance(component_statuses, dict)
         and all(
             isinstance(component_statuses.get(name), dict)
-            and component_statuses[name].get("status") == "PASS"
+            and component_statuses[name].get("status") in {"PASS", "CACHED_PASS"}
             for name in resolved
         )
     )
@@ -498,6 +498,7 @@ def run_changed_components(
         "skipped": [name for name in all_components if name not in resolved],
         "components": component_report.get("components", {}),
         "component_report": component_report,
+        "cache_summary": component_report.get("cache_summary"),
         "started_at": started,
         "finished_at": _now_utc(),
         "git_sha": git_sha,
@@ -582,6 +583,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"components={','.join(report['resolved_components']) or '-'} "
         f"final={report['final']} report={report_path}"
     )
+    component_report = report.get("component_report")
+    cache = component_report.get("cache_summary") if isinstance(component_report, dict) else None
+    if cache:
+        print(runner.module.format_cache_summary(cache))
     if report.get("unmapped_files"):
         print(
             "unmapped_files=" + ",".join(report["unmapped_files"]),

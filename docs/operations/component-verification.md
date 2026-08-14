@@ -157,6 +157,91 @@ python3 -m json.tool artifacts/verify/changed-components.json
 Reports under `artifacts/` are run artifacts, not source-of-truth
 configuration. Do not commit credentials, tokens, cookies, or private keys.
 
+## Verification cache
+
+The component runner keeps a content-addressed cache of successful
+deterministic runs under:
+
+```text
+.cache/pipelinegen/verify/<component>/<fingerprint>.json
+```
+
+The directory is Git-ignored and fully rebuildable: it is local tooling state,
+never business state, and can be deleted safely at any time.
+
+### What is cached
+
+Only `PASS` results are ever stored. `FAIL`, `TIMEOUT`, and `CANCELLED`
+outcomes are never written, so a failing gate is re-run on the next invocation
+instead of being remembered as a reason to skip it. Records are written
+atomically (temp file + `fsync` + rename).
+
+### Fingerprint and invalidation
+
+A component's cache key is a SHA-256 fingerprint of its exact inputs:
+
+- the working-tree content of every registered `paths` entry (committed,
+  staged, and untracked files alike — never just `git rev-parse HEAD`);
+- the source directories of every `go_packages` entry, including test files
+  and packages that live outside the registered paths;
+- the fingerprints of its dependencies (transitively);
+- `go.mod` and `go.sum` when the component runs Go packages;
+- `package.json` / `package-lock.json` when it runs Node tests;
+- the exact command list, `race_enabled`, and timeout budgets;
+- the Go/Node/Python toolchain versions, `GOOS`/`GOARCH`, the verification
+  mode (`fast` vs `race`), and the fingerprint schema version.
+
+Changing source, tests, a dependency, `go.mod`/`go.sum`, a command, the
+registry definition, the toolchain, or the mode produces a different
+fingerprint and invalidates that entry. A brand-new untracked file under a
+registered path participates in the hash.
+
+### Cache hits
+
+A hit requires a stored `PASS` record whose fingerprint exactly matches the
+current fingerprint and whose cache schema is compatible. On a hit the
+component's commands are not re-run; the runner reports:
+
+```text
+status=CACHED_PASS
+cache_hit=true
+original_duration_ms=<previous duration>
+```
+
+`CACHED_PASS` aggregates as `PASS` for the overall result and for dependency
+resolution. A miss, a corrupt entry, a schema mismatch, or a non-`PASS` record
+all fail closed and re-run the component. Live gates are declared
+`cacheable: false` in the registry and are never cached.
+
+### VERIFY CACHE summary
+
+At the end of a component run the runner prints a cache summary and stores it
+in the JSON report under `cache_summary`:
+
+```text
+VERIFY CACHE
+
+hits=12
+misses=2
+executed=2
+saved_ms=643000
+
+audio              HIT   saved 44.9s
+rendering          MISS  39.4s
+```
+
+`hits` counts `CACHED_PASS` gates, `misses` (equal to `executed`) counts gates
+whose commands actually ran, and `saved_ms` is the wall-clock time avoided by
+the hits. `BLOCKED` components are neither hits nor executions.
+
+### Relationship to the pre-push whole-repo cache
+
+This per-component cache is distinct from the pre-push hook's whole-repo
+`.cache/verify/<fingerprint>.ok` shortcut. The hook cache skips `verify-main`
+entirely when the whole repository fingerprint is unchanged; the component
+cache skips only the unaffected components within a changed repository. Both
+are optimizations over the same fail-closed gate and never weaken it.
+
 ## Pre-push contract
 
 The version-controlled hook is `scripts/hooks/pre-push`. Install the canonical

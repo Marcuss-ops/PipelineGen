@@ -387,6 +387,36 @@ class VerifyChangedComponentsTests(unittest.TestCase):
         self.assertEqual(execution.report["impacted_components"], ["drive"])
         self.assertEqual(execution.report["unmapped_files"], ["README.md"])
 
+    def test_cached_pass_status_is_accepted(self) -> None:
+        def fake_run_components(registry, requested, **kwargs):
+            return (
+                {
+                    "resolved_components": list(requested),
+                    "components": {name: {"status": "CACHED_PASS"} for name in requested},
+                    "duration_ms": 1,
+                    "final": "PASS",
+                },
+                0,
+            )
+
+        fake_runner = SimpleNamespace(
+            run_components=fake_run_components,
+            resolve_components=lambda registry, requested: list(requested),
+            _run_subprocess=lambda *args, **kwargs: None,
+        )
+        changes = verify_changed.GitChanges(
+            files=("internal/infrastructure/drive/client.go",),
+            base_ref="origin/main",
+            base_available=True,
+            base_fallback=False,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            execution = verify_changed.run_changed_components(
+                changes, self.registry(), runner_module=fake_runner, repo_root=Path(directory)
+            )
+        self.assertEqual(execution.exit_code, 0)
+        self.assertEqual(execution.report["final"], "PASS")
+
     @staticmethod
     def git(root: Path, *args: str) -> None:
         completed = subprocess.run(["git", *args], cwd=root, check=False, capture_output=True, text=True)

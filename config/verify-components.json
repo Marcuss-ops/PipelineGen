@@ -581,6 +581,9 @@
     "race_timeout_seconds": 300,
     "race_enabled": false,
     "live_tests": [],
+    "required_artifacts": [
+      "web/dist/index.html"
+    ],
     "cacheable": true,
     "cache_scope": "content"
   }
