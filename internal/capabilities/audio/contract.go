@@ -42,15 +42,18 @@ type VideoSegment struct {
 }
 
 type AudioIntent struct {
-	Mode               AudioSegmentMode `json:"mode"`
-	VoiceoverAssetID   string           `json:"voiceover_asset_id,omitempty"`
-	ClipAssetID        string           `json:"clip_asset_id,omitempty"`
-	SourceInUS         int64            `json:"source_in_us,omitempty"`
-	SourceDurationUS   int64            `json:"source_duration_us,omitempty"`
-	TimelineOffsetUS   int64            `json:"timeline_offset_us,omitempty"`
-	TimelineDurationUS int64            `json:"timeline_duration_us,omitempty"`
-	UseOriginalAudio   bool             `json:"use_original_audio,omitempty"`
-	GainDB             float64          `json:"gain_db,omitempty"`
+	Mode             AudioSegmentMode `json:"mode"`
+	VoiceoverAssetID string           `json:"voiceover_asset_id,omitempty"`
+	ClipAssetID      string           `json:"clip_asset_id,omitempty"`
+	SourceInUS       int64            `json:"source_in_us,omitempty"`
+	SourceDurationUS int64            `json:"source_duration_us,omitempty"`
+	// TimelineOffsetUS is serialized without omitempty: a voiceover at the
+	// scene origin must still carry timeline_offset_us=0 explicitly, so the
+	// canonical timeline JSON never silently drops the placement decision.
+	TimelineOffsetUS   int64   `json:"timeline_offset_us"`
+	TimelineDurationUS int64   `json:"timeline_duration_us,omitempty"`
+	UseOriginalAudio   bool    `json:"use_original_audio,omitempty"`
+	GainDB             float64 `json:"gain_db,omitempty"`
 }
 
 type AudioTrackRole string

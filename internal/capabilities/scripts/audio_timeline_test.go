@@ -1,10 +1,12 @@
 package scriptgeneration
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
 
 func eventsForRole(plan audio.CompiledAudioPlan, role audio.AudioTrackRole) []audio.AudioEvent {
@@ -56,6 +58,52 @@ func TestCompileCanonicalAudioPlanMakesVoiceoverTimelinePlacementExplicit(t *tes
 	vo := intents[0]
 	if vo.Mode != audio.AudioVoiceover || vo.TimelineOffsetUS != 0 || vo.TimelineDurationUS != 4_500_000 || vo.SourceInUS != 0 || vo.SourceDurationUS != 3_200_000 {
 		t.Fatalf("voiceover intent must carry explicit timeline placement: %+v", vo)
+	}
+}
+
+func TestCanonicalAudioPlanVoiceoverIntentSerializesExplicitTimelinePlacement(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-vo", Index: 0, DurationUS: 4_500_000,
+		Audio:     audio.AudioIntent{Mode: audio.AudioVoiceover},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 3.2}},
+	}}}
+	timeline, _, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Segments []struct {
+			AudioIntents []struct {
+				Mode               string `json:"mode"`
+				TimelineOffsetUS   *int64 `json:"timeline_offset_us"`
+				TimelineDurationUS *int64 `json:"timeline_duration_us"`
+				SourceDurationUS   *int64 `json:"source_duration_us"`
+			} `json:"audio_intents"`
+		} `json:"segments"`
+	}
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Segments) != 1 || len(wire.Segments[0].AudioIntents) != 1 {
+		t.Fatalf("unexpected wire shape: %s", encoded)
+	}
+	vo := wire.Segments[0].AudioIntents[0]
+	if vo.Mode != "VOICEOVER" {
+		t.Fatalf("mode=%q", vo.Mode)
+	}
+	// timeline_offset_us must be explicit even when it is the scene origin (0).
+	if vo.TimelineOffsetUS == nil || *vo.TimelineOffsetUS != 0 {
+		t.Fatalf("timeline_offset_us must be explicit (got %v): %s", vo.TimelineOffsetUS, encoded)
+	}
+	if vo.TimelineDurationUS == nil || *vo.TimelineDurationUS != 4_500_000 {
+		t.Fatalf("timeline_duration_us must be explicit (got %v): %s", vo.TimelineDurationUS, encoded)
+	}
+	if vo.SourceDurationUS == nil || *vo.SourceDurationUS != 3_200_000 {
+		t.Fatalf("source_duration_us must be explicit (got %v): %s", vo.SourceDurationUS, encoded)
 	}
 }
 
@@ -334,5 +382,58 @@ func TestValidateChunkedVoiceoversRequiresOneToOneMapping(t *testing.T) {
 	delete(base.Scenes[1].Voiceover, "en")
 	if err := ValidateChunkedVoiceovers(base); err == nil {
 		t.Fatal("missing voiceover mapping must fail")
+	}
+}
+
+func TestCompileCanonicalRenderPlanMirrorsCertifiedFinalAudio(t *testing.T) {
+	result := GenerateResult{
+		Scenes: []Scene{{ID: "scene-1", Index: 0, DurationUS: 1_000_000}},
+		FinalAudio: &FinalAudioReference{
+			AssetID: "final-audio-1", Path: "/audio/final_audio.m4a",
+			AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,
+			PlanSHA256:       "plan",
+			FinalAudioSHA256: strings.Repeat("a", 64),
+			Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+			DurationMS: 1000, StartPTS: 0, SizeBytes: 123, FinalMix: true, CopyEligible: true,
+		},
+	}
+	timeline, err := CompileCanonicalTimeline(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderPlan, err := CompileCanonicalRenderPlanWithFrameRate(result, timeline, "job-1", "rev-1", audio.IntegerFrameRate(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renderPlan.FinalAudio == nil {
+		t.Fatal("render plan must carry final audio")
+	}
+	if err := ValidateFinalAudioMirror(*result.FinalAudio, *renderPlan.FinalAudio); err != nil {
+		t.Fatalf("render plan must mirror the certified final audio: %v", err)
+	}
+}
+
+func TestValidateFinalAudioMirrorFailsClosedOnDrift(t *testing.T) {
+	ref := FinalAudioReference{
+		AssetID: "final-audio-1", Path: "/audio/final_audio.m4a",
+		AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,
+		PlanSHA256:       "plan",
+		FinalAudioSHA256: strings.Repeat("b", 64),
+		Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+		DurationMS: 1000, StartPTS: 0, SizeBytes: 123, FinalMix: true, CopyEligible: true,
+	}
+	good := render.FinalAudioAsset{
+		AssetID: ref.AssetID, AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy),
+		Path: ref.Path, SHA256: ref.FinalAudioSHA256, PlanSHA256: ref.PlanSHA256,
+		AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
+		Codec: ref.Codec, Profile: ref.Profile, SampleRate: ref.SampleRate, Channels: ref.Channels, ChannelLayout: ref.ChannelLayout,
+		DurationMS: ref.DurationMS, StartPTS: ref.StartPTS, SizeBytes: ref.SizeBytes, FinalMix: ref.FinalMix, CopyEligible: ref.CopyEligible,
+	}
+	if err := ValidateFinalAudioMirror(ref, good); err != nil {
+		t.Fatalf("faithful mirror must pass: %v", err)
+	}
+	good.SHA256 = strings.Repeat("c", 64)
+	if err := ValidateFinalAudioMirror(ref, good); err == nil {
+		t.Fatal("drifted SHA256 must fail closed")
 	}
 }
