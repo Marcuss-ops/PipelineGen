@@ -51,6 +51,7 @@ import (
 // package (that would invert the application → capability migration direction).
 var _ scriptgen.SegmentEnricher = (*adapters.VidRushSegmentEnricher)(nil)
 var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
+var _ scriptgen.SegmentSceneMerger = (*adapters.VidRushSceneMerger)(nil)
 
 // registerAIBackedProcessors registers the AI-backed postprocessors:
 // entities, metadata, translation, clip_search, and internet_images.
