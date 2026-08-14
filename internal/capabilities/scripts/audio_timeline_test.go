@@ -541,3 +541,32 @@ func TestValidateFinalAudioMirrorFailsClosedOnDrift(t *testing.T) {
 		t.Fatal("drifted SHA256 must fail closed")
 	}
 }
+
+// TestCompileCanonicalAudioPlanWithTimingsMatchesCanonicalSpelling certifies
+// the timing-insensitive spelling delegates to the timing variant and returns
+// identical artifacts — the refactor must not change the compiled
+// timeline/plan/assets.
+func TestCompileCanonicalAudioPlanWithTimingsMatchesCanonicalSpelling(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{
+		{ID: "scene-001", Index: 0, DurationMS: 14000, Audio: audio.AudioIntent{Mode: audio.AudioVoiceover}, Voiceover: map[Language]AudioReference{"en": {ID: "vo-1", FilePath: "/audio/vo-1.mp3"}}},
+		{ID: "scene-002", Index: 1, DurationMS: 12000, Clip: &ClipReference{ID: "clip-1", AudioPath: "/video/clip-1.mp4"}, Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-1", SourceInUS: 34000000, SourceDurationUS: 12000000}},
+		{ID: "scene-003", Index: 2, DurationMS: 2000, Audio: audio.AudioIntent{Mode: audio.AudioSilence}},
+	}}
+
+	plainTimeline, plainPlan, plainAssets, err := CompileCanonicalAudioPlan(result, "en", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	timedTimeline, timedPlan, timedAssets, timings, err := CompileCanonicalAudioPlanWithTimings(result, "en", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.JSONEq(t, mustJSON(t, plainTimeline), mustJSON(t, timedTimeline))
+	require.JSONEq(t, mustJSON(t, plainPlan), mustJSON(t, timedPlan))
+	require.JSONEq(t, mustJSON(t, plainAssets), mustJSON(t, timedAssets))
+
+	if timings.TimelineCompileMS < 0 || timings.ClipAudioPrepareMS < 0 || timings.AudioPlanCompileMS < 0 {
+		t.Fatalf("compile timings must be non-negative: %+v", timings)
+	}
+}

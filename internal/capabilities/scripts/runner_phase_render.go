@@ -53,7 +53,8 @@ func (r *Runner) runRenderPayloadPhase(ctx context.Context, runID string, req Ge
 			}
 			started := time.Now()
 			var audioAssets capabilityaudio.ResolvedAudioAssets
-			canonicalTimeline, compiledAudioPlan, audioAssets, err = CompileCanonicalAudioPlan(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+			var compileTimings AudioCompileTimings
+			canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanWithTimings(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
 			if err != nil {
 				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
 				r.failExecutionStep(ctx, exec, audioStep, cause)
@@ -83,6 +84,9 @@ func (r *Runner) runRenderPayloadPhase(ctx context.Context, runID string, req Ge
 					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 					return false
 				}
+				metrics.TimelineCompileMS = compileTimings.TimelineCompileMS
+				metrics.AudioPlanCompileMS = compileTimings.AudioPlanCompileMS
+				metrics.ClipAudioPrepareMS = compileTimings.ClipAudioPrepareMS
 				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
 					cause := fmt.Errorf("final audio certification failed: %w", err)
 					r.failExecutionStep(ctx, exec, audioStep, cause)
