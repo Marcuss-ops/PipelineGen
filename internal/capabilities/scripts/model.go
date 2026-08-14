@@ -81,10 +81,40 @@ type DocumentReference struct {
 	Link string `json:"link"`
 }
 
-// RenderReference identifies an enqueued render job.
+// RenderReference identifies an enqueued render job and, once the render
+// completes, carries the certified artifact the downstream document/assembly
+// steps consume. The Artifact field is nil while the job is still queued or
+// running.
 type RenderReference struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
+	JobID    string          `json:"job_id"`
+	Status   string          `json:"status"`
+	Artifact *RenderArtifact `json:"artifact,omitempty"`
+}
+
+// RenderArtifact is the certified artifact produced by the central
+// RenderingGen queue. It mirrors the queue's artifact contract (including the
+// copy-only certification) so the document renderer and Velox copy assembly
+// consume the same immutable reference without probing the file themselves.
+type RenderArtifact struct {
+	ID                 string `json:"id,omitempty"`
+	Kind               string `json:"kind,omitempty"`
+	StorageKey         string `json:"storage_key,omitempty"`
+	URL                string `json:"url,omitempty"`
+	SHA256             string `json:"sha256,omitempty"`
+	MimeType           string `json:"mime_type,omitempty"`
+	SizeBytes          int64  `json:"size_bytes,omitempty"`
+	Width              int    `json:"width,omitempty"`
+	Height             int    `json:"height,omitempty"`
+	FPSNum             int    `json:"fps_num,omitempty"`
+	FPSDen             int    `json:"fps_den,omitempty"`
+	FrameCount         int    `json:"frame_count,omitempty"`
+	DurationUS         int64  `json:"duration_us,omitempty"`
+	ProfileID          string `json:"profile_id,omitempty"`
+	CopyEligible       bool   `json:"copy_eligible,omitempty"`
+	Codec              string `json:"codec,omitempty"`
+	CodecProfile       string `json:"codec_profile,omitempty"`
+	ClosedGOP          bool   `json:"closed_gop,omitempty"`
+	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
 }
 
 type FinalAudioReference struct {
