@@ -140,6 +140,10 @@ type IndexedMetadata struct {
 	MediaType       string
 	AssetRole       string
 	NormalizedGroup string
+	Namespace       string
+	AssetKind       string
+	SourceType      string
+	SemanticRole    string
 	HasDialogue     *bool
 	AudioProfile    string
 	Language        string

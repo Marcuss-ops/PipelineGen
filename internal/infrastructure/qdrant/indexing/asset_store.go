@@ -131,6 +131,7 @@ type assetRowScanner struct {
 func (r *assetRowScanner) scanArgs(a *AssetData) []any {
 	return []any{
 		&a.ID, &a.Name, &a.Source, &a.MediaType,
+		&a.Namespace, &a.AssetKind, &a.SourceType, &a.SemanticRole,
 		&r.lifecycleState,
 		&r.tagsJSON,
 		&a.SearchText,
@@ -279,6 +280,7 @@ func (r *assetRowScanner) populate(a *AssetData) {
 // fact).
 const canonicalQuery = `
 		id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
+		COALESCE(namespace, ''), COALESCE(asset_kind, ''), COALESCE(source_type, ''), COALESCE(semantic_role, ''),
 		COALESCE(lifecycle_state, 'ACTIVE'),
 		COALESCE(tags, '[]'),
 		COALESCE(search_text, ''),
