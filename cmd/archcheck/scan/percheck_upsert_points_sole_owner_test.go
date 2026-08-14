@@ -161,3 +161,42 @@ func Note() {}
 	}
 	_ = strings.Join // silence unused-import if any
 }
+
+// TestScanUpsertPointsSoleOwner_DeletePointsNonCanonical verifies the
+// destructive-twin gate (PR-HASH-SEMANTICS item 16, August 2026): a
+// non-canonical `.DeletePoints(` call trips the same rule with the
+// non_canonical_delete_points_caller MatchedRule.
+func TestScanUpsertPointsSoleOwner_DeletePointsNonCanonical(t *testing.T) {
+	root := t.TempDir()
+	makeFileForUpsertPointsTest(t, root, "internal/application/random_other/bad_deleter.go",
+		`package random_other
+type C struct{}
+func (c *C) Remove() {
+	_ = c.DeletePoints("collection", []string{"a"})
+}
+`)
+	rep := &report.Report{}
+	ScanUpsertPointsSoleOwner(root, nil, rep, true)
+	if got := len(rep.Violations); got == 0 {
+		t.Fatalf("non-canonical DeletePoints caller did NOT trip gate; expected ≥ 1 violation")
+	}
+	if rep.Violations[0].MatchedRule != "non_canonical_delete_points_caller" {
+		t.Fatalf("MatchedRule = %q, want non_canonical_delete_points_caller", rep.Violations[0].MatchedRule)
+	}
+}
+
+// TestScanUpsertPointsSoleOwner_DeletePointsCanonicalExempt verifies the
+// canonical projection-writer surface emitting `.DeletePoints(` is exempt.
+func TestScanUpsertPointsSoleOwner_DeletePointsCanonicalExempt(t *testing.T) {
+	root := t.TempDir()
+	makeFileForUpsertPointsTest(t, root, "internal/infrastructure/qdrant/indexing/projection_writer.go",
+		`package indexing
+type W struct{ client *C }
+func (w *W) Delete() { _ = w.client.DeletePoints("c", []string{"a"}) }
+`)
+	rep := &report.Report{}
+	ScanUpsertPointsSoleOwner(root, nil, rep, true)
+	if got := len(rep.Violations); got != 0 {
+		t.Fatalf("canonical DeletePoints caller surface tripped gate: %d violations", got)
+	}
+}

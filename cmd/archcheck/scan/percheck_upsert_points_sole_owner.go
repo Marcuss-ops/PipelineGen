@@ -112,6 +112,13 @@ const upsertPointsSoleOwnerScanScope = "internal/"
 // naturally exempt — only call sites match.
 var upsertPointsSoleOwnerCallRe = regexp.MustCompile(`\.\s*UpsertPoints\s*\(`)
 
+// qdrantDeletePointsCallRe is the destructive twin of the UpsertPoints
+// detector (PR-HASH-SEMANTICS item 16, August 2026): `.DeletePoints(`
+// must be owned by the same canonical projection-writer surface as
+// UpsertPoints. The same dot-receiver requirement makes the transport
+// declaration line (`func (c *Client) DeletePoints(...)`) naturally exempt.
+var qdrantDeletePointsCallRe = regexp.MustCompile(`\.\s*DeletePoints\s*\(`)
+
 // upsertPointsSoleOwnerRule is the rule-family id the
 // scanner emits.
 const upsertPointsSoleOwnerRule = "percheck_upsert_points_sole_owner"
@@ -122,6 +129,12 @@ const upsertPointsSoleOwnerRule = "percheck_upsert_points_sole_owner"
 // outbox pipeline + the migrations/api/archcheck-strict-baseline.json
 // residue list so the operator sees the migration path inline.
 const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
+
+// deletePointsSoleOwnerNote is the violation Note for any non-canonical
+// production call site of `.DeletePoints(`. It is the destructive twin of
+// upsertPointsSoleOwnerNote: a direct DeletePoints bypasses the projection
+// writer's retention/alias contract and can silently orphan points.
+const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/infrastructure/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json."
 
 // upsertPointsSoleOwnerWarn is the residue-emitter for
 // comment-only references.
@@ -212,15 +225,22 @@ func scanUpsertPointsSoleOwnerFile(path, relPath string, r *report.Report, produ
 		line := sc.Text()
 		trimmed := strings.TrimLeft(line, " \t")
 
-		if (strings.HasPrefix(trimmed, "//") ||
-			strings.HasPrefix(trimmed, "/*") ||
-			strings.HasPrefix(trimmed, "*")) &&
-			upsertPointsSoleOwnerCallRe.MatchString(line) {
-			commentOnly++
+		matched, note := "", ""
+		switch {
+		case upsertPointsSoleOwnerCallRe.MatchString(line):
+			matched = "non_canonical_upsert_points_caller"
+			note = upsertPointsSoleOwnerNote
+		case qdrantDeletePointsCallRe.MatchString(line):
+			matched = "non_canonical_delete_points_caller"
+			note = deletePointsSoleOwnerNote
+		}
+		if matched == "" {
 			continue
 		}
-
-		if !upsertPointsSoleOwnerCallRe.MatchString(line) {
+		if strings.HasPrefix(trimmed, "//") ||
+			strings.HasPrefix(trimmed, "/*") ||
+			strings.HasPrefix(trimmed, "*") {
+			commentOnly++
 			continue
 		}
 		r.Violations = append(r.Violations, report.Violation{
@@ -229,8 +249,8 @@ func scanUpsertPointsSoleOwnerFile(path, relPath string, r *report.Report, produ
 			Line:        lineNo,
 			Rule:        upsertPointsSoleOwnerRule,
 			Severity:    string(report.SeverityError),
-			MatchedRule: "non_canonical_upsert_points_caller",
-			Note:        upsertPointsSoleOwnerNote + " | snippet: " + truncateUpsertPointsSoleOwner(line),
+			MatchedRule: matched,
+			Note:        note + " | snippet: " + truncateUpsertPointsSoleOwner(line),
 		})
 	}
 	if commentOnly > 0 && !productionOnly {
