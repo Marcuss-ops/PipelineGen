@@ -28,9 +28,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
-// conceptPointIDPrefix is the canonical Qdrant point-id
-// derivation for media_concepts.
-const conceptPointIDPrefix = "concept-"
+// Concept point IDs use schema.ConceptPointIDPrefix (SSOT in
+// schema/projection_contract.go); no local copy here.
 
 // QdrantIndexer is the canonical mediamemory.EmbeddingIndexer
 // backed by Qdrant + EmbeddingChannelRegistry.
@@ -126,7 +125,7 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 	}
 
 	point := schema.Point{
-		ID:      conceptPointIDPrefix + c.ID,
+		ID:      schema.ConceptPointIDPrefix + c.ID,
 		Vectors: vectors,
 		Payload: payload,
 	}
@@ -148,7 +147,7 @@ func (i *QdrantIndexer) DeindexConcept(ctx context.Context, conceptID string) er
 		return fmt.Errorf("mediamemory: DeindexConcept with empty conceptID: %w",
 			mediamemory.ErrInvalidBindingInput)
 	}
-	pointID := conceptPointIDPrefix + conceptID
+	pointID := schema.ConceptPointIDPrefix + conceptID
 	if err := i.client.DeletePoints(ctx, schema.ConceptCollectionName, []string{pointID}); err != nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer delete concept=%q: %w", conceptID, err)
 	}
