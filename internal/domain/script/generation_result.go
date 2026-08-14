@@ -172,6 +172,20 @@ type DocumentAudioRef struct {
 	SHA256     string `json:"sha256,omitempty"`
 }
 
+// DocumentOverlayRef is the already-published reference to a completed render
+// overlay projected into a document. It contains NO local filesystem path:
+// only the public artifact URL, its integrity hash and the copy-only
+// certification VeloxEditing uses to assemble the overlay without re-encoding.
+type DocumentOverlayRef struct {
+	ArtifactID   string `json:"artifact_id"`
+	JobID        string `json:"job_id"`
+	URL          string `json:"url,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
+	DurationUS   int64  `json:"duration_us,omitempty"`
+	ProfileID    string `json:"profile_id,omitempty"`
+	CopyEligible bool   `json:"copy_eligible"`
+}
+
 // GenerationModeInfo describes the requested and actual generation
 // mode for a clip-aware generation item.
 type GenerationModeInfo struct {

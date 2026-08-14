@@ -540,8 +540,8 @@ var stageOrder = []Stage{
 	StageTranslatingScenes,
 	StageGeneratingVoiceovers,
 	StageBuildingRenderPayload,
-	StagePublishingDocuments,
 	StageEnqueuingRender,
+	StagePublishingDocuments,
 }
 
 // StageIndex returns the zero-based index of a stage in the

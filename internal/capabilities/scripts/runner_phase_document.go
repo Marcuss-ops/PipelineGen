@@ -45,6 +45,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 				FullAudio:       documentAudioRef(result, lang),
 				FinalAudio:      result.FinalAudio,
 				AudioTimeline:   result.CanonicalTimeline,
+				Overlay:         documentOverlayRef(result),
 			})
 			if renderErr != nil {
 				cause := fmt.Errorf("render document for language %s failed: %w", lang, renderErr)
@@ -112,5 +113,25 @@ func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioR
 	return &DocumentAudioRef{
 		AssetID: ref.AssetID, Language: string(language), DriveLink: ref.DriveLink,
 		DurationMS: ref.DurationMS, SHA256: ref.FinalAudioSHA256,
+	}
+}
+
+// documentOverlayRef projects the completed render artifact into the
+// published-only DocumentOverlayRef the document consumes. It never leaks a
+// local path: only the artifact URL, its integrity hash and the copy-only
+// certification survive.
+func documentOverlayRef(result *GenerateResult) *DocumentOverlayRef {
+	if result == nil || result.RenderJob == nil || result.RenderJob.Artifact == nil {
+		return nil
+	}
+	artifact := result.RenderJob.Artifact
+	return &DocumentOverlayRef{
+		ArtifactID:   artifact.ID,
+		JobID:        result.RenderJob.JobID,
+		URL:          artifact.URL,
+		SHA256:       artifact.SHA256,
+		DurationUS:   artifact.DurationUS,
+		ProfileID:    artifact.ProfileID,
+		CopyEligible: artifact.CopyEligible,
 	}
 }

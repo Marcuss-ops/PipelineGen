@@ -203,7 +203,7 @@ func TestGenerationRun_StageStartOrderIsMonotonic(t *testing.T) {
 	for _, step := range starts {
 		names = append(names, step.Name)
 	}
-	want := []string{"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "RENDER_PLAN", "DOCUMENT", "VELOX_ENQUEUE"}
+	want := []string{"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "RENDER_PLAN", "VELOX_ENQUEUE", "DOCUMENT"}
 	for i, name := range want {
 		require.Contains(t, names, name)
 		if i > 0 {
