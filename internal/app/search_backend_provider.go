@@ -24,6 +24,12 @@ type providerSearchBackend struct {
 	provider providers.SearchProvider
 	caps     []search.Capability
 	srcName  string
+
+	// resolver is the canonical source→asset identity resolver. The
+	// provider adapter MUST NOT fabricate a canonical AssetID from the
+	// provider-native ID; it delegates identity resolution here. nil is
+	// fail-safe: it degrades to the noop resolver (identity unknown).
+	resolver search.CanonicalIdentityResolver
 }
 
 func (b *providerSearchBackend) Name() string {
@@ -85,15 +91,29 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 	out := make([]search.Candidate, 0, len(res.Candidates))
 	for _, c := range res.Candidates {
+		// PR-SEARCH-UNIVERSE (August 2026): the provider adapter
+		// MUST NOT fabricate a canonical AssetID from the provider
+		// ID. Build an ExternalCandidate and resolve the known
+		// asset id through the canonical resolver; the only value
+		// ever placed in Candidate.AssetID is the resolver's
+		// canonical AssetID (empty when the source is not yet
+		// registered).
+		ext := search.ExternalCandidate{
+			SourceType: b.Name(),
+			SourceRef:  providerSourceRef(c),
+			Title:      c.Title,
+			URL:        c.PageURL,
+		}
+		ext.KnownAssetID = b.resolveKnownAssetID(ctx, ext)
+
 		out = append(out, search.Candidate{
-			AssetID: firstNonEmptyProvider(c.ID, c.ExternalID),
-			Source:  b.Name(),
-			// Provider-native ID is the stable identity. URLs belong in
-			// SourceURL/PreviewURL and may expire independently.
-			SourceRef:    firstNonEmptyProvider(c.ExternalID, c.ID, c.SourceRef),
-			MediaType:    string(c.MediaType),
-			Title:        c.Title,
-			Name:         c.Title,
+			AssetID:   ext.KnownAssetID,
+			Source:    b.Name(),
+			SourceRef: ext.SourceRef,
+			MediaType: string(c.MediaType),
+			Title:     c.Title,
+			Name:      c.Title,
+			// Provider page URL, never a temporary download URL.
 			SourceURL:    c.PageURL,
 			ThumbnailURL: c.ThumbnailURL,
 			PreviewURL:   c.PreviewURL,
@@ -106,6 +126,29 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		})
 	}
 	return out, nil
+}
+
+// resolveKnownAssetID maps the external candidate to its canonical asset
+// id via the resolver. nil resolver degrades to the noop (identity
+// unknown). godlike/07 fail-closed: a resolver error or an unknown source
+// leaves the canonical identity EMPTY — the provider ID is never
+// substituted back in.
+func (b *providerSearchBackend) resolveKnownAssetID(ctx context.Context, ext search.ExternalCandidate) string {
+	resolver := b.resolver
+	if resolver == nil {
+		resolver = search.NewNoopCanonicalIdentityResolver()
+	}
+	id, err := resolver.ResolveSource(ctx, ext.SourceType, ext.SourceRef)
+	if err != nil || !id.Resolved || id.AssetID == "" {
+		return ""
+	}
+	return id.AssetID
+}
+
+// providerSourceRef returns the provider-native reference for a candidate
+// (ExternalID preferred, ID as legacy fallback, SourceRef last resort).
+func providerSourceRef(c providers.Candidate) string {
+	return firstNonEmptyProvider(c.ExternalID, c.ID, c.SourceRef)
 }
 
 func firstNonEmptyProvider(values ...string) string {

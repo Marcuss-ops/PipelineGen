@@ -139,6 +139,14 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if err := bootstrapProviderRegistry(providerReg, providerEntries, []module.DescriptorProviders{providerDescriptor}); err != nil {
 		return registryCrossStepState{}, err
 	}
+	// PR-SEARCH-UNIVERSE (August 2026): the provider backend resolves
+	// source_type|source_ref → canonical asset via the canonical identity
+	// resolver instead of fabricating an AssetID from the provider ID.
+	var canonicalResolver search.CanonicalIdentityResolver
+	if root.Search != nil {
+		canonicalResolver = newAssetIndexCanonicalResolver(root.Search.AssetResolver)
+	}
+
 	searchFanOut, searchBackends, searchAgg, searchErr := registerSearchBackend(
 		log,
 		providerReg,
@@ -148,6 +156,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		mediaRepo,
 		deliveryPort,
 		rerankerPort,
+		canonicalResolver,
 	)
 	if searchErr != nil {
 		return registryCrossStepState{}, searchErr

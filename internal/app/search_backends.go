@@ -92,6 +92,13 @@ type SearchBackendBuildOpts struct {
 	MediaRepo   search.MediaReadRepository
 	Delivery    search.AssetDeliveryService
 	Reranker    rerankerClient
+
+	// CanonicalResolver is the source→asset identity resolver consumed
+	// by providerSearchBackend. PR-SEARCH-UNIVERSE (August 2026): the
+	// provider adapter no longer fabricates a canonical AssetID from
+	// the provider ID — it delegates to this resolver. nil is fail-safe
+	// (the backend degrades to the noop resolver: identity unknown).
+	CanonicalResolver search.CanonicalIdentityResolver
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
@@ -125,6 +132,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			backend := &providerSearchBackend{
 				provider: sp,
 				caps:     translateCaps(sp.Capabilities()),
+				resolver: opts.CanonicalResolver,
 			}
 			if err := reg.Register(backend); err != nil {
 				log.Error("BuildSearchBackends: provider backend register failed (fail-closed)",
