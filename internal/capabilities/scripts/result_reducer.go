@@ -61,12 +61,36 @@ func (r *VidRushResultReducer) Reduce(spec scriptpkg.SpecSceneOutput, results []
 
 	for i := range out.Scenes {
 		seg, ok := matchSceneSegment(out.Scenes[i], ordered)
-		if !ok || r.merger == nil {
+		if !ok {
+			continue
+		}
+		if isStaleSegment(out.Scenes[i], seg) {
+			continue
+		}
+		if r.merger == nil {
 			continue
 		}
 		out.Scenes[i] = r.merger.Merge(out.Scenes[i], seg)
 	}
 	return out
+}
+
+// isStaleSegment reports whether seg was derived from different scene content
+// than the current scene and must therefore be discarded before the merge. A
+// result is stale when its TextHash is present and differs from the current
+// scene's content hash (SceneTextHash of scene.Text); an empty TextHash has no
+// identity to compare and is left to the caller's upstream fencing.
+//
+// Revision fencing is owned by VidRushIncrementalCoordinator, which compares
+// each result's (revision, text_hash) against the latest committed identity
+// before results ever reach the reducer; this check is the merge-side content
+// fence that keeps a scene from being annotated with media extracted from an
+// older text version.
+func isStaleSegment(scene scriptpkg.SpecScene, seg scriptpkg.VidRushSegmentResult) bool {
+	if seg.TextHash == "" {
+		return false
+	}
+	return seg.TextHash != SceneTextHash(scene.Text)
 }
 
 // matchSceneSegment returns the first result (in the already-ordered slice)

@@ -144,6 +144,23 @@ func TestIncrementalCoordinator_DiscardsStaleTextHashResults(t *testing.T) {
 	assert.Equal(t, 1, coordinator.StaleResults(), "the superseded revision-1 result must be fenced out")
 }
 
+func TestIncrementalCoordinator_DiscardsStaleRevisionResults(t *testing.T) {
+	enricher := newBlockingSegmentEnricher()
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	// Same text, but the scene was regenerated at a higher revision. The
+	// revision-1 enrichment must be fenced even though the text hash matches.
+	commit(t, coordinator, "run-1", "scene-0", 0, "Same scene text", 1)
+	commit(t, coordinator, "run-1", "scene-0", 0, "Same scene text", 2)
+	close(enricher.release)
+
+	results, err := coordinator.Wait(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "Same scene text", results[0].Text)
+	assert.Equal(t, 1, coordinator.StaleResults(), "the superseded revision-1 result must be fenced even with identical text")
+}
+
 func TestIncrementalCoordinator_FinalBarrierWaitsOnlyForPendingScenes(t *testing.T) {
 	enricher := newBlockingSegmentEnricher()
 	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
