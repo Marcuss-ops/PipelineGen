@@ -46,10 +46,14 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 	}
 	output := filepath.Join(os.TempDir(), "pipelinegen-final-audio-"+plan.PlanSHA256+".m4a")
 	started := time.Now()
-	asset, err := r.processor.RenderAudioPlan(ctx, plan, assets, output)
+	asset, stageMetrics, err := r.processor.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
 	if err != nil {
 		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
 	}
+	metrics := stageMetrics
+	metrics.TotalMS = time.Since(started).Milliseconds()
+	metrics.AudioDurationMS = asset.DurationMS
+	metrics.AudioEncodePasses = 1
 	return scripts.FinalAudioReference{
 		AssetID: asset.AssetID, Path: output, Container: strings.TrimPrefix(filepath.Ext(output), "."),
 		AudioContractVersion: asset.AudioContractVersion,
@@ -58,7 +62,7 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 		SampleRate: asset.SampleRate, Channels: asset.Channels, ChannelLayout: asset.ChannelLayout,
 		Bitrate: asset.Bitrate, DurationUS: asset.DurationMS * 1000, DurationMS: asset.DurationMS,
 		StartPTS: asset.StartPTS, SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible,
-	}, scripts.AudioPipelineMetrics{TotalMS: time.Since(started).Milliseconds(), AudioDurationMS: asset.DurationMS, AudioEncodePasses: 1}, nil
+	}, metrics, nil
 }
 
 var _ scripts.CombinedAudioRenderer = (*CombinedAudioRenderer)(nil)
@@ -247,12 +251,20 @@ func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string
 }
 
 func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error) {
+	asset, _, err := p.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
+	return asset, err
+}
+
+// RenderAudioPlanWithMetrics is the same combined-audio render as
+// RenderAudioPlan but also returns the per-stage timing metrics (mix, AAC
+// encode, probe, hash) so the script runner can persist them durably.
+func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, scripts.AudioPipelineMetrics, error) {
 	if err := plan.Validate(); err != nil {
-		return audio.FinalAudioAsset{}, err
+		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, err
 	}
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("marshal audio plan: %w", err)
+		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("marshal audio plan: %w", err)
 	}
 	wireAssets := make([]audioAsset, len(assets))
 	for i, asset := range assets {
@@ -260,32 +272,40 @@ func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.Compile
 	}
 	result, err := p.client.call(ctx, request{Operation: OperationRenderAudioPlan, OutputPath: output, AudioPlan: planJSON, AudioAssets: wireAssets})
 	if err != nil {
-		return audio.FinalAudioAsset{}, err
+		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, err
 	}
 	if result.Metadata == nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("render_audio_plan returned no probe metadata")
+		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("render_audio_plan returned no probe metadata")
 	}
+	var metrics scripts.AudioPipelineMetrics
+	metrics.MixMS = result.Metadata.MixMS
+	metrics.AACEncodeMS = result.Metadata.EncodeMS
+	metrics.ProbeMS = result.Metadata.ProbeMS
+
 	file, err := os.Open(output)
 	if err != nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("open rendered audio for certification: %w", err)
+		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("open rendered audio for certification: %w", err)
 	}
+	hashStarted := time.Now()
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
 		_ = file.Close()
-		return audio.FinalAudioAsset{}, fmt.Errorf("hash rendered audio: %w", err)
+		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("hash rendered audio: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("close rendered audio: %w", err)
+		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("close rendered audio: %w", err)
 	}
+	metrics.HashMS = time.Since(hashStarted).Milliseconds()
+
 	stat, err := os.Stat(output)
 	if err != nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("stat rendered audio: %w", err)
+		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("stat rendered audio: %w", err)
 	}
 	asset := audio.FinalAudioAsset{AssetID: output, AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: fmt.Sprintf("%x", hasher.Sum(nil)), Codec: result.Metadata.AudioCodec, Profile: result.Metadata.AudioProfile, SampleRate: int(result.Metadata.SampleRate), Channels: int(result.Metadata.Channels), ChannelLayout: plan.Output.ChannelLayout, Bitrate: result.Metadata.Bitrate, DurationMS: int64(result.Metadata.DurationSec*1000 + 0.5), StartPTS: result.Metadata.StartPTS, SizeBytes: stat.Size(), FinalMix: true, CopyEligible: true}
 	if err := audio.ValidateFinalAudio(asset, plan); err != nil {
-		return audio.FinalAudioAsset{}, fmt.Errorf("rendered audio certification failed: %w", err)
+		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("rendered audio certification failed: %w", err)
 	}
-	return asset, nil
+	return asset, metrics, nil
 }
 
 var _ mediaexec.AudioProcessor = (*VideoProcessor)(nil)

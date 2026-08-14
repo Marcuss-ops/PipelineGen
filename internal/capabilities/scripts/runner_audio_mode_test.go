@@ -108,3 +108,31 @@ func TestRunnerFinalAudioTimelineAndRenderPlanShareOneAsset(t *testing.T) {
 		t.Fatalf("render plan timeline hash=%q, want canonical %q", res.RenderPlan.TimelineHash, timelineHash)
 	}
 }
+
+// TestRunnerCombinedTimelineFeedsAudioMetrics certifies the runner persists
+// AudioPipelineMetrics for a COMBINED_TIMELINE run and exercises the
+// compile-timing + renderer-metric merge path. Wall-clock assertions are
+// intentionally limited to the deterministic renderer fields; the >0 checks
+// for mix/encode/probe/hash/upload/compile timings are done by the live
+// observability certification.
+func TestRunnerCombinedTimelineFeedsAudioMetrics(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	runID := "run-combined-metrics"
+	if err := repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}); err != nil {
+		t.Fatal(err)
+	}
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	if final.Status != RunStatusCompleted {
+		t.Fatalf("status=%s error=%s", final.Status, final.ErrorMessage)
+	}
+	if final.Result == nil || final.Result.AudioMetrics == nil {
+		t.Fatalf("audio metrics must be persisted for COMBINED_TIMELINE: %+v", final.Result)
+	}
+	if final.Result.AudioMetrics.AudioDurationMS <= 0 {
+		t.Fatalf("renderer audio duration must be durable: %+v", final.Result.AudioMetrics)
+	}
+}

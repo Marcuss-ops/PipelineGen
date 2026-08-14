@@ -267,6 +267,11 @@ type mediaMetadata struct {
 	StartPTS     int64   `json:"start_pts"`
 	HasVideo     bool    `json:"has_video"`
 	HasAudio     bool    `json:"has_audio"`
+	// Stage timings populated only by render_audio_plan (mix → AAC encode →
+	// probe). Zero everywhere else.
+	MixMS    int64 `json:"mix_ms"`
+	EncodeMS int64 `json:"encode_ms"`
+	ProbeMS  int64 `json:"probe_ms"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the
