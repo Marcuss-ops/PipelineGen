@@ -28,7 +28,13 @@
 #                                single authority, legacy timings
 #                                (GenerationTimings) is NOT double-emitted,
 #                                and instrumented stages fed timing > 0
-#  10. PASS/FAIL summary
+#  10. render copy certification → assert the M4A copy-only render path:
+#                                FINAL_AUDIO_COPY strategy + copy_eligible
+#                                final_audio master, BUILD encoded exactly
+#                                once (audio_encode_passes=1); the render
+#                                copy never re-encodes (media-plane frames
+#                                stay 0 — see metrics_media.go)
+#  11. PASS/FAIL summary
 #
 # The `project` field is REQUIRED (PR-VOICEOVER-DRIVE-DRIFT): the semantic
 # publish path fails closed with a typed error when it is empty.
@@ -81,6 +87,7 @@ TAG_PREFIX="obs_cert_$(date +%s)_$$"
 REQ_ID="${TAG_PREFIX}_single"
 JOB_ID=""
 CHILD_JOB_ID=""
+CMP_JOB_ID=""
 declare -a FAILURES=()
 fail() { FAILURES+=("$1"); }
 
@@ -342,6 +349,7 @@ verify_timing_contract_comparison() {
         printf '%sFAIL: POST /api/script/generate returned no job_id%s\n' "$RED" "$RESET" >&2
         return 1
     fi
+    CMP_JOB_ID="$cmp_job_id"
     printf '  enqueued script.generate job_id=%s\n' "$cmp_job_id"
 
     local saved_poll="$SMOKE_POLL_TIMEOUT_SECONDS"
@@ -425,6 +433,83 @@ verify_timing_contract_comparison() {
     done
 
     return $cmp_rc
+}
+
+# ── RENDER COPY CERTIFICATION (M4A copy-only render path) ────────
+# The render worker must NOT re-encode the certified final_audio.m4a.
+# The literal durable fields final_audio_copy / final_mux_audio_mode /
+# render-side audio_encode_passes=0 do NOT exist in the current render
+# result ({render_job_id, output_path}); the copy-only contract is
+# certified from the script.generate durable result instead:
+#   final_audio_copy=true          → audio_strategy == "FINAL_AUDIO_COPY"
+#                                    AND final_audio.copy_eligible == true
+#   audio_encode_passes=1 (BUILD)  → audio_metrics.audio_encode_passes == 1
+#                                    (master AAC encoded exactly once)
+#   audio_encode_passes=0 (RENDER) → MuxFinalAudioCopy never re-encodes;
+#                                    media plane reports frames_decoded=0 /
+#                                    frames_encoded=0 + ffmpeg_exec_count
+#                                    increment (metrics_media.go)
+#   final_mux_audio_mode=COPY      → OperationMuxAudioCopy (ffmpeg
+#                                    -c:v copy -c:a copy, no encode fallback)
+verify_render_copy_certification() {
+    smoke_log_section "RENDER COPY CERTIFICATION (M4A copy-only render path)"
+    if [[ -z "$CMP_JOB_ID" ]]; then
+        fail "render_copy_no_cmp_job"
+        printf '%sFAIL: no script.generate job id (timing comparison did not run)%s\n' "$RED" "$RESET" >&2
+        return 1
+    fi
+    if ! smoke_curl GET "/api/jobs/${CMP_JOB_ID}/full" >/dev/null; then
+        fail "render_copy_full_http_${SMOKE_LAST_HTTP}"
+        return 1
+    fi
+    local body="$SMOKE_LAST_BODY" rc=0
+    local strategy copy_eligible final_mix codec passes
+    strategy=$(jq -r '.result.data.result.audio_strategy // empty' "$body")
+    copy_eligible=$(jq -r '.result.data.result.final_audio.copy_eligible // false' "$body")
+    final_mix=$(jq -r '.result.data.result.final_audio.final_mix // false' "$body")
+    codec=$(jq -r '.result.data.result.final_audio.codec // empty' "$body")
+    passes=$(jq -r '.result.data.result.audio_metrics.audio_encode_passes // 0' "$body")
+
+    # final_audio_copy=true ≡ FINAL_AUDIO_COPY strategy + copy-eligible master.
+    if [[ "$strategy" == "FINAL_AUDIO_COPY" && "$copy_eligible" == "true" && "$final_mix" == "true" ]]; then
+        printf '  %sOK: final_audio_copy certified (audio_strategy=%s, copy_eligible=%s, final_mix=%s)%s\n' \
+            "$GREEN" "$strategy" "$copy_eligible" "$final_mix" "$RESET"
+    else
+        fail "render_copy_strategy_${strategy}_${copy_eligible}_${final_mix}"
+        printf '%sFAIL: final_audio_copy not certified (audio_strategy=%s copy_eligible=%s final_mix=%s)%s\n' \
+            "$RED" "$strategy" "$copy_eligible" "$final_mix" "$RESET" >&2
+        rc=1
+    fi
+
+    # Canonical copy master must be AAC (the copy path rejects non-canonical media).
+    if [[ "$codec" == "aac" ]]; then
+        printf '  %sOK: final_audio.codec=%s (canonical copy-eligible master)%s\n' "$GREEN" "$codec" "$RESET"
+    else
+        fail "render_copy_codec_${codec}"
+        printf '%sFAIL: final_audio.codec=%s (expected aac for copy path)%s\n' "$RED" "$codec" "$RESET" >&2
+        rc=1
+    fi
+
+    # BUILD encodes the master exactly once; the render copy path must add 0
+    # passes (it never emits audio_encode_passes — the distinction is what
+    # keeps build(=1) from being confused with render copy(=0)).
+    if [[ "$passes" =~ ^[0-9]+$ ]] && (( passes == 1 )); then
+        printf '  %sOK: BUILD audio_encode_passes=%s (master encoded once; render copy adds 0)%s\n' \
+            "$GREEN" "$passes" "$RESET"
+    else
+        fail "render_copy_build_passes_${passes}"
+        printf '%sFAIL: BUILD audio_encode_passes=%s (expected 1)%s\n' "$RED" "$passes" "$RESET" >&2
+        rc=1
+    fi
+
+    # final_mux_audio_mode=COPY / render audio_encode_passes=0 have no durable
+    # field today; the no-re-encode guarantee lives in MuxFinalAudioCopy
+    # (OperationMuxAudioCopy, -c:a copy) and surfaces on the media plane as
+    # frames_decoded=0 / frames_encoded=0 + ffmpeg_exec_count increment.
+    printf '  %sNOTE: final_mux_audio_mode/final_audio_copy are not durable render fields; copy mux = OperationMuxAudioCopy (-c:a copy) → frames_decoded=0 frames_encoded=0 + ffmpeg_exec_count increment (metrics_media.go)%s\n' \
+        "$YELLOW" "$RESET"
+
+    return $rc
 }
 
 main() {
@@ -517,10 +602,13 @@ main() {
     # ── Timing contract comparison (GenerationTimings vs AudioPipelineMetrics)
     verify_timing_contract_comparison || rc=1
 
+    # ── Render copy certification (M4A copy-only render path)
+    verify_render_copy_certification || rc=1
+
     # ── Aggregate verdict ────────────────────────────────────────
     echo
     if (( rc == 0 && ${#FAILURES[@]} == 0 )); then
-        printf '%sOBSERVABILITY CERTIFICATION: PASS (metrics reachable, families present, counter/histogram deltas +1, durable stage_progress 1/1, timing contract audio_metrics authoritative)%s\n' \
+        printf '%sOBSERVABILITY CERTIFICATION: PASS (metrics reachable, families present, counter/histogram deltas +1, durable stage_progress 1/1, timing contract audio_metrics authoritative, render copy FINAL_AUDIO_COPY certified)%s\n' \
             "$GREEN" "$RESET"
         printf '  parent=%s child=%s\n' "$JOB_ID" "$CHILD_JOB_ID"
         exit 0
