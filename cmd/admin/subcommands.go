@@ -93,6 +93,7 @@ var commandRegistry = map[string]commandHandler{
 	"folder-path-backfill":           runFolderPathBackfill,
 	"fullimages-migrate":             runFullImagesMigrate,
 	"gen-api-docs":                   runGenAPIDocs,
+	"identity-audit":                 runIdentityAudit,
 	"index-drive-clip":               runIndexDriveClip,
 	"index-provided-sound-effects":   runIndexProvidedSoundEffects,
 	"keep-drive-folder-files":        runKeepDriveFolderFiles,
