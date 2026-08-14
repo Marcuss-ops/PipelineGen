@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
@@ -41,13 +42,14 @@ const FrameVectorDim = 768
 // backed by Qdrant.
 type FrameQdrantIndexer struct {
 	client *transport.Client
+	writer qdrantindexing.ProjectionWriter
 	log    *zap.Logger
 }
 
 // NewFrameQdrantIndexer constructs the canonical adapter. client
 // MUST be non-nil (composition root fail-closed).
 func NewFrameQdrantIndexer(client *transport.Client, log *zap.Logger) *FrameQdrantIndexer {
-	return &FrameQdrantIndexer{client: client, log: log}
+	return &FrameQdrantIndexer{client: client, writer: qdrantindexing.NewTransportProjectionWriter(client), log: log}
 }
 
 // Compile-time assertion: FrameQdrantIndexer satisfies
@@ -74,7 +76,7 @@ func (i *FrameQdrantIndexer) IndexKeyframe(
 	vec []float32,
 	model string,
 ) error {
-	if i == nil || i.client == nil {
+	if i == nil || i.client == nil || i.writer == nil {
 		return fmt.Errorf(
 			"mediamemory: FrameQdrantIndexer not wired (client required): %w",
 			mediamemory.ErrSemanticNotConfigured,
@@ -129,7 +131,7 @@ func (i *FrameQdrantIndexer) IndexKeyframe(
 		Payload: payload,
 	}
 
-	if err := i.client.UpsertPoints(ctx, schema.FrameCollectionName, []schema.Point{point}); err != nil {
+	if err := i.writer.UpsertProjection(ctx, schema.FrameCollectionName, []schema.Point{point}); err != nil {
 		return fmt.Errorf(
 			"mediamemory: FrameQdrantIndexer upsert video=%q ts=%d: %w",
 			videoID, tsMs, errors.Join(mediamemory.ErrLinkerEmbeddingFailed, err),

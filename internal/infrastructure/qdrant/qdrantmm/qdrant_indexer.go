@@ -24,6 +24,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
@@ -35,13 +36,14 @@ import (
 // backed by Qdrant + EmbeddingChannelRegistry.
 type QdrantIndexer struct {
 	client   *transport.Client
+	writer   qdrantindexing.ProjectionWriter
 	embedder search.EmbeddingChannelRegistry
 	log      *zap.Logger
 }
 
 // NewQdrantIndexer constructs the canonical QdrantIndexer.
 func NewQdrantIndexer(client *transport.Client, embedder search.EmbeddingChannelRegistry, log *zap.Logger) *QdrantIndexer {
-	return &QdrantIndexer{client: client, embedder: embedder, log: log}
+	return &QdrantIndexer{client: client, writer: qdrantindexing.NewTransportProjectionWriter(client), embedder: embedder, log: log}
 }
 
 // Compile-time assertion: QdrantIndexer satisfies
@@ -55,7 +57,7 @@ var _ mediamemory.EmbeddingIndexer = (*QdrantIndexer)(nil)
 // ErrChannelNotApplicable are silently skipped for visual +
 // audio channels that are stubs today.
 func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaConcept) error {
-	if i == nil || i.client == nil || i.embedder == nil {
+	if i == nil || i.client == nil || i.writer == nil || i.embedder == nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer not wired (client + registry required): %w",
 			mediamemory.ErrSemanticNotConfigured)
 	}
@@ -130,7 +132,7 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 		Payload: payload,
 	}
 
-	if err := i.client.UpsertPoints(ctx, schema.ConceptCollectionName, []schema.Point{point}); err != nil {
+	if err := i.writer.UpsertProjection(ctx, schema.ConceptCollectionName, []schema.Point{point}); err != nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer upsert concept=%q: %w", c.ID, err)
 	}
 	return nil
@@ -139,7 +141,7 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 // DeindexConcept deletes the Qdrant point that corresponds to
 // the canonical concept ID.
 func (i *QdrantIndexer) DeindexConcept(ctx context.Context, conceptID string) error {
-	if i == nil || i.client == nil {
+	if i == nil || i.client == nil || i.writer == nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer not wired (client required): %w",
 			mediamemory.ErrSemanticNotConfigured)
 	}
@@ -148,7 +150,7 @@ func (i *QdrantIndexer) DeindexConcept(ctx context.Context, conceptID string) er
 			mediamemory.ErrInvalidBindingInput)
 	}
 	pointID := schema.ConceptPointIDPrefix + conceptID
-	if err := i.client.DeletePoints(ctx, schema.ConceptCollectionName, []string{pointID}); err != nil {
+	if err := i.writer.DeleteProjection(ctx, schema.ConceptCollectionName, []string{pointID}); err != nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer delete concept=%q: %w", conceptID, err)
 	}
 	return nil
