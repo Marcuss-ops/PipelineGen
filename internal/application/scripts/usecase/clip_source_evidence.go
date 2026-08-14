@@ -23,24 +23,22 @@ func canonicalClipDriveLink(clip *asset.Asset) string {
 		}
 		return "https://drive.google.com/file/d/" + link + "/view"
 	}
-	// A few legacy catalog rows have neither locator metadata populated,
-	// while their canonical ID is the published Drive file ID. Restrict
-	// this compatibility fallback to Drive-sized IDs so arbitrary internal
-	// asset IDs are not exposed as fabricated links.
-	if id := strings.TrimSpace(clip.ID); len(id) >= 20 {
-		return "https://drive.google.com/file/d/" + id + "/view"
-	}
+	// The internal asset ID is never a Drive locator. If the registry has no
+	// verified Drive location, keep the link absent and let downstream policy
+	// surface the unavailable location explicitly.
 	return ""
 }
 
 // appendClipSourceText writes the legacy technical per-clip source
 // text block used for provenance and compatibility consumers.
-func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript string) {
+func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript, metadataText string) {
 	w.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, clipDisplayName(clip, id)))
 	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
 		w.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
 	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
 		w.WriteString(fmt.Sprintf("  Description: %s\n", desc))
+	} else if metadataText = strings.TrimSpace(metadataText); metadataText != "" {
+		w.WriteString(fmt.Sprintf("  Description: %s\n", metadataText))
 	}
 	if transcript != "" {
 		excerpt := truncateExcerpt(transcript, excerptMaxRunes)
@@ -61,11 +59,11 @@ func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, 
 // per-clip loop calls resolveTranscript exactly once and
 // threads the result through). This method does NOT call
 // resolveTranscript itself.
-func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position int, clip *asset.Asset, transcript string) {
+func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position int, clip *asset.Asset, transcript, metadataText string) {
 	if w == nil || clip == nil {
 		return
 	}
-	view := buildModelClipView(position, clip, transcript)
+	view := buildModelClipView(position, clip, transcript, metadataText)
 	w.WriteString(fmt.Sprintf("NARRATIVE EVIDENCE %d\n", position+1))
 	w.WriteString(fmt.Sprintf("Ref: %s\n", view.Ref))
 	if title := strings.TrimSpace(view.VisualSummary); title != "" {
@@ -81,7 +79,7 @@ func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position
 	w.WriteString("\n")
 }
 
-func buildModelClipView(position int, clip *asset.Asset, transcript string) scriptpkg.ModelClipView {
+func buildModelClipView(position int, clip *asset.Asset, transcript, metadataText string) scriptpkg.ModelClipView {
 	view := scriptpkg.ModelClipView{
 		Ref:        fmt.Sprintf("clip_%d", position+1),
 		Transcript: truncateExcerpt(strings.TrimSpace(transcript), excerptMaxRunes),
@@ -98,6 +96,8 @@ func buildModelClipView(position int, clip *asset.Asset, transcript string) scri
 		view.Description = searchText
 	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
 		view.Description = desc
+	} else {
+		view.Description = strings.TrimSpace(metadataText)
 	}
 	if title := strings.TrimSpace(clipDisplayName(clip, "")); title != "" {
 		view.VisualSummary = title
@@ -112,13 +112,16 @@ func buildModelClipView(position int, clip *asset.Asset, transcript string) scri
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
 // transcript string is PRE-RESOLVED by the caller.
-func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset, transcript string) {
+func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset, transcript, metadataText string) {
 	if details == nil || clip == nil || c == nil {
 		return
 	}
 	desc := strings.TrimSpace(clip.SearchText)
 	if desc == "" {
 		desc = strings.TrimSpace(clip.GetMetadataString("description"))
+	}
+	if desc == "" {
+		desc = strings.TrimSpace(metadataText)
 	}
 	startMs, endMs := clipTimeline(clip)
 	if startMs < 0 {
@@ -135,6 +138,7 @@ func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDe
 		StartMs:     startMs,
 		EndMs:       endMs,
 		DriveLink:   canonicalClipDriveLink(clip),
+		LocalPath:   strings.TrimSpace(clip.LocalPath()),
 	}
 }
 

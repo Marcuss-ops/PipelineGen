@@ -75,6 +75,19 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	// Assert documents published.
 	require.NotNil(t, final.Result.Documents, "documents should be published")
 	assert.Equal(t, 2, len(docPub.records), "should have 2 doc upsert calls (EN + ES)")
+	for _, record := range docPub.records {
+		assert.Contains(t, record.Content, "<h2>Scene 1</h2>")
+		assert.Contains(t, record.Content, "<h2>SpecScene JSON</h2>")
+		assert.Contains(t, record.Content, "<pre><code>")
+		if record.Language == "en" {
+			assert.Contains(t, record.Content, "First scene text")
+			assert.NotContains(t, record.Content, "[TRANSLATED]")
+		}
+		if record.Language == "es" {
+			assert.Contains(t, record.Content, "[TRANSLATED] First scene text")
+			assert.NotContains(t, record.Content, "Voiceover: https://drive.google.com/VOICE-EN")
+		}
+	}
 
 	// Assert the sealed canonical render contract reaches the enqueue stage.
 	require.NotNil(t, final.Result.CanonicalTimeline, "canonical timeline should be persisted")

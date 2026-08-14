@@ -34,7 +34,7 @@ const (
 // DefaultV3Schema returns the canonical v3 index schema.
 //
 // v3 represents the QDRANT-003 schema with real embedding models:
-//   - text: multilingual-e5-base, 768 dims, Cosine, normalized
+//   - text: nomic-embed-text, 768 dims, Cosine, normalized
 //   - transcript: same model, distinct vector name
 //   - visual: SigLIP so400m patch14-384, 768 dims, Cosine, normalized (real model, no fake)
 //   - audio: CLAP HTSAT, 512 dims, Cosine (optional, only when model available)
@@ -42,29 +42,29 @@ const (
 func DefaultV3Schema() *IndexSchema {
 	return &IndexSchema{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		PhysicalName: "media_assets_v3_nomic_768_siglip_768",
 		RuntimeAlias: "media_assets_current",
 		DenseVectors: []EmbeddingSpec{
 			{
 				Channel:       "text",
-				Model:         "multilingual-e5-base",
+				Model:         "nomic-embed-text",
 				ModelVersion:  "2026-06-16-v1",
 				Dimensions:    768,
 				Distance:      "Cosine",
 				Normalized:    true,
-				QueryPrefix:   "query: ",
-				IndexPrefix:   "passage: ",
+				QueryPrefix:   "",
+				IndexPrefix:   "",
 				PreprocessVer: "v1",
 			},
 			{
 				Channel:       "transcript",
-				Model:         "multilingual-e5-base",
+				Model:         "nomic-embed-text",
 				ModelVersion:  "2026-06-16-v1",
 				Dimensions:    768,
 				Distance:      "Cosine",
 				Normalized:    true,
-				QueryPrefix:   "query: ",
-				IndexPrefix:   "passage: ",
+				QueryPrefix:   "",
+				IndexPrefix:   "",
 				PreprocessVer: "v1-transcript",
 			},
 			{

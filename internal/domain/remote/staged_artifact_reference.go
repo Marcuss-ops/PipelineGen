@@ -135,13 +135,14 @@ type StagedArtifactReference struct {
 	// Local-worker completion fields are projected from the validated
 	// artifact manifest before ArtifactPreparation runs. They remain
 	// optional for callers that submit a reference through the public wire.
-	Path          string `json:"path,omitempty"`
-	Filename      string `json:"filename,omitempty"`
-	MIMEType      string `json:"mime_type,omitempty"`
-	SizeBytes     int64  `json:"size_bytes,omitempty"`
-	Required      bool   `json:"required,omitempty"`
-	DriveGroup    string `json:"drive_group,omitempty"`
-	DriveLanguage string `json:"drive_language,omitempty"`
+	Path             string         `json:"path,omitempty"`
+	Filename         string         `json:"filename,omitempty"`
+	MIMEType         string         `json:"mime_type,omitempty"`
+	SizeBytes        int64          `json:"size_bytes,omitempty"`
+	Required         bool           `json:"required,omitempty"`
+	DriveGroup       string         `json:"drive_group,omitempty"`
+	DriveLanguage    string         `json:"drive_language,omitempty"`
+	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
 }
 
 // Validate returns nil if the StagedArtifactReference is well-formed;

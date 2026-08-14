@@ -11,12 +11,20 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
+
+// FileSystem is the minimal read-side filesystem port used by
+// ValidateManifestFiles to re-hash manifest entries and the final audio
+// asset. The adapter (internal/platform/filesystem.OS) injects os.Open +
+// os.Stat; the capability never imports os directly.
+type FileSystem interface {
+	Open(path string) (io.ReadCloser, error)
+	Size(path string) (int64, error)
+}
 
 const PlanVersion = "render-plan.v2"
 
@@ -148,30 +156,28 @@ func Compile(input CompileInput) (RenderPlan, error) {
 		return RenderPlan{}, err
 	}
 	for i, segment := range input.Timeline.Segments {
-		if strings.TrimSpace(segment.Video.AssetID) == "" {
-			continue
+		for _, video := range segment.EffectiveVideoSegments() {
+			if strings.TrimSpace(video.AssetID) == "" {
+				continue
+			}
+			if video.SourceDurationUS <= 0 || video.TimelineDurationUS <= 0 {
+				return RenderPlan{}, fmt.Errorf("%w: segment %s source duration is invalid", ErrInvalidPlan, segment.ID)
+			}
+			start, destinationCount, err := resolver.FrameRange(segment.TimelineStartUS+video.TimelineOffsetUS, video.TimelineDurationUS)
+			if err != nil {
+				return RenderPlan{}, fmt.Errorf("%w: segment %s timeline frames: %v", ErrInvalidPlan, segment.ID, err)
+			}
+			sourceStart, err := resolver.FrameAt(video.SourceInUS)
+			if err != nil {
+				return RenderPlan{}, fmt.Errorf("%w: segment %s source frame: %v", ErrInvalidPlan, segment.ID, err)
+			}
+			plan.VideoTracks[0].Segments = append(plan.VideoTracks[0].Segments, VideoSegment{
+				AssetID:  video.AssetID,
+				Source:   RenderSource{InFrame: sourceStart, FrameCount: destinationCount},
+				Timeline: FrameRange{StartFrame: start, FrameCount: destinationCount},
+				ZIndex:   i,
+			})
 		}
-		if segment.Video.SourceDurationUS <= 0 || segment.Video.SourceDurationUS != segment.DurationUS {
-			return RenderPlan{}, fmt.Errorf("%w: segment %s source duration must equal timeline duration", ErrInvalidPlan, segment.ID)
-		}
-		start, destinationCount, err := resolver.FrameRange(segment.TimelineStartUS, segment.DurationUS)
-		if err != nil {
-			return RenderPlan{}, fmt.Errorf("%w: segment %s timeline frames: %v", ErrInvalidPlan, segment.ID, err)
-		}
-		sourceStart, err := resolver.FrameAt(segment.Video.SourceInUS)
-		if err != nil {
-			return RenderPlan{}, fmt.Errorf("%w: segment %s source frame: %v", ErrInvalidPlan, segment.ID, err)
-		}
-		// The canonical segment duration determines playback length. Reuse
-		// the destination count for the source range so fractional source and
-		// destination boundaries cannot introduce a one-frame sync drift.
-		sourceCount := destinationCount
-		plan.VideoTracks[0].Segments = append(plan.VideoTracks[0].Segments, VideoSegment{
-			AssetID:  segment.Video.AssetID,
-			Source:   RenderSource{InFrame: sourceStart, FrameCount: sourceCount},
-			Timeline: FrameRange{StartFrame: start, FrameCount: destinationCount},
-			ZIndex:   i,
-		})
 	}
 	if err := plan.Seal(); err != nil {
 		return RenderPlan{}, err
@@ -341,17 +347,15 @@ func (p RenderPlan) Validate() error {
 		// contiguous and still cover the remainder of the output.
 		expectedStart := int64(-1)
 		if track.Index == 0 {
-			timelineVideo := make([]audio.TimelineSegment, 0, len(p.Timeline.Segments))
+			timelineVideo := make([]audio.VideoSegment, 0, len(p.Timeline.Segments))
 			for _, timelineSegment := range p.Timeline.Segments {
-				if timelineSegment.Video.AssetID != "" {
-					timelineVideo = append(timelineVideo, timelineSegment)
-				}
+				timelineVideo = append(timelineVideo, timelineSegment.EffectiveVideoSegments()...)
 			}
 			if len(track.Segments) != len(timelineVideo) {
 				return fmt.Errorf("%w: primary track does not match canonical video segments", ErrInvalidPlan)
 			}
 			for i, segment := range timelineVideo {
-				if segment.Video.SourceDurationUS != segment.DurationUS || track.Segments[i].AssetID != segment.Video.AssetID {
+				if track.Segments[i].AssetID != segment.AssetID {
 					return fmt.Errorf("%w: source duration or asset diverges from canonical timeline", ErrInvalidPlan)
 				}
 			}
@@ -377,12 +381,12 @@ func (p RenderPlan) Validate() error {
 	return nil
 }
 
-func (p RenderPlan) ValidateManifestFiles() error {
+func (p RenderPlan) ValidateManifestFiles(fs FileSystem) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
 	for _, entry := range p.Manifest {
-		file, err := os.Open(entry.Path)
+		file, err := fs.Open(entry.Path)
 		if err != nil {
 			return fmt.Errorf("%w: open %s: %v", ErrAssetHashDrift, entry.AssetID, err)
 		}
@@ -394,11 +398,12 @@ func (p RenderPlan) ValidateManifestFiles() error {
 		}
 	}
 	if p.FinalAudio != nil {
-		file, err := os.Open(p.FinalAudio.Path)
+		file, err := fs.Open(p.FinalAudio.Path)
 		if err != nil {
 			return fmt.Errorf("%w: open final audio %s: %v", ErrAssetHashDrift, p.FinalAudio.AssetID, err)
 		}
-		if info, statErr := file.Stat(); statErr != nil || info.Size() != p.FinalAudio.SizeBytes {
+		size, statErr := fs.Size(p.FinalAudio.Path)
+		if statErr != nil || size != p.FinalAudio.SizeBytes {
 			_ = file.Close()
 			return fmt.Errorf("%w: final audio size mismatch for %s", ErrAssetHashDrift, p.FinalAudio.AssetID)
 		}

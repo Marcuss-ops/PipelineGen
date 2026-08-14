@@ -185,6 +185,67 @@ func TestArtifactPublisherAdapter_Publish_StockMetadata_UsesRunFingerprintPath(t
 	}
 }
 
+func TestArtifactPublisherAdapter_Publish_OverlayUsesExistingArtifactFolder(t *testing.T) {
+	content := "overlay bytes"
+	localPath, sha := writeTempFile(t, content)
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	_, err := adapter.Publish(context.Background(), finalization.VerifiedArtifact{
+		ArtifactID:         "video-847:overlay:001",
+		Kind:               finalization.KindVideo,
+		Filename:           "overlay_001.mov",
+		LocalPath:          localPath,
+		SHA256:             sha,
+		SourceVersion:      4,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		Source:             "overlay",
+		ResolvedFolderID:   "artifact-folder-847",
+		RootFolderResolved: true,
+	})
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+	if stub.lastReq == nil {
+		t.Fatal("expected Publish to be called")
+	}
+	if stub.lastReq.DestinationFolderID != "artifact-folder-847" {
+		t.Fatalf("overlay root = %q, want existing artifact folder", stub.lastReq.DestinationFolderID)
+	}
+	if len(stub.lastReq.DestinationSubpath) != 1 || stub.lastReq.DestinationSubpath[0] != "overlay" {
+		t.Fatalf("overlay subpath = %#v, want [overlay]", stub.lastReq.DestinationSubpath)
+	}
+	if stub.lastReq.ConflictPolicy != delivery.ConflictSkip {
+		t.Fatalf("overlay conflict policy = %v, want ConflictSkip", stub.lastReq.ConflictPolicy)
+	}
+}
+
+func TestArtifactPublisherAdapter_Publish_OverlayExplicitSubpathWins(t *testing.T) {
+	content := "overlay bytes"
+	localPath, sha := writeTempFile(t, content)
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	_, err := adapter.Publish(context.Background(), finalization.VerifiedArtifact{
+		ArtifactID:         "video-847:overlay:002",
+		Kind:               finalization.KindVideo,
+		Filename:           "overlay_002.mov",
+		LocalPath:          localPath,
+		SHA256:             sha,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		Source:             "overlay",
+		DriveSubpath:       []string{"overlay", "v4"},
+		ResolvedFolderID:   "artifact-folder-847",
+		RootFolderResolved: true,
+	})
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+	if got := stub.lastReq.DestinationSubpath; len(got) != 2 || got[0] != "overlay" || got[1] != "v4" {
+		t.Fatalf("explicit overlay subpath = %#v, want [overlay v4]", got)
+	}
+}
+
 func TestArtifactPublisherAdapter_Publish_UnverifiedResolvedFolderFailsClosed(t *testing.T) {
 	content := "unverified folder artifact"
 	localPath, sha := writeTempFile(t, content)

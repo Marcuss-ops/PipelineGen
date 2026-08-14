@@ -23,10 +23,8 @@ import (
 )
 
 // OllamaEmbedderAdapter wraps *client.Client to satisfy asset.Embedder.
-// Model and ModelVersion are empty because the Ollama /api/embeddings
-// endpoint does not return model provenance — downstream consumers
-// (PayloadMapper, Qdrant index writer) MUST fill these from the
-// IndexSchema manifest at write time.
+// Model provenance is owned by the composition root/schema contract. The
+// Ollama wire response is not trusted to redefine the active vector space.
 type OllamaEmbedderAdapter struct {
 	client *client.Client
 }

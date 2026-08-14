@@ -6,16 +6,16 @@
   "items": [
     {
       "id": "search-full-timeline",
-      "title": "Manny Pacquiao vs Adrien Broner: full fight chronological recap",
-      "language": "it",
+      "title": "Actors Comedy Clips: Qdrant evidence recap",
+      "language": "en",
       "tone": "documentary",
       "style": "Follow the retrieved evidence chronologically. Do not invent missing stages.",
       "model": "gemma4:e4b",
       "source": {
         "type": "search",
-        "query": "Manny Pacquiao Adrien Broner full fight from opening round to verdict",
-        "max_clips": 13,
-        "min_coverage": 1,
+        "query": "interview",
+        "max_clips": 1,
+        "min_coverage": 0,
         "min_transcript_words": 5,
         "ordering_strategy": "chronological",
         "grounding_policy": "clips_primary"
@@ -25,19 +25,7 @@
         "min_words": 500,
         "segment_words": 50,
         "segment_topics": [
-          "round 1",
-          "round 2",
-          "round 3",
-          "round 4",
-          "round 5",
-          "round 6",
-          "round 7",
-          "round 8",
-          "round 9",
-          "round 10",
-          "round 11",
-          "round 12",
-          "official verdict"
+          "interview"
         ]
       },
       "output": {

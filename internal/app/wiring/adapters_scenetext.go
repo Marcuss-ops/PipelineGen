@@ -103,7 +103,7 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		return nil, fmt.Errorf("scenetext: engine generate failed: %w", err)
 	}
 
-	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio)
+	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio, req.RenderVideo)
 	if err != nil {
 		return nil, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
 	}
@@ -203,61 +203,49 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		}
 		durationMS := int64(math.Max(1000, float64(len(strings.Fields(text))*60000/150)))
 		out := scriptgen.Scene{
-			ID:           fmt.Sprintf("scene-%d", i),
-			Index:        i,
-			DurationMS:   durationMS,
-			DurationUS:   durationMS * 1000,
-			Text:         map[scriptgen.Language]string{req.SourceLanguage: text},
-			Audio:        capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
-			AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover}},
+			ID:         fmt.Sprintf("scene-%d", i),
+			Index:      i,
+			DurationMS: durationMS,
+			DurationUS: durationMS * 1000,
+			Text:       map[scriptgen.Language]string{req.SourceLanguage: text},
+			Audio:      capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		}
 
-		// The first declared segment is the short intro. It is intentionally
-		// not assigned a clip; clip i maps to scene i+1.
-		clipIndex := i
-		if len(plan.Segments) == len(clipIDs)+1 {
-			clipIndex = i - 1
-		}
-		if clipIndex < 0 {
-			scenes = append(scenes, out)
-			continue
-		}
-		if clipIndex >= len(clipIDs) {
-			return nil, fmt.Errorf("scene %d has no matching accepted clip", i)
-		}
-		clipID := clipIDs[clipIndex]
-		canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, clipID)
-		if err != nil || canonical == nil {
-			if err == nil {
-				err = fmt.Errorf("asset not found")
+		ownedIDs := []string(nil)
+		if len(plan.Segments) > 0 && i < len(plan.Segments) {
+			ownedIDs = plan.Segments[i].ClipIDs
+		} else {
+			clipIndex := i
+			if len(plan.Segments) == len(clipIDs)+1 {
+				clipIndex = i - 1
 			}
-			return nil, fmt.Errorf("resolve clip %s: %w", clipID, err)
+			if clipIndex >= 0 && clipIndex < len(clipIDs) {
+				ownedIDs = []string{clipIDs[clipIndex]}
+			}
 		}
-		sha256Hex, err := renderAssetSHA256(canonical)
-		if err != nil {
-			return nil, fmt.Errorf("resolve clip %s binary sha256: %w", clipID, err)
+		var offsetUS int64
+		if len(ownedIDs) > 0 {
+			out.DurationUS = 0
 		}
-		durationSeconds, err := renderAssetDurationSeconds(canonical)
-		if err != nil {
-			return nil, fmt.Errorf("resolve clip %s duration: %w", clipID, err)
+		for _, clipID := range ownedIDs {
+			clip, err := g.resolveEvidenceClip(ctx, plan, clipID, !req.RenderVideo)
+			if err != nil {
+				return nil, err
+			}
+			clipDurationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
+			out.Clips = append(out.Clips, clip)
+			if out.Clip == nil {
+				out.Clip = clip
+			}
+			out.DurationUS += clipDurationUS
+			out.AudioIntents = append(out.AudioIntents, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clipID, SourceInUS: clip.SourceInMS * 1000, SourceDurationUS: clipDurationUS, TimelineOffsetUS: offsetUS, TimelineDurationUS: clipDurationUS, UseOriginalAudio: true})
+			offsetUS += clipDurationUS
 		}
-		clip := &scriptgen.ClipReference{ID: clipID, Title: plan.ClipEvidence.ClipNames[clipID], Path: canonical.LocalPath(), AudioPath: canonical.LocalPath(), SHA256: sha256Hex, Duration: durationSeconds, FrameCount: int64(math.Round(durationSeconds * 30))}
-		if detail, ok := plan.ClipEvidence.ClipDetails[clipID]; ok {
-			clip.SourceInMS, clip.SourceOutMS = detail.StartMs, detail.EndMs
+		if len(out.Clips) > 0 {
+			out.DurationMS = out.DurationUS / 1000
+			out.Audio = out.AudioIntents[0]
+			out.AudioIntents = append(out.AudioIntents, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover})
 		}
-		if clip.SourceOutMS <= clip.SourceInMS {
-			clip.SourceInMS = 0
-			clip.SourceOutMS = int64(math.Round(clip.Duration * 1000))
-		}
-		if clip.SourceOutMS <= clip.SourceInMS {
-			return nil, fmt.Errorf("clip %s has no usable source duration", clipID)
-		}
-		clipDurationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
-		out.Clip = clip
-		out.DurationMS = clipDurationUS / 1000
-		out.DurationUS = clipDurationUS
-		out.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clipID, SourceInUS: clip.SourceInMS * 1000, SourceDurationUS: clipDurationUS, UseOriginalAudio: true}
-		out.AudioIntents = []capabilityaudio.AudioIntent{out.Audio, {Mode: capabilityaudio.AudioVoiceover}}
 		scenes = append(scenes, out)
 	}
 	return scenes, nil
@@ -345,6 +333,9 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		if resolved.SourceText != "" {
 			plan.SourceText = resolved.SourceText
 		}
+		if resolved.Segments != nil {
+			plan.Segments = scriptpkg.CloneScriptSegments(resolved.Segments)
+		}
 		if resolved.ClipEvidence != nil {
 			plan.ClipEvidence = resolved.ClipEvidence
 		}
@@ -369,6 +360,7 @@ func (g *SceneTextGenerator) convertScenes(
 	result *usecase.EngineResult,
 	sourceLang scriptgen.Language,
 	requestedAudio capabilityaudio.AudioMode,
+	requireLocalMedia bool,
 ) ([]scriptgen.Scene, error) {
 	scenes := make([]scriptgen.Scene, 0, len(result.Output.SpecScene.Scenes))
 	for _, s := range result.Output.SpecScene.Scenes {
@@ -383,35 +375,24 @@ func (g *SceneTextGenerator) convertScenes(
 		// fields from the canonical media registry before a RenderPlan can be
 		// built; accepting model-supplied paths or hashes would break the
 		// registry/CAS ownership boundary.
-		if s.Bindings.Clip != nil && s.Bindings.Clip.ClipID != "" {
-			binding := s.Bindings.Clip
-			clip := &scriptgen.ClipReference{ID: binding.ClipID, Title: binding.ClipTitle, DriveLink: binding.DriveLink}
-			if g.ClipAssets != nil {
-				canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, binding.ClipID)
-				if err != nil {
-					return nil, fmt.Errorf("resolve clip %s: %w", binding.ClipID, err)
-				}
-				if canonical != nil {
-					clip.DriveLink = canonical.DriveLink()
-					clip.Path = canonical.LocalPath()
-					clip.SHA256, err = renderAssetSHA256(canonical)
-					if err != nil {
-						return nil, fmt.Errorf("resolve clip %s binary sha256: %w", binding.ClipID, err)
-					}
-					clip.AudioPath = canonical.LocalPath()
-					clip.Duration, err = renderAssetDurationSeconds(canonical)
-					if err != nil {
-						return nil, fmt.Errorf("resolve clip %s duration: %w", binding.ClipID, err)
-					}
-					// The current render runtime uses the canonical 30 fps
-					// default; the request-level rational rate is applied at
-					// RenderPlan compilation. Keep the asset bound in frames so
-					// source-range validation cannot accept an overrun.
-					clip.FrameCount = int64(math.Round(clip.Duration * 30))
-				}
+		bindings := append([]scriptpkg.ClipBinding(nil), s.Bindings.Clips...)
+		if len(bindings) == 0 && s.Bindings.Clip != nil {
+			bindings = []scriptpkg.ClipBinding{*s.Bindings.Clip}
+		}
+		var totalDurationUS int64
+		var timelineOffsetUS int64
+		for _, binding := range bindings {
+			if strings.TrimSpace(binding.ClipID) == "" {
+				continue
 			}
-			clip.SourceInMS = binding.StartMs
-			clip.SourceOutMS = binding.EndMs
+			clip, err := g.resolveRenderClip(ctx, binding)
+			if err != nil {
+				if requireLocalMedia {
+					return nil, err
+				}
+				clip = &scriptgen.ClipReference{ID: binding.ClipID, Title: binding.ClipTitle, DriveLink: binding.DriveLink}
+			}
+			clip.SourceInMS, clip.SourceOutMS = binding.StartMs, binding.EndMs
 			if binding.DurationMs > 0 && clip.Duration == 0 {
 				clip.Duration = float64(binding.DurationMs) / 1000
 				clip.FrameCount = int64(math.Round(clip.Duration * 30))
@@ -422,23 +403,21 @@ func (g *SceneTextGenerator) convertScenes(
 				sourceInUS = clip.SourceInMS * 1000
 				durationUS = int64(clip.SourceOutMS-clip.SourceInMS) * 1000
 			}
-			switch requestedAudio {
-			case capabilityaudio.AudioModeCombinedTimeline:
-				if s.Bindings.Clip != nil && durationUS > 0 {
-					clipIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID, SourceInUS: sourceInUS, SourceDurationUS: durationUS, UseOriginalAudio: true}
-					scene.Audio = clipIntent
-					scene.AudioIntents = []capabilityaudio.AudioIntent{clipIntent}
-				} else {
-					scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}
-				}
-			case capabilityaudio.AudioModeChunkedVoiceover:
-				scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}
-			default:
+			totalDurationUS += durationUS
+			scene.Clips = append(scene.Clips, clip)
+			if requestedAudio == capabilityaudio.AudioModeCombinedTimeline && durationUS > 0 {
+				scene.AudioIntents = append(scene.AudioIntents, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID, SourceInUS: sourceInUS, SourceDurationUS: durationUS, TimelineOffsetUS: timelineOffsetUS, TimelineDurationUS: durationUS, UseOriginalAudio: true})
+			}
+			timelineOffsetUS += durationUS
+		}
+		if len(scene.Clips) > 0 {
+			scene.Clip = scene.Clips[0]
+			scene.DurationUS, scene.DurationMS = totalDurationUS, totalDurationUS/1000
+			if len(scene.AudioIntents) > 0 {
+				scene.Audio = scene.AudioIntents[0]
+			} else {
 				scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence}
 			}
-			scene.DurationMS = int64(math.Round(float64(durationUS) / 1000))
-			scene.DurationUS = durationUS
-			scene.Clip = clip
 		}
 		scenes = append(scenes, scene)
 	}
@@ -461,6 +440,34 @@ func (g *SceneTextGenerator) convertScenes(
 		}
 	}
 	return scenes, nil
+}
+
+// resolveRenderClip is the only binding-to-render-asset bridge. Paths, hashes,
+// durations, and Drive links are always read from the canonical registry.
+func (g *SceneTextGenerator) resolveRenderClip(ctx context.Context, binding scriptpkg.ClipBinding) (*scriptgen.ClipReference, error) {
+	if g.ClipAssets == nil {
+		return nil, fmt.Errorf("resolve clip %s: canonical asset registry is not configured", binding.ClipID)
+	}
+	canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, binding.ClipID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve clip %s: %w", binding.ClipID, err)
+	}
+	if canonical == nil {
+		return nil, fmt.Errorf("resolve clip %s: canonical asset not found", binding.ClipID)
+	}
+	sha256Hex, err := renderAssetSHA256(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("resolve clip %s binary sha256: %w", binding.ClipID, err)
+	}
+	duration, err := renderAssetDurationSeconds(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("resolve clip %s duration: %w", binding.ClipID, err)
+	}
+	return &scriptgen.ClipReference{
+		ID: binding.ClipID, Title: binding.ClipTitle, DriveLink: canonical.DriveLink(),
+		Path: canonical.LocalPath(), AudioPath: canonical.LocalPath(), SHA256: sha256Hex,
+		Duration: duration, FrameCount: int64(math.Round(duration * 30)),
+	}, nil
 }
 
 // buildEditorialPromptFromGenReq builds the editorial prompt string
@@ -498,12 +505,14 @@ func buildEditorialPrompt(topic, sourceText, title, query string) string {
 // by the source registry.
 func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 	return scriptpkg.SourceSpec{
-		Type:       scriptpkg.SourceType(src.Type),
-		Topic:      src.Topic,
-		SourceText: src.SourceText,
-		ClipIDs:    copyStrings(src.ClipIDs),
-		Query:      src.Query,
-		MaxClips:   src.MaxClips,
+		Type:         scriptpkg.SourceType(src.Type),
+		Topic:        src.Topic,
+		SourceText:   src.SourceText,
+		ClipIDs:      copyStrings(src.ClipIDs),
+		IntroClipIDs: copyStrings(src.IntroClipIDs),
+		NumClips:     src.NumClips,
+		Query:        src.Query,
+		MaxClips:     src.MaxClips,
 	}
 }
 
@@ -511,8 +520,15 @@ func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 // the domain SourceResolutionContext consumed by the source registry.
 func genRequestToResolutionContext(req scriptgen.GenerateRequest) scriptpkg.SourceResolutionContext {
 	return scriptpkg.SourceResolutionContext{
-		Title:    req.Title,
-		Language: string(req.SourceLanguage),
+		Title:             req.Title,
+		Language:          string(req.SourceLanguage),
+		TargetWords:       req.ScriptParams.TargetWords,
+		SegmentWords:      req.ScriptParams.SegmentWords,
+		SegmentTopics:     copyStrings(req.ScriptParams.SegmentTopics),
+		Segments:          scriptpkg.CloneScriptSegments(req.ScriptParams.Segments),
+		NumClips:          req.Source.NumClips,
+		RequireDriveLink:  true,
+		RequireLocalMedia: req.RenderVideo,
 	}
 }
 

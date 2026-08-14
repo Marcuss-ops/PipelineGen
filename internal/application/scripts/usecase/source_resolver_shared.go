@@ -33,10 +33,11 @@ type resolvedClipParams struct {
 
 func buildSearchClipOpts(src scriptpkg.SourceSpec) *ClipGenerationOptions {
 	return &ClipGenerationOptions{
-		TranscriptPolicy:   src.TranscriptPolicy,
-		OrderingStrategy:   src.OrderingStrategy,
-		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
-		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
+		TranscriptPolicy:      src.TranscriptPolicy,
+		OrderingStrategy:      src.OrderingStrategy,
+		MinQualityScore:       ptrutil.DerefOr(src.MinQualityScore, 0.0),
+		MinTranscriptWords:    ptrutil.DerefOr(src.MinTranscriptWords, 0),
+		AllowMetadataFallback: true,
 	}
 }
 
@@ -99,6 +100,7 @@ func buildResolvedClipSource(
 		Topic:           title,
 		Title:           title,
 		SourceText:      modelSourceText,
+		Segments:        scriptpkg.CloneScriptSegments(p.opts.Segments),
 		ClipEvidence:    evidence,
 		Fingerprint:     fingerprint,
 		GroundingPolicy: src.GroundingPolicy,

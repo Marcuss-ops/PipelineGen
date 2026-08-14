@@ -156,6 +156,13 @@ type Ledger interface {
 	LatestEventSequence(context.Context) (int64, error)
 }
 
+// QdrantSequenceReader is an optional refinement of Ledger. It reports the
+// latest registry event that can affect the Qdrant projection, excluding
+// non-indexable artifact events while preserving fail-closed sequence checks.
+type QdrantSequenceReader interface {
+	LatestQdrantEventSequence(context.Context) (int64, error)
+}
+
 type CountsReader interface {
 	ReadCounts(context.Context) (Counts, error)
 }

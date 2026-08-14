@@ -10,6 +10,7 @@
 //
 //	creator — script.generate + voiceover.generate_item
 //	          (image.generate.google reserved for future opt-in)
+//	renderer — overlay.prepare + overlay.render, GPU/FFmpeg required
 //
 // ResolveCapabilities is the canonical entry point when a profile
 // is active. It replaces ParseAndValidateCaps for profile-gated
@@ -42,6 +43,10 @@ type WorkerProfile struct {
 	// Per-job-type concurrency is governed by the job Registry,
 	// not by this field.
 	MaxParallel int
+
+	// RequiresGPU/RequiresFFmpeg are startup capability requirements.
+	RequiresGPU    bool
+	RequiresFFmpeg bool
 }
 
 // WorkerProfileRegistry is a read-only lookup table of named
@@ -65,6 +70,16 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 					"media.stock",
 				},
 				MaxParallel: 1, // script generation is memory-heavy
+			},
+			"renderer": {
+				Name: "renderer",
+				AllowedJobTypes: []string{
+					"overlay.prepare",
+					"overlay.render",
+				},
+				MaxParallel:    1,
+				RequiresGPU:    true,
+				RequiresFFmpeg: true,
 			},
 		},
 	}
@@ -193,5 +208,12 @@ func ResolveCapabilities(profile *WorkerProfile, envOverride string, registeredT
 	}
 
 	sort.Strings(validated)
-	return appjobs.WorkerCapabilities{JobTypes: validated}, nil
+	// Preserve hardware capability declarations from the profile. The old
+	// implementation returned only JobTypes, silently dropping GPU/FFmpeg
+	// facts before registration.
+	return appjobs.WorkerCapabilities{
+		JobTypes: validated,
+		GPU:      profile.RequiresGPU,
+		FFmpeg:   profile.RequiresFFmpeg,
+	}, nil
 }

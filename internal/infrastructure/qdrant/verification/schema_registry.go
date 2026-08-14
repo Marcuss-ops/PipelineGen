@@ -159,12 +159,12 @@ func init() {
 //
 // Operators that opt into `collection_version: "v3-multilingual-speaker"`
 // in cfg.Qdrant trigger a fresh collection creation; the new physical
-// name (`media_assets_v3_e5_768_siglip_768_speaker_256`) reflects the
+// name (`media_assets_v3_nomic_768_siglip_768_speaker_256`) reflects the
 // extra channel in the deterministic suffix.
 func DefaultV3SpeakerSchema() *schema.IndexSchema {
 	s := schema.DefaultV3Schema() // copy base
 	s.Version = "v3-multilingual-speaker"
-	s.PhysicalName = "media_assets_v3_e5_768_siglip_768_speaker_256"
+	s.PhysicalName = "media_assets_v3_nomic_768_siglip_768_speaker_256"
 	s.DenseVectors = append(s.DenseVectors, schema.EmbeddingSpec{
 		Channel:       "speaker",
 		Model:         "pyannote-embedding-256",

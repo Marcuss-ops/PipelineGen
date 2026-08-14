@@ -52,6 +52,7 @@ import (
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // PersistGeneratedArtifacts writes the canonical §8.4 multi-artifact
@@ -85,6 +86,7 @@ func PersistGeneratedArtifacts(
 		return nil, nil
 	}
 
+	fs := filesystem.NewOS()
 	outDir := workspaceOutputDir(jobID)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
@@ -111,7 +113,7 @@ func PersistGeneratedArtifacts(
 	if writeErr := os.WriteFile(scriptJSONPath, scriptData, 0o644); writeErr != nil {
 		return nil, fmt.Errorf("artifacts_persistence: write script.json: %w", writeErr)
 	}
-	sha, shaErr := job.ComputeSHA256(scriptJSONPath)
+	sha, shaErr := job.ComputeSHA256(fs, scriptJSONPath)
 	if shaErr != nil {
 		return nil, fmt.Errorf("artifacts_persistence: sha256 script.json: %w", shaErr)
 	}
@@ -136,7 +138,7 @@ func PersistGeneratedArtifacts(
 		if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0o644); writeErr != nil {
 			return nil, fmt.Errorf("artifacts_persistence: write scenes.json: %w", writeErr)
 		}
-		scenesSHA, scenesSHAErr := job.ComputeSHA256(scenesJSONPath)
+		scenesSHA, scenesSHAErr := job.ComputeSHA256(fs, scenesJSONPath)
 		if scenesSHAErr != nil {
 			return nil, fmt.Errorf("artifacts_persistence: sha256 scenes.json: %w", scenesSHAErr)
 		}
@@ -179,7 +181,7 @@ func PersistGeneratedArtifacts(
 		// Only include voiceover artifact if the file exists and
 		// we can compute its SHA256. Skip missing files gracefully.
 		if voInfo, voStatErr := os.Stat(voPath); voStatErr == nil {
-			voSHA, voSHAErr := job.ComputeSHA256(voPath)
+			voSHA, voSHAErr := job.ComputeSHA256(fs, voPath)
 			if voSHAErr != nil {
 				return nil, fmt.Errorf("artifacts_persistence: sha256 voiceover %s: %w", voPath, voSHAErr)
 			}
@@ -218,7 +220,7 @@ func PersistGeneratedArtifacts(
 		if result.FinalAudio.SizeBytes > 0 && result.FinalAudio.SizeBytes != info.Size() {
 			return nil, fmt.Errorf("artifacts_persistence: final audio size mismatch")
 		}
-		sourceSHA, err := job.ComputeSHA256(result.FinalAudio.Path)
+		sourceSHA, err := job.ComputeSHA256(fs, result.FinalAudio.Path)
 		if err != nil {
 			return nil, fmt.Errorf("artifacts_persistence: sha256 source final audio: %w", err)
 		}
@@ -237,7 +239,7 @@ func PersistGeneratedArtifacts(
 		if err != nil {
 			return nil, fmt.Errorf("artifacts_persistence: stat final audio: %w", err)
 		}
-		sha, err := job.ComputeSHA256(finalPath)
+		sha, err := job.ComputeSHA256(fs, finalPath)
 		if err != nil {
 			return nil, fmt.Errorf("artifacts_persistence: sha256 final audio: %w", err)
 		}

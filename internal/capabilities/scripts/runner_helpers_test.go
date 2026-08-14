@@ -42,7 +42,9 @@ import (
 
 	"go.uber.org/zap"
 
+	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -354,9 +356,25 @@ func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTra
 	docPub := newStubDocumentPublisher()
 	renderEnq := newStubRenderEnqueuer()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, renderEnq)
+	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, renderEnq, canonicalTestDocumentRenderer{})
 	runner.SetLogger(zap.NewNop())
 	return runner, repo, textGen, translator, voiceoverGen, docPub, renderEnq
+}
+
+// canonicalTestDocumentRenderer uses the production renderer directly. The
+// runner tests therefore exercise the same HTML contract as the app wiring.
+type canonicalTestDocumentRenderer struct{}
+
+func (canonicalTestDocumentRenderer) DocumentRendererID() string {
+	return documentadapters.CanonicalDocumentRendererID
+}
+
+func (canonicalTestDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
+	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
+		Title:           opts.Title,
+		Language:        string(opts.Language),
+		DefaultLanguage: string(opts.DefaultLanguage),
+	}), nil
 }
 
 // awaitCompletion polls the repo until the run reaches a terminal state

@@ -284,8 +284,12 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
 		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
 		var embedder search.TextEmbedder
-		if root.AI != nil && root.AI.OllamaClient != nil {
-			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
+		if root.AI != nil && root.AI.OllamaEmbedClient != nil {
+			// Qdrant readiness must use the dedicated embedding client.
+			// OllamaClient is the chat model (for example gemma4:e4b) and
+			// cannot serve /api/embeddings; source.search already uses this
+			// dedicated client through wire_script_resolvers.go.
+			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaEmbedClient)
 			embedder = search.NewTextEmbedderAdapter(ollamaEmb)
 		}
 		qdrantEndpointPort := newQdrantEndpointAdapter(

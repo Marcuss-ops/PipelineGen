@@ -39,7 +39,7 @@ func TestServiceStart_Validation(t *testing.T) {
 	docPub := newStubDocumentPublisher()
 	renderEnq := newStubRenderEnqueuer()
 
-	svc := NewService(repo, textGen, translator, voiceoverGen, docPub, renderEnq)
+	svc := NewService(repo, textGen, translator, voiceoverGen, docPub, renderEnq, canonicalTestDocumentRenderer{})
 
 	t.Run("missing idempotency key", func(t *testing.T) {
 		req := defaultTestRequest()
@@ -57,7 +57,7 @@ func TestServiceStart_Validation(t *testing.T) {
 
 	t.Run("render_video without renderEnqueuer", func(t *testing.T) {
 		// Create a service without renderEnqueuer.
-		svcNoRender := NewService(repo, textGen, translator, voiceoverGen, docPub, nil)
+		svcNoRender := NewService(repo, textGen, translator, voiceoverGen, docPub, nil, canonicalTestDocumentRenderer{})
 		req := defaultTestRequest()
 		req.RenderVideo = true
 		_, err := svcNoRender.Start(context.Background(), req)

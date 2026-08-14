@@ -56,7 +56,7 @@ func aliasCacheTestServer(t *testing.T, targetCollection string) (*httptest.Serv
 func TestSearcher_AliasCache_Hit(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_e5_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -68,12 +68,12 @@ func TestSearcher_AliasCache_Hit(t *testing.T) {
 	// First call: cache miss → HTTP round-trip.
 	c1, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", c1)
+	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c1)
 
 	// Second call: cache hit → NO HTTP round-trip.
 	c2, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", c2)
+	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c2)
 
 	// Exactly ONE GetAliasTarget call should have been made.
 	assert.Equal(t, int32(1), atomic.LoadInt32(callCount),
@@ -86,7 +86,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 	// is a const, we test expiry by directly manipulating the Searcher's
 	// cachedAt field to simulate a time jump.
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_e5_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -108,7 +108,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 	// Next call: TTL expired → fresh HTTP round-trip.
 	c, err := searcher.resolveCollection(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", c)
+	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", c)
 	assert.Equal(t, int32(2), atomic.LoadInt32(callCount),
 		"expired cache should trigger a fresh GetAliasTarget call")
 }
@@ -116,7 +116,7 @@ func TestSearcher_AliasCache_Expiry(t *testing.T) {
 func TestSearcher_AliasCache_Invalidation(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_e5_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -143,7 +143,7 @@ func TestSearcher_AliasCache_Invalidation(t *testing.T) {
 func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_e5_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -171,7 +171,7 @@ func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 				errs <- err
 				return
 			}
-			if c != "media_assets_v3_e5_768_siglip_768" {
+			if c != "media_assets_v3_nomic_768_siglip_768" {
 				errs <- err
 			}
 		}()
@@ -191,7 +191,7 @@ func TestSearcher_AliasCache_ConcurrentReads(t *testing.T) {
 func TestSearcher_AliasCache_ConcurrentCacheFill(t *testing.T) {
 	// NOT parallel — this test spawns goroutines that race to fill the cache.
 
-	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_e5_768_siglip_768")
+	srv, callCount := aliasCacheTestServer(t, "media_assets_v3_nomic_768_siglip_768")
 	defer srv.Close()
 
 	schema := qdrantSchema.DefaultV3Schema()
@@ -216,7 +216,7 @@ func TestSearcher_AliasCache_ConcurrentCacheFill(t *testing.T) {
 				errs <- err
 				return
 			}
-			if c != "media_assets_v3_e5_768_siglip_768" {
+			if c != "media_assets_v3_nomic_768_siglip_768" {
 				errs <- err
 			}
 		}()

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
 )
 
@@ -17,8 +18,11 @@ type OS struct{}
 // NewOS constructs the OS filesystem adapter.
 func NewOS() *OS { return &OS{} }
 
-// compile-time assertion: OS satisfies the kernel FileSystem port.
-var _ workspace.FileSystem = (*OS)(nil)
+// compile-time assertions: OS satisfies the kernel filesystem/reader ports.
+var (
+	_ workspace.FileSystem = (*OS)(nil)
+	_ job.FileReader       = (*OS)(nil)
+)
 
 func (OS) Abs(path string) (string, error) {
 	return filepath.Abs(path)
@@ -32,12 +36,21 @@ func (OS) OpenFile(path string, perm uint32) (io.WriteCloser, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(perm))
 }
 
-func (OS) Remove(path string) error {
-	return os.Remove(path)
-}
+func (OS) Remove(path string) error    { return os.Remove(path) }
+func (OS) RemoveAll(path string) error { return os.RemoveAll(path) }
 
-func (OS) RemoveAll(path string) error {
-	return os.RemoveAll(path)
+// Open opens path for reading. It implements job.FileReader and
+// render.FileSystem (read side).
+func (OS) Open(path string) (io.ReadCloser, error) { return os.Open(path) }
+
+// Size returns the byte size of the file at path. It implements the
+// render.FileSystem read-side stat contract.
+func (OS) Size(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }
 
 func (OS) Lstat(path string) (workspace.FileEntry, error) {

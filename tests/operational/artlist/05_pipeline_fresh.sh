@@ -48,7 +48,7 @@ source "$DIR/../lib/_artlist_common.sh"
 smoke_require curl sqlite3 jq ffprobe
 
 # Canonical Qdrant v3 SSOT (architecture/qdrant/v3-schema.json).
-ARTLIST_QDRANT_COLLECTION="${ARTLIST_QDRANT_COLLECTION:-media_assets_v3_e5_768_siglip_768}"
+ARTLIST_QDRANT_COLLECTION="${ARTLIST_QDRANT_COLLECTION:-media_assets_v3_nomic_768_siglip_768}"
 ARTLIST_QDRANT_ALIAS="${ARTLIST_QDRANT_ALIAS:-media_assets_current}"
 
 # ── Gate 4 — fresh end-to-end pipeline (no cache replay) ──────────────

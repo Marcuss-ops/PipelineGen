@@ -87,10 +87,22 @@ func TestValidateQdrantIndexerCompatibility_BothEnabled_ReturnsNil(t *testing.T)
 	cfg := &config.Config{
 		ClipIndexer: config.ClipIndexerConfig{Enabled: true},
 		Qdrant:      config.QdrantConfig{Enabled: true},
+		External:    config.ExternalConfig{OllamaEmbedModel: "nomic-embed-text"},
 	}
 	err := validateQdrantIndexerCompatibility(cfg)
 	assert.NoError(t, err,
 		"enabled Qdrant + enabled ClipIndexer is the happy path — the gate is a no-op")
+}
+
+func TestValidateQdrantIndexerCompatibility_EmbeddingModelMismatchFailsClosed(t *testing.T) {
+	cfg := &config.Config{
+		ClipIndexer: config.ClipIndexerConfig{Enabled: true},
+		Qdrant:      config.QdrantConfig{Enabled: true},
+		External:    config.ExternalConfig{OllamaEmbedModel: "multilingual-e5-base"},
+	}
+	err := validateQdrantIndexerCompatibility(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "QDRANT_EMBEDDING_CONTRACT_MISMATCH")
 }
 
 // TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_FailsClosed:

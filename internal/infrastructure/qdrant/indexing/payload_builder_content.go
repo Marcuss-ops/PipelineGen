@@ -103,6 +103,9 @@ func fillContentPayload(payload map[string]any, doc *IndexDocument) {
 	// observed-from-metadata_json will populate ModelVersion here and
 	// the wire matches the source-of-truth automatically.
 	for channel, artifact := range doc.Embeddings {
+		if artifact.Model != "" {
+			payload[fmt.Sprintf("embedding_model_%s", string(channel))] = artifact.Model
+		}
 		if artifact.ModelVersion == "" {
 			continue
 		}

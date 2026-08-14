@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // buildImageManifest materialises the canonical Sender-side ArtifactManifest
@@ -64,7 +65,7 @@ func buildImageManifest(jobID string, position int, outputPath, format string) (
 	}
 	size := fi.Size()
 
-	sha, shaErr := job.ComputeSHA256(outputPath)
+	sha, shaErr := job.ComputeSHA256(filesystem.NewOS(), outputPath)
 	if shaErr != nil {
 		return nil, fmt.Errorf("buildImageManifest: sha256 %q: %w", outputPath, shaErr)
 	}

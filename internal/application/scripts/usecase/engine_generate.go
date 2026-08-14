@@ -213,12 +213,13 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			output.ModelUsed = result.Model
 			output.CacheStatus = "exact_hit"
 			return &EngineResult{
-				Output:       *output,
-				WordCount:    result.WordCount,
-				Model:        result.Model,
-				CacheStatus:  "exact_hit",
-				EstDuration:  (result.WordCount * 60) / wordsPerMinute,
-				ClipEvidence: plan.ClipEvidence,
+				Output:        *output,
+				WordCount:     result.WordCount,
+				Model:         result.Model,
+				CacheStatus:   "exact_hit",
+				EstDuration:   (result.WordCount * 60) / wordsPerMinute,
+				ClipEvidence:  plan.ClipEvidence,
+				SearchResults: plan.SearchResults,
 			}, nil
 		}
 	}
@@ -352,11 +353,12 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	_ = saveToDB
 
 	return &EngineResult{
-		Output:       *output,
-		WordCount:    genResult.WordCount,
-		Model:        genResult.Model,
-		CacheStatus:  "generated",
-		EstDuration:  genResult.EstDuration,
-		ClipEvidence: plan.ClipEvidence,
+		Output:        *output,
+		WordCount:     genResult.WordCount,
+		Model:         genResult.Model,
+		CacheStatus:   "generated",
+		EstDuration:   genResult.EstDuration,
+		ClipEvidence:  plan.ClipEvidence,
+		SearchResults: plan.SearchResults,
 	}, nil
 }

@@ -50,7 +50,7 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 		hash := item.SHA256Hex
 		if hash == "" {
 			var hashErr error
-			hash, hashErr = job.ComputeSHA256(item.OutputPath)
+			hash, hashErr = job.ComputeSHA256(runner.LocalFS(), item.OutputPath)
 			if hashErr != nil {
 				if batchRepo != nil {
 					if stateErr := batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "SHA256: "+hashErr.Error()); stateErr != nil {

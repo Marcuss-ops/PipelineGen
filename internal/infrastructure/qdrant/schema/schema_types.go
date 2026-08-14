@@ -51,6 +51,33 @@ type EmbeddingSpec struct {
 	IndexPrefix string `json:"index_prefix,omitempty"`
 }
 
+// EmbeddingContract is the runtime/indexing identity of a dense channel.
+// Dimension alone is not sufficient: two models can emit 768 values while
+// producing incompatible vector spaces.
+type EmbeddingContract struct {
+	Model         string
+	ModelVersion  string
+	Dimensions    int
+	Distance      string
+	Normalized    bool
+	QueryPrefix   string
+	IndexPrefix   string
+	PreprocessVer string
+}
+
+func (e EmbeddingSpec) Contract() EmbeddingContract {
+	return EmbeddingContract{
+		Model: e.Model, ModelVersion: e.ModelVersion, Dimensions: e.Dimensions,
+		Distance: e.Distance, Normalized: e.Normalized,
+		QueryPrefix: e.QueryPrefix, IndexPrefix: e.IndexPrefix,
+		PreprocessVer: e.PreprocessVer,
+	}
+}
+
+func (e EmbeddingSpec) MatchesContract(got EmbeddingContract) bool {
+	return e.Contract() == got
+}
+
 // SparseSpec defines a sparse vector channel (BM25, SPLADE, etc.).
 //
 // PR2 (fix/qdrant-bm25-indexing, June 2026): Model is the inference
@@ -95,7 +122,7 @@ type IndexSchema struct {
 	// Version is the schema version string (e.g. "v3").
 	Version string `json:"version"`
 
-	// PhysicalName is the deterministic collection name (e.g. "media_assets_v3_e5_768_siglip_768").
+	// PhysicalName is the deterministic collection name (e.g. "media_assets_v3_nomic_768_siglip_768").
 	PhysicalName string `json:"physical_name"`
 
 	// RuntimeAlias is the alias used by all read/write operations (e.g. "media_assets_current").

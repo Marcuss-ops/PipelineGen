@@ -73,13 +73,18 @@ const (
 	// VisualSummary.
 	MinVisualSummaryLength = 20
 
-	// MinQualityScore: cosine-similarity floor for the quality
-	// gate.
-	// nomic-embed-text cosine scores for the canonical stock-clip index
-	// are in the 0.40+ range. Keep the audit floor aligned with that
-	// embedding contract; source-specific MinScore remains an additional
-	// operator-controlled floor.
-	MinQualityScore = 0.4
+	// MinQualityScore: cosine-similarity floor for the quality gate.
+	// The live Qdrant source-search path accepts scores from 0.01 upward;
+	// keeping the sampler at 0.40 silently discards every valid clip
+	// returned by that path. The semantic resolver remains responsible
+	// for the stronger retrieval floor.
+	// Source-specific MinScore remains an additional operator-controlled
+	// floor.
+	MinQualityScore = 0.01
+	// qualityScoreEpsilon absorbs IEEE-754 representation noise at the
+	// inclusive quality boundary. It is not a threshold relaxation: a
+	// score that is equal to the configured floor must pass.
+	qualityScoreEpsilon = 1e-9
 
 	// DiversityMaxCosine: max cosine sim between candidate and
 	// any previously-selected candidate. Cross-slot governance.
@@ -131,15 +136,22 @@ type ClipSamplerGateInput struct {
 
 // \u2500\u2500 10 gate implementations \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-// 1. topicRelevanceGate fails when NO meaningful (>3-char) token
-// from the slot's topic appears in (Transcript + VisualSummary).
+// 1. topicRelevanceGate fails when ANY meaningful (>3-char) token
+// from the slot's topic is missing from (Transcript + VisualSummary).
 // Token-set-overlap scoring is used (vs strict substring) because
 // natural language rarely contains literal substring matches for
-// full topic strings (e.g. "Pacquiao Broner recap" doesn't appear
-// verbatim in transcript prose containing "Pacquiao" and "Broner"
-// separately). The scoring rule is deterministic and the gate's
-// reason string names the missing tokens so the audit can replay
-// the decision.
+// full topic strings (e.g. "Jackie Chan" doesn't appear verbatim in
+// transcript prose containing "Jackie" and "Chan" separately).
+//
+// The match rule is ALL-token, not any-token. A slot topic that is a
+// single referent (a person's name like "Jackie Chan") must be
+// corroborated by EVERY token of the name; accepting on a partial
+// overlap ("chan" alone) lets an unrelated clip (e.g. a Tom Holland
+// interview that mentions "the Chan era") impersonate the requested
+// subject. Descriptive topics carry the same rule: the gate fails
+// closed whenever the evidence does not name every meaningful term.
+// The rule is deterministic and the gate's reason string names the
+// exact missing tokens so the audit can replay the decision.
 type topicRelevanceGate struct{}
 
 func (topicRelevanceGate) Name() string { return "topic_relevance" }
@@ -155,12 +167,16 @@ func (topicRelevanceGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 	if haystack == "" {
 		return false, fmt.Sprintf("candidate transcript+visual_summary empty; lacks tokens %v", topicTokens)
 	}
+	missing := make([]string, 0, len(topicTokens))
 	for _, tok := range topicTokens {
-		if strings.Contains(haystack, tok) {
-			return true, ""
+		if !strings.Contains(haystack, tok) {
+			missing = append(missing, tok)
 		}
 	}
-	return false, fmt.Sprintf("candidate lacks any-token match from %v", topicTokens)
+	if len(missing) > 0 {
+		return false, fmt.Sprintf("candidate lacks topic tokens %v", missing)
+	}
+	return true, ""
 }
 
 // tokensGreaterThanThree splits a topic string into lowercase
@@ -293,8 +309,8 @@ type qualityGate struct{}
 func (qualityGate) Name() string { return "quality" }
 
 func (qualityGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
-	if in.Candidate.Score < MinQualityScore {
-		return false, fmt.Sprintf("cosine score %.2f below quality floor %.2f",
+	if in.Candidate.Score+qualityScoreEpsilon < MinQualityScore {
+		return false, fmt.Sprintf("cosine score %.17g below quality floor %.17g",
 			in.Candidate.Score, MinQualityScore)
 	}
 	return true, ""
@@ -340,16 +356,12 @@ func (transcriptVisualSummaryPresentGate) Name() string {
 
 func (transcriptVisualSummaryPresentGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 	words := len(strings.Fields(in.Candidate.Transcript))
-	if words < MinTranscriptWords {
-		return false, fmt.Sprintf("transcript words=%d < %d",
-			words, MinTranscriptWords)
-	}
 	runes := len([]rune(in.Candidate.VisualSummary))
-	if runes < MinVisualSummaryLength {
-		return false, fmt.Sprintf("visual summary runes=%d < %d",
-			runes, MinVisualSummaryLength)
+	if words >= MinTranscriptWords || runes >= MinVisualSummaryLength {
+		return true, ""
 	}
-	return true, ""
+	return false, fmt.Sprintf("transcript words=%d < %d and visual summary runes=%d < %d",
+		words, MinTranscriptWords, runes, MinVisualSummaryLength)
 }
 
 // 10. formatCompatibleGate fails when MediaType is empty.

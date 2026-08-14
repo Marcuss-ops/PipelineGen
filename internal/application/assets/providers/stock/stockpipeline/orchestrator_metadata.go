@@ -210,7 +210,7 @@ func writeAndHashStockMetadata(meta StockRunMetadata, pattern, operation string,
 		cleanup()
 		return "", "", 0, fmt.Errorf("%s: close %s: %w", operation, path, err)
 	}
-	hash, err := job.ComputeSHA256(path)
+	hash, err := job.ComputeSHA256(fs, path)
 	if err != nil {
 		cleanup()
 		return "", "", 0, fmt.Errorf("%s: hash %s: %w", operation, path, err)

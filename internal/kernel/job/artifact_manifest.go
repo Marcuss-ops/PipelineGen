@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -495,18 +494,25 @@ func (m *ArtifactManifest) WithRemoteLocations(uploaded map[string]RemoteAsset) 
 	return m.ToRemote(uploaded)
 }
 
-// ComputeSHA256 reads the file at path and returns its hex-encoded
-// SHA-256 digest. Used by the runner before upload to populate
-// Artifact.SHA256.
-func ComputeSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+// FileReader is the minimal read-side filesystem port used by
+// ComputeSHA256. The adapter (internal/platform/filesystem.OS) injects
+// os.Open; the kernel contract never imports os directly.
+type FileReader interface {
+	Open(path string) (io.ReadCloser, error)
+}
+
+// ComputeSHA256 reads the file at path (via the injected FileReader) and
+// returns its hex-encoded SHA-256 digest. Used by the runner before upload
+// to populate Artifact.SHA256.
+func ComputeSHA256(f FileReader, path string) (string, error) {
+	file, err := f.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("sha256: open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer file.Close()
 
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, file); err != nil {
 		return "", fmt.Errorf("sha256: read %s: %w", path, err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

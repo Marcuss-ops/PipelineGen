@@ -100,6 +100,13 @@ type ClipGenerationOptions struct {
 	StyleInstructions  string
 	MinQualityScore    float64
 	MinTranscriptWords int
+	// AllowMetadataFallback permits a clip with no READY transcript to use
+	// canonical indexed description/search metadata as evidence.
+	AllowMetadataFallback bool
+	// MetadataFallbackText carries semantic summary text from the search
+	// index when the canonical asset row has no local transcript/summary.
+	MetadataFallbackText     string
+	MetadataFallbackByClipID map[string]string
 	// RequireDriveLink controls whether clips without a Drive link
 	// are excluded from the resolved set.
 	RequireDriveLink bool
@@ -188,7 +195,8 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		excludedClips  []scriptpkg.ExcludedClip
 	)
 	results := concurrent.ParallelMap(uniqueIDs, clipParallelism(len(uniqueIDs)), func(_ int, id string) clipContextResult {
-		return c.resolveClipContextResult(ctx, id, language, requireDriveLink, transcriptFallbackAllowed(opts, id))
+		return c.resolveClipContextResult(ctx, id, language, requireDriveLink,
+			transcriptFallbackAllowed(opts, id), metadataFallbackEnabled(opts), metadataFallbackText(opts, id))
 	})
 
 	records := make([]clipContextRecord, 0, len(results))
@@ -245,9 +253,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		canonicalIDs = append(canonicalIDs, record.id)
 		clipToCanonical[record.clip.ID] = record.id
 		clipNames = append(clipNames, clipDisplayName(record.clip, record.id))
-		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript)
-		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript)
-		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript)
+		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript, record.metadataText)
+		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript, record.metadataText)
+		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript, record.metadataText)
 		c.enrichClipSubtitle(ctx, clipDetails, record.id)
 		if record.track != nil {
 			resolvedTracks[record.id] = record.track

@@ -63,7 +63,7 @@ func validPlanForValidator(t *testing.T, finalAudio *FinalAudioAsset) RenderPlan
 
 func TestRenderPlanValidatorMintsImmutableValidatedPlan(t *testing.T) {
 	plan := validPlanForValidator(t, nil)
-	validated, err := ValidateRenderPlan(plan)
+	validated, err := ValidateRenderPlan(plan, testFS{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRenderPlanValidatorMintsImmutableValidatedPlan(t *testing.T) {
 func TestRenderPlanValidatorRejectsMissingFilesAndMissingVisuals(t *testing.T) {
 	plan := validPlanForValidator(t, nil)
 	plan.Manifest[0].Path = "/does/not/exist"
-	if _, err := ValidateRenderPlan(plan); err == nil {
+	if _, err := ValidateRenderPlan(plan, testFS{}); err == nil {
 		t.Fatal("missing manifest file must be rejected before handoff")
 	}
 
@@ -92,7 +92,7 @@ func TestRenderPlanValidatorRejectsMissingFilesAndMissingVisuals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ValidateRenderPlan(noVideo); err == nil {
+	if _, err := ValidateRenderPlan(noVideo, testFS{}); err == nil {
 		t.Fatal("render handoff without a visual segment must be rejected")
 	}
 }
@@ -105,7 +105,7 @@ func TestRenderPlanValidatorRequiresCertifiedAudioPlanForFinalAudioCopy(t *testi
 	}
 	sum := sha256.Sum256(contents)
 	plan := validPlanForValidator(t, &FinalAudioAsset{AssetID: "final-audio", Path: audioPath, SHA256: hex.EncodeToString(sum[:])})
-	if _, err := ValidateRenderPlan(plan); err == nil {
+	if _, err := ValidateRenderPlan(plan, testFS{}); err == nil {
 		t.Fatal("FINAL_AUDIO_COPY without an audio plan SHA must be rejected")
 	}
 
@@ -113,7 +113,7 @@ func TestRenderPlanValidatorRequiresCertifiedAudioPlanForFinalAudioCopy(t *testi
 	if err := plan.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ValidateRenderPlan(plan); err != nil {
+	if _, err := ValidateRenderPlan(plan, testFS{}); err != nil {
 		t.Fatalf("certified final audio should validate: %v", err)
 	}
 
@@ -124,14 +124,14 @@ func TestRenderPlanValidatorRequiresCertifiedAudioPlanForFinalAudioCopy(t *testi
 	if err := tampered.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ValidateRenderPlan(tampered); err == nil {
+	if _, err := ValidateRenderPlan(tampered, testFS{}); err == nil {
 		t.Fatal("final audio size metadata mismatch must be rejected")
 	}
 
 	if err := os.WriteFile(audioPath, []byte("corrupted audio"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ValidateRenderPlan(plan); err == nil {
+	if _, err := ValidateRenderPlan(plan, testFS{}); err == nil {
 		t.Fatal("corrupted final audio must be rejected before executor handoff")
 	}
 }

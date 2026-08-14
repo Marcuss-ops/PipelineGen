@@ -39,7 +39,7 @@ func passCandidate() ports.ClipSamplerCandidate {
 func passSlot() scriptpkg.ClipSearchSlot {
 	return scriptpkg.ClipSearchSlot{
 		Ref:              "slot-1",
-		Topic:            "Pacquiao Broner recap",
+		Topic:            "Pacquiao Broner",
 		TargetDurationMs: 6000,
 	}
 }
@@ -51,7 +51,7 @@ func TestGate_TopicRelevance_Pass(t *testing.T) {
 	in := ClipSamplerGateInput{Candidate: passCandidate(), Slot: passSlot()}
 	passed, reason := g.Evaluate(in)
 	if !passed {
-		t.Errorf("topic_relevance should pass when Transcript contains slot.Topic; got false (reason=%q)", reason)
+		t.Errorf("topic_relevance should pass when Transcript contains EVERY token of slot.Topic; got false (reason=%q)", reason)
 	}
 }
 
@@ -68,6 +68,54 @@ func TestGate_TopicRelevance_Fail(t *testing.T) {
 	}
 	if !strings.Contains(reason, "boxing heavyweight championship") {
 		t.Errorf("reason should name the missing topic, got %q", reason)
+	}
+}
+
+// TestGate_TopicRelevance_PartialOverlap_Fails pins the ALL-token
+// (identity) rule that fixes the "Jackie Chan accepts a Tom Holland
+// clip" regression: a candidate whose evidence mentions only the
+// surname "chan" (in "the Chan era") must NOT satisfy a slot whose
+// topic is "Jackie Chan". The old any-token rule let the partial
+// overlap through; the gate now fails and names the missing token.
+func TestGate_TopicRelevance_PartialOverlap_Fails(t *testing.T) {
+	g := topicRelevanceGate{}
+	c := passCandidate()
+	c.Transcript = "Tom Holland talks about his latest interview and the Chan era of martial arts cinema."
+	c.VisualSummary = "Tom Holland sits down for an interview."
+	slot := passSlot()
+	slot.Topic = "Jackie Chan"
+	passed, reason := g.Evaluate(ClipSamplerGateInput{Candidate: c, Slot: slot})
+	if passed {
+		t.Fatalf("topic_relevance must reject a partial token overlap: candidate mentions only one of [jackie, chan]")
+	}
+	if !strings.Contains(reason, "jackie") {
+		t.Errorf("reason should name the missing token 'jackie', got %q", reason)
+	}
+}
+
+// TestGate_TopicRelevance_AllTokensRequired pins the ALL-token rule
+// for descriptive multi-token topics: a candidate that corroborates
+// every meaningful token passes; dropping any single token fails.
+func TestGate_TopicRelevance_AllTokensRequired(t *testing.T) {
+	g := topicRelevanceGate{}
+	slot := passSlot()
+	slot.Topic = "Pacquiao Broner recap"
+
+	full := passCandidate()
+	full.Transcript = "Pacquiao and Broner traded punches at the center of the ring after the recap."
+	passed, reason := g.Evaluate(ClipSamplerGateInput{Candidate: full, Slot: slot})
+	if !passed {
+		t.Fatalf("all meaningful tokens present should pass, got %q", reason)
+	}
+
+	partial := passCandidate()
+	partial.Transcript = "Pacquiao and Broner traded punches at the center of the ring."
+	passed, reason = g.Evaluate(ClipSamplerGateInput{Candidate: partial, Slot: slot})
+	if passed {
+		t.Fatalf("dropping token 'recap' must fail the ALL-token rule")
+	}
+	if !strings.Contains(reason, "recap") {
+		t.Errorf("reason should name the missing token 'recap', got %q", reason)
 	}
 }
 
@@ -203,6 +251,16 @@ func TestGate_Quality_Pass(t *testing.T) {
 	}
 }
 
+func TestGate_Quality_InclusiveBoundaryToleratesFloatRepresentation(t *testing.T) {
+	g := qualityGate{}
+	c := passCandidate()
+	c.Score = MinQualityScore - (qualityScoreEpsilon / 2)
+	passed, reason := g.Evaluate(ClipSamplerGateInput{Candidate: c, Slot: passSlot()})
+	if !passed {
+		t.Fatalf("score at the inclusive threshold boundary should pass, got %q", reason)
+	}
+}
+
 func TestGate_Quality_Fail(t *testing.T) {
 	g := qualityGate{}
 	c := passCandidate()
@@ -295,6 +353,17 @@ func TestGate_TranscriptVisualSummary_Fail(t *testing.T) {
 	}
 	if !strings.Contains(reason, "words=3") {
 		t.Errorf("reason should report actual word count, got %q", reason)
+	}
+}
+
+func TestGate_TranscriptVisualSummary_PassesDescriptionWithoutTranscript(t *testing.T) {
+	g := transcriptVisualSummaryPresentGate{}
+	c := passCandidate()
+	c.Transcript = ""
+	c.VisualSummary = "A detailed comedy interview at a round table"
+	passed, reason := g.Evaluate(ClipSamplerGateInput{Candidate: c, Slot: passSlot()})
+	if !passed {
+		t.Fatalf("description/summary should satisfy evidence gate without transcript: %s", reason)
 	}
 }
 

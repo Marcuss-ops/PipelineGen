@@ -24,12 +24,40 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
+
+// DetectRendererHardware performs the renderer-specific fail-closed probe.
+// GPU is detected through nvidia-smi (Chronon remains the actual renderer);
+// FFmpeg is required for frame/alpha validation and artifact probing.
+func DetectRendererHardware() (gpu, ffmpeg bool) {
+	_, gpuPathErr := exec.LookPath("nvidia-smi")
+	gpuErr := gpuPathErr
+	if gpuPathErr == nil {
+		gpuErr = exec.Command("nvidia-smi", "-L").Run()
+	}
+	_, ffmpegErr := exec.LookPath("ffmpeg")
+	return gpuErr == nil, ffmpegErr == nil
+}
+
+func ValidateProfileHardware(profile *WorkerProfile, caps appjobs.WorkerCapabilities) error {
+	if profile == nil {
+		return fmt.Errorf("worker profile is nil")
+	}
+	if profile.RequiresGPU && !caps.GPU {
+		return fmt.Errorf("worker profile %q requires GPU capability", profile.Name)
+	}
+	if profile.RequiresFFmpeg && !caps.FFmpeg {
+		return fmt.Errorf("worker profile %q requires FFmpeg capability", profile.Name)
+	}
+	return nil
+}
 
 // Pre-flight constants — 30s is long enough for a healthy master
 // to come up (Compose `depends_on` waits, K8s probes, VM reboots)

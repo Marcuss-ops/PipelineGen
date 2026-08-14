@@ -52,6 +52,9 @@ func TestClipsResolver_AdvancedSegmentsUseOnlyCanonicalIDs(t *testing.T) {
 	if resolved.ClipEvidence == nil || len(resolved.ClipEvidence.SegmentEvidence) != 2 {
 		t.Fatalf("per-segment evidence was not attached: %+v", resolved.ClipEvidence)
 	}
+	if len(resolved.Segments) != 2 || !equalClipIDs(resolved.Segments[0].ClipIDs, []string{"intro", "segment-a", "segment-b"}) || resolved.Segments[1].ClipIDs == nil || len(resolved.Segments[1].ClipIDs) != 0 {
+		t.Fatalf("resolved source did not expose the same canonical segment ownership: %+v", resolved.Segments)
+	}
 	if got := resolved.ClipEvidence.SegmentEvidence[0].ClipIDs; !equalClipIDs(got, []string{"intro", "segment-a", "segment-b"}) {
 		t.Fatalf("segment evidence ownership = %v", got)
 	}

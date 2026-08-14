@@ -46,6 +46,30 @@ func TestNewProfileRegistry_LookupCreator(t *testing.T) {
 	}
 }
 
+func TestNewProfileRegistry_LookupRendererIsOverlayOnly(t *testing.T) {
+	profile, err := NewProfileRegistry().Lookup("renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !profile.RequiresGPU || !profile.RequiresFFmpeg {
+		t.Fatalf("renderer requirements = gpu:%v ffmpeg:%v", profile.RequiresGPU, profile.RequiresFFmpeg)
+	}
+	if !stringSlicesEqual(profile.AllowedJobTypes, []string{"overlay.prepare", "overlay.render"}) {
+		t.Fatalf("renderer jobs=%v", profile.AllowedJobTypes)
+	}
+	registered := []string{"overlay.prepare", "overlay.render", "script.generate"}
+	caps, err := ResolveCapabilities(profile, `{"job_types":["overlay.render"]}`, registered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(caps.JobTypes) != 1 || caps.JobTypes[0] != "overlay.render" || !caps.GPU || !caps.FFmpeg {
+		t.Fatalf("renderer caps=%+v", caps)
+	}
+	if _, err := ResolveCapabilities(profile, `{"job_types":["script.generate"]}`, registered); err == nil {
+		t.Fatal("renderer profile expanded beyond ceiling")
+	}
+}
+
 func TestNewProfileRegistry_LookupUnknown(t *testing.T) {
 	reg := NewProfileRegistry()
 	_, err := reg.Lookup("nonexistent")

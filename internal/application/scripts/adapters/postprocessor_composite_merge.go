@@ -39,6 +39,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	if strings.TrimSpace(src.DocLink) != "" {
 		dst.DocLink = src.DocLink
 	}
+	if strings.TrimSpace(src.DocumentRenderer) != "" {
+		dst.DocumentRenderer = src.DocumentRenderer
+		dst.DocumentSpecSceneSHA256 = src.DocumentSpecSceneSHA256
+		dst.DocumentSceneCount = src.DocumentSceneCount
+		dst.DocumentLanguage = src.DocumentLanguage
+	}
 	if len(src.VisualPlans) > 0 {
 		dst.VisualPlans = append(dst.VisualPlans, src.VisualPlans...)
 	}

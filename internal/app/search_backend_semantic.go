@@ -47,7 +47,7 @@ import (
 // Canonical vector names for the semantic backend. Mirrors the
 // Qdrant IndexSchema (see AGENTS.md §Qdrant Entity Associations):
 //
-//	text      = 768-dim multilingual-e5-base (semantic meaning)
+//	text      = 768-dim nomic-embed-text (semantic meaning)
 //	bm25_text = sparse BM25 (lexical exact-match)
 const (
 	semanticDenseVectorName  = "text"
@@ -56,13 +56,8 @@ const (
 	// semanticMinScore is the floor below which Qdrant hits are
 	// dropped pre-hydration. Set to 0.01 to allow low-confidence
 	// results through — the production embedding model
-	// (multilingual-e5-base at index time, nomic-embed-text at
-	// query time) produces cosine similarity scores in the
-	// 0.01-0.05 range for weakly-related content. The previous
-	// 0.50 threshold was designed for a single-model pipeline;
-	// the dual-model gap narrows the usable score range.
-	// PR-SEMANTIC-MINSCORE-FIX (July 2026): lowered from 0.50
-	// to 0.01 to unblock the search pipeline.
+	// The sampler owns acceptance after hydration; this backend must not
+	// compensate for incompatible embedding spaces with a score hack.
 	semanticMinScore = 0.01
 )
 

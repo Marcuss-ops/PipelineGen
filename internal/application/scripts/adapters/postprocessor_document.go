@@ -46,6 +46,7 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	model := &scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: input.Text, SpecScene: input.SpecScene, WordCount: input.WordCount, ModelUsed: input.ModelUsed}
 	documentTitle := resolveDocumentTitle(plan)
 	var firstID, firstLink string
+	var firstLanguage string
 	refreshDocument := plan.ForceRefresh || specSceneHasLateBoundDocumentData(input.SpecScene)
 	for _, language := range languages {
 		language = strings.TrimSpace(language)
@@ -69,12 +70,19 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		}
 		if firstID == "" {
 			firstID, firstLink = id, link
+			firstLanguage = language
 		}
 	}
 	if firstID == "" {
 		return nil, fmt.Errorf("document publishing languages are empty")
 	}
-	return &PostProcessResult{DocID: firstID, DocLink: firstLink}, nil
+	return &PostProcessResult{
+		DocID: firstID, DocLink: firstLink,
+		DocumentRenderer:        CanonicalDocumentRendererID,
+		DocumentSpecSceneSHA256: SpecSceneSHA256(input.SpecScene),
+		DocumentSceneCount:      len(input.SpecScene.Scenes),
+		DocumentLanguage:        firstLanguage,
+	}, nil
 }
 
 // resolveDocumentTitle returns the caller-facing document title. It prefers the

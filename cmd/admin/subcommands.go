@@ -59,6 +59,7 @@ var commandRegistry = map[string]commandHandler{
 	"delete-clip-by-drive-file":      runDeleteClipByDriveFile,
 	"apply-asset-metadata":           runApplyAssetMetadata,
 	"audit-google-doc-links":         runAuditGoogleDocLinks,
+	"audit-google-doc-render":        runAuditGoogleDocRender,
 	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,

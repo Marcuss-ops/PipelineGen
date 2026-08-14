@@ -11,17 +11,21 @@ import (
 
 // PostProcessResult carries the output of a single processor.
 type PostProcessResult struct {
-	DocID             string
-	DocLink           string
-	VisualPlans       []mediamemory.SceneVisualPlan
-	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
-	Entities          *scriptpkg.EntityResult
-	VidRushSegments   []scriptpkg.VidRushSegmentResult
-	Metadata          []scriptpkg.VideoMetadata
-	Voiceovers        []SceneVoiceover
-	SceneImages       []SceneImage
-	ScriptID          int64
-	AlreadyPersisted  bool
+	DocID                   string
+	DocLink                 string
+	DocumentRenderer        string `json:"document_renderer,omitempty"`
+	DocumentSpecSceneSHA256 string `json:"document_specscene_sha256,omitempty"`
+	DocumentSceneCount      int    `json:"document_scene_count,omitempty"`
+	DocumentLanguage        string `json:"document_language,omitempty"`
+	VisualPlans             []mediamemory.SceneVisualPlan
+	VisualAssignments       []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities                *scriptpkg.EntityResult
+	VidRushSegments         []scriptpkg.VidRushSegmentResult
+	Metadata                []scriptpkg.VideoMetadata
+	Voiceovers              []SceneVoiceover
+	SceneImages             []SceneImage
+	ScriptID                int64
+	AlreadyPersisted        bool
 	// Changed is set by mutative processors (e.g. ClipBindingsProcessor)
 	// that modify input state but don't produce canonical output fields.
 	// When true, IsEmpty() returns false even if all output fields

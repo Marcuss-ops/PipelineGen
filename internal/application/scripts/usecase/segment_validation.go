@@ -260,72 +260,58 @@ func (e *Engine) generateSegments(
 		return e.ollamaGen.GenerateScript(ctx, req)
 	}
 	settings := e.segmentSettings()
-	first, err := e.ollamaGen.GenerateScript(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	texts := splitGeneratedSegmentParagraphs(first.Script)
-	// A single declared segment is the stable MVP container for one scene.
-	// Models may still add editorial paragraph breaks; they must not turn
-	// those breaks into additional canonical segments.
-	if len(plan.Segments) == 1 && len(texts) > 1 {
-		texts = []string{strings.Join(texts, " ")}
-	}
-	report := validateSegmentTexts(plan, texts, settings)
-	for attempt := 0; !report.Valid && attempt < settings.maxRegenerationAttempts; attempt++ {
-		regenReq := req
-		regenReq.Prompt = frozenSegmentPrompt(req.Prompt, plan, texts, report.InvalidIndexes, settings)
-		regen, regenErr := e.ollamaGen.GenerateScript(ctx, regenReq)
-		if regenErr != nil {
-			return nil, fmt.Errorf("%w: selective regeneration attempt %d: %v", scriptpkg.ErrSegmentValidationFailed, attempt+1, regenErr)
+	texts := make([]string, len(plan.Segments))
+	var first *ports.GenerationResult
+	for index, segment := range plan.Segments {
+		segmentPlan := *plan
+		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
+		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+		segmentPlan.SegmentWords = 0
+		if plan.ClipEvidence != nil && index < len(plan.ClipEvidence.SegmentEvidence) {
+			segmentPlan.ClipEvidence = scriptpkg.NewClipEvidence(*plan.ClipEvidence)
+			segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
 		}
-		regenerated := splitGeneratedSegmentParagraphs(regen.Script)
-		if len(regenerated) == len(plan.Segments) {
-			selected := make([]string, 0, len(report.InvalidIndexes))
-			for _, index := range report.InvalidIndexes {
-				selected = append(selected, regenerated[index])
+		segmentReq := req
+		segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
+		segmentReq.SourceText = strings.TrimSpace(segment.SourceText)
+		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
+		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+		var result *ports.GenerationResult
+		var err error
+		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
+			result, err = e.ollamaGen.GenerateScript(ctx, segmentReq)
+			if err != nil {
+				return nil, err
 			}
-			regenerated = selected
-		}
-		texts = mergeRegeneratedSegments(texts, report.InvalidIndexes, regenerated)
-		report = validateSegmentTexts(plan, texts, settings)
-	}
-	// For the single-scene MVP, preserve a caller-provided source that already
-	// satisfies the canonical budget when the model cannot produce an
-	// in-range rewrite after bounded retries. This is source-grounded fallback
-	// content, not generated padding or an invented continuation.
-	if !report.Valid && len(plan.Segments) == 1 {
-		source := strings.TrimSpace(plan.Segments[0].SourceText)
-		if source != "" {
-			sourceReport := validateSegmentTexts(plan, []string{source}, settings)
-			if sourceReport.Valid {
-				texts = []string{source}
-				report = sourceReport
+			candidate := splitGeneratedSegmentParagraphs(result.Script)
+			// This request owns exactly one editorial segment. Models may
+			// still insert an internal blank line; collapse those fragments
+			// into the one deterministic paragraph for this segment. The
+			// fragments cannot contain another segment because the request
+			// carries only this segment's evidence.
+			if len(candidate) > 1 {
+				candidate = []string{strings.Join(candidate, " ")}
 			}
-		}
-	}
-	// Explicit segment source_text is the caller-owned editorial fallback.
-	// If the model cannot honour the requested paragraph cardinality after
-	// bounded retries, keep the generation structurally usable without
-	// inventing padding or silently dropping declared segments. This is
-	// especially important for clip-native payloads: the clip binder can
-	// only preserve the caller's scene skeleton after the engine returns.
-	if !report.Valid && len(plan.Segments) > 1 {
-		sourceTexts := make([]string, len(plan.Segments))
-		complete := true
-		for i, segment := range plan.Segments {
-			sourceTexts[i] = strings.TrimSpace(segment.SourceText)
-			if sourceTexts[i] == "" {
-				complete = false
-				break
+			if len(candidate) == 1 {
+				texts[index] = candidate[0]
+				singleReport := validateSegmentTexts(&segmentPlan, candidate, settings)
+				if singleReport.Valid {
+					break
+				}
 			}
+			if attempt == settings.maxRegenerationAttempts {
+				return nil, fmt.Errorf("%w: segment[%d] did not produce one valid paragraph", scriptpkg.ErrSegmentValidationFailed, index)
+			}
+			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Target %d words; return exactly one paragraph.", segmentReq.MinWords)
 		}
-		if complete {
-			texts = sourceTexts
-			report = segmentValidationReport{Valid: true}
+		if first == nil {
+			first = result
 		}
 	}
-	if !report.Valid {
+	if first == nil {
+		return nil, fmt.Errorf("%w: no segments generated", scriptpkg.ErrSegmentValidationFailed)
+	}
+	if report := validateSegmentTexts(plan, texts, settings); !report.Valid {
 		return nil, fmt.Errorf("%w: %s", scriptpkg.ErrSegmentValidationFailed, strings.Join(report.Reasons, "; "))
 	}
 	frozenText := assembleFrozenSegments(texts)

@@ -189,6 +189,7 @@ func (a *ArtifactPublisherAdapter) Publish(
 			}
 			return ""
 		}(),
+		DestinationSubpath: artifactDriveSubpath(artifact),
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.
@@ -220,6 +221,20 @@ func (a *ArtifactPublisherAdapter) Publish(
 	)
 
 	return loc, nil
+}
+
+// artifactDriveSubpath returns the canonical child path for specialized
+// artifacts. Overlay output is always colocated below the already-created
+// per-video artifact folder, never below a second global Drive root.
+// Explicit DriveSubpath remains available for future sidecar families.
+func artifactDriveSubpath(artifact finalization.VerifiedArtifact) []string {
+	if len(artifact.DriveSubpath) > 0 {
+		return append([]string(nil), artifact.DriveSubpath...)
+	}
+	if strings.EqualFold(strings.TrimSpace(artifact.Source), "overlay") {
+		return []string{"overlay"}
+	}
+	return nil
 }
 
 // stockArtifactPathParts derives the Drive folder path segments for

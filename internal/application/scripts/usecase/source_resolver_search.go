@@ -129,13 +129,82 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// Phase 1: semantic search. ResolutionContext.Language is the
 	// canonical operator target; passing it to SemanticSearchPort
 	// allows language-restricted retrieval where supported.
-	results, err := r.search.SearchByText(ctx, query, limit, resCtx.Language)
+	// Over-fetch before hydration.  The requested limit is the number of
+	// clips to accept, not the number of Qdrant rows to inspect: stale or
+	// Drive-only rows must not consume the whole search window before the
+	// renderability gate can find staged local media.
+	searchLimit := limit
+	if searchLimit < 20 {
+		searchLimit = 20
+	}
+	results, err := r.search.SearchByText(ctx, query, searchLimit, resCtx.Language)
 	if err != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceSearch,
 			Query:       query,
 			ResultCount: 0,
 			Inner:       fmt.Errorf("semantic search failed: %w", err),
+		}
+	}
+	if r.clipBuilder == nil {
+		return nil, &scriptpkg.NoSourceError{
+			ItemID: resCtx.ItemID,
+			Reason: "search source resolver: ClipSourceBuilder not configured",
+		}
+	}
+
+	// Qdrant's locator-safe payload intentionally does not carry the
+	// transcript/description fields needed by the sampler gates. Hydrate
+	// the search hits from the canonical SQLite/text-track resolver before
+	// selection; this keeps the chain honest: Qdrant selects candidates,
+	// SQLite supplies ClipEvidence, and only then can a clip be accepted.
+	searchIDs := make([]string, 0, len(results))
+	for _, result := range results {
+		if id := strings.TrimSpace(result.ClipID); id != "" {
+			searchIDs = append(searchIDs, id)
+		}
+	}
+	searchClipOpts := buildSearchClipOpts(src)
+	searchClipOpts.Language = strings.TrimSpace(resCtx.Language)
+	searchClipOpts.MetadataFallbackByClipID = make(map[string]string, len(results))
+	hydratedDetails := make(map[string]scriptpkg.ClipDetail, len(searchIDs))
+	for _, id := range searchIDs {
+		// Qdrant carries the semantic summary used by the sampler. Pass it
+		// through the per-clip hydration options so a Drive-only asset does
+		// not need a local transcript row to qualify for a Docs-only job.
+		hydrateOpts := *searchClipOpts
+		for _, result := range results {
+			if strings.TrimSpace(result.ClipID) == id {
+				hydrateOpts.MetadataFallbackText = strings.TrimSpace(result.VisualSummary)
+				if hydrateOpts.MetadataFallbackText == "" {
+					hydrateOpts.MetadataFallbackText = strings.TrimSpace(result.Name)
+				}
+				hydrateOpts.MetadataFallbackByClipID = map[string]string{id: hydrateOpts.MetadataFallbackText}
+				break
+			}
+		}
+		evidence, _, _, hydrateErr := r.clipBuilder.BuildClipContext(ctx, []string{id}, &hydrateOpts)
+		if hydrateErr != nil || evidence == nil || evidence.ClipDetails == nil {
+			// A semantic hit without a ready transcript/evidence row is
+			// not an accepted clip. Keep searching the Qdrant result set;
+			// do not let one stale asset abort otherwise valid evidence.
+			continue
+		}
+		detail, detailOK := evidence.ClipDetails[id]
+		if !detailOK {
+			continue
+		}
+		if resCtx.RequireLocalMedia && (strings.TrimSpace(detail.LocalPath) == "" || !containsClipID(evidence.RenderableClipIDs, id)) {
+			// A render job requires staged bytes and a renderable ID.
+			continue
+		}
+		if !resCtx.RequireLocalMedia && strings.TrimSpace(detail.DriveLink) == "" {
+			// A Docs-only job deliberately does not require local media,
+			// but it must still have the canonical Drive locator.
+			continue
+		}
+		if detailOK {
+			hydratedDetails[id] = detail
 		}
 	}
 
@@ -145,18 +214,45 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// of the dedup+select+coverage loop anymore.
 	candidates := make([]ports.ClipSamplerCandidate, 0, len(results))
 	for _, result := range results {
+		id := strings.TrimSpace(result.ClipID)
+		if _, ok := hydratedDetails[id]; !ok {
+			continue
+		}
+		detail := scriptpkg.ClipDetail{}
+		if hydratedDetails != nil {
+			detail = hydratedDetails[id]
+		}
+		visualSummary := strings.TrimSpace(result.VisualSummary)
+		if visualSummary == "" {
+			visualSummary = strings.TrimSpace(detail.Description)
+		}
+		if visualSummary == "" {
+			visualSummary = strings.TrimSpace(detail.Name)
+		}
+		if visualSummary == "" {
+			visualSummary = strings.TrimSpace(result.Name)
+		}
+		transcript := strings.TrimSpace(result.Transcript)
+		if transcript == "" {
+			transcript = strings.TrimSpace(detail.Transcript)
+		}
+		driveLink := strings.TrimSpace(result.DriveLink)
+		if driveLink == "" {
+			driveLink = strings.TrimSpace(detail.DriveLink)
+		}
 		candidates = append(candidates, ports.ClipSamplerCandidate{
-			ClipID:              strings.TrimSpace(result.ClipID),
+			ClipID:              id,
 			Name:                result.Name,
 			Score:               result.Score,
 			Source:              "semantic",
-			Transcript:          result.Transcript,
-			VisualSummary:       result.VisualSummary,
+			Transcript:          transcript,
+			VisualSummary:       visualSummary,
 			MediaType:           result.MediaType,
-			DriveLink:           result.DriveLink,
-			AvailableByIngest:   result.AvailableByIngest,
+			DriveLink:           driveLink,
+			AvailableByIngest:   result.AvailableByIngest || driveLink != "",
 			AnchorCoverageRatio: result.AnchorCoverageRatio,
 		})
+		searchClipOpts.MetadataFallbackByClipID[id] = visualSummary
 	}
 
 	minQualityScore := 0.0
@@ -179,24 +275,49 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		return nil, err
 	}
 	if len(selection.ClipIDs) == 0 {
+		failedGates := make([]string, 0)
+		seenFailedGates := make(map[string]struct{})
+		candidateSummaries := make([]string, 0, len(candidates))
+		for _, record := range selection.Provenance.Records {
+			if record.Passed {
+				continue
+			}
+			candidateSummaries = append(candidateSummaries,
+				fmt.Sprintf("%s:%s", record.CandidateID, record.GateName+"="+record.Reason))
+			if _, seen := seenFailedGates[record.GateName]; seen {
+				continue
+			}
+			seenFailedGates[record.GateName] = struct{}{}
+			failedGates = append(failedGates, record.GateName)
+		}
+		if len(candidateSummaries) == 0 {
+			for _, candidate := range candidates {
+				candidateSummaries = append(candidateSummaries, fmt.Sprintf(
+					"%s:score=%.17g transcript_words=%d visual_summary_runes=%d media_type=%q drive_link=%t available_by_ingest=%t",
+					candidate.ClipID,
+					candidate.Score,
+					len(strings.Fields(candidate.Transcript)),
+					len([]rune(candidate.VisualSummary)),
+					candidate.MediaType,
+					strings.TrimSpace(candidate.DriveLink) != "",
+					candidate.AvailableByIngest,
+				))
+			}
+		}
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceSearch,
 			Query:       query,
 			ResultCount: 0,
-			Inner:       fmt.Errorf("no semantic search results for query %q", query),
+			Inner: fmt.Errorf(
+				"no accepted semantic search results for query %q (qdrant_results=%d hydrated=%d candidates=%d failed_gates=%s candidate_diagnostics=%s)",
+				query, len(results), len(hydratedDetails), len(candidates), strings.Join(failedGates, ","), strings.Join(candidateSummaries, "; "),
+			),
 		}
 	}
 	clipIDs := selection.ClipIDs
 	searchItems := selection.SearchItems
 
-	// Phase 2: build clip context via shared hydration helper.
-	if r.clipBuilder == nil {
-		return nil, &scriptpkg.NoSourceError{
-			ItemID: resCtx.ItemID,
-			Reason: "search source resolver: ClipSourceBuilder not configured",
-		}
-	}
-
+	// Phase 2: build the final canonical ClipEvidence for the selected IDs.
 	// Semantic search returns relevance order, but a chronological source
 	// contract must bind scene N to the clip's real timeline position. The
 	// sampler remains the sole selector; this stable reorder only changes
@@ -239,7 +360,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		searchItems = orderedItems
 	}
 
-	opts := buildSearchClipOpts(src)
+	opts := searchClipOpts
 	// PR 4: thread operator-side traits from resolutionContext.
 	opts.Language = resCtx.Language
 	opts.Title = resCtx.Title
@@ -265,4 +386,17 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 
 	resolved.SearchResults = searchItems
 	return resolved, nil
+}
+
+func containsClipID(ids []string, want string) bool {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		return false
+	}
+	for _, id := range ids {
+		if strings.TrimSpace(id) == want {
+			return true
+		}
+	}
+	return false
 }

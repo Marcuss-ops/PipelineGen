@@ -41,6 +41,9 @@ func TestDocumentsProcessor_DoesNotRewriteSingleSceneSpecScene(t *testing.T) {
 	if len(stub.content) != 1 {
 		t.Fatalf("expected one document, got %d", len(stub.content))
 	}
+	// The publication result carries runtime-proof metadata for GET /full.
+	// The HTML itself remains the human/technical projection; these fields are
+	// deliberately outside the document body.
 	content := stub.content[0]
 	if !strings.Contains(content, html.EscapeString(canonical)) {
 		t.Errorf("document must contain canonical scene text, got: %s", content)
@@ -48,6 +51,21 @@ func TestDocumentsProcessor_DoesNotRewriteSingleSceneSpecScene(t *testing.T) {
 	if strings.Contains(content, html.EscapeString(global)) {
 		t.Errorf("document publisher must not rewrite SpecScene with global narrative text, got: %s", content)
 	}
+}
+
+func TestDocumentsProcessor_ReportsCanonicalRendererMetadata(t *testing.T) {
+	stub := &documentServiceStub{}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "LEGACY-SCENE-ID-SENTINEL", Index: 0, Text: "CANONICAL-TEXT-SENTINEL",
+		Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "SECRET-CLIP-ID"}},
+	}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "renderer-proof", Title: "Proof", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
+	result, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: spec})
+	require.NoError(t, err)
+	require.Equal(t, CanonicalDocumentRendererID, result.DocumentRenderer)
+	require.Equal(t, SpecSceneSHA256(spec), result.DocumentSpecSceneSHA256)
+	require.Equal(t, 1, result.DocumentSceneCount)
+	require.Equal(t, "it", result.DocumentLanguage)
 }
 
 func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {

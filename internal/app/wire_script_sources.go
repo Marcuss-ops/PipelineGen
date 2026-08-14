@@ -96,10 +96,11 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 	if limit <= 0 {
 		limit = 10
 	}
-	// The deployed nomic document/query embeddings produce valid semantic
-	// matches in the 0.01–0.50 range. Keep this aligned with the canonical
-	// semantic backend floor instead of dropping all stock hits at 0.5.
-	minScore := 0.01
+	// Do not apply a second ANN score threshold here.  The shared sampler
+	// owns the acceptance floor after SQLite hydration; keeping the Qdrant
+	// request unthresholded lets the resolver over-fetch stale/remote-only
+	// rows and still discover a renderable local clip in the result window.
+	minScore := 0.0
 
 	// Overfetch because the shared media index also contains voiceover
 	// assets. Keep semantic clip search restricted to published media and
@@ -112,14 +113,28 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 	if searchLimit < 30 {
 		searchLimit = 30
 	}
-	results, err := p.searcher.Search(ctx, qdrantschema.SearchRequest{
-		QueryVector: vec,
-		VectorName:  p.vectorName,
-		Limit:       searchLimit,
-		MinScore:    minScore,
+	results, err := p.searcher.HybridSearch(ctx, qdrantschema.HybridSearchRequest{
+		DenseVector:      vec,
+		DenseVectorName:  p.vectorName,
+		SparseVectorName: "bm25_text",
+		SparseText:       query,
+		SparseModel:      qdrantschema.DefaultSparseModel,
+		Limit:            searchLimit,
+		MinScore:         minScore,
 		Filter: map[string]any{
 			"must": []any{
-				map[string]any{"key": "lifecycle_state", "match": map[string]any{"value": "PUBLISHED"}},
+				map[string]any{"key": "media_type", "match": map[string]any{"value": "clip"}},
+			},
+			// Clip evidence is indexed as ACTIVE while stock/media
+			// projections are commonly PUBLISHED. Keep the source
+			// resolver aligned with the canonical search lifecycle
+			// allow-list used by /api/media/search.
+			"min_should": map[string]any{
+				"conditions": []any{
+					map[string]any{"key": "lifecycle_state", "match": map[string]any{"value": "ACTIVE"}},
+					map[string]any{"key": "lifecycle_state", "match": map[string]any{"value": "PUBLISHED"}},
+				},
+				"min_count": 1,
 			},
 			"must_not": []any{
 				map[string]any{"key": "source", "match": map[string]any{"value": "voiceover"}},
@@ -137,18 +152,41 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 			continue
 		}
 		out = append(out, usecase.SemanticSearchResult{
-			ClipID:              assetID,
-			Name:                qdrantPayloadStr(r.Payload, "name"),
-			Score:               r.Score,
-			Transcript:          qdrantPayloadStr(r.Payload, "search_text"),
-			VisualSummary:       qdrantPayloadStr(r.Payload, "description"),
-			MediaType:           qdrantPayloadStr(r.Payload, "media_type"),
-			DriveLink:           qdrantPayloadStr(r.Payload, "drive_link"),
-			AvailableByIngest:   qdrantPayloadStr(r.Payload, "lifecycle_state") == "PUBLISHED",
+			ClipID: assetID,
+			Name:   firstQdrantPayloadString(r.Payload, "name", "title", "semantic_title"),
+			Score:  r.Score,
+			// Qdrant payloads from the current media projection use
+			// embedding_text; older projections used search_text. Keep
+			// the compatibility resolution here, at the single wire seam.
+			Transcript:    firstQdrantPayloadString(r.Payload, "search_text", "transcript"),
+			VisualSummary: firstQdrantPayloadString(r.Payload, "description", "embedding_text", "semantic_title", "title", "name"),
+			MediaType:     qdrantPayloadStr(r.Payload, "media_type"),
+			DriveLink:     qdrantPayloadStr(r.Payload, "drive_link"),
+			AvailableByIngest: isSearchableClipLifecycle(
+				qdrantPayloadStr(r.Payload, "lifecycle_state"),
+			),
 			AnchorCoverageRatio: 1.0,
 		})
 	}
 	return out, nil
+}
+
+func firstQdrantPayloadString(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := qdrantPayloadStr(payload, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func isSearchableClipLifecycle(state string) bool {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "ACTIVE", "PUBLISHED":
+		return true
+	default:
+		return false
+	}
 }
 
 // qdrantPayloadStr reads a string-valued key from a Qdrant payload
