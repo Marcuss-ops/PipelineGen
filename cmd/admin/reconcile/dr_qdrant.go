@@ -67,7 +67,7 @@ func parseDrQdrantDispatcher(args []string) (drQdrantDispatcher, error) {
 	}
 	sub := strings.TrimSpace(args[0])
 	switch sub {
-	case "list-snapshots", "take-snapshot", "restore-snapshot", "apply-retention":
+	case "list-snapshots", "take-snapshot", "restore-snapshot", "apply-retention", "mark-failed-cleaned":
 		return drQdrantDispatcher{Sub: sub, Raw: args[1:]}, nil
 	default:
 		return drQdrantDispatcher{}, fmt.Errorf("dr-qdrant: unknown subcommand %q", sub)
@@ -118,6 +118,8 @@ func RunDrQdrant(args []string) error {
 		return runDrRestoreSnapshot(ctx, cfg, client, schema, log, deps.Raw)
 	case "apply-retention":
 		return runDrApplyRetention(ctx, cfg, client, schema, log, deps.Raw)
+	case "mark-failed-cleaned":
+		return runDrMarkFailedCleaned(ctx, cfg, client, schema, log, deps.Raw)
 	}
 	return fmt.Errorf("dr-qdrant: unknown subcommand %q", deps.Sub)
 }
@@ -513,5 +515,91 @@ func runDrApplyRetention(ctx context.Context, cfg *config.Config, client *transp
 			fmt.Printf("               [%d] %s\n", i, e)
 		}
 	}
+	return nil
+}
+
+// ── Subcommand: mark-failed-cleaned ──────────────────────────────────
+
+type markFailedCleanedFlags struct {
+	Collection string
+	JSON       bool
+}
+
+func parseMarkFailedCleanedFlags(args []string) (markFailedCleanedFlags, error) {
+	d := markFailedCleanedFlags{}
+	for _, a := range args {
+		switch {
+		case a == "--json":
+			d.JSON = true
+		case strings.HasPrefix(a, "--collection="):
+			d.Collection = strings.TrimPrefix(a, "--collection=")
+		default:
+			if strings.HasPrefix(a, "-") {
+				return d, fmt.Errorf("mark-failed-cleaned: unknown flag %s", a)
+			}
+		}
+	}
+	if strings.TrimSpace(d.Collection) == "" {
+		return d, errors.New("mark-failed-cleaned: --collection=<name> is required")
+	}
+	return d, nil
+}
+
+// runDrMarkFailedCleaned marks a FAILED projection FAILED_CLEANED after its
+// physical collection has been verified cleaned up. The transition fails
+// closed (inside CollectionManager.MarkFailedCleaned) unless the projection
+// is FAILED and the runtime alias does NOT point at its collection. The
+// attempt history is preserved: only the status changes.
+func runDrMarkFailedCleaned(ctx context.Context, cfg *config.Config, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
+	flags, err := parseMarkFailedCleanedFlags(args)
+	if err != nil {
+		return err
+	}
+	cm := collections.NewCollectionManager(client, schema, log)
+
+	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	if err != nil {
+		return fmt.Errorf("open media DB: %w", err)
+	}
+	defer sqliteDB.Close()
+	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
+	if err != nil {
+		return fmt.Errorf("create media registry ledger: %w", err)
+	}
+	if err := cm.SetRegistryLedger(ctx, registryLedger); err != nil {
+		return fmt.Errorf("hydrate media registry projection ledger: %w", err)
+	}
+
+	projections, err := registryLedger.ListProjections(ctx)
+	if err != nil {
+		return fmt.Errorf("list projections: %w", err)
+	}
+	projectionID := ""
+	for _, p := range projections {
+		if p.CollectionName == flags.Collection {
+			projectionID = p.ProjectionID
+			break
+		}
+	}
+	if projectionID == "" {
+		return fmt.Errorf("mark-failed-cleaned: no projection registered for collection %q", flags.Collection)
+	}
+
+	if err := cm.MarkFailedCleaned(ctx, projectionID); err != nil {
+		return err
+	}
+
+	if flags.JSON {
+		b, _ := json.MarshalIndent(map[string]any{
+			"projection_id": projectionID,
+			"collection":    flags.Collection,
+			"status":        "FAILED_CLEANED",
+		}, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("=== dr-qdrant mark-failed-cleaned: %s ===\n", flags.Collection)
+	fmt.Printf("  Projection: %s\n", projectionID)
+	fmt.Printf("  Status:     FAILED_CLEANED (attempt history preserved)\n")
 	return nil
 }
