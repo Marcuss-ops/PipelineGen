@@ -130,6 +130,19 @@
       ],
       "residue_allowed": []
     },
+    "percheck_frame_concept_projection_writer": {
+      "rule_id": "percheck_frame_concept_projection_writer",
+      "scope": "internal/",
+      "canonical_owner": "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (media_frames, FrameCollectionName) + internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (media_concepts, ConceptCollectionName) — the respective projection writers, through the generic ProjectionWriter",
+      "forbidden_pattern": "a point-write call (\\.\\s*(UpsertProjection|DeleteProjection|UpsertPoints|DeletePoints)\\s*\\() on the same line as a frame/concept collection identifier (\\b(FrameCollectionName|ConceptCollectionName)\\b)",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (FrameCollectionName only)",
+        "internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (ConceptCollectionName only)",
+        "*_test.go"
+      ],
+      "residue_allowed": []
+    },
     "percheck_drive_access_ssot": {
       "rule_id": "percheck_drive_access_ssot",
       "scope": "internal/application/**",
