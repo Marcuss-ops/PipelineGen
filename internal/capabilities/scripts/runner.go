@@ -67,6 +67,7 @@ type Runner struct {
 	finalAudioPublisher   FinalAudioPublisher
 	recorder              ExecutionRecorder
 	sceneCommitObserver   SceneCommitObserver
+	vidRushBarrier        VidRushBarrier
 	log                   *zap.Logger
 }
 
@@ -141,6 +142,27 @@ func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
 	if r != nil {
 		r.sceneCommitObserver = observer
 	}
+}
+
+// SetVidRushBarrier wires the final barrier awaited after scene generation
+// completes. A nil barrier is safe and skips the wait; a non-nil barrier is
+// fail-closed (a barrier error fails the run) and blocks only for enrichments
+// still running, never re-running the whole-document EntitiesProcessor.
+func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
+	if r != nil {
+		r.vidRushBarrier = barrier
+	}
+}
+
+// waitForVidRush awaits the final incremental-VidRush barrier when one is
+// wired. A nil barrier is a safe no-op (batch workflows may enrich the whole
+// document later); when present, a barrier error fails the run fail-closed.
+func (r *Runner) waitForVidRush(ctx context.Context, runID string) error {
+	if r.vidRushBarrier == nil {
+		return nil
+	}
+	_, err := r.vidRushBarrier.WaitForVidRush(ctx, runID)
+	return err
 }
 
 // Execute runs the complete generation workflow for the given run.
@@ -224,6 +246,12 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	}
 	if result == nil {
 		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
+	}
+	// Final VidRush barrier: wait only for enrichments still running, never
+	// re-running the whole-document EntitiesProcessor.
+	if err := r.waitForVidRush(ctx, runID); err != nil {
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+		return
 	}
 	result.SourceTrace = sourceTraceFromResult(result)
 	if !r.runTranslationPhase(ctx, runID, req, exec, resumeIdx, result) {
