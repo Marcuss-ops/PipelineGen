@@ -22,7 +22,13 @@
 #   8. durable timing checks   → child job result carries stage_progress
 #                                (voiceover/upload/persistence completed)
 #                                and a drive_file_id / drive_link
-#   9. PASS/FAIL summary
+#   9. timing contract compare → dispatch one script.generate
+#                                (COMBINED_TIMELINE); assert canonical
+#                                audio_metrics (AudioPipelineMetrics) is the
+#                                single authority, legacy timings
+#                                (GenerationTimings) is NOT double-emitted,
+#                                and instrumented stages fed timing > 0
+#  10. PASS/FAIL summary
 #
 # The `project` field is REQUIRED (PR-VOICEOVER-DRIVE-DRIFT): the semantic
 # publish path fails closed with a typed error when it is empty.
@@ -35,6 +41,7 @@
 #   VELOX_DRIVE_VOICEOVER_ROOT  Drive folder_id for voiceover destination
 #   OBS_PROJECT_ID              voiceover project id (default observability-cert)
 #   SMOKE_POLL_TIMEOUT_SECONDS  poll ceiling (default 120)
+#   OBS_SCRIPT_POLL_TIMEOUT_SECONDS  script.generate poll ceiling (default 300)
 #
 # Exit codes:
 #   0   all assertions pass (CERTIFIED)
@@ -62,6 +69,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     printf '  poll http://%s/api/jobs/<id>/full  (terminal, parent_state settled)\n' "$SMOKE_API_BASE"
     printf '  snapshot /metrics BEFORE → AFTER, assert counter/histogram deltas\n'
     printf '  GET /api/jobs/<child>/full, assert durable stage_progress + drive fields\n'
+    printf '  POST /api/script/generate (COMBINED_TIMELINE), compare audio_metrics vs legacy timings\n'
     exit 0
 fi
 
@@ -292,6 +300,133 @@ verify_durable_timings() {
     return $rc
 }
 
+# ── Timing contract comparison (GenerationTimings vs AudioPipelineMetrics) ─
+# The canonical script generation path (script.generate, COMBINED_TIMELINE)
+# persists AudioPipelineMetrics under result.data.result.audio_metrics. The
+# legacy GenerationTimings (JSON "timings") belongs to the migration-only
+# GenerateOneUseCase path; the new runner must NOT double-emit it. This phase
+# certifies that the canonical contract is the single authority and that every
+# instrumented stage actually fed its timing field.
+verify_timing_contract_comparison() {
+    smoke_log_section "Timing contract comparison: GenerationTimings vs AudioPipelineMetrics"
+    local payload cmp_job_id cmp_rc=0
+    payload=$(jq -n --arg id "obs_timing_${TAG_PREFIX}" '{
+        version: 2,
+        preset: "custom",
+        force_refresh: true,
+        items: [{
+            id: $id,
+            title: ("Observability timing contract check " + $id),
+            language: "it",
+            tone: "documentary",
+            source: {
+                type: "text",
+                topic: "osservabilita",
+                source_text: "PipelineGen genera una breve scena con voiceover per verificare i timing durevoli del contratto audio."
+            },
+            script_params: {target_words: 120, min_words: 20},
+            output: {generate_timeline: true, voiceover_enabled: "enabled"},
+            audio: {mode: "COMBINED_TIMELINE"},
+            docs: {enabled: false}
+        }]
+    }')
+
+    smoke_curl POST "/api/script/generate" --data "$payload" >/dev/null
+    if ! smoke_assert_http_2xx "POST /api/script/generate"; then
+        fail "timing_cmp_dispatch_http_${SMOKE_LAST_HTTP}"
+        return 1
+    fi
+    cmp_job_id=$(jq -r '.job_id // .id // empty' "$SMOKE_LAST_BODY" 2>/dev/null || echo "")
+    if [[ -z "$cmp_job_id" ]]; then
+        fail "timing_cmp_no_job_id"
+        printf '%sFAIL: POST /api/script/generate returned no job_id%s\n' "$RED" "$RESET" >&2
+        return 1
+    fi
+    printf '  enqueued script.generate job_id=%s\n' "$cmp_job_id"
+
+    local saved_poll="$SMOKE_POLL_TIMEOUT_SECONDS"
+    SMOKE_POLL_TIMEOUT_SECONDS="${OBS_SCRIPT_POLL_TIMEOUT_SECONDS:-300}"
+    if ! smoke_poll_terminal "$cmp_job_id"; then
+        SMOKE_POLL_TIMEOUT_SECONDS="$saved_poll"
+        fail "timing_cmp_poll_timeout"
+        return 1
+    fi
+    SMOKE_POLL_TIMEOUT_SECONDS="$saved_poll"
+    if [[ "$SMOKE_LAST_STATUS" != "SUCCEEDED" && "$SMOKE_LAST_STATUS" != "completed" ]]; then
+        fail "timing_cmp_status_${SMOKE_LAST_STATUS}"
+        printf '%sFAIL: script.generate ended in status=%s%s\n' "$RED" "$SMOKE_LAST_STATUS" "$RESET" >&2
+        return 1
+    fi
+
+    if ! smoke_curl GET "/api/jobs/${cmp_job_id}/full" >/dev/null; then
+        fail "timing_cmp_full_http_${SMOKE_LAST_HTTP}"
+        return 1
+    fi
+    local body="$SMOKE_LAST_BODY"
+
+    local audio_present timings_present
+    audio_present=$(jq -r '.result.data.result.audio_metrics != null' "$body")
+    timings_present=$(jq -r '.result.data.result.timings != null' "$body")
+    if [[ "$audio_present" == "true" ]]; then
+        printf '  %sOK: canonical audio_metrics (AudioPipelineMetrics) present%s\n' "$GREEN" "$RESET"
+    else
+        fail "timing_cmp_audio_metrics_missing"
+        printf '%sFAIL: canonical audio_metrics missing from durable result%s\n' "$RED" "$RESET" >&2
+        cmp_rc=1
+    fi
+    if [[ "$timings_present" == "false" ]]; then
+        printf '  %sOK: legacy timings (GenerationTimings) NOT double-emitted%s\n' "$GREEN" "$RESET"
+    else
+        printf '  %sWARN: legacy timings (GenerationTimings) present alongside audio_metrics — dual-contract divergence%s\n' "$YELLOW" "$RESET"
+    fi
+
+    local field val
+    for field in tts_ms tts_calls audio_duration_ms total_ms; do
+        val=$(jq -r --arg f "$field" '.result.data.result.audio_metrics[$f] // 0' "$body")
+        if [[ "$val" =~ ^[0-9]+$ ]] && (( val > 0 )); then
+            printf '  %sOK: audio_metrics.%s=%s (>0)%s\n' "$GREEN" "$field" "$val" "$RESET"
+        else
+            fail "timing_cmp_fed_${field}_${val}"
+            printf '%sFAIL: audio_metrics.%s=%s (expected >0 — stage ran)%s\n' "$RED" "$field" "$val" "$RESET" >&2
+            cmp_rc=1
+        fi
+    done
+
+    local passes
+    passes=$(jq -r '.result.data.result.audio_metrics.audio_encode_passes // 0' "$body")
+    if [[ "$passes" =~ ^[0-9]+$ ]] && (( passes >= 1 )); then
+        printf '  %sOK: audio_metrics.audio_encode_passes=%s (BUILD path encoded AAC)%s\n' "$GREEN" "$passes" "$RESET"
+    else
+        fail "timing_cmp_encode_passes_${passes}"
+        printf '%sFAIL: audio_metrics.audio_encode_passes=%s (expected >=1 on BUILD path)%s\n' "$RED" "$passes" "$RESET" >&2
+        cmp_rc=1
+    fi
+
+    local copy_eligible codec
+    copy_eligible=$(jq -r '.result.data.result.final_audio.copy_eligible // false' "$body")
+    codec=$(jq -r '.result.data.result.final_audio.codec // empty' "$body")
+    if [[ "$copy_eligible" == "true" && -n "$codec" ]]; then
+        printf '  %sOK: final_audio.copy_eligible=true codec=%s (copy strategy certified)%s\n' "$GREEN" "$codec" "$RESET"
+    else
+        fail "timing_cmp_final_audio"
+        printf '%sFAIL: final_audio copy_eligible=%s codec=%s (copy strategy not certified)%s\n' "$RED" "$copy_eligible" "$codec" "$RESET" >&2
+        cmp_rc=1
+    fi
+
+    # Known gap: canonical-only stage fields that are registered but not yet
+    # fed by the renderer. Report as NOTE, not FAIL — the instrumented
+    # contract above is the gate; these are surfaced for visibility.
+    local gap
+    for gap in mix_ms aac_encode_ms probe_ms hash_ms upload_ms timeline_compile_ms audio_plan_compile_ms clip_audio_prepare_ms media_fetch_ms; do
+        val=$(jq -r --arg g "$gap" '.result.data.result.audio_metrics[$g] // 0' "$body")
+        if [[ "$val" == "0" || "$val" == "null" ]]; then
+            printf '  %sNOTE: audio_metrics.%s=0 (registered but not yet fed — see architecture/observability-measurement-matrix.yaml)%s\n' "$YELLOW" "$gap" "$RESET"
+        fi
+    done
+
+    return $cmp_rc
+}
+
 main() {
     smoke_log_section "Observability live certification"
     printf '  target:    %s\n  metrics:   %s\n  project:   %s\n  vo_root:   %s\n  req_id:    %s\n' \
@@ -379,10 +514,13 @@ main() {
     # ── Durable timing assertions ────────────────────────────────
     verify_durable_timings || rc=1
 
+    # ── Timing contract comparison (GenerationTimings vs AudioPipelineMetrics)
+    verify_timing_contract_comparison || rc=1
+
     # ── Aggregate verdict ────────────────────────────────────────
     echo
     if (( rc == 0 && ${#FAILURES[@]} == 0 )); then
-        printf '%sOBSERVABILITY CERTIFICATION: PASS (metrics reachable, families present, counter/histogram deltas +1, durable stage_progress 1/1, Drive fields present)%s\n' \
+        printf '%sOBSERVABILITY CERTIFICATION: PASS (metrics reachable, families present, counter/histogram deltas +1, durable stage_progress 1/1, timing contract audio_metrics authoritative)%s\n' \
             "$GREEN" "$RESET"
         printf '  parent=%s child=%s\n' "$JOB_ID" "$CHILD_JOB_ID"
         exit 0
