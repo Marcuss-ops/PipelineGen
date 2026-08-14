@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	infra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/overlays"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	infra "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
 type fakeRenderer struct{ calls int }

@@ -8,13 +8,13 @@ import (
 	"os"
 	"path/filepath"
 
+	appoverlays "github.com/Marcuss-ops/PipelineGen/internal/app/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	appoverlays "github.com/Marcuss-ops/PipelineGen/internal/application/overlays"
 	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"go.uber.org/zap"
 )
 

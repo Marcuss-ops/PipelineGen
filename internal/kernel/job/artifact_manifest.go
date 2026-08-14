@@ -72,7 +72,7 @@ const (
 	ArtifactKindMarkdown = "markdown"
 	// ArtifactKindOverlay = "overlay" extends the canonical kind set
 	// for the RenderingGen overlay handler
-	// (internal/application/overlays/handlers.go). Overlays are the
+	// (internal/app/overlays/handlers.go). Overlays are the
 	// declarative PipelineGen↔RenderingGen contract: PipelineGen
 	// decides what should appear and when, RenderingGen materializes
 	// that decision. The kind string is the wire-format contract that
