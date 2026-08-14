@@ -24,6 +24,21 @@ func fillIdentityPayload(payload map[string]any, doc *IndexDocument, name, desti
 	if doc.Metadata.NormalizedGroup != "" {
 		payload["normalized_group"] = doc.Metadata.NormalizedGroup
 	}
+	// Canonical taxonomy dimensions (migration 195): always emitted when
+	// populated so the Qdrant payload carries the full canonical taxonomy
+	// (media_type / asset_kind / source_type / namespace / semantic_role).
+	if doc.Metadata.Namespace != "" {
+		payload["namespace"] = doc.Metadata.Namespace
+	}
+	if doc.Metadata.AssetKind != "" {
+		payload["asset_kind"] = doc.Metadata.AssetKind
+	}
+	if doc.Metadata.SourceType != "" {
+		payload["source_type"] = doc.Metadata.SourceType
+	}
+	if doc.Metadata.SemanticRole != "" {
+		payload["semantic_role"] = doc.Metadata.SemanticRole
+	}
 	if doc.Metadata.HasDialogue != nil {
 		payload["has_dialogue"] = *doc.Metadata.HasDialogue
 	}

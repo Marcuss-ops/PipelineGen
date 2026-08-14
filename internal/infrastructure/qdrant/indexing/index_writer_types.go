@@ -40,9 +40,18 @@ type AssetData struct {
 	MediaType       string `json:"media_type"`
 	AssetRole       string `json:"asset_role,omitempty"`
 	NormalizedGroup string `json:"normalized_group,omitempty"`
-	HasDialogue     *bool  `json:"has_dialogue,omitempty"`
-	AudioProfile    string `json:"audio_profile,omitempty"`
-	Status          string `json:"status"`
+	// Canonical taxonomy dimensions (migration 195). These are the SSOT
+	// classification values written by the MediaCommitter; the payload
+	// mapper emits them under the canonical payload keys namespace /
+	// asset_kind / source_type / semantic_role. Empty for legacy rows
+	// that predate the taxonomy columns (keys omitted fail-closed).
+	Namespace    string `json:"namespace,omitempty"`
+	AssetKind    string `json:"asset_kind,omitempty"`
+	SourceType   string `json:"source_type,omitempty"`
+	SemanticRole string `json:"semantic_role,omitempty"`
+	HasDialogue  *bool  `json:"has_dialogue,omitempty"`
+	AudioProfile string `json:"audio_profile,omitempty"`
+	Status       string `json:"status"`
 	// LifecycleState is the canonical search-filter payload key. Asset
 	// store populates from media_assets.lifecycle_state when the column
 	// exists; legacy rows fall back to Status-derived values so the
