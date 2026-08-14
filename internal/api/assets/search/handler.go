@@ -100,12 +100,13 @@ func (h *Handler) Resolve(c *gin.Context) {
 //   - limit     — Page size. Aggregator clamps to DefaultLimit / MaxLimit.
 //   - cursor    — Opaque base64-JSON pagination token.
 type searchRequest struct {
-	Query   string              `json:"query"`
-	Sources []string            `json:"sources,omitempty"`
-	Mode    string              `json:"mode,omitempty"`
-	Filters searchRequestFilter `json:"filters,omitempty"`
-	Limit   int                 `json:"limit,omitempty"`
-	Cursor  string              `json:"cursor,omitempty"`
+	Query    string              `json:"query"`
+	Sources  []string            `json:"sources,omitempty"`
+	Mode     string              `json:"mode,omitempty"`
+	Universe string              `json:"universe,omitempty"` // "catalog" (default) | "discovery" | "blended"
+	Filters  searchRequestFilter `json:"filters,omitempty"`
+	Limit    int                 `json:"limit,omitempty"`
+	Cursor   string              `json:"cursor,omitempty"`
 }
 
 type searchRequestFilter struct {
@@ -163,12 +164,13 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 
 	res, err := h.aggreg.Search(c.Request.Context(), search.Query{
-		Text:    q,
-		Sources: req.Sources,
-		Limit:   limit,
-		Mode:    mode,
-		Cursor:  req.Cursor,
-		Actor:   actor,
+		Text:     q,
+		Sources:  req.Sources,
+		Limit:    limit,
+		Mode:     mode,
+		Universe: search.ParseUniverse(req.Universe),
+		Cursor:   req.Cursor,
+		Actor:    actor,
 		Filters: search.Filters{
 			Source:        strings.TrimSpace(req.Filters.Source),
 			MediaType:     strings.TrimSpace(req.Filters.MediaType),

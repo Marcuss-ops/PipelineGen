@@ -41,6 +41,7 @@ import (
 type stubBackend struct {
 	name     string
 	caps     []Capability
+	universe SearchUniverse
 	delaysMu sync.Mutex
 	items    []Candidate
 	err      error
@@ -59,6 +60,13 @@ func (s *stubBackend) Capabilities() []Capability {
 		return s.caps
 	}
 	return []Capability{CapVideo}
+}
+
+func (s *stubBackend) Universe() SearchUniverse {
+	if s.universe != "" {
+		return s.universe
+	}
+	return SearchCatalog
 }
 
 func (s *stubBackend) Search(ctx context.Context, _ Query) ([]Candidate, error) {

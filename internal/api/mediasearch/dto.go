@@ -11,10 +11,11 @@ package mediasearch
 // post-hydration (canonical duration comes from SQLite, not the
 // vector payload — that's why it's not a vector-store filter).
 type searchRequest struct {
-	Query   string              `json:"query" binding:"required"`
-	Mode    string              `json:"mode,omitempty"` // "ann" or "hybrid"
-	Limit   int                 `json:"limit,omitempty"`
-	Filters searchRequestFilter `json:"filters,omitempty"`
+	Query    string              `json:"query" binding:"required"`
+	Mode     string              `json:"mode,omitempty"`     // "ann" or "hybrid" (retrieval mode)
+	Universe string              `json:"universe,omitempty"` // "catalog" (default) | "discovery" | "blended"
+	Limit    int                 `json:"limit,omitempty"`
+	Filters  searchRequestFilter `json:"filters,omitempty"`
 }
 
 type searchRequestFilter struct {
@@ -50,6 +51,7 @@ type searchResponse struct {
 	OK            bool               `json:"ok"`
 	Query         string             `json:"query"`
 	Mode          string             `json:"mode"`
+	Universe      string             `json:"universe"`
 	Count         int                `json:"count"`
 	Items         []searchResultItem `json:"items"`
 	Partial       bool               `json:"partial,omitempty"`

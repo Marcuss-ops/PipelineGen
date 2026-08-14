@@ -40,6 +40,13 @@ func (b *providerSearchBackend) Capabilities() []search.Capability {
 	return []search.Capability{search.CapVideo}
 }
 
+// Universe reports SearchDiscovery: provider backends perform live
+// provider calls (artlist, youtube, stock, images) and never touch
+// Qdrant. They are excluded from catalog-universe queries.
+func (b *providerSearchBackend) Universe() search.SearchUniverse {
+	return search.SearchDiscovery
+}
+
 func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]search.Candidate, error) {
 	// PR-2 (June 2026): provider backends (artlist, youtube, stock)
 	// do not support hash-match lookups; the canonical hash path

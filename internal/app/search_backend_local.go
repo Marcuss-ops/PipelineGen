@@ -41,6 +41,12 @@ func (b *localSearchBackend) Capabilities() []search.Capability {
 	}
 }
 
+// Universe reports SearchCatalog: the local backend searches the
+// canonical SQLite catalog (no live provider call).
+func (b *localSearchBackend) Universe() search.SearchUniverse {
+	return search.SearchCatalog
+}
+
 func (b *localSearchBackend) Search(ctx context.Context, q search.Query) ([]search.Candidate, error) {
 	// PR-2 (June 2026): when Query.Hash is non-empty, the local
 	// backend fires its hash-match path. The aggregator fans out

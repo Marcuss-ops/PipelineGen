@@ -36,29 +36,108 @@ const (
 	CapMusic Capability = "music"
 )
 
-// ── Mode enum ──────────────────────────────────────────────────────
+// ── RetrievalMode enum ─────────────────────────────────────────────
 //
-// SearchMode toggles ANN vs. hybrid (semantic backend only).
-// Bidirectional alias: mediasearch.SearchMode = search.SearchMode.
-type SearchMode string
+// RetrievalMode selects HOW the catalog is searched: ANN (dense vector
+// nearest-neighbour) vs hybrid (dense + sparse BM25 RRF fusion). It is
+// intentionally a SEPARATE axis from SearchUniverse (WHERE the search
+// runs). RetrievalMode is only meaningful for catalog backends that
+// own an embedding pipeline (the semantic backend); discovery
+// backends ignore it.
+//
+// PR-SEARCH-UNIVERSE (2026-08): the historical SearchMode was renamed
+// to RetrievalMode to remove the naming collision with SearchUniverse.
+// SearchMode + SearchModeANN + SearchModeHybrid remain as deprecated
+// aliases so existing callers keep compiling during the migration
+// window (same Go-level identity, errors.Is / type comparison
+// transparent).
+type RetrievalMode string
 
 const (
-	SearchModeANN    SearchMode = "ann"
-	SearchModeHybrid SearchMode = "hybrid"
+	RetrievalModeANN    RetrievalMode = "ann"
+	RetrievalModeHybrid RetrievalMode = "hybrid"
 )
 
-// ParseMode maps a wire mode string to a typed SearchMode. Empty or
-// unknown values default to SearchModeHybrid. This keeps mode mapping
-// in the canonical search package so transport code does not hardcode
-// SearchModeANN.
-func ParseMode(s string) SearchMode {
+// SearchMode is the deprecated alias of RetrievalMode. New code MUST
+// use RetrievalMode; the alias exists only for migration compatibility.
+type SearchMode = RetrievalMode
+
+const (
+	// Deprecated: use RetrievalModeANN.
+	SearchModeANN = RetrievalModeANN
+	// Deprecated: use RetrievalModeHybrid.
+	SearchModeHybrid = RetrievalModeHybrid
+)
+
+// ParseRetrievalMode maps a wire mode string to a typed RetrievalMode.
+// Empty or unknown values default to RetrievalModeHybrid. This keeps
+// mode mapping in the canonical search package so transport code does
+// not hardcode the constants.
+func ParseRetrievalMode(s string) RetrievalMode {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case string(SearchModeANN):
-		return SearchModeANN
-	case string(SearchModeHybrid):
-		return SearchModeHybrid
+	case string(RetrievalModeANN):
+		return RetrievalModeANN
+	case string(RetrievalModeHybrid):
+		return RetrievalModeHybrid
 	default:
-		return SearchModeHybrid
+		return RetrievalModeHybrid
+	}
+}
+
+// ParseMode is the deprecated alias of ParseRetrievalMode.
+func ParseMode(s string) RetrievalMode { return ParseRetrievalMode(s) }
+
+// ── SearchUniverse enum ────────────────────────────────────────────
+//
+// SearchUniverse selects WHERE the search runs — the orthogonal axis to
+// RetrievalMode. It closes the historical "ogni volta risultati
+// diversi" class by making the catalog/discovery separation explicit:
+//
+//   - SearchCatalog   : canonical index only (Qdrant → SQLite hydrate;
+//     the local SQLite backend). NO live provider call. Reproducible.
+//   - SearchDiscovery : live providers only (artlist, youtube, stock,
+//     images). NO Qdrant call. Produces ExternalCandidate-shaped hits.
+//   - SearchBlended   : catalog + discovery, deduped via the canonical
+//     identity resolver (source_type|source_ref).
+//
+// Empty Universe defaults to SearchCatalog (the canonical default for
+// source.search, script generation, VidRush, automatic clip selection
+// and existing-stock reuse). SearchBlended is a QUERY-level value only:
+// a SearchBackend reports SearchCatalog or SearchDiscovery, never
+// SearchBlended.
+type SearchUniverse string
+
+const (
+	SearchCatalog   SearchUniverse = "catalog"
+	SearchDiscovery SearchUniverse = "discovery"
+	SearchBlended   SearchUniverse = "blended"
+)
+
+// IsValidUniverse reports whether s (trimmed, case-insensitive) is one
+// of the canonical closed-set values. Empty input is NOT valid here —
+// the empty→catalog default is applied by EffectiveUniverse/ParseUniverse,
+// while transport code uses IsValidUniverse to reject a non-empty
+// unknown value with 400.
+func IsValidUniverse(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case string(SearchCatalog), string(SearchDiscovery), string(SearchBlended):
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseUniverse maps a wire universe string to a typed SearchUniverse.
+// Empty or unknown values default to SearchCatalog (the canonical
+// default — unknown values are NOT silently widened to blended).
+func ParseUniverse(s string) SearchUniverse {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case string(SearchDiscovery):
+		return SearchDiscovery
+	case string(SearchBlended):
+		return SearchBlended
+	default:
+		return SearchCatalog
 	}
 }
 
@@ -172,4 +251,19 @@ type Query struct {
 	AllowExternal  bool       // advisory hint: when false, external provider backends should be skipped
 	CacheRead      bool       // advisory hint for backends that serve cached content
 	PreferApproved bool       // advisory hint for backends that track approval state
+
+	// Universe selects WHERE the search runs (catalog / discovery /
+	// blended). Empty defaults to SearchCatalog via EffectiveUniverse.
+	// This is the orthogonal axis to Mode (retrieval mode).
+	Universe SearchUniverse
+}
+
+// EffectiveUniverse returns the query's universe with the canonical
+// empty→catalog default applied. SearchBlended is a valid query-level
+// value and is returned verbatim.
+func (q Query) EffectiveUniverse() SearchUniverse {
+	if q.Universe == "" {
+		return SearchCatalog
+	}
+	return q.Universe
 }

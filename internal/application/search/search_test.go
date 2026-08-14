@@ -366,12 +366,19 @@ func TestRegistryFreezeBlocksRegister(t *testing.T) {
 // ── Test helpers ───────────────────────────────────────────────────
 
 type fakeBackend struct {
-	name string
-	caps []Capability
+	name     string
+	caps     []Capability
+	universe SearchUniverse
 }
 
 func (f *fakeBackend) Name() string               { return f.name }
 func (f *fakeBackend) Capabilities() []Capability { return f.caps }
+func (f *fakeBackend) Universe() SearchUniverse {
+	if f.universe != "" {
+		return f.universe
+	}
+	return SearchCatalog
+}
 func (f *fakeBackend) Search(ctx context.Context, q Query) ([]Candidate, error) {
 	return nil, nil
 }

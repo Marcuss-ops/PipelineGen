@@ -103,8 +103,9 @@ func (r *BackendRegistry) All() []SearchBackend {
 	return out
 }
 
-// Eligible returns the registered backends matching q.Sources
-// AND q.MediaTypes. The two filters compose with AND semantics.
+// Eligible returns the registered backends matching q.Sources,
+// q.MediaTypes AND q.Universe. The three filters compose with AND
+// semantics.
 //
 //   - Sources: if q.Sources is non-empty, the candidate set is
 //     reduced to backends whose Name() appears in the canonicalised
@@ -113,9 +114,14 @@ func (r *BackendRegistry) All() []SearchBackend {
 //   - MediaTypes: applied after Sources. Backends whose
 //     Capabilities intersect with the canonicalised media-type
 //     filter win; backends with no intersection are dropped.
+//   - Universe: applied last. SearchCatalog keeps only catalog
+//     backends (no live provider call); SearchDiscovery keeps only
+//     discovery backends (no Qdrant call); SearchBlended keeps both.
+//     Empty Universe defaults to SearchCatalog via
+//     Query.EffectiveUniverse().
 //
-// Empty q.Sources AND empty q.MediaTypes → every backend is
-// eligible (the legacy "all" behaviour is preserved).
+// Empty q.Sources AND empty q.MediaTypes AND blended universe → every
+// backend is eligible (the legacy "all" behaviour is preserved).
 // Sort order is Name() for determinism, same as All().
 func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	all := r.All()
@@ -129,6 +135,9 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	// included regardless of q.Sources, otherwise requests like
 	// sources=["stock"] with mode=hybrid produce zero eligible
 	// backends and fail with ErrSemanticBackendUnavailable.
+	// (PR-SEARCH-UNIVERSE: the universe filter below still drops
+	// the semantic backend for discovery-universe queries — a
+	// discovery search must not touch Qdrant.)
 	canonicalSources := ResolveCanonicals(q.Sources)
 	if len(q.Sources) > 0 && len(canonicalSources) == 0 {
 		// All sources supplied were unknown aliases. NO
@@ -156,26 +165,51 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	}
 
 	// 2. MediaTypes filter (legacy behaviour preserved).
-	if len(q.MediaTypes) == 0 {
-		return all
-	}
-	want := make(map[Capability]struct{}, len(q.MediaTypes))
-	for _, m := range q.MediaTypes {
-		if m == "" {
-			continue
-		}
-		want[Capability(m)] = struct{}{}
-	}
-	if len(want) == 0 {
-		return all
-	}
-	out := make([]SearchBackend, 0, len(all))
-	for _, b := range all {
-		for _, c := range b.Capabilities() {
-			if _, ok := want[c]; ok {
-				out = append(out, b)
-				break
+	if len(q.MediaTypes) > 0 {
+		want := make(map[Capability]struct{}, len(q.MediaTypes))
+		for _, m := range q.MediaTypes {
+			if m == "" {
+				continue
 			}
+			want[Capability(m)] = struct{}{}
+		}
+		if len(want) > 0 {
+			out := make([]SearchBackend, 0, len(all))
+			for _, b := range all {
+				for _, c := range b.Capabilities() {
+					if _, ok := want[c]; ok {
+						out = append(out, b)
+						break
+					}
+				}
+			}
+			all = out
+		}
+	}
+
+	// 3. Universe filter (PR-SEARCH-UNIVERSE).
+	return filterBackendsByUniverse(all, q.EffectiveUniverse())
+}
+
+// filterBackendsByUniverse narrows the eligible set by the canonical
+// SearchUniverse axis. SearchBlended keeps every backend (both
+// catalog + discovery); SearchCatalog / SearchDiscovery keep only
+// backends whose Universe() matches. A backend reporting an empty
+// Universe is treated as catalog (the canonical default) so a
+// misconfigured backend degrades to the safe, provider-free side
+// rather than leaking live-provider traffic.
+func filterBackendsByUniverse(backends []SearchBackend, universe SearchUniverse) []SearchBackend {
+	if universe == SearchBlended {
+		return backends
+	}
+	out := make([]SearchBackend, 0, len(backends))
+	for _, b := range backends {
+		bu := b.Universe()
+		if bu == "" {
+			bu = SearchCatalog
+		}
+		if bu == universe {
+			out = append(out, b)
 		}
 	}
 	return out

@@ -210,6 +210,11 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
+	universe, ok := h.parseUniverse(c, req.Universe)
+	if !ok {
+		return
+	}
+
 	limit := defaults.Int(req.Limit, search.DefaultLimit)
 	q := searchQueryFromRequest(req, mode, limit, actor)
 
@@ -219,7 +224,7 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	resp := resultToResponse(res, q.Text, mode, h.indexVer.IndexVersion(c.Request.Context()))
+	resp := resultToResponse(res, q.Text, mode, universe, h.indexVer.IndexVersion(c.Request.Context()))
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -318,6 +323,22 @@ func (h *Handler) parseMode(c *gin.Context, raw string) (search.SearchMode, bool
 			"mode must be one of: hybrid, ann")
 		return "", false
 	}
+}
+
+// parseUniverse accepts "", "catalog", "discovery", "blended" — anything
+// else is a 400. Empty defaults to catalog (the canonical default).
+// Validation delegates to search.IsValidUniverse (the SSOT closed-set
+// predicate) so the wire grammar cannot drift from the canonical enum.
+func (h *Handler) parseUniverse(c *gin.Context, raw string) (search.SearchUniverse, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return search.SearchCatalog, true
+	}
+	if !search.IsValidUniverse(raw) {
+		apiutil.Error(c, http.StatusBadRequest,
+			"universe must be one of: catalog, discovery, blended")
+		return "", false
+	}
+	return search.ParseUniverse(raw), true
 }
 
 func toString(v any) string {
