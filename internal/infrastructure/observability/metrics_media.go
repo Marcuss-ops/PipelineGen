@@ -18,6 +18,33 @@ var (
 		Help: "Total number of video rendering attempts",
 	}, []string{"status", "fallback"})
 
+	// Media execution-plane counters. The copy-only mux (mux_audio_copy) runs
+	// exactly one ffmpeg invocation with `-c:v copy -c:a copy`, so on that path
+	// ffprobe_exec_count does not move and frames_decoded/frames_encoded stay 0
+	// (stream copy decodes/encodes nothing). The two frame counters are
+	// registered so the copy-only certification can assert a zero delta; feeding
+	// them with real decoded/encoded frame counts belongs to the encode-plane
+	// accounting (a separate follow-up).
+	FFmpegExecCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ffmpeg_exec_count",
+		Help: "Total number of ffmpeg invocations dispatched through the Rust media plane",
+	})
+
+	FFprobeExecCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ffprobe_exec_count",
+		Help: "Total number of ffprobe invocations dispatched through the Rust media plane",
+	})
+
+	FramesDecoded = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "frames_decoded",
+		Help: "Total video frames decoded by the media plane (0 on copy-only paths)",
+	})
+
+	FramesEncoded = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "frames_encoded",
+		Help: "Total video frames encoded by the media plane (0 on copy-only paths)",
+	})
+
 	// Download Metrics
 	DownloadDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "download_duration_seconds",
