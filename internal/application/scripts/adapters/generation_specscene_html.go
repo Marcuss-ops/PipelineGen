@@ -146,17 +146,28 @@ func buildFinalAudioBlock(ref *scriptpkg.FinalAudioArtifact, language string) *f
 	if ref == nil {
 		return nil
 	}
+	// The certified fields win; container/duration_us fall back to derivation
+	// from the path/duration_ms only when the persisted artifact predates the
+	// explicit certification fields.
+	container := ref.Container
+	if container == "" {
+		container = mediaContainerFromPath(ref.Path)
+	}
+	durationUS := ref.DurationUS
+	if durationUS <= 0 {
+		durationUS = ref.DurationMS * 1000
+	}
 	return &finalAudioDocumentBlock{
 		AudioAssetID:     ref.AssetID,
 		Language:         language,
 		DriveLink:        ref.DriveLink,
-		Container:        mediaContainerFromPath(ref.Path),
+		Container:        container,
 		Codec:            ref.Codec,
 		Profile:          ref.Profile,
 		SampleRate:       ref.SampleRate,
 		Channels:         ref.Channels,
 		ChannelLayout:    ref.ChannelLayout,
-		DurationUS:       ref.DurationMS * 1000,
+		DurationUS:       durationUS,
 		AudioPlanSHA256:  ref.AudioPlanSHA256,
 		FinalAudioSHA256: ref.FinalAudioSHA256,
 		FinalMix:         ref.FinalMix,
