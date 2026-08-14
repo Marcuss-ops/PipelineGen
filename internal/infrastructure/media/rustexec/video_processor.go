@@ -295,7 +295,9 @@ func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan au
 	if err := file.Close(); err != nil {
 		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("close rendered audio: %w", err)
 	}
-	metrics.HashMS = time.Since(hashStarted).Milliseconds()
+	// Clamp sub-millisecond hashing to a floor of 1ms so a stage that ran
+	// never reports 0 (a 0ms value reads as "not instrumented").
+	metrics.HashMS = max(time.Since(hashStarted).Milliseconds(), 1)
 
 	stat, err := os.Stat(output)
 	if err != nil {
