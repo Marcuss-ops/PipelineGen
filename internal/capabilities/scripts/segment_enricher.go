@@ -10,6 +10,15 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+// SegmentMaterializer acquires, verifies and finalizes the candidate assets
+// of one enriched segment through the shared provider registry and common
+// finalizer. It runs after provider search and returns the segment with its
+// candidates persisted. Implementations must return an immutable result and
+// must never mutate shared scene state.
+type SegmentMaterializer interface {
+	Materialize(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error)
+}
+
 // SegmentEnricher enriches one stable scene into a VidRushSegmentResult. It is
 // the single reusable owner of per-segment VidRush work: entity extraction,
 // important words/phrases, Artlist and image query construction, cache lookup
