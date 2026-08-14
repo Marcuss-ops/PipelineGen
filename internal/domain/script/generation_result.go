@@ -396,7 +396,6 @@ type GenerationTimings struct {
 	ImageGenerationMs       int64 `json:"image_generation_ms,omitempty"`
 	DriveUploadMs           int64 `json:"drive_upload_ms,omitempty"`
 	SQLiteMs                int64 `json:"sqlite_ms,omitempty"`
-	QdrantMs                int64 `json:"qdrant_ms,omitempty"`
 	BindingMs               int64 `json:"binding_ms,omitempty"`
 	TTSTotalMs              int64 `json:"tts_total_ms,omitempty"`
 	TTSCalls                int   `json:"tts_calls,omitempty"`
