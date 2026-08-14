@@ -367,6 +367,62 @@ func TestFinalAudioCanonicalTimelineAndRenderPlanShareOneAsset(t *testing.T) {
 	}
 }
 
+// TestValidateFinalAudioMirrorEnforcesSameAsset certifies the fails-closed
+// invariant that ties the three audio-side artifacts to a single master:
+// RenderPlan.FinalAudio must mirror the certified FinalAudioReference field
+// for field — most importantly the audio_asset_id, the final-audio file hash,
+// and the audio-plan hash (the latter two binding it to the canonical
+// timeline it was compiled from). Any divergence must fail closed rather
+// than letting the video executor consume a different file.
+func TestValidateFinalAudioMirrorEnforcesSameAsset(t *testing.T) {
+	ref := FinalAudioReference{
+		AssetID: "final-audio-abc", Path: "/tmp/final_audio_abc.m4a",
+		AudioContractVersion: audio.AudioContractVersion,
+		AudioPlanVersion:     audio.AudioPlanVersion,
+		PlanSHA256:           strings.Repeat("a", 64),
+		FinalAudioSHA256:     strings.Repeat("b", 64),
+		Codec:                "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+		Bitrate: 128000, DurationMS: 5000, StartPTS: 0, SizeBytes: 1, FinalMix: true, CopyEligible: true,
+	}
+	mirror := func() render.FinalAudioAsset {
+		return render.FinalAudioAsset{
+			AssetID: ref.AssetID, AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy),
+			Path: ref.Path, SHA256: ref.FinalAudioSHA256, PlanSHA256: ref.PlanSHA256,
+			AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
+			Codec: ref.Codec, Profile: ref.Profile, SampleRate: ref.SampleRate, Channels: ref.Channels,
+			ChannelLayout: ref.ChannelLayout, DurationMS: ref.DurationMS, StartPTS: ref.StartPTS,
+			SizeBytes: ref.SizeBytes, FinalMix: ref.FinalMix, CopyEligible: ref.CopyEligible,
+		}
+	}
+
+	// A faithful mirror passes.
+	if err := ValidateFinalAudioMirror(ref, mirror()); err != nil {
+		t.Fatalf("matching mirror must pass: %v", err)
+	}
+
+	// A diverged audio_asset_id must fail closed.
+	tampered := mirror()
+	tampered.AssetID = "final-audio-other"
+	if err := ValidateFinalAudioMirror(ref, tampered); err == nil {
+		t.Fatal("diverged audio_asset_id must fail closed")
+	}
+
+	// A diverged final-audio file hash must fail closed.
+	tampered = mirror()
+	tampered.SHA256 = strings.Repeat("c", 64)
+	if err := ValidateFinalAudioMirror(ref, tampered); err == nil {
+		t.Fatal("diverged final-audio hash must fail closed")
+	}
+
+	// A diverged audio-plan hash (i.e. a different canonical timeline) must
+	// fail closed.
+	tampered = mirror()
+	tampered.PlanSHA256 = strings.Repeat("d", 64)
+	if err := ValidateFinalAudioMirror(ref, tampered); err == nil {
+		t.Fatal("diverged audio-plan hash must fail closed")
+	}
+}
+
 func TestValidateChunkedVoiceoversRequiresOneToOneMapping(t *testing.T) {
 	base := GenerateResult{Scenes: []Scene{
 		{ID: "scene-1", Index: 0, Text: map[Language]string{"en": "hello"}, Voiceover: map[Language]AudioReference{"en": {ID: "vo-1", FilePath: "/vo-1.mp3"}}},
