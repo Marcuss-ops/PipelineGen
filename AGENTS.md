@@ -41,6 +41,12 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
     5. Se `verify-main` è già passato e working tree/commit non sono cambiati, NON ripeterlo.
     6. Non eseguire `auth-check`, `make dev` o `make run` salvo richiesta esplicita.
     7. Non scartare modifiche locali non correlate.
+    Esempi concreti del loop rapido (punti 1-2), `-count=1` evita risultati in cache:
+    - `go test ./internal/capabilities/scripts/... -count=1` — il solo package modificato.
+    - `go test ./internal/capabilities/audio/... -run TestCompileRejectsInvalidAudioInputs -count=1` — un singolo test.
+    - `go test ./internal/infrastructure/media/rustexec/... -count=1`
+    - `go test ./internal/application/assets/providers/stock/... -count=1`
+    - quindi `make verify-agent` — foundation + static + verifica dei soli componenti impattati (~1-3 min).
 
 ## Authentication SSOT (Velox admin token)
 
