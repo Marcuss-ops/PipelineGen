@@ -62,15 +62,15 @@ func TestRegistryCrossStepState_IsExplicit(t *testing.T) {
 		t.Fatal("registerSearchBackend must return capability values, not mutate RegistryWiring")
 	}
 
-	if _, _, _, err := registerSearchBackend(nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
+	if _, _, _, err := registerSearchBackend(nil, nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("registerSearchBackend must reject a nil provider registry")
 	}
 	providerRegistry := providers.NewRegistry()
-	if _, _, _, err := registerSearchBackend(nil, providerRegistry, nil, nil, nil, nil, nil, nil); err == nil {
+	if _, _, _, err := registerSearchBackend(nil, providerRegistry, nil, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("registerSearchBackend must reject an unfrozen provider registry")
 	}
 	providerRegistry.Freeze()
-	if _, _, _, err := registerSearchBackend(nil, providerRegistry, nil, nil, nil, nil, nil, nil); err != nil {
+	if _, _, _, err := registerSearchBackend(nil, providerRegistry, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("frozen empty provider registry should compose an empty search graph: %v", err)
 	}
 
