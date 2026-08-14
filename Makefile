@@ -28,7 +28,7 @@
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
-	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
+	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-node-scraper verify-race-kernel \
@@ -95,6 +95,7 @@ help:
 	@echo ""
 	@echo "VERIFY (registry-driven gate chain; foundation once per aggregate)"
 	@echo "  make verify-fast      Foundation (toolchain + secrets + repository integrity + format + tidy) + static (vet + build)"
+	@echo "  make verify-agent     Agent dev loop: foundation + static + only impacted component tests (1-3 min)"
 	@echo "  make verify-split     Certify the separation and reuse of all verification gates"
 	@echo "  make verify-repository-integrity  Validate tracked gitlinks against .gitmodules"
 	@echo "  make verify-main      Daily headless gate: foundation + static + changed components + architecture"
