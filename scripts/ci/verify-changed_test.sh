@@ -141,4 +141,61 @@ if [ -s "$LOG" ]; then
     fail "phase 4: unexpected GO invocations for a make-only change"
 fi
 
+# --- Phase 5: a changed Python file gets a cheap py_compile syntax check ---
+git reset -q --hard HEAD
+rm -rf make bin scripts/tools
+mkdir -p scripts/tools
+printf 'def hello():\n    return "hi"\n' > scripts/tools/probe.py
+
+: > "$LOG"
+VERIFY_CHANGED_GO_LOG="$LOG" bash "$SCRIPT" > "$WORK_DIR/output5.log" 2>&1
+if ! grep -q 'py_compile syntax check' "$WORK_DIR/output5.log"; then
+    fail "phase 5: python change did not run the syntax check"
+fi
+if [ -s "$LOG" ]; then
+    fail "phase 5: unexpected GO invocations for a python-only change"
+fi
+
+# --- Phase 6: a Python syntax error fails closed ---
+printf 'def broken(:\n    pass\n' > scripts/tools/probe.py
+: > "$LOG"
+if VERIFY_CHANGED_GO_LOG="$LOG" bash "$SCRIPT" > "$WORK_DIR/output6.log" 2>&1; then
+    fail "phase 6: verify-changed should fail closed on a python syntax error"
+fi
+
+# --- Phase 7: core changes must NOT swallow changed Go package tests ---
+git reset -q --hard HEAD
+rm -rf scripts/tools make bin
+mkdir -p make bin trackedpkg2
+cat > "$FAKE_GO" <<'FAKE_GO'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\0' "$@" >> "$VERIFY_CHANGED_GO_LOG"
+FAKE_GO
+chmod +x "$FAKE_GO"
+cat > "$WORK_DIR/bin/make" <<'FAKE_MAKE'
+#!/usr/bin/env bash
+printf '%s\0' "$@" >> "${VERIFY_CHANGED_MAKE_LOG:?}"
+FAKE_MAKE
+chmod +x "$WORK_DIR/bin/make"
+printf '# placeholder\n' > make/verify.mk
+printf 'package trackedpkg2\n' > trackedpkg2/tracked2.go
+
+: > "$LOG"
+MAKE_LOG="$WORK_DIR/make-args2.log"
+: > "$MAKE_LOG"
+PATH="$WORK_DIR/bin:$PATH" GO="$FAKE_GO" VERIFY_CHANGED_GO_LOG="$LOG" VERIFY_CHANGED_MAKE_LOG="$MAKE_LOG" \
+    bash "$SCRIPT" > "$WORK_DIR/output7.log" 2>&1
+if ! grep -q 'native Node probe + architecture gates' "$WORK_DIR/output7.log"; then
+    fail "phase 7: core change did not trigger the core-toolchain branch"
+fi
+mapfile -d '' -t make_args < "$MAKE_LOG"
+if [[ " ${make_args[*]} " != *" verify-node-native "* ]] || [[ " ${make_args[*]} " != *" verify-architecture "* ]]; then
+    fail "phase 7: make was not invoked with the core scope"
+fi
+mapfile -d '' -t go_args < "$LOG"
+if [[ " ${go_args[*]} " != *" ./trackedpkg2 "* ]]; then
+    fail "phase 7: changed Go package tests were swallowed by the core branch"
+fi
+
 echo "✅ verify-changed regression test passed"
