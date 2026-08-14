@@ -393,7 +393,7 @@ func TestCompileCanonicalRenderPlanMirrorsCertifiedFinalAudio(t *testing.T) {
 			AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,
 			PlanSHA256:       "plan",
 			FinalAudioSHA256: strings.Repeat("a", 64),
-			Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+			Codec:            "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
 			DurationMS: 1000, StartPTS: 0, SizeBytes: 123, FinalMix: true, CopyEligible: true,
 		},
 	}
@@ -419,7 +419,7 @@ func TestValidateFinalAudioMirrorFailsClosedOnDrift(t *testing.T) {
 		AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,
 		PlanSHA256:       "plan",
 		FinalAudioSHA256: strings.Repeat("b", 64),
-		Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+		Codec:            "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
 		DurationMS: 1000, StartPTS: 0, SizeBytes: 123, FinalMix: true, CopyEligible: true,
 	}
 	good := render.FinalAudioAsset{
