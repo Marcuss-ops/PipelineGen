@@ -69,30 +69,26 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		}
 	})
 
-	extractionLimit := 5
+	limits := segmentExtractionLimits{entities: 5, phrases: 5, words: 5, artlist: 5, images: 5}
 	if plan.MediaPlan.Extraction.MaxEntitiesPerSegment > 0 {
-		extractionLimit = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
+		limits.entities = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
 	}
-	phrasesLimit := 5
 	if plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment > 0 {
-		phrasesLimit = plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+		limits.phrases = plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	}
 	// The annotation contract is scene-level: retain at most one key
 	// statement per scene, regardless of a wider legacy extraction limit.
-	if phrasesLimit > 1 {
-		phrasesLimit = 1
+	if limits.phrases > 1 {
+		limits.phrases = 1
 	}
-	wordsLimit := 5
 	if plan.MediaPlan.Extraction.MaxImportantWordsPerSegment > 0 {
-		wordsLimit = plan.MediaPlan.Extraction.MaxImportantWordsPerSegment
+		limits.words = plan.MediaPlan.Extraction.MaxImportantWordsPerSegment
 	}
-	artlistLimit := 5
 	if plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment > 0 {
-		artlistLimit = plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment
+		limits.artlist = plan.MediaPlan.Extraction.MaxArtlistQueriesPerSegment
 	}
-	imageLimit := 5
 	if plan.MediaPlan.Extraction.MaxImageQueriesPerSegment > 0 {
-		imageLimit = plan.MediaPlan.Extraction.MaxImageQueriesPerSegment
+		limits.images = plan.MediaPlan.Extraction.MaxImageQueriesPerSegment
 	}
 
 	agg := &scriptpkg.EntityResult{
@@ -137,7 +133,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 						reqs = append(reqs, scriptpkg.EntityExtractionRequest{
 							SegmentID: seg.ID, Text: seg.Text, Title: plan.Title,
 							Language: plan.Language, Device: extractionDevice(plan),
-							Model: plan.Model, EntityCount: extractionLimit,
+							Model: plan.Model, EntityCount: limits.entities,
 							SpecScene: segmentSpecSceneContext(input.SpecScene, seg),
 						})
 					}
@@ -161,7 +157,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 							p.metrics.IncSegments()
 							p.metrics.IncExtractionCache(false)
 						}
-						seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
+						seg := buildVidRushSegmentResult(plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
 						seg.Cache.Extraction = "MISS"
 						outcomes <- extractionOutcome{index: index, segment: seg}
 					}
@@ -195,94 +191,8 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			go func() {
 				defer wg.Done()
 				for index := range jobs {
-					canonicalSeg := canonical[index]
-					device := extractionDevice(plan)
-					if p.metrics != nil {
-						p.metrics.IncSegments()
-					}
-					cacheKey := segmentCacheKey(
-						"extraction-v4-local-v1",
-						canonicalSeg.TextHash,
-						plan.Language,
-						plan.Model,
-						plan.PromptVersion,
-						fmt.Sprintf("%d", extractionLimit),
-						fmt.Sprintf("%d", phrasesLimit),
-						fmt.Sprintf("%d", wordsLimit),
-						fmt.Sprintf("%d", artlistLimit),
-						fmt.Sprintf("%d", imageLimit),
-						device,
-					)
-					if !plan.MediaPlan.ForceRefreshExtraction {
-						if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
-							if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
-								seg = cloneVidRushSegmentResult(seg)
-								seg.Cache.Extraction = "HIT_EXACT"
-								if p.metrics != nil {
-									p.metrics.IncExtractionCache(true)
-								}
-								outcomes <- extractionOutcome{index: index, segment: seg, cached: true}
-								continue
-							}
-						}
-						var persisted scriptpkg.VidRushSegmentResult
-						if hit, cacheErr := loadVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
-							outcomes <- extractionOutcome{index: index, err: cacheErr}
-							continue
-						} else if hit {
-							persisted = cloneVidRushSegmentResult(persisted)
-							persisted.Cache.Extraction = "HIT_EXACT"
-							cacheStore(&vidrushExtractionCache, cacheKey, persisted)
-							if p.metrics != nil {
-								p.metrics.IncExtractionCache(true)
-							}
-							outcomes <- extractionOutcome{index: index, segment: persisted, cached: true}
-							continue
-						}
-					}
-
-					select {
-					case p.extractionGate <- struct{}{}:
-					case <-workerCtx.Done():
-						outcomes <- extractionOutcome{index: index, err: workerCtx.Err()}
-						continue
-					}
-					res, err := p.extractor.ExtractEntities(workerCtx, scriptpkg.EntityExtractionRequest{
-						SegmentID:   canonicalSeg.ID,
-						Text:        canonicalSeg.Text,
-						Title:       plan.Title,
-						Language:    plan.Language,
-						Device:      device,
-						Model:       plan.Model,
-						EntityCount: extractionLimit,
-						SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
-					})
-					<-p.extractionGate
-					if err != nil {
-						if errors.Is(err, ErrEntityExtractorUnavailable) {
-							outcomes <- extractionOutcome{index: index, unavailable: err}
-						} else {
-							outcomes <- extractionOutcome{index: index, err: err}
-						}
-						continue
-					}
-					if res == nil {
-						res = &scriptpkg.EntityResult{}
-					}
-					seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
-					seg.Cache.Extraction = "MISS"
-					if plan.MediaPlan.ForceRefreshExtraction {
-						seg.Cache.Extraction = "REFRESHED"
-					}
-					if p.metrics != nil {
-						p.metrics.IncExtractionCache(false)
-					}
-					cacheStore(&vidrushExtractionCache, cacheKey, seg)
-					if cacheErr := storeVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
-						outcomes <- extractionOutcome{index: index, err: cacheErr}
-						continue
-					}
-					outcomes <- extractionOutcome{index: index, segment: seg}
+					outcome := p.enrichSegment(workerCtx, plan, input.SpecScene, canonical[index], limits)
+					outcomes <- extractionOutcome{index: index, segment: outcome.segment, cached: outcome.cached, unavailable: outcome.unavailable, err: outcome.err}
 				}
 			}()
 		}
@@ -559,4 +469,125 @@ func segmentQueryContext(plan *scriptpkg.ResolvedGenerationPlan, segment scriptp
 		}
 	}
 	return segment.Text
+}
+
+// segmentExtractionLimits bundles the bounded per-segment extraction limits
+// resolved from the generation plan. They are resolved once per Process call
+// and shared by every segment so no segment can diverge from the plan policy.
+type segmentExtractionLimits struct {
+	entities int
+	phrases  int
+	words    int
+	artlist  int
+	images   int
+}
+
+// segmentEnrichmentOutcome is the immutable result of enriching one canonical
+// segment. Exactly one of segment, unavailable, or err is populated.
+type segmentEnrichmentOutcome struct {
+	segment     scriptpkg.VidRushSegmentResult
+	cached      bool
+	unavailable error
+	err         error
+}
+
+// enrichSegment runs the complete single-segment VidRush enrichment for one
+// canonical segment: durable cache lookup, single-slot extraction, query
+// construction and cache write. It is the reusable per-segment owner shared
+// by the batch processor's worker path. It never mutates shared scene state;
+// it returns an immutable segment result. The batch transport path shares the
+// same query/result builders but skips per-segment caching for its serialized
+// model call.
+func (p *EntitiesProcessor) enrichSegment(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, specScene scriptpkg.SpecSceneOutput, canonicalSeg scriptpkg.CanonicalSegment, limits segmentExtractionLimits) segmentEnrichmentOutcome {
+	outcome := segmentEnrichmentOutcome{}
+	device := extractionDevice(plan)
+	if p.metrics != nil {
+		p.metrics.IncSegments()
+	}
+	cacheKey := segmentCacheKey(
+		"extraction-v4-local-v1",
+		canonicalSeg.TextHash,
+		plan.Language,
+		plan.Model,
+		plan.PromptVersion,
+		fmt.Sprintf("%d", limits.entities),
+		fmt.Sprintf("%d", limits.phrases),
+		fmt.Sprintf("%d", limits.words),
+		fmt.Sprintf("%d", limits.artlist),
+		fmt.Sprintf("%d", limits.images),
+		device,
+	)
+	if !plan.MediaPlan.ForceRefreshExtraction {
+		if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
+			if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
+				seg = cloneVidRushSegmentResult(seg)
+				seg.Cache.Extraction = "HIT_EXACT"
+				if p.metrics != nil {
+					p.metrics.IncExtractionCache(true)
+				}
+				outcome.segment = seg
+				outcome.cached = true
+				return outcome
+			}
+		}
+		var persisted scriptpkg.VidRushSegmentResult
+		if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
+			outcome.err = cacheErr
+			return outcome
+		} else if hit {
+			persisted = cloneVidRushSegmentResult(persisted)
+			persisted.Cache.Extraction = "HIT_EXACT"
+			cacheStore(&vidrushExtractionCache, cacheKey, persisted)
+			if p.metrics != nil {
+				p.metrics.IncExtractionCache(true)
+			}
+			outcome.segment = persisted
+			outcome.cached = true
+			return outcome
+		}
+	}
+
+	select {
+	case p.extractionGate <- struct{}{}:
+	case <-ctx.Done():
+		outcome.err = ctx.Err()
+		return outcome
+	}
+	res, err := p.extractor.ExtractEntities(ctx, scriptpkg.EntityExtractionRequest{
+		SegmentID:   canonicalSeg.ID,
+		Text:        canonicalSeg.Text,
+		Title:       plan.Title,
+		Language:    plan.Language,
+		Device:      device,
+		Model:       plan.Model,
+		EntityCount: limits.entities,
+		SpecScene:   segmentSpecSceneContext(specScene, canonicalSeg),
+	})
+	<-p.extractionGate
+	if err != nil {
+		if errors.Is(err, ErrEntityExtractorUnavailable) {
+			outcome.unavailable = err
+		} else {
+			outcome.err = err
+		}
+		return outcome
+	}
+	if res == nil {
+		res = &scriptpkg.EntityResult{}
+	}
+	seg := buildVidRushSegmentResult(plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
+	seg.Cache.Extraction = "MISS"
+	if plan.MediaPlan.ForceRefreshExtraction {
+		seg.Cache.Extraction = "REFRESHED"
+	}
+	if p.metrics != nil {
+		p.metrics.IncExtractionCache(false)
+	}
+	cacheStore(&vidrushExtractionCache, cacheKey, seg)
+	if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
+		outcome.err = cacheErr
+		return outcome
+	}
+	outcome.segment = seg
+	return outcome
 }
