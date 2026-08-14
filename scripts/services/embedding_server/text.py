@@ -40,6 +40,29 @@ def normalize_text(text: str, language: str = "") -> str:
     )
 
 
+@router.get("/contract")
+async def contract():
+    """Expose the canonical text embedding contract for the boot handshake.
+
+    The Go boot gate (internal/kernel/embedding.Verify) compares this runtime
+    contract against the canonical EmbeddingContract SSOT, the Qdrant active
+    collection metadata, and the query embedder. Any drift fails closed with
+    QDRANT_EMBEDDING_CONTRACT_MISMATCH, so these fields MUST match
+    internal/kernel/embedding/contract.go exactly.
+    """
+    return {
+        "contract_version": "v1",
+        "model_id": TEXT_MODEL_NAME,
+        "model_revision": TEXT_MODEL_VERSION,
+        "dimension": model.get_sentence_embedding_dimension(),
+        "normalization": "l2",
+        "distance": "Cosine",
+        "query_prefix": "query: ",
+        "document_prefix": "passage: ",
+        "semantic_document_version": "v3",
+    }
+
+
 @router.post("/embed")
 async def embed(req: EmbedRequest):
     """Generate text embedding (768d, intfloat/multilingual-e5-base).

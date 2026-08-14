@@ -54,11 +54,12 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
 
-	// Dedicated embedding client: uses a separate model (nomic-embed-text by
-	// default, configurable via OLLAMA_EMBED_MODEL / ollama_embed_model).
-	// Ollama returns 500 when a chat model (gemma4:e4b) is used for
-	// /api/embeddings — the embed model MUST be an embedding model.
-	// Fall back to OllamaModel for backward compat when unset.
+	// Dedicated embedding client: uses a separate model (the canonical
+	// intfloat/multilingual-e5-base by default, configurable via
+	// OLLAMA_EMBED_MODEL / ollama_embed_model). Ollama returns 500 when a
+	// chat model (gemma4:e4b) is used for /api/embeddings — the embed model
+	// MUST be an embedding model. Fall back to OllamaModel for backward
+	// compat when unset.
 	embedModel := cfg.External.OllamaEmbedModel
 	if embedModel == "" {
 		embedModel = cfg.External.OllamaModel
