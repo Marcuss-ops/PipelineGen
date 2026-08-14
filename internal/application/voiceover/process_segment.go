@@ -404,6 +404,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		// pre-clean duration, the leading/trailing trims, and the cleaned
 		// duration the timeline must use.
 		out.SilenceCleanup = BuildSilenceCleanupReport(ttsOut.Duration.Microseconds(), postOut.DurationUS, postOut.EditMap)
+		// Emit the structured observability event so operators can verify
+		// "Edge aveva N ms di silenzio artificiale, li ho rimossi, la
+		// timeline usa la durata pulita" without re-probing the file.
+		silenceCleanupEvent(log, cmd, out.SilenceCleanup)
 	}
 
 	if out.LocalPath == "" && out.CleanedPath == "" {
