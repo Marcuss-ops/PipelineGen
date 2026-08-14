@@ -388,7 +388,7 @@ def run_pipeline(
             and isinstance(report_component_statuses, dict)
             and all(
                 isinstance(report_component_statuses.get(name), dict)
-                and report_component_statuses[name].get("status") == "PASS"
+                and report_component_statuses[name].get("status") in {"PASS", "CACHED_PASS"}
                 for name in components
             )
         )

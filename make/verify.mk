@@ -104,6 +104,8 @@ verify-unit-race: go-version-check
 # verify-main — canonical daily fail-closed headless gate. It composes the
 # push gate, the native Node probe, and architecture checks. GNU Make
 # de-duplicates verify-foundation/verify-static inherited through verify-push.
+# Component tests run through verify-changed-components, whose content-addressed
+# cache skips only deterministic PASS results with an identical fingerprint.
 verify-main: verify-push verify-node-native verify-architecture
 	@echo "✅ verify-main passed"
 

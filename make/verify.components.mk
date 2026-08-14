@@ -19,6 +19,12 @@ VERIFY_COMPONENT_COVERAGE_RUNNER ?= $(PYTHON) scripts/ci/verify-component-covera
 verify-component-coverage:
 	@$(VERIFY_COMPONENT_COVERAGE_RUNNER) --report artifacts/verify/component-coverage.json
 
+# verify-changed-components — registry-driven component gate used by
+# verify-main.  The runner is content-addressed and cached: a component whose
+# exact fingerprint already passed is reported CACHED_PASS and skipped.  The
+# cache is fail-closed — only PASS results are stored (FAIL/TIMEOUT/CANCELLED
+# are never cached) and any miss re-runs — so it never removes or weakens a
+# gate, only avoids re-running deterministic work whose inputs are unchanged.
 verify-changed-components:
 	@$(VERIFY_CHANGED_COMPONENTS_RUNNER) $(VERIFY_CHANGED_COMPONENTS_FLAGS)
 
