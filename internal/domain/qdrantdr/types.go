@@ -41,6 +41,18 @@ type RetentionConfig struct {
 	KeepLastN               int
 	ProtectedRollbackTarget string
 	MaxAgeSeconds           int
+	// RetiredPrefixes lists additional physical-name prefixes from retired
+	// schema generations that the sweep should also match (e.g. the
+	// superseded multilingual-e5 schema: "media_assets_v3_e5_768_siglip_768").
+	// The current schema's CanonicalName() prefix is always matched
+	// implicitly. A retired prefix that equals — or is a prefix of — the
+	// current canonical name is rejected fail-closed (it would match live
+	// collections).
+	RetiredPrefixes []string
+	// DryRun computes the drop/keep plan without deleting any collection.
+	// The result's DroppedNames / CollectionsDropped report the WOULD-BE
+	// dropped set; no Qdrant mutation is performed.
+	DryRun bool
 	// AgingTable is OPTIONAL. When non-nil, the infra-side
 	// CollectionManager reads per-collection creation timestamps
 	// from it. The concrete type lives in infra/qdrant (AgingTable
@@ -53,6 +65,10 @@ type RetentionConfig struct {
 // executor's outcome. JSON tags mirror the wire format so the admin
 // CLI and the infra-side CollectionManager agree on the output shape.
 type RetentionResult struct {
+	// DryRun mirrors RetentionConfig.DryRun so machine-readable output
+	// is unambiguous about whether DroppedNames reflects real deletions
+	// or a preview-only plan.
+	DryRun             bool     `json:"dry_run"`
 	CollectionsDropped int      `json:"collections_dropped"`
 	CollectionsKept    int      `json:"collections_kept"`
 	DroppedNames       []string `json:"dropped_names,omitempty"`

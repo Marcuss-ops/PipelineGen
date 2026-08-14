@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 
@@ -384,5 +385,197 @@ func TestCleanupWithConfig_FailClosed_OnAliasResolutionError(t *testing.T) {
 	}
 	if len(deleteCalls) != 0 {
 		t.Errorf("DELETE was called %d times on fail-closed path; want 0; deleteCalls=%v", len(deleteCalls), deleteCalls)
+	}
+}
+
+// statusAwareRetentionLedger wraps projectionLedgerStub with a pre-built
+// projection set so the retention tests can pin exact ACTIVE/RETIRED/FAILED
+// lifecycle states without touching a real SQLite DB.
+func statusAwareRetentionLedger(projections []capregistry.Projection) *projectionLedgerStub {
+	return &projectionLedgerStub{sequence: 291, projections: projections}
+}
+
+func retentionProjection(id, collection, status string, seq int64) capregistry.Projection {
+	return capregistry.Projection{
+		ProjectionID:      id,
+		ProjectionType:    "qdrant",
+		CollectionName:    collection,
+		AliasName:         "media_assets_current",
+		Status:            status,
+		SourceRegistrySeq: seq,
+		CreatedAt:         "2026-08-14T00:00:00Z",
+	}
+}
+
+// TestCleanupWithConfig_StatusAware_FailedPartialNeverKept is the regression
+// test for the failed-partial-vs-rollback bug. A FAILED partial has a NEWER
+// name timestamp than the previous known-good rollback, so the legacy
+// newest-by-name tail would keep the failed partial and DROP the rollback.
+// The status-aware sweep must do the opposite: never protect a FAILED build,
+// and keep the most recent known-good (RETIRED) rollback instead.
+func TestCleanupWithConfig_StatusAware_FailedPartialNeverKept(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	prefix := schema.CanonicalName()
+	active := prefix + "_20260814_071358_545816432"
+	failedPartial := prefix + "_20260814_070758_298500178" // newer than rollback
+	rollback := prefix + "_20260813_184719_687643250"      // previous known-good
+	olderRetired := prefix + "_20260813_182650_373125513"  // older retired
+
+	colls := []string{active, failedPartial, rollback, olderRetired}
+	f := newFakeQdrantServer(colls, active)
+	defer f.Close()
+
+	ledger := statusAwareRetentionLedger([]capregistry.Projection{
+		retentionProjection("active", active, string(capregistry.ProjectionActive), 291),
+		retentionProjection("failed", failedPartial, string(capregistry.ProjectionFailed), 291),
+		retentionProjection("rollback", rollback, string(capregistry.ProjectionRetired), 283),
+		retentionProjection("older", olderRetired, string(capregistry.ProjectionRetired), 267),
+	})
+
+	client := transport.NewClient(&qdrantSchema.Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())
+	cm := NewCollectionManager(client, schema, zap.NewNop())
+	if err := cm.SetRegistryLedger(context.Background(), ledger); err != nil {
+		t.Fatalf("SetRegistryLedger: %v", err)
+	}
+
+	res, err := cm.CleanupWithConfig(context.Background(), RetentionConfig{
+		RetentionDays: 1,
+		KeepLastN:     2,
+	})
+	if err != nil {
+		t.Fatalf("CleanupWithConfig: %v", err)
+	}
+
+	gotDropped := append([]string(nil), res.DroppedNames...)
+	wantDropped := []string{failedPartial, olderRetired}
+	sort.Strings(gotDropped)
+	sort.Strings(wantDropped)
+	if !reflect.DeepEqual(gotDropped, wantDropped) {
+		t.Fatalf("DroppedNames mismatch:\n got  %v\n want %v (FAILED partial must be dropped and rollback kept)", gotDropped, wantDropped)
+	}
+
+	if len(res.ProtectedKept) != 1 || res.ProtectedKept[0] != rollback {
+		t.Fatalf("ProtectedKept = %v, want [%s] (the known-good rollback must be the tail-kept target)", res.ProtectedKept, rollback)
+	}
+	if res.CollectionsKept != 2 {
+		t.Fatalf("CollectionsKept = %d, want 2 (active + rollback)", res.CollectionsKept)
+	}
+	if res.CollectionsDropped != 2 {
+		t.Fatalf("CollectionsDropped = %d, want 2 (failed partial + older retired)", res.CollectionsDropped)
+	}
+}
+
+// TestCleanupWithConfig_RetiredPrefixMatched verifies the retired-schema
+// prefix gate: collections from a superseded schema generation (e5) are
+// matched and dropped, while unknown collections that share NO registered
+// prefix are left untouched.
+func TestCleanupWithConfig_RetiredPrefixMatched(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	prefix := schema.CanonicalName()
+	active := prefix + "_20260814_071358_545816432"
+	nomicRollback := prefix + "_20260813_184719_687643250"
+	e5 := "media_assets_v3_e5_768_siglip_768_20260813_181431_205856695"
+	bareLegacy := "media_assets"
+	synthetic := "synthetic_assets_test_v3"
+
+	colls := []string{active, nomicRollback, e5, bareLegacy, synthetic}
+	f := newFakeQdrantServer(colls, active)
+	defer f.Close()
+
+	ledger := statusAwareRetentionLedger([]capregistry.Projection{
+		retentionProjection("active", active, string(capregistry.ProjectionActive), 291),
+		retentionProjection("rollback", nomicRollback, string(capregistry.ProjectionRetired), 283),
+		retentionProjection("e5", e5, string(capregistry.ProjectionRetired), 267),
+	})
+
+	client := transport.NewClient(&qdrantSchema.Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())
+	cm := NewCollectionManager(client, schema, zap.NewNop())
+	if err := cm.SetRegistryLedger(context.Background(), ledger); err != nil {
+		t.Fatalf("SetRegistryLedger: %v", err)
+	}
+
+	res, err := cm.CleanupWithConfig(context.Background(), RetentionConfig{
+		RetentionDays:   1,
+		KeepLastN:       2,
+		RetiredPrefixes: []string{"media_assets_v3_e5_768_siglip_768"},
+	})
+	if err != nil {
+		t.Fatalf("CleanupWithConfig: %v", err)
+	}
+
+	if len(res.DroppedNames) != 1 || res.DroppedNames[0] != e5 {
+		t.Fatalf("DroppedNames = %v, want [%s] (only the retired e5 collection should be dropped)", res.DroppedNames, e5)
+	}
+	for _, untouched := range []string{active, nomicRollback, bareLegacy, synthetic} {
+		for _, dropped := range res.DroppedNames {
+			if dropped == untouched {
+				t.Fatalf("collection %q must never be dropped; DroppedNames=%v", untouched, res.DroppedNames)
+			}
+		}
+	}
+}
+
+// TestCleanupWithConfig_DryRun_NoDeletion verifies the dry-run contract:
+// the result reports the WOULD-BE dropped set but issues zero Qdrant
+// DELETE calls.
+func TestCleanupWithConfig_DryRun_NoDeletion(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	prefix := schema.CanonicalName()
+	active := prefix + "_active"
+	colls := []string{
+		active,
+		prefix + "_20260101_aaa",
+		prefix + "_20260201_bbb",
+	}
+	f := newFakeQdrantServer(colls, active)
+	defer f.Close()
+
+	client := transport.NewClient(&qdrantSchema.Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())
+	cm := NewCollectionManager(client, schema, zap.NewNop())
+
+	res, err := cm.CleanupWithConfig(context.Background(), RetentionConfig{
+		RetentionDays: 1,
+		KeepLastN:     2,
+		DryRun:        true,
+	})
+	if err != nil {
+		t.Fatalf("CleanupWithConfig: %v", err)
+	}
+
+	if !res.DryRun {
+		t.Fatalf("DryRun result flag must be true; res=%+v", res)
+	}
+	if len(f.deletedColls) != 0 {
+		t.Fatalf("dry-run must NOT issue DELETE calls; deletedColls=%v", f.deletedColls)
+	}
+	wantDropped := prefix + "_20260101_aaa"
+	if len(res.DroppedNames) != 1 || res.DroppedNames[0] != wantDropped {
+		t.Fatalf("DroppedNames = %v, want [%s] (dry-run preview of the drop set)", res.DroppedNames, wantDropped)
+	}
+}
+
+// TestRetentionPrefixes_RejectsOverlappingPrefix pins the fail-closed guard:
+// a retired prefix that is a prefix of the current canonical name (e.g. a
+// bare "media_assets") would match the live fleet and must be rejected.
+func TestRetentionPrefixes_RejectsOverlappingPrefix(t *testing.T) {
+	current := qdrantSchema.DefaultV3Schema().CanonicalName()
+
+	if _, err := retentionPrefixes(current, []string{"media_assets"}); err == nil {
+		t.Fatalf("expected error for overlapping prefix %q", "media_assets")
+	}
+	if _, err := retentionPrefixes(current, []string{"media_assets_v3"}); err == nil {
+		t.Fatalf("expected error for overlapping prefix %q", "media_assets_v3")
+	}
+	if _, err := retentionPrefixes(current, []string{current}); err == nil {
+		t.Fatalf("expected error for prefix equal to the current canonical name")
+	}
+
+	got, err := retentionPrefixes(current, []string{"media_assets_v3_e5_768_siglip_768", "", "media_assets_v3_e5_768_siglip_768"})
+	if err != nil {
+		t.Fatalf("unexpected error for valid retired prefix: %v", err)
+	}
+	want := []string{current, "media_assets_v3_e5_768_siglip_768"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("retentionPrefixes = %v, want %v (dedup + skip empty)", got, want)
 	}
 }

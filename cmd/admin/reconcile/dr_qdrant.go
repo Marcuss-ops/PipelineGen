@@ -48,6 +48,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
 // drQdrantDispatcher is the parsed shape for `dr-qdrant <sub> ...`.
@@ -116,7 +117,7 @@ func RunDrQdrant(args []string) error {
 	case "restore-snapshot":
 		return runDrRestoreSnapshot(ctx, cfg, client, schema, log, deps.Raw)
 	case "apply-retention":
-		return runDrApplyRetention(ctx, client, schema, log, deps.Raw)
+		return runDrApplyRetention(ctx, cfg, client, schema, log, deps.Raw)
 	}
 	return fmt.Errorf("dr-qdrant: unknown subcommand %q", deps.Sub)
 }
@@ -398,10 +399,12 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *trans
 // ── Subcommand: apply-retention ──────────────────────────────────────
 
 type applyRetentionFlags struct {
-	RetentionDays int
-	KeepLastN     int
-	Protect       string
-	JSON          bool
+	RetentionDays   int
+	KeepLastN       int
+	Protect         string
+	RetiredPrefixes []string
+	DryRun          bool
+	JSON            bool
 }
 
 func parseApplyRetentionFlags(args []string) (applyRetentionFlags, error) {
@@ -410,6 +413,8 @@ func parseApplyRetentionFlags(args []string) (applyRetentionFlags, error) {
 		switch {
 		case a == "--json":
 			d.JSON = true
+		case a == "--dry-run":
+			d.DryRun = true
 		case strings.HasPrefix(a, "--retention-days="):
 			v, err := strconv.Atoi(strings.TrimPrefix(a, "--retention-days="))
 			if err != nil {
@@ -424,6 +429,12 @@ func parseApplyRetentionFlags(args []string) (applyRetentionFlags, error) {
 			d.KeepLastN = v
 		case strings.HasPrefix(a, "--protect="):
 			d.Protect = strings.TrimPrefix(a, "--protect=")
+		case strings.HasPrefix(a, "--retired-prefix="):
+			p := strings.TrimSpace(strings.TrimPrefix(a, "--retired-prefix="))
+			if p == "" {
+				return d, errors.New("apply-retention: --retired-prefix requires a non-empty value")
+			}
+			d.RetiredPrefixes = append(d.RetiredPrefixes, p)
 		default:
 			if strings.HasPrefix(a, "-") {
 				return d, fmt.Errorf("apply-retention: unknown flag %s", a)
@@ -436,12 +447,31 @@ func parseApplyRetentionFlags(args []string) (applyRetentionFlags, error) {
 	return d, nil
 }
 
-func runDrApplyRetention(ctx context.Context, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
+func runDrApplyRetention(ctx context.Context, cfg *config.Config, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
 	flags, err := parseApplyRetentionFlags(args)
 	if err != nil {
 		return err
 	}
 	cm := collections.NewCollectionManager(client, schema, log)
+
+	// PR-RETENTION-RETIRED-SCHEMAS: wire the durable projection registry so
+	// the sweep can distinguish known-good (ACTIVE/RETIRED) from stale
+	// partials (FAILED/BUILDING) and never let a failed build crowd out a
+	// rollback target. Hydration failure is fail-closed: without status the
+	// sweep cannot safely drop retired generations.
+	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	if err != nil {
+		return fmt.Errorf("open media DB: %w", err)
+	}
+	defer sqliteDB.Close()
+	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
+	if err != nil {
+		return fmt.Errorf("create media registry ledger: %w", err)
+	}
+	if err := cm.SetRegistryLedger(ctx, registryLedger); err != nil {
+		return fmt.Errorf("hydrate media registry projection ledger: %w", err)
+	}
+
 	// Cycle break (June 2026): the executor port takes dr-local
 	// RetentionConfig/RetentionResult; cm.CleanupWithConfig takes
 	// qdrant-local types. RetentionExecutorAdapter bridges the two
@@ -455,6 +485,8 @@ func runDrApplyRetention(ctx context.Context, client *transport.Client, schema *
 		RetentionDays:           flags.RetentionDays,
 		KeepLastN:               flags.KeepLastN,
 		ProtectedRollbackTarget: flags.Protect,
+		RetiredPrefixes:         flags.RetiredPrefixes,
+		DryRun:                  flags.DryRun,
 	})
 	if err != nil {
 		return err
@@ -465,7 +497,11 @@ func runDrApplyRetention(ctx context.Context, client *transport.Client, schema *
 		fmt.Println(string(b))
 		return nil
 	}
-	fmt.Printf("=== dr-qdrant apply-retention ===\n")
+	if flags.DryRun {
+		fmt.Printf("=== dr-qdrant apply-retention (DRY-RUN, no deletions) ===\n")
+	} else {
+		fmt.Printf("=== dr-qdrant apply-retention ===\n")
+	}
 	fmt.Printf("  Dropped:    %d\n", res.CollectionsDropped)
 	fmt.Printf("  Kept:       %d (active + protected target + keep-last-n tail)\n", res.CollectionsKept)
 	if len(res.DroppedNames) > 0 {
