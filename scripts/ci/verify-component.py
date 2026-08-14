@@ -200,6 +200,20 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         if not isinstance(utility, bool):
             raise RegistryError(f"component={name}: utility must be boolean")
 
+        # Content-addressed verification cache policy. Fail-closed default: a
+        # component is cacheable only when explicitly declared so, and live
+        # gates (they depend on external state, not just code) must never be
+        # cached.
+        cacheable = value.get("cacheable", False)
+        if not isinstance(cacheable, bool):
+            raise RegistryError(f"component={name}: cacheable must be boolean")
+        cache_scope = value.get("cache_scope", "content")
+        if not isinstance(cache_scope, str) or not cache_scope.strip():
+            raise RegistryError(f"component={name}: cache_scope must be a non-empty string")
+        live_entries = _require_list(value.get("live_tests"), "live_tests", name)
+        if cacheable and live_entries:
+            raise RegistryError(f"component={name}: cacheable must be false when live_tests is non-empty")
+
         # Validate command-bearing fields now, rather than after dependencies
         # have already started running.
         for field in ("node_tests", "python_tests", "live_tests"):
@@ -213,6 +227,8 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         registry[name]["race_timeout_seconds"] = float(race_timeout)
         registry[name]["race_enabled"] = race_enabled
         registry[name]["utility"] = utility
+        registry[name]["cacheable"] = cacheable
+        registry[name]["cache_scope"] = cache_scope
 
     for name, definition in registry.items():
         for dependency in definition["dependencies"]:
