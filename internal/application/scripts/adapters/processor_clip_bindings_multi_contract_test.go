@@ -102,6 +102,37 @@ func TestClipBindings_ExplicitReuseAcrossScenesIsPreserved(t *testing.T) {
 	}
 }
 
+func TestClipBindings_SearchSingleNarrativeGetsTextForEveryClipScene(t *testing.T) {
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"a", "b", "c"},
+		DriveLinks:      map[string]string{"a": "https://drive/a", "b": "https://drive/b", "c": "https://drive/c"},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind:      string(scriptpkg.SourceSearch),
+		GroundingPolicy: scriptpkg.GroundingPolicyClipsPrimary,
+		ClipEvidence:    evidence,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "a", Topic: "clip a"}, {ID: "b", Topic: "clip b"}, {ID: "c", Topic: "clip c"},
+		},
+	}
+	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "model-0", Text: "Prima frase narrativa. Seconda frase narrativa. Terza frase narrativa.", Kind: scriptpkg.SceneClip,
+	}}}}
+
+	result, err := adapters.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if result == nil || len(result.UpdatedSpecScene.Scenes) != 3 {
+		t.Fatalf("updated scenes = %#v, want 3", result)
+	}
+	for i, scene := range result.UpdatedSpecScene.Scenes {
+		if scene.Text == "" || scene.Text == plan.Segments[i].Topic {
+			t.Fatalf("scene[%d] has non-narrative fallback text %q", i, scene.Text)
+		}
+	}
+}
+
 func assertBindingIDs(t *testing.T, bindings []scriptpkg.ClipBinding, want []string) {
 	t.Helper()
 	if len(bindings) != len(want) {

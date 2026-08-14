@@ -109,10 +109,29 @@ func (p *ClipBindingsProcessor) Process(
 	scenes := input.SpecScene.Scenes
 	explicitSegments := plan != nil && len(plan.Segments) > 0
 	if explicitSegments {
+		// A clip-primary search may return one prose scene even though the
+		// resolver has created one segment per accepted clip. Partition that
+		// canonical prose before slot normalization; otherwise missing slots
+		// fall back to clip filenames/topics and become non-narrative scenes.
+		var clipNativeNarrative []scriptpkg.SpecScene
+		if scene.RequiresClipNativePlan(plan) && len(scenes) == 1 &&
+			len(plan.Segments) > 1 && strings.TrimSpace(scenes[0].Text) != "" {
+			clipNativeNarrative = p.planner.Synthesizer().FromProse(
+				scenes[0].Text,
+				len(plan.Segments),
+			)
+		}
 		// Explicit segment payloads are authoritative even when no clip
 		// evidence is present. Keep narrative slots stable for clip-only,
 		// stock-only, and text-only matrix cases alike.
 		input.SpecScene.Scenes = normalizeScenesForExplicitSegments(scenes, plan.Segments)
+		if len(clipNativeNarrative) == len(input.SpecScene.Scenes) {
+			for i := range input.SpecScene.Scenes {
+				if strings.TrimSpace(clipNativeNarrative[i].Text) != "" {
+					input.SpecScene.Scenes[i].Text = clipNativeNarrative[i].Text
+				}
+			}
+		}
 		applyExplicitSegmentClipBindings(input.SpecScene.Scenes, plan)
 		scenes = input.SpecScene.Scenes
 	}
@@ -301,9 +320,10 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 					binding.DriveLink = evidence.DriveLinks[clipID]
 				}
 			}
-			if binding.DriveLink == "" {
-				binding.DriveLink = "https://drive.google.com/file/d/" + clipID + "/view?usp=drivesdk"
-			}
+			// A clip ID is an internal asset identity, not necessarily a
+			// Google Drive file ID. Leave the location absent when the
+			// canonical evidence/registry did not provide one; inventing a
+			// plausible URL would publish an unverifiable binding.
 			bindings = append(bindings, binding)
 		}
 		scenes[i].Bindings.Clips = bindings

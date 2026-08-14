@@ -8,6 +8,7 @@ import (
 
 	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 func TestPersistGeneratedArtifactsRequiresAndPublishesCertifiedFinalAudio(t *testing.T) {
@@ -17,7 +18,7 @@ func TestPersistGeneratedArtifactsRequiresAndPublishesCertifiedFinalAudio(t *tes
 	if err := os.WriteFile(source, []byte("certified-audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceSHA, err := job.ComputeSHA256(source)
+	sourceSHA, err := job.ComputeSHA256(filesystem.NewOS(), source)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,7 +18,7 @@ type classifyTableTest struct {
 func defaultSchema() SchemaVersions {
 	return SchemaVersions{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		PhysicalName: "media_assets_v3_nomic_768_siglip_768",
 		RuntimeAlias: "media_assets_current",
 		// PerChannelVersion is intentionally empty for the default
 		// test schema: tests that don't focus on the version-check
@@ -38,7 +38,7 @@ func defaultSchema() SchemaVersions {
 func versionCheckSchema() SchemaVersions {
 	return SchemaVersions{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		PhysicalName: "media_assets_v3_nomic_768_siglip_768",
 		RuntimeAlias: "media_assets_current",
 		PerChannelVersion: map[string]string{
 			"text": "2026-06-16-v1",
@@ -55,7 +55,7 @@ func versionCheckSchema() SchemaVersions {
 func multiChannelSchema() SchemaVersions {
 	return SchemaVersions{
 		Version:      "v3",
-		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		PhysicalName: "media_assets_v3_nomic_768_siglip_768",
 		RuntimeAlias: "media_assets_current",
 		PerChannelVersion: map[string]string{
 			"text":       "2026-06-16-v1",

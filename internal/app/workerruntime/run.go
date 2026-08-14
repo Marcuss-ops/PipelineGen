@@ -27,6 +27,8 @@ package workerruntime
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"time"
 
 	"go.uber.org/zap"
@@ -83,6 +85,7 @@ type WorkerComposition struct {
 //
 //	profile=nil              → legacy (no-profile) path
 //	profile.Name="creator"   → Creator runtime (minimal, no DB/Drive/Qdrant)
+//	profile.Name="renderer"  → RenderingGen runtime (overlay-only, no DB/Drive/Qdrant)
 //	profile.Name=other       → standard profile-gated worker
 //
 // Cleanup invariant: if any step fails, the helper calls cleanup()
@@ -203,6 +206,38 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 			ObservabilityDB: nil,
 		}, nil
 
+	case "renderer":
+		renderingRuntime, renderingCleanup, renderingErr := app.BuildRenderingRuntime(cfg, log)
+		if renderingErr != nil {
+			err = fmt.Errorf("rendering runtime: %w", renderingErr)
+			return nil, err
+		}
+		chrononBin := os.Getenv("CHRONON_RENDER_BIN")
+		if chrononBin == "" {
+			chrononBin = "chronon-render"
+		}
+		if _, lookErr := exec.LookPath(chrononBin); lookErr != nil {
+			renderingCleanup()
+			return nil, fmt.Errorf("renderer profile: Chronon renderer %q is unavailable: %w", chrononBin, lookErr)
+		}
+		cleanup = renderingCleanup
+		caps, capsErr := ResolveCapabilities(profile, Env("VELOX_WORKER_CAPABILITIES", ""), renderingRuntime.Registry.JobTypes())
+		if capsErr != nil {
+			err = fmt.Errorf("renderer capabilities: %w", capsErr)
+			return nil, err
+		}
+		gpu, ffmpeg := DetectRendererHardware()
+		if profile.RequiresGPU && !gpu {
+			err = fmt.Errorf("renderer preflight: NVIDIA GPU not detected")
+			return nil, err
+		}
+		if profile.RequiresFFmpeg && !ffmpeg {
+			err = fmt.Errorf("renderer preflight: ffmpeg not detected")
+			return nil, err
+		}
+		caps.GPU, caps.FFmpeg = gpu, ffmpeg
+		return &WorkerComposition{Registry: renderingRuntime.Registry, RegisteredCaps: renderingRuntime.Registry.JobTypes(), Caps: caps, Workspace: renderingRuntime.Workspace, WorkspaceRoot: renderingRuntime.Workspace.Root, Cleanup: cleanup}, nil
+
 	default:
 		// Standard profile-gated worker: full ComposeRoot with DB, Drive, etc.
 		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
@@ -302,22 +337,25 @@ func Run(ctx context.Context, cfgPath string) error {
 	}
 	log.Info("master /health pre-flight passed", zap.String("master_url", masterURL))
 
-	if err := PreflightMasterScriptGenerateReady(ctx, masterURL); err != nil {
-		log.Error("master /ready script_generate pre-flight failed",
-			zap.String("master_url", masterURL),
-			zap.Duration("timeout", preflightTimeout),
-			zap.Error(err),
-		)
-		return fmt.Errorf("worker /ready script_generate pre-flight: %w", err)
+	profileName := Env("VELOX_WORKER_PROFILE", "")
+	if profileName != "renderer" {
+		if err := PreflightMasterScriptGenerateReady(ctx, masterURL); err != nil {
+			log.Error("master /ready script_generate pre-flight failed",
+				zap.String("master_url", masterURL),
+				zap.Duration("timeout", preflightTimeout),
+				zap.Error(err),
+			)
+			return fmt.Errorf("worker /ready script_generate pre-flight: %w", err)
+		}
+		log.Info("master /ready script_generate pre-flight passed", zap.String("master_url", masterURL))
 	}
-	log.Info("master /ready script_generate pre-flight passed", zap.String("master_url", masterURL))
 
 	// Detect profile BEFORE building composition — the Creator uses a
 	// minimal graph (no DB, Drive, Qdrant, Repos).
 	//
 	// Audit-pin (FIX-APP-WORKERRUNTIME-SYNTAX, July 2026): err is already in scope via the earlier cfg/log := LoadConfig/LoadLogger calls; the slim 7-file split pins err to the smallest possible scope (no var err error).
 	var profile *WorkerProfile
-	if profileName := Env("VELOX_WORKER_PROFILE", ""); profileName != "" {
+	if profileName != "" {
 		profileReg := NewProfileRegistry()
 		p, lookupErr := profileReg.Lookup(profileName)
 		if lookupErr != nil {

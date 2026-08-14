@@ -131,5 +131,11 @@ func cleanClipNarrativeText(text string) string {
 			text = strings.TrimSpace(text[:i])
 		}
 	}
-	return strings.TrimSpace(text)
+	text = strings.TrimSpace(text)
+	const maxNarrativeRunes = 320
+	if len([]rune(text)) <= maxNarrativeRunes {
+		return text
+	}
+	runes := []rune(text)
+	return strings.TrimSpace(string(runes[:maxNarrativeRunes])) + "…"
 }

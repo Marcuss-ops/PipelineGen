@@ -3,11 +3,28 @@ package render
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
+
+// testFS is the real-filesystem adapter used by the render tests. It
+// mirrors internal/platform/filesystem.OS but lives here so the
+// capability package does not import the platform adapter (which would
+// invert the adapter→contract dependency direction).
+type testFS struct{}
+
+func (testFS) Open(path string) (io.ReadCloser, error) { return os.Open(path) }
+
+func (testFS) Size(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
 
 func testRenderTimeline() audio.CanonicalTimeline {
 	return audio.CanonicalTimeline{
@@ -46,6 +63,27 @@ func TestCompileUsesIntegerFramesForSourceAndTimeline(t *testing.T) {
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("sealed plan did not validate: %v", err)
+	}
+}
+
+func TestCompileUsesAllVideoSegmentsOwnedByTimelineScene(t *testing.T) {
+	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: 5_000_000, Segments: []audio.TimelineSegment{{
+		ID: "scene", Index: 0, DurationUS: 5_000_000,
+		VideoSegments: []audio.VideoSegment{
+			{AssetID: "clip-a", SourceDurationUS: 2_000_000, TimelineDurationUS: 2_000_000},
+			{AssetID: "clip-b", SourceDurationUS: 3_000_000, TimelineOffsetUS: 2_000_000, TimelineDurationUS: 3_000_000},
+		},
+		Audio: audio.AudioIntent{Mode: audio.AudioSilence},
+	}}}
+	plan, err := Compile(CompileInput{JobID: "multi", Revision: "r1", OutputPath: "final.mp4", FPS: 30, Timeline: timeline, Manifest: []AssetManifestEntry{
+		{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 100},
+		{AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 100},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.VideoTracks[0].Segments) != 2 || plan.VideoTracks[0].Segments[0].AssetID != "clip-a" || plan.VideoTracks[0].Segments[1].AssetID != "clip-b" {
+		t.Fatalf("render plan lost multi-clip order: %+v", plan.VideoTracks[0].Segments)
 	}
 }
 
@@ -120,13 +158,13 @@ func TestRenderPlanValidatesManifestBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := plan.ValidateManifestFiles(); err != nil {
+	if err := plan.ValidateManifestFiles(testFS{}); err != nil {
 		t.Fatalf("matching manifest should validate: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := plan.ValidateManifestFiles(); err == nil {
+	if err := plan.ValidateManifestFiles(testFS{}); err == nil {
 		t.Fatal("tampered manifest bytes must be rejected")
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
@@ -39,6 +41,52 @@ func TestCompileCanonicalAudioPlanUsesOneTimelineForPrimaryEvents(t *testing.T) 
 	if len(assets) != 2 || plan.PlanSHA256 == "" {
 		t.Fatalf("assets=%+v hash=%q", assets, plan.PlanSHA256)
 	}
+}
+
+// TestVoiceoverSourceDurationEqualsCleanedProbeNotClipDuration certifies the
+// invariant from the audio/document verdetto: the voiceover source duration
+// recorded on the canonical timeline must be the probed duration of the
+// CLEANED voiceover file, never the clip duration. A 45s clip whose narration
+// was cleaned to 30s must surface source_duration_us=30s, not 45s.
+func TestVoiceoverSourceDurationEqualsCleanedProbeNotClipDuration(t *testing.T) {
+	const clipDurationUS = 45_000_000 // the clip is 45s
+	const cleanedVOUS = 30_000_000    // the CLEANED voiceover is only 30s
+
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-combined", Index: 0, DurationUS: clipDurationUS,
+		Clip:  &ClipReference{ID: "clip-a", AudioPath: "/video/a.mp4", SourceInMS: 0, SourceOutMS: 45000, Duration: 45},
+		Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceInUS: 0, SourceDurationUS: clipDurationUS, UseOriginalAudio: true},
+		// Duration is the certified probe of the CLEANED file, not the clip.
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-a", FilePath: "/audio/a.m4a", Duration: 30.0}},
+	}}}
+
+	// The resolved probe of the cleaned voiceover.
+	resolved, err := ResolveScenes(result.Scenes, "it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.NotNil(t, resolved[0].Voiceover)
+	cleanedVoiceoverProbe := *resolved[0].Voiceover
+
+	// The canonical timeline's voiceover intent.
+	timeline, _, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var timelineVoiceover *audio.AudioIntent
+	for i := range timeline.Segments[0].AudioIntents {
+		if timeline.Segments[0].AudioIntents[i].Mode == audio.AudioVoiceover {
+			timelineVoiceover = &timeline.Segments[0].AudioIntents[i]
+			break
+		}
+	}
+	require.NotNil(t, timelineVoiceover)
+
+	// The VO source duration must be the measured cleaned-file duration,
+	// never the clip duration.
+	require.Equal(t, cleanedVoiceoverProbe.DurationUS, timelineVoiceover.SourceDurationUS)
+	require.Equal(t, int64(cleanedVOUS), timelineVoiceover.SourceDurationUS)
+	require.NotEqual(t, int64(clipDurationUS), timelineVoiceover.SourceDurationUS)
 }
 
 func TestCompileCanonicalAudioPlanMakesVoiceoverTimelinePlacementExplicit(t *testing.T) {

@@ -1,5 +1,5 @@
 // Package scriptgeneration — runner_unit_test.go covers the
-// pure helper-level tests for deriveErrorCode, buildDocumentContent,
+// pure helper-level tests for the document model adapter, deriveErrorCode,
 // and containsAny. None of these touch the repository or the
 // runner pipeline — they exercise the runner.go private helpers
 // directly so a regression in error-code mapping or doc-content
@@ -12,8 +12,8 @@
 //     EMPTY_RESULT, TEXT_GENERATION_FAILED, TRANSLATION_FAILED,
 //     VOICEOVER_FAILED, DOCUMENT_FAILED, ENQUEUE_FAILED) and
 //     falls back to <STAGE>_FAILED for unknown shapes.
-//   - buildDocumentContent skips scenes that lack the requested
-//     language; numbers scenes as Scene N+1 (1-based for display).
+//   - modelScriptOutputForDocument preserves ordered scenes and
+//     language-specific text/voiceover data for the canonical renderer.
 //   - containsAny is a small substring-match helper used by
 //     deriveErrorCode; mirrors the semantics of strings.Contains
 //     over a variadic list.
@@ -106,34 +106,24 @@ func TestDeriveErrorCode(t *testing.T) {
 	}
 }
 
-// TestBuildDocumentContent asserts the canonical 1-based scene
-// numbering + skip-on-empty language + double-newline scene
-// separator. Mirrors the contract used by the runner's
-// StagePublishingDocuments.
-func TestBuildDocumentContent(t *testing.T) {
+func TestModelScriptOutputForDocumentPreservesCanonicalSceneData(t *testing.T) {
 	scenes := []Scene{
-		{Index: 0, Text: map[Language]string{"en": "Hello world", "es": "Hola mundo"}},
-		{Index: 1, Text: map[Language]string{"en": "Second scene", "es": "Segunda escena"}},
-		{Index: 2, Text: map[Language]string{}},
+		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Hello world", "es": "Hola mundo"}},
+		{ID: "scene-1", Index: 1, Text: map[Language]string{"en": "Second scene", "es": "Segunda escena"}},
 	}
 
-	enContent := buildDocumentContent(scenes, "en")
-	assert.Contains(t, enContent, "Scene 1")
-	assert.Contains(t, enContent, "Hello world")
-	assert.Contains(t, enContent, "Scene 2")
-	assert.Contains(t, enContent, "Second scene")
-	// Scene 3 has no EN text — should be skipped.
-	assert.NotContains(t, enContent, "Scene 3")
-
-	esContent := buildDocumentContent(scenes, "es")
-	assert.Contains(t, esContent, "Hola mundo")
-	assert.Contains(t, esContent, "Segunda escena")
+	enModel := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "en")
+	assert.Equal(t, "Hello world", enModel.SpecScene.Scenes[0].Text)
+	assert.Equal(t, "Second scene", enModel.SpecScene.Scenes[1].Text)
+	esModel := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "es")
+	assert.Equal(t, "Hola mundo", esModel.SpecScene.Scenes[0].Text)
+	assert.Equal(t, "Segunda escena", esModel.SpecScene.Scenes[1].Text)
 }
 
 // TestBuildDocumentContentHumanOnly asserts the document surface never
 // leaks technical bindings (clip links) and renders voiceover as a
 // bare, copyable URL rather than a language-labelled technical line.
-func TestBuildDocumentContentHumanOnly(t *testing.T) {
+func TestModelScriptOutputForDocumentPreservesTechnicalBindingsForJSON(t *testing.T) {
 	scenes := []Scene{
 		{
 			Index: 0,
@@ -149,17 +139,11 @@ func TestBuildDocumentContentHumanOnly(t *testing.T) {
 		},
 	}
 
-	content := buildDocumentContent(scenes, "en")
-
-	// Technical bindings must never leak into the human surface.
-	assert.NotContains(t, content, "CLIP-SECRET")
-	assert.NotContains(t, content, "CLIP-A")
-	assert.NotContains(t, content, "CLIP-B")
-	assert.NotContains(t, content, "Clip:")
-
-	// Voiceover is a bare, copyable URL.
-	assert.Contains(t, content, "Voiceover: https://drive.google.com/VOICE-EN")
-	assert.NotContains(t, content, "Voiceover en:")
+	model := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "en")
+	bindings := model.SpecScene.Scenes[0].Bindings
+	assert.Equal(t, "https://drive.google.com/CLIP-SECRET", bindings.Clip.DriveLink)
+	assert.Len(t, bindings.Clips, 2)
+	assert.Equal(t, "https://drive.google.com/VOICE-EN", bindings.Voiceover.Links["en"])
 }
 
 // TestContainsAny asserts the small substring-match helper used by

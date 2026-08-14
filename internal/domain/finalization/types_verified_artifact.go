@@ -110,6 +110,19 @@ type VerifiedArtifact struct {
 	// source. Every pipeline MUST set this before calling Prepare.
 	Source string `json:"source,omitempty"`
 
+	// ArtifactMetadata is preserved across the worker→Sender completion
+	// boundary. RenderingGen uses it for plan fingerprint/render key and
+	// Drive overlay routing metadata.
+	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
+
+	// DriveSubpath is an optional deterministic child path below the
+	// already-resolved artifact folder. It is intentionally part of the
+	// verified artifact contract so specialized producers (for example
+	// RenderingGen overlays) can publish beside the artifact without
+	// selecting a new Drive root. The Drive publisher creates/reuses each
+	// segment idempotently.
+	DriveSubpath []string `json:"drive_subpath,omitempty"`
+
 	// ProjectID and Language are canonical delivery metadata for destinations
 	// such as voiceover. They describe logical routing only; folder resolution
 	// remains owned by the delivery registry.

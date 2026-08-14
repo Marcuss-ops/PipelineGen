@@ -163,6 +163,7 @@ type ClipDetail struct {
 	DriveLink      string   `json:"drive_link,omitempty"`
 	SubtitleLink   string   `json:"subtitle_link,omitempty"`
 	SubtitleFileID string   `json:"subtitle_file_id,omitempty"`
+	LocalPath      string   `json:"-"`
 }
 
 // ModelClipView is the model-facing projection of one clip.

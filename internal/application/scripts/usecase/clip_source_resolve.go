@@ -33,10 +33,11 @@ type typedClipResolverPort interface {
 }
 
 type clipContextRecord struct {
-	id         string
-	clip       *asset.Asset
-	transcript string
-	track      *asset.TextTrack
+	id           string
+	clip         *asset.Asset
+	transcript   string
+	track        *asset.TextTrack
+	metadataText string
 }
 
 type clipContextResult struct {
@@ -86,6 +87,8 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	language string,
 	requireDriveLink bool,
 	allowTranscriptFallback bool,
+	allowMetadataFallback bool,
+	metadataText string,
 ) clipContextResult {
 	clip, reason := c.resolveOneClip(ctx, id)
 	switch reason {
@@ -136,11 +139,11 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
 	if resolveErr != nil {
 		var notReady *ErrTextTrackNotReady
-		if allowTranscriptFallback && errors.As(resolveErr, &notReady) {
+		if (allowTranscriptFallback || (allowMetadataFallback && (clipHasMetadataEvidence(clip) || strings.TrimSpace(metadataText) != ""))) && errors.As(resolveErr, &notReady) {
 			// Explicit source_text is the only permitted fallback. Keep the
 			// resolved clip record so its metadata remains available, but do
 			// not fabricate transcript/evidence content.
-			return clipContextResult{record: clipContextRecord{id: id, clip: clip}}
+			return clipContextResult{record: clipContextRecord{id: id, clip: clip, metadataText: metadataText}}
 		}
 		if c.log != nil {
 			c.log.Warn("clip source builder: text track resolve failed",
@@ -153,12 +156,43 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 
 	return clipContextResult{
 		record: clipContextRecord{
-			id:         id,
-			clip:       clip,
-			transcript: transcript,
-			track:      track,
+			id:           id,
+			clip:         clip,
+			transcript:   transcript,
+			track:        track,
+			metadataText: metadataText,
 		},
 	}
+}
+
+func metadataFallbackAllowed(opts *ClipGenerationOptions, clip *asset.Asset) bool {
+	if !metadataFallbackEnabled(opts) {
+		return false
+	}
+	return clipHasMetadataEvidence(clip) || strings.TrimSpace(opts.MetadataFallbackText) != ""
+}
+
+func metadataFallbackEnabled(opts *ClipGenerationOptions) bool {
+	return opts != nil && opts.AllowMetadataFallback
+}
+
+func metadataFallbackText(opts *ClipGenerationOptions, clipID string) string {
+	if opts == nil {
+		return ""
+	}
+	if opts.MetadataFallbackByClipID != nil {
+		return strings.TrimSpace(opts.MetadataFallbackByClipID[clipID])
+	}
+	return strings.TrimSpace(opts.MetadataFallbackText)
+}
+
+func clipHasMetadataEvidence(clip *asset.Asset) bool {
+	if clip == nil {
+		return false
+	}
+	return strings.TrimSpace(clip.SearchText) != "" ||
+		strings.TrimSpace(clip.GetMetadataString("description")) != "" ||
+		strings.TrimSpace(clip.GetMetadataString("visual_summary")) != ""
 }
 
 // transcriptFallbackAllowed permits a missing transcript only when the

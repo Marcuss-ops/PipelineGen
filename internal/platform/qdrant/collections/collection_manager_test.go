@@ -50,7 +50,7 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
 			http.NotFound(w, r)
 		// Physical collection check.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_e5_768_siglip_768":
+		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_nomic_768_siglip_768":
 			if !collectionCreated {
 				http.NotFound(w, r)
 				return
@@ -82,14 +82,14 @@ func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 				},
 			})
 		// Create collection.
-		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768_siglip_768":
+		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_nomic_768_siglip_768":
 			collectionCreated = true
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": true,
 				"status": "ok",
 			})
 		// Create payload indexes.
-		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768_siglip_768/index":
+		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_nomic_768_siglip_768/index":
 			var body map[string]interface{}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			payloadIndexes[body["field_name"].(string)] = true

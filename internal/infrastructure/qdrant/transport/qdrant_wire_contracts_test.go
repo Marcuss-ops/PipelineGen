@@ -92,7 +92,7 @@ func TestGetAliasTarget_OfficialResolution(t *testing.T) {
 	client := NewClient(&qdrantSchema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
 	target, err := client.GetAliasTarget(context.Background(), "media_assets_current")
 	require.NoError(t, err)
-	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", target,
+	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", target,
 		"alias target resolution must match the fixture's collection_name")
 }
 
@@ -142,7 +142,7 @@ func TestGetCollection_OfficialEnvelope(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(&qdrantSchema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
-	info, err := client.GetCollection(context.Background(), "media_assets_v3_e5_768_siglip_768")
+	info, err := client.GetCollection(context.Background(), "media_assets_v3_nomic_768_siglip_768")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 

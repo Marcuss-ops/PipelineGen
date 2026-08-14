@@ -74,6 +74,17 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 					SHA256: ref.SHA256, SourceVersion: 1, Requirement: requirement,
 					IdempotencyKey: ref.ArtifactID, Source: string(kind),
 					ProjectID: ref.DriveGroup, Language: ref.DriveLanguage,
+					ArtifactMetadata: ref.ArtifactMetadata,
+				}
+				if source, ok := ref.ArtifactMetadata["source"].(string); ok && source != "" {
+					verified.Source = source
+				}
+				if raw, ok := ref.ArtifactMetadata["drive_subpath"].([]any); ok {
+					for _, v := range raw {
+						if s, ok := v.(string); ok {
+							verified.DriveSubpath = append(verified.DriveSubpath, s)
+						}
+					}
 				}
 				// Script/document destinations require a logical project path;
 				// worker manifests do not need to duplicate it for every file.

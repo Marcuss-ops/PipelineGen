@@ -15,17 +15,21 @@ import (
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
-	DocID             string
-	DocLink           string
-	VisualPlans       []mediamemory.SceneVisualPlan
-	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
-	Entities          *scriptpkg.EntityResult
-	VidRushSegments   []scriptpkg.VidRushSegmentResult
-	VideoMetadata     []scriptpkg.VideoMetadata
-	Voiceovers        []SceneVoiceover
-	Scenes            []SceneImage
-	ScriptID          int64
-	AlreadyPersisted  bool
+	DocID                   string
+	DocLink                 string
+	DocumentRenderer        string `json:"document_renderer,omitempty"`
+	DocumentSpecSceneSHA256 string `json:"document_specscene_sha256,omitempty"`
+	DocumentSceneCount      int    `json:"document_scene_count,omitempty"`
+	DocumentLanguage        string `json:"document_language,omitempty"`
+	VisualPlans             []mediamemory.SceneVisualPlan
+	VisualAssignments       []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities                *scriptpkg.EntityResult
+	VidRushSegments         []scriptpkg.VidRushSegmentResult
+	VideoMetadata           []scriptpkg.VideoMetadata
+	Voiceovers              []SceneVoiceover
+	Scenes                  []SceneImage
+	ScriptID                int64
+	AlreadyPersisted        bool
 	// StageDurations maps processor name → wall-clock milliseconds
 	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
 	StageDurations map[string]int64             `json:"stage_durations,omitempty"`

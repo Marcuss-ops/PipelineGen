@@ -76,20 +76,21 @@ func (s *ArtifactPreparation) Prepare(
 	)
 
 	return finalization.PublishedArtifact{
-		ArtifactID:     artifact.ArtifactID,
-		Kind:           artifact.Kind,
-		Filename:       artifact.Filename,
-		MIMEType:       artifact.MIMEType,
-		SizeBytes:      artifact.SizeBytes,
-		SHA256:         artifact.SHA256,
-		SourceVersion:  artifact.SourceVersion,
-		Requirement:    artifact.Requirement,
-		IdempotencyKey: artifact.IdempotencyKey,
-		Description:    artifact.Description,
-		Source:         artifact.Source,
-		ProjectID:      artifact.ProjectID,
-		Language:       artifact.Language,
-		Location:       location,
+		ArtifactID:       artifact.ArtifactID,
+		Kind:             artifact.Kind,
+		Filename:         artifact.Filename,
+		MIMEType:         artifact.MIMEType,
+		SizeBytes:        artifact.SizeBytes,
+		SHA256:           artifact.SHA256,
+		SourceVersion:    artifact.SourceVersion,
+		Requirement:      artifact.Requirement,
+		IdempotencyKey:   artifact.IdempotencyKey,
+		Description:      artifact.Description,
+		Source:           artifact.Source,
+		ProjectID:        artifact.ProjectID,
+		Language:         artifact.Language,
+		ArtifactMetadata: artifact.ArtifactMetadata,
+		Location:         location,
 	}, nil
 }
 

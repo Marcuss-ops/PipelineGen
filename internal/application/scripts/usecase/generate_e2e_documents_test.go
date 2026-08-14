@@ -164,14 +164,17 @@ func TestGenerateE2E_DocumentHumanSurfaceShowsOnlyTitleScenesVoiceover(t *testin
 	}
 	for _, forbidden := range []string{
 		"VOICE-EN",
-		"CLIP-A-DRIVE",
-		"<strong>Clip:</strong>",
 		"TESTO GLOBALE CHE NON DEVE APPARIRE",
 		"Description",
 		"Tags",
 	} {
 		require.NotContains(t, humanIT, forbidden)
 	}
+	// The current document contract exposes one clickable Drive link for
+	// each scene resource. The legacy Clip alias and Clips[] must not cause
+	// duplicate links, but the canonical clip link is intentionally visible.
+	require.Contains(t, humanIT, "<strong>Clip:</strong>")
+	require.Contains(t, humanIT, "CLIP-A-DRIVE")
 
 	// EN document shows the EN voiceover URL and never the IT one.
 	require.Contains(t, humanEN, "VOICE-EN")

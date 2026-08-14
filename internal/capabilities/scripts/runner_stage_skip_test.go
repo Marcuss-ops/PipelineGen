@@ -38,7 +38,7 @@ func TestRunner_VoiceoverGeneratorNil_StageSkipped(t *testing.T) {
 	renderEnq := newStubRenderEnqueuer()
 
 	// No voiceover generator — should be nil-safe.
-	runner := NewRunner(repo, textGen, translator, nil, docPub, renderEnq)
+	runner := NewRunner(repo, textGen, translator, nil, docPub, renderEnq, canonicalTestDocumentRenderer{})
 	runner.SetLogger(zap.NewNop())
 
 	req := defaultTestRequest()

@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // OutputArtifact is the typed per-output declaration a job handler
@@ -47,7 +48,7 @@ var ErrLegacyUploadPathRemoved = errors.New("runner: legacy output_files/output_
 // the hex-encoded string. Thin wrapper around job.ComputeSHA256 so the
 // worker package doesn't need to import crypto/sha256 directly.
 func sha256File(path string) (string, error) {
-	return job.ComputeSHA256(path)
+	return job.ComputeSHA256(filesystem.NewOS(), path)
 }
 
 // uploadManifest tries to decode an ArtifactManifest from handlerResult.

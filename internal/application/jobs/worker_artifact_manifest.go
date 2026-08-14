@@ -165,16 +165,17 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 	}
 	for _, a := range manifest.Artifacts {
 		staged = append(staged, &domainremote.StagedArtifactReference{
-			ArtifactID:    a.ID,
-			Destination:   destinationForArtifactKind(a.Kind, src),
-			SHA256:        a.SHA256,
-			Path:          a.Path,
-			Filename:      a.Filename,
-			MIMEType:      a.MIMEType,
-			SizeBytes:     a.SizeBytes,
-			Required:      a.Required,
-			DriveGroup:    a.DriveGroup,
-			DriveLanguage: a.DriveLanguage,
+			ArtifactID:       a.ID,
+			Destination:      destinationForArtifactKind(a.Kind, src),
+			SHA256:           a.SHA256,
+			Path:             a.Path,
+			Filename:         a.Filename,
+			MIMEType:         a.MIMEType,
+			SizeBytes:        a.SizeBytes,
+			Required:         a.Required,
+			DriveGroup:       a.DriveGroup,
+			DriveLanguage:    a.DriveLanguage,
+			ArtifactMetadata: a.ArtifactMetadata,
 		})
 	}
 
@@ -196,10 +197,19 @@ func destinationForArtifactKind(kind, source string) string {
 		return "script"
 	case job.ArtifactKindVoiceover:
 		return "voiceover"
+	case job.ArtifactKindFinalAudio:
+		// The certified combined master is an audio artifact and must use
+		// the same canonical voiceover/audio Drive destination as the
+		// pre-document publication path. Keeping this mapping identical
+		// makes the later manifest publication idempotent instead of
+		// creating a second copy under the document destination.
+		return "voiceover"
 	case job.ArtifactKindImage:
 		return "image"
 	case job.ArtifactKindPDF, job.ArtifactKindMarkdown:
 		return "document"
+	case job.ArtifactKindOverlay:
+		return "youtube_clip"
 	default:
 		if source == "youtube" {
 			return "youtube_clip"

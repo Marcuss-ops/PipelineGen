@@ -219,6 +219,32 @@ func TestScenePlanner_Plan_ExplicitSegmentsOverrideClipDerivedCount(t *testing.T
 	assert.Equal(t, "Paragraph four.", got.Scenes[3].Text)
 }
 
+func TestScenePlanner_SearchWithMultipleAcceptedClipsIsClipNative(t *testing.T) {
+	t.Parallel()
+	p := scene.NewScenePlanner(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind:      string(scriptpkg.SourceSearch),
+		GroundingPolicy: scriptpkg.GroundingPolicyClipsPrimary,
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-a": {Name: "A", Description: "First comedy interview moment"},
+				"clip-b": {Name: "B", Description: "Second comedy interview moment"},
+				"clip-c": {Name: "C", Description: "Third comedy interview moment"},
+			},
+		},
+	}
+	got := p.Plan(scene.NarrativeDraft{
+		SourceKind: string(scriptpkg.SourceSearch),
+		Scenes:     []scriptpkg.SpecScene{{ID: "scene-0", Text: "one opaque narrative"}},
+	}, plan)
+	require.Equal(t, scene.ScenePlanSourceClipEvidence, got.Source)
+	require.Len(t, got.Scenes, 3)
+	assert.Equal(t, "clip-a", got.Scenes[0].Bindings.Clip.ClipID)
+	assert.Equal(t, "clip-b", got.Scenes[1].Bindings.Clip.ClipID)
+	assert.Equal(t, "clip-c", got.Scenes[2].Bindings.Clip.ClipID)
+}
+
 func TestScenePlanner_Plan_ProseFallbackNoClipEvidence(t *testing.T) {
 	t.Parallel()
 	p := scene.NewScenePlanner(zap.NewNop())

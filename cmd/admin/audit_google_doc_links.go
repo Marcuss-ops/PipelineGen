@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,6 +17,8 @@ import (
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/googleapi"
 
+	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -356,4 +359,171 @@ func classifyDriveAuditError(err error) string {
 		}
 	}
 	return "DRIVE_API_ERROR"
+}
+
+type googleDocRenderAuditReport struct {
+	DocumentID       string `json:"document_id"`
+	Renderer         string `json:"renderer"`
+	ExpectedRenderer string `json:"expected_renderer"`
+	RendererVerified bool   `json:"renderer_verified"`
+	SceneCount       int    `json:"scene_count"`
+	ExpectedScenes   int    `json:"expected_scene_count"`
+	SpecSceneSHA256  string `json:"specscene_sha256"`
+	ExpectedSHA256   string `json:"expected_specscene_sha256"`
+	JSONValid        bool   `json:"specscene_json_valid"`
+	Match            bool   `json:"match"`
+}
+
+type googleDocRenderMismatchError struct{ Reason string }
+
+func (e *googleDocRenderMismatchError) Error() string { return "audit-google-doc-render: " + e.Reason }
+
+func runAuditGoogleDocRender(args []string) error {
+	fs := flag.NewFlagSet("audit-google-doc-render", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	docID := fs.String("doc-id", "", "Google Doc ID to audit (required)")
+	expectedRenderer := fs.String("expected-renderer", documentadapters.CanonicalDocumentRendererID, "expected document renderer ID")
+	expectedHash := fs.String("expected-sha256", "", "expected canonical SpecScene SHA-256 (required)")
+	expectedScenes := fs.Int("expected-scene-count", -1, "expected scene count (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*docID) == "" || strings.TrimSpace(*expectedHash) == "" || *expectedScenes < 0 {
+		return fmt.Errorf("audit-google-doc-render: doc-id, expected-sha256 and expected-scene-count are required")
+	}
+	cfg, _, cleanup, err := appLogger()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	ctx := cmdContext()
+	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())
+	if err != nil {
+		return fmt.Errorf("audit-google-doc-render: initialize Google clients: %w", err)
+	}
+	documentReader, ok := docClient.(drive.DocumentReader)
+	if !ok {
+		return fmt.Errorf("audit-google-doc-render: configured document client cannot read document structure")
+	}
+	document, err := documentReader.GetDocument(ctx, strings.TrimSpace(*docID))
+	if err != nil {
+		return fmt.Errorf("audit-google-doc-render: retrieve document %s: %w", *docID, err)
+	}
+	report, auditErr := auditGoogleDocRender(document, *docID, *expectedRenderer, *expectedHash, *expectedScenes)
+	if err := writeGoogleDocRenderAuditReport(os.Stdout, report); err != nil {
+		return err
+	}
+	return auditErr
+}
+
+func writeGoogleDocRenderAuditReport(w io.Writer, report googleDocRenderAuditReport) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(report)
+}
+
+func auditGoogleDocRender(document *docs.Document, docID, expectedRenderer, expectedHash string, expectedScenes int) (googleDocRenderAuditReport, error) {
+	report := googleDocRenderAuditReport{DocumentID: strings.TrimSpace(docID), ExpectedRenderer: expectedRenderer, ExpectedSHA256: expectedHash, ExpectedScenes: expectedScenes, RendererVerified: expectedRenderer == documentadapters.CanonicalDocumentRendererID}
+	if !report.RendererVerified {
+		return report, &googleDocRenderMismatchError{Reason: fmt.Sprintf("unexpected renderer %q", expectedRenderer)}
+	}
+	text := documentPlainText(document)
+	if !strings.Contains(text, "SpecScene JSON") {
+		return report, &googleDocRenderMismatchError{Reason: "SpecScene JSON marker is missing"}
+	}
+	rawJSON, err := extractEmbeddedSpecSceneJSON(text)
+	if err != nil {
+		return report, err
+	}
+	var spec scriptpkg.SpecSceneOutput
+	if err := json.Unmarshal([]byte(rawJSON), &spec); err != nil {
+		return report, &googleDocRenderMismatchError{Reason: "embedded SpecScene JSON is invalid: " + err.Error()}
+	}
+	report.JSONValid = true
+	report.SceneCount = len(spec.Scenes)
+	report.SpecSceneSHA256 = documentadapters.SpecSceneSHA256(spec)
+	report.Renderer = expectedRenderer
+	report.Match = report.SpecSceneSHA256 == report.ExpectedSHA256 && report.SceneCount == report.ExpectedScenes
+	if !report.Match {
+		return report, &googleDocRenderMismatchError{Reason: "embedded SpecScene does not match expected hash/scene count"}
+	}
+	return report, nil
+}
+
+func extractEmbeddedSpecSceneJSON(documentText string) (string, error) {
+	marker := strings.Index(documentText, "SpecScene JSON")
+	if marker < 0 {
+		return "", &googleDocRenderMismatchError{Reason: "SpecScene JSON marker is missing"}
+	}
+	jsonStart := strings.Index(documentText[marker+len("SpecScene JSON"):], "{")
+	if jsonStart < 0 {
+		return "", &googleDocRenderMismatchError{Reason: "embedded SpecScene JSON object is missing"}
+	}
+	jsonStart += marker + len("SpecScene JSON")
+	decoder := json.NewDecoder(strings.NewReader(html.UnescapeString(documentText[jsonStart:])))
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		return "", &googleDocRenderMismatchError{Reason: "cannot decode embedded SpecScene JSON: " + err.Error()}
+	}
+	return string(raw), nil
+}
+
+func documentPlainText(document *docs.Document) string {
+	if document == nil {
+		return ""
+	}
+	var b strings.Builder
+	if len(document.Tabs) > 0 {
+		for _, tab := range document.Tabs {
+			collectDocumentTabText(tab, &b)
+		}
+	} else {
+		collectDocumentContentText(document.Body, &b)
+	}
+	return b.String()
+}
+func collectDocumentTabText(tab *docs.Tab, b *strings.Builder) {
+	if tab == nil {
+		return
+	}
+	if tab.DocumentTab != nil {
+		collectDocumentContentText(tab.DocumentTab.Body, b)
+	}
+	for _, child := range tab.ChildTabs {
+		collectDocumentTabText(child, b)
+	}
+}
+func collectDocumentContentText(body *docs.Body, b *strings.Builder) {
+	if body != nil {
+		collectStructuralText(body.Content, b)
+	}
+}
+func collectStructuralText(elements []*docs.StructuralElement, b *strings.Builder) {
+	for _, element := range elements {
+		if element == nil {
+			continue
+		}
+		if element.Paragraph != nil {
+			for _, item := range element.Paragraph.Elements {
+				if item != nil && item.TextRun != nil {
+					b.WriteString(item.TextRun.Content)
+				}
+			}
+		}
+		if element.Table != nil {
+			for _, row := range element.Table.TableRows {
+				if row == nil {
+					continue
+				}
+				for _, cell := range row.TableCells {
+					if cell != nil {
+						collectStructuralText(cell.Content, b)
+					}
+				}
+			}
+		}
+		if element.TableOfContents != nil {
+			collectStructuralText(element.TableOfContents.Content, b)
+		}
+	}
 }

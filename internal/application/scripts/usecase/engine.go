@@ -218,7 +218,8 @@ type EngineResult struct {
 
 	// ClipEvidence echoes the resolved clip evidence from the plan
 	// so downstream (buildGenerationResult) doesn't re-derive it.
-	ClipEvidence *script.ClipEvidence `json:"clip_evidence,omitempty"`
+	ClipEvidence  *script.ClipEvidence      `json:"clip_evidence,omitempty"`
+	SearchResults []script.SearchResultItem `json:"search_results,omitempty"`
 }
 
 // NewEngine constructs a real Engine backed by the canonical

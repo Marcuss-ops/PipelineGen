@@ -97,7 +97,7 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 
 func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.T) {
 	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
-		proseResult("short\n\n" + textOfNWords(10)),
+		proseResult(textOfNWords(10)),
 		proseResult(textOfNWords(10)),
 	}}
 	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
@@ -115,18 +115,69 @@ func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.
 	if len(gen.prompts) != 2 {
 		t.Fatalf("provider calls = %d, want 2", len(gen.prompts))
 	}
-	if !strings.Contains(gen.prompts[1], "FROZEN SEGMENT 2:\n"+textOfNWords(10)) {
-		t.Fatalf("second prompt did not preserve valid segment exactly: %q", gen.prompts[1])
+	if !strings.Contains(gen.prompts[0], "Topic: one") || !strings.Contains(gen.prompts[1], "Topic: two") {
+		t.Fatalf("segment prompts lost canonical topic ownership: %q", gen.prompts)
 	}
-	if !strings.Contains(gen.prompts[1], "Regenerate ONLY these segment numbers, in this order: 1") {
-		t.Fatalf("second prompt did not target only segment 1: %q", gen.prompts[1])
+}
+
+func TestEngineGenerate_PerSegmentRequestsCarryOnlyOwnedEditorialEvidence(t *testing.T) {
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
+		proseResult("paul one two three"),
+		proseResult("andrew one two three"),
+	}}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:       "evidence routing",
+		Language:    "en",
+		Mode:        "clip_to_script",
+		TargetWords: 8,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "paul", Topic: "Paul Giamatti", SourceText: "PAUL_EDITORIAL_82931", ClipIDs: []string{"clipA"}, TargetWords: 4},
+			{ID: "andrew", Topic: "Andrew Garfield", SourceText: "ANDREW_EDITORIAL_18372", ClipIDs: []string{"clipB"}, TargetWords: 4},
+		},
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clipA", "clipB"},
+			SegmentEvidence: []scriptpkg.SegmentClipEvidence{
+				{SegmentID: "paul", Topic: "Paul Giamatti", SourceText: "PAUL_EDITORIAL_82931", ClipIDs: []string{"clipA"}, Clips: map[string]scriptpkg.ClipDetail{
+					"clipA": {Description: "PAUL_CLIP_A_FACT_74211", Transcript: "PAUL_CLIP_A_TRANSCRIPT_74211"},
+				}},
+				{SegmentID: "andrew", Topic: "Andrew Garfield", SourceText: "ANDREW_EDITORIAL_18372", ClipIDs: []string{"clipB"}, Clips: map[string]scriptpkg.ClipDetail{
+					"clipB": {Description: "ANDREW_CLIP_B_FACT_18372", Transcript: "ANDREW_CLIP_B_TRANSCRIPT_18372"},
+				}},
+			},
+		},
+	}
+
+	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
+	engine.ConfigureSegmentValidation(15, 10, 0)
+	if _, err := engine.Generate(context.Background(), plan); err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	if len(gen.prompts) != 2 {
+		t.Fatalf("provider calls = %d, want one per segment", len(gen.prompts))
+	}
+	want := []struct {
+		own, other string
+	}{
+		{"PAUL_EDITORIAL_82931", "ANDREW_EDITORIAL_18372"},
+		{"ANDREW_EDITORIAL_18372", "PAUL_EDITORIAL_82931"},
+	}
+	for i, prompt := range gen.prompts {
+		if !strings.Contains(prompt, want[i].own) {
+			t.Errorf("request[%d] lost owned source sentinel %q: %s", i, want[i].own, prompt)
+		}
+		if !strings.Contains(prompt, []string{"PAUL_CLIP_A_FACT_74211", "ANDREW_CLIP_B_FACT_18372"}[i]) {
+			t.Errorf("request[%d] lost owned clip evidence: %s", i, prompt)
+		}
+		if strings.Contains(prompt, want[i].other) || strings.Contains(prompt, []string{"ANDREW_CLIP_B_FACT_18372", "PAUL_CLIP_A_FACT_74211"}[i]) {
+			t.Errorf("request[%d] contains evidence owned by another segment: %s", i, prompt)
+		}
 	}
 }
 
 func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
-		proseResult("short\n\n" + textOfNWords(10)),
-		proseResult("still-short\n\n" + textOfNWords(10)),
+		proseResult("short\n\nshort"),
+		proseResult("still-short\n\nstill-short"),
 		proseResult(textOfNWords(20)),
 	}}
 	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
@@ -141,7 +192,7 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	}
 }
 
-func TestEngineGenerate_ExplicitSegmentSourceFallbackPreservesCardinality(t *testing.T) {
+func TestEngineGenerate_DoesNotUseSegmentSourceAsFinalNarration(t *testing.T) {
 	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
 		proseResult("one paragraph"), proseResult("still one paragraph"),
 	}}
@@ -154,12 +205,9 @@ func TestEngineGenerate_ExplicitSegmentSourceFallbackPreservesCardinality(t *tes
 			{ID: "two", SourceText: "caller scene two"},
 		},
 	}
-	result, err := engine.Generate(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("Generate returned error: %v", err)
-	}
-	if result.Output.Text != "caller scene one\n\ncaller scene two" {
-		t.Fatalf("fallback text = %q", result.Output.Text)
+	_, err := engine.Generate(context.Background(), plan)
+	if err == nil || !errors.Is(err, scriptpkg.ErrSegmentValidationFailed) {
+		t.Fatalf("expected segment validation failure instead of source_text fallback, got %v", err)
 	}
 }
 

@@ -52,6 +52,9 @@ type ResolvedGenerationPlan struct {
 	// ClipEvidence is set when the source involved clips; nil for
 	// pure text generation.
 	ClipEvidence *ClipEvidence `json:"clip_evidence,omitempty"`
+	// SearchResults preserves the resolver's retrieval trace through the
+	// plan/engine boundary for the canonical GenerationResult source trace.
+	SearchResults []SearchResultItem `json:"search_results,omitempty"`
 
 	// ── Sizing ────────────────────────────────────────────────────────
 	TargetWords       int             `json:"target_words,omitempty"`

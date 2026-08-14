@@ -42,6 +42,7 @@ package app
 import (
 	"fmt"
 
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -111,6 +112,20 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 		// buildHealthService) all dereference cfg for other reads, so this
 		// nil-check is the canonical "cfg is nil" surface.
 		return fmt.Errorf("validateQdrantIndexerCompatibility: cfg is nil (PR-QDRANT-CONFIG-MISMATCH-GATE fail-closed cannot evaluate Qdrant+ClipIndexer compatibility)")
+	}
+
+	// Dimension equality is not enough to prove that the runtime query
+	// embedder and the indexed vectors share a vector space. The schema is
+	// the single contract owner; reject a model drift before Qdrant is used.
+	if cfg.Qdrant.Enabled {
+		textSpec := qdrantschema.DefaultV3Schema().GetDense("text")
+		if textSpec == nil || cfg.External.OllamaEmbedModel != textSpec.Model {
+			want := "<missing>"
+			if textSpec != nil {
+				want = textSpec.Model
+			}
+			return fmt.Errorf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: collection_model=%s runtime_model=%s", want, cfg.External.OllamaEmbedModel)
+		}
 	}
 
 	// Direction B (the RED POINT): Qdrant enabled, ClipIndexer disabled.

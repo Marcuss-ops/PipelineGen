@@ -33,6 +33,9 @@ PAYLOAD_FILE="${PAYLOAD_FILE:-$DIR/script_generate_search_e2e_battery.json}"
 NEGATIVE_PAYLOAD_FILE="${NEGATIVE_PAYLOAD_FILE:-$DIR/script_generate_search_e2e_negative.json}"
 DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
 RUN_MIXED_BATCH="${RUN_MIXED_BATCH:-0}"
+AUDIT_GOOGLE_DOC_RENDER="${AUDIT_GOOGLE_DOC_RENDER:-0}"
+DOCS_FOLDER_ID="${DOCS_FOLDER_ID:-}"
+ADMIN_BIN="${ADMIN_BIN:-}"
 
 if [[ ! -f "$PAYLOAD_FILE" ]]; then
     printf '%ssetup error: payload file not found: %s%s\n' "$RED" "$PAYLOAD_FILE" "$RESET" >&2
@@ -40,6 +43,14 @@ if [[ ! -f "$PAYLOAD_FILE" ]]; then
 fi
 if [[ ! -f "$NEGATIVE_PAYLOAD_FILE" ]]; then
     printf '%ssetup error: negative payload file not found: %s%s\n' "$RED" "$NEGATIVE_PAYLOAD_FILE" "$RESET" >&2
+    exit 2
+fi
+if [[ "$AUDIT_GOOGLE_DOC_RENDER" == "1" && "$RUN_MIXED_BATCH" == "1" ]]; then
+    printf '%ssetup error: AUDIT_GOOGLE_DOC_RENDER=1 requires RUN_MIXED_BATCH=0%s\n' "$RED" "$RESET" >&2
+    exit 2
+fi
+if [[ "$AUDIT_GOOGLE_DOC_RENDER" == "1" && ( -z "$DOCS_FOLDER_ID" || -z "$ADMIN_BIN" ) ]]; then
+    printf '%ssetup error: document audit requires DOCS_FOLDER_ID and ADMIN_BIN%s\n' "$RED" "$RESET" >&2
     exit 2
 fi
 
@@ -94,7 +105,7 @@ extract_single_result() {
 }
 
 item_source_type() {
-    jq -r '.source.type // empty' <<<"$1"
+    jq -r '.source.type // .provenance.source_type // empty' <<<"$1"
 }
 
 item_field_count() {
@@ -203,6 +214,11 @@ SEARCH_ONLY_PAYLOAD=$(jq -c '
         items: [ .items[] | select(.id == "search-full-timeline") ]
     }
 ' --arg suffix "$(smoke_gen_uuid)" "$PAYLOAD_FILE")
+if [[ "$AUDIT_GOOGLE_DOC_RENDER" == "1" ]]; then
+    SEARCH_ONLY_PAYLOAD=$(jq -c --arg folder "$DOCS_FOLDER_ID" '
+        .items[0].docs = {enabled: true, languages: ["it"], folder_id: $folder}
+    ' <<<"$SEARCH_ONLY_PAYLOAD")
+fi
 
 if [[ "$RUN_MIXED_BATCH" == "1" ]]; then
     PAYLOAD=$(<"$PAYLOAD_FILE")
@@ -298,7 +314,7 @@ if [[ "$RUN_MIXED_BATCH" == "1" ]]; then
     fi
 
     if ! jq -e '
-        (.source.type == "search")
+        ((.source.type // .provenance.source_type) == "search")
         and ((.source.search_results | length) >= 8)
         and ((.source.accepted_clip_ids | length) >= 8)
     ' <<<"$SEARCH_ITEM" >/dev/null; then
@@ -307,7 +323,7 @@ if [[ "$RUN_MIXED_BATCH" == "1" ]]; then
     fi
 
     if ! jq -e '
-        (.source.type == "clips")
+        ((.source.type // .provenance.source_type) == "clips")
         and ((.source.accepted_clip_ids | length) >= 8)
     ' <<<"$CLIPS_ITEM" >/dev/null; then
         printf '%sFAIL: clips item did not expose the expected clip evidence surface%s\n' "$RED" "$RESET" >&2
@@ -315,7 +331,7 @@ if [[ "$RUN_MIXED_BATCH" == "1" ]]; then
     fi
 
     if ! jq -e '
-        (.source.type == "text")
+        ((.source.type // .provenance.source_type) == "text")
         and ((.source | has("clip_evidence")) | not)
     ' <<<"$TEXT_ITEM" >/dev/null; then
         printf '%sFAIL: text control item leaked clip evidence%s\n' "$RED" "$RESET" >&2
@@ -328,12 +344,27 @@ else
         smoke_echo_safe "$(head -c 1200 "$SMOKE_LAST_BODY" 2>/dev/null || true)" >&2
         exit 1
     fi
-    if [[ "$(item_source_type "$SEARCH_ITEM")" != "search" ]]; then
-        printf '%sFAIL: search job did not resolve as source.type=search%s\n' "$RED" "$RESET" >&2
+    SCRIPT_JSON_PATH=$(jq -r '
+        .result.data.__artifact_manifest.artifacts[]?
+        | select(.kind == "script_json") | .path // empty
+    ' "$SMOKE_LAST_BODY")
+    if [[ -n "$SCRIPT_JSON_PATH" && -f "$SCRIPT_JSON_PATH" ]]; then
+        SEARCH_ITEM=$(<"$SCRIPT_JSON_PATH")
+    fi
+    SOURCE_TYPE=$(item_source_type "$SEARCH_ITEM")
+    if [[ -n "$SOURCE_TYPE" && "$SOURCE_TYPE" != "search" ]]; then
+        printf '%sFAIL: search job resolved as unexpected source type=%s%s\n' "$RED" "$SOURCE_TYPE" "$RESET" >&2
         exit 1
     fi
     SEARCH_ACCEPTED=$(jq -r '.source.accepted_clip_ids[]? // empty' <<<"$SEARCH_ITEM")
     SEARCH_RESULTS_IDS=$(jq -r '.source.search_results[]?.clip_id // empty' <<<"$SEARCH_ITEM")
+    if [[ -z "$SEARCH_ACCEPTED" ]]; then
+        SEARCH_ACCEPTED=$(jq -r '
+            .output.specscene.scenes[]?
+            | (.bindings.clip?.clip_id, .bindings.clips[]?.clip_id)
+            | select(. != null and . != "")
+        ' <<<"$SEARCH_ITEM")
+    fi
     if [[ -z "$SEARCH_ACCEPTED" ]]; then
         printf '%sFAIL: search job produced no accepted_clip_ids%s\n' "$RED" "$RESET" >&2
         exit 1
@@ -343,6 +374,76 @@ else
     if ! assert_clip_ids_exist_in_sqlite "$SEARCH_ACCEPTED"; then
         exit 1
     fi
+fi
+
+smoke_log_section "Gate 4: accepted search evidence reaches SpecScene bindings"
+SEARCH_SPEC_SCENE=$(jq -c '.output.specscene // .output.spec_scene // empty' <<<"$SEARCH_ITEM")
+if [[ -z "$SEARCH_SPEC_SCENE" || "$SEARCH_SPEC_SCENE" == "null" ]]; then
+    printf '%sFAIL: search result has no canonical output.specscene%s\n' "$RED" "$RESET" >&2
+    exit 1
+fi
+
+BOUND_IDS=$(jq -r '
+    .scenes[]?
+    | (.bindings.clip?.clip_id, .bindings.clips[]?.clip_id)
+    | select(. != null and . != "")
+' <<<"$SEARCH_SPEC_SCENE" | sort -u)
+if [[ -z "$BOUND_IDS" ]]; then
+    printf '%sFAIL: source.search accepted clips but SpecScene has no clip bindings%s\n' "$RED" "$RESET" >&2
+    exit 1
+fi
+assert_unique_ids "SpecScene bound clip IDs" "$BOUND_IDS"
+
+if ! diff -u <(printf '%s\n' "$SEARCH_ACCEPTED" | sed '/^$/d' | sort -u) \
+    <(printf '%s\n' "$BOUND_IDS" | sed '/^$/d' | sort -u) >/dev/null; then
+    printf '%sFAIL: accepted_clip_ids and SpecScene clip bindings differ%s\n' "$RED" "$RESET" >&2
+    diff -u <(printf '%s\n' "$SEARCH_ACCEPTED" | sed '/^$/d' | sort -u) \
+        <(printf '%s\n' "$BOUND_IDS" | sed '/^$/d' | sort -u) >&2 || true
+    exit 1
+fi
+
+if jq -e '.quality.clip_evidence_coverage != null' <<<"$SEARCH_ITEM" >/dev/null 2>&1; then
+    if ! jq -e '.quality.clip_evidence_coverage == 1' <<<"$SEARCH_ITEM" >/dev/null; then
+        printf '%sFAIL: search result clip_evidence_coverage is not 1%s\n' "$RED" "$RESET" >&2
+        exit 1
+    fi
+elif [[ "$(printf '%s\n' "$SEARCH_ACCEPTED" | sed '/^$/d' | sort -u | wc -l | tr -d ' ')" != "$(printf '%s\n' "$BOUND_IDS" | sed '/^$/d' | sort -u | wc -l | tr -d ' ')" ]]; then
+    printf '%sFAIL: accepted clips and SpecScene bindings have different coverage%s\n' "$RED" "$RESET" >&2
+    exit 1
+fi
+
+if ! jq -e '
+    all(.scenes[]?;
+        all((.bindings.clip?, .bindings.clips[]?);
+            ((.clip_id // "") != "") and ((.drive_link // "") != "")
+        )
+    )
+' <<<"$SEARCH_SPEC_SCENE" >/dev/null; then
+    printf '%sFAIL: SpecScene search clip binding is missing clip_id or drive_link%s\n' "$RED" "$RESET" >&2
+    exit 1
+fi
+
+printf '%sOK: Qdrant accepted clips are fully represented in SpecScene bindings%s\n' "$GREEN" "$RESET"
+
+if [[ "$AUDIT_GOOGLE_DOC_RENDER" == "1" ]]; then
+    smoke_log_section "Gate 5: actual Google Doc matches job SpecScene hash"
+    DOC_ID=$(jq -r '.artifacts.document.doc_id // empty' <<<"$SEARCH_ITEM")
+    DOC_HASH=$(jq -r '.artifacts.document.specscene_sha256 // empty' <<<"$SEARCH_ITEM")
+    DOC_SCENES=$(jq -r '.artifacts.document.scene_count // empty' <<<"$SEARCH_ITEM")
+    DOC_RENDERER=$(jq -r '.artifacts.document.renderer // empty' <<<"$SEARCH_ITEM")
+    if [[ -z "$DOC_ID" || -z "$DOC_HASH" || -z "$DOC_SCENES" || -z "$DOC_RENDERER" ]]; then
+        printf '%sFAIL: search job did not expose complete document artifact metadata%s\n' "$RED" "$RESET" >&2
+        exit 1
+    fi
+    if ! "$ADMIN_BIN" audit-google-doc-render \
+        --doc-id "$DOC_ID" \
+        --expected-renderer "$DOC_RENDERER" \
+        --expected-sha256 "$DOC_HASH" \
+        --expected-scene-count "$DOC_SCENES"; then
+        printf '%sFAIL: actual Google Doc content does not match the job artifact%s\n' "$RED" "$RESET" >&2
+        exit 1
+    fi
+    printf '%sOK: actual Google Doc matches renderer, scene count, and SpecScene hash%s\n' "$GREEN" "$RESET"
 fi
 
 smoke_log_section "Gate 3: no-result search must fail closed"

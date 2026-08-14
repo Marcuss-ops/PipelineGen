@@ -187,6 +187,9 @@ func (p *GenerationPreparer) Prepare(
 		if resolved.ClipEvidence != nil {
 			plan.ClipEvidence = resolved.ClipEvidence
 		}
+		if len(resolved.SearchResults) > 0 {
+			plan.SearchResults = append([]scriptpkg.SearchResultItem(nil), resolved.SearchResults...)
+		}
 		if resolved.Fingerprint != "" {
 			plan.SourceFingerprint = resolved.Fingerprint
 		}

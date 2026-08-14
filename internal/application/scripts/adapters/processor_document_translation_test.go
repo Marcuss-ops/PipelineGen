@@ -62,8 +62,8 @@ func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(human, "https://drive.google.com/file/d/clip-1/view") {
-		t.Errorf("clip drive link leaked into the human document section: %s", human)
+	if !strings.Contains(human, "<strong>Clip:</strong>") || !strings.Contains(human, "https://drive.google.com/file/d/clip-1/view") {
+		t.Errorf("clip drive link missing from the human document section: %s", human)
 	}
 
 	for _, want := range []string{

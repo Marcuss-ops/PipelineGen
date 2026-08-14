@@ -127,6 +127,10 @@ func buildGenerationResultWithCache(
 		}
 		sourceTrace.AcceptedClipIDs = append([]string(nil), clipIDs...)
 	}
+	if len(engineResult.SearchResults) > 0 {
+		sourceTrace.SearchResults = append([]scriptpkg.SearchResultItem(nil), engineResult.SearchResults...)
+	}
+	result.Source = sourceTrace
 
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
@@ -150,6 +154,10 @@ func buildGenerationResultWithCache(
 		if strings.TrimSpace(postResult.DocID) != "" || strings.TrimSpace(postResult.DocLink) != "" {
 			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
 				DocID: postResult.DocID, DocLink: postResult.DocLink,
+				Renderer:        postResult.DocumentRenderer,
+				SpecSceneSHA256: postResult.DocumentSpecSceneSHA256,
+				SceneCount:      postResult.DocumentSceneCount,
+				Language:        postResult.DocumentLanguage,
 			}
 		}
 		result.Artifacts.Entities = postResult.Entities

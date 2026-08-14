@@ -140,6 +140,7 @@ func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceRes
 		// deprecated OutputSpec.SourceRequireDriveLink field to
 		// restore caller override capability (OUT OF SCOPE per
 		// AGENTS.md).
-		RequireDriveLink: true,
+		RequireDriveLink:  true,
+		RequireLocalMedia: item.Output.GenerateTimeline,
 	}
 }

@@ -545,6 +545,14 @@ func (cm *CollectionManager) resolveRegistrySequence(ctx context.Context, reques
 	if ledger == nil {
 		return requested, nil
 	}
+	sequenceReader, ok := ledger.(capregistry.QdrantSequenceReader)
+	if ok {
+		sequence, err := sequenceReader.LatestQdrantEventSequence(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("read canonical qdrant registry sequence: %w", err)
+		}
+		return sequence, nil
+	}
 	sequence, err := ledger.LatestEventSequence(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("read canonical registry sequence: %w", err)

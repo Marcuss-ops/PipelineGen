@@ -108,6 +108,33 @@ func TestPublisher_ExplicitDestinationFolderBypassesForSidecars(t *testing.T) {
 	require.Equal(t, "resolved-voiceover-folder", files.uploadCalls[0].folderID)
 }
 
+func TestPublisher_OverlaySubpathIsCreatedBelowResolvedArtifactFolder(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{result: "overlay-folder-id"}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:         delivery.DestinationYouTubeClip,
+		DestinationFolderID: "artifact-folder-847",
+		DestinationSubpath:  []string{"overlay"},
+		LocalPath:           "/tmp/overlay_001.mov",
+		Filename:            "overlay_001.mov",
+		ConflictPolicy:      delivery.ConflictSkip,
+		IdempotencyKey:      "overlay-idem-001",
+		ContentHash:         "overlay-sha-001",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "overlay-folder-id", result.FolderID)
+	require.Equal(t, []string{"overlay"}, result.PathSegments)
+	require.Len(t, folders.ensureCalls, 1)
+	require.Equal(t, "artifact-folder-847", folders.ensureCalls[0].parent)
+	require.Equal(t, []string{"overlay"}, folders.ensureCalls[0].segments)
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, "overlay-folder-id", files.uploadCalls[0].folderID)
+}
+
 func TestPublisher_YouTubeClipWithRootOverride_EnsuresNestedSegments(t *testing.T) {
 	// Production contract (adapter decision, ba84a9eaf): the
 	// YouTubePublisherDriveAdapter threads the resolved folder into

@@ -167,8 +167,8 @@ type QueryEmbedder interface {
 // (see internal/infrastructure/qdrant/client_search.go::SparseText
 // + SparseVectorName pair semantics).
 const (
-	ChannelText       = "text"       // 768d multilingual-e5-base (semantic meaning)
-	ChannelTranscript = "transcript" // 768d multilingual-e5-base (Whisper transcript content)
+	ChannelText       = "text"       // 768d nomic-embed-text (semantic meaning)
+	ChannelTranscript = "transcript" // 768d nomic-embed-text (Whisper transcript content)
 	ChannelVisual     = "visual"     // 768d SigLIP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
 	ChannelAudio      = "audio"      // 512d CLAP-text encoder (forward-pointer; PR-CROSS-MODAL-TEXT-TO-VISUAL)
 	ChannelSparse     = "bm25_text"  // sparse BM25; server-side inference; ERR_NOT_APPLICABLE on query-time

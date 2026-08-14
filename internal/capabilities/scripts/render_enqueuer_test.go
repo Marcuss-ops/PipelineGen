@@ -4,12 +4,28 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
+
+// renderTestFS is the real-filesystem render.FileSystem adapter for the
+// enqueuer tests (kept local so this capability test does not import the
+// platform adapter).
+type renderTestFS struct{}
+
+func (renderTestFS) Open(path string) (io.ReadCloser, error) { return os.Open(path) }
+
+func (renderTestFS) Size(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
 
 type captureRenderExecutor struct {
 	plan  render.RenderPlan
@@ -41,7 +57,7 @@ func TestCanonicalRenderEnqueuerForwardsAndValidatesPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	executor := &captureRenderExecutor{}
-	enqueuer, err := NewCanonicalRenderEnqueuer(executor)
+	enqueuer, err := NewCanonicalRenderEnqueuer(executor, renderTestFS{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,8 +9,18 @@ import (
 
 // RenderPlanValidator is the only capability entry point that can mint a
 // ValidatedRenderPlan. It performs structural, hash, manifest-file, and
-// FINAL_AUDIO_COPY checks before an executor is allowed to run.
-type RenderPlanValidator struct{}
+// FINAL_AUDIO_COPY checks before an executor is allowed to run. The
+// filesystem port is injected so manifest-file re-hashing never touches os
+// directly.
+type RenderPlanValidator struct {
+	fs FileSystem
+}
+
+// NewRenderPlanValidator constructs the validator with the injected
+// filesystem adapter. A nil fs fails closed at first manifest-file check.
+func NewRenderPlanValidator(fs FileSystem) RenderPlanValidator {
+	return RenderPlanValidator{fs: fs}
+}
 
 // ValidatedRenderPlan is an immutable-by-construction handoff contract. The
 // underlying RenderPlan is copied when it is minted and when it is returned,
@@ -23,14 +33,17 @@ type ValidatedRenderPlan struct {
 // Validate performs all checks required before the real media executor. A
 // render request with no visual segments is rejected here rather than later
 // inside the infrastructure adapter.
-func (RenderPlanValidator) Validate(plan RenderPlan) (ValidatedRenderPlan, error) {
+func (v RenderPlanValidator) Validate(plan RenderPlan) (ValidatedRenderPlan, error) {
 	if err := plan.Validate(); err != nil {
 		return ValidatedRenderPlan{}, fmt.Errorf("render plan structural validation failed: %w", err)
 	}
 	if len(plan.Manifest) == 0 || len(plan.VideoTracks) == 0 || len(plan.VideoTracks[0].Segments) == 0 {
 		return ValidatedRenderPlan{}, fmt.Errorf("%w: at least one primary video segment is required", ErrInvalidPlan)
 	}
-	if err := plan.ValidateManifestFiles(); err != nil {
+	if v.fs == nil {
+		return ValidatedRenderPlan{}, fmt.Errorf("render plan physical validation failed: filesystem adapter is not configured")
+	}
+	if err := plan.ValidateManifestFiles(v.fs); err != nil {
 		return ValidatedRenderPlan{}, fmt.Errorf("render plan physical validation failed: %w", err)
 	}
 	if plan.FinalAudio != nil {
@@ -42,9 +55,11 @@ func (RenderPlanValidator) Validate(plan RenderPlan) (ValidatedRenderPlan, error
 }
 
 // ValidateRenderPlan is the concise boundary helper for callers that do not
-// need to retain a validator value.
-func ValidateRenderPlan(plan RenderPlan) (ValidatedRenderPlan, error) {
-	return (RenderPlanValidator{}).Validate(plan)
+// need to retain a validator value. The filesystem adapter is injected by
+// the composition root (or an infrastructure adapter for transport-layer
+// re-validation).
+func ValidateRenderPlan(plan RenderPlan, fs FileSystem) (ValidatedRenderPlan, error) {
+	return NewRenderPlanValidator(fs).Validate(plan)
 }
 
 // Plan returns an independent copy suitable for transport or inspection.

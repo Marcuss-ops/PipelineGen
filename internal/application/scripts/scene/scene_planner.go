@@ -197,6 +197,15 @@ type ScenePlanner struct {
 	synthesizer *SceneSynthesizer
 }
 
+// Synthesizer returns the canonical stateless prose partitioner for callers
+// that must preserve generated narrative while materializing clip slots.
+func (p *ScenePlanner) Synthesizer() *SceneSynthesizer {
+	if p == nil || p.synthesizer == nil {
+		return NewSceneSynthesizer()
+	}
+	return p.synthesizer
+}
+
 // NewScenePlanner returns a ScenePlanner with the supplied logger
 // and an inline SceneSynthesizer. Mirrors the constructor pattern
 // used by SceneAssetBinder (logger threaded through, sub-component
@@ -259,6 +268,18 @@ func (p *ScenePlanner) Plan(
 	// Case 1 (no-evidence, no-clips-source branch): bail out.
 	if plan.ClipEvidence == nil && len(draft.Scenes) == 0 {
 		// Prose-only path: continue below to text/synthesizer path.
+	}
+
+	// Clip-primary sources share one structural contract: accepted clips
+	// become one canonical scene each. This also applies to source.search
+	// after Qdrant selection; the renderer must not receive one opaque prose
+	// scene when the resolver has accepted multiple clip bindings.
+	if len(plan.Segments) == 0 && requiresClipNativePlan(plan) && len(plan.ClipEvidence.AcceptedClipIDs) > 0 &&
+		len(draft.Scenes) != len(plan.ClipEvidence.AcceptedClipIDs) {
+		scenes := p.PlanFromClipEvidence(plan)
+		if len(scenes) > 0 {
+			return ScenePlan{Scenes: scenes, Source: ScenePlanSourceClipEvidence}
+		}
 	}
 
 	// Case 3: model-emitted scenes preserved verbatim. A single model
@@ -392,4 +413,19 @@ func (p *ScenePlanner) Plan(
 
 	// Case 6: nothing to plan.
 	return ScenePlan{Source: ScenePlanSourceNoop}
+}
+
+func requiresClipNativePlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil || plan.ClipEvidence == nil {
+		return false
+	}
+	return plan.SourceKind == string(scriptpkg.SourceClips) ||
+		plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary
+}
+
+// RequiresClipNativePlan exposes the shared source policy to postprocessors.
+// Search results with clips_primary follow the same one-clip/one-scene
+// contract as explicit clip sources.
+func RequiresClipNativePlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	return requiresClipNativePlan(plan)
 }

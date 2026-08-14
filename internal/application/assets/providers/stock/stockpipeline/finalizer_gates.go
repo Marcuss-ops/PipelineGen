@@ -226,7 +226,7 @@ func (cs *ChunkState) ComputeAndFillSHA256(fs LocalFSPort) error {
 	if fi.Size() == 0 {
 		return fmt.Errorf("%w: %s (size=0)", ErrStockChunkLocalMissing, cs.LocalPath)
 	}
-	h, hashErr := job.ComputeSHA256(cs.LocalPath)
+	h, hashErr := job.ComputeSHA256(fs, cs.LocalPath)
 	if hashErr != nil {
 		return fmt.Errorf("stock: sha256(%s): %w", cs.LocalPath, hashErr)
 	}

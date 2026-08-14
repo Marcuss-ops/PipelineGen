@@ -41,6 +41,7 @@ func NewService(
 	voiceoverGen VoiceoverGenerator,
 	docPublisher DocumentPublisher,
 	renderEnqueuer RenderEnqueuer,
+	documentRenderers ...DocumentRenderer,
 ) *Service {
 	if repo == nil {
 		panic("scriptgeneration: RunRepository is required")
@@ -66,6 +67,7 @@ func NewService(
 			voiceoverGen,
 			docPublisher,
 			renderEnqueuer,
+			documentRenderers...,
 		),
 	}
 }

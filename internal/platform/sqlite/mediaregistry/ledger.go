@@ -281,6 +281,35 @@ func (l *Ledger) LatestEventSequence(ctx context.Context) (int64, error) {
 	return seq.Int64, nil
 }
 
+// LatestQdrantEventSequence advances over the registry ledger using the same
+// eligibility boundary as the Qdrant asset projection. Artifact-only events
+// (for example final_audio and script_json) do not create points and must not
+// make an otherwise current projection appear stale.
+func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
+	if l == nil || l.db == nil {
+		return 0, ErrNotWired
+	}
+	var seq sql.NullInt64
+	err := l.db.QueryRowContext(ctx, `
+		SELECT MAX(e.seq)
+		FROM registry_events e
+		WHERE e.asset_id IS NULL
+		   OR EXISTS (
+			SELECT 1 FROM media_assets a
+			WHERE a.id = e.asset_id
+			  AND a.media_type != 'folder'
+			  AND (a.deleted_at IS NULL OR a.deleted_at = '')
+			  AND COALESCE(a.embedding_json, '') NOT IN ('', '[]', '{}')
+		   )`).Scan(&seq)
+	if err != nil {
+		return 0, fmt.Errorf("latest qdrant registry event sequence: %w", err)
+	}
+	if !seq.Valid {
+		return 0, nil
+	}
+	return seq.Int64, nil
+}
+
 // LinkContent sets media_assets.content_sha256 for assetID. Idempotent
 // upsert; fails closed when the asset row does not exist (godlike/07).
 func (l *Ledger) LinkContent(ctx context.Context, assetID, contentSHA256 string) error {
