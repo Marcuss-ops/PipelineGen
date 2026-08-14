@@ -51,12 +51,13 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
 	}
 	return scripts.FinalAudioReference{
-		AssetID: asset.AssetID, Path: output, AudioContractVersion: asset.AudioContractVersion,
-		AudioPlanVersion: asset.AudioPlanVersion, PlanSHA256: asset.AudioPlanSHA256,
+		AssetID: asset.AssetID, Path: output, Container: strings.TrimPrefix(filepath.Ext(output), "."),
+		AudioContractVersion: asset.AudioContractVersion,
+		AudioPlanVersion:     asset.AudioPlanVersion, PlanSHA256: asset.AudioPlanSHA256,
 		FinalAudioSHA256: asset.FinalAudioSHA256, Codec: asset.Codec, Profile: asset.Profile,
 		SampleRate: asset.SampleRate, Channels: asset.Channels, ChannelLayout: asset.ChannelLayout,
-		Bitrate: asset.Bitrate, DurationMS: asset.DurationMS, StartPTS: asset.StartPTS,
-		SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible,
+		Bitrate: asset.Bitrate, DurationUS: asset.DurationMS * 1000, DurationMS: asset.DurationMS,
+		StartPTS: asset.StartPTS, SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible,
 	}, scripts.AudioPipelineMetrics{TotalMS: time.Since(started).Milliseconds(), AudioDurationMS: asset.DurationMS, AudioEncodePasses: 1}, nil
 }
 

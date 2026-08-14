@@ -91,6 +91,7 @@ type FinalAudioReference struct {
 	AssetID              string `json:"audio_asset_id"`
 	Path                 string `json:"path,omitempty"`
 	DriveLink            string `json:"drive_link,omitempty"`
+	Container            string `json:"container,omitempty"`
 	AudioContractVersion string `json:"audio_contract_version,omitempty"`
 	AudioPlanVersion     string `json:"audio_plan_version,omitempty"`
 	PlanSHA256           string `json:"audio_plan_sha256"`
@@ -101,6 +102,7 @@ type FinalAudioReference struct {
 	Channels             int    `json:"channels,omitempty"`
 	ChannelLayout        string `json:"channel_layout,omitempty"`
 	Bitrate              int64  `json:"bitrate,omitempty"`
+	DurationUS           int64  `json:"duration_us,omitempty"`
 	DurationMS           int64  `json:"duration_ms"`
 	StartPTS             int64  `json:"start_pts,omitempty"`
 	SizeBytes            int64  `json:"size_bytes,omitempty"`

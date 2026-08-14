@@ -17,6 +17,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	out := &domain.GenerationResult{
 		Title: in.Title, Language: string(inLanguage(in)), VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
 		AudioStrategy: string(in.AudioStrategy),
+		Source:        in.SourceTrace,
 		Output:        domain.ScriptOutput{Text: scenesText(in), WordCount: in.WordCount},
 	}
 	out.Output.SpecScene.Version = 1
@@ -52,11 +53,11 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	}
 	if in.FinalAudio != nil {
 		fa := in.FinalAudio
-		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path,
+		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveLink: fa.DriveLink, Container: fa.Container,
 			AudioContractVersion: fa.AudioContractVersion, AudioPlanVersion: fa.AudioPlanVersion,
 			AudioPlanSHA256: fa.PlanSHA256, FinalAudioSHA256: fa.FinalAudioSHA256,
 			Codec: fa.Codec, Profile: fa.Profile, SampleRate: fa.SampleRate, Channels: fa.Channels,
-			ChannelLayout: fa.ChannelLayout, Bitrate: fa.Bitrate, DurationMS: fa.DurationMS,
+			ChannelLayout: fa.ChannelLayout, Bitrate: fa.Bitrate, DurationUS: fa.DurationUS, DurationMS: fa.DurationMS,
 			StartPTS: fa.StartPTS, SizeBytes: fa.SizeBytes, FinalMix: fa.FinalMix, CopyEligible: fa.CopyEligible}
 	}
 	return out
