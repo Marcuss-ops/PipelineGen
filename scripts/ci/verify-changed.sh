@@ -57,18 +57,20 @@ RUN_NODE=false
 RUN_ARCH=false
 RUN_GO_PACKAGE_TESTS=false
 RUN_SH_SYNTAX=false
+RUN_PY_SYNTAX=false
 
 for file in "${CHANGED_FILES[@]}"; do
-    # Makefile, make/**, scripts/hooks/** -> full verify
+    # Classify every changed file: RUN_ALL marks core/global changes but must
+    # not short-circuit the loop, or a .go/.sh/.py change sorted before it
+    # would lose its targeted checks entirely.
+    # Makefile, make/**, scripts/hooks/** -> core verification
     if [[ "$file" =~ ^Makefile$ ]] || [[ "$file" =~ ^make/ ]] || [[ "$file" =~ ^scripts/hooks/ ]]; then
         RUN_ALL=true
-        break
     fi
     
-    # go.mod or go.sum -> full Go test (all targets)
+    # go.mod or go.sum -> core verification
     if [[ "$file" =~ ^go\.mod$ ]] || [[ "$file" =~ ^go\.sum$ ]]; then
         RUN_ALL=true
-        break
     fi
 
     # node-scraper/** -> fast native-binding verification
@@ -81,6 +83,12 @@ for file in "${CHANGED_FILES[@]}"; do
     # broken operational/CI script would verify ZERO checks in the agent loop.
     if [[ "$file" =~ \.sh$ ]]; then
         RUN_SH_SYNTAX=true
+    fi
+
+    # Python files (scripts/, tests/) -> cheap fail-fast syntax check via
+    # py_compile (compiles without importing, so no dependency resolution).
+    if [[ "$file" =~ \.py$ ]]; then
+        RUN_PY_SYNTAX=true
     fi
 
     # cmd/archcheck/** or architecture/** -> verify-architecture
@@ -106,15 +114,19 @@ if [ "$RUN_ALL" = true ]; then
     # source changes are already covered by the native probe branch.
     echo "🔄 Core toolchain, configuration or hooks changed. Running native Node probe + architecture gates..."
     GO="$GO_BIN" make verify-node-native verify-architecture
-    exit 0
 fi
 
-if [ "$RUN_NODE" = true ]; then
+# node-scraper/architecture branches are already covered by the RUN_ALL path;
+# only run them standalone when no core file changed. The targeted Go package
+# tests and shell/python syntax checks below ALWAYS run, so a .go/.sh/.py
+# change alongside a core change keeps its coverage instead of being swallowed
+# by the early core verification.
+if [ "$RUN_ALL" = false ] && [ "$RUN_NODE" = true ]; then
     echo "📦 node-scraper changed. Running native Node verification..."
     make verify-node-native
 fi
 
-if [ "$RUN_ARCH" = true ]; then
+if [ "$RUN_ALL" = false ] && [ "$RUN_ARCH" = true ]; then
     if ! command -v "$GO_BIN" >/dev/null 2>&1 && [ ! -x "$GO_BIN" ]; then
         echo "❌ Go binary '$GO_BIN' was not found; set GO to the Makefile-configured toolchain." >&2
         exit 1
@@ -159,4 +171,20 @@ if [ "$RUN_SH_SYNTAX" = true ]; then
         fi
     done
     echo "✅ Shell script syntax check passed"
+fi
+
+# Python-script changes get the same fail-fast treatment: py_compile checks
+# syntax without importing, so a broken CI/operational script fails the loop
+# in milliseconds instead of surfacing later. PYTHONPYCACHEPREFIX keeps the
+# generated .pyc files out of the working tree.
+if [ "$RUN_PY_SYNTAX" = true ]; then
+    PYCACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/verify-pyc.XXXXXX")
+    trap 'rm -rf "$PYCACHE_DIR"' EXIT
+    echo "🐍 Python files changed. Running py_compile syntax check..."
+    for file in "${CHANGED_FILES[@]}"; do
+        if [[ "$file" =~ \.py$ ]] && [ -f "$file" ]; then
+            PYTHONPYCACHEPREFIX="$PYCACHE_DIR" python3 -m py_compile "$file"
+        fi
+    done
+    echo "✅ Python syntax check passed"
 fi
