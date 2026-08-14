@@ -266,10 +266,13 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	if !r.publishFinalAudio(ctx, runID, req, result) {
 		return
 	}
-	if !r.runDocumentPhase(ctx, runID, req, exec, resumeIdx, result) {
+	// Render is enqueued (and, for the central queue, awaited) BEFORE the
+	// document phase so the document can project the certified overlay
+	// reference. When RenderVideo is false the enqueue phase is skipped.
+	if !r.runEnqueuePhase(ctx, runID, req, exec, resumeIdx, result) {
 		return
 	}
-	if !r.runEnqueuePhase(ctx, runID, req, exec, resumeIdx, result) {
+	if !r.runDocumentPhase(ctx, runID, req, exec, resumeIdx, result) {
 		return
 	}
 	r.completeRun(ctx, runID, result)

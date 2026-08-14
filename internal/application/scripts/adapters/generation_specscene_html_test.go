@@ -265,6 +265,57 @@ func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 	require.NotContains(t, block, "path")
 }
 
+func TestDocument_ProjectsRenderedOverlayPublishedRef(t *testing.T) {
+	t.Parallel()
+
+	overlay := &scriptpkg.DocumentOverlayRef{
+		ArtifactID:   "art-1",
+		JobID:        "render-123",
+		URL:          "https://store.example/overlay/art-1/overlay.mp4",
+		SHA256:       "abc123",
+		DurationUS:   18_200_000,
+		ProfileID:    "velox-copy-v1",
+		CopyEligible: true,
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title: "Overlay doc", Overlay: overlay,
+	})
+
+	human := humanDocumentHTML(t, out)
+	require.Contains(t, human, "<h2>Rendered Overlay</h2>")
+	require.Contains(t, human, "https://store.example/overlay/art-1/overlay.mp4")
+	require.Contains(t, human, "render-123")
+	require.Contains(t, human, "velox-copy-v1")
+	require.Contains(t, human, "00:18.200")
+
+	require.Contains(t, out, "<h2>Rendered Overlay JSON</h2>")
+	const marker = "<h2>Rendered Overlay JSON</h2><pre><code>"
+	pos := strings.Index(out, marker)
+	require.NotEqual(t, -1, pos)
+	pos += len(marker)
+	end := strings.Index(out[pos:], "</code></pre>")
+	require.NotEqual(t, -1, end)
+
+	var block scriptpkg.DocumentOverlayRef
+	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(out[pos:pos+end])), &block))
+	require.Equal(t, *overlay, block)
+
+	// The overlay projection must never leak a local path or storage key.
+	require.NotContains(t, out, "local_path")
+	require.NotContains(t, out, "storage_key")
+}
+
+func TestDocument_OmitsOverlayWithoutReference(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No overlay"})
+
+	require.NotContains(t, out, "Rendered Overlay")
+}
+
 func TestDocument_OmitsFinalAudioJSONWithoutReference(t *testing.T) {
 	t.Parallel()
 

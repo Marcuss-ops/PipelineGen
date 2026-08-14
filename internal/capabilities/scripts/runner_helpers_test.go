@@ -11,7 +11,7 @@
 //   - runner_retry_test.go        — 3 retry-from-checkpoint scenarios
 //     (TestRunner_TextGeneratorFails_RetryResumesFromCheckpoint,
 //     TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated,
-//     TestRunner_EnqueueFailsAfterDocs_RetryPreservesArtifacts)
+//     TestRunner_EnqueueFailsBeforeDocs_RetryPublishesDocs)
 //   - runner_stage_skip_test.go   — 3 stage-skip scenarios
 //     (TestRunner_VoiceoverGeneratorNil_StageSkipped,
 //     TestRunner_DocsDisabled_StageSkipped,

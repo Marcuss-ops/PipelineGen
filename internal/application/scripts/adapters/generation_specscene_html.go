@@ -50,6 +50,10 @@ type SpecSceneDocumentOptions struct {
 	// document both reference the same asset by ID.
 	FinalAudio    *scriptpkg.FinalAudioArtifact
 	AudioTimeline *capabilityaudio.CanonicalTimeline
+	// Overlay is the published reference to the completed render overlay. It
+	// carries only the public artifact URL and copy-only certification, never
+	// a local path.
+	Overlay *scriptpkg.DocumentOverlayRef
 }
 
 // BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
@@ -76,6 +80,7 @@ func BuildSpecSceneDocumentHTML(
 	}
 
 	writeDocumentFullAudio(&b, opts)
+	writeDocumentOverlay(&b, opts)
 
 	for i := range model.SpecScene.Scenes {
 		scene := &model.SpecScene.Scenes[i]
@@ -113,6 +118,13 @@ func BuildSpecSceneDocumentHTML(
 		if finalAudio, finalAudioErr := json.MarshalIndent(block, "", "  "); finalAudioErr == nil {
 			b.WriteString("<h2>Final Audio JSON</h2><pre><code>")
 			b.WriteString(html.EscapeString(string(finalAudio)))
+			b.WriteString("</code></pre>")
+		}
+	}
+	if opts.Overlay != nil {
+		if overlay, overlayErr := json.MarshalIndent(opts.Overlay, "", "  "); overlayErr == nil {
+			b.WriteString("<h2>Rendered Overlay JSON</h2><pre><code>")
+			b.WriteString(html.EscapeString(string(overlay)))
 			b.WriteString("</code></pre>")
 		}
 	}
@@ -198,6 +210,37 @@ func writeDocumentFullAudio(b *strings.Builder, opts SpecSceneDocumentOptions) {
 	if opts.FullAudio.DurationMS > 0 {
 		seconds := opts.FullAudio.DurationMS / 1000
 		b.WriteString(fmt.Sprintf("<p><strong>Duration:</strong> %02d:%02d</p>", seconds/60, seconds%60))
+	}
+	b.WriteString("</section>")
+}
+
+// writeDocumentOverlay projects the published render-overlay reference into
+// the human document surface. Only public fields (artifact URL, job, profile,
+// duration) are shown; the local artifact path never appears here.
+func writeDocumentOverlay(b *strings.Builder, opts SpecSceneDocumentOptions) {
+	if opts.Overlay == nil {
+		return
+	}
+	b.WriteString("<section><h2>Rendered Overlay</h2>")
+	if link := strings.TrimSpace(opts.Overlay.URL); link != "" {
+		b.WriteString("<p><strong>Artifact:</strong> ")
+		b.WriteString(renderDocumentLink(link, link, link))
+		b.WriteString("</p>")
+	}
+	if job := strings.TrimSpace(opts.Overlay.JobID); job != "" {
+		b.WriteString("<p><strong>Rendering job:</strong> ")
+		b.WriteString(html.EscapeString(job))
+		b.WriteString("</p>")
+	}
+	if profile := strings.TrimSpace(opts.Overlay.ProfileID); profile != "" {
+		b.WriteString("<p><strong>Profile:</strong> ")
+		b.WriteString(html.EscapeString(profile))
+		b.WriteString("</p>")
+	}
+	if opts.Overlay.DurationUS > 0 {
+		b.WriteString("<p><strong>Duration:</strong> ")
+		b.WriteString(html.EscapeString(formatTimelineTimestamp(opts.Overlay.DurationUS)))
+		b.WriteString("</p>")
 	}
 	b.WriteString("</section>")
 }

@@ -104,6 +104,7 @@ func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScr
 		FullAudio:       opts.FullAudio,
 		FinalAudio:      finalAudioArtifactForDocument(opts.FinalAudio),
 		AudioTimeline:   opts.AudioTimeline,
+		Overlay:         opts.Overlay,
 	}), nil
 }
 

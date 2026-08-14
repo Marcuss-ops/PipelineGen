@@ -116,9 +116,19 @@ type DocumentRenderOptions struct {
 	FinalAudio *FinalAudioReference
 	// AudioTimeline is the canonical timeline used to compile FullAudio.
 	AudioTimeline *audio.CanonicalTimeline
+	// Overlay is the already-published reference to the completed render
+	// overlay. It carries only the public artifact URL and copy-only
+	// certification — never a local path — so the document and Velox copy
+	// assembly reference the same immutable artifact. Nil when no render was
+	// requested or the render has not produced an artifact.
+	Overlay *DocumentOverlayRef
 }
 
 type DocumentAudioRef = scriptpkg.DocumentAudioRef
+
+// DocumentOverlayRef is the published render-overlay reference projected into
+// a document. See scriptpkg.DocumentOverlayRef for the field contract.
+type DocumentOverlayRef = scriptpkg.DocumentOverlayRef
 
 // DocumentRenderer is the single rendering seam used by every document
 // producer. The composition root wires the canonical implementation, while
