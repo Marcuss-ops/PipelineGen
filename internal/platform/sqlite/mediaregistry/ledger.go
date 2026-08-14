@@ -62,42 +62,14 @@ func (l *Ledger) UpsertTaxonomy(ctx context.Context, t capregistry.AssetTaxonomy
 	if l == nil || l.db == nil {
 		return ErrNotWired
 	}
-	if err := t.Validate(); err != nil {
-		return err
-	}
-	result, err := l.db.ExecContext(ctx, `UPDATE media_assets SET namespace=?, asset_kind=?, source_type=?, semantic_role=?, updated_at=datetime('now') WHERE id=?`, t.Namespace, t.AssetKind, t.SourceType, t.SemanticRole, t.AssetID)
-	if err != nil {
-		return fmt.Errorf("upsert media taxonomy %q: %w", t.AssetID, err)
-	}
-	if n, _ := result.RowsAffected(); n != 1 {
-		return fmt.Errorf("upsert media taxonomy %q: asset not found", t.AssetID)
-	}
-	return nil
+	return upsertTaxonomy(ctx, l.db, t)
 }
 
 func (l *Ledger) AppendEvent(ctx context.Context, event capregistry.Event) (int64, error) {
 	if l == nil || l.db == nil {
 		return 0, ErrNotWired
 	}
-	if event.EventID == "" || event.EventType == "" || event.CreatedAt == "" {
-		return 0, errors.New("media registry sqlite ledger: event_id, event_type and created_at are required")
-	}
-	res, err := l.db.ExecContext(ctx, `
-		INSERT INTO registry_events
-		(event_id, asset_id, event_type, run_id, actor, before_hash, after_hash,
-		 payload_json, git_sha, app_version, created_at)
-		VALUES (?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`,
-		event.EventID, event.AssetID, event.EventType, event.RunID, event.Actor,
-		event.BeforeHash, event.AfterHash, defaultJSON(event.PayloadJSON), event.GitSHA,
-		event.AppVersion, event.CreatedAt)
-	if err != nil {
-		return 0, fmt.Errorf("append registry event %q: %w", event.EventID, err)
-	}
-	seq, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read registry event sequence %q: %w", event.EventID, err)
-	}
-	return seq, nil
+	return appendEvent(ctx, l.db, event)
 }
 
 func (l *Ledger) StartRun(ctx context.Context, run capregistry.Run) error {
@@ -316,18 +288,7 @@ func (l *Ledger) LinkContent(ctx context.Context, assetID, contentSHA256 string)
 	if l == nil || l.db == nil {
 		return ErrNotWired
 	}
-	if assetID == "" || contentSHA256 == "" {
-		return fmt.Errorf("%w: asset_id and content_sha256 are required", capregistry.ErrAssetSourceInvalid)
-	}
-	res, err := l.db.ExecContext(ctx,
-		`UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
-	if err != nil {
-		return fmt.Errorf("link content %q -> %q: %w", assetID, contentSHA256, err)
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("link content %q -> %q: asset not found", assetID, contentSHA256)
-	}
-	return nil
+	return linkContent(ctx, l.db, assetID, contentSHA256)
 }
 
 // ContentForAsset returns the linked content sha256 for assetID, or "" when
@@ -354,29 +315,7 @@ func (l *Ledger) RegisterSource(ctx context.Context, src capregistry.AssetSource
 	if l == nil || l.db == nil {
 		return ErrNotWired
 	}
-	if err := validateAssetSource(src); err != nil {
-		return err
-	}
-	primary := 0
-	if src.IsPrimary {
-		primary = 1
-	}
-	_, err := l.db.ExecContext(ctx, `
-		INSERT INTO media_asset_sources
-		(source_id, asset_id, content_sha256, source_type, source_uri,
-		 source_version, discovered_at, is_primary)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(source_id) DO UPDATE SET
-			content_sha256 = excluded.content_sha256,
-			source_version = excluded.source_version,
-			discovered_at  = excluded.discovered_at,
-			is_primary     = excluded.is_primary`,
-		src.SourceID, src.AssetID, src.ContentSHA256, src.SourceType, src.SourceURI,
-		src.SourceVersion, src.DiscoveredAt, primary)
-	if err != nil {
-		return fmt.Errorf("register asset source %q: %w", src.SourceID, err)
-	}
-	return nil
+	return registerSource(ctx, l.db, src)
 }
 
 // SourcesForAsset returns every provenance record for assetID, primary

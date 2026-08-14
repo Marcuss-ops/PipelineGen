@@ -1,73 +1,56 @@
 // Package app — canonical_identity_adapter.go bridges the canonical
-// search.CanonicalIdentityResolver port to the existing asset_index
-// resolver (infrastructure/database/assetindex). This is the composition
-// root's single bridge between the search capability's identity port and
-// the SQLite-backed source→asset lookup (Pattern 0).
+// mediaregistry port to the search capability's request-side port.
 //
-// PR-SEARCH-UNIVERSE (August 2026): the provider backend delegates
-// source_type|source_ref → canonical-asset resolution here. Until the
-// CanonicalIdentityResolver backfill (media_asset_sources as the canonical
-// lookup) lands, this adapter forwards to the existing asset_index table,
-// which already maps (source, source_id) → asset_id.
+// Provider candidates are allowed to become canonical assets only after this
+// SQLite-backed registry lookup. The historical asset_index fallback is not a
+// provenance source: keeping it here would allow discovery to silently
+// bypass media_asset_sources during the cutover.
 package app
 
 import (
 	"context"
 
+	"database/sql"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
-// assetIndexCanonicalResolver implements search.CanonicalIdentityResolver
-// over *assetindex.Resolver.
-type assetIndexCanonicalResolver struct {
-	inner *assetindex.Resolver
+type canonicalIdentityAdapter struct {
+	inner capregistry.CanonicalIdentityResolver
 }
 
-var _ search.CanonicalIdentityResolver = (*assetIndexCanonicalResolver)(nil)
+var _ search.CanonicalIdentityResolver = (*canonicalIdentityAdapter)(nil)
 
-// newAssetIndexCanonicalResolver wraps the asset_index resolver as the
-// canonical identity resolver. nil degrades to the noop resolver
-// (identity unknown) so the provider backend never fabricates an AssetID.
-func newAssetIndexCanonicalResolver(r *assetindex.Resolver) search.CanonicalIdentityResolver {
-	if r == nil {
+// newCanonicalIdentityResolver wires the search capability to the durable
+// media registry. A missing DB is fail-closed: the provider candidate keeps
+// its external identity and is never assigned a fabricated AssetID.
+func newCanonicalIdentityResolver(db *sql.DB) search.CanonicalIdentityResolver {
+	if db == nil {
 		return search.NewNoopCanonicalIdentityResolver()
 	}
-	return &assetIndexCanonicalResolver{inner: r}
+	inner, err := sqlitemediaregistry.NewCanonicalIdentityResolver(db)
+	if err != nil {
+		return search.NewNoopCanonicalIdentityResolver()
+	}
+	return &canonicalIdentityAdapter{inner: inner}
 }
 
-func (r *assetIndexCanonicalResolver) ResolveSource(ctx context.Context, sourceType, sourceRef string) (search.CanonicalIdentity, error) {
-	if r == nil || r.inner == nil {
-		return search.CanonicalIdentity{SourceType: sourceType, SourceRef: sourceRef}, nil
-	}
-	rec, err := r.inner.ResolveBySource(ctx, sourceType, sourceRef)
+func (r *canonicalIdentityAdapter) ResolveSource(ctx context.Context, sourceType, sourceRef string) (search.CanonicalIdentity, error) {
+	identity, err := r.inner.ResolveSource(ctx, sourceType, sourceRef)
 	if err != nil {
 		return search.CanonicalIdentity{}, err
 	}
-	if rec == nil || rec.AssetID == "" {
-		return search.CanonicalIdentity{SourceType: sourceType, SourceRef: sourceRef}, nil
-	}
 	return search.CanonicalIdentity{
-		AssetID:    rec.AssetID,
-		SourceType: sourceType,
-		SourceRef:  sourceRef,
-		Resolved:   true,
+		AssetID: identity.AssetID, SourceType: identity.SourceType,
+		SourceRef: identity.SourceRef, Resolved: identity.AssetID != "",
 	}, nil
 }
 
-func (r *assetIndexCanonicalResolver) ResolveContent(ctx context.Context, contentSHA256 string) (search.CanonicalIdentity, error) {
-	if r == nil || r.inner == nil {
-		return search.CanonicalIdentity{}, nil
-	}
-	rec, err := r.inner.ResolveByContentHash(ctx, contentSHA256)
+func (r *canonicalIdentityAdapter) ResolveContent(ctx context.Context, contentSHA256 string) (search.CanonicalIdentity, error) {
+	identity, err := r.inner.ResolveContent(ctx, contentSHA256)
 	if err != nil {
 		return search.CanonicalIdentity{}, err
 	}
-	if rec == nil || rec.AssetID == "" {
-		return search.CanonicalIdentity{}, nil
-	}
-	return search.CanonicalIdentity{
-		AssetID:  rec.AssetID,
-		Resolved: true,
-	}, nil
+	return search.CanonicalIdentity{AssetID: identity.AssetID, Resolved: identity.AssetID != ""}, nil
 }

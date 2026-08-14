@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
@@ -143,8 +144,12 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// source_type|source_ref → canonical asset via the canonical identity
 	// resolver instead of fabricating an AssetID from the provider ID.
 	var canonicalResolver search.CanonicalIdentityResolver
-	if root.Search != nil {
-		canonicalResolver = newAssetIndexCanonicalResolver(root.Search.AssetResolver)
+	if root != nil {
+		var db *sql.DB
+		if root.DB != nil {
+			db = root.DB.DB
+		}
+		canonicalResolver = newCanonicalIdentityResolver(db)
 	}
 
 	searchFanOut, searchBackends, searchAgg, searchErr := registerSearchBackend(

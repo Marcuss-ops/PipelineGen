@@ -64,6 +64,7 @@ var commandRegistry = map[string]commandHandler{
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
 	"backfill-clip-folder-path":      runBackfillClipFolderPath,
+	"backfill-media-asset-sources":   runBackfillMediaAssetSources,
 	"backfill-media-durations":       runBackfillMediaDurations,
 	"backfill-missing":               runBackfillMissing,
 	"backfill-provider-timestamps":   runBackfillProviderTimestamps,
