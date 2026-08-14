@@ -467,26 +467,28 @@ func TestCleanupWithConfig_StatusAware_FailedPartialNeverKept(t *testing.T) {
 }
 
 // TestCleanupWithConfig_RetiredPrefixMatched verifies the retired-schema
-// prefix gate: collections from a superseded schema generation (e5) are
+// prefix gate: collections from a superseded schema generation (nomic) are
 // matched and dropped, while unknown collections that share NO registered
-// prefix are left untouched.
+// prefix are left untouched. Because the active target is e5, the nomic
+// collections are a different schema generation and must NEVER be kept as
+// a rollback — both retired nomic collections are dropped.
 func TestCleanupWithConfig_RetiredPrefixMatched(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	prefix := schema.CanonicalName()
 	active := prefix + "_20260814_071358_545816432"
-	nomicRollback := prefix + "_20260813_184719_687643250"
-	e5 := "media_assets_v3_e5_768_siglip_768_20260813_181431_205856695"
+	nomicRollback := "media_assets_v3_nomic_768_siglip_768_20260813_184719_687643250"
+	nomicOlder := "media_assets_v3_nomic_768_siglip_768_20260812_184719_687643250"
 	bareLegacy := "media_assets"
 	synthetic := "synthetic_assets_test_v3"
 
-	colls := []string{active, nomicRollback, e5, bareLegacy, synthetic}
+	colls := []string{active, nomicRollback, nomicOlder, bareLegacy, synthetic}
 	f := newFakeQdrantServer(colls, active)
 	defer f.Close()
 
 	ledger := statusAwareRetentionLedger([]capregistry.Projection{
 		retentionProjection("active", active, string(capregistry.ProjectionActive), 291),
-		retentionProjection("rollback", nomicRollback, string(capregistry.ProjectionRetired), 283),
-		retentionProjection("e5", e5, string(capregistry.ProjectionRetired), 267),
+		retentionProjection("nomic", nomicRollback, string(capregistry.ProjectionRetired), 283),
+		retentionProjection("nomic-older", nomicOlder, string(capregistry.ProjectionRetired), 267),
 	})
 
 	client := transport.NewClient(&qdrantSchema.Config{BaseURL: f.URL(), Timeout: 5}, zap.NewNop())
@@ -498,16 +500,20 @@ func TestCleanupWithConfig_RetiredPrefixMatched(t *testing.T) {
 	res, err := cm.CleanupWithConfig(context.Background(), RetentionConfig{
 		RetentionDays:   1,
 		KeepLastN:       2,
-		RetiredPrefixes: []string{"media_assets_v3_e5_768_siglip_768"},
+		RetiredPrefixes: []string{"media_assets_v3_nomic_768_siglip_768"},
 	})
 	if err != nil {
 		t.Fatalf("CleanupWithConfig: %v", err)
 	}
 
-	if len(res.DroppedNames) != 1 || res.DroppedNames[0] != e5 {
-		t.Fatalf("DroppedNames = %v, want [%s] (only the retired e5 collection should be dropped)", res.DroppedNames, e5)
+	gotDropped := append([]string(nil), res.DroppedNames...)
+	wantDropped := []string{nomicRollback, nomicOlder}
+	sort.Strings(gotDropped)
+	sort.Strings(wantDropped)
+	if !reflect.DeepEqual(gotDropped, wantDropped) {
+		t.Fatalf("DroppedNames mismatch:\n got  %v\n want %v (cross-schema nomic collections must never be kept as an e5 rollback)", gotDropped, wantDropped)
 	}
-	for _, untouched := range []string{active, nomicRollback, bareLegacy, synthetic} {
+	for _, untouched := range []string{active, bareLegacy, synthetic} {
 		for _, dropped := range res.DroppedNames {
 			if dropped == untouched {
 				t.Fatalf("collection %q must never be dropped; DroppedNames=%v", untouched, res.DroppedNames)
@@ -571,11 +577,11 @@ func TestRetentionPrefixes_RejectsOverlappingPrefix(t *testing.T) {
 		t.Fatalf("expected error for prefix equal to the current canonical name")
 	}
 
-	got, err := projectionretention.RetentionPrefixes(current, []string{"media_assets_v3_e5_768_siglip_768", "", "media_assets_v3_e5_768_siglip_768"})
+	got, err := projectionretention.RetentionPrefixes(current, []string{"media_assets_v3_nomic_768_siglip_768", "", "media_assets_v3_nomic_768_siglip_768"})
 	if err != nil {
 		t.Fatalf("unexpected error for valid retired prefix: %v", err)
 	}
-	want := []string{current, "media_assets_v3_e5_768_siglip_768"}
+	want := []string{current, "media_assets_v3_nomic_768_siglip_768"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("retentionPrefixes = %v, want %v (dedup + skip empty)", got, want)
 	}
