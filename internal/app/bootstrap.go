@@ -97,6 +97,13 @@ type AppHealth struct {
 	QdrantHealth  any
 	HealthService any
 	ReadyChecker  *systemhealth.ReadyChecker
+
+	// EmbeddingContractProbe is the boot-time embedding-contract handshake
+	// (internal/app/embedding_contract_probe.go). nil when the Qdrant +
+	// ClipIndexer indexing chain is not fully configured. build_server.go
+	// registers it on the lifecycle readiness barrier as
+	// "embedding-contract".
+	EmbeddingContractProbe HealthProber
 }
 
 // AppImage groups the image-domain routing surface (FASE 7, July 2026).

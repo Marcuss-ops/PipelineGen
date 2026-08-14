@@ -56,9 +56,11 @@ import (
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
 	"github.com/gin-gonic/gin"
 )
@@ -250,6 +252,16 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		qdrantProbe = root.Process.QdrantHealthProbe
 	}
 
+	// EmbeddingContract SSOT handshake (August 2026): verify at boot that the
+	// canonical text contract, the E5 sidecar runtime, the Qdrant active
+	// collection, and the query embedder all agree. nil-safe when the Qdrant
+	// + ClipIndexer chain is not fully configured; build_server.go registers
+	// it on the readiness barrier as "embedding-contract".
+	var embeddingContractProbe HealthProber
+	if root != nil && root.Process != nil {
+		embeddingContractProbe = newEmbeddingContractProbe(cfg, root.Process.CollectionManager)
+	}
+
 	lifecycle := NewServerLifecycleWithProbes(
 		startupPlan, cleanup,
 		dbProbe, nil, driveProbe,
@@ -323,13 +335,55 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			Lifecycle: lifecycle,
 		},
 		Health: AppHealth{
-			QdrantProbe:   qdrantProbe,
-			QdrantHealth:  qdrantHealth,
-			HealthService: healthSvc,
-			ReadyChecker:  readyChecker,
+			QdrantProbe:            qdrantProbe,
+			QdrantHealth:           qdrantHealth,
+			HealthService:          healthSvc,
+			ReadyChecker:           readyChecker,
+			EmbeddingContractProbe: embeddingContractProbe,
 		},
 		Images: AppImage{
 			ImageSearchResolver: imageRouting,
 		},
 	}, nil
+}
+
+// embeddingContractProbe is the readiness-barrier adapter for the canonical
+// text contract: sidecar, active Qdrant collection, and query embedder must
+// all agree with kernel/embedding.CanonicalText.
+type embeddingContractProbe struct{ fn func(context.Context) error }
+
+func (p *embeddingContractProbe) Probe(ctx context.Context) error {
+	if p == nil || p.fn == nil {
+		return nil
+	}
+	return p.fn(ctx)
+}
+
+func newEmbeddingContractProbe(cfg *config.Config, cm *collections.CollectionManager) HealthProber {
+	if cfg == nil || cm == nil || !cfg.Qdrant.Enabled || !cfg.ClipIndexer.Enabled {
+		return nil
+	}
+	return &embeddingContractProbe{fn: func(ctx context.Context) error {
+		return verifyEmbeddingContract(ctx, cfg.ClipIndexer.ServerURL, cfg.External.OllamaEmbedModel, cm)
+	}}
+}
+
+func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID string, cm *collections.CollectionManager) error {
+	sidecar, err := embeddings.NewContractProbe(sidecarURL).Fetch(ctx)
+	if err != nil {
+		return fmt.Errorf("embedding contract handshake: %w", err)
+	}
+	active, err := cm.GetActiveCollection(ctx)
+	if err != nil {
+		return fmt.Errorf("embedding contract handshake: resolve active collection: %w", err)
+	}
+	info, err := cm.InspectCollection(ctx, active)
+	if err != nil {
+		return fmt.Errorf("embedding contract handshake: inspect collection %q: %w", active, err)
+	}
+	qdrant, ok := collections.CollectionContract(info, "text")
+	if !ok {
+		return fmt.Errorf("embedding contract handshake: active collection %q has no \"text\" vector", active)
+	}
+	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: queryModelID})
 }

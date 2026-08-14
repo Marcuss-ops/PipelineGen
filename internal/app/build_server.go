@@ -70,6 +70,15 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 		deps.Runtime.Lifecycle.AddProbe("qdrant", deps.Health.QdrantProbe.Probe)
 	}
 
+	// EmbeddingContract SSOT handshake (August 2026): register the contract
+	// check on the readiness barrier so a drift between the canonical text
+	// contract, the E5 sidecar, the Qdrant collection, or the query embedder
+	// fails closed with QDRANT_EMBEDDING_CONTRACT_MISMATCH before the server
+	// starts serving semantic search.
+	if deps.Health.EmbeddingContractProbe != nil && deps.Runtime.Lifecycle != nil {
+		deps.Runtime.Lifecycle.AddProbe("embedding-contract", deps.Health.EmbeddingContractProbe.Probe)
+	}
+
 	// QDRANT-route-constructor (June 2026, PR 3): outboxHandler and
 	// mediasearchHandler MUST be passed INTO NewServerWithHealth
 	// (not set via setter post-Setup) so the WorkerAuth-protected

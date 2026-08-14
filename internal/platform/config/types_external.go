@@ -8,7 +8,7 @@ import (
 type ExternalConfig struct {
 	OllamaURL                   string   `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
 	OllamaModel                 string   `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
-	OllamaEmbedModel            string   `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL" default:"nomic-embed-text"`
+	OllamaEmbedModel            string   `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL" default:"intfloat/multilingual-e5-base"`
 	OllamaMetadataModel         string   `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
 	OllamaTimeoutSeconds        int      `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
 	YtdlpPath                   string   `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
