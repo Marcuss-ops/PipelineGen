@@ -68,8 +68,14 @@
 
 #     This hook invokes ONLY the umbrella recipe `make verify-main`;
 #     the transitive composition above is what the Makefile SSOT
-#     actually executes on every push. The explicit heavy gates are
-#     `make verify-race` and `make verify-full`.
+#     actually executes on every push. The independent legs
+#     (verify-push, verify-node-native, verify-architecture) are run in
+#     parallel via make -j (default 4 jobs, overridable with
+#     VERIFY_MAIN_JOBS) to cut wall-clock time without removing any
+#     control: the prerequisite graph and every fail-closed sub-step
+#     are identical, and GNU Make de-duplicates shared prerequisites
+#     (verify-foundation/verify-static) within the aggregate run. The
+#     explicit heavy gates are `make verify-race` and `make verify-full`.
 #
 # CI-parity caveat (binding): ci.yml runs `make verify-main` in the
 # blocking job, THEN runs `bash scripts/ci-architectural-checks.sh`
@@ -148,7 +154,7 @@ CACHE_FILE="$CACHE_DIR/${FINGERPRINT}.ok"
 # Print a visible banner so the operator sees the gate running
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  pre-push gate: make verify-main (AGENTS.md fail-closed)"
+echo "  pre-push gate: make -j\${VERIFY_MAIN_JOBS:-4} verify-main (AGENTS.md fail-closed)"
 echo "  source: scripts/hooks/pre-push (canonical version-controlled)"
 echo "  fingerprint: $FINGERPRINT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -161,7 +167,7 @@ if [ -f "$CACHE_FILE" ]; then
     exit 0
 fi
 
-if make verify-main; then
+if make -j"${VERIFY_MAIN_JOBS:-4}" verify-main; then
     mkdir -p "$CACHE_DIR"
     # Prune old verification cache results
     rm -rf "$CACHE_DIR"/*

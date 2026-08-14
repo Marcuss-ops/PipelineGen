@@ -116,7 +116,9 @@ class VerifyFrameworkCertificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             report, code = runner.run_components(registry, ["api", "script"], repo_root=Path(directory), runner=fake)
         self.assertEqual(code, 1)
-        self.assertEqual(calls, [("database", "fails"), ("script", "passes")])
+        # Independent components may run concurrently; only the multiset of
+        # executions is deterministic.
+        self.assertEqual(sorted(calls), sorted([("database", "fails"), ("script", "passes")]))
         self.assertEqual(report["components"]["jobs"]["status"], "BLOCKED")
         self.assertEqual(report["components"]["jobs"]["blocked_by"], ["database"])
         self.assertEqual(report["components"]["api"]["status"], "BLOCKED")
