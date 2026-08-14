@@ -9,7 +9,7 @@ import (
 )
 
 func (r *Runner) runRenderPayloadPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
-	// ── Stage 6: Build Render Payload ───────────────────────────
+	// ── Build Render Payload (before document publication) ───────
 	payloadStep, startErr := r.startExecutionStep(ctx, exec, "RENDER_PLAN", "render")
 	if startErr != nil {
 		r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, startErr)
@@ -89,6 +89,15 @@ func (r *Runner) runRenderPayloadPhase(ctx context.Context, runID string, req Ge
 					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 					return false
 				}
+			}
+			// Cert-time invariant: the recorded VO source_duration_us must match
+			// the certified probe durations (modulo the scene-window clamp).
+			// Runs for both freshly rendered and checkpointed final audio.
+			if err := ValidateVoiceoverSourceDurations(*result, req.SourceLanguage, canonicalTimeline, compiledAudioPlan); err != nil {
+				cause := fmt.Errorf("voiceover source-duration certification failed: %w", err)
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
+				return false
 			}
 			if result.AudioMetrics != nil {
 				metrics.TTSMS += result.AudioMetrics.TTSMS

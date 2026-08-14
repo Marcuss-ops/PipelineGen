@@ -24,6 +24,89 @@ func ValidateFinalAudioReference(ref FinalAudioReference, plan audio.CompiledAud
 	return nil
 }
 
+// ValidateVoiceoverSourceDurations enforces the cert-time invariant
+// "M4A probe duration == VO source_duration_us": every voiceover event in the
+// canonical audio plan must record a source_duration_us equal to the certified
+// probe duration of its scene voiceover (seconds rounded to microseconds),
+// unless the certified file is longer than the scene window — the event is then
+// legitimately clamped to the window, mirroring CompileCanonicalAudioPlan.
+//
+// Scenes whose voiceover reference carries no certified probe stay lenient
+// (the plan falls back to the scene window at compile time). The check runs at
+// certification, where the probe is guaranteed known, so it can only fire when
+// the plan's recorded source_duration_us drifted from what the compiler must
+// have derived for that scene.
+func ValidateVoiceoverSourceDurations(result GenerateResult, language Language, timeline audio.CanonicalTimeline, plan audio.CompiledAudioPlan) error {
+	if len(result.Scenes) != len(timeline.Segments) {
+		return fmt.Errorf("voiceover source-duration certification: scene/timeline count mismatch (%d != %d)", len(result.Scenes), len(timeline.Segments))
+	}
+	windowByAsset := make(map[string]int64, len(result.Scenes))
+	probeByAsset := make(map[string]int64, len(result.Scenes))
+	for i, scene := range result.Scenes {
+		ref, ok := scene.Voiceover[language]
+		if !ok || strings.TrimSpace(ref.ID) == "" {
+			continue
+		}
+		windowByAsset[ref.ID] = timeline.Segments[i].DurationUS
+		if ref.Duration > 0 {
+			probeByAsset[ref.ID] = int64(math.Round(ref.Duration * 1_000_000))
+		}
+	}
+	for _, track := range plan.Tracks {
+		for _, event := range track.Events {
+			if event.Type != audio.EventVoiceover {
+				continue
+			}
+			window, ok := windowByAsset[event.AssetID]
+			if !ok {
+				return fmt.Errorf("voiceover source-duration certification: plan event %s references unknown voiceover asset %q", event.EventID, event.AssetID)
+			}
+			probe, probed := probeByAsset[event.AssetID]
+			if !probed {
+				continue // lenient: no certified probe, window fallback is allowed
+			}
+			allowed := window
+			if probe > 0 && probe < allowed {
+				allowed = probe
+			}
+			if event.SourceDurationUS != allowed {
+				return fmt.Errorf("voiceover source-duration certification: asset %s records source_duration_us=%d but the certified probe is %d within a %d window", event.AssetID, event.SourceDurationUS, probe, window)
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateFinalAudioMirror enforces the cert-time invariant
+// "final_audio.m4a == CanonicalTimeline == RenderPlan.FinalAudio": the
+// RenderPlan.FinalAudio projection must faithfully mirror every certified
+// field of the FinalAudioReference. A silent drop or retype in the projection
+// would let the renderer consume data that diverges from the certified asset.
+// AssetKind and Strategy are pinned to the canonical copy contract.
+func ValidateFinalAudioMirror(ref FinalAudioReference, asset render.FinalAudioAsset) error {
+	if asset.AssetID != ref.AssetID ||
+		asset.AssetKind != "final_audio" ||
+		asset.Strategy != string(audio.FinalAudioCopy) ||
+		asset.Path != ref.Path ||
+		asset.SHA256 != ref.FinalAudioSHA256 ||
+		asset.PlanSHA256 != ref.PlanSHA256 ||
+		asset.AudioContractVersion != ref.AudioContractVersion ||
+		asset.AudioPlanVersion != ref.AudioPlanVersion ||
+		asset.Codec != ref.Codec ||
+		asset.Profile != ref.Profile ||
+		asset.SampleRate != ref.SampleRate ||
+		asset.Channels != ref.Channels ||
+		asset.ChannelLayout != ref.ChannelLayout ||
+		asset.DurationMS != ref.DurationMS ||
+		asset.StartPTS != ref.StartPTS ||
+		asset.SizeBytes != ref.SizeBytes ||
+		asset.FinalMix != ref.FinalMix ||
+		asset.CopyEligible != ref.CopyEligible {
+		return fmt.Errorf("render plan final audio %q does not mirror the certified reference", ref.AssetID)
+	}
+	return nil
+}
+
 // ValidateChunkedVoiceovers enforces the one-to-one scene/language mapping
 // required by CHUNKED_VOICEOVER. It is intentionally independent of the
 // renderer so an invalid payload cannot reach the remote Velox compute.
@@ -339,6 +422,9 @@ func CompileCanonicalRenderPlanWithFrameRate(result GenerateResult, timeline aud
 			SizeBytes:            result.FinalAudio.SizeBytes,
 			FinalMix:             result.FinalAudio.FinalMix,
 			CopyEligible:         result.FinalAudio.CopyEligible,
+		}
+		if err := ValidateFinalAudioMirror(*result.FinalAudio, *finalAudio); err != nil {
+			return nil, err
 		}
 	}
 	outputPath := strings.TrimSpace(result.OutputName)
