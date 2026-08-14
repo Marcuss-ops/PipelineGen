@@ -192,3 +192,71 @@ func TestResultReducer_UnmatchedResultsAreIgnored(t *testing.T) {
 	assert.Empty(t, merger.order, "unmatched results must never be applied")
 	assert.Equal(t, "", out.Scenes[0].Title)
 }
+
+func TestResultReducer_DiscardsStaleTextHashResults(t *testing.T) {
+	merger := &recordingMerger{}
+	reducer := NewVidRushResultReducer(merger)
+
+	// The current scene carries the new text; the result was derived from the
+	// old text, so its TextHash differs and it must be fenced out.
+	currentText := "New scene text"
+	spec := scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: currentText},
+		},
+	}
+	results := []scriptpkg.VidRushSegmentResult{
+		{SceneID: "scene-0", Position: 0, Text: "Old scene text", TextHash: SceneTextHash("Old scene text")},
+	}
+
+	out := reducer.Reduce(spec, results)
+	require.Len(t, out.Scenes, 1)
+	assert.Empty(t, merger.order, "stale text-hash result must be discarded before the merge")
+	assert.Equal(t, "", out.Scenes[0].Title)
+	assert.Nil(t, out.Scenes[0].Annotations)
+}
+
+func TestResultReducer_AppliesMatchingTextHashResult(t *testing.T) {
+	merger := &recordingMerger{}
+	reducer := NewVidRushResultReducer(merger)
+
+	text := "Current scene text"
+	spec := scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: text},
+		},
+	}
+	results := []scriptpkg.VidRushSegmentResult{
+		{SceneID: "scene-0", Position: 0, Text: text, TextHash: SceneTextHash(text)},
+	}
+
+	out := reducer.Reduce(spec, results)
+	require.Len(t, out.Scenes, 1)
+	assert.Equal(t, []string{"scene-0"}, merger.order, "matching text-hash result must be applied")
+	assert.Equal(t, "merged:scene-0", out.Scenes[0].Title)
+}
+
+func TestResultReducer_EmptyTextHashIsNotFenced(t *testing.T) {
+	merger := &recordingMerger{}
+	reducer := NewVidRushResultReducer(merger)
+
+	// An empty TextHash has no identity to compare; upstream (the
+	// coordinator) owns revision fencing for such results. The reducer must
+	// not falsely discard them.
+	spec := scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: "Text"},
+		},
+	}
+	results := []scriptpkg.VidRushSegmentResult{
+		{SceneID: "scene-0", Position: 0, Text: "Text"},
+	}
+
+	out := reducer.Reduce(spec, results)
+	require.Len(t, out.Scenes, 1)
+	assert.Len(t, merger.order, 1, "empty TextHash must not be fenced by the reducer")
+	assert.Equal(t, "merged:scene-0", out.Scenes[0].Title)
+}
