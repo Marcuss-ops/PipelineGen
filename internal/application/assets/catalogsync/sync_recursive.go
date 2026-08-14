@@ -2,8 +2,6 @@ package catalogsync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"path"
 	"strings"
@@ -257,18 +255,20 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 	return requested, synced, failed, nil
 }
 
-// remoteFileFingerprint supplies the stable source fingerprint required by
-// the canonical supersede gate before a Drive asset is downloaded locally.
-// Google Drive's MD5 is the strongest available value; the metadata fallback
-// remains deterministic across retries and is explicitly not presented as a
-// content hash.
+// remoteFileFingerprint reports the content-hash fingerprint for a remote
+// Drive file BEFORE it is downloaded. A Drive-only asset has no materialized
+// bytes, so there is no content SHA-256 to compute. Per the mediaregistry
+// hash contract (mediaregistry.ContentSHA256Unknown), content identity MUST
+// NOT be fabricated from the Drive file ID, URL, name, mime type or MD5
+// checksum — those are source metadata, never byte identity.
+//
+// The legacy file_hash column therefore stays empty (its "unknown" state)
+// until the bytes are materialized and hashed; the canonical content_sha256
+// producer records mediaregistry.ContentSHA256Unknown for the same
+// "bytes not known" state. The Drive MD5 (when present) remains a legacy
+// change-detection signal only — never identity, never dedup.
 func remoteFileFingerprint(file RemoteFile) string {
-	if strings.TrimSpace(file.MD5Checksum) != "" {
-		return "drive-md5:" + strings.TrimSpace(file.MD5Checksum)
-	}
-	payload := file.ID + "\x00" + file.Name + "\x00" + file.MimeType + "\x00" + fmt.Sprintf("%d", file.Size)
-	sum := sha256.Sum256([]byte(payload))
-	return "drive-meta-sha256:" + hex.EncodeToString(sum[:])
+	return ""
 }
 
 // listChildren lists the direct children of a Drive folder. Kept in this file
