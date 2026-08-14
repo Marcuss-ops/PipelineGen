@@ -74,12 +74,24 @@ func runBackfillMediaAssetSources(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Content links run after the source backfill: the provenance rows just
+	// registered carry their digests, so the CAS link backfill fills the
+	// remaining media_asset_sources.content_sha256 and creates the missing
+	// content_objects rows before the Qdrant v4 rebuild.
+	contentLinkReport, err := resolver.BackfillContentLinks(ctx, *apply)
+	if err != nil {
+		return err
+	}
 	if *jsonOutput {
 		mode := "dry-run"
 		if *apply {
 			mode = "apply"
 		}
-		encoded, marshalErr := json.Marshal(map[string]any{"mode": mode, "report": report})
+		encoded, marshalErr := json.Marshal(map[string]any{
+			"mode":                mode,
+			"report":              report,
+			"content_link_report": contentLinkReport,
+		})
 		if marshalErr != nil {
 			return marshalErr
 		}
@@ -87,7 +99,8 @@ func runBackfillMediaAssetSources(args []string) error {
 		return nil
 	}
 	log.Info("canonical media asset source backfill complete",
-		zap.Bool("apply", *apply), zap.Any("report", report))
+		zap.Bool("apply", *apply), zap.Any("report", report),
+		zap.Any("content_link_report", contentLinkReport))
 	return nil
 }
 
