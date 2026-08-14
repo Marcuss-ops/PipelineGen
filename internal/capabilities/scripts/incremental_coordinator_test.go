@@ -41,6 +41,13 @@ func (f *fakeSegmentEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGen
 		Position:  scene.Index,
 		Text:      scene.Text,
 		TextHash:  SceneTextHash(scene.Text),
+		Insights: scriptpkg.SegmentInsights{
+			SegmentID:      scene.ID,
+			TextHash:       SceneTextHash(scene.Text),
+			Entities:       []scriptpkg.ExtractedEntity{{Value: "subject", Type: "CONCEPT"}},
+			ArtlistQueries: []string{"subject visual"},
+			ImageQueries:   []string{"subject image"},
+		},
 	}, nil
 }
 
@@ -164,6 +171,48 @@ func TestIncrementalCoordinator_FinalBarrierWaitsOnlyForPendingScenes(t *testing
 	case <-time.After(2 * time.Second):
 		t.Fatal("Wait did not complete after pending scenes finished")
 	}
+}
+
+// fakeSegmentProviderResolver records the enriched segment it receives and
+// returns it with one candidate asset merged.
+type fakeSegmentProviderResolver struct {
+	mu              sync.Mutex
+	calls           int
+	lastHadEntities bool
+}
+
+func (f *fakeSegmentProviderResolver) ResolveProviders(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	f.lastHadEntities = len(segment.Insights.Entities) > 0
+	out := segment
+	out.Assets.Candidates = append(out.Assets.Candidates, scriptpkg.SegmentAssetCandidate{AssetID: "asset-1", Provider: "artlist"})
+	return out, nil
+}
+
+func (f *fakeSegmentProviderResolver) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+func TestIncrementalCoordinator_ProviderFanoutStartsAfterEntities(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	resolver := &fakeSegmentProviderResolver{}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+	coordinator.SetSegmentProviderResolver(resolver)
+
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+
+	results, err := coordinator.Wait(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	assert.Equal(t, 1, resolver.callCount(), "provider fanout must run once per enriched scene")
+	assert.True(t, resolver.lastHadEntities, "provider fanout must start only after entity extraction")
+	require.NotEmpty(t, results[0].Assets.Candidates, "fanout candidates must be merged into the immutable result")
+	assert.Equal(t, "asset-1", results[0].Assets.Candidates[0].AssetID)
 }
 
 func TestIncrementalCoordinator_DoesNotMutateSharedSceneConcurrently(t *testing.T) {

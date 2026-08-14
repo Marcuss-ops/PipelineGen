@@ -22,6 +22,7 @@ import (
 // by a concurrency limit so a slow provider cannot spawn unbounded goroutines.
 type VidRushIncrementalCoordinator struct {
 	enricher       SegmentEnricher
+	resolver       SegmentProviderResolver
 	plan           *scriptpkg.ResolvedGenerationPlan
 	maxConcurrency int
 
@@ -63,6 +64,15 @@ func NewVidRushIncrementalCoordinator(enricher SegmentEnricher, plan *scriptpkg.
 // reacts to stable scenes emitted by the runner.
 var _ SceneCommitObserver = (*VidRushIncrementalCoordinator)(nil)
 
+// SetSegmentProviderResolver wires the per-segment provider fanout that runs
+// after entity extraction. A nil resolver is safe and leaves the enrichment
+// at the entities+queries stage (no candidate media is resolved).
+func (c *VidRushIncrementalCoordinator) SetSegmentProviderResolver(resolver SegmentProviderResolver) {
+	if c != nil {
+		c.resolver = resolver
+	}
+}
+
 // OnSceneCommitted records the stable scene and launches its enrichment
 // asynchronously so generation can continue while VidRush works on the
 // previous scene. It fails closed on a missing enricher or an invalid event;
@@ -96,6 +106,12 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		defer func() { <-c.sem }()
 
 		result, err := c.enricher.Enrich(ctx, c.plan, scene)
+		if err == nil && c.resolver != nil {
+			// Provider fan-out starts only after entity extraction has produced
+			// the segment's retrieval queries; generation of the next scene
+			// continues meanwhile because this runs inside the bounded worker.
+			result, err = c.resolver.ResolveProviders(ctx, c.plan, result)
+		}
 		c.recordResult(event, result, err)
 	}()
 	return nil

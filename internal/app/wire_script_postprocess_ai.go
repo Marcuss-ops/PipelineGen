@@ -50,6 +50,7 @@ import (
 // because the migration-zone adapters package must not import the capability
 // package (that would invert the application → capability migration direction).
 var _ scriptgen.SegmentEnricher = (*adapters.VidRushSegmentEnricher)(nil)
+var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
 
 // registerAIBackedProcessors registers the AI-backed postprocessors:
 // entities, metadata, translation, clip_search, and internet_images.
