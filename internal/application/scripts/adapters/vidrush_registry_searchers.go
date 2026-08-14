@@ -174,6 +174,21 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 
 	outcomes := make(chan providerOutcome, 2)
 	var wg sync.WaitGroup
+
+	// Snapshot the read-only segment inputs each provider goroutine needs so
+	// no goroutine reads the shared `updated` result while the collector below
+	// mutates its Assets fields. This makes the fanout merge race-free and
+	// deterministic regardless of provider completion order.
+	segmentID := updated.SegmentID
+	textHash := updated.TextHash
+	artlistQueries := append([]string(nil), updated.Insights.ArtlistQueries...)
+	imageQueries := append([]string(nil), updated.Insights.ImageQueries...)
+	firstEntity := ""
+	if len(updated.Insights.Entities) > 0 {
+		firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
+	}
+	artlistIdentity := scriptpkg.VidRushSegmentResult{SegmentID: segmentID}
+
 	if artlistEnabled {
 		wg.Add(1)
 		go func() {
@@ -181,7 +196,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			if f.metrics != nil {
 				f.metrics.IncProviderRequest("artlist")
 			}
-			matches, err := f.artlist.SearchClips(ctx, plan.Title, updated.Insights.ArtlistQueries)
+			matches, err := f.artlist.SearchClips(ctx, plan.Title, artlistQueries)
 			if err != nil {
 				if f.metrics != nil {
 					f.metrics.IncProviderFailure("artlist")
@@ -189,7 +204,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				outcomes <- providerOutcome{provider: "artlist", err: err}
 				return
 			}
-			candidates := artlistMatchesToCandidates(updated, dedupeArtlistMatches(matches))
+			candidates := artlistMatchesToCandidates(artlistIdentity, dedupeArtlistMatches(matches))
 			var primary *scriptpkg.SegmentAssetCandidate
 			if len(candidates) > 0 && readyVidRushCandidate(candidates[0]) {
 				selected := candidates[0]
@@ -202,19 +217,15 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			firstEntity := ""
-			if len(updated.Insights.Entities) > 0 {
-				firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
-			}
 			candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
 			seen := make(map[string]struct{})
-			for _, query := range updated.Insights.ImageQueries {
+			for _, query := range imageQueries {
 				if f.metrics != nil {
 					f.metrics.IncProviderRequest("internet_images")
 				}
 				results, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
-					SegmentID: updated.SegmentID, Query: query, Entity: firstEntity,
-					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
+					SegmentID: segmentID, Query: query, Entity: firstEntity,
+					TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 					Provider: "internet_images",
 				})
 				if err != nil {
