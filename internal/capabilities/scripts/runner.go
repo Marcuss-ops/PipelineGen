@@ -66,6 +66,7 @@ type Runner struct {
 	combinedAudioRenderer CombinedAudioRenderer
 	finalAudioPublisher   FinalAudioPublisher
 	recorder              ExecutionRecorder
+	sceneCommitObserver   SceneCommitObserver
 	log                   *zap.Logger
 }
 
@@ -130,6 +131,15 @@ func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 func (r *Runner) SetExecutionRecorder(recorder ExecutionRecorder) {
 	if r != nil {
 		r.setRecorder(recorder)
+	}
+}
+
+// SetSceneCommitObserver wires the observer notified of every SceneCommitted
+// event. A nil observer is safe and disables emission; a non-nil observer is
+// fail-closed (a commit error fails the scene-text stage).
+func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
+	if r != nil {
+		r.sceneCommitObserver = observer
 	}
 }
 
