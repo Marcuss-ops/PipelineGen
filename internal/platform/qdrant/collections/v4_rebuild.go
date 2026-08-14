@@ -92,6 +92,15 @@ func (cm *CollectionManager) RebuildV4(
 	return RebuildV4Projection(ctx, cm, sig, projectionID, registrySequence, expectedPoints, populate, golden)
 }
 
+// CertifyGoldenQueries runs the canonical golden query set against the given
+// collection GoldenQueryRunCount times each and fails closed on the first
+// non-deterministic ordered top-K. It is the single owner of the golden
+// certification step (item 14), shared by RebuildV4Projection and the
+// operator-facing reindex command.
+func CertifyGoldenQueries(ctx context.Context, collection string, exec GoldenQueryExecutor) error {
+	return certifyV4Golden(ctx, collection, exec)
+}
+
 // certifyV4Golden runs the canonical golden query set against the candidate
 // collection GoldenQueryRunCount times each and asserts deterministic ordered
 // top-K IDs (item 14).

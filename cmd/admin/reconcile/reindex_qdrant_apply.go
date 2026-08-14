@@ -19,10 +19,38 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
+// newGoldenQueryExecutor builds the GoldenQueryExecutor that embeds the query
+// text via the canonical E5 sidecar and searches the candidate collection
+// DIRECTLY (never the runtime alias — the alias still points at the previous
+// generation during validation). Returned IDs are the Qdrant point IDs, which
+// are deterministic (SHA-256 of the canonical asset ID).
+func newGoldenQueryExecutor(client *transport.Client, embedder search.TextEmbedder) collections.GoldenQueryExecutor {
+	return func(ctx context.Context, collection, query string, topK int) ([]string, error) {
+		vec, err := embedder.Embed(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("embed golden query %q: %w", query, err)
+		}
+		results, err := client.SearchPoints(ctx, collection, schema.SearchRequest{
+			QueryVector: vec,
+			VectorName:  "text",
+			Limit:       topK,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("search golden query %q against %q: %w", query, collection, err)
+		}
+		ids := make([]string, 0, len(results))
+		for _, r := range results {
+			ids = append(ids, r.ID)
+		}
+		return ids, nil
+	}
+}
+
 // applyQdrant executes the blue-green lifecycle owned by ProjectionManager:
-// BUILDING (create + populate), VALIDATING (strict verifier), READY, and
-// ACTIVE (atomic alias switch). A failed build or validation never mutates the
-// runtime alias; the candidate collection is retained for diagnosis/retry.
+// BUILDING (create + populate), VALIDATING (strict verifier), golden
+// certification, READY, and ACTIVE (atomic alias switch). A failed build,
+// validation or golden run never mutates the runtime alias; the candidate
+// collection is retained for diagnosis/retry.
 func applyQdrant(
 	ctx context.Context,
 	log *zap.Logger,
@@ -34,6 +62,7 @@ func applyQdrant(
 	sqliteDB *sql.DB,
 	deps reindexQdrantDeps,
 	targetCollection string,
+	golden collections.GoldenQueryExecutor,
 ) error {
 	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
 	if err != nil {
@@ -96,6 +125,22 @@ func applyQdrant(
 			zap.Strings("errors", report.Errors),
 			zap.Error(verifyErr))
 		return &transport.ErrAliasSwitchNotReady{Report: report}
+	}
+
+	// PR-HASH-SEMANTICS (item 14): certify golden query reproducibility before
+	// the alias switch. 5 canonical queries × 10 runs must return identical
+	// ordered top-10 IDs against the candidate collection; the first drift
+	// blocks activation.
+	if golden != nil {
+		if certErr := collections.CertifyGoldenQueries(ctx, targetCollection, golden); certErr != nil {
+			log.Error("golden query certification blocked activation",
+				zap.String("target", targetCollection),
+				zap.Error(certErr))
+			return fmt.Errorf("golden query certification for %q: %w", targetCollection, certErr)
+		}
+		log.Info("golden query certification passed",
+			zap.String("target", targetCollection),
+			zap.Int("queries", len(schema.CanonicalGoldenQueries())))
 	}
 
 	if err := collectionMgr.ActivateProjection(ctx, targetCollection, 0); err != nil {

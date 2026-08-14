@@ -51,8 +51,10 @@ import (
 	"go.uber.org/zap"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
@@ -199,25 +201,40 @@ func RunReindexQdrant(args []string) error {
 	if targetCollection == "" && !deps.Apply {
 		targetCollection = schemaObj.PhysicalName
 	}
-	// PR 13: Apply mode auto-targets a fresh timestamped collection
-	// unless the operator explicitly chose one. Dry-run mode still
-	// uses the canonical physical name (no new collection is created
-	// — dry-run is a side-effect-free enumeration).
+	// PR-HASH-SEMANTICS (item 13): Apply mode auto-targets the SIGNED
+	// media_assets_v4 name — schema version + embedding contract hash +
+	// semantic document version + dimension — unless the operator
+	// explicitly chose one. The name is derived from the committed
+	// embedding SSOT, never hand-authored, so two generations that
+	// disagree on the contract never collide. Dry-run still uses the
+	// canonical physical name (side-effect-free enumeration).
 	if deps.Apply && targetCollection == "" {
-		targetCollection = timestampedTargetCollection(schemaObj.PhysicalName, time.Now())
+		sig := qdrantschema.CanonicalV4Signature()
+		name, sigErr := sig.PhysicalName()
+		if sigErr != nil {
+			return fmt.Errorf("canonical v4 signature: %w", sigErr)
+		}
+		targetCollection = name
 	}
 
 	// Sanity warning for the operator on same-collection overwrite.
 	// Apply-only path (matches pre-PR behavior; the warning is about
 	// the apply path's same-collection overwrite hazard, not dry-run).
 	if deps.Apply && deps.TargetCollection != "" && deps.TargetCollection == schemaObj.PhysicalName {
-		log.Warn("PR 13: --target-collection matches schema.PhysicalName — same-collection overwrite. Use the auto-timestamped path unless you are recovering from a failed blue-green run.",
+		log.Warn("PR 13: --target-collection matches schema.PhysicalName — same-collection overwrite. Use the auto-signed v4 path unless you are recovering from a failed blue-green run.",
 			zap.String("target_collection", deps.TargetCollection))
 	}
+
+	// Wire the golden query executor against the canonical E5 sidecar so the
+	// apply flow can certify deterministic top-K before the alias switch.
+	golden := newGoldenQueryExecutor(
+		client,
+		search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL)),
+	)
 
 	// Dispatch to the appropriate phase handler.
 	if !deps.Apply {
 		return dryRunQdrant(ctx, log, mapper, targetCollection, deps)
 	}
-	return applyQdrant(ctx, log, schemaObj, writer, collectionMgr, client, assetStore, sqliteDB.DB, deps, targetCollection)
+	return applyQdrant(ctx, log, schemaObj, writer, collectionMgr, client, assetStore, sqliteDB.DB, deps, targetCollection, golden)
 }
