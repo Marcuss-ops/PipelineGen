@@ -250,6 +250,13 @@ type ExternalConfig struct {
 	// (Italian). Empty falls back to "v1" per godlike/07 fail-closed
 	// (selectSystemPrompt in llm_client.go).
 	EnrichmentPromptVersion string `yaml:"enrichment_prompt_version" env:"ENRICHMENT_PROMPT_VERSION" default:""`
+
+	// RenderingGenQueueURL is the address of the central RenderingGen
+	// queue service (POST /jobs, GET /jobs/{id}). When non-empty, the
+	// script-generation runtime enqueues render work to the central
+	// queue and waits for the certified artifact instead of running the
+	// local Rust executor. Empty keeps the local executor as default.
+	RenderingGenQueueURL string `yaml:"renderinggen_queue_url" env:"RENDERINGGEN_QUEUE_URL" default:""`
 }
 
 // ArtlistConfig groups Artlist-related configuration under a single

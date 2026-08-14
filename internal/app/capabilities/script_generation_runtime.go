@@ -16,6 +16,7 @@ import (
 	videojob "github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/renderinggen"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
@@ -164,9 +165,20 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 			return nil, fmt.Errorf("register %s handler: %w", jobType, err)
 		}
 	}
-	renderEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service, filesystem.NewOS())
-	if err != nil {
-		return nil, fmt.Errorf("build canonical render enqueuer: %w", err)
+	var renderEnqueuer scriptgen.RenderEnqueuer
+	if strings.TrimSpace(cfg.External.RenderingGenQueueURL) != "" {
+		queueEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(renderinggen.New(cfg.External.RenderingGenQueueURL), filesystem.NewOS())
+		if err != nil {
+			return nil, fmt.Errorf("build renderinggen queue enqueuer: %w", err)
+		}
+		renderEnqueuer = queueEnqueuer
+		log.Info("script generation render enqueuer wired to central RenderingGen queue", zap.String("endpoint", cfg.External.RenderingGenQueueURL))
+	} else {
+		jobEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service, filesystem.NewOS())
+		if err != nil {
+			return nil, fmt.Errorf("build canonical render enqueuer: %w", err)
+		}
+		renderEnqueuer = jobEnqueuer
 	}
 
 	var docPublisher scriptgen.DocumentPublisher

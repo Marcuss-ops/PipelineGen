@@ -1,0 +1,63 @@
+package renderinggen
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+)
+
+func TestClientSubmitCreated(t *testing.T) {
+	var gotBody json.RawMessage
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"job-1"}`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	if err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"}); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+}
+
+func TestClientSubmitConflictIsErrJobExists(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "job job-1 already exists", http.StatusConflict)
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("expected ErrJobExists, got %v", err)
+	}
+}
+
+func TestClientGetDecodesArtifact(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/job-1" || r.Method != http.MethodGet {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"job-1","state":"completed","artifact":{"id":"art-1","copy_eligible":true}}`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	job, err := client.Get(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if job.State != "completed" || job.Artifact == nil || job.Artifact.ID != "art-1" || !job.Artifact.CopyEligible {
+		t.Fatalf("unexpected job: %+v", job)
+	}
+}
