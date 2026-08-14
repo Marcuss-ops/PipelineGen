@@ -69,6 +69,12 @@ func newBlockingSegmentEnricher() *blockingSegmentEnricher {
 	return &blockingSegmentEnricher{release: make(chan struct{})}
 }
 
+func (b *blockingSegmentEnricher) callCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.calls)
+}
+
 func (b *blockingSegmentEnricher) Enrich(ctx context.Context, _ *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
 	b.mu.Lock()
 	b.calls = append(b.calls, scene)
@@ -188,6 +194,89 @@ func TestIncrementalCoordinator_FinalBarrierWaitsOnlyForPendingScenes(t *testing
 	case <-time.After(2 * time.Second):
 		t.Fatal("Wait did not complete after pending scenes finished")
 	}
+}
+
+func TestIncrementalCoordinator_WaitForVidRushWaitsOnlyForPendingScenes(t *testing.T) {
+	enricher := newBlockingSegmentEnricher()
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+	commit(t, coordinator, "run-1", "scene-1", 1, "Second scene text", 1)
+
+	waitResult := make(chan error, 1)
+	go func() {
+		_, err := coordinator.WaitForVidRush(context.Background(), "run-1")
+		waitResult <- err
+	}()
+
+	// The barrier must block while enrichments are still pending.
+	select {
+	case err := <-waitResult:
+		t.Fatalf("WaitForVidRush returned before pending scenes completed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(enricher.release)
+	select {
+	case err := <-waitResult:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("WaitForVidRush did not complete after pending scenes finished")
+	}
+
+	// Enricher must have been called exactly once per committed scene — the
+	// barrier never re-runs the whole-document EntitiesProcessor.
+	assert.Equal(t, 2, enricher.callCount(), "barrier must not re-run enrichment")
+}
+
+func TestIncrementalCoordinator_WaitForVidRushReturnsCanonicalOrder(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	commit(t, coordinator, "run-1", "scene-2", 2, "Third scene text", 1)
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+	commit(t, coordinator, "run-1", "scene-1", 1, "Second scene text", 1)
+
+	results, err := coordinator.WaitForVidRush(context.Background(), "run-1")
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+	assert.Equal(t, []string{"scene-0", "scene-1", "scene-2"}, []string{results[0].SceneID, results[1].SceneID, results[2].SceneID})
+}
+
+func TestIncrementalCoordinator_WaitForVidRushRejectsForeignRun(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+
+	_, err := coordinator.WaitForVidRush(context.Background(), "run-2")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "run-2")
+}
+
+func TestIncrementalCoordinator_WaitForVidRushRequiresRunID(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+
+	_, err := coordinator.WaitForVidRush(context.Background(), "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing run id")
+}
+
+func TestIncrementalCoordinator_RejectsCommitFromForeignRun(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+
+	commit(t, coordinator, "run-1", "scene-0", 0, "First scene text", 1)
+
+	err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{
+		RunID: "run-2", SceneID: "scene-1", SceneIndex: 1,
+		Text: "Second scene text", TextHash: SceneTextHash("Second scene text"), Revision: 1, Language: "en",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "run-2")
 }
 
 // fakeSegmentProviderResolver records the enriched segment it receives and

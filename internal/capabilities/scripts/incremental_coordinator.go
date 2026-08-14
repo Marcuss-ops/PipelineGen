@@ -15,6 +15,14 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+// VidRushBarrier is the run-scoped final barrier for incremental VidRush
+// enrichment. The runner awaits it after generation completes; it blocks only
+// for enrichments still running and never re-runs the whole-document
+// EntitiesProcessor.
+type VidRushBarrier interface {
+	WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error)
+}
+
 // VidRushIncrementalCoordinator consumes SceneCommitted events and enriches
 // each scene concurrently with generation. It never mutates shared scene
 // state: every enrichment produces an immutable VidRushSegmentResult that is
@@ -27,6 +35,7 @@ type VidRushIncrementalCoordinator struct {
 	maxConcurrency int
 
 	mu         sync.Mutex
+	runID      string
 	latest     map[int]SceneCommitted
 	records    map[int]segmentResultRecord
 	staleCount int
@@ -60,9 +69,11 @@ func NewVidRushIncrementalCoordinator(enricher SegmentEnricher, plan *scriptpkg.
 	}
 }
 
-// compile-time contract: the coordinator is the SceneCommitObserver seam that
-// reacts to stable scenes emitted by the runner.
+// compile-time contract: the coordinator is both the SceneCommitObserver seam
+// that reacts to stable scenes and the run-scoped final barrier the runner
+// awaits once generation completes.
 var _ SceneCommitObserver = (*VidRushIncrementalCoordinator)(nil)
+var _ VidRushBarrier = (*VidRushIncrementalCoordinator)(nil)
 
 // SetSegmentProviderResolver wires the per-segment provider fanout that runs
 // after entity extraction. A nil resolver is safe and leaves the enrichment
@@ -86,6 +97,12 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	}
 
 	c.mu.Lock()
+	if c.runID == "" {
+		c.runID = event.RunID
+	} else if event.RunID != "" && c.runID != event.RunID {
+		c.mu.Unlock()
+		return fmt.Errorf("vidrush incremental coordinator: scene commit run %q does not match coordinator run %q", event.RunID, c.runID)
+	}
 	c.latest[event.SceneIndex] = event
 	c.wg.Add(1)
 	c.mu.Unlock()
@@ -145,6 +162,30 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 // completed: the barrier observes the committed set at the moment it is
 // awaited, so a scene committed after Wait has returned is not included.
 func (c *VidRushIncrementalCoordinator) Wait(ctx context.Context) ([]scriptpkg.VidRushSegmentResult, error) {
+	return c.waitForVidRush(ctx)
+}
+
+// WaitForVidRush is the run-scoped final barrier. It validates that the
+// requested run owns this coordinator (fail closed on mismatch), then waits
+// only for the enrichments still running — it never re-runs the whole-document
+// EntitiesProcessor — and returns the immutable results in canonical order.
+func (c *VidRushIncrementalCoordinator) WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
+	if runID == "" {
+		return nil, fmt.Errorf("vidrush barrier: missing run id")
+	}
+	c.mu.Lock()
+	owner := c.runID
+	c.mu.Unlock()
+	if owner != "" && owner != runID {
+		return nil, fmt.Errorf("vidrush barrier: run %q does not own this coordinator (owner %q)", runID, owner)
+	}
+	return c.waitForVidRush(ctx)
+}
+
+// waitForVidRush performs the actual barrier: block until every committed
+// scene's enrichment has finished, then return the fenced, canonically ordered
+// results. Pending scenes only — no re-extraction of the full document.
+func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]scriptpkg.VidRushSegmentResult, error) {
 	done := make(chan struct{})
 	go func() {
 		c.wg.Wait()
