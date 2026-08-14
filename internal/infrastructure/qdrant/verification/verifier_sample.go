@@ -67,7 +67,19 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 	checkCanonical := func(idx, iteration int, pt schema.ScrollPoint) {
 		assetID, assetIDOK := pt.Payload["asset_id"].(string)
 		if assetIDOK && assetID != "" {
-			qdrantIDs[assetID] = true
+			if qdrantIDs[assetID] {
+				// PR-HASH-SEMANTICS item 14: the same canonical asset_id
+				// already appeared in an earlier point. The 1-asset-1-point
+				// invariant is violated; the extra point is a duplicate.
+				report.DuplicateQdrantPoints++
+				if len(report.DuplicatePointIDs) < 20 {
+					report.DuplicatePointIDs = append(report.DuplicatePointIDs, pt.ID)
+				} else {
+					report.DuplicateTruncated = true
+				}
+			} else {
+				qdrantIDs[assetID] = true
+			}
 		}
 
 		// Gate 3: Payload minimum validation.

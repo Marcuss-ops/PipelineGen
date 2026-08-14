@@ -302,6 +302,15 @@ type SwitchReport struct {
 	// sample-of-the-first-20 for human-readable diagnostics.
 	NonCanonicalTruncated bool     `json:"non_canonical_truncated,omitempty"`
 	NonCanonicalPointIDs  []string `json:"non_canonical_point_ids,omitempty"`
+	// DuplicateQdrantPoints (PR-HASH-SEMANTICS item 14): the number of
+	// extra Qdrant points (beyond the first) sharing the same canonical
+	// payload.asset_id. The projection invariant is 1 canonical asset =
+	// 1 point; a non-zero count blocks the alias switch.
+	DuplicateQdrantPoints int `json:"duplicate_qdrant_points"`
+	// DuplicateTruncated is true when DuplicatePointIDs' cap-threshold
+	// (20) truncated the diagnostic list below DuplicateQdrantPoints.
+	DuplicateTruncated bool     `json:"duplicate_truncated,omitempty"`
+	DuplicatePointIDs  []string `json:"duplicate_point_ids,omitempty"`
 	// RollbackTarget (PR 13) carries the active alias target that
 	// was in place BEFORE the verification attempt. On Ready=false
 	// the operator's PR 13 path retains this collection so a future
@@ -336,6 +345,7 @@ type GateDetails struct {
 	PayloadValidation GateDetail `json:"payload_validation"`
 	EmbeddingVersion  GateDetail `json:"embedding_version"`
 	CanonicalPointID  GateDetail `json:"canonical_point_id"`
+	DuplicatePoints   GateDetail `json:"duplicate_points"`
 	DeadLetters       GateDetail `json:"dead_letters"`
 	GoldenQueries     GateDetail `json:"golden_queries"`
 	FilterSmoke       GateDetail `json:"filter_smoke"`

@@ -61,6 +61,7 @@ func (v *ReindexVerifier) verifyMetadata(ctx context.Context, target string, rep
 			zap.Int("payload_issues", report.PayloadIssues),
 			zap.Int("version_mismatch", report.VersionMismatch),
 			zap.Int("non_canonical_point_count", report.NonCanonicalPointCount),
+			zap.Int("duplicate_qdrant_points", report.DuplicateQdrantPoints),
 			zap.Int("dead_letter_open", report.DeadLetterOpen),
 			zap.Int("errors", len(report.Errors)))
 	} else {
@@ -108,6 +109,7 @@ func computeReady(report *schema.SwitchReport) bool {
 		report.PayloadIssues == 0 &&
 		channelTotal == 0 &&
 		report.NonCanonicalPointCount == 0 &&
+		report.DuplicateQdrantPoints == 0 &&
 		report.DeadLetterOpen == 0 &&
 		report.GoldenQueriesOK &&
 		report.FiltersOK &&
@@ -149,6 +151,10 @@ func computeGateDetails(report *schema.SwitchReport) *schema.GateDetails {
 		CanonicalPointID: schema.GateDetail{
 			Passed:      report.NonCanonicalPointCount == 0,
 			Description: fmt.Sprintf("non_canonical=%d", report.NonCanonicalPointCount),
+		},
+		DuplicatePoints: schema.GateDetail{
+			Passed:      report.DuplicateQdrantPoints == 0,
+			Description: fmt.Sprintf("duplicate_qdrant_points=%d", report.DuplicateQdrantPoints),
 		},
 		DeadLetters: schema.GateDetail{
 			Passed:      report.DeadLetterOpen == 0,
