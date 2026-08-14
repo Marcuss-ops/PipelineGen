@@ -189,23 +189,25 @@ func buildScriptSourceResolvers(
 	}
 
 	// ── Qdrant embedder (shared by SemanticSearchPort and ClipSearchPort) ──
-	var ollamaEmbedder search.TextEmbedder
-	if root.Process != nil && root.Process.QdrantSearcher != nil && root.AI != nil {
-		if ollamaClient := root.AI.OllamaEmbedClient; ollamaClient != nil {
-			ollamaEmbedder = search.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
-		}
+	// Query vectors must come from the same E5 sidecar contract as the
+	// indexed document vectors. Ollama is a chat/legacy embedder and must
+	// not silently create a second vector space (mirrors
+	// registerInternalModules).
+	var textEmbedder search.TextEmbedder
+	if root.Process != nil && root.Process.QdrantSearcher != nil && cfg.ClipIndexer.ServerURL != "" {
+		textEmbedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL))
 	}
 
-	// Search resolver — gated on QdrantSearcher + ollamaEmbedder + clipSourceBuilder.
-	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil && clipSourceBuilder != nil {
+	// Search resolver — gated on QdrantSearcher + textEmbedder + clipSourceBuilder.
+	if root.Process != nil && root.Process.QdrantSearcher != nil && textEmbedder != nil && clipSourceBuilder != nil {
 		searchPort := &qdrantSemanticSearchPort{
 			searcher:   root.Process.QdrantSearcher,
-			embedder:   ollamaEmbedder,
+			embedder:   textEmbedder,
 			vectorName: "text",
 			log:        log,
 		}
 		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchPort, clipSourceBuilder, samplerReg, log))
-		log.Info("SourceSearch resolver wired (Qdrant + Ollama embedder)")
+		log.Info("SourceSearch resolver wired (Qdrant + E5 sidecar embedder)")
 	}
 
 	// Curate resolver — gated on clipSourceBuilder.
@@ -217,9 +219,9 @@ func buildScriptSourceResolvers(
 
 	// ── canonical AssetSearchPort (Qdrant) ───────────────────────
 	var clipSearchPort scriptports.AssetSearchPort
-	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil {
-		clipSearchPort = search.NewSemanticAssetSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", search.KindClip, log)
-		log.Info("AssetSearchPort wired for clip catalog (Qdrant + Ollama embedder)")
+	if root.Process != nil && root.Process.QdrantSearcher != nil && textEmbedder != nil {
+		clipSearchPort = search.NewSemanticAssetSearchAdapter(root.Process.QdrantSearcher, textEmbedder, "text", search.KindClip, log)
+		log.Info("AssetSearchPort wired for clip catalog (Qdrant + E5 sidecar embedder)")
 	}
 
 	// Wire ClipSearchPort to curate resolver (via composition-root bridge).

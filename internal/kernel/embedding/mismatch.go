@@ -19,13 +19,19 @@ type MismatchError struct {
 	// Expected is the canonical contract.
 	Expected Contract
 	// Got is the observed contract that diverged.
-	Got Contract
+	Got          Contract
+	ExpectedHash string
+	GotHash      string
 }
 
 // Error implements error.
 func (e *MismatchError) Error() string {
-	return fmt.Sprintf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: %s diverged: expected %s, got %s",
+	message := fmt.Sprintf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: %s diverged: expected %s, got %s",
 		e.Component, e.Expected.String(), e.Got.String())
+	if e.ExpectedHash != "" || e.GotHash != "" {
+		message += fmt.Sprintf(" (expected_hash=%s got_hash=%s)", e.ExpectedHash, e.GotHash)
+	}
+	return message
 }
 
 // Unwrap lets errors.Is(err, ErrContractMismatch) succeed.

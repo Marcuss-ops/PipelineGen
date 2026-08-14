@@ -89,6 +89,7 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) (coreembe
 		Dimensions   int       `json:"dimensions"`
 		Model        string    `json:"model"`
 		ModelVersion string    `json:"model_version"`
+		ContractHash string    `json:"contract_hash"`
 		Error        string    `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(result.Output), &envelope); err != nil {
@@ -124,5 +125,6 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) (coreembe
 		Dimensions:   envelope.Dimensions,
 		Model:        envelope.Model,
 		ModelVersion: envelope.ModelVersion,
+		ContractHash: envelope.ContractHash,
 	}, nil
 }

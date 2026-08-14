@@ -97,6 +97,11 @@ type EmbeddingResult struct {
 	// ModelVersion is the model release or fine-tune label
 	// (e.g. "<hf_revision>|<project_semver>").
 	ModelVersion string `json:"model_version"`
+
+	// ContractHash fingerprints the complete embedding contract (model,
+	// revision, dimensions, preprocessing and distance), not just the model
+	// label. It is supplied by the effective embedder runtime.
+	ContractHash string `json:"contract_hash"`
 }
 
 // Embedder generates semantic embedding vectors for text. Both inputs
