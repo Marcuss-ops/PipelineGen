@@ -76,4 +76,69 @@ if ! grep -q 'configured-go' "$WORK_DIR/output.log"; then
     fail "output did not identify the configured GO binary"
 fi
 
+# --- Phase 2: a changed shell script gets a cheap bash -n syntax check ---
+git reset -q --hard HEAD
+rm -rf "untracked package"
+mkdir -p scripts/tools
+printf '#!/usr/bin/env bash\necho probe-ok\n' > scripts/tools/probe.sh
+
+: > "$LOG"
+VERIFY_CHANGED_GO_LOG="$LOG" bash "$SCRIPT" > "$WORK_DIR/output2.log" 2>&1
+if ! grep -q 'bash -n syntax check' "$WORK_DIR/output2.log"; then
+    fail "phase 2: shell-script change did not run the syntax check"
+fi
+if [ -s "$LOG" ]; then
+    fail "phase 2: unexpected GO invocations for a shell-only change"
+fi
+
+# --- Phase 3: a shell syntax error fails closed ---
+printf '#!/usr/bin/env bash\nif then fi\n' > scripts/tools/probe.sh
+: > "$LOG"
+if VERIFY_CHANGED_GO_LOG="$LOG" bash "$SCRIPT" > "$WORK_DIR/output3.log" 2>&1; then
+    fail "phase 3: verify-changed should fail closed on a shell syntax error"
+fi
+
+# --- Phase 4: make/** changes trigger only native Node probe + architecture ---
+git reset -q --hard HEAD
+rm -rf scripts/tools
+mkdir -p make bin
+cat > "$WORK_DIR/bin/make" <<'FAKE_MAKE'
+#!/usr/bin/env bash
+printf '%s\0' "$@" >> "${VERIFY_CHANGED_MAKE_LOG:?}"
+FAKE_MAKE
+chmod +x "$WORK_DIR/bin/make"
+printf '# placeholder\n' > make/verify.mk
+
+: > "$LOG"
+MAKE_LOG="$WORK_DIR/make-args.log"
+: > "$MAKE_LOG"
+PATH="$WORK_DIR/bin:$PATH" GO="$FAKE_GO" VERIFY_CHANGED_GO_LOG="$LOG" VERIFY_CHANGED_MAKE_LOG="$MAKE_LOG" \
+    bash "$SCRIPT" > "$WORK_DIR/output4.log" 2>&1
+if ! grep -q 'native Node probe + architecture gates' "$WORK_DIR/output4.log"; then
+    fail "phase 4: make/** change did not trigger the core-toolchain branch"
+fi
+if [ ! -s "$MAKE_LOG" ]; then
+    fail "phase 4: make was not invoked for a make/** change"
+fi
+mapfile -d '' -t make_args < "$MAKE_LOG"
+for want in verify-node-native verify-architecture; do
+    found=0
+    for arg in "${make_args[@]}"; do
+        [ "$arg" = "$want" ] && found=1
+    done
+    if [ "$found" -ne 1 ]; then
+        fail "phase 4: make was not invoked with $want"
+    fi
+done
+for banned in verify-node verify-node-tests; do
+    for arg in "${make_args[@]}"; do
+        if [ "$arg" = "$banned" ]; then
+            fail "phase 4: make was invoked with $banned; the agent loop must not run the full Node suite"
+        fi
+    done
+done
+if [ -s "$LOG" ]; then
+    fail "phase 4: unexpected GO invocations for a make-only change"
+fi
+
 echo "✅ verify-changed regression test passed"

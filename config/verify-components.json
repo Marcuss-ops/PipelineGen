@@ -171,6 +171,7 @@
     "paths": [
       "docs/",
       "README.md",
+      "AGENTS.md",
       "scripts/README.md",
       "internal/domain/document/",
       "internal/application/document/",

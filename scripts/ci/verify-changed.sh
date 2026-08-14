@@ -56,6 +56,7 @@ RUN_ALL=false
 RUN_NODE=false
 RUN_ARCH=false
 RUN_GO_PACKAGE_TESTS=false
+RUN_SH_SYNTAX=false
 
 for file in "${CHANGED_FILES[@]}"; do
     # Makefile, make/**, scripts/hooks/** -> full verify
@@ -75,6 +76,13 @@ for file in "${CHANGED_FILES[@]}"; do
         RUN_NODE=true
     fi
 
+    # Shell scripts (scripts/, tests/, hooks/) -> cheap fail-fast syntax
+    # check. No registry component owns these paths, so without this branch a
+    # broken operational/CI script would verify ZERO checks in the agent loop.
+    if [[ "$file" =~ \.sh$ ]]; then
+        RUN_SH_SYNTAX=true
+    fi
+
     # cmd/archcheck/** or architecture/** -> verify-architecture
     if [[ "$file" =~ ^cmd/archcheck/ ]] || [[ "$file" =~ ^architecture/ ]]; then
         RUN_ARCH=true
@@ -91,8 +99,13 @@ if [ "$RUN_ALL" = true ]; then
         echo "❌ Go binary '$GO_BIN' was not found; set GO to the Makefile-configured toolchain." >&2
         exit 1
     fi
-    echo "🔄 Core toolchain, configuration or hooks changed. Running full verification..."
-    GO="$GO_BIN" make verify-node verify-architecture
+    # Agent-loop scope for core/configuration changes: the native Node probe
+    # plus the architecture gates (both part of verify-main). The full
+    # node-scraper test suite (verify-node-tests) is deliberately excluded:
+    # verify-main itself only requires verify-node-native, and node-scraper
+    # source changes are already covered by the native probe branch.
+    echo "🔄 Core toolchain, configuration or hooks changed. Running native Node probe + architecture gates..."
+    GO="$GO_BIN" make verify-node-native verify-architecture
     exit 0
 fi
 
@@ -134,4 +147,16 @@ if [ "$RUN_GO_PACKAGE_TESTS" = true ]; then
             "$GO_BIN" test "$pkg"
         done
     fi
+fi
+
+# Shell-script changes get a fail-fast syntax check so operational and CI
+# scripts are verified even though no registry component owns them.
+if [ "$RUN_SH_SYNTAX" = true ]; then
+    echo "🔧 Shell scripts changed. Running bash -n syntax check..."
+    for file in "${CHANGED_FILES[@]}"; do
+        if [[ "$file" =~ \.sh$ ]] && [ -f "$file" ]; then
+            bash -n "$file"
+        fi
+    done
+    echo "✅ Shell script syntax check passed"
 fi
