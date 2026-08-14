@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
@@ -57,7 +58,7 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 		keepLastN = 2
 	}
 
-	result := &RetentionResult{}
+	result := &RetentionResult{DryRun: cfg.DryRun}
 	names, err := cm.client.ListCollections(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list collections: %w", err)
@@ -84,34 +85,71 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 			return nil, fmt.Errorf("resolve active target: %w", err)
 		}
 	}
-	prefix := cm.schema.CanonicalName()
 
-	// Eligible: matching prefix + NOT active.
+	// PR-RETENTION-RETIRED-SCHEMAS: match the current schema prefix plus
+	// any explicitly-supplied retired-generation prefixes (e.g. the
+	// superseded e5 schema). A retired prefix that overlaps the current
+	// canonical name is rejected fail-closed.
+	prefixes, err := retentionPrefixes(cm.schema.CanonicalName(), cfg.RetiredPrefixes)
+	if err != nil {
+		return nil, err
+	}
+
+	statuses, err := cm.projectionStatuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Eligible: matches any prefix + NOT the active target + NOT marked
+	// ACTIVE in the projection registry (defense-in-depth: the registry
+	// is the durable lifecycle truth; a collection marked ACTIVE is never
+	// dropped even if the alias momentarily disagrees).
 	eligible := make([]string, 0, len(names))
 	for _, name := range names {
-		if !strings.HasPrefix(name, prefix) {
+		if !matchesAnyPrefix(name, prefixes) {
 			continue
 		}
 		if name == activeTarget {
 			result.CollectionsKept++
 			continue
 		}
+		if statuses[name] == mediaregistry.ProjectionActive {
+			result.CollectionsKept++
+			result.ProtectedKept = append(result.ProtectedKept, name)
+			cm.log.Warn("retention sweep: protecting registry-ACTIVE collection that is not the alias target",
+				zap.String("name", name))
+			continue
+		}
 		eligible = append(eligible, name)
 	}
 
-	// Safe-keep: protected rollback target is always pinned.
+	// Stale partials (FAILED / BUILDING / VALIDATING) are never protected
+	// by the keep_last_n tail — a failed build must not crowd out a
+	// known-good rollback target just because its timestamp is newer.
+	tailCandidates := make([]string, 0, len(eligible))
+	for _, name := range eligible {
+		if isStalePartialStatus(statuses[name]) {
+			continue
+		}
+		tailCandidates = append(tailCandidates, name)
+	}
+
+	// Safe-keep: the protected rollback target is always pinned.
 	keepSet := make(map[string]bool)
 	if cfg.ProtectedRollbackTarget != "" {
 		keepSet[cfg.ProtectedRollbackTarget] = true
 	}
 
-	// PR 9 (#14): sort descending (newest-first), keep keepLastN-1,
+	// PR 9 (#14): sort descending (newest-first), keep keepLastN-1 known-good,
 	// drop the rest.
-	sort.Sort(sort.Reverse(sort.StringSlice(eligible)))
+	sort.Sort(sort.Reverse(sort.StringSlice(tailCandidates)))
 	keepLeft := keepLastN - 1
-	for _, name := range eligible {
+	for _, name := range tailCandidates {
 		if keepLeft <= 0 {
 			break
+		}
+		if keepSet[name] {
+			continue
 		}
 		keepSet[name] = true
 		keepLeft--
@@ -121,6 +159,11 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 
 	for _, name := range eligible {
 		if keepSet[name] {
+			continue
+		}
+		if cfg.DryRun {
+			result.CollectionsDropped++
+			result.DroppedNames = append(result.DroppedNames, name)
 			continue
 		}
 		if err := cm.client.DeleteCollection(ctx, name); err != nil {
@@ -135,4 +178,81 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 			zap.Int("keep_last_n", keepLastN))
 	}
 	return result, nil
+}
+
+// retentionPrefixes returns the current schema prefix plus any retired
+// prefixes, deduplicated and validated. A retired prefix that equals — or
+// is a prefix of — the current canonical name is rejected fail-closed:
+// such a prefix would match the live collection fleet (e.g. a bare
+// "media_assets" or "media_assets_v3").
+func retentionPrefixes(current string, retired []string) ([]string, error) {
+	prefixes := make([]string, 0, 1+len(retired))
+	seen := map[string]bool{current: true}
+	prefixes = append(prefixes, current)
+	for _, p := range retired {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if p == current || strings.HasPrefix(current, p) {
+			return nil, fmt.Errorf("retention: retired prefix %q overlaps the current schema prefix %q and would match live collections", p, current)
+		}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		prefixes = append(prefixes, p)
+	}
+	return prefixes, nil
+}
+
+// matchesAnyPrefix reports whether name has any of the given prefixes.
+func matchesAnyPrefix(name string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// projectionStatuses reads the durable projection lifecycle statuses from
+// the wired registry ledger (via ListProjections). Returns nil when no
+// ledger is wired, in which case the sweep falls back to the legacy
+// status-less keep_last_n behaviour. A read error fails closed — without
+// status the sweep cannot distinguish a known-good rollback from a failed
+// partial and could delete the wrong collection.
+func (cm *CollectionManager) projectionStatuses(ctx context.Context) (map[string]mediaregistry.ProjectionStatus, error) {
+	cm.projectionMu.RLock()
+	ledger := cm.registryLedger
+	cm.projectionMu.RUnlock()
+	if ledger == nil {
+		return nil, nil
+	}
+	reader, ok := ledger.(mediaregistry.ProjectionReader)
+	if !ok {
+		return nil, nil
+	}
+	projections, err := reader.ListProjections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list projections for retention: %w", err)
+	}
+	statuses := make(map[string]mediaregistry.ProjectionStatus, len(projections))
+	for _, projection := range projections {
+		statuses[projection.CollectionName] = mediaregistry.ProjectionStatus(projection.Status)
+	}
+	return statuses, nil
+}
+
+// isStalePartialStatus reports whether a projection status represents a
+// build that never became a known-good target. Such collections must never
+// be protected by the keep_last_n tail (the operator must not run retention
+// concurrently with an in-flight reindex).
+func isStalePartialStatus(status mediaregistry.ProjectionStatus) bool {
+	switch status {
+	case mediaregistry.ProjectionFailed, mediaregistry.ProjectionBuilding, mediaregistry.ProjectionValidating:
+		return true
+	default:
+		return false
+	}
 }
