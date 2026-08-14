@@ -79,6 +79,15 @@ verify-dev: verify-foundation verify-static
 verify-changed:
 	@GO="$(GO)" bash scripts/ci/verify-changed.sh
 
+# verify-agent — agent development loop gate: verify-dev (foundation + static)
+# plus registry-driven tests of ONLY the components impacted by the current
+# Git changes. Targets 1-3 minutes on a warm dependency cache. This is the
+# canonical target for agent iterations; per AGENTS.md, agents must not run
+# verify-main during development (verify-main runs exactly once, immediately
+# before push).
+verify-agent: verify-dev verify-changed
+	@echo "✅ agent development verification passed"
+
 # verify-push — daily foundation/static/unit gate plus registry-driven
 # verification of only the components impacted by the current Git changes.
 # Component targets never depend on verify-fast; foundation is a direct shared
