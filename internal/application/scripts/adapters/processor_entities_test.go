@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -234,6 +235,48 @@ func TestEntitiesProcessorEnrichSegmentCacheHit(t *testing.T) {
 	}
 	if !second.cached || second.segment.Cache.Extraction != "HIT_EXACT" {
 		t.Fatalf("second extraction state = %q (cached=%v), want HIT_EXACT cached=true", second.segment.Cache.Extraction, second.cached)
+	}
+}
+
+func TestVidRushSegmentEnricherEnrichBuildsSingleSceneResult(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &boundaryEntityExtractor{}
+	enricher := NewVidRushSegmentEnricher(extractor, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "enrich", Model: "fake"}
+	scene := scriptpkg.SpecScene{ID: "scene-2", SegmentID: "segment-2", Index: 2, Text: "A chef prepares a dish."}
+
+	result, err := enricher.Enrich(context.Background(), plan, scene)
+	if err != nil {
+		t.Fatalf("Enrich error: %v", err)
+	}
+	if result.SegmentID != "segment-2" {
+		t.Fatalf("segment id = %q, want segment-2", result.SegmentID)
+	}
+	if result.SceneID != "scene-2" {
+		t.Fatalf("scene id = %q, want scene-2", result.SceneID)
+	}
+	if result.Position != 2 {
+		t.Fatalf("position = %d, want 2 (preserve canonical scene index)", result.Position)
+	}
+	if result.TextHash != segmentTextHash("A chef prepares a dish.") {
+		t.Fatalf("text hash = %q, want canonical hash", result.TextHash)
+	}
+	if len(result.Insights.Entities) == 0 {
+		t.Fatal("expected at least one extracted entity")
+	}
+	if result.Cache.Extraction != "MISS" {
+		t.Fatalf("extraction cache state = %q, want MISS", result.Cache.Extraction)
+	}
+}
+
+func TestVidRushSegmentEnricherEnrichFailsClosedWithoutExtractor(t *testing.T) {
+	enricher := NewVidRushSegmentEnricher(nil, nil)
+	_, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{}, scriptpkg.SpecScene{ID: "scene-0", Index: 0, Text: "text"})
+	if err == nil {
+		t.Fatal("expected fail-closed error for nil extractor")
+	}
+	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Fatalf("error = %v, want ErrPostprocessFailed", err)
 	}
 }
 
