@@ -336,6 +336,87 @@ func TestProjectionRetention_IsIdempotent(t *testing.T) {
 	}
 }
 
+// TestProjectionRetention_CrossSchemaRollbackNeverKept pins the schema-scoped
+// rollback invariant: when the active target is e5, a nomic collection — even
+// a newer-named one — is dropped, never kept as a rollback. A nomic
+// collection is a different vector space and would re-introduce the
+// query/documents drift on rollback.
+func TestProjectionRetention_CrossSchemaRollbackNeverKept(t *testing.T) {
+	active := "media_assets_v3_e5_768_siglip_768_20260814_110502_588992686"
+	nomicNewer := "media_assets_v3_nomic_768_siglip_768_20260814_093921_081977248"
+	nomicOlder := "media_assets_v3_nomic_768_siglip_768_20260814_092340_638912951"
+
+	plan, err := (ProjectionRetentionPolicy{
+		KeepLastN:       2,
+		RetentionDays:   1,
+		RetiredPrefixes: []string{"media_assets_v3_nomic_768_siglip_768"},
+	}).Decide(Input{
+		Collections:   []string{active, nomicNewer, nomicOlder},
+		ActiveTarget:  active,
+		CurrentPrefix: "media_assets_v3_e5_768_siglip_768",
+		Statuses: statusMap(map[string]mediaregistry.ProjectionStatus{
+			active:     mediaregistry.ProjectionActive,
+			nomicNewer: mediaregistry.ProjectionRetired,
+			nomicOlder: mediaregistry.ProjectionRetired,
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := append([]string(nil), plan.Drop...)
+	want := []string{nomicNewer, nomicOlder}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Drop = %v, want %v", got, want)
+	}
+	if len(plan.Protected) != 0 {
+		t.Fatalf("Protected = %v, want empty (no cross-schema rollback)", plan.Protected)
+	}
+	if len(plan.Keep) != 1 || plan.Keep[0] != active {
+		t.Fatalf("Keep = %v, want [%s] (active only)", plan.Keep, active)
+	}
+}
+
+// TestProjectionRetention_SameSchemaRollbackStillKept pins the complementary
+// invariant: an e5 rollback is still protected when the active target is e5 —
+// schema-scoping must only exclude cross-schema collections, not same-schema
+// rollbacks.
+func TestProjectionRetention_SameSchemaRollbackStillKept(t *testing.T) {
+	active := "media_assets_v3_e5_768_siglip_768_20260814_110502_588992686"
+	rollback := "media_assets_v3_e5_768_siglip_768_20260814_093921_081977248"
+	older := "media_assets_v3_e5_768_siglip_768_20260814_092340_638912951"
+
+	plan, err := (ProjectionRetentionPolicy{
+		KeepLastN:       2,
+		RetentionDays:   1,
+		RetiredPrefixes: []string{"media_assets_v3_nomic_768_siglip_768"},
+	}).Decide(Input{
+		Collections:   []string{active, rollback, older},
+		ActiveTarget:  active,
+		CurrentPrefix: "media_assets_v3_e5_768_siglip_768",
+		Statuses: statusMap(map[string]mediaregistry.ProjectionStatus{
+			active:   mediaregistry.ProjectionActive,
+			rollback: mediaregistry.ProjectionRetired,
+			older:    mediaregistry.ProjectionRetired,
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(plan.Drop) != 1 || plan.Drop[0] != older {
+		t.Fatalf("Drop = %v, want [%s] (only the older same-schema rollback)", plan.Drop, older)
+	}
+	if len(plan.Protected) != 1 || plan.Protected[0] != rollback {
+		t.Fatalf("Protected = %v, want [%s] (newest same-schema rollback)", plan.Protected, rollback)
+	}
+	if !contains(plan.Keep, active) || !contains(plan.Keep, rollback) {
+		t.Fatalf("Keep = %v, want active + same-schema rollback", plan.Keep)
+	}
+}
+
 // TestProjectionRetention_UnknownFailsClosed pins the fail-closed invariant:
 // a prefix-matching collection with NO durable registry status is left
 // untouched (never dropped, never counted in the keep tail).
