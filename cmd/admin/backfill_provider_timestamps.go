@@ -28,13 +28,68 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
+	"go.uber.org/zap"
 )
+
+// runBackfillMediaAssetSources is kept with the existing provenance backfill
+// commands so the admin composition package does not grow another command
+// file. It is dry-run by default and derives only from durable columns.
+func runBackfillMediaAssetSources(args []string) error {
+	flags := flag.NewFlagSet("backfill-media-asset-sources", flag.ContinueOnError)
+	apply := flags.Bool("apply", false, "write missing media_asset_sources rows")
+	jsonOutput := flags.Bool("json", false, "emit the report as JSON")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	cfg, log, cleanup, err := appLogger()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	db, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
+	if err != nil {
+		return fmt.Errorf("open media database: %w", err)
+	}
+	defer db.Close()
+	resolver, err := sqlitemediaregistry.NewCanonicalIdentityResolver(db.DB)
+	if err != nil {
+		return err
+	}
+	ctx := cmdContext()
+	var report any
+	if *apply {
+		report, err = resolver.Backfill(ctx)
+	} else {
+		report, err = resolver.PreviewBackfill(ctx)
+	}
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		mode := "dry-run"
+		if *apply {
+			mode = "apply"
+		}
+		encoded, marshalErr := json.Marshal(map[string]any{"mode": mode, "report": report})
+		if marshalErr != nil {
+			return marshalErr
+		}
+		fmt.Println(string(encoded))
+		return nil
+	}
+	log.Info("canonical media asset source backfill complete",
+		zap.Bool("apply", *apply), zap.Any("report", report))
+	return nil
+}
 
 // runBackfillProviderTimestamps reconciles the provider/timestamp
 // metadata mirror from the canonical columns. Idempotent.
