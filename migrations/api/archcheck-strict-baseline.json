@@ -92,10 +92,11 @@
       "rule_id": "percheck_upsert_points_sole_owner",
       "scope": "internal/",
       "canonical_owner": "internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer; the IndexClip / DeletePointsByFilter entry surface)",
-      "forbidden_pattern": "\\.\\s*UpsertPoints\\s*\\(",
+      "forbidden_pattern": "\\.\\s*(UpsertPoints|DeletePoints)\\s*\\(",
       "exempt_surface": [
         "cmd/archcheck/scan/**",
         "internal/infrastructure/qdrant/indexing/",
+        "internal/infrastructure/qdrant/qdrantmm/",
         "internal/infrastructure/qdrant/transport/client_points.go (the declaration line; naturally exempt because the regex requires a dot-receiver)",
         "*_test.go"
       ],
@@ -116,6 +117,18 @@
           "reason": "godlike/07 e2e-fixture residue: BM25 end-to-end integration test for the Qdrant transport"
         }
       ]
+    },
+    "percheck_embedding_constants_ssot": {
+      "rule_id": "percheck_embedding_constants_ssot",
+      "scope": "internal/",
+      "canonical_owner": "internal/kernel/embedding/ (the EmbeddingContract SSOT — the sole owner of text-embedding model id, revision, dimension, normalization, distance, prefixes)",
+      "forbidden_pattern": "^\\s*(?:const|var)?\\s*[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*\"(nomic-embed-text|intfloat/multilingual-e5-base|multilingual-e5-base|multilingual-e5-small|multilingual-e5-large)\"",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/kernel/embedding/**",
+        "*_test.go"
+      ],
+      "residue_allowed": []
     },
     "percheck_drive_access_ssot": {
       "rule_id": "percheck_drive_access_ssot",

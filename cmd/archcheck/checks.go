@@ -97,6 +97,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_upsert_points_sole_owner", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanUpsertPointsSoleOwner(root, pol, r, productionOnly)
 		}},
+		{"percheck_embedding_constants_ssot", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanEmbeddingConstantsSSOT(root, pol, r, productionOnly)
+		}},
 		{"percheck_search_aggregator_singleton", scan.ScanSearchAggregatorSingleton},
 		{"percheck_api_infrastructure_imports", scan.ScanAPIInfrastructureImports},
 		{"percheck_canonical_application_infrastructure_imports", scan.ScanCanonicalApplicationInfrastructureImports},
