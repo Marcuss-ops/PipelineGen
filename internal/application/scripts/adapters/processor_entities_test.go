@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
@@ -168,6 +169,71 @@ func TestBuildVidRushSegmentResultPreservesEntityType(t *testing.T) {
 	}
 	if result.Insights.Entities[0].Type != "ORGANIZATION" {
 		t.Fatalf("entity type = %q, want ORGANIZATION", result.Insights.Entities[0].Type)
+	}
+}
+
+func TestEntitiesProcessorEnrichSegmentBuildsSingleSegmentResult(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &boundaryEntityExtractor{}
+	processor := NewEntitiesProcessor(extractor)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "single", Model: "fake"}
+	segment := scriptpkg.CanonicalSegment{
+		ID: "segment-001", SceneID: "scene-0", Position: 0,
+		Text:     "A scientist examines a fossil.",
+		TextHash: segmentTextHash("A scientist examines a fossil."),
+	}
+
+	outcome := processor.enrichSegment(context.Background(), plan, scriptpkg.SpecSceneOutput{Version: 1}, segment,
+		segmentExtractionLimits{entities: 5, phrases: 1, words: 5, artlist: 5, images: 5})
+	if outcome.err != nil {
+		t.Fatalf("enrichSegment error: %v", outcome.err)
+	}
+	if outcome.unavailable != nil {
+		t.Fatalf("enrichSegment unavailable: %v", outcome.unavailable)
+	}
+	if outcome.segment.SegmentID != "segment-001" {
+		t.Fatalf("segment id = %q, want segment-001", outcome.segment.SegmentID)
+	}
+	if outcome.segment.SceneID != "scene-0" {
+		t.Fatalf("scene id = %q, want scene-0", outcome.segment.SceneID)
+	}
+	if outcome.segment.TextHash != segment.TextHash {
+		t.Fatalf("text hash = %q, want %q", outcome.segment.TextHash, segment.TextHash)
+	}
+	if len(outcome.segment.Insights.Entities) == 0 {
+		t.Fatal("expected at least one extracted entity")
+	}
+	if outcome.segment.Cache.Extraction != "MISS" {
+		t.Fatalf("extraction cache state = %q, want MISS", outcome.segment.Cache.Extraction)
+	}
+}
+
+func TestEntitiesProcessorEnrichSegmentCacheHit(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &boundaryEntityExtractor{}
+	processor := NewEntitiesProcessor(extractor)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "cache", Model: "fake"}
+	segment := scriptpkg.CanonicalSegment{
+		ID: "segment-cache", Position: 0,
+		Text:     "An architect reviews blueprints.",
+		TextHash: segmentTextHash("An architect reviews blueprints."),
+	}
+	limits := segmentExtractionLimits{entities: 5, phrases: 1, words: 5, artlist: 5, images: 5}
+
+	first := processor.enrichSegment(context.Background(), plan, scriptpkg.SpecSceneOutput{Version: 1}, segment, limits)
+	if first.err != nil || first.unavailable != nil {
+		t.Fatalf("first enrichSegment failed: err=%v unavailable=%v", first.err, first.unavailable)
+	}
+	if first.segment.Cache.Extraction != "MISS" {
+		t.Fatalf("first extraction state = %q, want MISS", first.segment.Cache.Extraction)
+	}
+
+	second := processor.enrichSegment(context.Background(), plan, scriptpkg.SpecSceneOutput{Version: 1}, segment, limits)
+	if second.err != nil || second.unavailable != nil {
+		t.Fatalf("second enrichSegment failed: err=%v unavailable=%v", second.err, second.unavailable)
+	}
+	if !second.cached || second.segment.Cache.Extraction != "HIT_EXACT" {
+		t.Fatalf("second extraction state = %q (cached=%v), want HIT_EXACT cached=true", second.segment.Cache.Extraction, second.cached)
 	}
 }
 
