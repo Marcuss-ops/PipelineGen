@@ -155,6 +155,54 @@ func TestVerifySample_PayloadMinimumValidation(t *testing.T) {
 	assert.True(t, found, "Errors must mention missing 'source' field")
 }
 
+// TestVerifySample_DuplicatePoint verifies that the same canonical
+// asset_id appearing in more than one point bumps DuplicateQdrantPoints
+// (PR-HASH-SEMANTICS item 14: 1 asset = 1 point).
+func TestVerifySample_DuplicatePoint(t *testing.T) {
+	t.Parallel()
+
+	canonicalID := qdrantSchema.AssetIDToQdrantPointID("asset-1")
+	dupID := "00000000-0000-0000-0000-000000000002"
+	payloadA := buildPointPayload(canonicalID, "asset-1")
+	payloadB := buildPointPayload(dupID, "asset-1")
+	srv := mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
+		PagePayloads:    []string{payloadA, payloadB},
+		PageNextOffsets: []string{"offset-1", ""},
+	})
+	defer srv.Close()
+	schema := qdrantSchema.DefaultV3Schema()
+	v := NewReindexVerifier(newClientAt(srv.URL), nil, nil, schema, nil, zap.NewNop())
+
+	report := newSwitchReport("media_assets_v3", 1)
+	report.ActualPoints = 1
+	sqliteSet := map[string]bool{"asset-1": true}
+
+	scrollAborted := v.verifySample(context.Background(), "media_assets_v3", sqliteSet, report)
+	assert.False(t, scrollAborted)
+	assert.Equal(t, 1, report.DuplicateQdrantPoints, "same asset_id in 2 points = 1 duplicate")
+	assert.Contains(t, report.DuplicatePointIDs, dupID)
+}
+
+// TestVerifySample_NoDuplicatePoint verifies a clean collection reports
+// zero duplicate points.
+func TestVerifySample_NoDuplicatePoint(t *testing.T) {
+	t.Parallel()
+
+	srv := mockQdrantForVerifier(t, []string{canonicalPointPayload("asset-1")})
+	defer srv.Close()
+	schema := qdrantSchema.DefaultV3Schema()
+	v := NewReindexVerifier(newClientAt(srv.URL), nil, nil, schema, nil, zap.NewNop())
+
+	report := newSwitchReport("media_assets_v3", 1)
+	report.ActualPoints = 1
+	sqliteSet := map[string]bool{"asset-1": true}
+
+	scrollAborted := v.verifySample(context.Background(), "media_assets_v3", sqliteSet, report)
+	assert.False(t, scrollAborted)
+	assert.Equal(t, 0, report.DuplicateQdrantPoints)
+	assert.Empty(t, report.DuplicatePointIDs)
+}
+
 // TestComputeMissingOrphan_Independent verifies computeMissingOrphan
 // as a standalone free function with non-overlapping ID sets.
 func TestComputeMissingOrphan_Independent(t *testing.T) {
