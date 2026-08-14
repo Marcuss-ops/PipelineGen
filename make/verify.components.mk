@@ -8,6 +8,12 @@ VERIFY_ALL_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-all-components.py
 VERIFY_CHANGED_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-changed-components.py
 VERIFY_COMPONENT_FLAGS ?=
 VERIFY_CHANGED_COMPONENTS_FLAGS ?=
+# Concurrent component workers (verify-component.py). Default 4; bounded by
+# the number of resolved components. Independent components run in parallel
+# while dependency blocking, command deduplication, and timeout semantics are
+# preserved, cutting verify-main wall-clock time without removing checks.
+VERIFY_COMPONENT_JOBS ?= 4
+export VERIFY_COMPONENT_JOBS
 VERIFY_COMPONENT_COVERAGE_RUNNER ?= $(PYTHON) scripts/ci/verify-component-coverage.py
 
 verify-component-coverage:

@@ -21,10 +21,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -361,6 +364,15 @@ def _now_utc() -> str:
     return _runtime_now_utc()
 
 
+def _component_jobs(ordered: Sequence[str]) -> int:
+    """Concurrent component workers, bounded by the dependency-ordered set."""
+    try:
+        jobs = int(os.environ.get("VERIFY_COMPONENT_JOBS", "4"))
+    except ValueError:
+        jobs = 4
+    return max(1, min(jobs, len(ordered)))
+
+
 def write_report(path: Path, report: Mapping[str, Any]) -> None:
     """Write reports through the shared atomic JSON writer."""
     write_json_report(path, report)
@@ -384,10 +396,15 @@ def run_components(
     started_at = _now_utc()
     started = time.monotonic()
     executions: dict[tuple[str, ...], Execution] = {}
+    execution_running: set[tuple[str, ...]] = set()
+    execution_ready: dict[tuple[str, ...], threading.Event] = {}
     component_runs: dict[str, ComponentRun] = {}
     diagnostics: list[str] = []
+    completed: set[str] = set()
+    next_index = 0
+    state_lock = threading.Condition()
 
-    for name in ordered:
+    def process_component(name: str) -> None:
         definition = registry[name]
         commands, skipped_live, race_skipped = build_commands(name, definition, mode, include_live)
         component = ComponentRun(
@@ -416,7 +433,10 @@ def run_components(
             component.status = "BLOCKED"
             component.command_results = []
             diagnostics.append(f"component={name} blocked_by={','.join(failed_dependencies)}")
-            continue
+            with state_lock:
+                completed.add(name)
+                state_lock.notify_all()
+            return
 
         component_started = time.monotonic()
         timeout_seconds = (
@@ -438,33 +458,47 @@ def run_components(
                 diagnostics.append(f"component={name} command={command.display} status=TIMEOUT")
                 break
 
-            if command.key in executions:
-                execution = executions[command.key]
-                if execution.result.status == "PASS" and time.monotonic() > deadline:
-                    execution = Execution(
-                        CommandResult(
-                            "TIMEOUT",
-                            None,
-                            execution.result.duration_ms,
-                            timed_out=True,
-                        ),
-                        execution.stdout,
-                        execution.stderr,
-                    )
-                component.command_results.append(_command_result(command, execution, reused=True))
-                if execution.result.status != "PASS":
-                    component.status = execution.result.status
-                    diagnostics.append(f"component={name} command={command.display} status={execution.result.status}")
-                    break
-                continue
-
             if dry_run:
-                execution = Execution(CommandResult("PASS", 0, 0))
+                with state_lock:
+                    if command.key in executions:
+                        execution = executions[command.key]
+                        reused = True
+                    else:
+                        execution = Execution(CommandResult("PASS", 0, 0))
+                        executions[command.key] = execution
+                        reused = False
             else:
-                try:
-                    execution = runner(command.argv, remaining, root)
-                except OSError as exc:
-                    execution = Execution(CommandResult("FAIL", 127, 0), stderr=str(exc))
+                with state_lock:
+                    if command.key in executions:
+                        execution = executions[command.key]
+                        reused = True
+                        ready = None
+                    elif command.key in execution_running:
+                        execution = None
+                        reused = True
+                        ready = execution_ready[command.key]
+                    else:
+                        execution_running.add(command.key)
+                        execution_ready[command.key] = threading.Event()
+                        execution = None
+                        reused = False
+                        ready = None
+                if execution is None:
+                    if ready is not None:
+                        # Another component is executing the shared command;
+                        # wait for its result instead of running it twice.
+                        ready.wait()
+                        with state_lock:
+                            execution = executions[command.key]
+                    else:
+                        try:
+                            execution = runner(command.argv, remaining, root)
+                        except Exception as exc:  # noqa: BLE001 - fail closed, never hang peers
+                            execution = Execution(CommandResult("FAIL", 127, 0), stderr=str(exc))
+                        with state_lock:
+                            executions[command.key] = execution
+                            execution_running.discard(command.key)
+                            execution_ready[command.key].set()
 
             if execution.result.status == "PASS" and time.monotonic() > deadline:
                 execution = Execution(
@@ -478,19 +512,69 @@ def run_components(
                     execution.stderr,
                 )
 
-            executions[command.key] = execution
-            component.command_results.append(_command_result(command, execution))
-            if execution.result.status != "PASS":
-                component.status = execution.result.status
-                diagnostic = f"component={name} command={command.display} status={execution.result.status}"
-                diagnostics.append(diagnostic)
-                if execution.stderr:
-                    diagnostics.append(redact(execution.stderr[-2000:]).strip())
-                break
+            with state_lock:
+                component.command_results.append(_command_result(command, execution, reused))
+                if execution.result.status != "PASS":
+                    component.status = execution.result.status
+                    diagnostic = f"component={name} command={command.display} status={execution.result.status}"
+                    diagnostics.append(diagnostic)
+                    if execution.stderr:
+                        diagnostics.append(redact(execution.stderr[-2000:]).strip())
+                    break
 
         if component.status == "PENDING":
             component.status = "PASS"
         component.duration_ms = int((time.monotonic() - component_started) * 1000)
+        with state_lock:
+            completed.add(name)
+            state_lock.notify_all()
+
+    def worker() -> None:
+        nonlocal next_index
+        while True:
+            with state_lock:
+                while True:
+                    index = next_index
+                    if index >= len(ordered):
+                        return
+                    name = ordered[index]
+                    if all(
+                        dependency in completed
+                        for dependency in registry[name].get("dependencies", [])
+                    ):
+                        next_index = index + 1
+                        break
+                    state_lock.wait()
+            try:
+                process_component(name)
+            except Exception as exc:  # noqa: BLE001 - fail closed, never hang peers
+                with state_lock:
+                    component_runs.setdefault(
+                        name,
+                        ComponentRun(
+                            name=name,
+                            dependencies=list(registry[name].get("dependencies", [])),
+                            commands=[],
+                            timeout_seconds=float(
+                                registry[name].get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
+                            ),
+                            blocked_by=[],
+                        ),
+                    )
+                    component_runs[name].status = "FAIL"
+                    diagnostics.append(f"component={name} crashed: {exc}")
+                    completed.add(name)
+                    state_lock.notify_all()
+
+    jobs = _component_jobs(ordered)
+    if jobs <= 1:
+        for name in ordered:
+            process_component(name)
+    else:
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = [pool.submit(worker) for _ in range(jobs)]
+            for future in futures:
+                future.result()
 
     final_status = "PASS" if all(component_runs[name].status == "PASS" for name in ordered) else "FAIL"
     finished_at = _now_utc()
