@@ -16,6 +16,9 @@
 //     by the keep-last-N tail: a failed build must not crowd out a
 //     known-good rollback target.
 //   - The protected rollback target is always pinned (never dropped).
+//   - In status-aware mode (Statuses non-nil) a prefix-matching collection
+//     with no durable registry status is UNKNOWN and is left untouched
+//     (never dropped) — fail-closed.
 package projectionretention
 
 import (
@@ -64,7 +67,9 @@ type Input struct {
 	// CurrentPrefix is the current schema's canonical physical-name prefix.
 	CurrentPrefix string
 	// Statuses maps collection name -> durable projection lifecycle status.
-	// A nil/empty map disables status-aware keeping (legacy behaviour).
+	// A nil map disables status-aware keeping (legacy name-sort behaviour).
+	// A non-nil map enables it: a prefix-matching collection absent from
+	// the map is UNKNOWN and is never dropped (fail-closed).
 	Statuses map[string]mediaregistry.ProjectionStatus
 	// ProtectedRollback is an explicit rollback target to pin (never
 	// dropped), independent of the keep-last-N tail.
@@ -95,7 +100,15 @@ func (p ProjectionRetentionPolicy) Decide(in Input) (Plan, error) {
 			plan.Keep = append(plan.Keep, name)
 			continue
 		}
-		if in.Statuses[name] == mediaregistry.ProjectionActive {
+		status, known := in.Statuses[name]
+		if in.Statuses != nil && !known {
+			// Unknown collection in status-aware mode: fail closed by
+			// leaving it untouched. Dropping a prefix-matching collection
+			// with no durable registry status could destroy an
+			// operator-managed or crash-orphaned collection.
+			continue
+		}
+		if status == mediaregistry.ProjectionActive {
 			plan.Keep = append(plan.Keep, name)
 			plan.Protected = append(plan.Protected, name)
 			continue
