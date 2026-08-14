@@ -1,6 +1,10 @@
 package observability
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var (
 	vidrushSegmentsTotal    = prometheus.NewCounter(prometheus.CounterOpts{Name: "vidrush_segments_total", Help: "VidRush segments processed."})
@@ -72,6 +76,53 @@ var (
 		Name: "vidrush_unresolved_ratio",
 		Help: "Ratio of unresolved segments to total segments (0.0–1.0).",
 	})
+
+	// ── Incremental scene pipeline metrics (SceneCommitted → enrichment →
+	// barrier). Labels are intentionally absent: dynamic run/scene/segment ids
+	// stay in structured logs, never in metric labels.
+
+	vidrushSceneCommitted = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vidrush_scene_committed_total",
+		Help: "Stable scenes committed to the incremental VidRush pipeline.",
+	})
+
+	vidrushSceneEnrichmentStarted = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vidrush_scene_enrichment_started_total",
+		Help: "Scene enrichments that began (entities → providers → materialize).",
+	})
+
+	vidrushSceneEnrichmentCompleted = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vidrush_scene_enrichment_completed_total",
+		Help: "Scene enrichments that completed (success or error).",
+	})
+
+	vidrushSceneEnrichmentDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "vidrush_scene_enrichment_duration_seconds",
+		Help:    "Wall-clock duration of a single scene enrichment.",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60},
+	})
+
+	vidrushGenerationOverlap = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "vidrush_generation_overlap_seconds",
+		Help:    "Wall-clock overlap between scene generation and VidRush enrichment. Positive values prove enrichment began before generation finished.",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
+	})
+
+	vidrushBarrierWait = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "vidrush_barrier_wait_seconds",
+		Help:    "Wall-clock time the final VidRush barrier waited for still-running enrichments.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30},
+	})
+
+	vidrushStaleResults = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "vidrush_stale_results_total",
+		Help: "Enrichment results discarded by stale-result fencing.",
+	})
+
+	vidrushInflightSegments = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vidrush_inflight_segments",
+		Help: "Number of scene enrichments currently in flight.",
+	})
 )
 
 func init() {
@@ -84,6 +135,10 @@ func init() {
 		vidrushProviderDuration, vidrushSegmentsPerJob, vidrushCandidatesPerSegment,
 		vidrushJobFailures, vidrushRetries,
 		vidrushBindingRatio, vidrushUnresolvedRatio,
+		// Incremental scene pipeline metrics
+		vidrushSceneCommitted, vidrushSceneEnrichmentStarted, vidrushSceneEnrichmentCompleted,
+		vidrushSceneEnrichmentDuration, vidrushGenerationOverlap, vidrushBarrierWait,
+		vidrushStaleResults, vidrushInflightSegments,
 	)
 }
 
@@ -146,3 +201,23 @@ func (a *VidRushMetricsAdapter) SetBindingRatio(ratio float64) {
 func (a *VidRushMetricsAdapter) SetUnresolvedRatio(ratio float64) {
 	vidrushUnresolvedRatio.Set(ratio)
 }
+
+// ── Incremental scene pipeline metrics (VidRushMetrics port) ─────────────
+
+func (*VidRushMetricsAdapter) SceneCommitted() { vidrushSceneCommitted.Inc() }
+func (*VidRushMetricsAdapter) EnrichmentStarted() {
+	vidrushSceneEnrichmentStarted.Inc()
+	vidrushInflightSegments.Inc()
+}
+func (*VidRushMetricsAdapter) EnrichmentCompleted(duration time.Duration) {
+	vidrushSceneEnrichmentCompleted.Inc()
+	vidrushSceneEnrichmentDuration.Observe(duration.Seconds())
+	vidrushInflightSegments.Dec()
+}
+func (*VidRushMetricsAdapter) BarrierWait(seconds float64) {
+	vidrushBarrierWait.Observe(seconds)
+}
+func (*VidRushMetricsAdapter) GenerationOverlap(seconds float64) {
+	vidrushGenerationOverlap.Observe(seconds)
+}
+func (*VidRushMetricsAdapter) StaleResult() { vidrushStaleResults.Inc() }
