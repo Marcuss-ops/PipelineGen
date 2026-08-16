@@ -265,6 +265,20 @@ func NewServiceFromSubBundles(
 	return svc
 }
 
+// SetSegmentSelectionResolver wires the canonical segment-selection
+// resolver (explicit | important) into the extraction pipeline. The
+// composition root calls this once after NewServiceFromSubBundles;
+// a nil resolver leaves the extraction service in explicit-only mode
+// (selection.mode="important" fails closed, godlike/07).
+func (s *Service) SetSegmentSelectionResolver(r *SegmentSelectionResolver) {
+	if s == nil {
+		return
+	}
+	if s.extraction != nil {
+		s.extraction.SetSegmentSelectionResolver(r)
+	}
+}
+
 // StockService returns the transcript-first YouTube stock capability. A nil
 // return means the capability was not wired and must not be registered.
 func (s *Service) StockService() *stockplan.StockService {

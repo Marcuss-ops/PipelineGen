@@ -24,6 +24,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -71,6 +72,16 @@ type ExtractionService struct {
 	processSeg          *ProcessYouTubeSegmentUseCase
 	maxConcurrentVideos int
 	callbacks           ExtractionCallbacks
+	// assetDestResolver materialises the requested Drive subfolder via
+	// the canonical asset.Resolver → drive.Admin.GetOrCreateFolder
+	// surface. nil means the subfolder get-or-create falls back to the
+	// callbacks seam (test/dev compositions without Drive wiring).
+	assetDestResolver assetdomain.Resolver
+	// resolver maps ExtractRequest.Selection onto the canonical
+	// []dto.Segment shape (explicit | important). A nil resolver
+	// means only the explicit mode is supported (selection.mode=
+	// "important" fails closed at resolve time, godlike/07).
+	resolver *SegmentSelectionResolver
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.
@@ -94,7 +105,20 @@ func NewExtractionService(deps ExtractionDeps, cb ExtractionCallbacks) *Extracti
 		processSeg:          deps.ProcessSeg,
 		maxConcurrentVideos: maxV,
 		callbacks:           cb,
+		assetDestResolver:   deps.AssetDestResolver,
 	}
+}
+
+// SetSegmentSelectionResolver wires the canonical segment-selection
+// strategy owner (explicit | important). Optional: a nil resolver means
+// only the explicit mode is supported — selection.mode="important"
+// fails closed with a typed error instead of silently processing zero
+// segments (godlike/07 no-fake-availability).
+func (s *ExtractionService) SetSegmentSelectionResolver(r *SegmentSelectionResolver) {
+	if s == nil {
+		return
+	}
+	s.resolver = r
 }
 
 // Extract is the canonical entry point for the YouTube extraction
@@ -122,13 +146,81 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	if err != nil {
 		return nil, fmt.Errorf("youtube extraction: invalid url: %w", err)
 	}
-	if len(req.Segments) == 0 {
+	// Resolve the canonical segment list from the request's selection
+	// mode BEFORE the empty-segments gate. explicit (default) returns
+	// req.Segments verbatim; important runs transcript + LLM analyzer
+	// and flows the discovered segments through the SAME canonical
+	// extraction pipeline (no second ingest system).
+	// Resolve the canonical segment list without mutating the caller's
+	// request (godlike/06 input immutability). The resolved selection
+	// flows through the same downstream pipeline as a local value.
+	segments := req.Segments
+	if s.resolver != nil {
+		resolved, resolveErr := s.resolver.Resolve(ctx, req)
+		if resolveErr != nil {
+			return &youtubetypes.ExtractResponse{
+				OK: false, SourceURL: req.URL, VideoID: videoID,
+				Error: fmt.Sprintf("youtube extraction: segment selection: %v", resolveErr),
+			}, nil
+		}
+		segments = resolved
+	}
+	if len(segments) == 0 {
 		return &youtubetypes.ExtractResponse{
 			OK: false, SourceURL: req.URL, VideoID: videoID,
 			Error: "youtube extraction: at least one segment is required",
 		}, nil
 	}
 	dest := resolveDestination(req)
+
+	// Resolve the requested subfolder BEFORE fan-out. The HTTP handler
+	// normalises destination.subfolder_name + create_subfolder into a
+	// folder_path STRING only (no Drive I/O at the transport layer); the
+	// worker is the layer that must materialise the folder. When the
+	// caller explicitly requested a child folder inside an explicit root,
+	// create (or reuse) it now and upload into the CHILD — never the root.
+	// godlike/07 fail-closed: a subfolder resolution failure aborts the
+	// extraction instead of silently uploading into the wrong folder.
+	if req.Destination != nil && req.Destination.CreateSubfolder &&
+		dest.FolderID != "" && strings.TrimSpace(req.Destination.SubfolderName) != "" {
+		subName := strings.TrimSpace(req.Destination.SubfolderName)
+		if s.assetDestResolver != nil {
+			// Canonical path: asset.Resolver → drive.Admin.GetOrCreateFolder.
+			resolved, rerr := s.assetDestResolver.Resolve(ctx, &assetdomain.ResolveRequest{
+				Source:          "youtube",
+				FolderID:        dest.FolderID,
+				FolderPath:      dest.FolderPath,
+				SubfolderName:   subName,
+				CreateSubfolder: true,
+			})
+			if rerr != nil {
+				return nil, fmt.Errorf("youtube extraction: create destination subfolder: %w", rerr)
+			}
+			if resolved == nil || resolved.FolderID == "" {
+				return nil, fmt.Errorf("youtube extraction: destination subfolder resolution returned an empty folder id")
+			}
+			dest.FolderID = resolved.FolderID
+			if resolved.FolderPath != "" {
+				dest.FolderPath = resolved.FolderPath
+			}
+		} else if s.callbacks != nil {
+			subID, derr := s.callbacks.DriveGetOrCreateFolder(ctx, subName, dest.FolderID)
+			if derr != nil {
+				return nil, fmt.Errorf("youtube extraction: create destination subfolder: %w", derr)
+			}
+			if subID == "" {
+				return nil, fmt.Errorf("youtube extraction: destination subfolder resolution returned an empty folder id")
+			}
+			// Upload into the materialised child folder. dest.FolderPath is kept
+			// from the transport-normalised value (the handler already composed
+			// group/subfolder when a group was supplied), so the metadata record
+			// stays consistent with where the clips actually landed.
+			dest.FolderID = subID
+		} else {
+			return nil, fmt.Errorf("youtube extraction: destination subfolder requested but drive resolver not wired")
+		}
+	}
+
 	outDir := resolveOutDir(s.cfg.DataDir, videoID, canonicalGroup(req))
-	return s.extractFanOut(ctx, req, videoID, outDir, dest.FolderID, dest.FolderPath)
+	return s.extractFanOut(ctx, req, segments, videoID, outDir, dest.FolderID, dest.FolderPath)
 }

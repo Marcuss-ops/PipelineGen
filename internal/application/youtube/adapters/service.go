@@ -3,7 +3,7 @@
 //
 // Phase 1b (June 2026): the original mega-package youtube.Service was moved to
 // usecase/, but 6 files in adapters/ still reference a local *Service receiver
-// for methods like resolveDriveDestination, saveManifest, processSegment, etc.
+// for methods like saveManifest, processSegment, etc.
 // This file defines the minimal struct those methods need so they compile
 // without creating an adapters → usecase cycle (adapters already imports
 // usecase for BuildClipMetadataInput and ExtractionCallbacks — no new cycle).
@@ -45,18 +45,17 @@ import (
 // when constructing the Service used by the extraction pipeline.
 // Fields are unexported because all accessors are methods in this package.
 type Service struct {
-	log               *zap.Logger
-	cfg               youtubetypes.RuntimeConfig
-	clips             youtubeports.ClipStorePort
-	monitors          youtubeports.MonitorsStorePort
-	folderMemory      youtubeports.FolderMemoryPort
-	callbacks         usecase.ExtractionCallbacks
-	assetDestResolver asset.Resolver
-	cache             youtubeports.CachePort
-	segmentsSvc       *usecase.SegmentsService
-	videoPipeline     youtubeports.VideoPipelinePort
-	ollama            youtubeports.OllamaClientPort
-	assetRepo         asset.Repository
+	log           *zap.Logger
+	cfg           youtubetypes.RuntimeConfig
+	clips         youtubeports.ClipStorePort
+	monitors      youtubeports.MonitorsStorePort
+	folderMemory  youtubeports.FolderMemoryPort
+	callbacks     usecase.ExtractionCallbacks
+	cache         youtubeports.CachePort
+	segmentsSvc   *usecase.SegmentsService
+	videoPipeline youtubeports.VideoPipelinePort
+	ollama        youtubeports.OllamaClientPort
+	assetRepo     asset.Repository
 }
 
 // ServiceDeps is the PR1.6/1.7 constructor envelope for Service.

@@ -8,21 +8,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // buildDomainScriptServices constructs the artifact service, image
-// search resolver, and extract-important-clips handler and populates
-// the wiring.DomainBundle with them.
+// search resolver, and the canonical segment-selection resolver and
+// populates the wiring.DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the canonical SOLE
 // owner of its composition.
@@ -38,7 +36,6 @@ func buildDomainScriptServices(
 	ai *wiring.AIBundle,
 	bundle *wiring.DomainBundle,
 	imageSvc *imgservice.Service,
-	clipWriter *assets.ClipAtomicWriterAdapter,
 ) error {
 	artifactBlobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
 	if err != nil {
@@ -57,7 +54,13 @@ func buildDomainScriptServices(
 	}
 	bundle.ImageSearchResolver = imageSearchResolver
 
-	// ExtractImportantClips adapters + handler.
+	// SegmentSelectionResolver: the canonical explicit|important strategy
+	// owner behind POST /api/clips/process selection.mode. The resolver
+	// owns NO publishing behaviour — it only maps the selection mode onto
+	// []dto.Segment, which then flows through the SAME canonical
+	// extraction pipeline (ExtractionService → extractFanOut →
+	// ProcessYouTubeSegmentUseCase). This retires the former duplicate
+	// extract-important ingest system (download/upload/hash/commit loop).
 	extractDl := downloader.NewYTDLP(cfg)
 	extractSubtitleSource := transcripts.NewCachingTranscriptProvider(
 		youtubeinfra.NewYTDLPSubtitleAdapter(youtubeinfra.Deps{
@@ -67,38 +70,12 @@ func buildDomainScriptServices(
 			Log:        log,
 		}),
 	)
-	extractAdapters := BuildExtractImportantClipsAdapters(ExtractImportantClipsAdapterDeps{
-		Subtitles:  extractSubtitleSource,
-		Downloader: extractDl,
-		Folder:     &adminFolderManagerAdapter{admin: drive.Admin},
-		Files: func(ctx context.Context, req drivePutFnRequest) (*drivePutFnResult, error) {
-			if drive.Publisher == nil {
-				return nil, fmt.Errorf("compose domains: extract-important upload: drive.Publisher unwired")
-			}
-			res, err := drive.Publisher.Publish(ctx, delivery.PublishRequest{
-				Destination:         delivery.DestinationAdmin,
-				LocalPath:           req.LocalPath,
-				Filename:            req.Filename,
-				DestinationFolderID: req.FolderID,
-				ConflictPolicy:      delivery.ConflictOverwrite,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("compose domains: extract-important upload: %w", err)
-			}
-			return &drivePutFnResult{FileID: res.FileID, WebViewLink: res.WebViewLink}, nil
-		},
-	})
-	extractUseCase := youtube.NewExtractImportantClipsUseCase(youtube.ExtractImportantClipsDeps{
-		Log:        log,
-		Subtitles:  extractAdapters.TranscriptFetcher,
-		Analyzer:   nil, // analyzer=nil → failClosedAnalyzerAdapter returns ErrAnalyzerUnavailable at runtime
-		Downloader: extractAdapters.SectionDownloader,
-		Folder:     extractAdapters.DriveFolder,
-		Uploader:   extractAdapters.DriveUploader,
-		Writer:     clipWriter,
-		Hasher:     extractAdapters.Hasher,
-	})
-	bundle.ExtractImportantClipsJobHandler = youtube.NewExtractImportantClipsJobHandler(extractUseCase, log)
+	transcriptFetcher := &transcriptFetcherAdapter{sub: extractSubtitleSource}
+	// Analyzer is the nil-tolerant forward-pointer: failClosedAnalyzerAdapter
+	// surfaces ErrAnalyzerUnavailable until the real LLM analyzer lands.
+	analyzer := &failClosedAnalyzerAdapter{}
+	segmentSelectionResolver := youtube.NewSegmentSelectionResolver(log, transcriptFetcher, analyzer)
+	bundle.YoutubeClipService.SetSegmentSelectionResolver(segmentSelectionResolver)
 
 	return nil
 }

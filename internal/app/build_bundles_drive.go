@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -231,6 +232,20 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 		lifecycle = drive.NewFileLifecycleAdapter(driveUploader.Service, log)
 	}
 
+	// Reconnect the canonical asset.Resolver to the real Drive
+	// get-or-create surface (drive.Admin). The previous wiring was nil
+	// because drive.NewDestinationResolver was tied to drive.Store, which
+	// has been retired (PR-IMAGES-REMOVE-DRIVE-STORE).
+	// drive.NewAssetDestResolver wraps drive.Admin.GetOrCreateFolder so a
+	// request that carries CreateSubfolder + SubfolderName now materialises
+	// the child folder instead of silently uploading into the root
+	// (godlike/07). Typed-nil-safe: nil admin (Drive not configured) → nil
+	// resolver, and consumers fail closed when a subfolder is requested.
+	var destResolver asset.Resolver
+	if admin != nil {
+		destResolver = drive.NewAssetDestResolver(admin)
+	}
+
 	return &wiring.DriveBundle{
 		// Canonical Pattern 0 ports (FASE 9 P0.1 / DRIVE-005).
 		Admin:  admin,
@@ -249,13 +264,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
 		DriveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
-		// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): wiring.DriveBundle.MediaStore
-		// field was REMOVED. DestResolver field stays on the struct
-		// (nil-tolerant for legacy non-image callers like voiceover/artlist
-		// that still consume asset.Resolver through the bundle) but is
-		// no longer wired here — the previous drive.NewDestinationResolver
-		// impl was tied to drive.Store, which has been retired.
-		DestResolver:  nil,
+		DestResolver:  destResolver,
 		StyleRegistry: styleRegistry,
 		Publisher:     publisher,
 		DocClient:     docClient,

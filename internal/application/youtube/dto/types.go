@@ -81,11 +81,42 @@ type ExtractRequest struct {
 	Strategy       ExtractionStrategy  `json:"strategy,omitempty"`
 	Concurrency    int                 `json:"concurrency,omitempty"`
 	Destination    *DestinationRequest `json:"destination,omitempty"`
+	// Selection configures how segments are selected. nil (or
+	// selection.mode="explicit") uses the caller-supplied Segments;
+	// selection.mode="important" derives segments from the video
+	// transcript via an LLM analyzer and flows them through the SAME
+	// canonical extraction pipeline.
+	Selection *SegmentSelection `json:"selection,omitempty"`
 	// RequireAllLanguagesBeforeVideo overrides the global multilingual gate
 	// for this extraction job. false allows a clip to commit with the
 	// available transcript language(s) only.
 	RequireAllLanguagesBeforeVideo *bool `json:"require_all_languages_before_video,omitempty"`
 	Shuffle                        bool  `json:"shuffle,omitempty"`
+}
+
+// SegmentSelectionMode is the typed value for SegmentSelection.Mode.
+type SegmentSelectionMode string
+
+const (
+	// SegmentSelectionModeExplicit is the default: the caller-supplied
+	// Segments field is used verbatim.
+	SegmentSelectionModeExplicit SegmentSelectionMode = "explicit"
+	// SegmentSelectionModeImportant derives segments from the video
+	// transcript via the LLM analyzer (SegmentSelectionResolver).
+	SegmentSelectionModeImportant SegmentSelectionMode = "important"
+)
+
+// SegmentSelection configures how the clip segments for an extraction
+// request are selected. Explicit mode (the default) consumes the
+// request's Segments field; important mode runs the transcript + LLM
+// analyzer pipeline and returns the derived segments into the same
+// canonical extraction pipeline (ExtractionService → extractFanOut →
+// ProcessYouTubeSegmentUseCase).
+type SegmentSelection struct {
+	Mode          string `json:"mode"`                     // "explicit" (default) | "important"
+	Language      string `json:"language,omitempty"`       // transcript language for important mode (empty → "und")
+	MaxSegments   int    `json:"max_segments,omitempty"`   // max important segments (default 5)
+	PolicyVersion string `json:"policy_version,omitempty"` // clip-ID policy version (default v1)
 }
 
 // UnmarshalJSON rejects the pre-destination wire shape instead of silently
@@ -245,9 +276,14 @@ type ProcessSegmentResult struct {
 	DriveFileID      string
 	DriveLink        string
 	IndexedRequestID string
-	Status           string // "processed" | "skipped" | "failed"
-	Error            error
-	Item             ExtractItem
+	// Status is "processed" | "processed_but_index_blocked" | "failed".
+	// PR-CACHE-HIT-FINALIZATION: the legacy "skipped" cache-hit status
+	// is RETIRED for this use case — a binary cache hit skips only
+	// acquisition/cut and still passes through the enrichment/
+	// finalization gate, so it reports "processed".
+	Status string
+	Error  error
+	Item   ExtractItem
 }
 
 // ── Commit 2/6 (PR-C-YouTube-Cutover, June 2026) ───────────────────────
@@ -269,8 +305,9 @@ type ProcessSegmentResult struct {
 type ExtractionStrategy string
 
 const (
-	// StrategyVerify is the default. Cache hit short-circuits the
-	// pipeline (idempotent re-run on already-processed clips).
+	// StrategyVerify is the default. A binary cache hit skips only
+	// acquisition/cut and still passes through the enrichment/
+	// finalization gate (idempotent re-run on already-processed clips).
 	StrategyVerify ExtractionStrategy = "verify"
 	// StrategySkip skips re-processing even on cache miss (used by
 	// the channel monitor when a video is already in the broker

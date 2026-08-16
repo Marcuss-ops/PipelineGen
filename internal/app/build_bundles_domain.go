@@ -63,8 +63,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		return nil, fmt.Errorf("compose domains (assets): %w", err)
 	}
 
-	// ── Scripts domain: artifacts, extract-important-clips ──
-	if err := buildDomainScriptServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, bundle, bundle.ImageService /* *imgservice.Service */, clipWriter); err != nil {
+	// ── Scripts domain: artifacts, segment-selection ──
+	if err := buildDomainScriptServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, bundle, bundle.ImageService /* *imgservice.Service */); err != nil {
 		return nil, fmt.Errorf("compose domains (scripts): %w", err)
 	}
 
