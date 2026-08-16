@@ -128,6 +128,33 @@ var (
 func NewDeterministicPlanner() ClipPlanner            { return types.NewDeterministicPlanner() }
 func NewExplicitPlanner(clips []ClipSpec) ClipPlanner { return types.NewExplicitPlanner(clips) }
 
+// ──── planner helpers (bridge to types, August 2026) ────
+//
+// These names were previously duplicated in the legacy
+// stockpipeline/planner.go alongside the planner implementations. The
+// canonical owners now live in types/; this block keeps the package-level
+// names callers already use so removing the legacy file is transparent.
+
+const (
+	SourceProviderYouTube = types.SourceProviderYouTube
+	SourceProviderPexels  = types.SourceProviderPexels
+	SourceProviderPixabay = types.SourceProviderPixabay
+	SourceProviderUnknown = types.SourceProviderUnknown
+)
+
+type RoundIndexSpec = types.RoundIndexSpec
+
+func ExpandRoundIndexing(rounds []RoundIndexSpec, clipDuration int) ([]ClipSpec, error) {
+	return types.ExpandRoundIndexing(rounds, clipDuration)
+}
+
+func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
+	return types.ExpandExplicitClipSpecs(clips, secondsPerSegment)
+}
+
+func inferSourceProvider(rawURL string) string { return types.InferSourceProvider(rawURL) }
+func inferSourceVideoID(rawURL string) string  { return types.InferSourceVideoID(rawURL) }
+
 // ──── error sentinels (was service_errors.go) ────
 
 var (

@@ -149,6 +149,33 @@ func TestDeterministicPlanner_OutputLogicalIDFormatSuffixIndex(t *testing.T) {
 	}
 }
 
+func TestExplicitPlanner_SameSourceDifferentWindows_UniqueIDs(t *testing.T) {
+	src := VideoSource{URL: "https://www.youtube.com/watch?v=Di-Awl0XyQs"}
+	clips := []ClipSpec{
+		{URL: src.URL, StartSec: 0, EndSec: 5, Slug: "seg-a-0-5"},
+		{URL: src.URL, StartSec: 80, EndSec: 85, Slug: "seg-a-80-85"},
+	}
+	plans, err := NewExplicitPlanner(clips).Plan(context.Background(), src, 0, 0, "v1")
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(plans) != 2 {
+		t.Fatalf("expected 2 plans, got %d", len(plans))
+	}
+	if plans[0].OutputLogicalID == plans[1].OutputLogicalID {
+		t.Fatalf("different clip windows must produce different OutputLogicalIDs, both = %q", plans[0].OutputLogicalID)
+	}
+
+	// The same window must still mint the same ID (determinism preserved).
+	again, err := NewExplicitPlanner([]ClipSpec{{URL: src.URL, StartSec: 0, EndSec: 5}}).Plan(context.Background(), src, 0, 0, "v1")
+	if err != nil {
+		t.Fatalf("Plan again: %v", err)
+	}
+	if again[0].OutputLogicalID != plans[0].OutputLogicalID {
+		t.Fatalf("same window must mint the same OutputLogicalID: %q vs %q", again[0].OutputLogicalID, plans[0].OutputLogicalID)
+	}
+}
+
 func indexSuffixFormat(i int) string {
 	return ":" + itoa(i)
 }

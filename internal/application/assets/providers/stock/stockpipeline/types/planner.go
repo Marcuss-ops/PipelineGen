@@ -71,7 +71,7 @@ const (
 	SourceProviderUnknown = "unknown"
 )
 
-// inferSourceProvider classifies a source URL into the canonical
+// InferSourceProvider classifies a source URL into the canonical
 // 4-bucket provider taxonomy. Single canonical implementer per
 // godlike/06 SSOT — every consumer reads plan.SourceProvider which
 // is set ONCE at plan-build time.
@@ -86,7 +86,7 @@ const (
 // non-URL inputs (parse error OR empty host) collapse to
 // SourceProviderUnknown — the bucket is observable and never
 // silent-empty.
-func inferSourceProvider(rawURL string) string {
+func InferSourceProvider(rawURL string) string {
 	trimmed := strings.TrimSpace(rawURL)
 	if trimmed == "" {
 		return SourceProviderUnknown
@@ -112,7 +112,7 @@ func inferSourceProvider(rawURL string) string {
 	return SourceProviderUnknown
 }
 
-// inferSourceVideoID extracts the canonical video ID ONLY when
+// InferSourceVideoID extracts the canonical video ID ONLY when
 // the URL belongs to the YouTube provider bucket. Returns "" for
 // non-YouTube URLs (provider mismatch — caller can rely on
 // plan.SourceProvider too) AND for malformed YouTube URLs where
@@ -124,7 +124,7 @@ func inferSourceProvider(rawURL string) string {
 // surface false-positive FAILED jobs for an otherwise valid
 // SourceURL. Callers that NEED the ID can re-run the extraction
 // verbatim — the function is pure + deterministic.
-func inferSourceVideoID(rawURL string) string {
+func InferSourceVideoID(rawURL string) string {
 	vid, err := urlutil.ExtractVideoID(rawURL)
 	if err != nil {
 		return ""
@@ -221,6 +221,8 @@ type ClipPlan struct {
 	// OutputLogicalID is the deterministic asset ID the chunk
 	// producer will mint. Format: planner:<sha256-prefix>:<index>
 	// — opaque hash so callers don't depend on its internal shape.
+	// The hash covers the clip window (start/end) so clips of the
+	// same source at different timestamps never collide.
 	OutputLogicalID string
 
 	// PolicyVersion is the planner policy version at plan-time.
@@ -326,9 +328,11 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 // buildClipPlan mints a ClipPlan with the deterministic OutputLogicalID.
 //
 // Format: planner:<sha256-prefix>:<index>. The hash prefix is
-// stable across runs + across implementations (URL-driven), so
-// re-planning the same source yields identical IDs — downstream
-// producers can use the Logical ID as a dedupe key.
+// stable across runs + across implementations and covers the full
+// clip identity (source URL + index + policy version + start/end
+// window), so re-planning the same clip yields the identical ID
+// while two clips of the same source at different timestamps never
+// collide — downstream producers use the Logical ID as a dedupe key.
 //
 // SourceProvider + SourceVideoID are inferred ONCE at plan-build
 // time (per godlike/06 SSOT — both deterministicPlanner and
@@ -344,18 +348,26 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 // plan.Description after this function returns — see
 // (p *explicitPlanner).Plan below.
 func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer string) ClipPlan {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", src.URL, idx, policyVer)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", src.URL, idx, policyVer, windowKey(start), windowKey(end))))
 	id := fmt.Sprintf("planner:%x:%d", h[:8], idx)
 	return ClipPlan{
 		SourceID:        src.URL,
-		SourceProvider:  inferSourceProvider(src.URL),
-		SourceVideoID:   inferSourceVideoID(src.URL),
+		SourceProvider:  InferSourceProvider(src.URL),
+		SourceVideoID:   InferSourceVideoID(src.URL),
 		SourceVersion:   "v1",
 		StartSec:        start,
 		EndSec:          end,
 		OutputLogicalID: id,
 		PolicyVersion:   policyVer,
 	}
+}
+
+// windowKey renders a clip-window boundary deterministically for the
+// OutputLogicalID hash. Fixed 3-decimal precision keeps the ID stable
+// across process restarts while making clips that share a source URL +
+// index but different timestamps hash to different IDs.
+func windowKey(sec float64) string {
+	return strconv.FormatFloat(sec, 'f', 3, 64)
 }
 
 // ErrExplicitPlannerNoClips signals that the explicit planner was
@@ -420,13 +432,13 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 	return plans, nil
 }
 
-// expandExplicitClipSpecs splits explicit clips into successive
+// ExpandExplicitClipSpecs splits explicit clips into successive
 // fixed-length slices when secondsPerSegment is positive.
 //
 // Backward-compat fallback: when secondsPerSegment is zero, clips
 // whose duration is at least 60 seconds are still expanded into
 // 5-second slices. Shorter explicit clips remain single chunks.
-func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
+func ExpandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
 	if len(clips) == 0 {
 		return append([]ClipSpec(nil), clips...)
 	}
