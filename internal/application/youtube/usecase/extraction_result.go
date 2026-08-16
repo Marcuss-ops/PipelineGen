@@ -63,9 +63,9 @@ func aggregateFanOutStats(items []youtubetypes.ExtractItem) youtubetypes.Extract
 
 // buildInitialResponse constructs the response envelope used by both
 // the canonical fan-out path and the empty-segment short-circuit in
-// Extract(). Items is pre-allocated to len(req.Segments) so the
+// Extract(). Items is pre-allocated to len(segments) so the
 // append-in-extractFanOut path is O(1) amortized.
-func buildInitialResponse(req *youtubetypes.ExtractRequest, videoID, driveFolderID, driveFolderPath string) *youtubetypes.ExtractResponse {
+func buildInitialResponse(req *youtubetypes.ExtractRequest, segments []youtubetypes.Segment, videoID, driveFolderID, driveFolderPath string) *youtubetypes.ExtractResponse {
 	return &youtubetypes.ExtractResponse{
 		OK:              true,
 		SourceURL:       req.URL,
@@ -73,8 +73,8 @@ func buildInitialResponse(req *youtubetypes.ExtractRequest, videoID, driveFolder
 		DriveFolderID:   driveFolderID,
 		DriveFolderPath: driveFolderPath,
 		Stats: &youtubetypes.ExtractStats{
-			Requested: len(req.Segments),
+			Requested: len(segments),
 		},
-		Items: make([]youtubetypes.ExtractItem, 0, len(req.Segments)),
+		Items: make([]youtubetypes.ExtractItem, 0, len(segments)),
 	}
 }

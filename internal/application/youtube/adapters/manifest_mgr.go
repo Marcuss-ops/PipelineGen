@@ -16,57 +16,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Drive destination ───────────────────────────────────────────────────
-
-// resolveDriveDestination resolves the Google Drive folder for the extraction output.
-func (s *Service) resolveDriveDestination(ctx context.Context, req *youtubetypes.ExtractRequest, videoID string) (string, string) {
-	if s.assetDestResolver == nil || req.Destination == nil {
-		return "", ""
-	}
-	// A batch caller may resolve the final Drive folder once and pass it
-	// explicitly.  Preserve that folder verbatim: the YouTube path builder
-	// must not create a per-video child in this mode.
-	if strings.TrimSpace(req.Destination.FolderID) != "" &&
-		strings.TrimSpace(req.Destination.FolderPath) != "" &&
-		!req.Destination.CreateSubfolder &&
-		strings.TrimSpace(req.Destination.Group) == "" &&
-		strings.TrimSpace(req.Destination.SubfolderName) == "" {
-		return strings.TrimSpace(req.Destination.FolderID), strings.TrimSpace(req.Destination.FolderPath)
-	}
-
-	destReq := &asset.ResolveRequest{
-		Source:          "youtube",
-		Group:           req.Destination.Group,
-		FolderID:        req.Destination.FolderID,
-		FolderPath:      req.Destination.FolderPath,
-		SubfolderName:   strings.TrimPrefix(req.Destination.SubfolderName, "yt_"),
-		CreateSubfolder: req.Destination.CreateSubfolder,
-	}
-
-	if destReq.FolderID == "" || destReq.Group != "" {
-		if destReq.SubfolderName == "" {
-			destReq.SubfolderName = strings.TrimPrefix(videoID, "yt_")
-			destReq.CreateSubfolder = true
-			s.log.Info("auto-assigning video subfolder", zap.String("subfolder", destReq.SubfolderName))
-		} else {
-			destReq.SubfolderName = strings.TrimPrefix(destReq.SubfolderName, "yt_")
-			destReq.CreateSubfolder = true
-			s.log.Info("using user-specified video subfolder", zap.String("subfolder", destReq.SubfolderName))
-		}
-	} else if destReq.SubfolderName != "" {
-		destReq.SubfolderName = strings.TrimPrefix(destReq.SubfolderName, "yt_")
-		destReq.CreateSubfolder = true
-		s.log.Info("creating subfolder inside explicit Drive folder", zap.String("folder_id", destReq.FolderID), zap.String("subfolder", destReq.SubfolderName))
-	}
-
-	resolved, err := s.assetDestResolver.Resolve(ctx, destReq)
-	if err != nil {
-		s.log.Warn("failed to resolve drive destination", zap.Error(err))
-		return "", ""
-	}
-	return resolved.FolderID, resolved.FolderPath
-}
-
 // ── Clip folder ──────────────────────────────────────────────────────────
 
 // loadClipFolder loads an existing clip folder from DB or creates a new one.

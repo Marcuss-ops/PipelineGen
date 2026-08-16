@@ -35,14 +35,15 @@ import (
 func (s *ExtractionService) extractFanOut(
 	ctx context.Context,
 	req *youtubetypes.ExtractRequest,
+	segments []youtubetypes.Segment,
 	videoID, outDir, driveFolderID, driveFolderPath string,
 ) (*youtubetypes.ExtractResponse, error) {
-	resp := buildInitialResponse(req, videoID, driveFolderID, driveFolderPath)
+	resp := buildInitialResponse(req, segments, videoID, driveFolderID, driveFolderPath)
 	keepAudio := resolveKeepAudio(req)
 	sem := make(chan struct{}, s.maxConcurrentVideos)
-	results := make([]youtubetypes.ProcessSegmentResult, len(req.Segments))
+	results := make([]youtubetypes.ProcessSegmentResult, len(segments))
 	var wg sync.WaitGroup
-	for i, seg := range req.Segments {
+	for i, seg := range segments {
 		i, seg := i, seg
 		wg.Add(1)
 		go func() {
