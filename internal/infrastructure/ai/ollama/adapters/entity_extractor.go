@@ -241,7 +241,9 @@ func entityResultFromAnalysis(result *asset.EntityExtractionResult) *script.Enti
 	out := &script.EntityResult{
 		ArtlistPhrases:   append([]string(nil), result.ArtlistPhrases...),
 		ImportantPhrases: append([]string(nil), result.FrasiImportanti...),
-		ImportantWords:   append([]string(nil), result.ParoleImportanti...),
+		// ImportantWords is populated only by the trimming loop below so each
+		// word is emitted exactly once (never duplicated by a second copy).
+		ImportantWords: make([]string, 0, len(result.ParoleImportanti)),
 	}
 	for _, raw := range result.NomiSpeciali {
 		kind, value := parseTypedEntity(raw)
