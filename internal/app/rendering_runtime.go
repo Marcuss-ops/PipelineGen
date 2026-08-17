@@ -13,8 +13,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"go.uber.org/zap"
 )

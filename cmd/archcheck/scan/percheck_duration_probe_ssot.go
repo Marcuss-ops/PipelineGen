@@ -11,7 +11,7 @@
 // Exempt zones:
 //   - **/*_test.go — regression-guard surface may assert fixtures.
 //   - cmd/archcheck/scan — the scanner itself.
-//   - internal/infrastructure/media — the canonical media capability.
+//   - internal/platform/media — the canonical media capability.
 //
 // Matched rule_id: percheck_duration_probe_ssot
 package scan
@@ -28,7 +28,7 @@ import (
 
 const durationProbeSSOTRule = "percheck_duration_probe_ssot"
 
-const durationProbeSSOTNote = "forbidden direct ffprobe/ffmpeg process spawn outside the canonical media probe capability (internal/infrastructure/media/). Duration measurement MUST go through the canonical probe port (rustexec.VideoProcessor.Probe) and the kernel duration contract (internal/kernel/asset.ResolveAssetDuration); never a raw ffprobe/ffmpeg subprocess."
+const durationProbeSSOTNote = "forbidden direct ffprobe/ffmpeg process spawn outside the canonical media probe capability (internal/platform/media/). Duration measurement MUST go through the canonical probe port (rustexec.VideoProcessor.Probe) and the kernel duration contract (internal/kernel/asset.ResolveAssetDuration); never a raw ffprobe/ffmpeg subprocess."
 
 var durationProbeSSOTSkipDirs = map[string]bool{
 	".git":         true,
@@ -41,7 +41,7 @@ var durationProbeSSOTSkipPathPrefixes = []string{
 }
 
 var durationProbeSSOTExemptPathPrefixes = []string{
-	"internal/infrastructure/media",
+	"internal/platform/media",
 }
 
 // durationProbeSSOTMatch reports whether a single non-comment line spawns a

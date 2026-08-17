@@ -42,8 +42,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
 // WireStockPipeline constructs every stock pipeline dependency from the
