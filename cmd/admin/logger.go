@@ -7,12 +7,12 @@
 // were extracted to cmd/admin/internal/cli (exported as AppLogger +
 // ProductionLogger) so the reconcile/reindex/dr subcommands (now in
 // cmd/admin/reconcile subpackage) can import them. The lowercase
-// symbols appLogger and productionLogger are retained here as
-// thin shims that delegate to the canonical cli.* helpers — the 60
-// non-moved cmd/admin files do NOT need to change as part of this
-// PR. Tracked follow-up: PR-PKG-SIZE-CMD-ADMIN-1-FOLLOWUP will
-// migrate all call sites to cli.AppLogger / cli.ProductionLogger
-// directly and delete this file.
+// appLogger shim is retained here to delegate to the canonical
+// cli.AppLogger helper — the 60 non-moved cmd/admin files do NOT need
+// to change as part of this PR. (productionLogger's shim was already
+// orphaned and has been removed.) Tracked follow-up:
+// PR-PKG-SIZE-CMD-ADMIN-1-FOLLOWUP will migrate all call sites to
+// cli.AppLogger / cli.ProductionLogger directly and delete this file.
 package main
 
 import (
@@ -25,10 +25,4 @@ import (
 // appLogger is a thin shim around cli.AppLogger. See file header.
 func appLogger() (*config.Config, *zap.Logger, func(), error) {
 	return cli.AppLogger()
-}
-
-// productionLogger is a thin shim around cli.ProductionLogger.
-// See file header.
-func productionLogger() (*zap.Logger, func(), error) {
-	return cli.ProductionLogger()
 }

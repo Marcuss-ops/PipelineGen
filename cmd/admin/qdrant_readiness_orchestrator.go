@@ -174,22 +174,3 @@ func qdrantProbeAndSchema(ctx context.Context, cfg *config.Config, log *zap.Logg
 	}
 	return nil
 }
-
-func hasLegacyLocatorKey(metaJSON string) bool {
-	metaJSON = strings.TrimSpace(metaJSON)
-	if metaJSON == "" || metaJSON == "{}" {
-		return false
-	}
-	var meta map[string]any
-	if err := json.Unmarshal([]byte(metaJSON), &meta); err != nil {
-		return false
-	}
-	for _, key := range []string{"drive_link", "download_link", "drive_file_id", "local_path"} {
-		if v, ok := meta[key]; ok {
-			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-				return true
-			}
-		}
-	}
-	return false
-}

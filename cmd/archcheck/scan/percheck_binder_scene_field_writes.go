@@ -79,13 +79,6 @@ var sceneFieldWriteSkipDirs = map[string]bool{
 	"data":         true,
 }
 
-// sceneFieldWriteSkipPathPrefixes is the package-owner's
-// exemption set: scan/* references these literal patterns for
-// greppability, mirrors the family precedent.
-var sceneFieldWriteSkipPathPrefixes = []string{
-	"cmd/archcheck/scan",
-}
-
 // binderScenePlannerCanonical is the canonical ScenePlanner
 // owner (Wave 1.1 extraction). It is the ONLY file allowed to
 // write scene.Text / .Title / .Kind / .Index / .ID outside the

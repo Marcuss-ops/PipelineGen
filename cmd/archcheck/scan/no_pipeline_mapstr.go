@@ -97,18 +97,6 @@ var noPipelineMapStrRe = regexp.MustCompile(`map\[string\]any`)
 // `.TrackEvent(` is observability metadata and exempt.
 var noPipelineMapStrTrackEventRe = regexp.MustCompile(`\.TrackEvent\s*\(`)
 
-// noPipelineMapStrHasPathPrefixTarget returns true if
-// relPath matches one of the gate's pre-canned target
-// files. The match is exact-path equality.
-func noPipelineMapStrHasPathPrefixTarget(relSlash string) bool {
-	for _, t := range noPipelineMapStrTargets {
-		if relSlash == t {
-			return true
-		}
-	}
-	return false
-}
-
 // noPipelineMapStrWarn emits the WARN residue entry.
 func noPipelineMapStrWarn(r *report.Report, label, msg string) {
 	r.Warnings = append(r.Warnings, noPipelineMapStrRule+" "+label+" "+msg)

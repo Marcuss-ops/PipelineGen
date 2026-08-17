@@ -88,18 +88,6 @@ var pipelineMapCarrierBanRe = regexp.MustCompile(`map\[string\]any`)
 // `.TrackEvent(` is observability metadata and exempt.
 var pipelineMapCarrierBanTrackEventRe = regexp.MustCompile(`\.TrackEvent\s*\(`)
 
-// pipelineMapCarrierBanHasPathPrefixTarget returns true
-// if relPath matches one of the gate's pre-canned target
-// files. The match is exact-path equality.
-func pipelineMapCarrierBanHasPathPrefixTarget(relSlash string) bool {
-	for _, t := range pipelineMapCarrierBanTargets {
-		if relSlash == t {
-			return true
-		}
-	}
-	return false
-}
-
 // pipelineMapCarrierBanWarn emits the WARN residue entry.
 func pipelineMapCarrierBanWarn(r *report.Report, label, msg string) {
 	r.Warnings = append(r.Warnings, pipelineMapCarrierBanRule+" "+label+" "+msg)
