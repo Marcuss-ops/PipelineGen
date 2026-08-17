@@ -42,7 +42,6 @@ internal/application/operations/ports.go	database/sql	@agent/Codebuff	2026-08-31
 internal/application/publish_outbox/handler.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/qdrant/maintenance/service.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/staging/service.go	os.OpenFile	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
-internal/application/voiceover/dedupe.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/voiceover/finalizer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/voiceover/finalizer_cleanup_outbox.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/voiceover/finalizer_execute.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
