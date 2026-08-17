@@ -21,10 +21,8 @@ import (
 
 // ── Segment discovery constants ──────────────────────────────────────────
 
-const preferredSegmentDuration = 45
 const maxAutoSegmentsPerVideo = 4
 const maxAutoSegmentsPerLongSection = 1
-const minSegmentDuration = 15
 
 // timedEntry represents a single timed subtitle entry with start/end times and text.
 type timedEntry struct {

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func buildAssetID(kind Kind, hash string) string {
@@ -43,18 +42,6 @@ func normalizeKind(kind string) Kind {
 	default:
 		return ""
 	}
-}
-
-func slugOrFallback(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	slug := textutil.Slugify(value)
-	if slug == "" {
-		return value
-	}
-	return slug
 }
 
 func mergeMetadata(base map[string]any, extra map[string]any) map[string]any {
