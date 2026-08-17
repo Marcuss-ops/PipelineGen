@@ -18,8 +18,7 @@
 //     is via c3ValidateRuntimeGraph, not this surface.)
 //   - registry_public_modules.go  registerSystem + registerJobs +
 //     registerImages + registerScriptHistory + registerUtility +
-//     registerRealtime +
-//     registerChannelsCapability + registerSearchQueriesCapability
+//     registerRealtime + registerAdminModule
 //     (thin route modules exposed via /api/* paths).
 //   - registry_internal_modules.go registerInternalModules wrapper
 //   - registerArtlist + registerYouTubeClip + registerMediaIngest

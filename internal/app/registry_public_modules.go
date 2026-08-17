@@ -20,18 +20,12 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
-	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -112,47 +106,6 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 		scriptHistoryEnabled,
 	), WithRegistrationPoint("register.ScriptHistory")); err != nil {
 		return fmt.Errorf("wire registry: script-history module: %w", err)
-	}
-	return nil
-}
-
-// registerChannelsCapability wires the channels capability via
-// channels.Build(deps). Build runs at most once per call; the resulting
-// Descriptor is registered via tryRegisterModuleStrict exactly once.
-func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	if root.DB == nil || root.DB.DB == nil {
-		return nil
-	}
-	d, err := channelsapi.Build(channelsapi.Dependencies{
-		Repository: appchannels.NewRepositoryAdapter(sqlchannels.NewChannelsRepository(root.DB.DB)),
-		Logger:     log,
-	})
-	if err != nil {
-		log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
-		return nil
-	}
-	if err := tryRegisterModuleStrict(registry, log, d, WithRegistrationPoint("register.Channels")); err != nil {
-		return fmt.Errorf("wire registry: channels: %w", err)
-	}
-	return nil
-}
-
-// registerSearchQueriesCapability wires the typed search_queries use case.
-// The handler is thin transport; this function owns the
-// *searchqueries.UseCase construction (Wave 14 problem #3 close-out,
-// June 2026) and registers the route module via tryRegisterModuleStrict.
-func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	if root.DB == nil || root.DB.DB == nil {
-		return nil
-	}
-	if err := tryRegisterModuleStrict(registry, log, module.NewRouteModule(
-		"search_queries",
-		func() bool { return true },
-		"/search-queries",
-		assetsapi.NewSearchQueriesHandler(searchqueries.NewUseCase(sqliteassets.NewSearchQueriesRepository(root.DB.DB)), log),
-		log,
-	), WithRegistrationPoint("register.SearchQueries")); err != nil {
-		return fmt.Errorf("wire registry: search_queries module: %w", err)
 	}
 	return nil
 }

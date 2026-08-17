@@ -225,27 +225,8 @@ var routeDescriptions = map[string]string{
 	"GET /api/assets/search": "Search assets",
 	"GET /api/assets/stats":  "Get asset statistics",
 
-	// ── Scraper ──────────────────────────────────────────────
-	"POST /api/scraper/search": "Search using scraper",
-
 	// ── System ───────────────────────────────────────────────
 	"GET /api/system/doctor": "System diagnostics",
-
-	// ── Search queries ───────────────────────────────────────
-	"GET /api/search-queries":             "List search queries",
-	"POST /api/search-queries":            "Create a search query",
-	"GET /api/search-queries/active":      "List active search queries",
-	"GET /api/search-queries/:id":         "Get search query by ID",
-	"DELETE /api/search-queries/:id":      "Delete search query",
-	"GET /api/search-queries/:id/results": "Get search query results",
-
-	// ── Channels ─────────────────────────────────────────────
-	"GET /api/channels":              "List channels",
-	"POST /api/channels":             "Create channel",
-	"GET /api/channels/categories":   "List channel categories",
-	"GET /api/channels/:id":          "Get channel by ID",
-	"DELETE /api/channels/:id":       "Delete channel",
-	"POST /api/channels/bulk-upsert": "Bulk upsert channels",
 
 	// ── Drive ────────────────────────────────────────────────
 	"POST /api/drive/reconcile":     "Reconcile Drive metadata",
