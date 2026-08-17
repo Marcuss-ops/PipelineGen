@@ -146,14 +146,6 @@ func stockRootFolderName(in *RunInput) string { return stockpublish.RootFolderNa
 
 func stockResolvedFolderID(in *RunInput) string { return stockpublish.ResolvedFolderID(in) }
 
-func sanitizedRootName(s string) string { return stockpublish.SanitizedRootName(s) }
-
-func sanitizeLegacyQuery(queries []string) string { return stockpublish.LegacyQuery(queries) }
-
-func sanitizeLegacyURLBasename(urls []string) string { return stockpublish.LegacyURLBasename(urls) }
-
-func sanitizedURLBasename(rawURL string) string { return stockpublish.SanitizedURLBasename(rawURL) }
-
 func stockTimestampGroupName(in *RunInput) string { return stockpublish.TimestampGroupName(in) }
 
 func stockClipFolderName(in *RunInput, plan ClipPlan, fallback string) string {

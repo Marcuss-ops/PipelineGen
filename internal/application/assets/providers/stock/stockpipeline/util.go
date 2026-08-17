@@ -50,35 +50,3 @@ func extractVideoID(url string) string {
 	}
 	return strings.TrimSpace(parts[len(parts)-1])
 }
-
-// resolveActualPath checks for the actual file path by trying common extensions.
-// PR-REFACTOR-P0-IO-BINDER (July 2026): uses LocalFSPort instead of os.Stat.
-func resolveActualPath(basePath string, fs LocalFSPort) string {
-	if fs == nil {
-		return basePath
-	}
-	if _, err := fs.Stat(basePath); err == nil {
-		return basePath
-	}
-	if _, err := fs.Stat(basePath + ".mp4"); err == nil {
-		return basePath + ".mp4"
-	}
-	if _, err := fs.Stat(basePath + ".mkv"); err == nil {
-		return basePath + ".mkv"
-	}
-	if _, err := fs.Stat(basePath + ".webm"); err == nil {
-		return basePath + ".webm"
-	}
-	return ""
-}
-
-func uniqueRepeat(value string, count int) []string {
-	if count <= 0 || value == "" {
-		return nil
-	}
-	out := make([]string, count)
-	for i := range out {
-		out[i] = value
-	}
-	return out
-}

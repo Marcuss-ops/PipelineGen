@@ -98,8 +98,6 @@ func VerifyMetadata(m MetadataState) error {
 	return nil
 }
 
-const stockProcessType = "stock"
-
 func startStockPhase(ctx context.Context, _ StepRunner, phase string) *kernobs.StageHandle {
 	return kernobs.BeginStage(ctx, kernobs.StageName(phase))
 }
@@ -146,24 +144,6 @@ func boolToInt64(v bool) int64 {
 		return 1
 	}
 	return 0
-}
-func sumPlanDuration(plans []ClipPlan) float64 {
-	var total float64
-	for _, p := range plans {
-		if p.EndSec > p.StartSec {
-			total += p.EndSec - p.StartSec
-		}
-	}
-	return total
-}
-func sumChunkDuration(chunks []ChunkState) float64 {
-	var total float64
-	for _, c := range chunks {
-		if c.EndSec > c.StartSec {
-			total += c.EndSec - c.StartSec
-		}
-	}
-	return total
 }
 
 // Package stockpipeline — render_ports.go (PR-SPLIT-RENDER-PORTS, August 2026).
@@ -316,75 +296,3 @@ var ErrNoOpCutter = errors.New("cutter: noOpCutter (test fixture)")
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
 // `internal/infrastructure/process`. This file respects the invariant.
-// renderChunk is the app-layer decision entry point for chunk rendering.
-// It translates the application flags (noTransitions, noEffects, noAudio)
-// into a generic stock.RenderRequest and delegates execution to s.renderer.
-//
-// Behavioural equivalence with pre-PR6:
-//   - noTransitions && noEffects → renderer picks concat-demuxer fast path
-//   - noTransitions only OR noEffects only → filter_complex with one branch
-//   - full policy → filter_complex with Nth-clip transitions + Nth-clip overlays
-//
-// Titles are currently unused by the FFmpeg impl (kept in the signature
-// for downstream API compatibility — the future subtitle overlay path will
-// consume them).
-func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string, noTransitions, noEffects, noAudio bool, chunkIdx int) error {
-	if len(clips) == 0 {
-		return fmt.Errorf("renderChunk: no clips to render")
-	}
-	if s.renderer == nil {
-		return fmt.Errorf("renderChunk: StockRenderer port is nil — was composition root build correct?")
-	}
-
-	cfg := DefaultPipelineConfig()
-	req := RenderRequest{
-		OutputPath: outputPath,
-		InputPaths: clips,
-		Width:      cfg.Width,
-		Height:     cfg.Height,
-		FPS:        cfg.FPS,
-		// The infrastructure renderer supplies the configured runtime policy;
-		// leaving Codec empty keeps this neutral application DTO from making a
-		// second encoder decision.
-		Codec:            "",
-		Preset:           cfg.Preset,
-		CRF:              cfg.CRF,
-		KeyframeInterval: cfg.KeyframeInterval,
-		KeepAudio:        !noAudio,
-
-		NoTransitions:   noTransitions,
-		TransitionEvery: cfg.TransitionInterval,
-		ClipDurationSec: s.runtime.ClipDurationSec,
-
-		NoEffects:       noEffects,
-		EffectsDir:      cfg.EffectsDir,
-		EffectEvery:     cfg.EffectInterval,
-		EffectIndexHint: chunkIdx % 1024, // deterministic hint (mod 1024 avoids overflow on big indexes)
-		OverlayOpacity:  cfg.OverlayOpacity,
-
-		Logger:     s.log,
-		ChunkIndex: chunkIdx,
-	}
-
-	resolved, err := ResolveRenderPlan(req)
-	if err != nil {
-		return fmt.Errorf("renderChunk resolve plan failed: %w", err)
-	}
-	res, err := s.renderer.Render(ctx, resolved)
-	if err != nil {
-		return fmt.Errorf("renderChunk port failed: %w", err)
-	}
-
-	// Telemetry projection: the result carries operational metrics the
-	// caller may want for logging downstream (which transitions actually
-	// fired, how long it took). This data is informational only; the
-	// rendered file at req.OutputPath is the primary artifact.
-	s.log.Info("stock render: completed via port",
-		zap.Int("chunk", chunkIdx),
-		zap.Bool("fast_path", res.UsedFastPath),
-		zap.Int64("duration_ms", res.DurationMS),
-		zap.Strings("transitions", res.AppliedTransitions),
-		zap.Strings("overlays", res.AppliedOverlayFiles),
-	)
-	return nil
-}
