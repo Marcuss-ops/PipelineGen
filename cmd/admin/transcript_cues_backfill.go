@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -112,4 +111,3 @@ func cuesWithText(timing []asset.TimedCue, text string) []asset.TimedCue {
 	return out
 }
 
-func fileExists(path string) bool { _, err := os.Stat(path); return err == nil }
