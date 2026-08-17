@@ -2,7 +2,7 @@
 //
 // Forward-prevention gate: production Go code MUST NOT spawn ffprobe or
 // ffmpeg directly. The canonical media capability
-// (internal/infrastructure/media/rustexec + the render probe adapter) is the
+// (internal/platform/media/rustexec + the render probe adapter) is the
 // single owner of media-binary execution; every other package measures an
 // asset's total duration through the canonical probe port
 // (rustexec.VideoProcessor.Probe) and the kernel duration contract

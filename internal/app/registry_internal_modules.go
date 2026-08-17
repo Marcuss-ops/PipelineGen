@@ -19,6 +19,7 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -27,6 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -397,9 +399,30 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// single owner). Subtitles.enabled=true without a wired compiler fails
 	// closed in the worker; this wiring makes burn+sidecar always available.
 	worker.WithSubtitleCompiler(&clipRenderSubtitleCompiler{})
-	// The canonical ASS compiler (reuse of the existing
-	// texttracks.SubtitleArtifactMaterializer) is wired by the ASS-compiler
-	// step; until then subtitled jobs fail closed with the typed sentinel.
+
+	// Rust render boundary: shared executor + resolved media execution
+	// config (encoder policy + profile owned by the composition root, never
+	// by Rust). Fail-closed when the media config is missing, mirroring
+	// WireStockPipeline. The ClipRenderer is attached to the worker via the
+	// RenderExecutor port; the render phase consumes it in the follow-up
+	// step (until then Handle fails closed with ErrRenderPhaseNotImplemented).
+	mediaConfig := root.MediaExec
+	if mediaConfig == (mediaexec.ExecutionConfig{}) {
+		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
+	}
+	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
+	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer})
+	log.Info("registerClipRender: clip render boundary wired (render_clip single pass)",
+		zap.String("rust_muscles", cfg.External.RustMusclesPath),
+		zap.String("ffmpeg", cfg.External.FfmpegPath),
+		zap.String("encoder", mediaConfig.Policy.Codec),
+		zap.String("preset", mediaConfig.Policy.Preset),
+		zap.Int("crf", mediaConfig.Policy.CRF),
+		zap.Int("profile_width", mediaConfig.Profile.Width),
+		zap.Int("profile_height", mediaConfig.Profile.Height),
+		zap.Int("profile_fps", mediaConfig.Profile.FPS),
+	)
 
 	descriptor, err := cliprender.Build(cliprender.Dependencies{
 		Jobs:        root.Jobs.Facade,

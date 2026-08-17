@@ -71,7 +71,7 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 

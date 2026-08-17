@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
 // runNormalizeSoundEffectsDrive parses the optional root folder and delegates

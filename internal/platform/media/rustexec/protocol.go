@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
@@ -27,6 +28,7 @@ const (
 	OperationRemuxHLS           Operation = "remux_hls"
 	OperationTrim               Operation = "trim"
 	OperationRenderStock        Operation = "render_stock"
+	OperationRenderClip         Operation = "render_clip"
 	OperationAdminRender        Operation = "admin_render"
 	OperationMergeInputs        Operation = "merge_inputs"
 	OperationRemoveSilence      Operation = "remove_silence"
@@ -41,8 +43,9 @@ func (o Operation) valid() bool {
 	case OperationHealth, OperationProbe, OperationCutBatch, OperationNormalize,
 		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
-		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationAdminRender,
-		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan, OperationMuxAudioCopy:
+		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationRenderClip,
+		OperationAdminRender, OperationMergeInputs, OperationRemoveSilence,
+		OperationRenderAudioPlan, OperationMuxAudioCopy:
 		return true
 	default:
 		return false
@@ -95,6 +98,10 @@ type request struct {
 	// validates its hashes and manifest files before this envelope is sent;
 	// keeping the exact JSON here lets the executor audit the same plan.
 	RenderPlan json.RawMessage `json:"render_plan,omitempty"`
+	// ClipPlan is the sealed ClipRenderPlanV1 for render_clip. Validated in
+	// this transport (decode + drift) before Rust is invoked; Rust re-audits
+	// the same plan and verifies every referenced artifact fail-closed.
+	ClipPlan json.RawMessage `json:"clip_plan,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -178,6 +185,28 @@ func (r request) Validate() error {
 			}
 		}
 		return requireOutput()
+	case OperationRenderClip:
+		if err := requireSource(); err != nil {
+			return err
+		}
+		if err := requireOutput(); err != nil {
+			return err
+		}
+		if len(r.ClipPlan) == 0 || string(r.ClipPlan) == "null" {
+			return fmt.Errorf("%s: clip_plan is required", r.Operation)
+		}
+		// Last Go transport boundary: decode the sealed ClipRenderPlanV1 and
+		// re-validate the complete contract (identity + hashes + enum gates),
+		// so a drifted/tampered plan is rejected before any Rust process
+		// starts — the Rust side then re-audits the same plan fail-closed.
+		var plan cliprender.ClipRenderPlanV1
+		if err := json.Unmarshal(r.ClipPlan, &plan); err != nil {
+			return fmt.Errorf("%s: decode sealed clip_plan: %w", r.Operation, err)
+		}
+		if err := plan.Validate(); err != nil {
+			return fmt.Errorf("%s: sealed clip_plan validation failed: %w", r.Operation, err)
+		}
+		return nil
 	case OperationAdminRender:
 		if err := requireSource(); err != nil {
 			return err
@@ -282,6 +311,11 @@ type mediaMetadata struct {
 	HashMS           int64  `json:"hash_ms"`
 	FFmpegMS         int64  `json:"ffmpeg_ms"`
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
+	// render_clip audio copy policy outcome (copy verbatim vs one certified
+	// conversion) and whether the burn stage rasterized libass (CPU).
+	AudioCopyEligible *bool `json:"audio_copy_eligible,omitempty"`
+	AudioEncodePasses *int  `json:"audio_encode_passes,omitempty"`
+	SubtitleRasterCPU *bool `json:"subtitle_raster_cpu,omitempty"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the

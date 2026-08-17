@@ -2,6 +2,7 @@ package cliprender
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -175,20 +176,35 @@ func TestValidate_RejectsIncompletePlan(t *testing.T) {
 	}
 }
 
-// TestCompile_BlurSourceBackground verifies blur_source carries no asset
-// block (Rust derives the background from the source itself).
+// TestCompile_BlurSourceBackground verifies blur_source is carried into the
+// sealed plan WITHOUT an asset block (Rust derives the blurred background
+// from the source itself) — the request-level mode is a business selection
+// the worker passes through, never lost to mode=none.
 func TestCompile_BlurSourceBackground(t *testing.T) {
-	// Background nil → mode none is the default (see happy path). The
-	// blur_source selection is a request-level business decision that the
-	// worker maps to a nil background asset; the plan only carries an asset
-	// block for mode=asset. Verify a background asset never leaks a wrong
-	// mode.
 	in := baseCompileInput()
+	in.BackgroundMode = BackgroundModeBlurSource
 	plan, err := Compile(in)
 	if err != nil {
 		t.Fatalf("Compile failed: %v", err)
 	}
-	if plan.Background == nil || plan.Background.Mode != BackgroundModeNone {
-		t.Fatalf("expected background mode none, got %+v", plan.Background)
+	if plan.Background == nil || plan.Background.Mode != BackgroundModeBlurSource {
+		t.Fatalf("expected background mode blur_source, got %+v", plan.Background)
+	}
+	if plan.Background.Path != "" || plan.Background.SHA256 != "" {
+		t.Fatalf("blur_source must not carry an asset block, got %+v", plan.Background)
+	}
+
+	// Contradictory inputs fail closed: blur_source/none with an asset.
+	bad := baseCompileInput()
+	bad.BackgroundMode = BackgroundModeBlurSource
+	bad.Background = &MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("a", 64)}
+	if _, err := Compile(bad); err == nil {
+		t.Fatal("blur_source with an asset must fail closed")
+	}
+	bad = baseCompileInput()
+	bad.BackgroundMode = BackgroundModeNone
+	bad.Background = &MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("a", 64)}
+	if _, err := Compile(bad); err == nil {
+		t.Fatal("none with an asset must fail closed")
 	}
 }

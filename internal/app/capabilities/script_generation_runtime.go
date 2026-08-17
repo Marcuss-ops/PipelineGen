@@ -16,7 +16,7 @@ import (
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -79,6 +79,18 @@ func (scriptGenerationDocumentRenderer) DocumentRendererID() string {
 
 func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) (string, error) {
 	return scriptgen.RenderDocument(model, opts)
+}
+
+// RenderDocumentSkeleton / InjectDocumentLateBound implement the
+// early/late split so the runner can render the scene-text-only skeleton at
+// SceneTextReady (overlapping TTS/NLP) and fill the late-bound markers after
+// the audio join.
+func (scriptGenerationDocumentRenderer) RenderDocumentSkeleton(in scriptgen.DocumentSkeletonInput) string {
+	return scriptgen.RenderDocumentSkeleton(in)
+}
+
+func (scriptGenerationDocumentRenderer) InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) string {
+	return scriptgen.InjectDocumentLateBound(skeleton, model, opts)
 }
 
 func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, input scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {

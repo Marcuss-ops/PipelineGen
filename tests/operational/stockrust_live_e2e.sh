@@ -23,7 +23,7 @@
 # A resolved fadeblack transition is used to force the re-encode composite
 # path (the copy-only fast path is a stream copy and is not representative
 # for RTF). The canonical render_plan path is certified by the Go e2e tests in
-# internal/infrastructure/media/rustexec.
+# internal/platform/media/rustexec.
 #
 # Exit codes: 0 = PASS, 1 = FAIL, 2 = prerequisite missing.
 #

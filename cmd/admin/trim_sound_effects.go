@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
 // runTrimSoundEffects caps local SFX files at maxSeconds. Files already at or
