@@ -37,6 +37,17 @@ const OverlayIntentVersion = 1
 // bound start_us / duration_us from the CanonicalTimeline.
 type TimingState string
 
+// IntentSource identifies the canonical scene surface that produced an
+// intent. It is deliberately semantic and contains no timing information.
+type IntentSource string
+
+const (
+	IntentSourceEntity          IntentSource = "entity"
+	IntentSourceImportantPhrase IntentSource = "important_phrase"
+	IntentSourceImportantWord   IntentSource = "important_word"
+	IntentSourceEntityImage     IntentSource = "entity_image"
+)
+
 const (
 	// TimingStatePending means the intent carries no timing. It is the
 	// state immediately after entity extraction.
@@ -58,7 +69,9 @@ type EntityBinding struct {
 // materialize the overlay. For entity cards this is the displayed name;
 // for other templates it may carry additional fields.
 type IntentPayload struct {
-	Name string `json:"name"`
+	Name      string            `json:"name,omitempty"`
+	Text      string            `json:"text,omitempty"`
+	AssetRefs []OverlayAssetRef `json:"asset_refs,omitempty"`
 }
 
 // OverlayIntent is the canonical pre-timing entity→template binding. One
@@ -74,6 +87,9 @@ type OverlayIntent struct {
 	SceneID     string        `json:"scene_id"`
 	SceneIndex  int           `json:"scene_index"`
 	Entity      EntityBinding `json:"entity"`
+	Source      IntentSource  `json:"source"`
+	SourceID    string        `json:"source_id,omitempty"`
+	SourceText  string        `json:"source_text,omitempty"`
 	Kind        string        `json:"kind"`
 	TemplateID  string        `json:"template_id"`
 	Payload     IntentPayload `json:"payload"`
@@ -91,10 +107,20 @@ func (i OverlayIntent) Validate() error {
 	if strings.TrimSpace(i.SceneID) == "" {
 		return fmt.Errorf("overlay intent: scene_id is required")
 	}
-	if strings.TrimSpace(i.Entity.Type) == "" {
-		return fmt.Errorf("overlay intent: entity type is required")
+	source := i.Source
+	// Version-1 intents written before the generic insight sources were
+	// introduced are entity intents by shape; keep them readable while all
+	// newly planned intents carry an explicit source.
+	if source == "" && strings.TrimSpace(i.Entity.CanonicalName) != "" {
+		source = IntentSourceEntity
 	}
-	if strings.TrimSpace(i.Entity.CanonicalName) == "" {
+	if source == "" {
+		return fmt.Errorf("overlay intent: source is required")
+	}
+	if strings.TrimSpace(i.Entity.Type) == "" && strings.TrimSpace(i.SourceText) == "" {
+		return fmt.Errorf("overlay intent: entity or source_text is required")
+	}
+	if source == IntentSourceEntity && strings.TrimSpace(i.Entity.CanonicalName) == "" {
 		return fmt.Errorf("overlay intent: entity canonical_name is required")
 	}
 	if strings.TrimSpace(i.TemplateID) == "" {
@@ -115,12 +141,16 @@ func (i OverlayIntent) Fingerprint() string {
 		SceneID     string
 		SceneIndex  int
 		Entity      EntityBinding
+		Source      IntentSource
+		SourceID    string
+		SourceText  string
 		Kind        string
 		TemplateID  string
 		PayloadName string
+		PayloadText string
 	}{
 		i.IntentID, i.SceneID, i.SceneIndex,
-		i.Entity, i.Kind, i.TemplateID, i.Payload.Name,
+		i.Entity, i.Source, i.SourceID, i.SourceText, i.Kind, i.TemplateID, i.Payload.Name, i.Payload.Text,
 	}
 	b, _ := encodeJSON(flat)
 	h := sha256.Sum256(b)
@@ -145,6 +175,26 @@ type SceneEntityInput struct {
 	SceneID    string
 	SceneIndex int
 	Entities   []EntityOverlayInput
+	Phrases    []OverlayAnnotationInput
+	Words      []OverlayAnnotationInput
+	Images     []EntityImageOverlayInput
+}
+
+// OverlayAnnotationInput is a scene-local important phrase/word projected
+// from canonical insights. Timing is intentionally absent at this phase.
+type OverlayAnnotationInput struct {
+	ID   string
+	Text string
+}
+
+// EntityImageOverlayInput binds an already-resolved image asset to an entity.
+// Image search/selection remains PipelineGen-owned; renderers only consume
+// this deterministic asset reference.
+type EntityImageOverlayInput struct {
+	EntityName string
+	AssetID    string
+	URL        string
+	SHA256     string
 }
 
 // PlanOverlayIntents creates OverlayIntents from per-scene entity bundles.
@@ -185,8 +235,59 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 				TemplateID:  entry.Template,
 				Payload:     IntentPayload{Name: name},
 				TimingState: TimingStatePending,
+				Source:      IntentSourceEntity,
 			}
 			intents = append(intents, intent)
+		}
+		entityNames := make(map[string]struct{}, len(scene.Entities))
+		for _, entity := range scene.Entities {
+			entityNames[strings.ToLower(strings.TrimSpace(entity.Name))] = struct{}{}
+		}
+		appendAnnotation := func(source IntentSource, kind OverlayKind, annotation OverlayAnnotationInput) {
+			text := strings.TrimSpace(annotation.Text)
+			if text == "" {
+				return
+			}
+			entry, err := registry.Resolve(string(kind))
+			if err != nil {
+				return
+			}
+			id := strings.TrimSpace(annotation.ID)
+			if id == "" {
+				id = text
+			}
+			intents = append(intents, OverlayIntent{
+				Version: OverlayIntentVersion, IntentID: intentID(scene.SceneID, string(source)+"-"+id),
+				SceneID: scene.SceneID, SceneIndex: scene.SceneIndex, Kind: string(kind),
+				TemplateID: entry.Template, Source: source, SourceID: id, SourceText: text,
+				Payload: IntentPayload{Text: text}, TimingState: TimingStatePending,
+			})
+		}
+		for _, phrase := range scene.Phrases {
+			appendAnnotation(IntentSourceImportantPhrase, KindImportantPhrase, phrase)
+		}
+		for _, word := range scene.Words {
+			if _, duplicate := entityNames[strings.ToLower(strings.TrimSpace(word.Text))]; duplicate {
+				continue
+			}
+			appendAnnotation(IntentSourceImportantWord, KindImportantWord, word)
+		}
+		for _, image := range scene.Images {
+			if strings.TrimSpace(image.EntityName) == "" || strings.TrimSpace(image.AssetID) == "" || strings.TrimSpace(image.SHA256) == "" {
+				continue
+			}
+			entry, err := registry.Resolve(string(KindEntityImage))
+			if err != nil {
+				continue
+			}
+			intents = append(intents, OverlayIntent{
+				Version: OverlayIntentVersion, IntentID: intentID(scene.SceneID, "image-"+image.EntityName),
+				SceneID: scene.SceneID, SceneIndex: scene.SceneIndex, Kind: string(KindEntityImage),
+				TemplateID: entry.Template, Source: IntentSourceEntityImage, SourceID: image.EntityName,
+				SourceText: image.EntityName, Entity: EntityBinding{CanonicalName: image.EntityName},
+				Payload:     IntentPayload{Text: image.EntityName, AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, SHA256: image.SHA256}}},
+				TimingState: TimingStatePending,
+			})
 		}
 	}
 	return intents

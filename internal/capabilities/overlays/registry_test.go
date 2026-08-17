@@ -16,29 +16,32 @@ func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 	if reg == nil {
 		t.Fatal("NewChrononOverlayRegistry returned nil")
 	}
-	if reg.Len() != 10 {
-		t.Fatalf("registry kind count = %d, want 10", reg.Len())
+	if reg.Len() != 13 {
+		t.Fatalf("registry kind count = %d, want 13", reg.Len())
 	}
 
 	want := map[OverlayKind]struct {
 		template string
 		renderer string
 	}{
-		KindEntityCard:   {"person_default", "PersonCardRenderer"},
-		KindOrganization: {"org_default", "OrganizationCardRenderer"},
-		KindLocation:     {"gpe_default", "LocationCardRenderer"},
-		KindConcept:      {"concept_default", "ConceptCardRenderer"},
-		KindLowerThird:   {"lower_third", "LowerThirdRenderer"},
-		KindImagePopup:   {"image_popup", "ImagePopupRenderer"},
-		KindQuote:        {"quote", "QuoteRenderer"},
-		KindNumber:       {"NUMBER", "NumberRenderer"},
-		KindProduct:      {"PRODUCT", "ProductRenderer"},
-		KindLogo:         {"LOGO", "LogoRenderer"},
+		KindEntityCard:      {"person_default", "PersonCardRenderer"},
+		KindOrganization:    {"org_default", "OrganizationCardRenderer"},
+		KindLocation:        {"gpe_default", "LocationCardRenderer"},
+		KindConcept:         {"concept_default", "ConceptCardRenderer"},
+		KindLowerThird:      {"lower_third", "LowerThirdRenderer"},
+		KindImagePopup:      {"image_popup", "ImagePopupRenderer"},
+		KindQuote:           {"quote", "QuoteRenderer"},
+		KindNumber:          {"NUMBER", "NumberRenderer"},
+		KindProduct:         {"PRODUCT", "ProductRenderer"},
+		KindLogo:            {"LOGO", "LogoRenderer"},
+		KindImportantPhrase: {"IMPORTANT_PHRASE", "ImportantPhraseRenderer"},
+		KindImportantWord:   {"IMPORTANT_WORD", "ImportantWordRenderer"},
+		KindEntityImage:     {"IMAGE_OVERLAY", "EntityImageRenderer"},
 	}
 
 	kinds := reg.Kinds()
-	if len(kinds) != 10 {
-		t.Fatalf("Kinds() returned %d kinds, want 10", len(kinds))
+	if len(kinds) != 13 {
+		t.Fatalf("Kinds() returned %d kinds, want 13", len(kinds))
 	}
 	for i := 1; i < len(kinds); i++ {
 		if kinds[i-1] >= kinds[i] {
