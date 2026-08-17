@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
 type providedSoundEffect struct {

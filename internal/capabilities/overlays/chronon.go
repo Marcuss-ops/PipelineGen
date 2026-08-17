@@ -152,8 +152,8 @@ type ChrononLayer struct {
 	// owns the canonical font asset (font_asset) and size via StyleResolver;
 	// PipelineGen only carries the font bytes as a queue asset (see
 	// CanonicalTextFontPath / GoldenFontHash).
-	Font     string  `json:"font,omitempty"`
-	FontSize float64 `json:"font_size,omitempty"`
+	Font           string    `json:"font,omitempty"`
+	FontSize       float64   `json:"font_size,omitempty"`
 	Preset         string    `json:"preset,omitempty"`
 	BoxWidth       int       `json:"box_width,omitempty"`
 	BoxHeight      int       `json:"box_height,omitempty"`
@@ -327,14 +327,14 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		}
 		startFrame, endFrame := itemFrameRange(item)
 		// The preset is the ONE editorial decision PipelineGen owns: resolved
-	// through the SemanticOverlayResolver (semantic_role → Chronon preset),
-	// never from a hard-coded geometry map. Preset-less primitives
-	// (backgrounds, shapes, effects) resolve to an empty preset.
-	preset, _ := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
-	if spec.Primitive == PrimitiveText && preset == "" {
-		return ChrononCompileResult{}, fmt.Errorf("overlay plan: text template %q has no semantic_role → preset mapping", item.TemplateID)
-	}
-	layer := ChrononLayer{
+		// through the SemanticOverlayResolver (semantic_role → Chronon preset),
+		// never from a hard-coded geometry map. Preset-less primitives
+		// (backgrounds, shapes, effects) resolve to an empty preset.
+		preset, _ := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+		if spec.Primitive == PrimitiveText && preset == "" {
+			return ChrononCompileResult{}, fmt.Errorf("overlay plan: text template %q has no semantic_role → preset mapping", item.TemplateID)
+		}
+		layer := ChrononLayer{
 			ID:             item.ID,
 			Type:           spec.LayerType,
 			Preset:         preset,
