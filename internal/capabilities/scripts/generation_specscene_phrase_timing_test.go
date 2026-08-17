@@ -1,4 +1,4 @@
-package adapters_test
+package scriptgeneration_test
 
 import (
 	"encoding/json"
@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -49,7 +49,7 @@ func phraseTimingDocProjection() []capabilityaudio.SceneSpeechTiming {
 func TestDocument_PhraseTimingsProjectedInHumanAndMachineSurface(t *testing.T) {
 	t.Parallel()
 
-	out := adapters.BuildSpecSceneDocumentHTML(phraseTimingDocModel(), adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, phraseTimingDocModel(), scriptgeneration.DocumentRenderOptions{
 		Title:              "Phrase timing",
 		SceneSpeechTimings: phraseTimingDocProjection(),
 	})
@@ -73,7 +73,7 @@ func TestDocument_PhraseTimingsProjectedInHumanAndMachineSurface(t *testing.T) {
 func TestDocument_OmitsPhraseTimingWithoutProjection(t *testing.T) {
 	t.Parallel()
 
-	out := adapters.BuildSpecSceneDocumentHTML(phraseTimingDocModel(), adapters.SpecSceneDocumentOptions{Title: "No phrase timing"})
+	out := mustRender(t, phraseTimingDocModel(), scriptgeneration.DocumentRenderOptions{Title: "No phrase timing"})
 	require.NotContains(t, out, "Scene Speech Timing JSON")
 	require.NotContains(t, out, "<h3>Phrase Timing</h3>")
 }
@@ -104,7 +104,7 @@ func TestDocument_TimingLinksRenderedFromVoiceoverBinding(t *testing.T) {
 		}},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:           "Timing links",
 		Language:        "en",
 		DefaultLanguage: "en",
@@ -138,7 +138,7 @@ func TestDocument_OmitsTimingLinksForWrongLanguage(t *testing.T) {
 	}}
 
 	// The document is built for "it"; the only timing bundle is "en".
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:           "Wrong language",
 		Language:        "it",
 		DefaultLanguage: "it",

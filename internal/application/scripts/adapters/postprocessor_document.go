@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -60,11 +61,14 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		if language == "" {
 			continue
 		}
-		content := BuildSpecSceneDocumentHTML(model, SpecSceneDocumentOptions{
+		content, renderErr := scriptgen.RenderDocument(model, scriptgen.DocumentRenderOptions{
 			Title:           documentTitle,
-			Language:        language,
-			DefaultLanguage: plan.Language,
+			Language:        scriptgen.Language(language),
+			DefaultLanguage: scriptgen.Language(plan.Language),
 		})
+		if renderErr != nil {
+			return nil, fmt.Errorf("render document for language %s: %w", language, renderErr)
+		}
 		if strings.TrimSpace(content) == "" {
 			return nil, fmt.Errorf("document content is empty for language %s", language)
 		}
@@ -97,8 +101,8 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}
 	return &PostProcessResult{
 		DocID: firstID, DocLink: firstLink,
-		DocumentRenderer:        CanonicalDocumentRendererID,
-		DocumentSpecSceneSHA256: SpecSceneSHA256(input.SpecScene),
+		DocumentRenderer:        scriptgen.CanonicalDocumentRendererID,
+		DocumentSpecSceneSHA256: scriptgen.SpecSceneSHA256(input.SpecScene),
 		DocumentSceneCount:      len(input.SpecScene.Scenes),
 		DocumentLanguage:        firstLanguage,
 	}, nil

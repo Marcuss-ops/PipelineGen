@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -62,10 +63,36 @@ func TestDocumentsProcessor_ReportsCanonicalRendererMetadata(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "renderer-proof", Title: "Proof", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
 	result, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: spec})
 	require.NoError(t, err)
-	require.Equal(t, CanonicalDocumentRendererID, result.DocumentRenderer)
-	require.Equal(t, SpecSceneSHA256(spec), result.DocumentSpecSceneSHA256)
+	require.Equal(t, scriptgen.CanonicalDocumentRendererID, result.DocumentRenderer)
+	require.Equal(t, scriptgen.SpecSceneSHA256(spec), result.DocumentSpecSceneSHA256)
 	require.Equal(t, 1, result.DocumentSceneCount)
 	require.Equal(t, "it", result.DocumentLanguage)
+}
+
+// TestDocumentsProcessor_OutputMatchesCanonicalRenderer pins the migrated
+// renderer parity: the processor publishes byte-identical HTML to the
+// canonical capability renderer for the same model + options (it no longer
+// owns any HTML formatting).
+func TestDocumentsProcessor_OutputMatchesCanonicalRenderer(t *testing.T) {
+	stub := &documentServiceStub{}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", Index: 0, Text: "PARITY SCENE",
+		Bindings: scriptpkg.SceneBindings{
+			Clip:      &scriptpkg.ClipBinding{ClipID: "CLIP-SECRET", DriveLink: "DRIVE-SECRET"},
+			Voiceover: &scriptpkg.VoiceoverBinding{Status: "completed", Links: map[string]string{"it": "VOICE-IT"}},
+		},
+	}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "parity-run", Title: "Parity", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
+	if _, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: spec}); err != nil {
+		t.Fatal(err)
+	}
+	require.Len(t, stub.content, 1)
+
+	direct, err := scriptgen.RenderDocument(&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, SpecScene: spec}, scriptgen.DocumentRenderOptions{
+		Title: "Parity", Language: "it", DefaultLanguage: "it",
+	})
+	require.NoError(t, err)
+	require.Equal(t, direct, stub.content[0])
 }
 
 func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {

@@ -145,6 +145,13 @@ type Runner struct {
 	// it. Docs publishing and Rust final-audio render stay single-threaded.
 	ttsConcurrency int
 
+	// serialMode reproduces the pre-parallel "before" chain for controlled
+	// benchmarking: the VidRush/NLP join + overlay.prepare runs blocking
+	// BEFORE TTS (entities → voiceover, never overlapping), and both the NLP
+	// extraction and TTS pools are forced to concurrency 1. Default false
+	// (the parallel SceneTextReady DAG).
+	serialMode bool
+
 	// vidRushRuns is the per-run VidRush wiring registry. beginVidRush
 	// registers the fresh coordinator for its run so concurrent runs on this
 	// shared Runner never observe each other's coordinator (the pre-registry
@@ -234,6 +241,20 @@ func (r *Runner) SetDocumentRenderer(renderer DocumentRenderer) {
 func (r *Runner) SetLogger(log *zap.Logger) {
 	if log != nil {
 		r.log = log
+	}
+}
+
+// SetSerialMode toggles the serial (pre-parallel "before") pipeline for
+// controlled benchmarking. When enabled the NLP/entity branch completes
+// blocking before TTS starts, and the NLP extraction + TTS pools are forced
+// to concurrency 1. Disabling restores the parallel SceneTextReady DAG.
+func (r *Runner) SetSerialMode(on bool) {
+	if r == nil {
+		return
+	}
+	r.serialMode = on
+	if on {
+		r.ttsConcurrency = 1
 	}
 }
 
@@ -382,6 +403,14 @@ func (r *Runner) SetVidRushPipeline(pipeline *VidRushPipeline) {
 // under the run ID is what isolates concurrent runs: each run resolves its own
 // wiring and never observes another run's coordinator.
 func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateRequest) (*VidRushIncrementalCoordinator, error) {
+	// Request-level kill switch: a caller that explicitly disables entity
+	// extraction (output.extract_entities=disabled) skips the incremental
+	// VidRush pipeline entirely — no per-scene entity extraction and no
+	// provider fan-out derived from it. ToggleDefault/ToggleEnabled keep the
+	// canonical always-extract behavior.
+	if req.EntityExtractionDisabled() {
+		return nil, nil
+	}
 	p := r.vidRushPipeline
 	if p == nil || p.Enricher == nil {
 		return nil, nil
@@ -393,7 +422,11 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	if err != nil {
 		return nil, fmt.Errorf("resolve vidrush plan: %w", err)
 	}
-	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(p.Enricher, plan, p.Backpressure)
+	backpressure := p.Backpressure
+	if r.serialMode {
+		backpressure.ExtractionLimit = 1
+	}
+	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(p.Enricher, plan, backpressure)
 	coordinator.SetSegmentProviderResolver(p.ProviderResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
@@ -603,77 +636,69 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	// ── SCENE-TEXT-READY FAN-OUT ──────────────────────────────────────
 	// Committing the scene text during the generate phase is the canonical
 	// SceneTextReady boundary. SceneAnalysis (VidRush) already started per
-	// scene on that boundary; translation and TTS are the other branches of
-	// the same fan-out. They depend only on the final scene text — never on
-	// entities/phrases/words — so they run in parallel with analysis instead
-	// of waiting for the VidRush barrier below.
+	// scene on that boundary; translation is the next branch (depends only on
+	// the final scene text, never on entities/phrases/words).
 	if !r.measurePhase(ctx, kernobs.StageName(stageTranslation), func(c context.Context) bool {
 		return r.runTranslationPhase(c, runID, req, exec, resumeIdx, result)
 	}) {
 		return
 	}
-	// ── SCENE-TEXT-READY FAN-OUT (prepare branch) ────────────────────
-	// The VidRush join + overlay.prepare is the OTHER branch of the
-	// SceneTextReady fan-out, running concurrently with TTS below. It awaits
-	// the VidRush barrier, computes the per-scene entity annotations and the
-	// pre-timing OverlayIntents from a read-only scene-text snapshot, and
-	// enqueues overlay.prepare — so prepare starts as soon as NLP results
-	// arrive and never waits for TTS or final audio. The branch never touches
-	// result (or result.Scenes), so it runs alongside TTS without racing; the
-	// projections are applied after the join below.
+
 	snapshot := snapshotSceneText(result.Scenes, req.SourceLanguage)
-	prepareCtx, cancelPrepare := context.WithCancel(ctx)
-	defer cancelPrepare()
-	prepareDone := make(chan vidRushPrepareOutcome, 1)
-	go func() {
-		res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
-		prepareDone <- vidRushPrepareOutcome{result: res, err: err}
-	}()
 
-	// TTS runs in the main goroutine, in parallel with the prepare branch.
-	if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
-		return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
-	}) {
-		// TTS failed: the deferred cancelPrepare stops the prepare branch.
-		return
-	}
-
-	// Join the prepare branch; an error fails the run (fail-closed).
-	outcome := <-prepareDone
-	if outcome.err != nil {
-		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, outcome.err)
-		return
-	}
-	prepared := outcome.result
-
-	// Apply the prepare branch's projections to the durable result: entity
-	// aggregate, per-scene annotations + entity results, compatibility
-	// surfaces, and the pre-timing OverlayIntents.
-	if len(prepared.segments) > 0 {
-		result.Entities = aggregateEntityResult(prepared.segments)
-		// Project each segment's entities onto its scene's annotations so the
-		// document SpecScene and the /full surface carry the same grounded
-		// per-scene entity proof (primary/secondary), never just the flat
-		// aggregate.
-		for idx, ann := range prepared.annotations {
-			if idx >= 0 && idx < len(result.Scenes) {
-				result.Scenes[idx].Annotations = ann
-			}
+	if r.serialMode {
+		// Serial "before" chain: entities → voiceover. The VidRush join +
+		// overlay.prepare runs blocking first, its projections are applied,
+		// and only then does TTS start — NLP and TTS never overlap.
+		prepared, err := r.runVidRushJoinAndPrepare(ctx, runID, req, snapshot)
+		if err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+			return
 		}
-		// Project each segment's typed entities onto its scene's canonical
-		// per-scene EntityResult (the same model as the document aggregate —
-		// no second entity model), and derive entity_overlay_required. A
-		// scene with no entities keeps entities=[] + entity_overlay_required=
-		// false; no entity is invented.
-		applySegmentEntityResults(result, prepared.segments)
-	}
-	projectEntityCompatibility(result, prepared.segments)
-	result.OverlayIntents = prepared.intents
+		applyVidRushPrepareProjections(result, prepared)
 
-	// Both branches joined: persist the voiceovers, entity projections, and
-	// pre-timing OverlayIntents in one durable checkpoint before audio
-	// compile.
-	r.checkpoint(ctx, runID, result)
+		if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
+			return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
+		}) {
+			return
+		}
+		r.checkpoint(ctx, runID, result)
+	} else {
+		// ── SCENE-TEXT-READY FAN-OUT (parallel DAG) ────────────────────
+		// The VidRush join + overlay.prepare is the OTHER branch of the
+		// SceneTextReady fan-out, running concurrently with TTS below. It
+		// awaits the VidRush barrier, computes the per-scene entity
+		// annotations and the pre-timing OverlayIntents from a read-only
+		// scene-text snapshot, and enqueues overlay.prepare — so prepare
+		// starts as soon as NLP results arrive and never waits for TTS or
+		// final audio. The branch never touches result (or result.Scenes), so
+		// it runs alongside TTS without racing; the projections are applied
+		// after the join below.
+		prepareCtx, cancelPrepare := context.WithCancel(ctx)
+		defer cancelPrepare()
+		prepareDone := make(chan vidRushPrepareOutcome, 1)
+		go func() {
+			res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
+			prepareDone <- vidRushPrepareOutcome{result: res, err: err}
+		}()
+
+		// TTS runs in the main goroutine, in parallel with the prepare branch.
+		if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
+			return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
+		}) {
+			// TTS failed: the deferred cancelPrepare stops the prepare branch.
+			return
+		}
+
+		// Join the prepare branch; an error fails the run (fail-closed).
+		outcome := <-prepareDone
+		if outcome.err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, outcome.err)
+			return
+		}
+		applyVidRushPrepareProjections(result, outcome.result)
+		r.checkpoint(ctx, runID, result)
+	}
 
 	result.SourceTrace = sourceTraceFromResult(result)
 	if !r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {

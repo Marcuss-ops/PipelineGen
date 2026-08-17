@@ -18,12 +18,15 @@ package adapters_test
 import (
 	"context"
 	"encoding/json"
+	"html"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -83,7 +86,8 @@ func TestSpecScene_DocumentEmbeddedJSON_Equals_JSONWire(t *testing.T) {
 
 	// Document surface: the canonical renderer embeds a byte-faithful
 	// json.MarshalIndent snapshot of model.SpecScene.
-	docHTML := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "PR 7 Test Title"})
+	docHTML, err := scriptgen.RenderDocument(model, scriptgen.DocumentRenderOptions{Title: "PR 7 Test Title"})
+	require.NoError(t, err)
 	docRaw := extractSpecSceneJSON(t, docHTML)
 
 	// Wire surface: the response writer marshals the same SpecScene.
@@ -99,4 +103,20 @@ func TestSpecScene_DocumentEmbeddedJSON_Equals_JSONWire(t *testing.T) {
 	// the JSON-wire response must be structurally identical.
 	require.Equal(t, fromWire, fromDoc,
 		"embedded SpecScene JSON diverged from the wire JSON response")
+}
+
+// extractSpecSceneJSON isolates the embedded SpecScene JSON snapshot from a
+// rendered document body and unescapes it for byte-faithful comparison.
+func extractSpecSceneJSON(t *testing.T, output string) string {
+	t.Helper()
+
+	const startMarker = "<h2>SpecScene JSON</h2><pre><code>"
+	start := strings.Index(output, startMarker)
+	require.NotEqual(t, -1, start, "SpecScene JSON marker missing")
+	start += len(startMarker)
+
+	end := strings.Index(output[start:], "</code></pre>")
+	require.NotEqual(t, -1, end, "SpecScene JSON closing marker missing")
+
+	return html.UnescapeString(output[start : start+end])
 }

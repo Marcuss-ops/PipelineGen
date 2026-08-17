@@ -17,7 +17,7 @@ import (
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/googleapi"
 
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -382,7 +382,7 @@ func runAuditGoogleDocRender(args []string) error {
 	fs := flag.NewFlagSet("audit-google-doc-render", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	docID := fs.String("doc-id", "", "Google Doc ID to audit (required)")
-	expectedRenderer := fs.String("expected-renderer", documentadapters.CanonicalDocumentRendererID, "expected document renderer ID")
+	expectedRenderer := fs.String("expected-renderer", scriptgen.CanonicalDocumentRendererID, "expected document renderer ID")
 	expectedHash := fs.String("expected-sha256", "", "expected canonical SpecScene SHA-256 (required)")
 	expectedScenes := fs.Int("expected-scene-count", -1, "expected scene count (required)")
 	if err := fs.Parse(args); err != nil {
@@ -423,7 +423,7 @@ func writeGoogleDocRenderAuditReport(w io.Writer, report googleDocRenderAuditRep
 }
 
 func auditGoogleDocRender(document *docs.Document, docID, expectedRenderer, expectedHash string, expectedScenes int) (googleDocRenderAuditReport, error) {
-	report := googleDocRenderAuditReport{DocumentID: strings.TrimSpace(docID), ExpectedRenderer: expectedRenderer, ExpectedSHA256: expectedHash, ExpectedScenes: expectedScenes, RendererVerified: expectedRenderer == documentadapters.CanonicalDocumentRendererID}
+	report := googleDocRenderAuditReport{DocumentID: strings.TrimSpace(docID), ExpectedRenderer: expectedRenderer, ExpectedSHA256: expectedHash, ExpectedScenes: expectedScenes, RendererVerified: expectedRenderer == scriptgen.CanonicalDocumentRendererID}
 	if !report.RendererVerified {
 		return report, &googleDocRenderMismatchError{Reason: fmt.Sprintf("unexpected renderer %q", expectedRenderer)}
 	}
@@ -441,7 +441,7 @@ func auditGoogleDocRender(document *docs.Document, docID, expectedRenderer, expe
 	}
 	report.JSONValid = true
 	report.SceneCount = len(spec.Scenes)
-	report.SpecSceneSHA256 = documentadapters.SpecSceneSHA256(spec)
+	report.SpecSceneSHA256 = scriptgen.SpecSceneSHA256(spec)
 	report.Renderer = expectedRenderer
 	report.Match = report.SpecSceneSHA256 == report.ExpectedSHA256 && report.SceneCount == report.ExpectedScenes
 	if !report.Match {

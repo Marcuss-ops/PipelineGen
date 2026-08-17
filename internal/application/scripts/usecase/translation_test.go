@@ -52,7 +52,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -371,7 +371,8 @@ func TestTranslateScriptSpec_CreatesGoogleDocWithSceneMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	title := "Top 10 Momenti Incredibili di Jackie Chan"
-	html := adapters.BuildSpecSceneDocumentHTML(out, adapters.SpecSceneDocumentOptions{Title: title})
+	html, err := scriptgen.RenderDocument(out, scriptgen.DocumentRenderOptions{Title: title})
+	require.NoError(t, err)
 	require.NotEmpty(t, html, "BuildSpecSceneDocumentHTML must produce HTML output")
 
 	assert.Contains(t, html, "<h2>Scene 1</h2>",

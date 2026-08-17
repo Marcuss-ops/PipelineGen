@@ -67,59 +67,18 @@ func (a *scriptGenerationDocumentPublisher) Preflight(_ context.Context, folderI
 }
 
 // scriptGenerationDocumentRenderer is the composition-root adapter from the
-// capability renderer port to the canonical application renderer. The
-// capability runner never owns HTML formatting or a second document builder.
+// capability renderer port to the canonical capability renderer. The
+// capability runner owns the HTML formatting; this adapter only binds the
+// port so the runner cannot tell the difference between a stub and the
+// canonical renderer.
 type scriptGenerationDocumentRenderer struct{}
 
-// finalAudioArtifactForDocument converts the capability-owned master
-// reference into the domain artifact consumed by the document renderer. It
-// never invents fields: unavailable values remain their zero value and are
-// omitted from the projected JSON.
-func finalAudioArtifactForDocument(ref *scriptgen.FinalAudioReference) *scriptpkg.FinalAudioArtifact {
-	if ref == nil {
-		return nil
-	}
-	return &scriptpkg.FinalAudioArtifact{
-		AssetID:              ref.AssetID,
-		Path:                 ref.Path,
-		DriveLink:            ref.DriveLink,
-		Container:            ref.Container,
-		AudioContractVersion: ref.AudioContractVersion,
-		AudioPlanVersion:     ref.AudioPlanVersion,
-		AudioPlanSHA256:      ref.PlanSHA256,
-		FinalAudioSHA256:     ref.FinalAudioSHA256,
-		Codec:                ref.Codec,
-		Profile:              ref.Profile,
-		SampleRate:           ref.SampleRate,
-		Channels:             ref.Channels,
-		ChannelLayout:        ref.ChannelLayout,
-		Bitrate:              ref.Bitrate,
-		DurationUS:           ref.DurationUS,
-		DurationMS:           ref.DurationMS,
-		StartPTS:             ref.StartPTS,
-		SizeBytes:            ref.SizeBytes,
-		FinalMix:             ref.FinalMix,
-		CopyEligible:         ref.CopyEligible,
-	}
-}
-
 func (scriptGenerationDocumentRenderer) DocumentRendererID() string {
-	return documentadapters.CanonicalDocumentRendererID
+	return scriptgen.CanonicalDocumentRendererID
 }
 
 func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) (string, error) {
-	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Title:              opts.Title,
-		Language:           string(opts.Language),
-		DefaultLanguage:    string(opts.DefaultLanguage),
-		FullAudio:          opts.FullAudio,
-		FinalAudio:         finalAudioArtifactForDocument(opts.FinalAudio),
-		AudioTimeline:      opts.AudioTimeline,
-		SceneSpeechTimings: opts.SceneSpeechTimings,
-		ClipMetadata:       opts.ClipMetadata,
-		AudioSummary:       opts.AudioSummary,
-		Overlay:            opts.Overlay,
-	}), nil
+	return scriptgen.RenderDocument(model, opts)
 }
 
 func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, input scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
@@ -257,19 +216,32 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	})
 	// Shared worker pools: the generation gate capacity matches the certified
 	// NLP concurrency (VidRush extraction fans out to at most 4 concurrent
-	// scenes), and the TTS voiceover pool defaults to 4 with the voiceover
-	// MaxConcurrentTTS config as the operator override (so the runner pool
-	// stays in sync with the lower-level provider bound). Docs publishing and
-	// the Rust final-audio render remain single-threaded.
-	runner.SetGenerationGate(scriptgen.NewGenerationGateWithCapacity(scriptgen.DefaultNLPConcurrency))
-	ttsConcurrency := scriptgen.DefaultTTSConcurrency
-	if cfg.Voiceover.MaxConcurrentTTS > 0 {
+	// scenes), and the TTS voiceover pool defaults to 4. Both are operator
+	// tunable via dedicated config env vars (VELOX_SCRIPTS_NLP_CONCURRENCY /
+	// VELOX_SCRIPTS_TTS_CONCURRENCY); the TTS pool falls back to the voiceover
+	// provider bound for backward compatibility. Docs publishing and the Rust
+	// final-audio render remain single-threaded.
+	nlpConcurrency := cfg.Scripts.NLPConcurrency
+	if nlpConcurrency <= 0 {
+		nlpConcurrency = scriptgen.DefaultNLPConcurrency
+	}
+	runner.SetGenerationGate(scriptgen.NewGenerationGateWithCapacity(nlpConcurrency))
+
+	ttsConcurrency := cfg.Scripts.TTSConcurrency
+	if ttsConcurrency <= 0 {
 		ttsConcurrency = cfg.Voiceover.MaxConcurrentTTS
 	}
+	if ttsConcurrency <= 0 {
+		ttsConcurrency = scriptgen.DefaultTTSConcurrency
+	}
 	runner.SetTTSConcurrency(ttsConcurrency)
+	// Serial mode is the controlled-benchmark "before" toggle: entities →
+	// voiceover (no overlap) with single-slot NLP/TTS pools.
+	runner.SetSerialMode(cfg.Scripts.SerialMode)
 	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)",
-		zap.Int("nlp_concurrency", scriptgen.DefaultNLPConcurrency),
-		zap.Int("tts_concurrency", ttsConcurrency))
+		zap.Int("nlp_concurrency", nlpConcurrency),
+		zap.Int("tts_concurrency", ttsConcurrency),
+		zap.Bool("serial_mode", cfg.Scripts.SerialMode))
 
 	return runner, nil
 }

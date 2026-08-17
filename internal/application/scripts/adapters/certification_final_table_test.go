@@ -7,6 +7,7 @@ import (
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
@@ -164,10 +165,13 @@ func TestCertificationFinalTableAndChecklist(t *testing.T) {
 	}
 
 	// ── 4. Google Doc ──────────────────────────────────────────────────
-	docHTML := adapters.BuildSpecSceneDocumentHTML(
+	docHTML, err := scriptgen.RenderDocument(
 		&scriptpkg.ModelScriptOutputV1{SpecScene: finalOut.UpdatedSpecScene},
-		adapters.SpecSceneDocumentOptions{Title: "NLP Online Images Certification"},
+		scriptgen.DocumentRenderOptions{Title: "NLP Online Images Certification"},
 	)
+	if err != nil {
+		t.Fatalf("render document: %v", err)
+	}
 
 	// ── 5. Per-scene table + checklist counters ────────────────────────
 	expectedQueries := make(map[string]bool, len(scenes))

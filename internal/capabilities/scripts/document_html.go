@@ -1,11 +1,26 @@
-// Package scripts: generation_specscene_html.go renders the canonical
-// Google Doc body for generated scripts.
+// Package scriptgeneration — document_html.go renders the canonical Google
+// Doc body for generated scripts.
+//
+// The renderer is split into two passes so DocsPrepare can overlap the
+// generative branches instead of waiting for their outputs:
+//
+//   - RenderDocumentSkeleton renders only what is available at SceneTextReady
+//     (the title and each scene's final text) plus deterministic late-bound
+//     markers. It depends on NO voiceover, entity, timing, or audio artifact.
+//   - InjectDocumentLateBound fills those markers with the artifacts that only
+//     exist after TTS/NLP/audio complete (voiceover links, entity images,
+//     scene timing, phrase timing, full audio, overlay, and the machine JSON
+//     blocks).
+//
+// RenderDocument is the one-shot convenience (skeleton + injection) and the
+// byte-equivalent successor to the retired
+// adapters.BuildSpecSceneDocumentHTML — the human surface stays identical.
 //
 // The document surface combines a caller-facing title with the human scene
 // view (scene text + available Drive links) and one structured SpecScene JSON
-// representation. Technical metadata remains excluded from the human
-// surface; the links themselves are deliberately visible and clickable.
-package adapters
+// representation. Technical metadata remains excluded from the human surface;
+// the links themselves are deliberately visible and clickable.
+package scriptgeneration
 
 import (
 	"crypto/sha256"
@@ -36,124 +51,179 @@ func SpecSceneSHA256(spec scriptpkg.SpecSceneOutput) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// SpecSceneDocumentOptions carries the caller-facing inputs the document
-// renderer needs. The renderer is deterministic: it renders only the title,
-// the human scene surface, and the byte-faithful SpecScene JSON snapshot. It
-// never mutates SpecScene and never resolves technical bindings itself.
-type SpecSceneDocumentOptions struct {
-	Title           string
-	Language        string
-	DefaultLanguage string
-	FullAudio       *scriptpkg.DocumentAudioRef
-	// FinalAudio is the full master certification. When present the renderer
-	// embeds it verbatim (minus the local path) so the video renderer and the
-	// document both reference the same asset by ID.
-	FinalAudio    *scriptpkg.FinalAudioArtifact
-	AudioTimeline *capabilityaudio.CanonicalTimeline
-	// SceneSpeechTimings is the deterministic scene-level speech timing
-	// projection (scene word boundaries + phrase spans in local and global
-	// coordinates). The renderer projects it verbatim; it never derives or
-	// invents timestamps itself.
-	SceneSpeechTimings []capabilityaudio.SceneSpeechTiming
-	// ClipMetadata is the canonical, pre-resolved clip-asset metadata
-	// (total source duration in integer microseconds). The renderer formats
-	// it verbatim; it never converts or derives clip durations.
-	ClipMetadata []capabilityaudio.ClipAssetMetadata
-	// AudioSummary is the pre-computed aggregate of the audio facts (clip
-	// totals, voiceover totals, counts) resolved at the capability boundary.
-	// The renderer only formats it; it never sums durations across scenes.
-	AudioSummary capabilityaudio.DocumentAudioSummary
-	// Overlay is the published reference to the completed render overlay. It
-	// carries only the public artifact URL and copy-only certification, never
-	// a local path.
-	Overlay *scriptpkg.DocumentOverlayRef
+// DocumentSceneText is the minimal scene input available at SceneTextReady:
+// identity and final text only. The early skeleton pass must never read
+// bindings, voiceover, entities, timing, or audio from it.
+type DocumentSceneText struct {
+	ID    string
+	Index int
+	Text  string
 }
 
-// BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
-//
-// Visible sections include the optional title, followed by the human scene
-// view ("Scene N" + scene text + available resource links) and the complete
-// SpecScene JSON snapshot. The JSON block is the canonical machine-consumable
-// surface and must remain byte-faithful to model.SpecScene.
-func BuildSpecSceneDocumentHTML(
-	model *scriptpkg.ModelScriptOutputV1,
-	opts SpecSceneDocumentOptions,
-) string {
-	if model == nil {
-		return ""
-	}
+// DocumentSkeletonInput carries everything the early skeleton pass may read.
+type DocumentSkeletonInput struct {
+	Title  string
+	Scenes []DocumentSceneText
+}
 
+// Late-bound markers. They are deterministic and replaced exactly once by
+// InjectDocumentLateBound; they never collide with scene text because they
+// contain no spaces and live outside the escaped scene paragraphs.
+const (
+	documentSkeletonBeforeMarker = "<!--pipelinegen:document:before-scenes-->"
+	documentSkeletonAfterMarker  = "<!--pipelinegen:document:after-scenes-->"
+)
+
+func documentSkeletonSceneMarker(i int) string {
+	return fmt.Sprintf("<!--pipelinegen:document:scene-%d-->", i)
+}
+
+// RenderDocumentSkeleton renders the early, scene-text-only pass: title plus
+// one <section> per scene with its heading, final text, and a late-bound
+// marker. It is a pure function of DocumentSkeletonInput and has no I/O.
+func RenderDocumentSkeleton(in DocumentSkeletonInput) string {
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
-
-	if title := strings.TrimSpace(opts.Title); title != "" {
+	if title := strings.TrimSpace(in.Title); title != "" {
 		b.WriteString("<h1>")
 		b.WriteString(html.EscapeString(title))
 		b.WriteString("</h1>")
 	}
-
-	writeDocumentFullAudio(&b, opts)
-	writeDocumentOverlay(&b, opts)
-
-	for i := range model.SpecScene.Scenes {
-		scene := &model.SpecScene.Scenes[i]
-
+	b.WriteString(documentSkeletonBeforeMarker)
+	for i, scene := range in.Scenes {
 		b.WriteString("<section>")
 		fmt.Fprintf(&b, "<h2>Scene %d</h2>", i+1)
-
 		if text := strings.TrimSpace(scene.Text); text != "" {
 			b.WriteString("<p>")
 			b.WriteString(html.EscapeString(text))
 			b.WriteString("</p>")
 		}
-
-		writeDocumentSceneTiming(&b, scene, opts)
-		writeDocumentSceneMediaDurations(&b, scene, opts)
-		writeDocumentSceneLinks(&b, scene, opts)
-		writeDocumentPhraseTimings(&b, scene, opts)
-
+		b.WriteString(documentSkeletonSceneMarker(i))
 		b.WriteString("</section>")
 	}
+	b.WriteString(documentSkeletonAfterMarker)
+	b.WriteString("</body></html>")
+	return b.String()
+}
 
-	writeDocumentAudioCertificationSummary(&b, model, opts)
+// InjectDocumentLateBound fills a skeleton produced by RenderDocumentSkeleton
+// with the late-bound artifacts: full audio + overlay (before scenes),
+// per-scene timing/media/links/phrase timings (inside each scene section),
+// and the summary + machine JSON blocks (after scenes). It is deterministic
+// and returns the complete document HTML.
+func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) string {
+	if model == nil {
+		return skeleton
+	}
 
+	var before strings.Builder
+	writeDocumentFullAudio(&before, opts)
+	writeDocumentOverlay(&before, opts)
+	skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
+
+	for i := range model.SpecScene.Scenes {
+		scene := &model.SpecScene.Scenes[i]
+		var perScene strings.Builder
+		writeDocumentSceneTiming(&perScene, scene, opts)
+		writeDocumentSceneMediaDurations(&perScene, scene, opts)
+		writeDocumentSceneLinks(&perScene, scene, opts)
+		writeDocumentPhraseTimings(&perScene, scene, opts)
+		skeleton = strings.Replace(skeleton, documentSkeletonSceneMarker(i), perScene.String(), 1)
+	}
+
+	var after strings.Builder
+	writeDocumentAudioCertificationSummary(&after, model, opts)
+	writeDocumentSpecSceneJSON(&after, model)
+	writeDocumentTimelineJSON(&after, opts)
+	writeDocumentSceneSpeechTimingJSON(&after, opts)
+	writeDocumentFinalAudioJSON(&after, opts)
+	writeDocumentOverlayJSON(&after, opts)
+	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
+
+	return skeleton
+}
+
+// RenderDocument is the one-shot renderer (skeleton + injection). It is the
+// DocumentRenderer port implementation and the byte-equivalent successor to
+// the retired adapters.BuildSpecSceneDocumentHTML.
+func RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
+	if model == nil {
+		return "", nil
+	}
+	return InjectDocumentLateBound(RenderDocumentSkeleton(documentSkeletonInput(model, opts.Title)), model, opts), nil
+}
+
+// documentSkeletonInput projects the scene-text-only inputs from a full model.
+func documentSkeletonInput(model *scriptpkg.ModelScriptOutputV1, title string) DocumentSkeletonInput {
+	in := DocumentSkeletonInput{Title: title}
+	if model == nil {
+		return in
+	}
+	for i := range model.SpecScene.Scenes {
+		scene := &model.SpecScene.Scenes[i]
+		in.Scenes = append(in.Scenes, DocumentSceneText{ID: scene.ID, Index: scene.Index, Text: scene.Text})
+	}
+	return in
+}
+
+// ── Machine JSON blocks ─────────────────────────────────────────────
+
+func writeDocumentSpecSceneJSON(b *strings.Builder, model *scriptpkg.ModelScriptOutputV1) {
+	if model == nil {
+		return
+	}
 	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
-	if err == nil {
-		b.WriteString("<h2>SpecScene JSON</h2><pre><code>")
+	if err != nil {
+		return
+	}
+	b.WriteString("<h2>SpecScene JSON</h2><pre><code>")
+	b.WriteString(html.EscapeString(string(raw)))
+	b.WriteString("</code></pre>")
+}
+
+func writeDocumentTimelineJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	if opts.AudioTimeline == nil {
+		return
+	}
+	if raw, err := json.MarshalIndent(opts.AudioTimeline, "", "  "); err == nil {
+		b.WriteString("<h2>Audio Timeline JSON</h2><pre><code>")
 		b.WriteString(html.EscapeString(string(raw)))
 		b.WriteString("</code></pre>")
 	}
-	if opts.AudioTimeline != nil {
-		if timeline, timelineErr := json.MarshalIndent(opts.AudioTimeline, "", "  "); timelineErr == nil {
-			b.WriteString("<h2>Audio Timeline JSON</h2><pre><code>")
-			b.WriteString(html.EscapeString(string(timeline)))
-			b.WriteString("</code></pre>")
-		}
-	}
-	if len(opts.SceneSpeechTimings) > 0 {
-		if timings, timingErr := json.MarshalIndent(opts.SceneSpeechTimings, "", "  "); timingErr == nil {
-			b.WriteString("<h2>Scene Speech Timing JSON</h2><pre><code>")
-			b.WriteString(html.EscapeString(string(timings)))
-			b.WriteString("</code></pre>")
-		}
-	}
-	if block := buildFinalAudioBlock(opts.FinalAudio, opts.Language); block != nil {
-		if finalAudio, finalAudioErr := json.MarshalIndent(block, "", "  "); finalAudioErr == nil {
-			b.WriteString("<h2>Final Audio JSON</h2><pre><code>")
-			b.WriteString(html.EscapeString(string(finalAudio)))
-			b.WriteString("</code></pre>")
-		}
-	}
-	if opts.Overlay != nil {
-		if overlay, overlayErr := json.MarshalIndent(opts.Overlay, "", "  "); overlayErr == nil {
-			b.WriteString("<h2>Rendered Overlay JSON</h2><pre><code>")
-			b.WriteString(html.EscapeString(string(overlay)))
-			b.WriteString("</code></pre>")
-		}
-	}
+}
 
-	b.WriteString("</body></html>")
-	return b.String()
+func writeDocumentSceneSpeechTimingJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	if len(opts.SceneSpeechTimings) == 0 {
+		return
+	}
+	if raw, err := json.MarshalIndent(opts.SceneSpeechTimings, "", "  "); err == nil {
+		b.WriteString("<h2>Scene Speech Timing JSON</h2><pre><code>")
+		b.WriteString(html.EscapeString(string(raw)))
+		b.WriteString("</code></pre>")
+	}
+}
+
+func writeDocumentFinalAudioJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	block := buildFinalAudioBlock(opts.FinalAudio, string(opts.Language))
+	if block == nil {
+		return
+	}
+	if raw, err := json.MarshalIndent(block, "", "  "); err == nil {
+		b.WriteString("<h2>Final Audio JSON</h2><pre><code>")
+		b.WriteString(html.EscapeString(string(raw)))
+		b.WriteString("</code></pre>")
+	}
+}
+
+func writeDocumentOverlayJSON(b *strings.Builder, opts DocumentRenderOptions) {
+	if opts.Overlay == nil {
+		return
+	}
+	if raw, err := json.MarshalIndent(opts.Overlay, "", "  "); err == nil {
+		b.WriteString("<h2>Rendered Overlay JSON</h2><pre><code>")
+		b.WriteString(html.EscapeString(string(raw)))
+		b.WriteString("</code></pre>")
+	}
 }
 
 // finalAudioDocumentBlock is the document projection of the certified master.
@@ -177,7 +247,7 @@ type finalAudioDocumentBlock struct {
 	CopyEligible     bool   `json:"copy_eligible,omitempty"`
 }
 
-func buildFinalAudioBlock(ref *scriptpkg.FinalAudioArtifact, language string) *finalAudioDocumentBlock {
+func buildFinalAudioBlock(ref *FinalAudioReference, language string) *finalAudioDocumentBlock {
 	if ref == nil {
 		return nil
 	}
@@ -195,14 +265,14 @@ func buildFinalAudioBlock(ref *scriptpkg.FinalAudioArtifact, language string) *f
 		Channels:         ref.Channels,
 		ChannelLayout:    ref.ChannelLayout,
 		DurationUS:       ref.DurationUS,
-		AudioPlanSHA256:  ref.AudioPlanSHA256,
+		AudioPlanSHA256:  ref.PlanSHA256,
 		FinalAudioSHA256: ref.FinalAudioSHA256,
 		FinalMix:         ref.FinalMix,
 		CopyEligible:     ref.CopyEligible,
 	}
 }
 
-func writeDocumentFullAudio(b *strings.Builder, opts SpecSceneDocumentOptions) {
+func writeDocumentFullAudio(b *strings.Builder, opts DocumentRenderOptions) {
 	if opts.FullAudio == nil || strings.TrimSpace(opts.FullAudio.DriveLink) == "" {
 		return
 	}
@@ -227,7 +297,7 @@ func writeDocumentFullAudio(b *strings.Builder, opts SpecSceneDocumentOptions) {
 // writeDocumentOverlay projects the published render-overlay reference into
 // the human document surface. Only public fields (artifact URL, job, profile,
 // duration) are shown; the local artifact path never appears here.
-func writeDocumentOverlay(b *strings.Builder, opts SpecSceneDocumentOptions) {
+func writeDocumentOverlay(b *strings.Builder, opts DocumentRenderOptions) {
 	if opts.Overlay == nil {
 		return
 	}
@@ -272,7 +342,7 @@ func documentLanguageLabel(language string) string {
 // scene into the human surface. The end timestamp is always derived as
 // start + duration and is never stored as a separate source-of-truth field:
 // the canonical timeline keeps timeline_start_us + duration_us only.
-func writeDocumentSceneTiming(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+func writeDocumentSceneTiming(b *strings.Builder, scene *scriptpkg.SpecScene, opts DocumentRenderOptions) {
 	if opts.AudioTimeline == nil || scene == nil {
 		return
 	}
@@ -302,7 +372,7 @@ func writeDocumentSceneTiming(b *strings.Builder, scene *scriptpkg.SpecScene, op
 // The timeline is the source of truth. In particular, an empty video segment
 // is rendered as "None" rather than borrowing the scene duration (which is
 // valid for audio-only scenes but is not a clip duration).
-func writeDocumentSceneMediaDurations(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+func writeDocumentSceneMediaDurations(b *strings.Builder, scene *scriptpkg.SpecScene, opts DocumentRenderOptions) {
 	if scene == nil || opts.AudioTimeline == nil {
 		return
 	}
@@ -352,7 +422,7 @@ func writeDocumentSceneMediaDurations(b *strings.Builder, scene *scriptpkg.SpecS
 // the clip/voiceover totals and counts are resolved at the capability
 // boundary, never summed here. A missing clip total stays Unknown; it is
 // never reconstructed from the scene or voiceover duration.
-func writeDocumentAudioCertificationSummary(b *strings.Builder, model *scriptpkg.ModelScriptOutputV1, opts SpecSceneDocumentOptions) {
+func writeDocumentAudioCertificationSummary(b *strings.Builder, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) {
 	if model == nil || opts.AudioTimeline == nil {
 		return
 	}
@@ -444,7 +514,7 @@ func writeDocumentAssetDurationRow(b *strings.Builder, label string, d kernelass
 // canonical SceneSpeechTiming projection. Only the phrase text and its
 // local/master spans are shown — word-level boundaries stay in the machine
 // JSON / published timing.json, so the human surface stays readable.
-func writeDocumentPhraseTimings(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+func writeDocumentPhraseTimings(b *strings.Builder, scene *scriptpkg.SpecScene, opts DocumentRenderOptions) {
 	if scene == nil || len(opts.SceneSpeechTimings) == 0 {
 		return
 	}
@@ -532,7 +602,7 @@ func pureDriveURL(link string) string {
 
 // writeDocumentSceneLinks renders only usable external links. Labels are
 // human-facing, while IDs, paths, durations and statuses stay in the JSON.
-func writeDocumentSceneLinks(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+func writeDocumentSceneLinks(b *strings.Builder, scene *scriptpkg.SpecScene, opts DocumentRenderOptions) {
 	if scene == nil {
 		return
 	}
@@ -626,8 +696,8 @@ func writeDocumentEntityImage(b *strings.Builder, entity scriptpkg.AnnotatedEnti
 	}
 }
 
-func writeDocumentVoiceover(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts SpecSceneDocumentOptions, write func(string, string)) {
-	link := resolveDocumentVoiceoverLink(voiceover, opts.Language, opts.DefaultLanguage)
+func writeDocumentVoiceover(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts DocumentRenderOptions, write func(string, string)) {
+	link := resolveDocumentVoiceoverLink(voiceover, string(opts.Language), string(opts.DefaultLanguage))
 	if link == "" {
 		return
 	}
@@ -653,8 +723,8 @@ func renderDocumentLink(url, label, fallback string) string {
 // (timing.json SSOT + optional SRT/VTT projections) for the resolved
 // language. Word-level boundaries are never inlined — they stay in the
 // published timing.json the links point to.
-func writeDocumentTimingLinks(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts SpecSceneDocumentOptions, write func(string, string)) {
-	timing, ok := resolveDocumentTimingBinding(voiceover, opts.Language, opts.DefaultLanguage)
+func writeDocumentTimingLinks(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts DocumentRenderOptions, write func(string, string)) {
+	timing, ok := resolveDocumentTimingBinding(voiceover, string(opts.Language), string(opts.DefaultLanguage))
 	if !ok {
 		return
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -204,61 +203,6 @@ func TestDocumentSurfaces_TimingLinksPreserved(t *testing.T) {
 	require.Contains(t, out, "https://drive.google.com/timing.vtt")
 }
 
-func TestDocumentSurfaces_ProcessorAndRunnerAreEquivalent(t *testing.T) {
-	result := &GenerateResult{
-		Title: "Parity",
-		Scenes: []Scene{
-			{
-				ID: "scene-0", Index: 0,
-				Text: map[Language]string{"it": "PARITY SCENE"},
-				Clip: &ClipReference{ID: "CLIP-SECRET", DriveLink: "DRIVE-SECRET"},
-				Voiceover: map[Language]AudioReference{
-					"it": {URL: "VOICE-IT"},
-					"en": {URL: "VOICE-EN"},
-				},
-			},
-			{
-				ID: "scene-1", Index: 1,
-				Text: map[Language]string{"it": "PARITY SECOND SCENE"},
-				Clips: []*ClipReference{
-					{ID: "CLIP-B-SECRET", DriveLink: "DRIVE-B-SECRET"},
-					{ID: "CLIP-C-SECRET", DriveLink: "DRIVE-C-SECRET"},
-				},
-			},
-		},
-	}
-
-	runnerModel := modelScriptOutputForDocument(result, "it")
-	runnerHTML, err := (canonicalTestDocumentRenderer{}).RenderDocument(runnerModel, DocumentRenderOptions{
-		Title: "Parity", Language: "it", DefaultLanguage: "it",
-	})
-	require.NoError(t, err)
-
-	service := &parityDocumentService{}
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID: "parity-run", Title: "Parity", Language: "it",
-		DocsEnabled: true, DocsLanguages: []string{"it"},
-	}
-	_, err = documentadapters.NewDocumentsProcessor(service).Process(context.Background(), plan, documentadapters.ProcessInput{
-		Text: runnerModel.Text, SpecScene: runnerModel.SpecScene,
-	})
-	require.NoError(t, err)
-	require.Len(t, service.contents, 1)
-
-	processorHTML := service.contents[0]
-	require.Equal(t, humanDocumentContract(runnerHTML), humanDocumentContract(processorHTML))
-	require.Equal(t, extractSpecSceneContract(t, runnerHTML), extractSpecSceneContract(t, processorHTML))
-}
-
-type parityDocumentService struct{ contents []string }
-
-func (s *parityDocumentService) CreateDoc(_ context.Context, _ string, content string, _ documentadapters.FolderResolver, _ string, _ string, _ bool) (string, string, error) {
-	s.contents = append(s.contents, content)
-	return "https://docs.example/parity", "parity-doc", nil
-}
-
-func (*parityDocumentService) UpdateDoc(context.Context, string, string, string) error { return nil }
-
 func humanDocumentContract(output string) string {
 	if index := strings.Index(output, "<h2>SpecScene JSON</h2>"); index >= 0 {
 		return output[:index]
@@ -308,7 +252,7 @@ func TestGenerationRun_AudioCompilePrecedesDocumentAndDocumentWaitsForVoiceover(
 	// The publisher receives the voiceover-bearing document, proving that
 	// document publication occurs after the voiceover phase.
 	require.Contains(t, final.Result.Documents, Language("en"))
-	require.Equal(t, documentadapters.CanonicalDocumentRendererID, final.Result.DocumentRenderers[Language("en")])
+	require.Equal(t, CanonicalDocumentRendererID, final.Result.DocumentRenderers[Language("en")])
 	require.NotEmpty(t, final.Result.DocumentSpecSceneSHA256[Language("en")])
 	require.Equal(t, len(final.Result.Scenes), final.Result.DocumentSceneCounts[Language("en")])
 	require.NotEmpty(t, docPub.records)
