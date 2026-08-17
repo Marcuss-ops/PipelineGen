@@ -13,7 +13,6 @@ import (
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -207,17 +206,4 @@ func GenerateSceneVoiceovers(
 		}
 	}
 	return successCount
-}
-
-// ── Text helpers ─────────────────────────────────────────────────────────────
-
-func countWords(text string) int {
-	return len(strings.Fields(text))
-}
-
-func approxReadingSeconds(words int) int {
-	if words <= 0 {
-		return 0
-	}
-	return max(1, (words*60)/defaults.DefaultScriptConfig().WordsPerMinute)
 }

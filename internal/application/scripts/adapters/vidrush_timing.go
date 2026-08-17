@@ -16,12 +16,6 @@ type VidRushTimingMetrics interface {
 	ObserveProviderDuration(provider string, seconds float64)
 }
 
-func observeVidRushProcessorDuration(metrics any, processor string, elapsed time.Duration) {
-	if timing, ok := metrics.(VidRushTimingMetrics); ok && timing != nil {
-		timing.ObserveProcessorDuration(processor, elapsed.Seconds())
-	}
-}
-
 func observeVidRushProviderDuration(metrics any, provider string, elapsed time.Duration) {
 	if timing, ok := metrics.(VidRushTimingMetrics); ok && timing != nil {
 		timing.ObserveProviderDuration(provider, elapsed.Seconds())

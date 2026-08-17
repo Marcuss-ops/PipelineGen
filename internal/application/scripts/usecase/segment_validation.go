@@ -198,33 +198,6 @@ func splitGeneratedSegmentParagraphs(text string) []string {
 	return paragraphs
 }
 
-func frozenSegmentPrompt(base string, plan *scriptpkg.ResolvedGenerationPlan, texts []string, invalid []int, settings segmentValidationSettings) string {
-	var b strings.Builder
-	b.WriteString(base)
-	b.WriteString("\n\n[SELECTIVE_SEGMENT_REGENERATION]\n")
-	b.WriteString("Valid frozen segments are immutable. Copy them exactly; do not rewrite, shorten, expand, or reorder them.\n")
-	for i, text := range texts {
-		if containsInt(invalid, i) {
-			continue
-		}
-		fmt.Fprintf(&b, "FROZEN SEGMENT %d:\n%s\n\n", i+1, text)
-	}
-	b.WriteString("Regenerate ONLY these segment numbers, in this order: ")
-	for i, index := range invalid {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		fmt.Fprintf(&b, "%d", index+1)
-	}
-	b.WriteString(".\nReturn exactly one prose paragraph per requested segment, separated by one blank line. Do not return frozen segments.\n")
-	for _, index := range invalid {
-		budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
-		segment := plan.Segments[index]
-		fmt.Fprintf(&b, "SEGMENT %d: topic=%s; target=%d; minimum=%d; maximum=%d\n", index+1, segment.Topic, budget.Target, budget.Min, budget.Max)
-	}
-	return b.String()
-}
-
 func containsInt(values []int, wanted int) bool {
 	for _, value := range values {
 		if value == wanted {
@@ -232,16 +205,6 @@ func containsInt(values []int, wanted int) bool {
 		}
 	}
 	return false
-}
-
-func mergeRegeneratedSegments(frozen []string, invalid []int, regenerated []string) []string {
-	merged := append([]string(nil), frozen...)
-	for i, index := range invalid {
-		if i < len(regenerated) {
-			merged[index] = strings.TrimSpace(regenerated[i])
-		}
-	}
-	return merged
 }
 
 func assembleFrozenSegments(texts []string) string {
