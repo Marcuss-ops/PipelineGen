@@ -7,19 +7,6 @@ import (
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 )
 
-// stockChunkStrategyAdditionalKeys enumerates the stock-specific keys the
-// strategy reads from SearchTextInput.Additional. Defined as a typed
-// slice so callers and tests can introspect the contract (single
-// canonical owner per fact — godlike/06 SSOT).
-var stockChunkStrategyAdditionalKeys = []string{
-	"event",     // boxing-event / fight name (e.g. "Pacquiao vs Broner")
-	"round",     // round number within the event (e.g. "3")
-	"subject",   // canonical subject of the clip (e.g. "Mike Tyson")
-	"action",    // action verb / phrase (e.g. "lands a left hook")
-	"start_sec", // clip start in seconds (e.g. "12.5")
-	"end_sec",   // clip end in seconds (e.g. "35.0")
-}
-
 // Truncation limits for long text fields. Transcripts and descriptions
 // can be hundreds of KB; truncation keeps the search_text column bounded
 // while preserving the most relevant prefix.

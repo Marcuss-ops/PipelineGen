@@ -126,25 +126,6 @@ func firstResult(results []*domainScript.GenerationResult) *domainScript.Generat
 	return nil
 }
 
-// singleEnvelopeResult was the PR-7-pre thin wrapper; preserved as a
-// box-shape projection for callers that need an ok-only envelope
-// without success/failure annotation. Single-item canonical result
-// is built via buildSingleSuccessEnvelope above.
-func singleEnvelopeResult(itemID string, result *domainScript.GenerationResult) domainScript.GenerationEnvelopeResult {
-	return domainScript.GenerationEnvelopeResult{
-		OK: result != nil,
-		Items: []domainScript.GenerationEnvelopeItem{{
-			ItemID: itemID,
-			Result: result,
-		}},
-		Summary: domainScript.GenerationEnvelopeSummary{
-			Total:     1,
-			Succeeded: 1,
-			Failed:    0,
-		},
-	}
-}
-
 // toMap serialises a GenerationEnvelopeResult to map[string]any via
 // a JSON marshal/unmarshal cycle. This is the LEGAL boundary between
 // typed domain results and the job-system map contract (the only

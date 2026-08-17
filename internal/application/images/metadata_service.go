@@ -233,19 +233,3 @@ func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, 
 		zap.Int("tags", len(result.Payload.Tags)),
 	)
 }
-
-// indexAssetInVectorStore is a no-op kept for compilation compatibility.
-func (m *MetadataService) indexAssetInVectorStore(ctx context.Context, assetID, source, name, localPath, driveLink, style, mediaType, searchText string, tags []string) {
-	if m.log != nil {
-		m.log.Debug("indexAssetInVectorStore noop",
-			zap.String("asset_id", assetID),
-			zap.String("media_type", mediaType))
-	}
-	_ = source
-	_ = name
-	_ = localPath
-	_ = driveLink
-	_ = style
-	_ = searchText
-	_ = tags
-}

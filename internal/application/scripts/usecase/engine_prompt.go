@@ -12,19 +12,6 @@ import (
 // These functions build the prompt that is sent to the Ollama model.
 // They are consumed exclusively by Engine.Generate (engine_generate.go).
 
-// extractPlanClipIDs extracts clip IDs from the resolved plan's
-// ClipEvidence. Returns nil for text-only plans (no clip evidence).
-//
-// Issue #2 (June 2026): field renamed from ClipIDs to
-// AcceptedClipIDs. The LLM prompt grounding set is unchanged —
-// any transcript-usable resolved clip counts.
-func extractPlanClipIDs(plan *scriptpkg.ResolvedGenerationPlan) []string {
-	if plan == nil || plan.ClipEvidence == nil {
-		return nil
-	}
-	return plan.ClipEvidence.AcceptedClipIDs
-}
-
 // buildClipGroundingInstructions adds clip-specific prompt guidance
 // when the plan carries clip evidence. The goal is to keep the model
 // anchored to the supplied clips instead of drifting into generic

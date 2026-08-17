@@ -16,11 +16,6 @@ import (
 	"time"
 )
 
-// timeNowUnixNano is an indirection over time.Now().UnixNano() so tests
-// can override it via a package-level var swap. Defaults to the real
-// clock; the function is unexported to keep the swap internal.
-var timeNowUnixNano = func() int64 { return time.Now().UnixNano() }
-
 // parseDownloadSection parses a yt-dlp "HH:MM:SS-HH:MM:SS" string into
 // start and end time.Durations. Empty input returns (0, 0, nil) which
 // the underlying adapter treats as "full video".

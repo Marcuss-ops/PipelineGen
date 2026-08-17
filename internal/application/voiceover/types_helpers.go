@@ -40,10 +40,6 @@ func (i *BatchItem) fail(code FailureCode, err error) BatchItem {
 	return *i
 }
 
-func (i BatchItem) isSuccessful() bool {
-	return strings.TrimSpace(string(i.Status)) == "completed" && strings.TrimSpace(i.Error) == ""
-}
-
 // normalizeBatchRequest performs the canonical pre-flight normalisation
 // for voiceover batch handlers, returning a fresh BatchRequest value.
 // The previous implementation mutated `req_in.X = ...` in place, which

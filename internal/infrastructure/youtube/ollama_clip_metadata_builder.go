@@ -328,15 +328,6 @@ func (b *OllamaClipMetadataBuilder) parseResponse(response string) (ollamaMetada
 	return out, nil
 }
 
-// countWordsForBuilder delegates to the metadata package's
-// exported CountWords so the word-count definition is
-// canonical. Kept as a thin local alias for code-locality
-// reasons — call sites have a one-word helper to make the
-// intent visible without an import alias at the call site.
-func countWordsForBuilder(s string) int {
-	return metadata.CountWords(s)
-}
-
 // transcriptPathFor returns the conventional transcript
 // path layout. The path is not validated — the writer
 // records it verbatim and the re-indexer reads the file

@@ -40,17 +40,6 @@ func (s *defaultBatchService) getBatch(batchID string) (Batch, error) {
 	return row.batch, nil
 }
 
-// getChild fetches the canonical BatchChild row by id.
-func (s *defaultBatchService) getChild(childID string) (*batchChildRow, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, ok := s.children[childID]
-	if !ok {
-		return nil, fmt.Errorf("mediamemory: batch_child_id=%q not in store", childID)
-	}
-	return c, nil
-}
-
 // CreateBatch validates input + produces parent + N children.
 //
 // godlike/06 SSOT (idempotent-by-name): re-running CreateBatch
