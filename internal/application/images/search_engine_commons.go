@@ -171,10 +171,6 @@ func (s *ImageStorageService) waitForCommonsRequest(ctx context.Context) error {
 	return nil
 }
 
-type commonsMetadataValue struct {
-	Value json.RawMessage `json:"value"`
-}
-
 func commonsMetadataText(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""

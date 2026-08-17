@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -198,15 +199,6 @@ func splitGeneratedSegmentParagraphs(text string) []string {
 	return paragraphs
 }
 
-func containsInt(values []int, wanted int) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
-}
-
 func assembleFrozenSegments(texts []string) string {
 	parts := make([]string, 0, len(texts))
 	for _, text := range texts {
@@ -225,7 +217,7 @@ func (e *Engine) generateSegments(
 		// clock records it as an OperationReport under script.engine.
 		var out *ports.GenerationResult
 		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage:     stageScriptEngine,
+			Stage:     scriptgen.StageScriptEngine,
 			Component: kernobs.ComponentOllama,
 			Operation: kernobs.OperationGenerate,
 		}, func(opCtx context.Context) error {
@@ -258,7 +250,7 @@ func (e *Engine) generateSegments(
 		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
 			// Each per-segment LLM call is its own ollama.generate operation.
 			if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-				Stage:     stageScriptEngine,
+				Stage:     scriptgen.StageScriptEngine,
 				Component: kernobs.ComponentOllama,
 				Operation: kernobs.OperationGenerate,
 			}, func(opCtx context.Context) error {
