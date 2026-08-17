@@ -18,12 +18,6 @@ import (
 
 const soundEffectsDriveFolderID = "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
 
-var soundEffectDriveFamilies = []string{
-	"ambient", "background_music", "cartoon", "foley", "gaming", "glitch",
-	"impact", "industrial", "mechanical", "misc", "music", "percussion",
-	"riser", "sci-fi", "swell", "tension", "transition", "ui", "whoosh",
-}
-
 type soundEffectDriveAsset struct {
 	Family string
 }

@@ -110,18 +110,6 @@ func runResetVideoAI(args []string) error {
 	return nil
 }
 
-func escapeName(name string) string {
-	result := ""
-	for _, c := range name {
-		if c == '\'' {
-			result += "\\'"
-		} else {
-			result += string(c)
-		}
-	}
-	return result
-}
-
 // createClipFolderEntry upserts the canonical `clip_folders` row for the
 // "video ai" sub-folder. Column shape matches migration
 // 011_create_characters.sql.
