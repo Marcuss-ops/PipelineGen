@@ -113,6 +113,9 @@ const (
 // Server-internal locators (DriveLink, LocalPath) are NOT in this
 // struct. See the package-level doctrine above.
 type IndexedMetadata struct {
+	// SemanticSummary is the canonical semantic-summary evidence tier.
+	SemanticSummary string
+
 	// Summary is the clip summary / run summary extracted from the
 	// metadata_json bag (canonical key: summary / clip_summary).
 	Summary string

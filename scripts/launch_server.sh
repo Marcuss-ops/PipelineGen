@@ -10,7 +10,8 @@
 # /tmp/pipelinegen.log.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 PIPELINEGEN_BIN="${PIPELINEGEN_BIN:-./pipelinegen}"
 PORT="${VELOX_PORT:-8000}"
@@ -21,10 +22,40 @@ LOG_FILE="${PIPELINEGEN_LOG_FILE:-/tmp/pipelinegen.${PORT}.log}"
 
 export VELOX_HOST="$HOST"
 export VELOX_PORT="$PORT"
-set -a
-source .env
+
+# shellcheck source=scripts/lib/dotenv.sh
+source "$SCRIPT_DIR/lib/dotenv.sh"
+
+# Determine the admin-token provenance BEFORE loading .env so the boot log can
+# report where the token came from without ever printing the token itself.
+if [ -n "${VELOX_ADMIN_TOKEN:-}" ]; then
+    AUTH_SOURCE="environment"
+else
+    AUTH_SOURCE="missing"
+fi
+
+# Explicit environment wins: .env only fills variables that are unset or
+# empty, so a caller-provided VELOX_ADMIN_TOKEN is never silently overridden.
+load_dotenv_missing .env
+
+if [ -n "${VELOX_ADMIN_TOKEN:-}" ]; then
+    TOKEN_PRESENT="true"
+    if [ "$AUTH_SOURCE" = "missing" ]; then
+        AUTH_SOURCE="dotenv"
+    fi
+else
+    TOKEN_PRESENT="false"
+    if [ "$AUTH_SOURCE" = "missing" ]; then
+        AUTH_SOURCE="none"
+    fi
+fi
+
 export VELOX_FEATURE_IMAGES_ENABLED=true
-set +a
+
+# Boot diagnostics: provenance + presence only. The token value is never
+# printed, logged, or exposed to any command that could echo it.
+printf 'auth_source=%s\n' "$AUTH_SOURCE"
+printf 'token_present=%s\n' "$TOKEN_PRESENT"
 
 # Kill any existing server on this port, preferring the stored PID file.
 if [ -f "$PID_FILE" ]; then

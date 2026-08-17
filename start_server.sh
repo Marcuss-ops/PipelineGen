@@ -1,68 +1,13 @@
 #!/bin/bash
+set -u
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-# systemd supplies the canonical auth/port values from its EnvironmentFile.
-# Preserve them while loading non-secret local defaults from .env; otherwise
-# a repository-local .env would silently override the authentication SSOT.
-CANONICAL_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
-CANONICAL_WORKER_TOKEN="${VELOX_WORKER_TOKEN:-}"
-CANONICAL_METRICS_TOKEN="${METRICS_AUTH_TOKEN:-}"
-CANONICAL_PORT="${VELOX_PORT:-}"
-CANONICAL_PATH="${PATH:-}"
-CANONICAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
-CANONICAL_WHISPER_DEVICE="${VELOX_WHISPER_DEVICE:-}"
-CANONICAL_WHISPER_MODEL="${VELOX_WHISPER_MODEL:-}"
-CANONICAL_WHISPER_CUDA_LIB_DIR="${VELOX_WHISPER_CUDA_LIB_DIR:-}"
-CANONICAL_YTDLP_PATH="${YTDLP_PATH:-}"
-CANONICAL_YT_JS_RUNTIME_PATH="${YT_JS_RUNTIME_PATH:-}"
-CANONICAL_YTDLP_MIN_SLEEP="${YTDLP_MIN_SLEEP_SECONDS:-}"
-CANONICAL_YTDLP_MAX_SLEEP="${YTDLP_MAX_SLEEP_SECONDS:-}"
-set -a
-source "$DIR/.env"
-if [[ -n "$CANONICAL_ADMIN_TOKEN" ]]; then
-    VELOX_ADMIN_TOKEN="$CANONICAL_ADMIN_TOKEN"
-else
-    unset VELOX_ADMIN_TOKEN
-fi
-if [[ -n "$CANONICAL_WORKER_TOKEN" ]]; then
-    VELOX_WORKER_TOKEN="$CANONICAL_WORKER_TOKEN"
-else
-    unset VELOX_WORKER_TOKEN
-fi
-if [[ -n "$CANONICAL_METRICS_TOKEN" ]]; then
-    METRICS_AUTH_TOKEN="$CANONICAL_METRICS_TOKEN"
-else
-    unset METRICS_AUTH_TOKEN
-fi
-if [[ -n "$CANONICAL_PORT" ]]; then
-    VELOX_PORT="$CANONICAL_PORT"
-fi
-if [[ -n "$CANONICAL_PATH" ]]; then
-    PATH="$CANONICAL_PATH"
-fi
-if [[ -n "$CANONICAL_LD_LIBRARY_PATH" ]]; then
-    LD_LIBRARY_PATH="$CANONICAL_LD_LIBRARY_PATH"
-fi
-if [[ -n "$CANONICAL_WHISPER_DEVICE" ]]; then
-    VELOX_WHISPER_DEVICE="$CANONICAL_WHISPER_DEVICE"
-fi
-if [[ -n "$CANONICAL_WHISPER_MODEL" ]]; then
-    VELOX_WHISPER_MODEL="$CANONICAL_WHISPER_MODEL"
-fi
-if [[ -n "$CANONICAL_WHISPER_CUDA_LIB_DIR" ]]; then
-    VELOX_WHISPER_CUDA_LIB_DIR="$CANONICAL_WHISPER_CUDA_LIB_DIR"
-fi
-if [[ -n "$CANONICAL_YTDLP_PATH" ]]; then
-    YTDLP_PATH="$CANONICAL_YTDLP_PATH"
-fi
-if [[ -n "$CANONICAL_YT_JS_RUNTIME_PATH" ]]; then
-    YT_JS_RUNTIME_PATH="$CANONICAL_YT_JS_RUNTIME_PATH"
-fi
-if [[ -n "$CANONICAL_YTDLP_MIN_SLEEP" ]]; then
-    YTDLP_MIN_SLEEP_SECONDS="$CANONICAL_YTDLP_MIN_SLEEP"
-fi
-if [[ -n "$CANONICAL_YTDLP_MAX_SLEEP" ]]; then
-    YTDLP_MAX_SLEEP_SECONDS="$CANONICAL_YTDLP_MAX_SLEEP"
-fi
+
+# Explicit environment wins. The dotenv loader only fills missing development
+# defaults and therefore cannot overwrite the systemd EnvironmentFile or a
+# caller-provided VELOX_ADMIN_TOKEN.
+# shellcheck source=scripts/lib/dotenv.sh
+source "$DIR/scripts/lib/dotenv.sh"
+load_dotenv_missing "$DIR/.env"
 # Keep the repository lexicon as the operational default when an inherited
 # environment exports an empty override. An empty env value must not erase
 # the config.yaml path during a systemd restart.

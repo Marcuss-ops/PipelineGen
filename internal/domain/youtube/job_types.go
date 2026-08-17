@@ -29,13 +29,6 @@ const (
 	// with in-flight SQLite jobs.type rows).
 	TypeClipExtract = "youtube_clip.extract"
 
-	// TypeClipExtractImportant is the canonical job type for
-	// the per-LLM-segment fan-out clip extractor
-	// (PR-GEMMA-EXTRACT-IMPORTANT, July 2026). Mirrors
-	// TypeClipExtract but batch-fans out per LLM-identified
-	// segment instead of per video OR clip ID.
-	TypeClipExtractImportant = "youtube_clip.extract_important"
-
 	// TypeRebuildSearchText is the canonical job type for the
 	// YouTube search-text rebuild pipeline (rebuild the
 	// canonical Qdrant search-text column from raw captions).

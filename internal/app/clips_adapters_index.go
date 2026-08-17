@@ -2,67 +2,25 @@ package app
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// clipsIndexerAdapter wraps *clipindexer.Service to satisfy
-// clips.ClipIndexerPort. IsEnabled + IndexClip are the only methods
-// the clips bulk-upload worker + EnrichUseCase call.
-type clipsIndexerAdapter struct {
-	inner *clipindexer.Service
-}
-
-// Compile-time assertion: clipsIndexerAdapter satisfies clips.ClipIndexerPort.
-var _ clips.ClipIndexerPort = (*clipsIndexerAdapter)(nil)
-
-func newClipsIndexerAdapter(svc *clipindexer.Service) clips.ClipIndexerPort {
-	if svc == nil {
-		return nil
-	}
-	return &clipsIndexerAdapter{inner: svc}
-}
-
-func (a *clipsIndexerAdapter) IsEnabled() bool {
-	if a.inner == nil {
-		return false
-	}
-	return a.inner.IsEnabled()
-}
-
-func (a *clipsIndexerAdapter) IndexClip(ctx context.Context, id string) error {
-	if a.inner == nil {
-		return fmt.Errorf("clipsIndexerAdapter: indexer not wired")
-	}
-	return a.inner.IndexClip(ctx, id)
-}
-
-func (a *clipsIndexerAdapter) BatchReindex(ctx context.Context, source, mediaType string, limit int) (*clips.ClipIndexBatchResultDTO, error) {
-	if a.inner == nil {
-		return nil, fmt.Errorf("clipsIndexerAdapter: indexer not wired")
-	}
-	res, err := a.inner.BatchReindex(ctx, source, mediaType, limit)
-	if err != nil {
-		return nil, err
-	}
-	if res == nil {
-		return &clips.ClipIndexBatchResultDTO{}, nil
-	}
-	return &clips.ClipIndexBatchResultDTO{
-		Total:    res.Total,
-		Indexed:  res.Indexed,
-		Skipped:  res.Skipped,
-		Failed:   res.Failed,
-		AssetIDs: res.AssetIDs,
-	}, nil
-}
+// PR-CLIPS-INDEXER-PORT-RETIRE (August 2026): clipsIndexerAdapter +
+// newClipsIndexerAdapter + clips.ClipIndexerPort are REMOVED. The port
+// existed only to serve the clips HTTP reindex transports
+// (ReindexClip + BatchReindex); both were retired in favor of the
+// canonical /api/assets/operator/assets/:id/reindex surface and the
+// media.reindex job (enqueueable via POST /api/jobs). The concrete
+// *clipindexer.Service remains wired independently as the media.reindex
+// job handler (wireClipIndexerJobBinding) and the outbox indexing
+// handler — no application-layer clips port is needed for those paths.
 
 // PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): the
 // `clipsFolderMemoryAdapter` + `newClipsFolderMemoryAdapter` + the

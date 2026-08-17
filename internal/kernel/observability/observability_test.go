@@ -31,6 +31,35 @@ type captureRecorder struct {
 	reports []*RunReport
 }
 
+// ctxCapturingRecorder records the context error observed by SaveReport so
+// a test can prove the detached emit flush is NOT cancelled even when the
+// run's parent context was cancelled before Finish.
+type ctxCapturingRecorder struct {
+	mu      sync.Mutex
+	reports []*RunReport
+	ctxErr  error
+}
+
+func (c *ctxCapturingRecorder) SaveReport(ctx context.Context, rep *RunReport) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reports = append(c.reports, rep)
+	c.ctxErr = ctx.Err()
+	return nil
+}
+
+func (c *ctxCapturingRecorder) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.reports)
+}
+
+func (c *ctxCapturingRecorder) saveCtxErr() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ctxErr
+}
+
 type captureCollector struct {
 	mu      sync.Mutex
 	reports []*RunReport
@@ -125,6 +154,32 @@ func TestRun_FinishWithErrorMarksFailed(t *testing.T) {
 	}
 	if rep.ErrorCode != "error" || rep.Error == "" {
 		t.Fatalf("error_code/error = %q/%q", rep.ErrorCode, rep.Error)
+	}
+}
+
+// TestRun_FinishDetachesSaveReportFromParentCancel is the shutdown-bug
+// regression guard: when the worker lifecycle ctx is cancelled before the
+// run finishes, the final SaveReport must still receive a live (non-cancelled)
+// context — otherwise the terminal UPDATE run_observability never lands and
+// the run stays RUNNING forever.
+func TestRun_FinishDetachesSaveReportFromParentCancel(t *testing.T) {
+	rec := &ctxCapturingRecorder{}
+	obs := NewRunObserver(rec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	run := obs.StartRun(ctx, RunInfo{RunID: "run-detach", JobID: "job-detach", JobType: "script.generate", AttemptID: "attempt-detach"})
+
+	cancel() // worker shutdown: parent ctx cancelled
+
+	rep := run.Finish()
+	if rep.Status != StatusSucceeded {
+		t.Fatalf("status = %q, want SUCCEEDED", rep.Status)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("SaveReport calls = %d, want 1", rec.count())
+	}
+	if err := rec.saveCtxErr(); err != nil {
+		t.Fatalf("SaveReport received a cancelled/expired context (%v) — the run would stay RUNNING", err)
 	}
 }
 
@@ -728,8 +783,8 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	if len(AllStages()) != 12 {
 		t.Fatalf("stages = %d, want 12", len(AllStages()))
 	}
-	if len(AllComponents()) != 11 {
-		t.Fatalf("components = %d, want 11", len(AllComponents()))
+	if len(AllComponents()) != 12 {
+		t.Fatalf("components = %d, want 12", len(AllComponents()))
 	}
 	if len(AllOperations()) != 21 {
 		t.Fatalf("operations = %d, want 21", len(AllOperations()))

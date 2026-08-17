@@ -121,6 +121,8 @@ CREATE TABLE jobs (
     completed_at DATETIME,
     cancelled_at DATETIME,
     parent_state_typed TEXT NOT NULL DEFAULT '',
+    parent_job_id TEXT NOT NULL DEFAULT '',
+    root_job_id TEXT NOT NULL DEFAULT '',
     revision INTEGER NOT NULL DEFAULT 1
 );
 
@@ -132,6 +134,19 @@ CREATE TABLE job_events (
     data_json TEXT DEFAULT '{}',
     created_at DATETIME
 );
+
+CREATE TABLE outbox_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    aggregate_type TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    event_key TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX outbox_events_event_key_uniq ON outbox_events(event_key) WHERE event_key != '';
 `
 
 // newBrokerTestDB returns a fresh in-memory SQLite handle with the

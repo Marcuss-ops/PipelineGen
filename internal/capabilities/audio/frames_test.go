@@ -72,3 +72,40 @@ func TestFrameResolverRejectsInvalidAndOverflowingInputs(t *testing.T) {
 		t.Fatal("overflowing rounded timestamp must be rejected")
 	}
 }
+
+func TestFrameAlignedDurationUSCoversFrameRoundedVideo(t *testing.T) {
+	// scene-8 edge case: a 17.52s narration at 30fps rounds the video up to
+	// 526 frames (17.533s); the audio master must pad to at least that.
+	resolver, err := NewFrameResolver(IntegerFrameRate(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	aligned, err := resolver.FrameAlignedDurationUS(17_520_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aligned < 17_520_000 || aligned < 17_533_333 {
+		t.Fatalf("aligned = %dus, want >= 17533333us (526 frames @30fps)", aligned)
+	}
+	// A duration already on a frame boundary stays unchanged.
+	exact, err := resolver.FrameAlignedDurationUS(30_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exact != 30_000_000 {
+		t.Fatalf("aligned = %dus, want 30000000us", exact)
+	}
+	// A duration that rounds down (17.48s → 524 frames) keeps the timeline
+	// duration so the audio master is never shortened.
+	resolver29, err := NewFrameResolver(IntegerFrameRate(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundedDown, err := resolver29.FrameAlignedDurationUS(17_480_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roundedDown != 17_480_000 {
+		t.Fatalf("aligned = %dus, want the timeline 17480000us (never shortened)", roundedDown)
+	}
+}

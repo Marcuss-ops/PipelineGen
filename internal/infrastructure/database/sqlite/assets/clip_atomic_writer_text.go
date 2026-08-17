@@ -73,7 +73,10 @@ func (w *ClipAtomicWriterAdapter) CommitClipTextAndIndexEvent(
 
 	// ── 2) UPSERT media_assets + outbox via AssetCommitter.
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	req := w.buildCommitRequest(cmd.Clip.ID, cmd.Clip)
+	req, err := w.buildCommitRequest(cmd.Clip.ID, cmd.Clip)
+	if err != nil {
+		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: build commit request: %w", err)
+	}
 	res, err := w.committer.CommitTx(ctx, tx, req)
 	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: commit asset: %w", err)

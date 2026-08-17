@@ -45,4 +45,16 @@ type AudioResult struct {
 	// Voice is the canonical TTS voice returned by scripts/bridges/tts_edge.py
 	// (e.g. "en-US-RogerNeural"). Empty when the bridge returned no voice.
 	Voice string
+
+	// MetadataPath is the path to the bridge's word-boundary metadata
+	// (<out>.metadata.jsonl) captured in the SAME synthesis stream that
+	// produced the audio. Empty when zero boundaries were captured (the
+	// bridge removes the file in that case) or the bridge did not report a
+	// path. The application layer is responsible for parsing it into the
+	// canonical SpeechTimingArtifact — the provider only hands it over.
+	MetadataPath string
+
+	// BoundaryCount is the number of word boundaries captured by the bridge
+	// in one synthesis pass. Zero means no timing was captured.
+	BoundaryCount int
 }

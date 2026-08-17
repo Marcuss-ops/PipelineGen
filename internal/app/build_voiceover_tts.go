@@ -39,6 +39,9 @@ func buildVoiceoverTTSProvider(
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
 	mediaProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	audioProcessor.SetMediaExecutor(mediaProcessor)
+	// Register the minimum-loudness gate: a non-empty but silent VO (edge-tts
+	// glitch) is retried/failed instead of shipping an inaudible voiceover.
+	audioProcessor.SetLoudnessProber(audioasset.NewFFmpegLoudnessProber(cfg.External.FfmpegPath))
 	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
 
 	// FASE 6 (July 2026): wrap TTS provider with exponential-backoff

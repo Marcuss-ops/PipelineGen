@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
-func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) bool {
+func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, result *GenerateResult) bool {
 	if result == nil || result.FinalAudio == nil || r.finalAudioPublisher == nil {
 		return true
 	}
@@ -18,11 +19,11 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	}
 	lang := req.SourceLanguage
 	uploadStarted := time.Now()
-	link, err := r.finalAudioPublisher.PublishFinalAudio(ctx, runID, lang, *result.FinalAudio)
+	published, err := r.finalAudioPublisher.PublishFinalAudio(ctx, runID, lang, *result.FinalAudio, routing.VoiceoverFolderID)
 	uploadMS := time.Since(uploadStarted).Milliseconds()
-	if err != nil || strings.TrimSpace(link) == "" {
+	if err != nil || strings.TrimSpace(published.DriveLink) == "" || strings.TrimSpace(published.AssetID) == "" {
 		if err == nil {
-			err = fmt.Errorf("publisher returned an empty Drive link")
+			err = fmt.Errorf("publisher returned an empty Drive link or canonical asset ID")
 		}
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("publish final audio: %w", err))
 		return false
@@ -30,7 +31,9 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	if result.AudioMetrics != nil {
 		result.AudioMetrics.UploadMS = uploadMS
 	}
-	result.FinalAudio.DriveLink = strings.TrimSpace(link)
+	r.recordAudioOperation(ctx, "upload", "drive", uploadMS)
+	result.FinalAudio.AssetID = strings.TrimSpace(published.AssetID)
+	result.FinalAudio.DriveLink = strings.TrimSpace(published.DriveLink)
 	r.checkpoint(ctx, runID, result)
 	if r.log != nil {
 		r.log.Info("certified final audio published before documents", zap.String("run_id", runID), zap.String("language", string(lang)))

@@ -53,15 +53,33 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	item := env.Items[0]
 
 	// Map SourceSpec → scriptgeneration.Source (pure field copy).
+	// Source policy fields must survive this durable-runtime boundary:
+	// dropping Search/CachePolicy/Research turns a web-research request into
+	// an offline cache lookup and fails with RESEARCH_DISABLED_CACHE_MISS.
 	source := Source{
-		Type:         SourceType(item.Source.Type),
-		Topic:        item.Source.Topic,
-		SourceText:   item.Source.SourceText,
-		ClipIDs:      copyStrings(item.Source.ClipIDs),
-		IntroClipIDs: copyStrings(item.Source.IntroClipIDs),
-		NumClips:     item.Source.NumClips,
-		Query:        item.Source.Query,
-		MaxClips:     item.Source.MaxClips,
+		Type:               SourceType(item.Source.Type),
+		Topic:              item.Source.Topic,
+		SourceText:         item.Source.SourceText,
+		Guidelines:         item.Source.Guidelines,
+		ClipIDs:            copyStrings(item.Source.ClipIDs),
+		IntroClipIDs:       copyStrings(item.Source.IntroClipIDs),
+		NumClips:           item.Source.NumClips,
+		Query:              item.Source.Query,
+		MaxClips:           item.Source.MaxClips,
+		MinCoverage:        item.Source.MinCoverage,
+		MinQualityScore:    cloneFloat64(item.Source.MinQualityScore),
+		MinTranscriptWords: cloneInt(item.Source.MinTranscriptWords),
+		TranscriptPolicy:   item.Source.TranscriptPolicy,
+		OrderingStrategy:   item.Source.OrderingStrategy,
+		GroundingPolicy:    item.Source.GroundingPolicy,
+		FallbackPolicy:     item.Source.FallbackPolicy,
+		ForceRefresh:       item.Source.ForceRefresh,
+		Search:             item.Source.Search,
+		AllowTextOnly:      item.Source.AllowTextOnly,
+		SourceFilter:       item.Source.SourceFilter,
+		MediaTypeFilter:    item.Source.MediaTypeFilter,
+		CachePolicy:        item.Source.CachePolicy,
+		Research:           item.Source.Research,
 	}
 
 	// Map languages from the output spec.
@@ -85,27 +103,38 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	docsLanguages := item.Docs.Languages
 	docsFolderID := item.Docs.FolderID
 
-	// Determine if rendering is enabled: render_video maps to
-	// the output.generate_timeline or a future render flag.
-	// For now, derive from GenerateTimeline.
-	renderVideo := item.Output.GenerateTimeline
+	// generate_timeline is the explicit opt-in for the canonical timeline
+	// metadata artifact. Video rendering is no longer part of PipelineGen; the
+	// timeline is audio/metadata-only.
+	generateTimeline := item.Output.GenerateTimeline
 	audioModeInput := item.Audio.Mode
 	if audioModeInput == "" { // compatibility with the initial nested output shape
 		audioModeInput = item.Output.Audio.Mode
 	}
-	audioMode, err := audiocap.ResolveAudioMode(audiocap.AudioMode(audioModeInput), item.Output.VoiceoverEnabled.AsBool(), renderVideo)
+	audioMode, err := audiocap.ResolveAudioMode(audiocap.AudioMode(audioModeInput), item.Output.VoiceoverEnabled.AsBool())
 	if err != nil {
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
 	}
 
+	// Voiceover timing policy: the canonical top-level audio config carries
+	// the policy; the nested output.audio shape is the compat fallback. nil
+	// means the pipeline applies the canonical defaults downstream — timing
+	// capture is never implicitly mandatory.
+	timing := item.Audio.Timing
+	if timing == nil {
+		timing = item.Output.Audio.Timing
+	}
+
 	return GenerateRequest{
-		IdempotencyKey: idempotencyKey,
-		ForceRefresh:   env.ForceRefresh,
-		Source:         source,
-		ScriptParams:   item.ScriptParams,
-		SourceLanguage: sourceLang,
-		Languages:      languages,
-		RenderVideo:    renderVideo,
+		IdempotencyKey:   idempotencyKey,
+		ForceRefresh:     env.ForceRefresh,
+		Source:           source,
+		ScriptParams:     item.ScriptParams,
+		MediaPlan:        item.MediaPlan.Clone(),
+		SourceLanguage:   sourceLang,
+		Languages:        languages,
+		GenerateTimeline: generateTimeline,
+		Timing:           timing,
 		Docs: DocumentsConfig{
 			Enabled:   docsEnabled,
 			Languages: toLanguages(docsLanguages),
@@ -113,9 +142,20 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		},
 		DocsEnabled:   docsEnabled,
 		DriveFolderID: docsFolderID,
+		SaveToDB:      item.Output.SaveToDB,
 		Title:         item.Title,
-		OutputName:    item.Title, // fallback: output name defaults to title
-		Audio:         audioMode,
+		// Project is the canonical semantic project namespace for artifact
+		// routing, resolved ONCE here from the explicit generation input.
+		// Empty Project for a voiceover-enabled generation fails closed
+		// before the first TTS call (ErrProjectRequired).
+		Project:    item.Project,
+		OutputName: item.Title, // fallback: output name defaults to title
+		// VoiceoverFolderID is the explicit caller destination for voiceover
+		// artifacts; empty falls back to the configured default. Threaded
+		// verbatim into the routing context so the per-scene TTS command
+		// honors the caller-explicit folder instead of dropping it.
+		VoiceoverFolderID: item.Output.VoiceoverFolderID,
+		Audio:             audioMode,
 	}, nil
 }
 
@@ -140,4 +180,20 @@ func copyStrings(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func cloneFloat64(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func cloneInt(src *int) *int {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
 }

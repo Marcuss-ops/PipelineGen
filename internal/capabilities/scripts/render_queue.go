@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ErrJobExists is returned by RenderQueueClient.Submit when a job with the
@@ -40,7 +41,7 @@ type RenderQueueJob struct {
 
 // RenderQueueClient is the narrow port for the central RenderingGen queue.
 // The capability stays independent of HTTP; the concrete client lives in
-// internal/infrastructure/renderinggen.
+// internal/platform/renderinggen.
 type RenderQueueClient interface {
 	// Submit enqueues a job. It returns ErrJobExists when a job with the
 	// same ID is already present (idempotent replay).
@@ -50,63 +51,94 @@ type RenderQueueClient interface {
 	Get(ctx context.Context, id string) (RenderQueueJob, error)
 }
 
-// QueueRenderEnqueuer adapts the central RenderingGen queue to the generation
-// RenderEnqueuer port. It submits the canonical render plan as the queue's
-// overlay spec, then blocks until the render completes so the returned
-// RenderReference carries the certified artifact.
+// QueueRenderEnqueuer adapts the central RenderingGen queue for the future
+// Chronon overlay render path. It compiles the semantic OverlayPlan into the
+// concrete chronon.render-plan.v1 document and blocks until the render
+// completes, returning the certified artifact reference. The removed video
+// render enqueue path is no longer part of PipelineGen.
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
-	fs           render.FileSystem
 	pollInterval time.Duration
+	// recorder optionally persists one analytics row per completed attempt.
+	// Nil means analytics are not recorded (no-op, not a failure).
+	recorder RenderAttemptRecorder
 }
 
-// NewQueueRenderEnqueuer creates a queue-backed render enqueuer.
-func NewQueueRenderEnqueuer(client RenderQueueClient, fs render.FileSystem) (*QueueRenderEnqueuer, error) {
+// NewQueueRenderEnqueuer creates a queue-backed Chronon render enqueuer.
+func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, error) {
 	if client == nil {
 		return nil, fmt.Errorf("queue render enqueuer requires a queue client")
 	}
-	if fs == nil {
-		return nil, fmt.Errorf("queue render enqueuer requires filesystem adapter")
-	}
-	return &QueueRenderEnqueuer{client: client, fs: fs, pollInterval: defaultQueuePollInterval}, nil
+	return &QueueRenderEnqueuer{client: client, pollInterval: defaultQueuePollInterval}, nil
 }
 
-// Enqueue validates the plan, submits it to the central queue and waits for
-// the artifact to complete. The job ID is the render plan's JobID, which makes
-// replays idempotent against the queue's ON CONFLICT (id) DO NOTHING submit.
-func (e *QueueRenderEnqueuer) Enqueue(ctx context.Context, result GenerateResult) (RenderReference, error) {
-	if e == nil || e.client == nil || e.fs == nil {
+// SetRecorder attaches the optional analytics recorder. Production
+// composition injects the SQLite-backed recorder; tests may inject a fake or
+// leave it nil to skip analytics.
+func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
+	if e == nil {
+		return
+	}
+	e.recorder = r
+}
+
+// EnqueueChrononPlan compiles the semantic OverlayPlan into the concrete
+// chronon.render-plan.v1 document and submits it to the central queue. This is
+// the production path that turns PipelineGen's visual instructions into the
+// document the RenderingGen worker writes to plan.json and hands to
+// chronon3d_cli. It then blocks until the render completes (or fails) and
+// returns the certified artifact reference.
+func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+	if e == nil || e.client == nil {
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
-	if result.RenderPlan == nil {
-		return RenderReference{}, fmt.Errorf("queue render enqueue requires RenderPlan")
-	}
-	if _, err := render.ValidateRenderPlan(*result.RenderPlan, e.fs); err != nil {
-		return RenderReference{}, fmt.Errorf("queue render enqueue validation failed: %w", err)
-	}
-
-	plan := *result.RenderPlan
-	spec, err := json.Marshal(plan)
+	compiled, err := capoverlay.CompileChrononPlan(plan)
 	if err != nil {
-		return RenderReference{}, fmt.Errorf("queue render enqueue marshal overlay spec: %w", err)
+		return RenderReference{}, fmt.Errorf("chronon plan compile failed: %w", err)
 	}
-	job := RenderQueueJob{ID: plan.JobID, OverlaySpec: spec, Assets: queueAssets(&plan)}
-
-	if err := e.client.Submit(ctx, job); err != nil {
-		if !errors.Is(err, ErrJobExists) {
-			return RenderReference{}, fmt.Errorf("queue render submit failed: %w", err)
-		}
-	}
-
-	done, err := e.waitForCompletion(ctx, plan.JobID)
+	spec, err := compiled.Marshal()
 	if err != nil {
 		return RenderReference{}, err
 	}
-	return RenderReference{JobID: plan.JobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+	assets := make([]RenderQueueAsset, 0, len(compiled.Assets))
+	for _, a := range compiled.Assets {
+		assets = append(assets, RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
+	}
+	job := RenderQueueJob{ID: plan.PlanID, OverlaySpec: spec, Assets: assets}
+
+	if err := e.client.Submit(ctx, job); err != nil {
+		if !errors.Is(err, ErrJobExists) {
+			return RenderReference{}, fmt.Errorf("chronon queue render submit failed: %w", err)
+		}
+	}
+
+	done, err := e.waitForCompletion(ctx, plan.PlanID)
+	if err != nil {
+		return RenderReference{}, err
+	}
+	if e.recorder != nil {
+		attempt := BuildRenderAttemptAnalytics(plan.PlanID, plan, done.Artifact)
+		if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
+			return RenderReference{}, fmt.Errorf("record render attempt analytics: %w", err)
+		}
+	}
+	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }
 
 // waitForCompletion polls the queue until the job reaches a terminal state.
+// The whole blocked interval is recorded as a completion wait on the bound
+// run (RunReport.Waits), never as a stage: it is time spent waiting on the
+// render queue, not pipeline CPU work.
 func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, error) {
+	waitStarted := time.Now()
+	defer func() {
+		kernobs.RecordWait(ctx, kernobs.WaitInfo{
+			Kind:       kernobs.WaitCompletion,
+			Component:  kernobs.ComponentRenderQueue,
+			StartedAt:  waitStarted,
+			FinishedAt: time.Now(),
+		})
+	}()
 	for {
 		job, err := e.client.Get(ctx, id)
 		if err != nil {
@@ -134,24 +166,3 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 		}
 	}
 }
-
-// queueAssets projects the render plan's manifest and final audio into the
-// asset references the central queue worker resolves by hash.
-func queueAssets(plan *render.RenderPlan) []RenderQueueAsset {
-	if plan == nil {
-		return nil
-	}
-	assets := make([]RenderQueueAsset, 0, len(plan.Manifest)+1)
-	for _, entry := range plan.Manifest {
-		if entry.SHA256 == "" {
-			continue
-		}
-		assets = append(assets, RenderQueueAsset{Hash: entry.SHA256})
-	}
-	if plan.FinalAudio != nil && plan.FinalAudio.SHA256 != "" {
-		assets = append(assets, RenderQueueAsset{Hash: plan.FinalAudio.SHA256})
-	}
-	return assets
-}
-
-var _ RenderEnqueuer = (*QueueRenderEnqueuer)(nil)

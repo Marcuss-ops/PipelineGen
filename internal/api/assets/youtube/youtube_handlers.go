@@ -8,8 +8,8 @@
 //
 // Split topology (godlike/06 SSOT one-canonical-owner-per-fact):
 //   - youtube_handlers.go — types + struct + ctor + RegisterRoutes + GetVideoInfo
-//   - youtube_extract.go  — Extract + ExtractImportant + normalizeExtractionDestination
-//   - youtube_search.go   — Diagnostics + SearchCatalog + Stats
+//   - youtube_extract.go  — Extract + normalizeExtractionDestination
+//   - youtube_search.go   — Diagnostics (incl. search stats) + SearchCatalog
 package youtube
 
 import (
@@ -66,7 +66,8 @@ type YouTubeClipHandler struct {
 	// SearchCatalog. When nil, the route returns 503.
 	searchSvc *search.Aggregator
 	// searchFanOut (Wave 4, July 2026): canonical SearchFanOut decorator
-	// for Stats telemetry. When nil, Stats returns 503.
+	// whose per-backend telemetry is surfaced by Diagnostics (the former
+	// GET /api/clips/stats payload).
 	searchFanOut search.SearchFanOut
 	stockService *stockplan.StockService
 } // NewYouTubeClipHandler builds the YouTubeClipHandler.
@@ -77,15 +78,17 @@ type YouTubeClipHandler struct {
 // toolChecker      - external-tool probe used by Diagnostics.
 // idempotencyMiddleware - reusable Gin idempotency middleware; nil disables.
 // searchSvc        - canonical search.Aggregator for SearchCatalog.
-// searchFanOut     - canonical SearchFanOut decorator for Stats.
+// searchFanOut     - canonical SearchFanOut decorator for the search
 //
-// Wave 4 (July 2026): SearchCatalog + Stats route through the
-// canonical search.Aggregator. SearchCatalog uses searchSvc.Search;
-// Stats uses searchFanOut.Stats().
+//	telemetry surfaced by Diagnostics.
+//
+// Wave 4 (July 2026): SearchCatalog + search telemetry route through
+// the canonical search.Aggregator. SearchCatalog uses searchSvc.Search;
+// Diagnostics surfaces searchFanOut.Stats().
 //
 // PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
 // (the only Write route in the handler). Read routes (info, search,
-// diagnostics, stats) are unchanged. nil disables idempotency for
+// diagnostics) are unchanged. nil disables idempotency for
 // test fixtures.
 func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc jobs.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) *YouTubeClipHandler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
@@ -112,19 +115,16 @@ func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc 
 //
 // PR8 (June 2026): POST /process (the YouTube clip extraction job
 // enqueue endpoint) installs h.Idempotency so Idempotency-Key replay
-// works across retry storms. Read routes (info, search, diagnostics,
-// stats) fall through unchanged.
+// works across retry storms. Read routes (info, search, diagnostics)
+// fall through unchanged.
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Idempotency, h.Extract)
-	r.POST("/extract-important", h.Idempotency, h.ExtractImportant) // PR-GEMMA-EXTRACT-IMPORTANT Step 5
 	if h.stockService != nil {
 		r.POST("/stock", h.Idempotency, h.SubmitStock)
 	}
 	r.GET("/info", h.GetVideoInfo)
 	r.GET("/search", h.SearchByTopic)
-	r.POST("/search", h.SearchByTopic)
 	r.GET("/diagnostics", h.Diagnostics)
-	r.GET("/stats", h.Stats)
 }
 
 // Wave 16 PR1 (June 2026): SearchTopics + searchTopicsViaProvider +
@@ -163,6 +163,6 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 }
 
 // S3d (June 2026) removal: getAllClipRepos() is REMOVED.
-// SearchCatalog + Stats now route through the canonical
-// *search.Aggregator. clipsRepo stays for downstream uses
-// (reprocess / download paths that don't aggregate provider fan-out).
+// SearchCatalog + search telemetry (Diagnostics) now route through
+// the canonical *search.Aggregator. clipsRepo stays for downstream
+// uses (reprocess / download paths that don't aggregate provider fan-out).

@@ -424,23 +424,22 @@ type e2eLifecycleAdapter struct {
 }
 
 func (a *e2eLifecycleAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *VoiceoverProjectionInput) error {
-	return a.svc.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
-		ID:           in.ID,
-		Source:       in.Source,
-		Name:         in.Name,
-		Filename:     in.Filename,
-		FolderID:     in.FolderID,
-		FolderPath:   in.FolderPath,
-		MediaType:    in.MediaType,
-		LocalPath:    in.LocalPath,
-		DriveFileID:  in.DriveFileID,
-		DriveLink:    in.DriveLink,
-		DownloadLink: in.DownloadLink,
-		FileHash:     in.FileHash,
-		Language:     string(in.Language),
-		Status:       in.Status,
-		Metadata:     in.Metadata,
-	})
+	_ = ctx
+	_ = a
+	_, err := tx.ExecContext(context.Background(), `
+		INSERT INTO media_assets (id, source, name, filename, media_type,
+			local_path, drive_file_id, drive_link, download_link, file_hash,
+			lifecycle_state, index_state, metadata_json, created_at, updated_at)
+		VALUES (?, 'voiceover', ?, ?, 'audio', ?, ?, ?, ?, ?, 'ACTIVE', 'NOT_INDEXABLE', ?,
+			strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, filename=excluded.filename,
+			local_path=excluded.local_path, drive_file_id=excluded.drive_file_id,
+			drive_link=excluded.drive_link, download_link=excluded.download_link,
+			file_hash=excluded.file_hash, metadata_json=excluded.metadata_json,
+			updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
+		in.ID, in.Name, in.Filename, in.LocalPath, in.DriveFileID, in.DriveLink,
+		in.DownloadLink, in.FileHash, in.Metadata)
+	return err
 }
 
 var _ LifecycleProjectionUpserter = (*e2eLifecycleAdapter)(nil)

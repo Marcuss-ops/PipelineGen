@@ -6,19 +6,49 @@ import (
 	"go.uber.org/zap"
 	"strings"
 	"time"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
 	// ── Stage 4: Generate Voiceovers (scene-level idempotent) ───
 	voiceoverStep, startErr := r.startExecutionStep(ctx, exec, "VOICEOVER", "audio")
 	if startErr != nil {
 		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, startErr)
 		return false
 	}
+	// Voiceover generation is gated on the resolved audio mode: only
+	// CHUNKED_VOICEOVER and COMBINED_TIMELINE produce voiceover assets.
+	// audio.mode NONE (or omitted → NONE) must not trigger TTS nor
+	// stage/publish voiceover artifacts — a timeline-only run stays
+	// metadata-only and a plain script run pays no unrequested TTS cost.
+	mode, modeErr := capabilityaudio.ResolveAudioMode(req.Audio, false)
+	if modeErr != nil {
+		// Envelope validation and the builder reject invalid audio-mode
+		// combinations earlier; fail closed here for direct-runner callers.
+		cause := fmt.Errorf("voiceover phase: resolve audio mode: %w", modeErr)
+		r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
+		return false
+	}
+	needsVoiceover := mode == capabilityaudio.AudioModeChunkedVoiceover || mode == capabilityaudio.AudioModeCombinedTimeline
+	// godlike/07 NO-FAKE-AVAILABILITY: fail BEFORE the first TTS call when a
+	// voiceover-producing mode is active but no Project was resolved. The
+	// publisher already fail-closes on an empty Project
+	// (ErrVoiceoverPublishProjectRequired); this gate moves that failure to
+	// the start of the phase so no TTS work is wasted and no "scene"
+	// namespace is silently invented.
+	if needsVoiceover && routing.Project == "" {
+		cause := fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
+		r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
+		return false
+	}
 	// On retry, scenes that already have a voiceover for a language
 	// are skipped. The Upsert-style DocumentPublisher ensures docs
 	// are not duplicated either.
-	voiceoverSkipped := stageSkipped(resumeIdx, StageGeneratingVoiceovers) || r.voiceoverGen == nil
+	voiceoverSkipped := stageSkipped(resumeIdx, StageGeneratingVoiceovers) || r.voiceoverGen == nil || !needsVoiceover
 	if !voiceoverSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingVoiceovers); err != nil {
 			r.failExecutionStep(ctx, exec, voiceoverStep, err)
@@ -49,6 +79,27 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					SceneID:  scene.ID,
 					Language: lang,
 					Text:     text,
+					// Project is the canonical semantic project namespace
+					// resolved ONCE by resolveArtifactRoutingContext at
+					// generation start and propagated verbatim to the
+					// per-item pipeline so the voiceover publish satisfies
+					// the semantic publish contract
+					// (PR-VOICEOVER-DRIVE-DRIFT: Project is required). It is
+					// guaranteed non-empty here by the phase-level fail-fast
+					// gate above.
+					Project: routing.Project,
+					// VoiceoverFolderID is the caller-explicit Drive folder for
+					// voiceover artifacts, resolved ONCE by
+					// resolveArtifactRoutingContext (output.voiceover_folder_id;
+					// empty falls back to the configured default). Forwarded
+					// verbatim so the per-scene TTS command never replaces a
+					// caller-explicit destination with the default folder.
+					VoiceoverFolderID: routing.VoiceoverFolderID,
+					// Forward the request-level timing policy so the per-item
+					// pipeline can honour required/best-effort fail-closed
+					// semantics (missing/invalid timing fails the job instead of
+					// producing plausible-but-wrong timestamps).
+					Timing: req.Timing,
 				})
 				if err != nil {
 					cause := fmt.Errorf("voiceover generation for scene %s lang %s failed: %w", scene.ID, lang, err)
@@ -67,18 +118,19 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 					return false
 				}
-				// Voiceover duration is the authoritative duration for
-				// narration-only timeline segments. Clip-bound scenes retain
-				// their source-range duration so audio and video remain
-				// aligned by construction.
-				if scene.Clip == nil && audioRef.Duration > 0 {
+				// Audio-only scenes are narration-driven even when a clip is
+				// attached as evidence. The clip total/used duration remains
+				// metadata; it must never stretch the audio master.
+				if (mode == capabilityaudio.AudioModeCombinedTimeline || scene.Clip == nil) && audioRef.Duration > 0 {
 					scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
+					scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)
 				}
 			}
 			r.checkpoint(ctx, runID, result)
 		}
 		result.AudioMetrics.TTSMS += time.Since(ttsStarted).Milliseconds()
 		result.AudioMetrics.TTSCalls += ttsCalls
+		r.recordVoiceoverOperation(ctx, result.AudioMetrics.TTSMS)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
 	if voiceoverSkipped {

@@ -74,7 +74,7 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 	// GetAliasTarget's legitimate uses (admin reconcile, DR, ensure
 	// schema, snapshot) are unaffected — only the writer hot path
 	// is changed.
-	if err := w.client.UpsertPoints(ctx, w.idxSchema.RuntimeAlias, points); err != nil {
+	if err := w.projection.UpsertProjection(ctx, w.idxSchema.RuntimeAlias, points); err != nil {
 		return fmt.Errorf("upsert %d points to %q: %w", len(points), w.idxSchema.RuntimeAlias, err)
 	}
 
@@ -114,7 +114,7 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 // PayloadMapper.AssetToPoint write path so any asset ID passed in
 // produces a 1-to-1 delete against the prefix-namespaced schema.Point ID
 // that the mapper originally wrote.
-func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
+func (w *IndexWriter) DeleteAssetPoints(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -138,7 +138,7 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 	// alias-resolution round-trip is dropped; the alias name is
 	// used directly as the Qdrant collection name in the delete
 	// payload.
-	if err := w.client.DeletePoints(ctx, w.idxSchema.RuntimeAlias, pointIDs); err != nil {
+	if err := w.projection.DeleteProjection(ctx, w.idxSchema.RuntimeAlias, pointIDs); err != nil {
 		return fmt.Errorf("delete points from %q: %w", w.idxSchema.RuntimeAlias, err)
 	}
 
@@ -210,7 +210,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 
 			// Flush every 100 points.
 			if len(points) >= 100 {
-				if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
+				if err := w.projection.UpsertProjection(ctx, targetCollection, points); err != nil {
 					return result, fmt.Errorf("reindex batch upsert: %w", err)
 				}
 				// Only count as indexed AFTER the batch commit
@@ -224,7 +224,7 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 
 	// Flush remaining.
 	if len(points) > 0 {
-		if err := w.client.UpsertPoints(ctx, targetCollection, points); err != nil {
+		if err := w.projection.UpsertProjection(ctx, targetCollection, points); err != nil {
 			return result, fmt.Errorf("reindex final batch upsert: %w", err)
 		}
 		result.IndexedAssets += batchCount

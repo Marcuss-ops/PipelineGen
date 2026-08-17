@@ -109,9 +109,19 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 	if u.metadata.MetadataService != nil {
 		startSec, _ := textutil.ParseTimestamp(cmd.Segment.Start)
 		endSec, _ := textutil.ParseTimestamp(cmd.Segment.End)
-		_, metaErr := u.metadata.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
+		// PR-ASSET-COMMITTER-ENRICHMENT (August 2026): this method now
+		// performs the PURE analysis (AnalyzeClip) instead of the legacy
+		// write (EnrichClip). The enrichment is folded into the canonical
+		// commit by step6to9 BEFORE the atomic super-tx; this method is
+		// retained only as the data-flow regression seam (transcript →
+		// ClipMetadataInput.Transcript, no Whisper re-invocation). It no
+		// longer persists media_assets nor emits a second index event.
+		_, metaErr := u.metadata.MetadataService.AnalyzeClip(ctx, youtubetypes.ClipMetadataInput{
 			ClipID:           clipID,
 			Title:            cmd.Segment.Name,
+			Description:      segmentDescription(cmd.Segment.Texts),
+			Summary:          cmd.Segment.Summary,
+			Tags:             append([]string(nil), cmd.Segment.Tags...),
 			Transcript:       transcript,
 			ClipDuration:     duration,
 			SourceURL:        cmd.VideoURL,

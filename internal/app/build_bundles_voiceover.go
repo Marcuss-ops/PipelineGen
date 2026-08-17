@@ -31,6 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -81,6 +82,7 @@ func buildVoiceoverPipeline(
 	destResolver asset.Resolver,
 	metaWriter semantic.MetadataWriterPort,
 	outboxDispatcher *outbox.Dispatcher,
+	committer assetspersistence.AssetCommitter,
 	mediaConfig mediaexec.ExecutionConfig,
 ) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
 	voDir := cfg.Storage.VoiceoversPath()
@@ -134,13 +136,15 @@ func buildVoiceoverPipeline(
 
 	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
 	// NewVoiceoverFinalizer sig is (repo, outbox, lifecycle, committer, logger)
-	// per finalizer_invariants_test.go:390. committer=nil preserves the
-	// Step 4+5 legacy branch (clip_atomic_writer.go:132 wires canonical).
+	// per finalizer_invariants_test.go:390. The canonical AssetCommitter
+	// (VOICEOVER-ASSETCOMMITTER-CUTOVER) makes Step 4+5 a single CommitTx;
+	// the finalizer falls back to the legacy projection writer only for
+	// the empty-FileHash edge case.
 	finalizer := voiceover.NewVoiceoverFinalizer(
 		voRepoAdapter,     // VoiceoverRepository
 		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
 		projectionAdapter, // LifecycleProjectionUpserter
-		nil,               // committer (nil preserves legacy pre-Cutover branch)
+		committer,         // canonical AssetCommitter (Step 4+5 via CommitTx)
 		log,               // *zap.Logger
 	)
 

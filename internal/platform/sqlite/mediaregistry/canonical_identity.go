@@ -150,7 +150,7 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, source, source_video_id, drive_file_id, source_url, content_sha256
+		SELECT id, source, source_video_id, drive_file_id, source_url, start_ms, end_ms, content_sha256
 		FROM media_assets
 		WHERE lifecycle_state IN ('ACTIVE','PUBLISHED') AND COALESCE(media_type, '') != 'folder'`)
 	if err != nil {
@@ -163,11 +163,12 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 
 	type row struct {
 		assetID, source, videoID, driveID, sourceURL, contentSHA string
+		startMS, endMS                                           int64
 	}
 	var items []row
 	for rows.Next() {
 		var it row
-		if err := rows.Scan(&it.assetID, &it.source, &it.videoID, &it.driveID, &it.sourceURL, &it.contentSHA); err != nil {
+		if err := rows.Scan(&it.assetID, &it.source, &it.videoID, &it.driveID, &it.sourceURL, &it.startMS, &it.endMS, &it.contentSHA); err != nil {
 			return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: scan asset: %w", err)
 		}
 		items = append(items, it)
@@ -177,6 +178,21 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 	}
 
 	report.AssetsTotal = len(items)
+	var tx *sql.Tx
+	if apply {
+		tx, err = r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: begin transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+	}
+	var queryer identityQueryer = r.db
+	var writer execer = r.db
+	if tx != nil {
+		queryer = tx
+		writer = tx
+	}
+	plannedOwners := make(map[string]string, len(items))
 	for _, it := range items {
 		if strings.TrimSpace(it.contentSHA) != "" {
 			report.ContentSHAKnown++
@@ -184,52 +200,77 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 			report.ContentSHAUnknown++
 		}
 
-		sourceType, sourceRef := deriveSourceIdentity(it.source, it.videoID, it.driveID, it.sourceURL)
+		sourceType, sourceRef := deriveSourceIdentity(it.source, it.videoID, it.driveID, it.sourceURL, it.startMS, it.endMS)
 		if sourceRef == "" {
 			report.SourcesUnknown++
 			continue
 		}
 
-		sourceID := capregistry.DeriveAssetSourceID(it.assetID, sourceType, sourceRef, "")
-		already, err := r.sourceExists(ctx, it.assetID, sourceType, sourceRef)
+		sourceID := capregistry.DeriveCanonicalSourceID(sourceType, sourceRef, "")
+		owners, err := sourceOwners(ctx, queryer, sourceType, sourceRef)
 		if err != nil {
 			return capregistry.BackfillReport{}, err
 		}
-		if already {
+		plannedKey := sourceType + "\x00" + sourceRef
+		if plannedOwner, ok := plannedOwners[plannedKey]; ok && !containsString(owners, plannedOwner) {
+			owners = append(owners, plannedOwner)
+		}
+		switch {
+		case len(owners) == 1 && owners[0] == it.assetID:
 			report.SourcesAlreadyKnown++
 			continue
-		}
-		if apply {
-			if err := registerSource(ctx, r.db, capregistry.AssetSource{
-				SourceID:      sourceID,
-				AssetID:       it.assetID,
-				ContentSHA256: it.contentSHA,
-				SourceType:    sourceType,
-				SourceURI:     sourceRef,
-				DiscoveredAt:  nowStr,
-				IsPrimary:     true,
-			}); err != nil {
-				return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: register source %q: %w", it.assetID, err)
+		case len(owners) > 0:
+			report.SourcesUnknown++
+			report.SourcesAmbiguous++
+			continue
+		case len(owners) == 0:
+			plannedOwners[plannedKey] = it.assetID
+			if apply {
+				if err := registerSource(ctx, writer, capregistry.AssetSource{
+					SourceID:      sourceID,
+					AssetID:       it.assetID,
+					ContentSHA256: it.contentSHA,
+					SourceType:    sourceType,
+					SourceURI:     sourceRef,
+					DiscoveredAt:  nowStr,
+					IsPrimary:     true,
+				}); err != nil {
+					return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: register source %q: %w", it.assetID, err)
+				}
 			}
+			report.SourcesBackfilled++
 		}
-		report.SourcesBackfilled++
 	}
 
-	report.DuplicateSourceIdentity, err = r.countDuplicateSourceIdentity(ctx)
+	report.DuplicateSourceIdentity, err = countDuplicateSourceIdentity(ctx, queryer)
 	if err != nil {
 		return capregistry.BackfillReport{}, err
 	}
-	report.DuplicateContentSHA, err = r.countDuplicateContentSHA(ctx)
+	report.DuplicateContentSHA, err = countDuplicateContentSHA(ctx, queryer)
 	if err != nil {
 		return capregistry.BackfillReport{}, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: commit transaction: %w", err)
+		}
 	}
 	return report, nil
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // deriveSourceIdentity maps only explicit durable source columns. It does not
 // inspect AssetID or parse provider-specific prefixes; unsupported records are
 // returned as UNKNOWN and remain visible in the backfill report.
-func deriveSourceIdentity(source, sourceVideoID, driveFileID, sourceURL string) (string, string) {
+func deriveSourceIdentity(source, sourceVideoID, driveFileID, sourceURL string, startMS, endMS int64) (string, string) {
 	source = strings.ToLower(strings.TrimSpace(source))
 	switch source {
 	case capregistry.SourceIdentityYouTube:
@@ -242,6 +283,12 @@ func deriveSourceIdentity(source, sourceVideoID, driveFileID, sourceURL string) 
 		ref := strings.TrimSpace(sourceVideoID)
 		if ref == "" {
 			ref = strings.TrimSpace(sourceURL)
+		}
+		if ref == "" {
+			ref = strings.TrimSpace(driveFileID)
+		}
+		if strings.TrimSpace(sourceVideoID) != "" {
+			ref = fmt.Sprintf("%s#%d-%d", strings.TrimSpace(sourceVideoID), startMS, endMS)
 		}
 		return "stock", ref
 	case "internet_images":
@@ -266,18 +313,31 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, source, media_type, filename
 		FROM media_assets
-		WHERE lifecycle_state IN ('ACTIVE','PUBLISHED')
-		  AND (COALESCE(namespace,'')='' OR COALESCE(asset_kind,'')='' OR COALESCE(source_type,'' )='')`)
+		WHERE lifecycle_state IN ('ACTIVE','PUBLISHED','STAGING')
+		  AND (
+			COALESCE(namespace,'')='' OR COALESCE(asset_kind,'')='' OR COALESCE(source_type,'' )=''
+			OR (media_type='clip' AND asset_kind='clip')
+		  )`)
 	if err != nil {
 		return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: scan assets: %w", err)
 	}
 	defer rows.Close()
 	report := capregistry.TaxonomyBackfillReport{}
+	type legacyRow struct{ id, source, mediaType, filename string }
+	var items []legacyRow
 	for rows.Next() {
 		var id, source, mediaType, filename string
 		if err := rows.Scan(&id, &source, &mediaType, &filename); err != nil {
 			return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: scan row: %w", err)
 		}
+		items = append(items, legacyRow{id: id, source: source, mediaType: mediaType, filename: filename})
+	}
+	if err := rows.Err(); err != nil {
+		return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: iterate: %w", err)
+	}
+	_ = rows.Close()
+	for _, item := range items {
+		id, source, mediaType, filename := item.id, item.source, item.mediaType, item.filename
 		report.AssetsConsidered++
 		tax, replacementType, ok := legacyTaxonomy(id, source, mediaType, filename)
 		if !ok {
@@ -299,9 +359,6 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 		}
 		report.TaxonomyBackfilled++
 	}
-	if err := rows.Err(); err != nil {
-		return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: iterate: %w", err)
-	}
 	return report, nil
 }
 
@@ -318,6 +375,17 @@ func legacyTaxonomy(id, source, mediaType, filename string) (capregistry.AssetTa
 		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "text", capregistry.MediaText, capregistry.AssetMetadata, "pipelinegen"
 	case source == "stock" && mediaType == "metadata":
 		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "metadata", capregistry.MediaText, capregistry.AssetMetadata, "stock"
+	case source == "stock" && mediaType == "video":
+		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "stock", capregistry.MediaVideo, capregistry.AssetStockVideo, "stock"
+	case source == "youtube" && (mediaType == "clip" || mediaType == "video"):
+		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityYouTube
+	case source == "clip_drive" && mediaType == "clip":
+		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityDrive
+	case source == "local" && mediaType == "video":
+		// Local/manual ingestion is still a canonical clip asset. The
+		// binary origin is local, while the durable semantic taxonomy is
+		// the same clips projection used by Drive-backed clips.
+		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityManual
 	case (source == "created" || source == "document") && mediaType == "document":
 		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "outputs", capregistry.MediaDocument, capregistry.AssetDocument, "pipelinegen"
 	default:
@@ -329,28 +397,44 @@ func legacyTaxonomy(id, source, mediaType, filename string) (capregistry.AssetTa
 	if mediaType == "metadata" {
 		return tax, string(capregistry.MediaText), true
 	}
+	if mediaType == "clip" {
+		return tax, string(capregistry.MediaVideo), true
+	}
 	_ = filename
 	return tax, "", true
 }
 
-func (r *CanonicalIdentityResolver) sourceExists(ctx context.Context, assetID, sourceType, sourceRef string) (bool, error) {
-	var one int
-	err := r.db.QueryRowContext(ctx, `
-		SELECT 1 FROM media_asset_sources
-		WHERE asset_id = ? AND source_type = ? AND source_uri = ?`,
-		assetID, sourceType, sourceRef).Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("canonical identity backfill: check source existence: %w", err)
-	}
-	return true, nil
+type identityQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func (r *CanonicalIdentityResolver) countDuplicateSourceIdentity(ctx context.Context) (int, error) {
+func sourceOwners(ctx context.Context, q identityQueryer, sourceType, sourceRef string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT DISTINCT asset_id FROM media_asset_sources
+		WHERE source_type = ? AND source_uri = ?
+		ORDER BY asset_id`, sourceType, sourceRef)
+	if err != nil {
+		return nil, fmt.Errorf("canonical identity backfill: check source ownership: %w", err)
+	}
+	defer rows.Close()
+	var owners []string
+	for rows.Next() {
+		var assetID string
+		if err := rows.Scan(&assetID); err != nil {
+			return nil, fmt.Errorf("canonical identity backfill: scan source owner: %w", err)
+		}
+		owners = append(owners, assetID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("canonical identity backfill: iterate source owners: %w", err)
+	}
+	return owners, nil
+}
+
+func countDuplicateSourceIdentity(ctx context.Context, q identityQueryer) (int, error) {
 	var n int
-	if err := r.db.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT source_type, source_uri FROM media_asset_sources
 			GROUP BY source_type, source_uri
@@ -361,9 +445,9 @@ func (r *CanonicalIdentityResolver) countDuplicateSourceIdentity(ctx context.Con
 	return n, nil
 }
 
-func (r *CanonicalIdentityResolver) countDuplicateContentSHA(ctx context.Context) (int, error) {
+func countDuplicateContentSHA(ctx context.Context, q identityQueryer) (int, error) {
 	var n int
-	if err := r.db.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT content_sha256 FROM media_assets
 			WHERE content_sha256 != ''

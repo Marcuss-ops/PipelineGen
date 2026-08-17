@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     completed_at        TEXT,                  -- nullable: set on Complete/Fail; NULL pre-terminal
     cancelled_at        TEXT,                  -- nullable: set on Cancel; NULL pre-cancel
     parent_state_typed  TEXT    NOT NULL DEFAULT '',
+    parent_job_id       TEXT    NOT NULL DEFAULT '',
+    root_job_id         TEXT    NOT NULL DEFAULT '',
     revision            INTEGER NOT NULL DEFAULT 1
 );`
 

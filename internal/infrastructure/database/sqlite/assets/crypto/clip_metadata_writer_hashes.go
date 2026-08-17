@@ -37,18 +37,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// ComputeContentHashWithTextTracks computes a deterministic content
-// hash that includes text track hashes. This ensures Qdrant re-indexes
-// when a translation is added or corrected, even when the MP4 file
-// hasn't changed.
+// ComputeIndexRevision derives the canonical index revision — the
+// fingerprint the supersede gate compares to decide whether an
+// asset.index.requested event is still current.
 //
-// Formula: SHA256(file_hash + "|" + sorted(text_track_hashes))
+// It folds BYTE identity (contentHash) with the indexable text-track
+// surface so the revision changes when a translation is added or
+// corrected, even when the MP4 bytes are unchanged. It does NOT mutate
+// contentHash: content_sha256 remains pure byte identity (godlike/06 —
+// content_sha256 vs index_revision vs semantic_document_hash are
+// distinct fingerprints and MUST NOT be conflated).
+//
+// Formula: SHA256(contentHash + "|" + sorted(text_track_hashes))
 // where sorted means ascending by (language_code, text_kind).
-// When no text tracks exist, the hash is just SHA256(file_hash)
-// which matches the existing content_hash behavior.
-func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTrack) string {
+// When no text tracks exist, the revision is just contentHash
+// (matching the byte-identity-only snapshot).
+func ComputeIndexRevision(contentHash string, textTracks []asset.TextTrack) string {
 	if len(textTracks) == 0 {
-		return fileHash
+		return contentHash
 	}
 
 	// Sort by (language_code, text_kind) for determinism.
@@ -62,7 +68,7 @@ func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTr
 	})
 
 	var b strings.Builder
-	b.WriteString(fileHash)
+	b.WriteString(contentHash)
 	b.WriteString("|")
 	for _, t := range sorted {
 		if t.TextHash != "" {
@@ -73,6 +79,15 @@ func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTr
 
 	h := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(h[:])
+}
+
+// ComputeContentHashWithTextTracks is the legacy alias for
+// ComputeIndexRevision. Deprecated: content_sha256 is BYTE identity and
+// must never fold text-track/metadata changes. New callers MUST use
+// ComputeIndexRevision; this alias is retained only for the existing
+// e2e determinism tests and the facade re-export surface.
+func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTrack) string {
+	return ComputeIndexRevision(fileHash, textTracks)
 }
 
 // BuildMetadataEventKey returns the canonical event_key for the

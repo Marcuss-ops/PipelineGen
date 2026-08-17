@@ -47,6 +47,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"
 )
@@ -59,6 +60,12 @@ type PersistenceProcessor struct {
 }
 
 const persistenceOperationTimeout = 30 * time.Second
+
+// stagePersistenceSQLite is the canonical STAGE name for the SQLite write
+// boundary owned by the persistence processor. It nests under the processor
+// stage recorded by the composite runner ("persistence") and is measured on
+// the same canonical clock — never with a second ad-hoc timer.
+const stagePersistenceSQLite kernobs.StageName = "persistence.sqlite"
 
 // NewPersistenceProcessor creates a PersistenceProcessor.
 // repo must be non-nil (enforced at registration time).
@@ -194,9 +201,13 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 
 	sections := buildSectionsFromScenes(input.SpecScene.Scenes)
-	scriptID, err := p.repo.SaveScript(operationCtx, rec, sections, buildStockMatchRowsFromSpecScene(input.SpecScene))
-	if err != nil {
-		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
+	var scriptID int64
+	if _, stageErr := kernobs.MeasureStageReport(operationCtx, stagePersistenceSQLite, func(stageCtx context.Context) error {
+		var saveErr error
+		scriptID, saveErr = p.repo.SaveScript(stageCtx, rec, sections, buildStockMatchRowsFromSpecScene(input.SpecScene))
+		return saveErr
+	}); stageErr != nil {
+		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, stageErr)
 	}
 
 	// PR 1 (SCRIPT-DOWNSTREAM-CUTOVER wave): persist the canonical

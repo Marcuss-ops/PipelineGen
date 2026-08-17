@@ -87,7 +87,7 @@ func TestValidateQdrantIndexerCompatibility_BothEnabled_ReturnsNil(t *testing.T)
 	cfg := &config.Config{
 		ClipIndexer: config.ClipIndexerConfig{Enabled: true},
 		Qdrant:      config.QdrantConfig{Enabled: true},
-		External:    config.ExternalConfig{OllamaEmbedModel: "nomic-embed-text"},
+		External:    config.ExternalConfig{OllamaEmbedModel: "intfloat/multilingual-e5-base"},
 	}
 	err := validateQdrantIndexerCompatibility(cfg)
 	assert.NoError(t, err,
@@ -98,7 +98,7 @@ func TestValidateQdrantIndexerCompatibility_EmbeddingModelMismatchFailsClosed(t 
 	cfg := &config.Config{
 		ClipIndexer: config.ClipIndexerConfig{Enabled: true},
 		Qdrant:      config.QdrantConfig{Enabled: true},
-		External:    config.ExternalConfig{OllamaEmbedModel: "multilingual-e5-base"},
+		External:    config.ExternalConfig{OllamaEmbedModel: "nomic-embed-text"},
 	}
 	err := validateQdrantIndexerCompatibility(cfg)
 	require.Error(t, err)
@@ -123,6 +123,10 @@ func TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_FailsClos
 	cfg := &config.Config{
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
 		Qdrant:      config.QdrantConfig{Enabled: true},
+		// The embedding contract check runs first and would short-circuit
+		// before the Direction-B branch under test; keep the canonical
+		// runtime model so this test pins the ClipIndexer-off failure.
+		External: config.ExternalConfig{OllamaEmbedModel: "intfloat/multilingual-e5-base"},
 	}
 	err := validateQdrantIndexerCompatibility(cfg)
 	require.Error(t, err,

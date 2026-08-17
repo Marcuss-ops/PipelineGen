@@ -62,6 +62,53 @@ PipelineGen has exactly one canonical source for admin credentials. New code and
 - **Rotation**: use `scripts/rotate_token.sh` (regenerates 64-hex, replaces the file, restarts the service via the systemd `EnvironmentFile`, and verifies the post-rotate PID environment).
 - **One-off setup** (run once on the deploy host with `sudo`): `groupadd -f pipelinegen-agents`, add the running user to it, then `chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env && chmod 0640 /etc/pipelinegen/pipelinegen.env`. Never use `0644`.
 
+## Script Google Docs destination
+
+All Google Docs produced by script generation use the canonical
+script documents destination.
+
+Canonical configuration:
+
+PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID
+
+Current production folder:
+
+1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4
+
+Rules:
+
+- Do not invent new Drive folders for script documents.
+- Do not hardcode alternative folder IDs in agents or workers.
+- `docs.folder_id` is an explicit caller override only.
+- When `docs.enabled=true` and `docs.folder_id` is omitted,
+  PipelineGen MUST resolve PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID.
+- Folder resolution must have one canonical owner.
+
+## StockRust certification boundary (three levels)
+
+The StockRust render boundary is certified at three levels; no single script
+covers all three. `STOCKRUST=CERTIFIED` requires all three green.
+
+- **L1 HTTP upstream** — `tests/operational/youtube_stock_live_e2e.sh`
+  (discovery → transcript selection → cut → persist → download; requires a
+  live server + `VELOX_ADMIN_TOKEN` + YouTube canary URLs).
+- **L2 Go adapter → Rust** — `internal/infrastructure/media/rustexec/*_test.go`
+  (canonical `render_plan` validate/transport, tamper hash-drift fail-closed,
+  `render_stock → mux_audio_copy` final audio copy, encoder policy).
+- **L3 Rust binary** — `tests/operational/stockrust_live_e2e.sh` + Go e2e tests
+  (health, `render_stock` protocol, concat + full decode, 4-job concurrency,
+  fail-closed, RTF).
+
+Honest limitation: the two shell scripts alone do NOT cover the middle layer —
+canonical `render_plan`, final audio copy, and tamper hash-drift are certified
+only by the L2 Go tests. Canonical owner:
+`docs/operations/stock-e2e-runbook.md#§13`.
+
+Native stage timing + persistence: `render_stock` reports `metadata.ffmpeg_ms`
+natively (like `render_audio_plan`); the perf e2e test persists
+`wall_ms`/`rtf`/`ffmpeg_ms` into `performance_runs` when
+`STOCKRUST_PERF_DB_PATH` points at a migrated SQLite DB.
+
 ## Git workflow
 
 - Work directly on `main`.

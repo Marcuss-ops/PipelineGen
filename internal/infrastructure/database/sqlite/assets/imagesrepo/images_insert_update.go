@@ -33,6 +33,9 @@ import (
 // DEFAULT ” (unclassified) and are eligible for FASE 4 backfill to
 // promote them to a canonical territory.
 func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
+	if r != nil && r.canonicalCommit != nil {
+		return r.canonicalCommit(ctx, img)
+	}
 	id := img.Hash
 	if id == "" {
 		id = fmt.Sprintf("img_%d", img.CreatedAt.UnixNano())

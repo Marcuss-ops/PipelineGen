@@ -179,7 +179,7 @@ func TestCommitAsset_ValidateErrors(t *testing.T) {
 		{"empty Source", AssetCommitRequest{AssetID: "x", Filename: "x", MediaType: "x", ContentHash: "x", LifecycleState: "x"}, "Source is required"},
 		{"empty Filename", AssetCommitRequest{AssetID: "x", Source: "x", MediaType: "x", ContentHash: "x", LifecycleState: "x"}, "Filename is required"},
 		{"empty MediaType", AssetCommitRequest{AssetID: "x", Source: "x", Filename: "x", ContentHash: "x", LifecycleState: "x"}, "MediaType is required"},
-		{"empty ContentHash", AssetCommitRequest{AssetID: "x", Source: "x", Filename: "x", MediaType: "x", LifecycleState: "x"}, "ContentHash is required"},
+		{"empty ContentHash for indexable asset", AssetCommitRequest{AssetID: "x", Source: "x", Filename: "x", MediaType: "x", LifecycleState: "x", EmitIndexEvent: true}, "ContentHash is required"},
 		{"empty LifecycleState", AssetCommitRequest{AssetID: "x", Source: "x", Filename: "x", MediaType: "x", ContentHash: "x"}, "LifecycleState is required"},
 	}
 	for _, c := range cases {

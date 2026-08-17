@@ -74,7 +74,7 @@ func runTrimSoundEffects(args []string) error {
 		if strings.TrimSpace(localPath) == "" {
 			return fmt.Errorf("sound effect %s has no local_path", id)
 		}
-		duration, err := probeSoundEffectDuration(ctx, localPath)
+		duration, err := mediaEditor.Probe(ctx, localPath)
 		if err != nil {
 			return fmt.Errorf("probe %s: %w", localPath, err)
 		}
@@ -100,7 +100,7 @@ func runTrimSoundEffects(args []string) error {
 		if err := trimSoundEffect(ctx, localPath, targetSeconds, mediaEditor); err != nil {
 			return fmt.Errorf("trim %s: %w", clip.Name, err)
 		}
-		newDuration, err := probeSoundEffectDuration(ctx, localPath)
+		newDuration, err := mediaEditor.Probe(ctx, localPath)
 		if err != nil {
 			return fmt.Errorf("probe trimmed %s: %w", localPath, err)
 		}

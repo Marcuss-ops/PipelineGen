@@ -94,7 +94,7 @@ type recordingOutbox struct {
 	cleanupCalls int
 }
 
-func (r *recordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _ string) error {
+func (r *recordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _, _ string) error {
 	r.indexCalls++
 	return nil
 }

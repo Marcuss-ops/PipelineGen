@@ -447,6 +447,20 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 		t.Error("outbox payload missing idempotency_key")
 	}
 
+	// 8-bis. Verify outbox_events → job.completed (derived-performance
+	// trigger, emitted atomically with the SUCCEEDED flip).
+	var jobCompletedCount int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = ?`,
+		jobID, outboxevents.EventJobCompleted,
+	).Scan(&jobCompletedCount)
+	if err != nil {
+		t.Fatalf("verify job.completed outbox_events: %v", err)
+	}
+	if jobCompletedCount != 1 {
+		t.Errorf("job.completed outbox_events count = %d, want 1", jobCompletedCount)
+	}
+
 	// 9. Verify job_events → job_completed.
 	var eventCount int
 	err = db.QueryRowContext(ctx,
@@ -583,6 +597,12 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 		`ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN namespace TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_kind TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN semantic_role TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN tags_norm TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS asset_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,

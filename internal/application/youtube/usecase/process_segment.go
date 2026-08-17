@@ -22,7 +22,7 @@
 //   - process_segment_step3to5.go   → Steps 3-5 cut/retry/hash/fail-closed + Step 4a Stager
 //   - process_segment_step5a_ffprobe.go → Step 5a ffprobe validation
 //   - process_segment_step6to9.go   → Steps 6-9 subtitles + Drive upload + writer commit
-//   - process_segment_step10.go     → Step 10  metadata enrichment
+//   - process_segment_step10.go     → RETIRED Step 10 (pure-analysis regression seam)
 //
 // Phase 2 Gruppo C-2 (PR-GRUPOC-2, July 2026): the use case struct
 // holds 4 capability-area sub-bundles (Core/Media/Metadata/Observability)
@@ -130,9 +130,6 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	if err != nil {
 		return out, err
 	}
-	if cacheHit {
-		return out, nil
-	}
 
 	// Steps 3-5 — cut + retry + runtime fail-closed (path / size / hash)
 	// + Step 4a shared SourceStager pre-stage (deferred best-effort
@@ -142,14 +139,29 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// downstream by Step 9 (buildClipAsset filename) + Step 10
 	// (metadata writer audit-pin) via step6to9 (godlike/07 minimum-
 	// blast-radius, no YAGNI hooks at this seam).
-	fileHash, localPath, err := u.step3to5_CutRetryHash(ctx, cmd, &out, clipID, startSec, endSec, duration, keepAudio)
-	if err != nil {
-		return out, err
-	}
+	//
+	// PR-CACHE-HIT-FINALIZATION (godlike/06 SSOT): a binary cache hit
+	// skips ONLY acquisition/cut (Steps 3-5) and ffprobe (Step 5a).
+	// The canonical enrichment/finalization gate (Steps 6-9) STILL
+	// runs on the cached binary so a cache hit repairs missing/stale
+	// metadata, text tracks and the index request instead of
+	// short-circuiting before the semantic snapshot exists. The cached
+	// binary coordinates (LocalPath + FileHash) are surfaced on `out`
+	// by step2_CacheLookup on the hit path.
+	var fileHash, localPath string
+	if cacheHit {
+		fileHash = out.Item.FileHash
+		localPath = out.Item.LocalPath
+	} else {
+		fileHash, localPath, err = u.step3to5_CutRetryHash(ctx, cmd, &out, clipID, startSec, endSec, duration, keepAudio)
+		if err != nil {
+			return out, err
+		}
 
-	// Step 5a — ffprobe validation (optional; nil-port = skip).
-	if err := u.step5a_FFProbeValidate(ctx, &out, clipID, localPath, duration, keepAudio); err != nil {
-		return out, err
+		// Step 5a — ffprobe validation (optional; nil-port = skip).
+		if err := u.step5a_FFProbeValidate(ctx, &out, clipID, localPath, duration, keepAudio); err != nil {
+			return out, err
+		}
 	}
 
 	// Steps 6-9 — subtitle slicing (Step 6) + Whisper fallback (Step 7) +
@@ -163,31 +175,18 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// bundle can be nil when TextTrackResolver is nil OR all 5
 	// priorities failed; Step 10's contract is fail-closed on
 	// nil bundle (empty transcript, empty cues, no error).
-	bundle, err := u.step6to9_SubtitlesDriveWriter(ctx, cmd, &out, clipID, startSec, endSec, localPath, fileHash, policyVer)
+	_, err = u.step6to9_SubtitlesDriveWriter(ctx, cmd, &out, clipID, startSec, endSec, localPath, fileHash, policyVer)
 	if err != nil {
 		return out, err
 	}
 
-	// Step 10 — metadata enrichment using the resolved
-	// transcript (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c, July 2026):
-	// no Transcriber invocation, no filesystem read; the
-	// transcript + languageCode + cues are sourced from the
-	// ResolvedTextBundle acquired at Step 6-9. A nil bundle
-	// degrades gracefully to empty strings (the metadata
-	// service's downstream contract is unchanged).
-	var (
-		step10Transcript string
-		step10Language   string
-		step10Cues       []asset.TimedCue
-	)
-	if bundle != nil && !bundle.IsEmpty() {
-		step10Transcript = bundle.PlainText
-		step10Language = bundle.LanguageCode
-		step10Cues = bundle.Cues
-	}
-	if err := u.step10_MetadataEnrich(ctx, cmd, clipID, duration, step10Transcript, step10Language, step10Cues); err != nil {
-		return out, err
-	}
+	// Step 10 is RETIRED (PR-ASSET-COMMITTER-ENRICHMENT, August 2026).
+	// The metadata analysis now runs INSIDE step6to9 BEFORE the canonical
+	// atomic super-tx, so the single commit already carries the complete
+	// semantic snapshot (summary/topics/speakers/mentioned people/hook/
+	// quality score/tags + taxonomy). There is no post-commit metadata-only
+	// write and no second asset.index.requested event; Execute no longer
+	// performs a second enrichment pass.
 
 	out.Item.Status = "processed"
 	out.Status = "processed"

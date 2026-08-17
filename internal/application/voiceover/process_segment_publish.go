@@ -319,6 +319,10 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	res.DurationUS = artifact.DurationUS
 	res.TextSHA256 = artifact.TextSHA256
 	res.AudioSHA256 = artifact.AudioSHA256
+	// Carry the full canonical artifact in-memory (json:"-") so consumers
+	// that need the word-level timing receive the SSOT verbatim. The wire
+	// result keeps only the summary fields above.
+	res.Artifact = artifact
 
 	// Moments: deterministic annotation → word-timing projection. The
 	// artifact is already validated, so LocateMoments only skips

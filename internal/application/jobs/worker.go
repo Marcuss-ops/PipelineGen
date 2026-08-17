@@ -21,16 +21,17 @@
 //   - worker_backoff.go        → BackoffConfig struct + effectiveSleep + jitterDuration
 //   - worker_polling.go        → sleepBackoff (timer + notifier Subscribe + ticker block)
 //   - worker_execution.go      → runJob (per-job dispatch + finalisation with
-//     finalizationCtx = context.Background() + 30s invariant)
+//     finalizationCtx = context.Background() + finalizationTimeout invariant)
 //   - worker_lease.go          → renewLeaseLoop (lease renewal ticker)
 //
 // VINCOLI (PR7 rigid):
 //  1. Stesso *Worker receiver — no new types/interfaces beyond what
 //     the source already exports.
 //  2. finalizationCtx invariant (worker_execution.go) MUST stay
-//     `context.WithTimeout(context.Background(), 30*time.Second)` —
+//     `context.WithTimeout(context.Background(), finalizationTimeout)` —
 //     AGENTS.md §context-util-table allowlist, allows the DB
-//     final-state write to survive jobCtx cancellation.
+//     final-state write AND the artifact-publication spine to survive
+//     jobCtx cancellation.
 //  3. No new abstraction helpers created (e.g. extracted
 //     nextBackoff() / xmlLogEntry() etc. would violate the spec).
 //

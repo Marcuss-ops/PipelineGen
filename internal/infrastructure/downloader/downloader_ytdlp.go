@@ -227,6 +227,14 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	if pathErr != nil {
 		return "", fmt.Errorf("download range succeeded but output file not found: %w", pathErr)
 	}
+	// Verify the downloaded artifact like Download does: yt-dlp can exit
+	// zero while leaving an empty/truncated file, and a bot-checked
+	// section download can write a stub container with no media data.
+	// VerifyFile catches missing/empty files; the Step 5a ffprobe gate
+	// catches zero-stream stubs downstream.
+	if verifyErr := d.verifier.VerifyFile(path); verifyErr != nil {
+		return "", verifyErr
+	}
 	return path, nil
 }
 
@@ -318,6 +326,14 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		resolvedPath, pathErr := ResolveDownloadedSegmentPath(outputTemplate)
 		if pathErr != nil {
 			return results, fmt.Errorf("section %d: %w", i, pathErr)
+		}
+		// Verify the downloaded section like Download does: yt-dlp can exit
+		// zero while leaving an empty/truncated file, and a bot-checked
+		// section download can write a stub container with no media data.
+		// VerifyFile catches missing/empty files; the Step 5a ffprobe gate
+		// catches zero-stream stubs downstream.
+		if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
+			return results, fmt.Errorf("section %d: %w", i, verifyErr)
 		}
 		results = append(results, DownloadedSegment{
 			Path:  resolvedPath,

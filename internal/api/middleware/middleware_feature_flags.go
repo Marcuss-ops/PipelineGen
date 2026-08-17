@@ -32,11 +32,6 @@ func ArtlistEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
 	return FeatureFlagChecker("Artlist", flags != nil && flags.ArtlistEnabled())
 }
 
-// ScriptDocsEnabled checks if the ScriptDocs feature is enabled.
-func ScriptDocsEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
-	return FeatureFlagChecker("ScriptDocs", flags != nil && flags.ScriptDocsEnabled())
-}
-
 // ScriptClipsEnabled checks if the ScriptClips feature is enabled.
 func ScriptClipsEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
 	return FeatureFlagChecker("ScriptClips", flags != nil && flags.ScriptClipsEnabled())

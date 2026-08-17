@@ -40,6 +40,11 @@ type ttsSynthesizeResponse struct {
 	Voice string `json:"voice,omitempty"`
 	Path  string `json:"path,omitempty"`
 	Error string `json:"error,omitempty"`
+	// MetadataPath is <out>.metadata.jsonl when the bridge captured word
+	// boundaries in the same synthesis stream (empty otherwise).
+	MetadataPath string `json:"metadata_path,omitempty"`
+	// BoundaryCount is the number of WordBoundary chunks captured.
+	BoundaryCount int `json:"boundary_count,omitempty"`
 }
 
 // sendSynthesizeRequest sends a POST /synthesize to the persistent worker
@@ -96,6 +101,9 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	}
 
 	if !ttsOut.OK {
+		if isBridgeEmptyAudioError(ttsOut.Error) {
+			return nil, fmt.Errorf("TTS generation failed: %s: %w: %w", ttsOut.Error, ErrEmptyAudio, ErrSynthesizeFailed)
+		}
 		return nil, fmt.Errorf("TTS generation failed: %s: %w", ttsOut.Error, ErrSynthesizeFailed)
 	}
 
@@ -109,9 +117,11 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	}
 
 	result := &AudioResult{
-		LocalPath: outputPath,
-		Status:    "generated",
-		Voice:     ttsOut.Voice,
+		LocalPath:     outputPath,
+		Status:        "generated",
+		Voice:         ttsOut.Voice,
+		MetadataPath:  ttsOut.MetadataPath,
+		BoundaryCount: ttsOut.BoundaryCount,
 	}
 
 	p.log.Info("TTS synthesized via persistent worker",

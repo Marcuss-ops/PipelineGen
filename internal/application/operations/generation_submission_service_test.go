@@ -95,7 +95,9 @@ CREATE TABLE jobs (
     completed_at TEXT,
     cancelled_at TEXT,
     revision INTEGER NOT NULL DEFAULT 1,
-    parent_state_typed TEXT NOT NULL DEFAULT ''
+    parent_state_typed TEXT NOT NULL DEFAULT '',
+    parent_job_id TEXT NOT NULL DEFAULT '',
+    root_job_id TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE outbox_events (

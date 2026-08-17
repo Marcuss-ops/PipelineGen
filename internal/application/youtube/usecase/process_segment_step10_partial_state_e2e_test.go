@@ -30,7 +30,6 @@ package usecase
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +93,10 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 			start_ms INTEGER NOT NULL DEFAULT 0,
 			end_ms INTEGER NOT NULL DEFAULT 0,
 			title TEXT NOT NULL DEFAULT '',
+			namespace TEXT NOT NULL DEFAULT '',
+			asset_kind TEXT NOT NULL DEFAULT '',
+			source_type TEXT NOT NULL DEFAULT '',
+			semantic_role TEXT NOT NULL DEFAULT '',
 			updated_at TEXT, created_at TEXT
 		)
 	`)
@@ -150,40 +153,33 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 	return db, outboxevents.NewRepository(db)
 }
 
-// ── Test E2E-1: PR-YT-DOD-11 partial-state E2E (REAL writer + REAL outbox) ──
+// ── Test E2E-1: metadata analysis failure → NO commit (REAL writer + REAL outbox) ──
 
-// TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent
-// is the E2E companion to the unit-level Test 9. Where Test 9 uses
-// stubWriterAssetRecorder (proving Step 9 was CALLED), this test
-// wires the REAL ClipAtomicWriterAdapter + outboxevents.Repository
-// against in-memory SQLite and asserts on the REAL DB state via
-// SELECT queries. A writer-side regression (e.g. media_assets
-// UPSERT stops writing, outbox INSERT stops enqueuing, transaction
-// rolls back silently) would surface here as a missing row, even
-// if the use case still calls the writer.
+// TestMetadataAnalysisFailure_E2E_NoCommit is the E2E companion to the
+// unit-level Test 9. Where Test 9 uses stubWriterAssetRecorder (proving
+// the writer was NOT called), this test wires the REAL
+// ClipAtomicWriterAdapter + outboxevents.Repository against in-memory
+// SQLite and asserts on the REAL DB state via SELECT queries. The
+// PR-ASSET-COMMITTER-ENRICHMENT contract: when the metadata analyzer
+// fails INSIDE step6to9 BEFORE the commit, NO media_assets row and NO
+// outbox event may exist — the former "clip committed without metadata"
+// partial-state class is eliminated.
 //
-// Asserted invariants (mirrors the unit-level Test 9 contract at the
-// persistence layer instead of the use-case call surface):
+// Asserted invariants:
 //
 //	(1) Job status = FAILED with FailureCodeMetadataFailed (the
 //	    canonical job outcome — typed *ExtractionError envelope).
-//	(2) media_assets row IS present post-Execute (Step 9 committed
-//	    via the REAL writer; all 7 of the canonical writer-visible
-//	    columns are populated: id, source, file_hash, local_path,
-//	    source_version, search_text, lifecycle_state='ACTIVE').
-//	(3) outbox_events row IS present post-Execute (Step 9 enqueued
-//	    via the REAL repository; canonical event_type='asset.index.requested'
-//	    + aggregate_id=clipID + aggregate_type='media_asset' +
-//	    non-empty event_key (idempotency surface) + non-empty
-//	    payload_json (canonical v1 envelope shape)).
-//	(4) The canonical Warn log "Step 10 failed AFTER clip write"
-//	    WAS emitted (regression guard against future log removal).
+//	(2) media_assets row is ABSENT post-Execute (the commit was
+//	    never reached).
+//	(3) outbox_events row is ABSENT post-Execute.
+//	(4) The canonical Warn log "metadata analysis failed BEFORE clip
+//	    write — clip not committed" WAS emitted.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every assertion probes a
 // falsifiable surface (real DB rows + real log entries). A
 // regression in any of the 4 invariants would fail the test
 // BEFORE the production deployment reaches an operator dashboard.
-func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(t *testing.T) {
+func TestMetadataAnalysisFailure_E2E_NoCommit(t *testing.T) {
 	// Derived from cmd.VideoID + startSec + endSec + policyVer per the
 	// canonical format `yt_<videoID>_<startSec>_<endSec>_<policyVer>`
 	// (mirrors process_segment.go::Execute Step 1). Defined once at
@@ -206,7 +202,7 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	obsCore, recorded := observer.New(zapcore.WarnLevel)
 	capturedLog := zap.New(obsCore)
 
-	// ── 5) Wire a real MetadataService that always errors on EnrichClip ──
+	// ── 5) Wire a real MetadataService that always errors on AnalyzeClip ──
 	// errBuilder is the canonical stub from process_segment_correttezza_test.go
 	// (Test 8/9). It returns errors.New from Build; noopWriter satisfies
 	// the ctor's required-arg contract but is never called because
@@ -225,7 +221,7 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	bundleCore.Hash = testStubHash{}   // non-empty fileHash so Step 5 passes
 	bundleCore.Writer = writer         // REAL writer (not stubWriterAssetRecorder)
 	bundleCore.Log = capturedLog       // override zap.NewNop default
-	metadata.MetadataService = metaSvc // always-fail Step 10 service
+	metadata.MetadataService = metaSvc // always-fail metadata analyzer
 	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
 
 	// VideoID="abc" matches the existing Test 9 pattern (process_segment_correttezza_test.go)
@@ -243,131 +239,47 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 		},
 	}
 
-	// ── 7) Execute: Step 9 commits media_assets + outbox; Step 10 fails ──
+	// ── 7) Execute: metadata analysis fails BEFORE the commit ──
 	_, execErr := uc.Execute(context.Background(), cmd)
 
 	// ── Invariant (1): typed job outcome ───────────────────────
-	require.Error(t, execErr, "Step 10 metadata-enrichment failure MUST surface as typed error")
+	require.Error(t, execErr, "metadata analysis failure MUST surface as typed error")
 	ee, ok := execErr.(*ExtractionError)
 	require.True(t, ok, "error must be a typed *ExtractionError, got %T %v", execErr, execErr)
 	require.Equal(t, FailureCodeMetadataFailed, ee.Code, "FailureCode must be FailureCodeMetadataFailed")
 	require.False(t, ee.Retryable, "FailureCodeMetadataFailed is terminal (not retryable)")
 
-	// ── Invariant (2): media_assets row IS present (real DB) ───
-	// This is the canonical regression guard for Step 9's tx commit.
-	// A writer-side regression that rolls back the media_assets
-	// INSERT would surface here as sql.ErrNoRows.
-	var (
-		rowID            string
-		rowSource        string
-		rowFileHash      string
-		rowSourceVersion string
-		rowSearchText    string
-		rowState         string
-	)
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
-	// local_path column is RETIRED from the E2E assertion surface.
-	// step10 no longer threads localPath (per user spec); clip_id
-	// is the canonical lookup key — operators JOIN with media_assets
-	// to retrieve the local_path for manual re-extract.
+	// ── Invariant (2): media_assets row is ABSENT (real DB) ──
+	// The analysis failure happens INSIDE step6to9 BEFORE the canonical
+	// commit, so the writer must never be reached and no media_assets
+	// row may exist (the former partial-state class is eliminated).
+	var count int
 	err := db.QueryRowContext(context.Background(),
-		`SELECT id, source, file_hash, source_version, search_text, lifecycle_state
-		   FROM media_assets WHERE id = ?`,
+		`SELECT COUNT(*) FROM media_assets WHERE id = ?`,
 		expectedClipID,
-	).Scan(&rowID, &rowSource, &rowFileHash, &rowSourceVersion, &rowSearchText, &rowState)
-	require.NoError(t, err, "media_assets row must be durably present after Step 9 commit "+
-		"(E2E partial-state contract: Step 9 wrote the row before Step 10 failed)")
-	require.Equal(t, expectedClipID, rowID, "row.id must match canonical clipID format")
-	require.Equal(t, "youtube", rowSource, "row.source must be the canonical 'youtube' string")
-	require.NotEmpty(t, rowFileHash, "row.file_hash must be non-empty (Step 5 hash result)")
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: local_path assertion
-	// retired; clip_id is the canonical lookup key.
-	require.NotEmpty(t, rowSourceVersion, "row.source_version must be non-empty (BLOCKER #2 closure: source_version is written to the column, not just the outbox envelope)")
-	require.Equal(t, "ACTIVE", rowState, "row.lifecycle_state must be 'ACTIVE' (canonical PR-C lifecycle)")
+	).Scan(&count)
+	require.NoError(t, err, "COUNT(media_assets) must succeed")
+	require.Equal(t, 0, count,
+		"media_assets row MUST NOT exist when metadata analysis fails before commit (no partial state)")
 
-	// ── Invariant (3): outbox_events row IS present (real DB) ──
-	// A regression in the writer's outbox enqueue would surface
-	// here as sql.ErrNoRows. The payload_json must also be a
-	// non-empty canonical v1 envelope (validates the writer's
-	// payload construction, not just the row existence).
-	var (
-		evtType    string
-		evtAggID   string
-		evtAggType string
-		evtStatus  string
-		evtKey     string
-		evtPayload string
-	)
+	// ── Invariant (3): outbox_events row is ABSENT (real DB) ──
 	err = db.QueryRowContext(context.Background(),
-		`SELECT event_type, aggregate_id, aggregate_type, status, event_key, payload_json
-		   FROM outbox_events WHERE aggregate_id = ?`,
+		`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?`,
 		expectedClipID,
-	).Scan(&evtType, &evtAggID, &evtAggType, &evtStatus, &evtKey, &evtPayload)
-	require.NoError(t, err, "outbox_events row must be enqueued after Step 9 commit "+
-		"(E2E partial-state contract: Step 9 enqueued the asset.index.requested event)")
-	require.Equal(t, outboxevents.EventAssetIndexRequested, evtType,
-		"outbox.event_type must be the canonical constant 'asset.index.requested'")
-	require.Equal(t, expectedClipID, evtAggID,
-		"outbox.aggregate_id must match the clipID")
-	require.Equal(t, "media_asset", evtAggType,
-		"outbox.aggregate_type must be the canonical 'media_asset'")
-	require.Equal(t, "pending", evtStatus,
-		"outbox.status must be 'pending' (canonical initial state after a fresh Enqueue; a regression that pre-sets a terminal status would surface here)")
-	require.NotEmpty(t, evtKey,
-		"outbox.event_key must be non-empty (idempotency surface for ON CONFLICT collapse)")
-	require.NotEmpty(t, evtPayload,
-		"outbox.payload_json must be non-empty (canonical v1 envelope from BuildReindexEnvelopeV1)")
+	).Scan(&count)
+	require.NoError(t, err, "COUNT(outbox_events) must succeed")
+	require.Equal(t, 0, count,
+		"outbox_events row MUST NOT exist when metadata analysis fails before commit (no index event emitted)")
 
-	// Verify the payload is parseable JSON (proves the writer built a
-	// valid envelope, not just an empty string). The canonical v1
-	// envelope has a schema_version field; its presence is a strong
-	// signal that BuildReindexEnvelopeV1 was the canonical builder.
-	var parsedPayload map[string]any
-	require.NoError(t, json.Unmarshal([]byte(evtPayload), &parsedPayload),
-		"outbox.payload_json must be valid JSON (canonical v1 envelope shape)")
-	require.Contains(t, parsedPayload, "schema_version",
-		"payload must carry the schema_version field (canonical v1 envelope surface)")
-
-	// ── BLOCKER #2 closure invariant: source_version in media_assets
-	// must EQUAL source_version in the outbox event payload (audit
-	// 2026-07-03 BLOCKER #2: the CAS fence in clipindexer.setIndexedAt
-	// reads media_assets.source_version; if it drifts from the
-	// outbox event's source_version, the fence starves and the
-	// clipindexer never marks the clip as indexed). The canonical
-	// v1 envelope carries `source_version` as a top-level field
-	// (set by BuildReindexEnvelopeV1 from the same deriveSourceVersion
-	// call that upsertClipInTx writes to the column). A regression
-	// that breaks this invariant — e.g. by re-deriving
-	// source_version at two different code paths — would fail this
-	// assertion.
-	payloadSourceVersion, hasSourceVersion := parsedPayload["source_version"].(string)
-	require.True(t, hasSourceVersion,
-		"payload must carry the source_version field (BLOCKER #2 closure surface — confirmed at outboxevents/envelope.go::BuildReindexEnvelopeV1 line \"source_version\": sourceVersion)")
-	// Defense-in-depth: a future regression that blanks BOTH the
-	// column AND the payload (e.g. a deriveSourceVersion bug returning
-	// "") would silently pass the equality check ("" == ""). The
-	// NotEmpty guard is the failsafe: the canonical contract is
-	// non-empty on BOTH surfaces.
-	require.NotEmpty(t, payloadSourceVersion,
-		"BLOCKER #2 closure: payload.source_version must be non-empty (defense-in-depth; otherwise the equality check would silently pass a regression that blanks both surfaces)")
-	require.NotEmpty(t, rowSourceVersion,
-		"BLOCKER #2 closure: media_assets.source_version must be non-empty (defense-in-depth; same rationale as the payload check above)")
-	require.Equal(t, rowSourceVersion, payloadSourceVersion,
-		"BLOCKER #2 closure: media_assets.source_version MUST equal outbox payload.source_version "+
-			"(the CAS fence in clipindexer.setIndexedAt reads the column; drift starves the fence)")
-
-	// ── Invariant (4): Warn log "Step 10 failed AFTER clip write" ──
-	// This is the operator-observable partial-state class. A future
-	// refactor that removes the Warn log (or changes the message
-	// substring) would surface here as zero matching log entries.
-	entries := recorded.FilterMessageSnippet("Step 10 failed AFTER clip write").All()
+	// ── Invariant (4): Warn log "metadata analysis failed BEFORE clip write" ──
+	entries := recorded.FilterMessageSnippet("metadata analysis failed BEFORE clip write").All()
 	require.NotEmpty(t, entries,
-		"Warn log 'Step 10 failed AFTER clip write' MUST be emitted before u.fail "+
+		"Warn log 'metadata analysis failed BEFORE clip write' MUST be emitted before u.fail "+
 			"(E2E regression guard against future log removal; got %d total entries)", recorded.Len())
 
 	// Verify the entry has the canonical structured fields so
-	// dashboards can correlate the partial-state event with the
-	// clip row that was actually persisted.
+	// dashboards can correlate the failure with the clip that was
+	// NOT committed.
 	entry := entries[0]
 	require.Equal(t, zapcore.WarnLevel, entry.Level, "log entry must be at Warn level")
 	fields := map[string]string{}
@@ -378,9 +290,6 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	}
 	require.Equal(t, expectedClipID, fields["clip_id"],
 		"Warn log must carry canonical clip_id (yt_<videoID>_<startSec>_<endSec>_<policyVer>)")
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: local_path field
-	// retired from step10's Warn log; clip_id is the canonical
-	// lookup key for operator dashboards.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"],
 		"Warn log must carry canonical failure_code for dashboard aggregation")
 }

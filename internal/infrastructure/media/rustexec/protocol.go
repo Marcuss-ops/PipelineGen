@@ -268,10 +268,14 @@ type mediaMetadata struct {
 	HasVideo     bool    `json:"has_video"`
 	HasAudio     bool    `json:"has_audio"`
 	// Stage timings populated only by render_audio_plan (mix → AAC encode →
-	// probe). Zero everywhere else.
-	MixMS    int64 `json:"mix_ms"`
-	EncodeMS int64 `json:"encode_ms"`
-	ProbeMS  int64 `json:"probe_ms"`
+	// probe → hash). Zero everywhere else; final_audio_sha256 is the digest
+	// Rust computed over the published output.
+	MixMS            int64  `json:"mix_ms"`
+	AACEncodeMS      int64  `json:"aac_encode_ms"`
+	ProbeMS          int64  `json:"probe_ms"`
+	HashMS           int64  `json:"hash_ms"`
+	FFmpegMS         int64  `json:"ffmpeg_ms"`
+	FinalAudioSHA256 string `json:"final_audio_sha256"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the

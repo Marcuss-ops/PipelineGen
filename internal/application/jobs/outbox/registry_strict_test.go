@@ -21,7 +21,7 @@ func (strictTestSourceQuerier) SourceVersionFor(context.Context, string) (string
 
 type strictTestVectorDeleter struct{}
 
-func (strictTestVectorDeleter) DeletePoints(context.Context, []string) error { return nil }
+func (strictTestVectorDeleter) DeleteAssetPoints(context.Context, []string) error { return nil }
 
 func TestRegisterCoreHandlersFailsClosedOnMandatoryDependencies(t *testing.T) {
 	log := zap.NewNop()

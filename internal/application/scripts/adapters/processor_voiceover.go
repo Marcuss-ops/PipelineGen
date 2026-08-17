@@ -107,6 +107,12 @@ func (p *VoiceoverProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) Proc
 	if plan != nil && plan.VoiceoverEnabled.AsBool() {
 		return ProcessorRequired
 	}
+	// required timing makes the voiceover processor fail-closed: a scene
+	// that fails to produce valid timing must fail the job, never degrade
+	// to a warning (godlike/07 no-fake-availability).
+	if plan != nil && plan.Timing != nil && plan.Timing.Mode == audio.TimingRequired {
+		return ProcessorRequired
+	}
 	return ProcessorBestEffort
 }
 
@@ -266,11 +272,16 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			if serr2 != nil {
 				safeSceneID = fmt.Sprintf("s%d", i+1)
 			}
-			safeTitle, serr := voiceover.SanitizeBasename(plan.Title)
-			if serr != nil {
-				safeTitle = "scene"
+			sanitizedTitle, serr := voiceover.SanitizeBasename(plan.Title)
+			// Project is already resolved at generation ingress. Do not derive
+			// it from the title or filename; an absent value must fail closed at
+			// the canonical publisher seam.
+			project := strings.TrimSpace(plan.Project)
+			filenameTitle := sanitizedTitle
+			if serr != nil || strings.TrimSpace(filenameTitle) == "" {
+				filenameTitle = "scene"
 			}
-			filenameBase := fmt.Sprintf("%s_%s_%s", safeTitle, safeSceneID, language)
+			filenameBase := fmt.Sprintf("%s_%s_%s", filenameTitle, safeSceneID, language)
 			// A translated scene must not collide with a previously published
 			// source-language file. Drive deduplication is keyed by file identity;
 			// include the canonical text hash so a changed TTS surface gets its own
@@ -284,7 +295,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			// configured voiceover root.
 			dest := &voiceover.DestinationRequest{
 				Kind:    string(voiceover.KindExplicit),
-				Project: safeTitle,
+				Project: project,
 			}
 			if folderID := strings.TrimSpace(plan.VoiceoverFolderID); folderID != "" {
 				// A plan-level folder is a caller-explicit destination. Mark it
@@ -303,6 +314,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Filename:    filename,
 				Destination: dest,
 				Moments:     momentQueriesFromAnnotations(scene.Annotations),
+				Timing:      plan.Timing,
 			})
 		}
 
@@ -318,6 +330,12 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Timing:     voiceoverTimingToDomain(out.Timing),
 			})
 			if out.Status == "failed" {
+				// required timing is fail-closed at the script job level:
+				// a scene that fails to produce valid timing must fail the
+				// whole job instead of degrading to a warning.
+				if plan.Timing != nil && plan.Timing.Mode == audio.TimingRequired {
+					return nil, fmt.Errorf("voiceover required-timing: scene %d (language %s) failed: %s", out.SceneIndex, language, out.Error)
+				}
 				warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d (language %s): %s", out.SceneIndex, language, out.Error))
 			}
 		}

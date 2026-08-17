@@ -57,6 +57,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
 )
 
+// searchableMediaAssetWhere is the taxonomy SSOT for embedding backfill.
+// Registered audio/document/text assets are real registry rows but must not
+// be sent through semantic embedding or Qdrant projection.
+const searchableMediaAssetWhere = `
+	((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
+	 OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
+	AND COALESCE(namespace, '') != ''
+	AND COALESCE(source_type, '') != ''
+	AND (deleted_at IS NULL OR deleted_at = '')`
+
 // fetchEmbeddingCandidates queries media_assets for assets that need
 // embedding backfill. In --only-missing mode, only returns assets with
 // at least one empty embedding column.
@@ -75,8 +85,7 @@ func fetchEmbeddingCandidates(
 		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
 		FROM media_assets
-		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')`
+		WHERE ` + searchableMediaAssetWhere
 
 	var queryArgs []any
 
@@ -149,8 +158,7 @@ func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]bac
 		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
 		FROM media_assets
 		WHERE id IN (%s)
-		  AND media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')
+		  AND `+searchableMediaAssetWhere+`
 		ORDER BY id ASC`, strings.Join(placeholders, ","))
 
 	rows, err := db.QueryContext(ctx, query, args...)

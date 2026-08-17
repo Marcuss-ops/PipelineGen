@@ -60,6 +60,11 @@ type HistoryItem struct {
 
 type HistoryReader interface {
 	ListHistory(context.Context, HistoryFilter) ([]HistoryItem, error)
+	// GetRunReport returns the canonical run report JSON
+	// (run_observability.report_json) for the most recent run of a job, or
+	// nil when no report exists. It is the read surface for the canonical
+	// timing diagnostics (e.g. /api/jobs/:id/full).
+	GetRunReport(context.Context, string) (json.RawMessage, error)
 }
 
 // JobStatsReader is the narrow port for job statistics.

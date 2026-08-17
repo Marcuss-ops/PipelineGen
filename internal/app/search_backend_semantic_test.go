@@ -265,6 +265,68 @@ func TestSemanticBackendHybrid(t *testing.T) {
 	}
 }
 
+// TestSemanticBackendHybridMinScoreFloor pins the PR-MINSCORE-HYBRID
+// contract: the hybrid (RRF) path uses its own floor (above 0.1) so
+// Qdrant's 0.1 rank-9 single-list tail hits never surface, while the
+// ANN path keeps the cosine-similarity floor. A caller-set q.MinScore
+// overrides both.
+func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
+	// Hybrid path: floor must be the RRF-tail floor (> 0.1).
+	vs := &mockVectorStore{}
+	b := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs, &mockMediaReader{}, &mockDelivery{})
+	_, err := b.Search(context.Background(), search.Query{
+		Text:  "epic landscape",
+		Mode:  search.SearchModeHybrid,
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs.lastHybridReq == nil {
+		t.Fatal("expected HybridSearch to be called")
+	}
+	if vs.lastHybridReq.MinScore != semanticHybridMinScore {
+		t.Errorf("hybrid MinScore = %v, want %v (RRF tail floor)", vs.lastHybridReq.MinScore, semanticHybridMinScore)
+	}
+	if vs.lastHybridReq.MinScore <= 0.1 {
+		t.Errorf("hybrid MinScore = %v must be > 0.1 to reject the 0.1 RRF tail", vs.lastHybridReq.MinScore)
+	}
+
+	// ANN path: floor stays the cosine-similarity floor (separate scale).
+	vs2 := &mockVectorStore{}
+	b2 := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs2, &mockMediaReader{}, &mockDelivery{})
+	_, err = b2.Search(context.Background(), search.Query{
+		Text:  "epic landscape",
+		Mode:  search.SearchModeANN,
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs2.lastAnnReq == nil {
+		t.Fatal("expected ANN Search to be called")
+	}
+	if vs2.lastAnnReq.MinScore != semanticMinScore {
+		t.Errorf("ANN MinScore = %v, want %v (cosine floor)", vs2.lastAnnReq.MinScore, semanticMinScore)
+	}
+
+	// Caller-set q.MinScore overrides the hybrid floor.
+	vs3 := &mockVectorStore{}
+	b3 := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs3, &mockMediaReader{}, &mockDelivery{})
+	_, err = b3.Search(context.Background(), search.Query{
+		Text:     "epic landscape",
+		Mode:     search.SearchModeHybrid,
+		Limit:    5,
+		MinScore: 0.35,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs3.lastHybridReq.MinScore != 0.35 {
+		t.Errorf("caller MinScore override = %v, want 0.35", vs3.lastHybridReq.MinScore)
+	}
+}
+
 // Test 3: Hybrid error propagation
 // Verifies that HybridSearch errors propagate to the caller — the
 // backend never silently falls back to ANN when hybrid fails.

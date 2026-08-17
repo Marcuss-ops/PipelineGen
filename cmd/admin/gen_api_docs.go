@@ -29,7 +29,6 @@ func runGenAPIDocs(args []string) error {
 		Features: config.FeaturesConfig{
 			ArtlistEnabled:     true,
 			YouTubeEnabled:     true,
-			ScriptDocsEnabled:  true,
 			VoiceoverEnabled:   true,
 			ImagesEnabled:      true,
 			ScriptClipsEnabled: true,
@@ -158,8 +157,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/clips/process":    "Download and process clips",
 	"GET /api/clips/info":        "Get YouTube video metadata",
 	"GET /api/clips/search":      "Search and rank YouTube videos by topic",
-	"POST /api/clips/search":     "Search and rank YouTube videos by topic (POST variant)",
-	"GET /api/clips/stats":       "Get clips statistics",
 	"GET /api/clips/diagnostics": "Clips diagnostics",
 
 	// ── Media / Clips ─────────────────────────────────────────
@@ -171,7 +168,7 @@ var routeDescriptions = map[string]string{
 	"GET /api/images/generated/search":    "Search generated images",
 	"GET /api/images/generated/styles":    "List generated image styles",
 	"POST /api/images/generated/generate": "Generate an AI image",
-	"POST /api/images/batch-generate":     "Batch generate AI images asynchronously",
+	"POST /api/images/batch-generate":     "Batch generate AI images asynchronously (items or mode=sections)",
 	"POST /api/images/sync":               "Sync images to Drive",
 	"POST /api/images/upload":             "Upload an image",
 	"GET /api/images/diagnostics":         "Images diagnostics",
@@ -206,7 +203,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/media/sync-drive-folder":     "Sync a Drive folder into media index",
 	"POST /api/media/recommend":             "Get media recommendations",
 	"POST /api/media/enrich":                "Enrich a media asset with AI metadata",
-	"POST /api/media/enrich/batch":          "Batch enrich media assets",
 	"POST /api/media/local-to-drive":        "Upload local media to Drive",
 	"POST /api/media/qdrant/cleanup":        "Clean up stale Qdrant points",
 	"POST /api/media/upload-video":          "Upload video clip",
@@ -232,7 +228,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/media/:source/clips/:id/duplicates": "Find duplicate clips",
 	"POST /api/media/:source/clips/:id/reupload":   "Re-upload clip to Drive",
 	"POST /api/media/:source/clips/:id/reprocess":  "Re-process clip",
-	"POST /api/media/:source/clips/:id/reindex":    "Re-index clip in Qdrant",
 	"POST /api/media/:source/clips/:id/status":     "Get clip processing status",
 	"POST /api/media/:source/clips/:id/verify":     "Verify clip integrity",
 	"POST /api/media/:source/clips/:id/trash":      "Trash clip",
@@ -241,8 +236,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/media/:source/folders/:id/manifest": "Get folder manifest",
 	"POST /api/media/:source/folders/:id/trash":    "Trash folder",
 	"POST /api/media/:source/folders/:id/delete":   "Delete folder",
-	"POST /api/media/:source/bulk/tags/add":        "Bulk-add tags",
-	"POST /api/media/:source/bulk/tags/remove":     "Bulk-remove tags",
 	"POST /api/media/:source/reconcile":            "Reconcile source metadata",
 
 	// ── Assets ───────────────────────────────────────────────
@@ -279,12 +272,9 @@ var routeDescriptions = map[string]string{
 	"POST /api/drive/move":          "Move Drive files",
 
 	// ── Fullimages ───────────────────────────────────────────
-	//
-	// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase):
-	// the pre-CUTOVER route was /api/fullimages/video/generate; the
-	// route is RENAMED to /api/fullimages/image/generate. Wire-shape
-	// breaking change per Option B.
-	"POST /api/fullimages/image/generate": "Generate one image per section (fullimages image-only pipeline)",
+	// POST /api/fullimages/image/generate was retired and merged into
+	// POST /api/images/batch-generate mode=sections (IMAGES-LEGACY-CLEANUP,
+	// August 2026).
 
 	// ── Static file serving ──────────────────────────────────
 	"GET /assets/*filepath":                   "Serve static assets from data dir",
@@ -420,9 +410,6 @@ func (a *genDocsRateLimitAdapter) RateLimitRequests() int { return a.cfg.Securit
 type genDocsFeatureFlagsAdapter struct{ cfg *config.Config }
 
 func (a *genDocsFeatureFlagsAdapter) ArtlistEnabled() bool { return a.cfg.Features.ArtlistEnabled }
-func (a *genDocsFeatureFlagsAdapter) ScriptDocsEnabled() bool {
-	return a.cfg.Features.ScriptDocsEnabled
-}
 func (a *genDocsFeatureFlagsAdapter) ScriptClipsEnabled() bool {
 	return a.cfg.Features.ScriptClipsEnabled
 }

@@ -149,6 +149,7 @@ func buildScriptSourceResolvers(
 		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
 		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
 		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
+		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
 
 	// ── Source registry (5 resolvers) ──────────────────────────────
@@ -203,6 +204,7 @@ func buildScriptSourceResolvers(
 		searchPort := &qdrantSemanticSearchPort{
 			searcher:   root.Process.QdrantSearcher,
 			embedder:   textEmbedder,
+			hydrator:   root.Repos.ClipsRepo,
 			vectorName: "text",
 			log:        log,
 		}

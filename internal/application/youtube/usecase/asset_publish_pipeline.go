@@ -9,9 +9,9 @@
 //
 // GODLIKE/06 SSOT — one canonical owner per fact:
 //   - per-rendition publish → THIS file (NONE of the existing per-clip
-//     use cases owns this path; extract_important_clips.go drives the
-//     LEGACY per-segment `DriveFolderMgr.UploadFileIfChanged` canal, not
-//     `delivery.Publisher.Publish`).
+//     use cases owns this path; the retired extract-important pipeline
+//     drove the LEGACY per-segment `DriveFolderMgr.UploadFileIfChanged`
+//     canal, not `delivery.Publisher.Publish`).
 //   - per-rendition filter select → THIS file (`shouldPublishRendition`,
 //     pure helper, hermetic unit-test coverage).
 //   - `RenditionOutput` → FileHash (SHA-256) threading → THIS file reads
@@ -66,7 +66,7 @@
 // Forward-pointer (godlike/06 inline-port retirement): the Asset-
 // PublisherPort inline interface below is a FASE-X forward-pointer
 // mirroring the TranscriptFetcherPort / AnalyzerPort pattern in
-// extract_important_clips.go. A future mechanical port-move will
+// segment_selection.go. A future mechanical port-move will
 // consolidate it into `internal/application/youtube/ports/ports.go`
 // alongside IssuerResolver / CutEngine — current location is
 // intentional to keep this PR focused on Step 10 only.
@@ -136,8 +136,8 @@ var (
 // consumes. The signature mirrors delivery.Publisher verbatim so the
 // concrete *drive.Publisher from internal/infrastructure/drive satisfies
 // it without adapter wrapping. Defined inline to mirror the
-// TranscriptFetcherPort / AnalyzerPort / SectionDownloaderPort pattern
-// established by extract_important_clips.go (godlike/06 FASE-X
+// TranscriptFetcherPort / AnalyzerPort pattern
+// established by segment_selection.go (godlike/06 FASE-X
 // forward-pointer: future mechanical port-move consolidates inline
 // ports into internal/application/youtube/ports/ports.go).
 type AssetPublisherPort interface {

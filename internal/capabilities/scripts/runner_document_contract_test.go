@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -51,6 +52,156 @@ func TestRunnerDocumentPhase_UsesCanonicalRendererContract(t *testing.T) {
 	var decoded scriptpkg.SpecSceneOutput
 	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(out[start:start+end])), &decoded))
 	require.Equal(t, model.SpecScene, decoded)
+}
+
+// TestDocument_PhraseTimingsMatchCanonicalTiming certifies that the Google
+// Doc reflects the canonical phrase→timestamp projection end to end: the
+// projection is derived from the per-scene SpeechTimingArtifact + the
+// canonical timeline offsets (exactly as the runner does), and both the
+// human surface and the machine Phrase Timing JSON snapshot in the document
+// must carry those same spans (master = timeline_start + local).
+func TestDocument_PhraseTimingsMatchCanonicalTiming(t *testing.T) {
+	// Two narration scenes, each carrying the word-level SpeechTimingArtifact
+	// captured in the same synthesis stream (100ms per word).
+	t0 := speechTimingForWords([]string{"Jackie", "Chan"})
+	t1 := speechTimingForWords([]string{"grew", "up"})
+
+	result := &GenerateResult{
+		Title: "Canonical Timing",
+		Scenes: []Scene{
+			{
+				ID:    "scene-0",
+				Index: 0,
+				Text:  map[Language]string{"en": "Jackie Chan"},
+				Voiceover: map[Language]AudioReference{
+					"en": {URL: "VO-0", Timing: &t0},
+				},
+			},
+			{
+				ID:    "scene-1",
+				Index: 1,
+				Text:  map[Language]string{"en": "grew up"},
+				Voiceover: map[Language]AudioReference{
+					"en": {URL: "VO-1", Timing: &t1},
+				},
+			},
+		},
+		// Sealed projection: scene 1 starts at 4s on the canonical timeline.
+		ResolvedScenes: []ResolvedScene{
+			{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 4_000_000, Text: map[Language]string{"en": "Jackie Chan"}, AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover}}},
+			{ID: "scene-1", Index: 1, TimelineStartUS: 4_000_000, DurationUS: 4_000_000, Text: map[Language]string{"en": "grew up"}, AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover}}},
+		},
+	}
+
+	// Derive the canonical projection exactly as the runner's render-payload
+	// phase does (first word start → last word end, local→global via the
+	// canonical timeline offset).
+	require.NoError(t, compileResultPhraseTimings(result, "en"))
+	require.Len(t, result.PhraseTimings, 2)
+	require.Len(t, result.SceneSpeechTimings, 2)
+
+	timeline, err := compileResolvedSceneTimeline(result.ResolvedScenes)
+	require.NoError(t, err)
+	result.CanonicalTimeline = &timeline
+
+	// Render the document exactly as the runner's document phase does.
+	model := modelScriptOutputForDocument(result, "en")
+	out, err := (canonicalTestDocumentRenderer{}).RenderDocument(model, DocumentRenderOptions{
+		Title:              "Canonical Timing",
+		Language:           "en",
+		DefaultLanguage:    "en",
+		AudioTimeline:      result.CanonicalTimeline,
+		SceneSpeechTimings: result.SceneSpeechTimings,
+	})
+	require.NoError(t, err)
+
+	// Machine surface: the Scene Speech Timing JSON snapshot must be
+	// byte-faithful to the canonical scene-level projection.
+	var decoded []capabilityaudio.SceneSpeechTiming
+	require.NoError(t, json.Unmarshal([]byte(extractPhraseTimingJSON(t, out)), &decoded))
+	require.Equal(t, result.SceneSpeechTimings, decoded)
+
+	// Human surface: each phrase shows its text and local/master spans,
+	// with master = timeline_start + local (the canonical invariant).
+	human := humanDocumentContract(out)
+	require.Contains(t, human, "<strong>Phrase 1:</strong> Jackie Chan")
+	require.Contains(t, human, "Local: 00:00.000 → 00:00.200")
+	require.Contains(t, human, "Master: 00:00.000 → 00:00.200")
+	require.Contains(t, human, "<strong>Phrase 1:</strong> grew up")
+	require.Contains(t, human, "Local: 00:00.000 → 00:00.200")
+	require.Contains(t, human, "Master: 00:04.000 → 00:04.200")
+
+	// Every projection satisfies the canonical local→global invariant and
+	// stays within the canonical timeline duration.
+	for _, p := range result.PhraseTimings {
+		require.NoError(t, p.Validate())
+		require.Equal(t, p.TimelineStartUS+p.LocalStartUS, p.GlobalStartUS)
+		require.Equal(t, p.TimelineStartUS+p.LocalEndUS, p.GlobalEndUS)
+		require.LessOrEqual(t, p.GlobalEndUS, result.CanonicalTimeline.DurationUS)
+	}
+}
+
+// extractPhraseTimingJSON isolates the embedded Scene Speech Timing JSON
+// snapshot (machine surface) and unescapes it for byte-faithful comparison.
+func extractPhraseTimingJSON(t *testing.T, output string) string {
+	t.Helper()
+	const marker = "<h2>Scene Speech Timing JSON</h2><pre><code>"
+	start := strings.Index(output, marker)
+	require.NotEqual(t, -1, start, "Scene Speech Timing JSON section missing")
+	start += len(marker)
+	end := strings.Index(output[start:], "</code></pre>")
+	require.NotEqual(t, -1, end, "Phrase Timing JSON section not closed")
+	return html.UnescapeString(output[start : start+end])
+}
+
+func TestDocumentSurfaces_TimingLinksPreserved(t *testing.T) {
+	result := &GenerateResult{
+		Title: "Timing",
+		Scenes: []Scene{
+			{
+				ID: "scene-0", Index: 0,
+				Text: map[Language]string{"it": "TIMING SCENE"},
+				Voiceover: map[Language]AudioReference{
+					"it": {
+						URL: "VOICE-IT",
+						TimingBundle: &scriptpkg.VoiceoverTimingBinding{
+							Status:       "completed",
+							JSONLink:     "https://drive.google.com/timing.json",
+							SRTLink:      "https://drive.google.com/timing.srt",
+							VTTLink:      "https://drive.google.com/timing.vtt",
+							BoundaryMode: "word",
+							WordCount:    2,
+							DurationUS:   1_000_000,
+							TextSHA256:   "text-hash",
+							AudioSHA256:  "audio-hash",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	model := modelScriptOutputForDocument(result, "it")
+	out, err := (canonicalTestDocumentRenderer{}).RenderDocument(model, DocumentRenderOptions{
+		Title: "Timing", Language: "it", DefaultLanguage: "it",
+	})
+	require.NoError(t, err)
+
+	// The binding carries the timing bundle per language (word array never
+	// inlined — only links + summary).
+	binding := model.SpecScene.Scenes[0].Bindings.Voiceover
+	require.NotNil(t, binding, "voiceover binding must be present")
+	require.NotNil(t, binding.Timing, "timing bundle must be mapped")
+	require.Equal(t, "https://drive.google.com/timing.json", binding.Timing["it"].JSONLink)
+	require.Equal(t, "completed", binding.Timing["it"].Status)
+
+	// The human surface renders the original timing.json/srt/vtt links.
+	require.Contains(t, out, "Timing JSON")
+	require.Contains(t, out, "https://drive.google.com/timing.json")
+	require.Contains(t, out, "Timing SRT")
+	require.Contains(t, out, "https://drive.google.com/timing.srt")
+	require.Contains(t, out, "Timing VTT")
+	require.Contains(t, out, "https://drive.google.com/timing.vtt")
 }
 
 func TestDocumentSurfaces_ProcessorAndRunnerAreEquivalent(t *testing.T) {
@@ -128,7 +279,7 @@ func extractSpecSceneContract(t *testing.T, output string) scriptpkg.SpecSceneOu
 	return decoded
 }
 
-func TestGenerationRun_RenderPayloadPrecedesDocumentAndDocumentWaitsForVoiceover(t *testing.T) {
+func TestGenerationRun_AudioCompilePrecedesDocumentAndDocumentWaitsForVoiceover(t *testing.T) {
 	runner, repo, _, _, voiceover, docPub, _ := newTestRunner()
 	voiceover.ref.URL = "https://drive.google.com/VOICE-EN"
 	recorder := &recordingExecutionRecorder{}
@@ -150,9 +301,9 @@ func TestGenerationRun_RenderPayloadPrecedesDocumentAndDocumentWaitsForVoiceover
 	}
 	require.NotEmpty(t, firstStart["VOICEOVER"])
 	require.NotEmpty(t, firstStart["DOCUMENT"])
-	require.NotEmpty(t, firstStart["RENDER_PLAN"])
+	require.NotEmpty(t, firstStart["AUDIO_COMPILE"])
 	require.True(t, firstStart["VOICEOVER"].Before(firstStart["DOCUMENT"]))
-	require.True(t, firstStart["RENDER_PLAN"].Before(firstStart["DOCUMENT"]))
+	require.True(t, firstStart["AUDIO_COMPILE"].Before(firstStart["DOCUMENT"]))
 
 	// The publisher receives the voiceover-bearing document, proving that
 	// document publication occurs after the voiceover phase.
@@ -203,7 +354,7 @@ func TestGenerationRun_StageStartOrderIsMonotonic(t *testing.T) {
 	for _, step := range starts {
 		names = append(names, step.Name)
 	}
-	want := []string{"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "RENDER_PLAN", "VELOX_ENQUEUE", "DOCUMENT"}
+	want := []string{"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "AUDIO_COMPILE", "PERSISTENCE", "DOCUMENT"}
 	for i, name := range want {
 		require.Contains(t, names, name)
 		if i > 0 {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 func TestSplitVoiceoverWordsBoundariesAndReconstruction(t *testing.T) {
@@ -91,6 +93,74 @@ func TestChunkedTTSProviderFailureDoesNotMerge(t *testing.T) {
 	if merger.calls != 0 {
 		t.Fatalf("merge calls=%d want=0", merger.calls)
 	}
+}
+
+// TestChunkedTTSProviderMergesWordBoundariesWithOffset pins the regression
+// fix: per-chunk WordBoundaries must be merged into the merged track with a
+// global offset remap (each chunk shifts by the cumulative duration of the
+// preceding chunks). Without the remap, timing.mode=required fails closed
+// (VOICEOVER_TIMING_UNAVAILABLE) on every multi-chunk scene.
+func TestChunkedTTSProviderMergesWordBoundariesWithOffset(t *testing.T) {
+	provider := &boundaryRecordingTTS{}
+	merger := &recordingMerger{}
+	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 2}
+
+	out, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
+		Text:     strings.Repeat("parola ", 801), // → 3 chunks of 400/400/1
+		Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Each chunk reports one boundary at start_us=1000/end_us=2000 with
+	// duration 1s, so the merged offsets are 0, 1s, 2s in microsecond ticks.
+	want := []voiceover.RawSpeechBoundary{
+		{Text: "w0", StartUS: 1_000, EndUS: 2_000},
+		{Text: "w1", StartUS: 1_001_000, EndUS: 1_002_000},
+		{Text: "w2", StartUS: 2_001_000, EndUS: 2_002_000},
+	}
+	if len(out.WordBoundaries) != len(want) {
+		t.Fatalf("merged boundaries=%d want=%d", len(out.WordBoundaries), len(want))
+	}
+	for i, b := range out.WordBoundaries {
+		if b.Text != want[i].Text || b.StartUS != want[i].StartUS || b.EndUS != want[i].EndUS {
+			t.Errorf("boundary[%d]=%+v want=%+v", i, b, want[i])
+		}
+	}
+	if out.BoundaryMode != audio.BoundaryWord {
+		t.Errorf("boundary mode=%q want=%q", out.BoundaryMode, audio.BoundaryWord)
+	}
+}
+
+// boundaryRecordingTTS reports one deterministic word boundary per chunk
+// (derived from the chunk index in the filename) with a 1s duration, so the
+// merged boundary offsets are fully predictable.
+type boundaryRecordingTTS struct{}
+
+func (r *boundaryRecordingTTS) Synthesize(_ context.Context, in voiceover.TTSInput) (voiceover.TTSOutput, error) {
+	base := filepath.Base(in.Filename)
+	path := filepath.Join(in.OutputDir, base)
+	if err := os.WriteFile(path, []byte(base), 0600); err != nil {
+		return voiceover.TTSOutput{}, err
+	}
+	idx := 0
+	if i := strings.Index(base, ".chunk-"); i >= 0 {
+		n, err := strconv.Atoi(strings.TrimSuffix(base[i+len(".chunk-"):], filepath.Ext(base)))
+		if err == nil {
+			idx = n - 1
+		}
+	}
+	return voiceover.TTSOutput{
+		LocalPath:    path,
+		Voice:        "fake",
+		Duration:     time.Second,
+		Provider:     "edge-tts",
+		BoundaryMode: audio.BoundaryWord,
+		WordBoundaries: []voiceover.RawSpeechBoundary{
+			{Text: fmt.Sprintf("w%d", idx), StartUS: 1_000, EndUS: 2_000},
+		},
+	}, nil
 }
 
 type recordingTTS struct {

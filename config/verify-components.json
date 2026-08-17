@@ -6,8 +6,15 @@
       "internal/api/script/",
       "internal/infrastructure/nlp/",
       "scripts/bridges/local_nlp_gpu.py",
+      "scripts/bridges/react_agent.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
+      "scripts/launch_server.sh",
+      "scripts/launch_server_test.sh",
+      "scripts/start.sh",
+      "scripts/start_server_bg.sh",
+      "scripts/operate_script_generate.sh",
+      "scripts/lib/dotenv.sh",
       ".split2-push.sh",
       "start_server.sh",
       "examples/scripts/",
@@ -57,7 +64,10 @@
     "paths": [
       "internal/domain/clips/",
       "internal/application/clips/",
-      "internal/api/assets/clips/"
+      "internal/api/assets/clips/",
+      "scripts/ingest_local_clips_batch.sh",
+      "scripts/verify_10_clip_audio_certification.sh",
+      "scripts/verify_5_other_clip_audio_certification.sh"
     ],
     "go_packages": [
       "./internal/domain/clips/...",
@@ -115,7 +125,8 @@
     "paths": [
       "internal/domain/qdrantdr/",
       "internal/application/qdrant/",
-      "internal/infrastructure/qdrant/"
+      "internal/infrastructure/qdrant/",
+      "scripts/operations/certify_media_registry_qdrant.sh"
     ],
     "go_packages": [
       "./internal/domain/qdrantdr/...",
@@ -140,12 +151,12 @@
       "internal/infrastructure/indexing/",
       "internal/api/assets/clips/indexing/",
       "scripts/services/",
-      "scripts/start_embedding_server.sh"
+      "scripts/start_embedding_server.sh",
+      "scripts/bridges/generate_embedding.py"
     ],
     "go_packages": [
       "./internal/application/indexing/...",
-      "./internal/infrastructure/indexing/...",
-      "./internal/api/assets/clips/indexing/..."
+      "./internal/infrastructure/indexing/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -164,7 +175,8 @@
     "paths": [
       "internal/domain/drive/",
       "internal/infrastructure/drive/",
-      "internal/application/publish_drive/"
+      "internal/application/publish_drive/",
+      "scripts/verify_drive_only_certification.sh"
     ],
     "go_packages": [
       "./internal/domain/drive/...",
@@ -190,17 +202,13 @@
       "internal/domain/document/",
       "internal/application/document/",
       "internal/application/documents/",
-      "internal/api/assets/document/",
-      "internal/api/script-docs/",
-      "internal/infrastructure/scriptdocs/"
+      "internal/api/assets/document/"
     ],
     "go_packages": [
       "./internal/domain/document/...",
       "./internal/application/document/...",
       "./internal/application/documents/...",
-      "./internal/api/assets/document/...",
-      "./internal/api/script-docs/...",
-      "./internal/infrastructure/scriptdocs/..."
+      "./internal/api/assets/document/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -249,13 +257,12 @@
       "internal/domain/image/",
       "internal/application/images/",
       "internal/api/images/",
-      "internal/api/fullimages/"
+      "scripts/verify_nlp_online_images_docs_certification.sh"
     ],
     "go_packages": [
       "./internal/domain/image/...",
       "./internal/application/images/...",
-      "./internal/api/images/...",
-      "./internal/api/fullimages/..."
+      "./internal/api/images/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -363,7 +370,8 @@
       "internal/infrastructure/database/sqlite/jobs/",
       "scripts/bridges/slide_worker_runtime/",
       "scripts/worker-bootstrap-smoke.sh",
-      "scripts/velox_client.py"
+      "scripts/velox_client.py",
+      "scripts/perf_compare_batches.sh"
     ],
     "go_packages": [
       "./internal/application/jobs/...",
@@ -431,6 +439,7 @@
       "internal/infrastructure/youtube/",
       "internal/api/assets/youtube/",
       "scripts/tools/transcribe_detect_lang.py",
+      "scripts/bridges/whisper_transcriber.py",
       "scripts/requirements-whisper.txt",
       "requirements/whisper.lock.txt",
       "scripts/verify-whisper.sh",

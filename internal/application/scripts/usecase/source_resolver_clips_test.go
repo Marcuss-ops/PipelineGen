@@ -182,6 +182,28 @@ func TestClipSourceBuilder_StrictTranscriptPolicyRejectsMissingTranscript(t *tes
 	}
 }
 
+func TestClipSourceBuilder_AllowsSummaryWithoutTranscript(t *testing.T) {
+	resolver := newFakeClipResolver()
+	clip := makeTestClip("clip-summary", "Summary clip", time.Second)
+	clip.SetMetadataString("summary", "A boxer explains how footwork changes the pace of a fight.")
+	resolver.AddClip(clip)
+	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+
+	evidence, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-summary"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict, AllowMetadataFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("summary evidence should authorize a transcript-free clip: %v", err)
+	}
+	if evidence == nil || evidence.ClipDetails["clip-summary"].Description == "" {
+		t.Fatalf("summary evidence was not preserved: %+v", evidence)
+	}
+	if evidence.ClipDetails["clip-summary"].Transcript != "" {
+		t.Fatal("summary fallback must not fabricate transcript content")
+	}
+}
+
 func TestClipSourceBuilder_UnknownTranscriptPolicyRejectsMissingTranscript(t *testing.T) {
 	resolver := newFakeClipResolver()
 	resolver.AddClip(makeTestClip("clip-unknown-policy", "Unknown policy", time.Second))

@@ -231,7 +231,12 @@ func artifactDriveSubpath(artifact finalization.VerifiedArtifact) []string {
 	if len(artifact.DriveSubpath) > 0 {
 		return append([]string(nil), artifact.DriveSubpath...)
 	}
-	if strings.EqualFold(strings.TrimSpace(artifact.Source), "overlay") {
+	// RenderingGen emits source=chronon with an explicit drive_subpath;
+	// the fallback keeps overlay output colocated under /overlay/ even
+	// when the explicit subpath is absent (legacy "overlay" source is
+	// retained for back-compat with pre-chronon producers).
+	switch strings.ToLower(strings.TrimSpace(artifact.Source)) {
+	case "overlay", "chronon":
 		return []string{"overlay"}
 	}
 	return nil

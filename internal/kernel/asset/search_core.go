@@ -40,12 +40,17 @@ type AdvancedSearchRequest struct {
 	MaxDuration   int      `json:"max_duration"`
 	HasTranscript bool     `json:"has_transcript"`
 	HasDriveLink  bool     `json:"has_drive_link"`
-	CreatedAfter  string   `json:"created_after"`
-	CreatedBefore string   `json:"created_before"`
-	SortBy        string   `json:"sort_by"`
-	SortAsc       bool     `json:"sort_asc"`
-	Limit         int      `json:"limit"`
-	Offset        int      `json:"offset"`
+	// ExcludeUnclassified restricts results to rows classified into the
+	// canonical taxonomy (media_assets.asset_kind != ''). When true, the
+	// repo appends the ClassifiedAssetFilter fragment so one-off / test
+	// artifacts (empty asset_kind) never surface in catalog search.
+	ExcludeUnclassified bool   `json:"exclude_unclassified,omitempty"`
+	CreatedAfter        string `json:"created_after"`
+	CreatedBefore       string `json:"created_before"`
+	SortBy              string `json:"sort_by"`
+	SortAsc             bool   `json:"sort_asc"`
+	Limit               int    `json:"limit"`
+	Offset              int    `json:"offset"`
 }
 
 // AdvancedSearchResult is the response for advanced clip search.
@@ -100,6 +105,7 @@ type EntityExtractionRequest struct {
 	SegmentText  string `json:"segment_text"`
 	SegmentIndex int    `json:"segment_index"`
 	EntityCount  int    `json:"entity_count"`
+	Language     string `json:"language,omitempty"`
 }
 
 // EntityExtractionResult represents the result of entity extraction

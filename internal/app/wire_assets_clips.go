@@ -149,10 +149,6 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	// These use cases previously lived in clips.NewHandler. Building them here
 	// makes the API package transport-only and gives NonOps/Actions precisely
 	// the operations they execute.
-	bulkTagsUC := appclips.NewBulkTagsUseCase(
-		params.Clips.Repositories.ClipsRepo,
-		params.Clips.AssetTreeService,
-	)
 	downloadUC := appclips.NewDownloadUseCase(
 		params.Clips.Repositories.AssetRepo,
 		params.Clips.Repositories.VoiceoverRepo,
@@ -168,12 +164,6 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	}
 
 	clipsDrive := newClipsDriveAdapter(params.DriveUploader, params.DriveUploader, nil)
-	repoForSource := func(source string) appclips.ClipRepositoryPort {
-		if !artifacts.IsClipsSource(source) {
-			return nil
-		}
-		return newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo)
-	}
 
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		Handlers: clipsapi.Deps{
@@ -202,13 +192,10 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				Log:            params.Log,
 			},
 			NonOps: nonops.Deps{
-				BulkTagsUC:       bulkTagsUC,
 				ReprocessUC:      reprocessUC,
 				EnrichUC:         enrichUC,
-				ClipIndexer:      newClipsIndexerAdapter(params.Clips.ClipIndexerService),
 				JobsSvc:          params.Jobs.Facade,
 				BulkUploadWorker: bulkUploadWorker,
-				RepoForSource:    repoForSource,
 				Log:              params.Log,
 			},
 			Bulk: clipsapi.BulkTransportDeps{

@@ -357,6 +357,43 @@ func TestCompileQdrantFilter_FolderEmpty_OmitsClause(t *testing.T) {
 	}
 }
 
+// TestCompileQdrantFilter_ExcludesUnclassifiedAssets pins the
+// PR-PLANNER-LEAKAGE-CLEANUP contract: the compiler MUST emit a
+// must_not:is_empty(asset_kind) clause so points without a classified
+// asset_kind payload key (StockRust/one-off test artifacts with empty
+// media_assets.asset_kind) never surface in catalog search.
+func TestCompileQdrantFilter_ExcludesUnclassifiedAssets(t *testing.T) {
+	t.Parallel()
+
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{WorkspaceID: "tenant-A"},
+		search.AssetFilter{},
+	)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+
+	mustNot, ok := filt["must_not"].([]map[string]interface{})
+	if !ok || len(mustNot) != 1 {
+		t.Fatalf("must_not must contain exactly one clause; got %#v", filt["must_not"])
+	}
+	isEmpty, ok := mustNot[0]["is_empty"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("must_not[0].is_empty must be an object; got %#v", mustNot[0])
+	}
+	if isEmpty["key"] != "asset_kind" {
+		t.Fatalf("must_not is_empty key must be asset_kind; got %#v", isEmpty)
+	}
+
+	wire, err := json.Marshal(filt)
+	if err != nil {
+		t.Fatalf("marshal filter: %v", err)
+	}
+	if !strings.Contains(string(wire), `"is_empty"`) || !strings.Contains(string(wire), `"asset_kind"`) {
+		t.Fatalf("filter JSON missing is_empty(asset_kind): %s", wire)
+	}
+}
+
 // TestCompileQdrantFilter_FolderAndLifecycle_MustArrayCoexists
 // pins the invariant that folder/equality clauses stay in `must` while
 // lifecycle alternatives stay in `should`. Qdrant must is AND; should

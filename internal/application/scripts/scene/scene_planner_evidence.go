@@ -88,14 +88,15 @@ func (p *ScenePlanner) PlanFromClipEvidence(
 		// zero-delta branch (returns 0 by godlike/07
 		// NO-FAKE-AVAILABILITY; "duration unknown").
 		binding := &scriptpkg.ClipBinding{
-			ClipID:         clipID,
-			ClipTitle:      detail.Name,
-			DriveLink:      detail.DriveLink,
-			SubtitleLink:   detail.SubtitleLink,
-			SubtitleFileID: detail.SubtitleFileID,
-			StartMs:        detail.StartMs,
-			EndMs:          detail.EndMs,
-			DurationMs:     scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
+			ClipID:          clipID,
+			ClipTitle:       detail.Name,
+			DriveLink:       detail.DriveLink,
+			SubtitleLink:    detail.SubtitleLink,
+			SubtitleFileID:  detail.SubtitleFileID,
+			StartMs:         detail.StartMs,
+			EndMs:           detail.EndMs,
+			DurationMs:      scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
+			TotalDurationMs: detail.TotalDurationMs,
 		}
 		if binding.DurationMs <= 0 {
 			binding.DurationMs = scriptpkg.ClipDurationMsFromAssetID(clipID)

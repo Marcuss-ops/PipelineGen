@@ -72,13 +72,12 @@ type RateLimitPort interface {
 // Features substruct used by the per-feature gate middlewares. The N
 // methods below mirror the bool flags currently read on
 // `cfg.Features.<X>Enabled`. Each per-middleware factory
-// (ArtlistEnabled, ScriptDocsEnabled, ScriptClipsEnabled, ...) keeps a
+// (ArtlistEnabled, ScriptClipsEnabled, ...) keeps a
 // one-method-port in the calling site — but the canonical reader is
 // the same `FeatureFlagsPort` so a single adapter can satisfy the
 // whole family.
 type FeatureFlagsPort interface {
 	ArtlistEnabled() bool
-	ScriptDocsEnabled() bool
 	ScriptClipsEnabled() bool
 	// ScriptImagesEnabled recorded here so the future ScriptImagesEnabled
 	// gate middleware lands via a new one-method port without altering

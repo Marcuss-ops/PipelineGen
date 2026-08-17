@@ -20,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -74,6 +73,14 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		voiceoverDestResolver = resolved
 	}
+	canonicalCommitter := newCanonicalAssetCommitter(params.dbs.DualPool.Writer, params.outbox.EventsRepo, params.log)
+	if params.repos != nil && params.repos.ClipsRepo != nil {
+		wireCanonicalAssetStore(params.repos.ClipsRepo.AssetStoreSQLite, canonicalCommitter)
+	}
+	if params.repos != nil {
+		wireCanonicalImageCommitter(params.repos.ImageRepo, canonicalCommitter)
+	}
+	voCommitter := canonicalCommitter
 	voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverPipeline(params.ctx, params.cfg, params.dbs, params.log,
 		params.drive.DriveUploader,
 		params.drive.Publisher,
@@ -81,6 +88,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		voiceoverDestResolver,
 		params.voMetaWriter,
 		params.outbox.Dispatcher,
+		voCommitter,
 		params.mediaConfig,
 	)
 	if err != nil {
@@ -103,7 +111,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		ImageRepo:     params.repos.ImageRepo,
 		VOMetaWriter:  params.voMetaWriter,
 		IngestSvc:     ingestSvc,
-		Committer:     sqassets.NewSQLiteAssetCommitter(params.dbs.DualPool.Writer, params.outbox.EventsRepo, params.log),
+		Committer:     canonicalCommitter,
 		Dispatcher:    params.outbox.Dispatcher,
 	})
 

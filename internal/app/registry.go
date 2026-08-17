@@ -23,7 +23,7 @@
 //     (thin route modules exposed via /api/* paths).
 //   - registry_internal_modules.go registerInternalModules wrapper
 //   - registerArtlist + registerYouTubeClip + registerMediaIngest
-//   - registerScraper + registerFullImages + registerStockPipeline
+//   - registerScraper + registerStockPipeline
 //     (bundle-driven modules).
 //   - registry_search.go          registerSearchBackend helper
 //     (BuildCanonicalSearchFanOut + explicit search capability value).
@@ -142,7 +142,6 @@ type RegistryWiring struct {
 	YouTubeClip   *wiring.YouTubeClipWiring
 	MediaIngest   *MediaIngestWiring
 	Assets        *wiring.AssetsWiring
-	FullImages    *wiring.FullImagesWiring
 	StockPipeline *wiring.StockPipelineWiring
 
 	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
@@ -193,17 +192,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: admin: %w", err)
 	}
 
-	// Admin UI module — React/Vite frontend API surface.
-	if err := registerAdminUIModule(registry, log, cfg); err != nil {
-		return nil, fmt.Errorf("wire registry: admin-ui: %w", err)
-	}
-
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
 	// registerAssets (consumes explicit registryCrossStepState). Wraps
 	// registerIdempotencyMiddleware +
 	// registerSearchBackend + registerArtlist + registerYouTubeClip +
-	// registerMediaIngest + registerScraper + registerFullImages +
+	// registerMediaIngest + registerScraper +
 	// registerStockPipeline in the canonical DAG order.
 	crossStep, err := registerInternalModules(ctx, registry, log, cfg, root, wiring)
 	if err != nil {
@@ -216,15 +210,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// Step 3 — Scripts: wireScriptFlow orchestration + ScriptHistory module.
 	if err := registerScripts(ctx, registry, log, cfg, root, wiring.ArtlistSvc); err != nil {
 		return nil, fmt.Errorf("wire registry: scripts: %w", err)
-	}
-
-	// Step 3a — ScriptDocs: PR-SCRIPT-DOCS-DRIFT-2026-07-08 closure.
-	// Mounts /api/script-docs/* (POST /generate today; future endpoints
-	// for /reset + /state land in lockstep with ReActPort surface
-	// extensions). Gated on cfg.Features.ScriptDocsEnabled. ReAct
-	// typed port is nil-tolerant; composition root passes nil today.
-	if err := registerScriptDocs(registry, log, cfg); err != nil {
-		return nil, fmt.Errorf("wire registry: script-docs: %w", err)
 	}
 
 	// Step 4 — Images: single route module; consumes wiring.MediaIngest.Service.

@@ -52,8 +52,7 @@
         },
         "docs": {
           "enabled": true,
-          "languages": ["en"],
-          "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
+          "languages": ["en"]
         },
         "media_plan": {
           "mode": "hybrid",

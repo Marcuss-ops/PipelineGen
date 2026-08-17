@@ -58,6 +58,13 @@ type AssetRepository interface {
 	UpdateEnrichedMetadata(ctx context.Context, id string, fields EnrichedFields) error
 }
 
+// AssetMetadataUpdater is the canonical metadata mutation port. Production
+// wires the SQLite MediaCommitter implementation at the composition root;
+// this application package never owns media_assets SQL.
+type AssetMetadataUpdater interface {
+	UpdateAssetMetadata(ctx context.Context, assetID, metadataJSON string) error
+}
+
 // AssetRow is the typed read-back envelope from GetByID.
 // The 10 fields are the canonical projection of the media_assets
 // columns the enrichment pass needs to build the EnrichmentRequest

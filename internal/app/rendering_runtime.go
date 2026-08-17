@@ -45,7 +45,7 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	}
 	rendererBinary := os.Getenv("CHRONON_RENDER_BIN")
 	if rendererBinary == "" {
-		rendererBinary = "chronon-render"
+		rendererBinary = "/opt/chronon3d/bin/chronon3d_cli"
 	}
 	renderer := infraoverlays.NewCommandRenderer(rendererBinary)
 	lockPath := os.Getenv("RENDERINGGEN_GPU_LOCK")

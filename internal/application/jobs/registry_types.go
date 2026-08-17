@@ -38,7 +38,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/subtitle"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/system"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -199,7 +198,6 @@ const (
 	TypeMediaStock          = media.TypeStock
 	TypeVoiceoverBatch      = voiceover.TypeBatch
 	TypeSubtitleGenerate    = subtitle.TypeGenerate
-	TypeRenderVideo         = video.TypeRender
 	TypeYouTubeUpload       = youtube.TypeUpload
 	TypeYouTubeStock        = youtube.TypeStock
 	TypeCatalogSync         = catalog.TypeSync
@@ -207,7 +205,6 @@ const (
 	TypeArtlistCacheRefresh = media.TypeArtlistCacheRefresh
 	TypeSystemCleanup       = system.TypeCleanup
 	TypeMediaGenerate       = media.TypeGenerate
-	TypeVideoGenerate       = video.TypeGenerate
 	TypeBooksProcess        = books.TypeProcess
 	TypeLessonsProcess      = lessons.TypeProcess
 	TypeMediaReindex        = media.TypeReindex
@@ -279,18 +276,6 @@ const (
 	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
 	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
 	TypeMediaStockRLMEnrich = media.TypeStockRLMEnrich
-
-	// PR-GEMMA-EXTRACT-IMPORTANT (July 2026): per-LLM-segment fan-out
-	// clip extractor for POST /api/clips/extract-important. Canonical
-	// string lives in internal/domain/youtube (godlike/02
-	// capability-specific constants stay in their owning domain package);
-	// this re-export keeps the registry_extraction.go Register call
-	// site consistent with the rest of its sibling entries
-	// (TypeMediaExtract, TypeYouTubeClipExtract, TypeClipRegister —
-	// all unprefixed). JobType mirrors TypeYouTubeClipExtract but
-	// batch-fans out per LLM-identified segment instead of per video
-	// OR clip ID.
-	TypeYouTubeClipExtractImportant = youtube.TypeClipExtractImportant
 
 	// Canonical job types that were missing from the re-export block.
 	// They live in their owning capability domain packages and are

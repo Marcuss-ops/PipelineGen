@@ -31,15 +31,22 @@ import (
 // ── AssetStoreSQLite (canonical Wave A receiver) ────────────────────
 
 type AssetStoreSQLite struct {
-	db  *sql.DB
-	log *zap.Logger
+	db            *sql.DB
+	log           *zap.Logger
+	canonicalSave func(context.Context, *asset.Details) error
+}
+
+func (s *AssetStoreSQLite) SetCanonicalSave(fn func(context.Context, *asset.Details) error) {
+	if s != nil {
+		s.canonicalSave = fn
+	}
 }
 
 // NewAssetStoreSQLite creates a new Wave A AssetStoreSQLite with
 // the given database connection and logger (nil-safe). The legacy
 // domain struct (with its 71 receivers) is constructed and embedded
 // so callers can reach UpsertFolder / GetFolder / SearchClips /
-// BulkAddTags / Locate / Process / Version / SegmentEmbedding
+// Locate / Process / Version / SegmentEmbedding
 // receivers via promotion without per-receiver migration.
 func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 	if log == nil {
@@ -96,6 +103,9 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) err
 	a := details.Asset
 	if a.ID == "" {
 		return fmt.Errorf("assets.Save: asset ID is required")
+	}
+	if s.canonicalSave != nil {
+		return s.canonicalSave(ctx, details)
 	}
 
 	nowStr := timeutil.FormatRFC3339(time.Now())

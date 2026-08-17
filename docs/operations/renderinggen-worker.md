@@ -13,10 +13,12 @@ overlay.render
 ```
 
 `overlay.render` emits the existing `ArtifactManifest` contract. Its
-metadata carries `source=overlay` and `drive_subpath=["overlay"]`; the
+metadata carries `source=chronon` and `drive_subpath=["overlay"]`; the
 Sender preserves those fields through staged completion and the Drive
 publisher ensures/reuses the `overlay` folder below the already-resolved
-video artifact folder.
+video artifact folder. The manifest artifact also carries `sha256` and
+`size_bytes` at emit time, plus `drive_file_id`/`drive_link` slots that
+are populated by the Drive publisher after publication.
 
 Example service environment on Worker 77:
 
@@ -24,7 +26,7 @@ Example service environment on Worker 77:
 VELOX_WORKER_ID=worker-77-renderinggen
 VELOX_WORKER_PROFILE=renderer
 VELOX_MASTER_URL=http://127.0.0.1:8000
-CHRONON_RENDER_BIN=/opt/chronon/bin/chronon-render
+CHRONON_RENDER_BIN=/opt/chronon3d/bin/chronon3d_cli
 RENDERINGGEN_CACHE_ROOT=/var/cache/renderinggen
 RENDERINGGEN_GPU_LOCK=/run/pipelinegen/gpu-0.lock
 ```

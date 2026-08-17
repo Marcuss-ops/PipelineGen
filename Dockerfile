@@ -79,12 +79,15 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      python3 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
 
 # Copy migrations and config so the server can run DB migrations at startup.
 COPY migrations/ /app/migrations/
+COPY config/ /app/config/
+COPY scripts/bridges/ /app/scripts/bridges/
 
 RUN mkdir -p /data /etc/pipelinegen \
  && chown -R root:root /data /etc/pipelinegen

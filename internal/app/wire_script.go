@@ -75,6 +75,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -82,6 +83,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
@@ -166,16 +168,20 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Wire wiring.ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
-	// Constructs the VoiceoverGenerator adapter from the TTS audio processor
-	// when available. Used by the script generation runner's Stage 4
+	// Constructs the VoiceoverGenerator adapter from the canonical per-item
+	// voiceover pipeline (VoiceoverProcessItem → ProcessVoiceoverItemUseCase →
+	// ProcessSegmentUseCase) when available. Routing through the canonical
+	// pipeline is what lets the adapter return the SpeechTimingArtifact (Edge
+	// word boundaries → hash-bound canonical artifact), which the runner uses
+	// to derive phrase timings. Used by the script generation runner's Stage 4
 	// (GENERATING_VOICEOVERS).
-	if root.Domains != nil && root.Domains.AudioProcessor != nil {
+	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		root.AI.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
+		root.AI.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
 		log.Info("wireScriptFlow: wiring.ScriptVoiceoverGenerator wired",
 			zap.String("output_dir", voPath))
 	} else {
-		log.Warn("wireScriptFlow: wiring.ScriptVoiceoverGenerator NOT wired (no audio processor) — voiceover stage will be skipped")
+		log.Warn("wireScriptFlow: wiring.ScriptVoiceoverGenerator NOT wired (no voiceover pipeline) — voiceover stage will be skipped")
 	}
 
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
@@ -185,6 +191,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// durable pipeline can resolve clip/catalog/search/curate sources.
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
+		if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
+			prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+			root.AI.SceneTextGenerator.SetClipProber(prober)
+			log.Info("wireScriptFlow: wiring.SceneTextGenerator clip prober wired")
+		} else {
+			log.Warn("wireScriptFlow: Rust media executor path empty; SceneTextGenerator duration probe unavailable")
+		}
 	}
 
 	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──
@@ -197,7 +210,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
 	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
-	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
+	// VidRush provider registry + cache are built once and shared by the
+	// batch postprocessors and the durable incremental runtime.
+	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(cfg, root, artlistWiring, log)
+	vidRushCache := buildVidRushCache(root, log)
+	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -278,7 +295,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 	genJobHandler.SetRunRepository(runRepo)
 	if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
-		durableRunner, runtimeErr := appcap.BuildScriptGenerationRuntime(cfg, root, runRepo, log)
+		var finalAudioCommitter assetspersistence.AssetCommitter
+		if root.DB != nil && root.DB.DB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
+			finalAudioCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+		}
+		durableRunner, runtimeErr := appcap.BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
@@ -341,7 +362,7 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	if cfg == nil {
 		return false
 	}
-	return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled || cfg.Features.ImagesEnabled
+	return cfg.Features.ScriptClipsEnabled || cfg.Features.ImagesEnabled
 }
 
 // scriptGenerationEnabled is the dedicated gate for the canonical

@@ -66,6 +66,9 @@ func runBackfillMediaAssetSources(args []string) error {
 	}
 	ctx := cmdContext()
 	var report any
+	var taxonomyReport any
+	var contentSHA256Report any
+	var contentLinkReport any
 	if *apply {
 		report, err = resolver.Backfill(ctx)
 	} else {
@@ -74,11 +77,21 @@ func runBackfillMediaAssetSources(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Content links run after the source backfill: the provenance rows just
-	// registered carry their digests, so the CAS link backfill fills the
-	// remaining media_asset_sources.content_sha256 and creates the missing
-	// content_objects rows before the Qdrant v4 rebuild.
-	contentLinkReport, err := resolver.BackfillContentLinks(ctx, *apply)
+	taxonomyReport, err = resolver.BackfillTaxonomy(ctx, *apply)
+	if err != nil {
+		return err
+	}
+	// Byte-identity reconstruction runs BEFORE content links so the digests
+	// copied from file_hash (64-hex guard) feed the content_objects insert.
+	contentSHA256Report, err = resolver.BackfillContentSHA256(ctx, *apply)
+	if err != nil {
+		return err
+	}
+	// Content links run last: the source backfill above has just registered
+	// the provenance rows (with their digests), so the CAS link backfill can
+	// fill the remaining media_asset_sources.content_sha256 and create the
+	// missing content_objects rows before the Qdrant v4 rebuild.
+	contentLinkReport, err = resolver.BackfillContentLinks(ctx, *apply)
 	if err != nil {
 		return err
 	}
@@ -88,9 +101,11 @@ func runBackfillMediaAssetSources(args []string) error {
 			mode = "apply"
 		}
 		encoded, marshalErr := json.Marshal(map[string]any{
-			"mode":                mode,
-			"report":              report,
-			"content_link_report": contentLinkReport,
+			"mode":                  mode,
+			"source_report":         report,
+			"taxonomy_report":       taxonomyReport,
+			"content_sha256_report": contentSHA256Report,
+			"content_link_report":   contentLinkReport,
 		})
 		if marshalErr != nil {
 			return marshalErr
@@ -99,7 +114,9 @@ func runBackfillMediaAssetSources(args []string) error {
 		return nil
 	}
 	log.Info("canonical media asset source backfill complete",
-		zap.Bool("apply", *apply), zap.Any("report", report),
+		zap.Bool("apply", *apply), zap.Any("source_report", report),
+		zap.Any("taxonomy_report", taxonomyReport),
+		zap.Any("content_sha256_report", contentSHA256Report),
 		zap.Any("content_link_report", contentLinkReport))
 	return nil
 }

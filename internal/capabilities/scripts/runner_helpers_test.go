@@ -8,14 +8,13 @@
 // Per-scenario test files:
 //
 //   - runner_happy_path_test.go   — TestRunner_HappyPath_AllStagesComplete
-//   - runner_retry_test.go        — 3 retry-from-checkpoint scenarios
+//   - runner_retry_test.go        — 2 retry-from-checkpoint scenarios
 //     (TestRunner_TextGeneratorFails_RetryResumesFromCheckpoint,
-//     TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated,
-//     TestRunner_EnqueueFailsBeforeDocs_RetryPublishesDocs)
+//     TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated)
 //   - runner_stage_skip_test.go   — 3 stage-skip scenarios
 //     (TestRunner_VoiceoverGeneratorNil_StageSkipped,
 //     TestRunner_DocsDisabled_StageSkipped,
-//     TestRunner_RenderVideoFalse_Skipped)
+//     TestRunner_DocsEnabled_PublishesDocuments)
 //   - runner_unit_test.go         — TestDeriveErrorCode + TestBuildDocumentContent + TestContainsAny
 //   - runner_lifecycle_test.go    — IsRunCompletable + ResumeFrom + StageIndex +
 //     StageIsTerminal + RetryDelay + ShouldRetry + ResolveDocsConfig
@@ -25,7 +24,7 @@
 //
 // godlike/06 SSOT: every stub returns ... نفس productions surface
 // ports (TextGenerator / Translator / VoiceoverGenerator /
-// DocumentPublisher / RenderEnqueuer) so the runner cannot tell
+// DocumentPublisher) so the runner cannot tell
 // the difference between a real provider and a stub. Fault
 // injection is parameterized via `err` + `failAfter` fields so
 // each scenario can configure the failure surface independently
@@ -90,6 +89,8 @@ func (g *stubTextGenerator) GenerateSceneText(ctx context.Context, req GenerateR
 			Audio:        s.Audio,
 			AudioIntents: append([]capabilityaudio.AudioIntent(nil), s.AudioIntents...),
 			Clip:         s.Clip,
+			Clips:        s.Clips,
+			Annotations:  s.Annotations,
 			Text:         make(map[Language]string),
 		}
 		for k, v := range s.Text {
@@ -158,7 +159,14 @@ func (v *stubVoiceoverGenerator) Generate(ctx context.Context, input VoiceoverIn
 	if v.err != nil {
 		return AudioReference{}, v.err
 	}
-	return v.ref, nil
+	// Per-scene identity: the canonical voiceover contract requires one
+	// certified asset per (scene, language), so the stub must not reuse a
+	// single ID across scenes (ValidateChunkedVoiceovers rejects duplicates).
+	// Other fields (URL, Duration, ...) remain settable via stub.ref.
+	ref := v.ref
+	ref.ID = "vo-" + input.SceneID + "-" + string(input.Language)
+	ref.FilePath = "/tmp/voiceover-" + input.SceneID + "-" + string(input.Language) + ".mp3"
+	return ref, nil
 }
 
 // stubDocumentPublisher implements DocumentPublisher with fault injection.
@@ -196,7 +204,9 @@ func (p *stubDocumentPublisher) UpsertDocument(ctx context.Context, input Docume
 	return p.ref, nil
 }
 
-// stubRenderEnqueuer implements RenderEnqueuer with fault injection.
+// stubRenderEnqueuer is a render-enqueue sentinel: audio-only tests assert it
+// is never called (zero video jobs). err/failAfter retain fault injection for
+// the legacy enqueue-path scenarios.
 type stubRenderEnqueuer struct {
 	mu        sync.Mutex
 	ref       RenderReference
@@ -322,7 +332,10 @@ func (r *inMemRunRepository) SavePartialResult(ctx context.Context, runID string
 // Factories — used by every per-scenario test file.
 // ─────────────────────────────────────────────────────────────────────
 
-// defaultTestRequest returns a minimal valid GenerateRequest.
+// defaultTestRequest returns a minimal valid GenerateRequest. It uses
+// CHUNKED_VOICEOVER so the canonical happy-path/retry scenarios exercise
+// the voiceover stage; tests that target timeline-only (audio NONE)
+// behavior set Audio explicitly.
 func defaultTestRequest() GenerateRequest {
 	return GenerateRequest{
 		IdempotencyKey: "test-key-001",
@@ -332,8 +345,11 @@ func defaultTestRequest() GenerateRequest {
 		},
 		SourceLanguage: "en",
 		Languages:      []Language{"en", "es"},
-		RenderVideo:    true,
+		Audio:          capabilityaudio.AudioModeChunkedVoiceover,
 		Docs:           DocumentsConfig{Enabled: true, Languages: []Language{"en", "es"}},
+		// Project is the resolved semantic project namespace; voiceover-mode
+		// runs fail closed before TTS when it is empty (ErrProjectRequired).
+		Project: "test-project",
 	}
 }
 
@@ -356,8 +372,12 @@ func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTra
 	docPub := newStubDocumentPublisher()
 	renderEnq := newStubRenderEnqueuer()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, renderEnq, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
 	runner.SetLogger(zap.NewNop())
+	// The default request enables docs; resolveArtifactRoutingContext fails
+	// closed at run start unless a docs destination is resolvable, so wire the
+	// configured default the same way the app composition root does.
+	runner.SetScriptDocsFolderID("test-docs-folder")
 	return runner, repo, textGen, translator, voiceoverGen, docPub, renderEnq
 }
 
@@ -370,10 +390,20 @@ func (canonicalTestDocumentRenderer) DocumentRendererID() string {
 }
 
 func (canonicalTestDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
+	// Mirrors the production composition-root renderer
+	// (scriptGenerationDocumentRenderer.RenderDocument) so runner tests
+	// exercise the same HTML contract: full audio, canonical timeline,
+	// phrase timings and overlay all project verbatim.
 	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Title:           opts.Title,
-		Language:        string(opts.Language),
-		DefaultLanguage: string(opts.DefaultLanguage),
+		Title:              opts.Title,
+		Language:           string(opts.Language),
+		DefaultLanguage:    string(opts.DefaultLanguage),
+		FullAudio:          opts.FullAudio,
+		AudioTimeline:      opts.AudioTimeline,
+		SceneSpeechTimings: opts.SceneSpeechTimings,
+		ClipMetadata:       opts.ClipMetadata,
+		AudioSummary:       opts.AudioSummary,
+		Overlay:            opts.Overlay,
 	}), nil
 }
 

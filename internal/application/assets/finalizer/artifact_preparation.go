@@ -75,6 +75,26 @@ func (s *ArtifactPreparation) Prepare(
 		zap.String("action", string(location.Action)),
 	)
 
+	// Stamp the post-publication Drive identity onto the artifact metadata
+	// so downstream projections (manifest, metadata_json, Qdrant) read a
+	// single source of truth: drive_file_id ← Location.FileID, drive_link ←
+	// Location.WebViewLink. The published column fields (media_assets
+	// .drive_file_id/.drive_link) remain derived from Location directly; this
+	// is the additive metadata representation consumed by projections.
+	metadata := make(map[string]any, len(artifact.ArtifactMetadata)+3)
+	for k, v := range artifact.ArtifactMetadata {
+		metadata[k] = v
+	}
+	if location.FileID != "" {
+		metadata["drive_file_id"] = location.FileID
+	}
+	if location.WebViewLink != "" {
+		metadata["drive_link"] = location.WebViewLink
+	}
+	if location.DownloadLink != "" {
+		metadata["download_link"] = location.DownloadLink
+	}
+
 	return finalization.PublishedArtifact{
 		ArtifactID:       artifact.ArtifactID,
 		Kind:             artifact.Kind,
@@ -89,7 +109,7 @@ func (s *ArtifactPreparation) Prepare(
 		Source:           artifact.Source,
 		ProjectID:        artifact.ProjectID,
 		Language:         artifact.Language,
-		ArtifactMetadata: artifact.ArtifactMetadata,
+		ArtifactMetadata: metadata,
 		Location:         location,
 	}, nil
 }

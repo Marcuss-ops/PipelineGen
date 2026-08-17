@@ -3,7 +3,6 @@
   "title": "Actors Comedy Clips",
   "source_language": "it",
   "audio_mode": "COMBINED_TIMELINE",
-  "render_video": true,
   "scenes": [
     {"id":"scene-0","index":0,"text":"Benvenuti nel mondo della comicità. Iniziamo con due momenti spontanei che mostrano il talento e l’energia degli attori.","kind":"intro","clip_id":"11MRzjKA3o7OZGmYZGJMPTGxM_eNt6qAX","voiceover_id":"1lLxBxljlkRQUIbDQ89MuWCUfpgFMIEuH"},
     {"id":"scene-1","index":1,"text":"Il primo sguardo ci porta su Paul Giamatti, che condivide alcune riflessioni durante un incontro tra attori, mostrando la sua naturale presenza scenica anche fuori dal palcoscenico.","kind":"clip","clip_id":"11_5vtQgxOfFdBnsC8FQnCu0UQ2WpfO-c","voiceover_id":"1CIcSEK53NWU44_O1qD6yBwoS3RqXwQJi"},

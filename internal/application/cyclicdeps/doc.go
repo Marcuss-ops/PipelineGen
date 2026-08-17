@@ -1,14 +1,16 @@
 // Package cyclicdeps is the canonical home for the
-// "no P0 import cycles in the application layer" regression-guard.
+// "no import cycles in the internal package graph" regression-guard.
 //
-// Per architecture/action-plans/2026-08-08-refactor-checklist-action-plan.md
-// (PR-REFACTOR-P0-CYCLIC-DEPS, deadline 2026-08-12): the application
-// layer (internal/application/...) must have ZERO import cycles. The
-// canonical test surface is the file cyclicdeps_test.go which executes
-// the official toolchain command
-// `go list -deps -e -json ./internal/application/...` to evaluate the
-// package graph metadata with the same accuracy as the compiler itself
-// (respecting //go:build tags, OS/Arch constraints, module-mode, etc.).
+// Two guards live here, both executing the official toolchain command
+// `go list -deps -e -json` to evaluate the package graph metadata with
+// the same accuracy as the compiler itself (respecting //go:build tags,
+// OS/Arch constraints, module-mode, etc.):
+//
+//   - TestNoImportCyclesInApplicationLayer — the application layer
+//     (internal/application/...) must have ZERO import cycles.
+//   - TestNoImportCyclesInInternalTree — the whole internal tree
+//     (internal/...) must have ZERO import cycles, so every package
+//     can be built and tested in isolation.
 //
 // This package ships as pure TDD test surface (no production symbols)
 // so it has zero composition-root wiring cost. The hermetic detector

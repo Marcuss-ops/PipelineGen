@@ -7,7 +7,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/bulk"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/processing"
@@ -74,7 +73,6 @@ type ClipsModule struct {
 
 	publication       *publication.Descriptor
 	publicationRoutes api.Module
-	indexing          *indexing.Descriptor
 	bulk              *bulk.Descriptor
 	jobReg            *clipJobRegistrar
 }
@@ -187,19 +185,8 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clips.Build: publication sub-descriptor: %w", err)
 	}
-	indexingDesc, err := indexing.Build(indexing.Dependencies{
-		Indexing:    handler.nonops,
-		EnabledFunc: deps.Transport.EnabledFunc,
-		Idempotency: idem,
-		Logger:      log,
-		ModuleOpts:  deps.Transport.ModuleOpts,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("clips.Build: indexing sub-descriptor: %w", err)
-	}
 	operationsDesc, err := operations.Build(operations.Dependencies{
 		Ops:         handler.ops,
-		BulkTags:    handler.nonops,
 		EnabledFunc: deps.Transport.EnabledFunc,
 		Idempotency: idem,
 		Logger:      log,
@@ -225,7 +212,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		"/clips",
 		&subModuleAdapter{subModules: []api.Descriptor{
 			catalogDesc, ingestDesc, processingDesc,
-			indexingDesc, operationsDesc, bulkDesc,
+			operationsDesc, bulkDesc,
 		}},
 		log,
 		deps.Transport.ModuleOpts...,
@@ -239,7 +226,6 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		Operations:        operationsDesc,
 		publication:       publicationDesc,
 		publicationRoutes: publicationDesc.Module(),
-		indexing:          indexingDesc,
 		bulk:              bulkDesc,
 		jobReg: &clipJobRegistrar{
 			bulkUploadWorker: deps.Handlers.NonOps.BulkUploadWorker,

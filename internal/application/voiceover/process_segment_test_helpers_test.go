@@ -80,7 +80,7 @@ type cleanupEventCall struct {
 	oldLocalPaths  []string
 }
 
-func (s *stubTxOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, assetID, contentHash string) error {
+func (s *stubTxOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, assetID, _, contentHash string) error {
 	s.indexEvents = append(s.indexEvents, indexEventCall{tx: tx, assetID: assetID, contentHash: contentHash})
 	return nil
 }

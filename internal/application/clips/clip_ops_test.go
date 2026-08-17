@@ -72,9 +72,7 @@ func (r *stubRepo) ListByFolderID(_ context.Context, _ string) ([]*asset.Asset, 
 func (r *stubRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *stubRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
-func (r *stubRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
-func (r *stubRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
+func (r *stubRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
 func (r *stubRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
 	if r == nil {
 		return nil, nil

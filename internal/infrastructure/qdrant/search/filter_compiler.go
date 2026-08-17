@@ -127,8 +127,20 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 		lifecycle = []string{"ACTIVE"}
 	}
 
+	// 4. Exclude unclassified points. Points whose asset_kind payload key
+	//    is absent were never classified into the canonical taxonomy
+	//    (godlike/06 SSOT: the payload builder only writes asset_kind when
+	//    non-empty — see indexing/payload_builder_identity.go). Those rows
+	//    are StockRust/one-off test artifacts (empty media_assets.asset_kind)
+	//    that must never surface in catalog search. Qdrant's is_empty matches
+	//    a missing/null/empty field, so must_not:is_empty = "asset_kind must
+	//    be present and non-empty". This is the Qdrant-side mirror of the
+	//    local backend's ClassifiedAssetFilter (empty asset_kind exclusion).
 	return map[string]any{
 		"must": must,
+		"must_not": []map[string]any{
+			{"is_empty": map[string]any{"key": "asset_kind"}},
+		},
 		"min_should": map[string]any{
 			"conditions": lifecycleClauses(lifecycle),
 			"min_count":  1,

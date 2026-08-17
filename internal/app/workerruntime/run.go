@@ -214,7 +214,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}
 		chrononBin := os.Getenv("CHRONON_RENDER_BIN")
 		if chrononBin == "" {
-			chrononBin = "chronon-render"
+			chrononBin = "/opt/chronon3d/bin/chronon3d_cli"
 		}
 		if _, lookErr := exec.LookPath(chrononBin); lookErr != nil {
 			renderingCleanup()

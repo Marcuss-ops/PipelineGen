@@ -183,7 +183,7 @@ func (h *GenerateJobHandler) Handle(
 	if h.durableRunner != nil && len(env.Items) == 1 && run != nil {
 		runRequest, buildErr := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
 		if buildErr != nil {
-			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageBuildingRenderPayload, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()})
+			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageCompilingAudio, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()})
 			return nil, fmt.Errorf("generate job handler: build durable request: %w", buildErr)
 		}
 		parentLink := job.ParentLinkFromPayload(j.Payload)
@@ -236,8 +236,10 @@ func (h *GenerateJobHandler) Handle(
 				ErrorMessage: dispatchErr.Error(),
 			})
 		} else if parentState, _ := result["parent_state"].(string); parentState == "waiting_children" {
-			// The parent aggregator owns terminal completion for batches.
-			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageWorkerQueued)
+			// The parent aggregator owns terminal completion for batches. The
+			// run stays RUNNING in the scene-generation phase while children
+			// produce their per-item text.
+			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText)
 		} else {
 			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted)
 		}

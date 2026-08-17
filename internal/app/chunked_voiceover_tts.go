@@ -104,18 +104,34 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 		return voiceover.TTSOutput{}, fmt.Errorf("hash merged voiceover: %w", err)
 	}
 	// The merged track inherits the provider identity + boundary mode from
-	// the first chunk. Per-chunk WordBoundaries are NOT merged here: chunk
-	// offsets restart per synthesis, so merging requires a global offset
-	// remap — deferred to the timing-artifact step (same text can still be
-	// synthesized in one pass by providers that do not enforce a chunk
-	// ceiling).
+	// the first chunk. Per-chunk WordBoundaries are merged here with a
+	// global offset remap: chunk offsets restart at 0 per synthesis and the
+	// merged track is the source-order concatenation (chunks synthesize with
+	// RemoveSilence=false, so no silence timeline is involved), so each
+	// chunk's boundaries shift by the cumulative duration of the preceding
+	// chunks. Dropping them made timing.mode=required fail closed
+	// (VOICEOVER_TIMING_UNAVAILABLE) on every multi-chunk scene.
+	mergedBoundaries := make([]voiceover.RawSpeechBoundary, 0, len(outputs))
+	var offsetUS int64
+	for _, out := range outputs {
+		for _, b := range out.WordBoundaries {
+			mergedBoundaries = append(mergedBoundaries, voiceover.RawSpeechBoundary{
+				Text:    b.Text,
+				StartUS: b.StartUS + offsetUS,
+				EndUS:   b.EndUS + offsetUS,
+			})
+		}
+		offsetUS += out.Duration.Microseconds()
+	}
+
 	return voiceover.TTSOutput{
-		LocalPath:    merged,
-		Voice:        outputs[0].Voice,
-		FileHash:     hash,
-		Duration:     timeDuration(duration),
-		Provider:     outputs[0].Provider,
-		BoundaryMode: outputs[0].BoundaryMode,
+		LocalPath:      merged,
+		Voice:          outputs[0].Voice,
+		FileHash:       hash,
+		Duration:       timeDuration(duration),
+		Provider:       outputs[0].Provider,
+		BoundaryMode:   outputs[0].BoundaryMode,
+		WordBoundaries: mergedBoundaries,
 	}, nil
 }
 

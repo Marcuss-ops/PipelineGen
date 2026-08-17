@@ -133,11 +133,11 @@ func TestSQLiteAssetStore_ReindexableIDsSkipEmptyEmbeddings(t *testing.T) {
 		metadataJSON := `{"content_hash":"hash-` + id + `"}`
 		_, err := db.Exec(`
 			INSERT INTO media_assets (
-				id, source, name, media_type, lifecycle_state,
+				id, source, name, media_type, namespace, asset_kind, source_type, lifecycle_state,
 				search_text, embedding_json, metadata_json,
 				created_at, updated_at
 			) VALUES (
-				?, 'artlist', ?, 'video', 'ACTIVE',
+				?, 'artlist', ?, 'video', 'stock', 'stock_video', 'artlist', 'ACTIVE',
 				'search text', ?, ?,
 				datetime('now'), datetime('now')
 			)

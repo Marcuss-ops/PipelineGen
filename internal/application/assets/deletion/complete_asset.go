@@ -43,6 +43,11 @@ var driveLinkFileIDPattern = regexp.MustCompile(`/d/([A-Za-z0-9_-]+)`)
 //	    assetID — the COMPLETED row no longer has any in-flight delete
 //	    events; the outbox pool no longer contributes to the chain.
 //
+//	(c2) Asset-tree cleanup: removes the asset-tree nodes (by
+//	    source+asset_id and by node id). Moved from the synchronous
+//	    DeleteClip post-dispatch path; runs before the atomic purge so
+//	    a failure leaves the canonical row in place for a safe retry.
+//
 //	(d) Mark COMPLETED: writes a structured audit log entry
 //	    ("asset_completed asset_id=X") + bumps a counter
 //	    (operator-visible via the canonical Prometheus port).
@@ -136,6 +141,31 @@ func (s *DeletionService) CompleteAsset(ctx context.Context, assetID string) err
 				"complete asset: drive_file_alive_guard_recheck fired for %q (the user's Drive file is still present despite the lifecycle_state=DELETED stamp; the canonical cleanup cannot proceed until DriveDeleteHandler confirms the file's removal in Drive; retry only after operator verifies the Drive side is complete)",
 				fileID,
 			)
+		}
+	}
+
+	// (b0) Asset-tree cleanup — moved from the synchronous post-dispatch
+	// path in DeleteClip into the terminal COMPLETED close-out. It runs
+	// AFTER the canonical chain reached DELETED but BEFORE the atomic
+	// media_assets/outbox purge, so a cleanup failure leaves the canonical
+	// row in place for a safe retry (and can no longer masquerade as a
+	// deletion failure to the dispatch caller). The in-memory asset keeps
+	// its Source for this step.
+	if s.assetTreeSvc != nil {
+		if cleanupErr := s.assetTreeSvc.DeleteByAssetID(ctx, string(clip.Source), assetID); cleanupErr != nil {
+			logger.Warn("complete asset: asset-tree cleanup DeleteByAssetID failed",
+				zap.String("asset_id", assetID),
+				zap.String("source", string(clip.Source)),
+				zap.Error(cleanupErr),
+			)
+			return fmt.Errorf("complete asset: asset-tree cleanup DeleteByAssetID(%s, %s): %w", string(clip.Source), assetID, cleanupErr)
+		}
+		if cleanupErr := s.assetTreeSvc.DeleteNode(ctx, assetID); cleanupErr != nil {
+			logger.Warn("complete asset: asset-tree cleanup DeleteNode failed",
+				zap.String("asset_id", assetID),
+				zap.Error(cleanupErr),
+			)
+			return fmt.Errorf("complete asset: asset-tree cleanup DeleteNode(%s): %w", assetID, cleanupErr)
 		}
 	}
 

@@ -429,12 +429,6 @@ func (a *serverFeatureFlagsAdapter) ArtlistEnabled() bool {
 	}
 	return a.cfg.Features.ArtlistEnabled
 }
-func (a *serverFeatureFlagsAdapter) ScriptDocsEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Features.ScriptDocsEnabled
-}
 func (a *serverFeatureFlagsAdapter) ScriptClipsEnabled() bool {
 	if a.cfg == nil {
 		return false

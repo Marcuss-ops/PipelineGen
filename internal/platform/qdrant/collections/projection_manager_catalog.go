@@ -5,8 +5,8 @@ import (
 
 	"go.uber.org/zap"
 
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // NewProjectionManagerFor validates the projection contract and returns a

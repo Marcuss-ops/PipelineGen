@@ -175,7 +175,7 @@ func (r *SQLiteRunRepository) scan(ctx context.Context, suffix, arg string) (*sc
 		run.Status = scriptStatus(status)
 	}
 	if run.CurrentStage == "" {
-		run.CurrentStage = scriptgen.StageWorkerQueued
+		run.CurrentStage = scriptgen.StageNormalizing
 	}
 	return run, nil
 }

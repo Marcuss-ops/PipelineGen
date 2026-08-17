@@ -52,7 +52,8 @@ type SQLiteAssetRepository struct {
 	// DB is the canonical *sql.DB handle. The composition root
 	// injects the same DB handle the broker uses (canonical
 	// SSOT for "which DB does the system read from").
-	DB *sql.DB
+	DB              *sql.DB
+	MetadataUpdater AssetMetadataUpdater
 }
 
 // NewSQLiteAssetRepository constructs the canonical concrete
@@ -64,6 +65,14 @@ func NewSQLiteAssetRepository(db *sql.DB) (*SQLiteAssetRepository, error) {
 		return nil, WrapHandlerNotConfigured("db")
 	}
 	return &SQLiteAssetRepository{DB: db}, nil
+}
+
+// SetMetadataUpdater injects the canonical MediaCommitter-owned mutation
+// surface. There is deliberately no direct-SQL fallback.
+func (r *SQLiteAssetRepository) SetMetadataUpdater(updater AssetMetadataUpdater) {
+	if r != nil {
+		r.MetadataUpdater = updater
+	}
 }
 
 // GetByID reads the canonical media_assets row by id. Returns
@@ -128,17 +137,14 @@ func (r *SQLiteAssetRepository) UpdateEnrichedMetadata(ctx context.Context, id s
 	if r == nil || r.DB == nil {
 		return WrapHandlerNotConfigured("repo")
 	}
+	if r.MetadataUpdater == nil {
+		return WrapHandlerNotConfigured("canonical metadata updater")
+	}
 	metaJSON, err := json.Marshal(fields)
 	if err != nil {
 		return WrapInvalidLLMResponse(err)
 	}
-	_, err = r.DB.ExecContext(ctx, `
-		UPDATE media_assets
-		SET metadata_json = ?,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, string(metaJSON), id)
-	if err != nil {
+	if err := r.MetadataUpdater.UpdateAssetMetadata(ctx, id, string(metaJSON)); err != nil {
 		return WrapPersistFailed(err)
 	}
 	return nil

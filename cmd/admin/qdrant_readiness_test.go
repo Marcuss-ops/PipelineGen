@@ -81,7 +81,6 @@ func validCfg() *config.Config {
 		},
 		Features: config.FeaturesConfig{
 			ArtlistEnabled:     false,
-			ScriptDocsEnabled:  false,
 			ScriptClipsEnabled: false,
 		},
 	}

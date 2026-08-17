@@ -105,7 +105,13 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		source_url TEXT NOT NULL DEFAULT '',
 		start_ms INTEGER NOT NULL DEFAULT 0,
 		end_ms INTEGER NOT NULL DEFAULT 0,
-		title TEXT NOT NULL DEFAULT ''
+		title TEXT NOT NULL DEFAULT '',
+		tags TEXT NOT NULL DEFAULT '',
+		tags_norm TEXT NOT NULL DEFAULT '',
+		namespace TEXT NOT NULL DEFAULT '',
+		asset_kind TEXT NOT NULL DEFAULT '',
+		source_type TEXT NOT NULL DEFAULT '',
+		semantic_role TEXT NOT NULL DEFAULT ''
 	);`
 	schema += `
 	CREATE TABLE IF NOT EXISTS asset_locations (

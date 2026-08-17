@@ -45,14 +45,15 @@ import (
 type SupersedeError struct {
 	// AssetID is the canonical media_assets.id the event targeted.
 	AssetID string
-	// Current is the source_version currently stored on the asset
-	// (e.g. media_assets.metadata_json.$.content_hash at the time
-	// the worker processed the event). Empty when the asset row is
-	// absent — the handler may then fall through to a different
-	// terminal branch.
+	// Current is the current canonical index_revision read from the
+	// asset (media_assets.metadata_json.$.index_revision; legacy rows
+	// fall back to content_hash via SourceVersionFor). Empty when the
+	// asset row is absent — the handler may then fall through to a
+	// different terminal branch.
 	Current string
-	// Expected is the source_version embedded in the event payload
-	// (Dispatcher sets this from the ingest-time contentHash).
+	// Expected is the index_revision embedded in the event payload (the
+	// canonical supersede fingerprint; the legacy source_version alias
+	// falls back at parse time).
 	Expected string
 	// Reason is a human-readable summary; surfaced via err.Error()
 	// and persisted into outbox_events.last_error.

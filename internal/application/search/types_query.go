@@ -21,7 +21,47 @@
 // (godlike/06 SSOT — every sentinel in one place).
 package search
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
+
+// ExternalCandidate is a provider result before canonical asset hydration.
+// Providers supply source_type + source_ref; only the registry may populate
+// KnownAssetID.
+type ExternalCandidate struct {
+	SourceType   string
+	SourceRef    string
+	Title        string
+	URL          string
+	KnownAssetID string
+}
+
+type CanonicalIdentity struct {
+	AssetID    string
+	SourceType string
+	SourceRef  string
+	Resolved   bool
+}
+
+type CanonicalIdentityResolver interface {
+	ResolveSource(ctx context.Context, sourceType, sourceRef string) (CanonicalIdentity, error)
+	ResolveContent(ctx context.Context, contentSHA256 string) (CanonicalIdentity, error)
+}
+
+type noopCanonicalIdentityResolver struct{}
+
+func NewNoopCanonicalIdentityResolver() CanonicalIdentityResolver {
+	return noopCanonicalIdentityResolver{}
+}
+
+func (noopCanonicalIdentityResolver) ResolveSource(_ context.Context, sourceType, sourceRef string) (CanonicalIdentity, error) {
+	return CanonicalIdentity{SourceType: sourceType, SourceRef: sourceRef}, nil
+}
+
+func (noopCanonicalIdentityResolver) ResolveContent(_ context.Context, _ string) (CanonicalIdentity, error) {
+	return CanonicalIdentity{}, nil
+}
 
 // ── Capability enum ────────────────────────────────────────────────
 //

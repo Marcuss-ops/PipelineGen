@@ -90,6 +90,35 @@ func TestSpeechTiming_RejectWordPastDuration(t *testing.T) {
 	}
 }
 
+// TestSpeechTiming_AllWordsWithinFinalAudioDuration pins the containment
+// invariant: every word boundary must sit inside the FINAL audio duration
+// (the post-silence-remap duration stored in duration_us). The last word may
+// end exactly AT the duration (inclusive boundary), but never past it.
+func TestSpeechTiming_AllWordsWithinFinalAudioDuration(t *testing.T) {
+	artifact := validSpeechTimingArtifact()
+	last := len(artifact.Words) - 1
+
+	// Final audio duration == the last word's end: the boundary is inclusive.
+	artifact.DurationUS = artifact.Words[last].EndUS
+	if err := artifact.Validate(); err != nil {
+		t.Fatalf("artifact with last word ending exactly at duration rejected: %v", err)
+	}
+
+	// Every word must be strictly contained within the final duration.
+	for i, w := range artifact.Words {
+		if w.StartUS < 0 || w.EndUS > artifact.DurationUS {
+			t.Fatalf("word %d [%d,%d) is not within final duration %d", i, w.StartUS, w.EndUS, artifact.DurationUS)
+		}
+	}
+
+	// The negative half of the same invariant: one word past the final
+	// duration fails closed.
+	artifact.DurationUS = artifact.Words[last].EndUS - 1
+	if err := artifact.Validate(); !errors.Is(err, ErrTimingPastAudioDuration) {
+		t.Fatalf("word past final duration error = %v, want ErrTimingPastAudioDuration", err)
+	}
+}
+
 func TestSpeechTiming_JSONRoundTrip(t *testing.T) {
 	original := validSpeechTimingArtifact()
 	encoded, err := json.Marshal(original)

@@ -21,7 +21,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from . import TEXT_MODEL_NAME, TEXT_MODEL_VERSION, _inference_sem, model, nlp
+from . import (
+    TEXT_CONTRACT_HASH,
+    TEXT_CONTRACT_VERSION,
+    TEXT_DOCUMENT_PREFIX,
+    TEXT_MODEL_NAME,
+    TEXT_MODEL_VERSION,
+    TEXT_QUERY_PREFIX,
+    TEXT_SEMANTIC_DOCUMENT_VERSION,
+    _inference_sem,
+    model,
+    nlp,
+)
 from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
@@ -51,15 +62,16 @@ async def contract():
     internal/kernel/embedding/contract.go exactly.
     """
     return {
-        "contract_version": "v1",
+        "contract_version": TEXT_CONTRACT_VERSION,
         "model_id": TEXT_MODEL_NAME,
         "model_revision": TEXT_MODEL_VERSION,
         "dimension": model.get_sentence_embedding_dimension(),
         "normalization": "l2",
         "distance": "Cosine",
-        "query_prefix": "query: ",
-        "document_prefix": "passage: ",
-        "semantic_document_version": "v3",
+        "query_prefix": TEXT_QUERY_PREFIX,
+        "document_prefix": TEXT_DOCUMENT_PREFIX,
+        "semantic_document_version": TEXT_SEMANTIC_DOCUMENT_VERSION,
+        "contract_hash": TEXT_CONTRACT_HASH,
     }
 
 
@@ -84,6 +96,7 @@ async def embed(req: EmbedRequest):
                 "type": req.type,
                 "model": TEXT_MODEL_NAME,
                 "model_version": TEXT_MODEL_VERSION,
+                "contract_hash": TEXT_CONTRACT_HASH,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -121,6 +134,7 @@ async def index_text(req: IndexTextRequest):
                 "dimensions": len(embedding),
                 "model": TEXT_MODEL_NAME,
                 "model_version": TEXT_MODEL_VERSION,
+                "contract_hash": TEXT_CONTRACT_HASH,
             }
         except HTTPException:
             raise
@@ -156,6 +170,7 @@ async def index_transcript(req: IndexTextRequest):
                 "dimensions": len(embedding),
                 "model": TEXT_MODEL_NAME,
                 "model_version": TEXT_MODEL_VERSION,
+                "contract_hash": TEXT_CONTRACT_HASH,
             }
         except HTTPException:
             raise

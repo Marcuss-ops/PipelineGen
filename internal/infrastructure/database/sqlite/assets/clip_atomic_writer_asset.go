@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -55,13 +56,14 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
 			category, duration_ms, metadata_json,
+			tags, tags_norm,
 			drive_file_id, drive_link, download_link,
 			local_path, file_hash, binary_sha256,
 			folder_id, folder_path,
 			source_provider, source_video_id, source_url, start_ms, end_ms, title,
 			source_version, search_text,
 			lifecycle_state, updated_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -69,6 +71,8 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 			category = excluded.category,
 			duration_ms = excluded.duration_ms,
 			metadata_json = json_patch(COALESCE(media_assets.metadata_json, '{}'), excluded.metadata_json),
+			tags = excluded.tags,
+			tags_norm = excluded.tags_norm,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			download_link = excluded.download_link,
@@ -95,6 +99,8 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		asset.Metadata.Category,
 		int64(asset.Metadata.ClipDurationSec*1000),
 		canonicalClipProvenanceJSON(asset),
+		clipTagsJSON(asset.Metadata.Tags),
+		clipTagsNorm(asset.Metadata.Tags),
 		asset.Drive.FileID,
 		asset.Drive.WebViewLink,
 		"", // download_link — derived from FileID in production; left empty in Commit 2
@@ -119,6 +125,34 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		return err
 	}
 	return nil
+}
+
+// clipTagsJSON marshals the clip tag list as a JSON array string for the
+// media_assets.tags column (empty slice → NULL-compatible empty string).
+func clipTagsJSON(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	raw, _ := json.Marshal(tags)
+	return string(raw)
+}
+
+// clipTagsNorm derives the media_assets.tags_norm search string: the
+// space-joined lowercase tag list (same convention as the image repo's
+// normalizeTags). Empty for an empty tag list.
+func clipTagsNorm(tags []string) string {
+	var b strings.Builder
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(strings.ToLower(t))
+	}
+	return b.String()
 }
 
 func binarySHA256(asset youtubetypes.ClipAsset) string {
@@ -154,6 +188,12 @@ func canonicalClipProvenanceJSON(asset youtubetypes.ClipAsset) string {
 		"clip_end_sec":      asset.Metadata.ClipEndSec,
 		"clip_duration_sec": asset.Metadata.ClipDurationSec,
 		"title":             asset.Metadata.Title,
+	}
+	if asset.Metadata.Description != "" {
+		payload["description"] = asset.Metadata.Description
+	}
+	if len(asset.Metadata.Tags) > 0 {
+		payload["tags"] = asset.Metadata.Tags
 	}
 	if sha := binarySHA256(asset); sha != "" {
 		payload["sha256"] = sha

@@ -412,8 +412,9 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 //   - TestExecute_CacheMiss_TranscriberInvokedAtMostOnce:
 //     end-to-end pipeline (≤ 1 Transcriber call — only Step 7's
 //     priority-5 fallback fires)
-//   - TestExecute_CacheHit_TranscriberNotInvoked: cache hit
-//     produces 0 Transcriber calls (orchestrator short-circuits)
+//   - TestExecute_CacheHit_TranscriberNotInvoked: cache hit skips
+//     acquisition/cut and still finalizes; 0 Transcriber calls
+//     because the cached item carries no local path
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the typed-port surface is
 // retired at the use-case boundary. Step 7's Whisper fallback
@@ -423,14 +424,14 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 // inject validProcessSegmentDeps().Log = zap.NewNop().
 var _ = zap.NewNop
 
-// ── Test 8: Step 10 partial-state Warn log (PR-PY-STEP10-FAIL-LOG) ──
+// ── Test 8: metadata analysis failure BEFORE commit (Warn log) ──────
 //
-// Code-reviewer S1 followup: when Step 10's metadata enrichment
-// fails AFTER Step 9 has already persisted the clip (media_assets
-// row + asset.index.requested outbox event), the use case MUST
-// emit a Warn-level log BEFORE the typed u.fail call so operator
-// dashboards see the partial-state class — the clip IS on disk,
-// only the metadata enrichment needs manual re-extract.
+// PR-ASSET-COMMITTER-ENRICHMENT (August 2026): the metadata analyzer
+// now runs INSIDE step6to9 BEFORE the canonical atomic super-tx. When
+// the analyzer fails, the run MUST emit a Warn-level log AND return
+// the typed FailureCodeMetadataFailed BEFORE any media_assets write —
+// the clip is never committed semantically-poor (the former Step 10
+// "fail AFTER clip write" partial-state class is eliminated).
 //
 // godlike/07 NO-FAKE-AVAILABILITY contract: the canonical job
 // outcome is the typed *ExtractionError with FailureCodeMetadataFailed
@@ -440,12 +441,10 @@ var _ = zap.NewNop
 // contract, NOR does it suppress the fail-closed semantic.
 
 // errBuilder is a ClipMetadataBuilder fake that always returns an
-// error from Build. The use case's EnrichClip wraps the error
-// twice (GenerateClipMetadata → EnrichClip), then process_segment's
-// Step 10 wraps it once more before u.fail flips the job status
-// to FAILED. The Warn log is the operator-observable signal
-// that the clip is salvageable (Step 9 succeeded) but metadata
-// is not.
+// error from Build. The use case's AnalyzeClip wraps the error
+// (GenerateClipMetadata → AnalyzeClip), then step6to9 wraps it once
+// more before u.fail flips the job status to FAILED — all BEFORE the
+// canonical commit.
 type errBuilder struct{}
 
 func (errBuilder) Build(_ context.Context, _ youtubetypes.ClipMetadataInput) (youtubetypes.CanonicalClipMetadata, error) {
@@ -471,16 +470,15 @@ func (noopWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, _ st
 // compile-time assertion: noopWriter satisfies ClipMetadataWriter.
 var _ youtubeports.ClipMetadataWriter = noopWriter{}
 
-// TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog pins S1:
-// when Step 10's MetadataService.EnrichClip returns an error AFTER
-// Step 9 has already written the clip, the use case MUST emit the
-// canonical Warn log "Step 10 failed AFTER clip write" with
-// (clip_id, local_path, failure_code, error) fields BEFORE the
-// typed u.fail call. The typed *ExtractionError returned by
-// Execute MUST have FailureCodeMetadataFailed (canonical job
-// outcome) — the Warn log is additive observability, NOT a
-// replacement of the typed contract.
-func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
+// TestProcessSegment_MetadataAnalysisFailure_FailsBeforeCommit_EmitsWarnLog
+// pins the PR-ASSET-COMMITTER-ENRICHMENT contract: when the metadata
+// analyzer fails INSIDE step6to9 BEFORE the commit, the use case MUST
+// emit the canonical Warn log "metadata analysis failed BEFORE clip
+// write — clip not committed" with (clip_id, failure_code, error)
+// fields BEFORE the typed u.fail call. The typed *ExtractionError
+// returned by Execute MUST have FailureCodeMetadataFailed — the Warn
+// log is additive observability, NOT a replacement of the typed contract.
+func TestProcessSegment_MetadataAnalysisFailure_FailsBeforeCommit_EmitsWarnLog(t *testing.T) {
 	realPath := filepath.Join(t.TempDir(), "clip.mp4")
 	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
 
@@ -488,8 +486,8 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 	obsCore, recorded := observer.New(zapcore.WarnLevel)
 	capturedLog := zap.New(obsCore)
 
-	// Construct a real MetadataService with errBuilder so EnrichClip
-	// returns an error (and Step 10's typed-fail path runs).
+	// Construct a real MetadataService with errBuilder so AnalyzeClip
+	// returns an error (and step6to9's typed-fail path runs).
 	svc, svcErr := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
 		Builder: errBuilder{},
 		Writer:  noopWriter{},
@@ -515,24 +513,22 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 	// 1) Canonical typed-error contract: job outcome is FAILED with
 	//    FailureCodeMetadataFailed. The Warn log does NOT suppress
 	//    the typed-error flip.
-	require.Error(t, err, "Step 10 metadata-enrichment failure MUST surface as typed error")
-	require.Equal(t, "failed", out.Status, "Execute must surface as failed when Step 10 errors")
+	require.Error(t, err, "metadata analysis failure MUST surface as typed error")
+	require.Equal(t, "failed", out.Status, "Execute must surface as failed when metadata analysis errors")
 	var ee *ExtractionError
 	require.True(t, errors.As(err, &ee), "error must be a typed *ExtractionError, got %T", err)
 	require.Equal(t, FailureCodeMetadataFailed, ee.Code, "FailureCode must be FailureCodeMetadataFailed")
 	require.False(t, ee.Retryable, "FailureCodeMetadataFailed is terminal (not retryable)")
-	// 2) Canonical Warn log: the partial-state class MUST be
+	// 2) Canonical Warn log: the pre-commit failure class MUST be
 	//    observable in the captured log stream with the canonical
-	//    substring + the required structured fields. The substring
-	//    is the operator-facing signal that the clip is on disk and
-	//    only the metadata needs manual re-extract.
-	entries := recorded.FilterMessageSnippet("Step 10 failed AFTER clip write").All()
+	//    substring + the required structured fields.
+	entries := recorded.FilterMessageSnippet("metadata analysis failed BEFORE clip write").All()
 	require.NotEmpty(t, entries,
-		"Warn log 'Step 10 failed AFTER clip write' MUST be emitted before u.fail (got %d entries)", recorded.Len())
+		"Warn log 'metadata analysis failed BEFORE clip write' MUST be emitted before u.fail (got %d entries)", recorded.Len())
 
 	// 3) Verify the entry has the canonical fields (clip_id +
-	//    local_path + failure_code) so dashboards can correlate
-	//    the partial-state event with the clip row.
+	//    failure_code) so dashboards can correlate the failure with
+	//    the clip row that was NOT committed.
 	entry := entries[0]
 	require.Equal(t, zapcore.WarnLevel, entry.Level, "log entry must be at Warn level")
 	fields := map[string]string{}
@@ -542,37 +538,27 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 		}
 	}
 	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"], "Warn log must carry canonical clip_id (yt_<videoID>_<startSec>_<endSec>_<policyVer> format)")
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
-	// local_path field was RETIRED from step10's Warn log. Step 10's
-	// new signature has no localPath parameter (per user spec);
-	// the clip_id is the canonical lookup key for operator
-	// dashboards — operators JOIN with media_assets to retrieve the
-	// local_path when a manual re-extract is needed.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"], "Warn log must carry canonical failure_code")
 }
 
-// ── Test 9: PR-YT-DOD-11 partial-state handling ─────────────────────
+// ── Test 9: no partial state on analysis failure ─────────────────────
 
-// TestProcessSegment_Step10_FailsAfterClipWrite_PartialState pins the
-// PR-YT-DOD-11 contract: when Step 10's MetadataService.EnrichClip
-// fails AFTER Step 9 has already committed media_assets + outbox via
-// ClipAtomicWriter.CommitClipAndIndexEvent, the partial-state
-// scenario MUST satisfy ALL FOUR conditions:
+// TestProcessSegment_MetadataAnalysisFailure_NoPartialState pins the
+// PR-ASSET-COMMITTER-ENRICHMENT contract: when the metadata analyzer
+// fails INSIDE step6to9 BEFORE the commit, the partial-state scenario
+// (clip committed without metadata) is ARCHITECTURALLY IMPOSSIBLE. The
+// test asserts:
 //
-//	(1) MetadataService failure is surfaced as FAILED.
-//	(2) The media_assets row WAS written (Step 9 writer was called).
-//	(3) The outbox event WAS emitted (Step 9 writer was called).
-//	(4) The canonical Warn log "Step 10 failed AFTER clip write"
-//	    was emitted with (clip_id, local_path, failure_code).
+//	(1) Metadata analysis failure is surfaced as FAILED (typed error).
+//	(2) The writer was NOT called (0 calls — no media_assets row,
+//	    no outbox event).
+//	(3) The canonical Warn log "metadata analysis failed BEFORE clip
+//	    write — clip not committed" was emitted.
 //
-// This is the COMPANION to Test 8 (which only checks (1) and (4)).
-// The new stubWriterAssetRecorder captures every CommitClipAndIndexEvent
-// call so tests can assert "Step 9 ran before Step 10's failure".
-//
-// godlike/07 NO-FAKE-AVAILABILITY: the writer stub records real
-// call counts — a regression that skips Step 9 before the metadata
-// failure would surface as zero calls instead of exactly one.
-func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
+// godlike/07 NO-FAKE-AVAILABILITY: the writer stub records real call
+// counts — a regression that commits the clip before the analysis
+// failure would surface as one call instead of zero.
+func TestProcessSegment_MetadataAnalysisFailure_NoPartialState(t *testing.T) {
 	realPath := filepath.Join(t.TempDir(), "clip.mp4")
 	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
 
@@ -581,7 +567,7 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	capturedLog := zap.New(obsCore)
 	writerRecorder := &stubWriterAssetRecorder{}
 
-	// Construct a real MetadataService with errBuilder so EnrichClip fails.
+	// Construct a real MetadataService with errBuilder so AnalyzeClip fails.
 	svc, svcErr := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
 		Builder: errBuilder{},
 		Writer:  noopWriter{},
@@ -590,13 +576,13 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	require.NoError(t, svcErr, "NewMetadataService must succeed with errBuilder + noopWriter")
 	require.NotNil(t, svc)
 
-	// Build deps: the recording writer stub is the key difference from
-	// Test 8. It captures every CommitClipAndIndexEvent call so we can
-	// prove Step 9 ran BEFORE the metadata failure (conditions 2+3).
+	// Build deps: the recording writer stub captures every
+	// CommitClipAndIndexEvent call so we can prove the commit was
+	// never reached (the analysis fails first).
 	bundleCore, media, metadata, observability := validProcessSegmentDeps()
 	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
 	bundleCore.Hash = testStubHash{}   // non-empty so Step 5 passes
-	bundleCore.Writer = writerRecorder // recording stub → proves Step 9 ran
+	bundleCore.Writer = writerRecorder // recording stub → proves NO commit
 	bundleCore.Log = capturedLog
 	metadata.MetadataService = svc
 	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
@@ -608,37 +594,25 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	}
 	out, err := uc.Execute(context.Background(), cmd)
 
-	// ── (1) MetadataService failure → FAILED with typed error ─────
-	require.Error(t, err, "Step 10 failure MUST surface as typed error")
+	// ── (1) Metadata analysis failure → FAILED with typed error ───
+	require.Error(t, err, "metadata analysis failure MUST surface as typed error")
 	require.Equal(t, "failed", out.Status)
 	var ee *ExtractionError
 	require.True(t, errors.As(err, &ee), "error must be typed *ExtractionError, got %T", err)
 	require.Equal(t, FailureCodeMetadataFailed, ee.Code)
 	require.False(t, ee.Retryable, "FailureCodeMetadataFailed is terminal")
 
-	// ── (2) Media assets row WAS written (Step 9 writer called) ──
-	// The recorder captures every CommitClipAndIndexEvent call. When
-	// the count is 1, the media_assets row + outbox event were
-	// committed in a single tx before the metadata error.
-	require.Equal(t, 1, writerRecorder.calls,
-		"Step 9 ClipAtomicWriter.CommitClipAndIndexEvent MUST be called exactly once BEFORE Step 10 failure (media_assets row + outbox event committed)")
+	// ── (2) Media assets row was NOT written (writer NOT called) ─
+	// The recorder captures every CommitClipAndIndexEvent call. Zero
+	// calls proves the canonical commit was never reached — the
+	// analysis failure happened first.
+	require.Equal(t, 0, writerRecorder.calls,
+		"ClipAtomicWriter.CommitClipAndIndexEvent MUST NOT be called when metadata analysis fails before commit (no partial state)")
 
-	// ── (3) Outbox event WAS emitted (proven by the same call) ───
-	// The writer's single call proves both media_assets INSERT and
-	// outbox INSERT landed in the same tx. A second call would be
-	// wrong (metadata writer is a separate port, not ClipAtomicWriter).
-	capturedAsset := writerRecorder.captured
-	require.Equal(t, "yt_abc_0_10_v1", capturedAsset.ID,
-		"captured ClipAsset.ID must match canonical clipID from Step 1")
-	require.Equal(t, "abc", capturedAsset.VideoID,
-		"captured ClipAsset.VideoID must match cmd.VideoID")
-	require.NotEmpty(t, capturedAsset.FileHash,
-		"captured ClipAsset.FileHash must be non-empty (Step 5 hash)")
-
-	// ── (4) Warn log "Step 10 failed AFTER clip write" emitted ───
-	entries := recorded.FilterMessageSnippet("Step 10 failed AFTER clip write").All()
+	// ── (3) Warn log "metadata analysis failed BEFORE clip write" ─
+	entries := recorded.FilterMessageSnippet("metadata analysis failed BEFORE clip write").All()
 	require.NotEmpty(t, entries,
-		"Warn log 'Step 10 failed AFTER clip write' MUST be emitted (partial-state class observable)")
+		"Warn log 'metadata analysis failed BEFORE clip write' MUST be emitted (pre-commit failure class observable)")
 	entry := entries[0]
 	require.Equal(t, zapcore.WarnLevel, entry.Level)
 	// Verify structured fields so dashboards can correlate.
@@ -649,11 +623,6 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 		}
 	}
 	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"])
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
-	// local_path field was RETIRED from step10's Warn log. The
-	// clip_id is the canonical lookup key — operators JOIN with
-	// media_assets to retrieve the local_path for manual
-	// re-extract.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"])
 }
 

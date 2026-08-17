@@ -9,6 +9,7 @@
 package ytdlp
 
 import (
+	"os"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -60,6 +61,12 @@ func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 		cfg = &config.Config{}
 	}
 	cookiesPath := cfg.External.ResolveYouTubeCookiesPath()
+	// Keep the process environment authoritative even when a partially
+	// assembled config reaches this adapter (notably during worker boot).
+	// This is the same canonical variable used by ResolveYouTubeCookiesPath.
+	if strings.TrimSpace(cookiesPath) == "" {
+		cookiesPath = strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_COOKIES_FILE"))
+	}
 	jsRuntimePath := cfg.External.YouTubeJSRuntimePath
 	if jsRuntimePath == "" {
 		jsRuntimePath = "node"

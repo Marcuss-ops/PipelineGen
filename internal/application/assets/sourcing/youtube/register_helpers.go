@@ -246,7 +246,7 @@ func (s *Service) dispatchEnrichment(ctx context.Context, clipID, source, localP
 	indexed := s.enrichment != nil && s.enrichment.IndexingEnabled()
 	if indexed && s.enrichment != nil {
 		if err := s.enrichment.DispatchPostRegister(ctx, clipID, source, localPath); err != nil {
-			s.log.Warn("failed to enqueue media.enrich job; clip is saved (operator can reindex via POST /api/media/clips/:id/reindex)",
+			s.log.Warn("failed to enqueue media.enrich job; clip is saved (operator can reindex via POST /api/assets/operator/assets/:id/reindex)",
 				"clip_id", clipID, "error", err)
 		}
 	}

@@ -24,9 +24,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // Concept point IDs use schema.ConceptPointIDPrefix (SSOT in
@@ -127,7 +128,7 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 	}
 
 	point := schema.Point{
-		ID:      schema.ConceptPointIDPrefix + c.ID,
+		ID:      platformschema.ConceptPointIDPrefix + c.ID,
 		Vectors: vectors,
 		Payload: payload,
 	}
@@ -149,7 +150,7 @@ func (i *QdrantIndexer) DeindexConcept(ctx context.Context, conceptID string) er
 		return fmt.Errorf("mediamemory: DeindexConcept with empty conceptID: %w",
 			mediamemory.ErrInvalidBindingInput)
 	}
-	pointID := schema.ConceptPointIDPrefix + conceptID
+	pointID := platformschema.ConceptPointIDPrefix + conceptID
 	if err := i.writer.DeleteProjection(ctx, schema.ConceptCollectionName, []string{pointID}); err != nil {
 		return fmt.Errorf("mediamemory: QdrantIndexer delete concept=%q: %w", conceptID, err)
 	}

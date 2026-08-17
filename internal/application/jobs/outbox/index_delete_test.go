@@ -30,7 +30,7 @@ type mockQdrantDeleter struct {
 	err         error
 }
 
-func (m *mockQdrantDeleter) DeletePoints(ctx context.Context, ids []string) error {
+func (m *mockQdrantDeleter) DeleteAssetPoints(ctx context.Context, ids []string) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -40,6 +40,22 @@ func (m *mockQdrantDeleter) DeletePoints(ctx context.Context, ids []string) erro
 }
 
 func (m *mockQdrantDeleter) callCount() int { return len(m.deleteCalls) }
+
+// statefulQdrantStore models a vector store's point set so the
+// "no orphan points" post-condition can be asserted DIRECTLY — the
+// recording mock only proves DeleteAssetPoints was invoked, not that the
+// point is actually gone. It also records unrelated points so a test can
+// prove deletion is scoped to the target asset only.
+type statefulQdrantStore struct {
+	points map[string]struct{}
+}
+
+func (s *statefulQdrantStore) DeleteAssetPoints(ctx context.Context, ids []string) error {
+	for _, id := range ids {
+		delete(s.points, id)
+	}
+	return nil
+}
 
 // indexStateCall records a SetIndexState call (IndexState column).
 type indexStateCall struct {
@@ -460,6 +476,45 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 	}
 	if assets.lifecycleStateCalls[0].ID != "clip-to-delete" || assets.lifecycleStateCalls[1].ID != "clip-to-delete" {
 		t.Errorf("lifecycle_state hops called with wrong id: %v", assets.lifecycleStateCalls)
+	}
+}
+
+// TestIndexDeleteHandler_NoOrphanQdrantPoints pins the "final verification
+// without orphans" post-condition: after a successful index deletion, the
+// target asset's Qdrant point is actually removed — zero orphan points
+// remain — and unrelated points are untouched.
+//
+// TestIndexDeleteHandler_HappyPathTransitionsToDeleted only proves the
+// deleter was INVOKED with the right id; this stateful store proves the
+// REMOVAL effect (the post-condition the spec's
+// TestRecursiveDriveDelete_NoOrphanQdrantPoints asks for).
+func TestIndexDeleteHandler_NoOrphanQdrantPoints(t *testing.T) {
+	store := &statefulQdrantStore{
+		points: map[string]struct{}{
+			"clip-orphan-free": {},
+			"clip-unrelated":   {},
+		},
+	}
+	assets := &mockAssetDeleter{
+		getResult: &asset.Asset{
+			ID:             "clip-orphan-free",
+			LifecycleState: asset.StateDriveDeleted,
+		},
+	}
+	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), store, assets)
+
+	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-orphan-free", "idem-orphan-free"))); err != nil {
+		t.Fatalf("no-orphan happy path: %v", err)
+	}
+
+	if _, ok := store.points["clip-orphan-free"]; ok {
+		t.Errorf("deleted asset's Qdrant point still present — orphan point remains")
+	}
+	if _, ok := store.points["clip-unrelated"]; !ok {
+		t.Errorf("unrelated asset's Qdrant point was wrongly removed")
+	}
+	if len(store.points) != 1 {
+		t.Errorf("want exactly 1 remaining point (the unrelated asset); got %d", len(store.points))
 	}
 }
 

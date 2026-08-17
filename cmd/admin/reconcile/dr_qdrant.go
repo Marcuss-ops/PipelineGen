@@ -14,14 +14,6 @@
 //	apply-retention   drop old non-active collections matching the
 //	                  schema prefix. Hard floor: keep_last_n=2.
 //
-// Wire-up pattern (mirrors reconcile_qdrant.go):
-//  1. parseDrQdrantDispatcher — peel subcommand
-//  2. appLogger / qdrant cfg — same heat path as reconcile_qdrant
-//  3. Build canonical stack: transport.Client + CollectionManager +
-//     SQLiteAssetStore + ReindexVerifier
-//  4. Construct dr service via ServiceDeps struct (PR2-style)
-//  5. Run + pretty-print; --json switches to JSON-only output
-//
 // Failure handling:
 //   - infra / I/O errors         → exit 1 with non-empty stderr line
 //   - verify-gate blocked (DR)   → exit 0, Applied=false printed;

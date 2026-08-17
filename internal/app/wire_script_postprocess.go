@@ -100,6 +100,9 @@ func registerScriptPostProcessors(
 	log *zap.Logger,
 	scriptsRepoAdapter adapters.ScriptRepository,
 	metaModel string,
+	vidRushProviders *adapters.VidRushAssetProviderRegistry,
+	vidRushFinalizer ports.VidRushArtifactFinalizer,
+	vidRushCache ports.VidRushCachePort,
 ) error {
 	if ppReg == nil {
 		return fmt.Errorf("registerScriptPostProcessors: ppReg is nil (composition bug)")
@@ -234,11 +237,10 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// VidRush provider registry is built once and shared by discovery and
-	// materialization. Providers remain unavailable when their concrete
-	// dependencies are absent; no empty-success adapter is registered.
-	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(cfg, root, artlistWiring, log)
-	vidRushCache := buildVidRushCache(root, log)
+	// VidRush provider registry + cache are built once by the orchestrator
+	// (wireScriptFlow) and shared here with both the AI-backed processors and
+	// the durable incremental runtime. Providers remain unavailable when their
+	// concrete dependencies are absent; no empty-success adapter is registered.
 
 	// AI-backed processors (entities, metadata, translation,
 	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.

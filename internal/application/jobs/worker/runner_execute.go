@@ -89,15 +89,30 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 	// terminalErr, and only otherwise closes the run as SUCCEEDED.
 	var run *kernobs.Run
 	if r.observer != nil {
+		// The lease fence MUST be surfaced on the run: RecoverAbandoned
+		// (run_recorder.go) only reclaims RUNNING runs whose
+		// lease_expires_at has a non-NULL past value. Without LeaseID /
+		// WorkerID / LeaseExpiresAt here, lease_expires_at stays NULL for
+		// every run and a worker crash can never be recovered into
+		// ABANDONED. Prefer the Lease envelope's ExpiresAt; fall back to
+		// the claimed Job's LeaseExpiry when the envelope is unset (test
+		// stubs populate only one of the two).
+		leaseExpiry := lease.ExpiresAt
+		if leaseExpiry.IsZero() && job.LeaseExpiry != nil {
+			leaseExpiry = *job.LeaseExpiry
+		}
 		run = r.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
-			JobID:       job.ID,
-			JobType:     job.Type,
-			AttemptID:   kernobs.NewAttemptID(), // persistent execution identity; LeaseID remains the worker fence
-			CreatedAt:   job.CreatedAt,
-			StartedAt:   job.StartedAt,
-			ParentJobID: kerneljob.ParentLinkFromPayload(job.Payload).ParentJobID,
-			ParentRunID: kerneljob.ParentLinkFromPayload(job.Payload).ParentRunID,
-			RetryCount:  job.RetryCount,
+			JobID:          job.ID,
+			JobType:        job.Type,
+			AttemptID:      kernobs.NewAttemptID(), // persistent execution identity; LeaseID remains the worker fence
+			LeaseID:        lease.LeaseID,
+			WorkerID:       r.workerID,
+			LeaseExpiresAt: leaseExpiry,
+			CreatedAt:      job.CreatedAt,
+			StartedAt:      job.StartedAt,
+			ParentJobID:    kerneljob.ParentLinkFromPayload(job.Payload).ParentJobID,
+			ParentRunID:    kerneljob.ParentLinkFromPayload(job.Payload).ParentRunID,
+			RetryCount:     job.RetryCount,
 		})
 		jobCtx = kernobs.WithRun(jobCtx, run)
 		defer func() {

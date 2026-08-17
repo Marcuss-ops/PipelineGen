@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "force_refresh": true,
+  "correlation_id": "maya-research-e2e-001",
+  "items": [
+    {
+      "id": "maya-research-001",
+      "title": "La civiltà Maya tra città astronomia religione e declino",
+      "language": "it",
+      "tone": "documentary",
+      "style": "Scrivi un documentario storico preciso. Usa soltanto informazioni supportate dalle fonti della ricerca. Mantieni i riferimenti alle fonti quando disponibili.",
+      "source": {
+        "type": "research",
+        "topic": "La civiltà Maya: Tikal, Palenque, Chichen Itza, astronomia, scrittura, religione e declino",
+        "query": "civiltà Maya storia archeologia Treccani UNESCO",
+        "search": true,
+        "force_refresh": true,
+        "cache": {
+          "mode": "force_refresh",
+          "ttl_hours": 168,
+          "version": "history-research-e2e-v1"
+        },
+        "research": {
+          "max_queries": 4,
+          "results_per_query": 5,
+          "max_pages": 8,
+          "max_rounds": 1,
+          "min_sources": 1,
+          "timeout_seconds": 90,
+          "freshness_days": 0,
+          "require_citations": true
+        }
+      },
+      "script_params": {
+        "target_words": 700,
+        "min_words": 450,
+        "segment_words": 80,
+        "skip_quality_gate": true,
+        "use_memory": false,
+        "prompt_version": "history-research-entities-v1"
+      },
+      "output": {
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_scene_images": false,
+        "voiceover_enabled": false,
+        "generate_timeline": false,
+        "render_video": false,
+        "save_to_db": true,
+        "stock_enabled": "disabled"
+      },
+      "audio": {
+        "mode": "NONE"
+      },"docs": {
+      "enabled": true,
+      "languages": [
+        "it"
+      ],
+      "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
+    },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "max_entities_per_segment": 5,
+          "max_important_phrases_per_segment": 5,
+          "max_important_words_per_segment": 5,
+          "max_artlist_queries_per_segment": 0,
+          "max_image_queries_per_segment": 5
+        }
+      }
+    }
+  ]
+}

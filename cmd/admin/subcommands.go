@@ -18,7 +18,6 @@
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
 //   - zombie-sweep                (cmd/admin/zombie_sweep.go)
 //   - dr-qdrant                   (cmd/admin/dr_qdrant.go)
-//   - fullimages-migrate          (cmd/admin/fullimages_migrate.go)
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
@@ -63,10 +62,12 @@ var commandRegistry = map[string]commandHandler{
 	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
+	"backfill-embedding-contract":    runBackfillEmbeddingContract,
 	"backfill-clip-folder-path":      runBackfillClipFolderPath,
 	"backfill-media-asset-sources":   runBackfillMediaAssetSources,
 	"backfill-media-durations":       runBackfillMediaDurations,
 	"backfill-missing":               runBackfillMissing,
+	"backfill-payload-hash":          runBackfillPayloadHash,
 	"backfill-provider-timestamps":   runBackfillProviderTimestamps,
 	"backfill-source-url-metadata":   runBackfillSourceURLMetadata,
 	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
@@ -91,7 +92,6 @@ var commandRegistry = map[string]commandHandler{
 	"dr-qdrant":                      reconcile.RunDrQdrant,
 	"export-sound-effects-metadata":  runExportSoundEffectsMetadata,
 	"folder-path-backfill":           runFolderPathBackfill,
-	"fullimages-migrate":             runFullImagesMigrate,
 	"gen-api-docs":                   runGenAPIDocs,
 	"identity-audit":                 runIdentityAudit,
 	"index-drive-clip":               runIndexDriveClip,
@@ -103,10 +103,13 @@ var commandRegistry = map[string]commandHandler{
 	"organize-drive-folder":          runOrganizeDriveFolder,
 	"organize-foley-drive":           runOrganizeFoleyDrive,
 	"organize-sound-effects-drive":   runOrganizeSoundEffectsDrive,
+	"performance-backfill":           runPerformanceBackfill,
+	"performance-report":             runPerformanceReport,
 	"qdrant-maintenance":             runQdrantMaintenance,
 	"qdrant-enrichment-recover":      runQdrantEnrichmentRecover,
 	"qdrant-preflight":               runQdrantPreflight,
 	"qdrant-readiness":               runQdrantReadiness,
+	"reconcile-orphaned-runs":        runReconcileOrphanedRuns,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
 	"remove-drive-folder-recursive":  runRemoveDriveFolderRecursive,
 	"repair-drive-links":             runRepairDriveLinks,

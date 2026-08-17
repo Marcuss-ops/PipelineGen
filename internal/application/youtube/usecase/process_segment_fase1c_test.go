@@ -17,8 +17,10 @@
 //     subs proves the total Transcriber invocations across
 //     the WHOLE pipeline is ≤ 1 (only Step 7's priority-5
 //     fallback path can fire, never Step 10).
-//  3. A cache-hit test proves the total Transcriber invocations
-//     is 0 (the orchestrator short-circuits at Step 2).
+//  3. A cache-hit test proves acquisition/cut is SKIPPED (0
+//     VideoPipeline invocations) while the finalization gate
+//     still runs (status "processed"; Whisper not re-invoked
+//     because the cached item carries no local path).
 //
 // The test reuses the canonical stub surface from
 // process_segment_failfast_test.go (stubVideoPipeline,
@@ -313,31 +315,33 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 		"Fase 1.c contract: total Transcriber calls across the pipeline must be exactly 1 (Step 7's priority-5 fallback only). Got %d — Step 10 is re-invoking Whisper!", got)
 }
 
-// ── Test 3: cache hit (0 Transcriber calls) ────────────────────────────
+// ── Test 3: cache hit skips acquisition but still finalizes ───────────
 //
-// When the cache hits at Step 2, the orchestrator short-circuits
-// BEFORE Step 6-9 (so the resolver is never invoked) AND BEFORE
-// Step 10 (so the metadata enrichment is skipped). The total
-// Transcriber invocations must be 0.
+// PR-CACHE-HIT-FINALIZATION: a binary cache hit skips ONLY the
+// acquisition/cut + ffprobe steps (Steps 3-5 + 5a); the canonical
+// enrichment/finalization gate (Steps 6-10) STILL runs so missing/stale
+// metadata is repaired. The pipeline must NOT re-download the binary.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: this is the canonical
-// "happy cache hit" path — the pipeline must NOT pay the
-// transcript acquisition cost on a cache hit.
+// In this fixture the cached item carries NO LocalPath, so the
+// Whisper fallback (priority 5, guarded by LocalPath != "") is not
+// consulted — the resolver exhausts without a transcript. The
+// load-bearing assertions are: 0 VideoPipeline invocations
+// (acquisition skipped) and status "processed" (finalization ran).
 func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	tport := &countingTranscriber{text: "should never be called"}
+	vpipe := &countingVideoPipeline{}
 
 	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = vpipe
 	// Wire a TextTrackResolver with the counting transcriber so
-	// the test would observe any regression that bypasses the
-	// cache short-circuit.
+	// the test would observe any regression that re-invokes Whisper.
 	media.TextTrackResolver = &TextTrackResolver{
 		Repo:        noRowsRepo{},
 		Subtitles:   noSubtitleFetcher{},
 		Transcriber: tport,
 		Log:         zap.NewNop(),
 	}
-	// Wire a cache that ALWAYS hits (so the orchestrator
-	// short-circuits at Step 2 BEFORE the resolver).
+	// Wire a cache that ALWAYS hits.
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:    "yt_yt_fase1c_cachehit_0_10_v1.mp4",
 		Duration:    10,
@@ -355,22 +359,24 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 
 	out, execErr := uc.Execute(context.Background(), cmd)
 	require.NoError(t, execErr, "Execute must succeed on cache hit")
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: on a cache hit at
-	// Step 2, the orchestrator short-circuits BEFORE Steps 3-9
-	// and Step 10. The status is "skipped" (the canonical
-	// short-circuit indicator — the work was already done in a
-	// previous extraction, no new clip was produced). The load-
-	// bearing assertion is below: 0 Transcriber invocations.
-	require.Equal(t, "skipped", out.Status, "cache hit must surface as short-circuit status")
+	// PR-CACHE-HIT-FINALIZATION: the legacy "skipped" short-circuit is
+	// RETIRED. The cache hit still passes through Steps 6-10, so the
+	// canonical outcome is "processed".
+	require.Equal(t, "processed", out.Status, "cache hit must finalize through the enrichment gate (status processed)")
 
-	// Load-bearing assertion: 0 Transcriber invocations on a
-	// cache hit. The cache short-circuits at Step 2 BEFORE
-	// Step 7 (priority-5 fallback) and BEFORE Step 10
-	// (metadata enrichment), so the transcriber is never
-	// consulted.
-	got := atomic.LoadInt32(&tport.calls)
-	require.Equal(t, int32(0), got,
-		"Fase 1.c contract: cache hit must produce 0 Transcriber invocations. Got %d.", got)
+	// Load-bearing assertion: the cached binary is NOT re-acquired —
+	// the cache hit skips Steps 3-5.
+	if got := atomic.LoadInt32(&vpipe.calls); got != 0 {
+		t.Fatalf("cache hit must skip acquisition/cut: VideoPipeline invoked %d times", got)
+	}
+
+	// The cached item carries no LocalPath, so the Whisper fallback
+	// (priority 5, guarded by LocalPath != "") is never consulted.
+	// This is no longer a short-circuit — it is the resolver's own
+	// empty-path guard.
+	if got := atomic.LoadInt32(&tport.calls); got != 0 {
+		t.Fatalf("cache hit with empty LocalPath must not invoke Whisper: %d calls", got)
+	}
 }
 
 // ── Test 4: transcript already READY (0 Transcriber calls) ────────────

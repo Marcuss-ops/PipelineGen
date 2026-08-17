@@ -13,6 +13,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
@@ -35,6 +37,7 @@ import (
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
 
 // buildOutboxDeps constructs the jobsoutbox.Deps consumed by the core +
@@ -312,6 +315,73 @@ func (a imageDriveDeliveryOutboxAdapter) IdempotencyKey() string {
 }
 func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxevents.Event) error {
 	return a.handler.HandlePayload(ctx, evt.PayloadJSON)
+}
+
+// registerPerformanceProjectionHandler registers the job.completed
+// performance-projection handler. It is best-effort (derived projection): a
+// missing DB handle or a construction error logs a Warn and skips — the
+// performance-backfill admin command remains the recovery path. It never
+// aborts boot.
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *wiring.Databases, log *zap.Logger) {
+	if eventsRegistry == nil {
+		return
+	}
+	if dbs == nil || dbs.Set == nil || dbs.Set.Primary == nil || dbs.Set.Primary.DB == nil ||
+		dbs.Set.Observability == nil || dbs.Set.Observability.DB == nil {
+		log.Warn("outbox job.completed performance handler NOT wired (primary/observability DB missing)")
+		return
+	}
+	proj, err := perfstore.NewProjection(dbs.Set.Primary.DB, dbs.Set.Observability.DB)
+	if err != nil {
+		log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
+		return
+	}
+	if err := eventsRegistry.Register(jobCompletedPerformanceAdapter{projection: proj, log: log}); err != nil {
+		log.Warn("outbox job.completed performance handler registration failed", zap.Error(err))
+		return
+	}
+	log.Info("outbox job.completed performance handler registered: job.completed → performance_runs/steps projection")
+}
+
+// jobCompletedPerformanceAdapter keeps the SQLite outbox envelope at the
+// composition boundary (mirrors imageDriveDeliveryOutboxAdapter). The
+// performance capability owns only the ProjectionService port; this adapter
+// owns the concrete outboxevents.Handler contract and extracts the job id
+// from the event envelope before delegating to the projection.
+type jobCompletedPerformanceAdapter struct {
+	projection capperformance.ProjectionService
+	log        *zap.Logger
+}
+
+func (a jobCompletedPerformanceAdapter) EventType() string {
+	return outboxevents.EventJobCompleted
+}
+
+func (a jobCompletedPerformanceAdapter) IdempotencyKey() string {
+	return outboxevents.EventJobCompleted + ".project.v1"
+}
+
+func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxevents.Event) error {
+	jobID := evt.AggregateID
+	if jobID == "" {
+		var payload struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err == nil && payload.JobID != "" {
+			jobID = payload.JobID
+		}
+	}
+	if jobID == "" {
+		return fmt.Errorf("job.completed performance handler: missing job id (aggregate_id=%q)", evt.AggregateID)
+	}
+	if err := a.projection.ProjectCompletedJob(ctx, jobID); err != nil {
+		// Retryable: the run report may not be finalized yet, or the
+		// projection hit a transient DB failure. A permanently missing
+		// run surfaces via dead-letter after max attempts (fail closed).
+		return fmt.Errorf("job.completed performance projection for %q: %w", jobID, err)
+	}
+	a.log.Debug("job.completed performance projected", zap.String("job_id", jobID))
+	return nil
 }
 
 // noopIndexClipper is the qdrant-off IndexClip no-op concrete used by

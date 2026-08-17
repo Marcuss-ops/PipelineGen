@@ -58,12 +58,13 @@ type AssetData struct {
 	// search adapter's filter key (lifecycle_state) is never empty.
 	// See payload_mapper.canonicalLifecycleState for the prefer/fall-back
 	// hierarchy used at write time.
-	LifecycleState string   `json:"lifecycle_state,omitempty"`
-	Language       string   `json:"language,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	Style          string   `json:"style,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	SearchText     string   `json:"search_text,omitempty"`
+	LifecycleState  string   `json:"lifecycle_state,omitempty"`
+	Language        string   `json:"language,omitempty"`
+	Category        string   `json:"category,omitempty"`
+	Style           string   `json:"style,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
+	SearchText      string   `json:"search_text,omitempty"`
+	SemanticSummary string   `json:"semantic_summary,omitempty"`
 	// DriveFileID is the canonical Drive identity retained for projection
 	// coherence and repair diagnostics. It is never exposed by API DTOs.
 	DriveFileID string `json:"drive_file_id,omitempty"`

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -173,6 +174,7 @@ func runIndexProvidedSoundEffects(args []string) error {
 	if err := os.MkdirAll(localRoot, 0o755); err != nil {
 		return fmt.Errorf("create sound effects directory: %w", err)
 	}
+	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	for _, spec := range providedSoundEffects {
 		meta, err := root.Drive.Reader.GetFileMeta(ctx, spec.driveID)
 		if err != nil {
@@ -201,7 +203,7 @@ func runIndexProvidedSoundEffects(args []string) error {
 		if err != nil {
 			return fmt.Errorf("create Drive family folder %s: %w", spec.family, err)
 		}
-		duration, err := probeSoundEffectDuration(ctx, localPath)
+		duration, err := probeSoundEffectDuration(ctx, prober, localPath)
 		if err != nil {
 			return fmt.Errorf("probe %s: %w", spec.name, err)
 		}

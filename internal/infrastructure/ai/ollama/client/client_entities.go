@@ -62,7 +62,7 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req as
 
 // ExtractEntitiesFromBatchWithModel performs one bounded generation for up to
 // five scenes and returns one typed result per input scene.
-func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string) ([]*asset.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*asset.EntityExtractionResult, error) {
 	if len(segments) == 0 || len(segments) > entityExtractionBatchSize {
 		return nil, fmt.Errorf("entity batch size must be between 1 and %d", entityExtractionBatchSize)
 	}
@@ -82,10 +82,10 @@ func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments
 		for i, result := range results {
 			// Keep batched extraction subject to the same evidence and
 			// placeholder filtering as the single-segment path.
-			result = sanitizeEntityExtractionResult(segments[i], result, entityCount)
+			result = sanitizeEntityExtractionResult(segments[i], result, entityCount, language)
 			if resultIsEmpty(result) {
-				result = fallbackEntityExtractionResult(segments[i], i, entityCount)
-				result = sanitizeEntityExtractionResult(segments[i], result, entityCount)
+				result = fallbackEntityExtractionResult(segments[i], i, entityCount, language)
+				result = sanitizeEntityExtractionResult(segments[i], result, entityCount, language)
 			}
 			results[i] = capEntityExtractionResult(result, entityCount)
 		}
@@ -95,10 +95,10 @@ func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments
 	// bounded batch as individually addressed requests, with two concurrent
 	// calls. This preserves correctness without reopening the original 34-call
 	// unbounded fan-out.
-	return c.extractEntityBatchIndividually(ctx, segments, entityCount, model)
+	return c.extractEntityBatchIndividually(ctx, segments, entityCount, model, language)
 }
 
-func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []string, entityCount int, model string) ([]*asset.EntityExtractionResult, error) {
+func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []string, entityCount int, model string, language string) ([]*asset.EntityExtractionResult, error) {
 	results := make([]*asset.EntityExtractionResult, len(segments))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -114,8 +114,8 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 				}, model)
 				if err != nil {
 					if c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
-						result = fallbackEntityExtractionResult(segments[index], index, entityCount)
-						result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+						result = fallbackEntityExtractionResult(segments[index], index, entityCount, language)
+						result = sanitizeEntityExtractionResult(segments[index], result, entityCount, language)
 						results[index] = capEntityExtractionResult(result, entityCount)
 						continue
 					}
@@ -126,10 +126,10 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 					errMu.Unlock()
 					continue
 				}
-				result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+				result = sanitizeEntityExtractionResult(segments[index], result, entityCount, language)
 				if resultIsEmpty(result) && c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
-					result = fallbackEntityExtractionResult(segments[index], index, entityCount)
-					result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+					result = fallbackEntityExtractionResult(segments[index], index, entityCount, language)
+					result = sanitizeEntityExtractionResult(segments[index], result, entityCount, language)
 				}
 				results[index] = capEntityExtractionResult(result, entityCount)
 			}
@@ -203,6 +203,14 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 
 // ExtractEntitiesFromScriptWithModel extracts entities using the specified model.
 func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error) {
+	return c.ExtractEntitiesFromScriptWithModelAndLanguage(ctx, segments, entityCount, model, "")
+}
+
+// ExtractEntitiesFromScriptWithModelAndLanguage is the language-aware variant
+// of ExtractEntitiesFromScriptWithModel. It forwards the request language into
+// sanitization so stop-word and function-word filtering uses the correct
+// per-language lexicon instead of the cross-linguistic fallback profile.
+func (c *Client) ExtractEntitiesFromScriptWithModelAndLanguage(ctx context.Context, segments []string, entityCount int, model string, language string) (*asset.FullEntityAnalysis, error) {
 	if len(segments) == 0 {
 		return nil, fmt.Errorf("no segments provided")
 	}
@@ -221,6 +229,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 			SegmentText:  segment,
 			SegmentIndex: i,
 			EntityCount:  entityCount,
+			Language:     language,
 		}
 
 		result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, req, model)
@@ -228,15 +237,15 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 			if c.entityExtractionFallbackMode == EntityExtractionFallbackDisabled {
 				return nil, fmt.Errorf("entity extraction failed for segment %d (fallback disabled): %w", i, err)
 			}
-			result = fallbackEntityExtractionResult(segment, i, entityCount)
+			result = fallbackEntityExtractionResult(segment, i, entityCount, language)
 		}
-		result = sanitizeEntityExtractionResult(segment, result, entityCount)
+		result = sanitizeEntityExtractionResult(segment, result, entityCount, language)
 		if resultIsEmpty(result) {
 			if c.entityExtractionFallbackMode == EntityExtractionFallbackDisabled {
 				return nil, fmt.Errorf("LLM returned empty entity extraction result for segment %d (fallback disabled)", i)
 			}
-			result = fallbackEntityExtractionResult(segment, i, entityCount)
-			result = sanitizeEntityExtractionResult(segment, result, entityCount)
+			result = fallbackEntityExtractionResult(segment, i, entityCount, language)
+			result = sanitizeEntityExtractionResult(segment, result, entityCount, language)
 		}
 		result = capEntityExtractionResult(result, entityCount)
 

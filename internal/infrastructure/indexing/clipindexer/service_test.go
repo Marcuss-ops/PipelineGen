@@ -92,10 +92,10 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// production-shape pattern (search_text starts empty until the
 	// outbox elsepath populates it).
 	_, err := db.Exec(`
-		INSERT INTO media_assets (id, name, source, tags, metadata_json)
+		INSERT INTO media_assets (id, name, source, media_type, asset_kind, source_type, tags, metadata_json)
 		VALUES
-			('clip_1', 'Test Clip One', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
-			('clip_2', 'Test Clip Two', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
+			('clip_1', 'Test Clip One', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
+			('clip_2', 'Test Clip Two', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
 	`)
 	require.NoError(t, err)
 

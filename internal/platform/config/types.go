@@ -231,13 +231,6 @@ func (c *Config) ArtlistEnabled() bool {
 	return c.Features.ArtlistEnabled
 }
 
-func (c *Config) ScriptDocsEnabled() bool {
-	if c == nil {
-		return false
-	}
-	return c.Features.ScriptDocsEnabled
-}
-
 func (c *Config) ScriptClipsEnabled() bool {
 	if c == nil {
 		return false

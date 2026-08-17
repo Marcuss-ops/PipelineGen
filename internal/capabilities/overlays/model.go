@@ -30,10 +30,17 @@ type OverlayPlan struct {
 }
 
 type OverlayItem struct {
-	ID         string            `json:"id"`
-	SceneID    string            `json:"scene_id,omitempty"`
-	StartMs    int64             `json:"start_ms"`
-	EndMs      int64             `json:"end_ms"`
+	ID      string `json:"id"`
+	SceneID string `json:"scene_id,omitempty"`
+	// EntityID and Kind tag overlay items driven by an entity occurrence
+	// (kind "entity_card"). They are optional: phrase/keyword/background
+	// items never carry them, so the golden document shape is unchanged.
+	EntityID string `json:"entity_id,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	StartMs  int64  `json:"start_ms"`
+	EndMs    int64  `json:"end_ms"`
+	// TemplateID is the semantic template (e.g. "person_default" for an
+	// entity card, "IMPORTANT_PHRASE" for a phrase).
 	TemplateID string            `json:"template_id"`
 	Text       string            `json:"text,omitempty"`
 	AssetRefs  []OverlayAssetRef `json:"asset_refs,omitempty"`
@@ -105,21 +112,33 @@ func (p *OverlayPlan) Validate() error {
 	if p.Width <= 0 || p.Height <= 0 || p.FPS <= 0 {
 		return fmt.Errorf("overlay plan: width, height and fps must be positive")
 	}
+	seenIDs := make(map[string]struct{}, len(p.Items))
 	for i := range p.Items {
 		item := p.Items[i]
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.TemplateID) == "" {
 			return fmt.Errorf("overlay plan: item[%d] requires id and template_id", i)
 		}
+		if _, exists := seenIDs[item.ID]; exists {
+			return fmt.Errorf("overlay plan: duplicate item id %q", item.ID)
+		}
+		seenIDs[item.ID] = struct{}{}
 		if item.StartMs < 0 || item.EndMs <= item.StartMs {
 			return fmt.Errorf("overlay plan: item %q has invalid time range", item.ID)
 		}
+		for assetIndex, ref := range item.AssetRefs {
+			if strings.TrimSpace(ref.AssetID) == "" {
+				return fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
+			}
+		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, StartMs: item.StartMs, EndMs: item.EndMs, TemplateID: item.TemplateID, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, TemplateID: item.TemplateID, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
 		p.Fingerprint = p.FingerprintValue()
+	} else if p.Fingerprint != p.FingerprintValue() {
+		return fmt.Errorf("overlay plan: fingerprint does not match plan contents")
 	}
 	return nil
 }

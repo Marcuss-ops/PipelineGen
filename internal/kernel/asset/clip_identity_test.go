@@ -306,53 +306,6 @@ func TestBuildIndexEventKey_EmptyInputs_ReturnsValidFormat(t *testing.T) {
 	}
 }
 
-// ── DetectSourceFromAssetID ─────────────────────────────────────────
-
-func TestDetectSourceFromAssetID_YouTube(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID("yt_vdC5GXxS-qU_146_155_v1"); got != "youtube" {
-		t.Errorf("got %q, want %q", got, "youtube")
-	}
-}
-
-func TestDetectSourceFromAssetID_Stock(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID("planner:a1b2c3d4:0"); got != "stock" {
-		t.Errorf("got %q, want %q", got, "stock")
-	}
-}
-
-func TestDetectSourceFromAssetID_Artlist(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID("artlist_abc123"); got != "artlist" {
-		t.Errorf("got %q, want %q", got, "artlist")
-	}
-}
-
-func TestDetectSourceFromAssetID_Voiceover(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID("vo_it_001"); got != "voiceover" {
-		t.Errorf("got %q, want %q", got, "voiceover")
-	}
-	if got := DetectSourceFromAssetID("voiceover_en_002"); got != "voiceover" {
-		t.Errorf("got %q, want %q", got, "voiceover")
-	}
-}
-
-func TestDetectSourceFromAssetID_Unknown(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID("random_id_123"); got != "" {
-		t.Errorf("got %q, want empty string", got)
-	}
-}
-
-func TestDetectSourceFromAssetID_Empty(t *testing.T) {
-	t.Parallel()
-	if got := DetectSourceFromAssetID(""); got != "" {
-		t.Errorf("got %q, want empty string", got)
-	}
-}
-
 // ── Sentinels ───────────────────────────────────────────────────────
 
 func TestSentinels_ErrorsIsReachable(t *testing.T) {

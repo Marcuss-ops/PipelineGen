@@ -21,7 +21,7 @@
 //     → AGENTS.md-allowlisted finalizationCtx       (the canonical
 //     context.WithTimeout(
 //     context.Background(),
-//     30s) site — see below)
+//     finalizationTimeout) site — see below)
 //     → worker_execution_result.go::finalizeJob     (4 terminal-state paths)
 //     → defers unwind (jobCancel, stopLease, finalCancel)
 //
@@ -29,18 +29,26 @@
 // allowlist, MUST-stay-byte-for-byte across the 2026-07 file split):
 //
 //	finalizationCtx, finalCancel := context.WithTimeout(
-//	    context.Background(), 30*time.Second)
+//	    context.Background(), finalizationTimeout)
 //	defer finalCancel()
 //
 // This is one of the AGENTS.md context-util-table explicitly
 // allowlisted `context.Background()` sites. The purpose is to
-// survive jobCtx cancellation so the DB write that flips the job
-// row to failed / completed / dead-lettered state can complete even
+// survive jobCtx cancellation so the terminal writes (the DB flip
+// AND the artifact-publication spine — script.json, scenes.json,
+// per-scene voiceovers, ... to their destination) can complete even
 // when the worker is mid-shutdown. Detaching from jobCtx (rather
 // than from ctx / worker lifecycle) prevents losing outcome
 // persistence when jobCtx is cancelled by either timeout or by the
-// outer worker Stop. 30s upper bound keeps a stuck DB write from
-// blocking shutdown indefinitely.
+// outer worker Stop.
+//
+// The bound (finalizationTimeout) must cover publishing EVERY
+// staged artifact to Drive: artifact-producing jobs scale with
+// artifact count (a 46-clip run publishes 48 artifacts at ~2.5s of
+// sequential Drive I/O each ≈ 2 minutes), so the legacy 30s bound
+// that only covered the DB flip would fail mid-publication. The
+// bound keeps shutdown bounded while staying far below the per-job
+// timeout (30–60m).
 //
 // The finalizationCtx IS PASSED to worker_execution_result.go's
 // finalizeJob as the ctx parameter. finalizeJob does NOT
@@ -75,6 +83,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// finalizationTimeout bounds the broker-side finalize phase
+// (runJob → finalizeJob). It covers the terminal DB flip AND the
+// artifact-publication spine (CompleteWithArtifacts), which publishes
+// every staged artifact (script.json, scenes.json, per-scene voiceovers,
+// ...) to Drive sequentially. Artifact count scales with the job: a
+// 46-clip run publishes 48 artifacts at ~2.5s each ≈ 2 minutes, so the
+// legacy 30s bound (pre-artifact-publication) would fail mid-publish.
+// 10 minutes covers 46+ artifact runs with retry headroom while keeping
+// worker shutdown bounded and far below the per-job timeout (30–60m).
+const finalizationTimeout = 10 * time.Minute
+
 func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -98,15 +117,28 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		dispatchErr error
 	)
 	if w.observer != nil {
+		// The lease fence MUST be surfaced on the run: RecoverAbandoned
+		// (run_recorder.go) only reclaims RUNNING runs whose
+		// lease_expires_at has a non-NULL past value. Without LeaseID /
+		// WorkerID / LeaseExpiresAt here, lease_expires_at stays NULL for
+		// every run and a worker crash can never be recovered into
+		// ABANDONED.
+		leaseExpiry := time.Time{}
+		if j.LeaseExpiry != nil {
+			leaseExpiry = *j.LeaseExpiry
+		}
 		run = w.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
-			JobID:       j.ID,
-			JobType:     j.Type,
-			AttemptID:   kernobs.NewAttemptID(), // persistent execution identity; LeaseID remains the worker fence
-			CreatedAt:   j.CreatedAt,
-			StartedAt:   j.StartedAt,
-			ParentJobID: job.ParentLinkFromPayload(j.Payload).ParentJobID,
-			ParentRunID: job.ParentLinkFromPayload(j.Payload).ParentRunID,
-			RetryCount:  j.RetryCount,
+			JobID:          j.ID,
+			JobType:        j.Type,
+			AttemptID:      kernobs.NewAttemptID(), // persistent execution identity; LeaseID remains the worker fence
+			LeaseID:        j.LeaseID,
+			WorkerID:       w.id,
+			LeaseExpiresAt: leaseExpiry,
+			CreatedAt:      j.CreatedAt,
+			StartedAt:      j.StartedAt,
+			ParentJobID:    job.ParentLinkFromPayload(j.Payload).ParentJobID,
+			ParentRunID:    job.ParentLinkFromPayload(j.Payload).ParentRunID,
+			RetryCount:     j.RetryCount,
 		})
 		ctx = kernobs.WithRun(ctx, run)
 		defer func() {
@@ -248,10 +280,10 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 
 	// ── finalizationCtx (AGENTS.md §context-util-table allowlist) ──
 	// MUST stay `context.WithTimeout(context.Background(),
-	// 30*time.Second)`. See the package-level doc-comment above for
-	// the full invariant. finalizeJob (worker_execution_result.go)
+	// finalizationTimeout)`. See the package-level doc-comment above
+	// for the full invariant. finalizeJob (worker_execution_result.go)
 	// consumes this ctx as-is and does NOT reconstruct it.
-	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), finalizationTimeout)
 	defer finalCancel()
 
 	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)

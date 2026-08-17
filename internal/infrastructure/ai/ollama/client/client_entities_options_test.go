@@ -50,7 +50,7 @@ func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "gemma3:1b", 5)
-	results, err := c.ExtractEntitiesFromBatchWithModel(context.Background(), []string{"scene zero", "scene one"}, 5, "gemma3:1b")
+	results, err := c.ExtractEntitiesFromBatchWithModel(context.Background(), []string{"scene zero", "scene one"}, 5, "gemma3:1b", "")
 
 	require.NoError(t, err)
 	require.Len(t, results, 2)

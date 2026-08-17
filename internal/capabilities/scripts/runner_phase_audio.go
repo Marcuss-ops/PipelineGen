@@ -266,6 +266,18 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
+		// ── EDITING TIMELINE PROJECTION ──────────────────────────────
+		// Build the canonical EditingTimelineV1 from frozen facts. This is
+		// the single projection consumed by downstream editing; no component
+		// maintains a second independently calculated timeline.
+		if et, err := BuildEditingTimeline(result); err != nil {
+			cause := fmt.Errorf("editing timeline compilation failed: %w", err)
+			r.failExecutionStep(ctx, exec, payloadStep, cause)
+			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+			return false
+		} else if et != nil {
+			result.EditingTimeline = et
+		}
 		r.log.Info("audio compile complete",
 			zap.String("run_id", runID),
 			zap.String("audio_mode", string(mode)),

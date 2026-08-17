@@ -34,6 +34,10 @@ def _model_name() -> str:
     return os.environ.get("VELOX_WHISPER_MODEL", "base").strip() or "base"
 
 
+def _language() -> str:
+    return os.environ.get("VELOX_WHISPER_LANGUAGE", "").strip()
+
+
 def _run_helper(local_path: str) -> dict:
     helper = _helper_script_path()
     if not helper.is_file():
@@ -48,6 +52,9 @@ def _run_helper(local_path: str) -> dict:
         "--transcribe",
         "--json-only",
     ]
+    language = _language()
+    if language:
+        cmd.extend(["--language", language])
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()

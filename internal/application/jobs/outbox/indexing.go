@@ -20,15 +20,19 @@
 //     event is obsoleted by a newer aggregate version BEFORE embedding
 //     work, so a stale Qdrant upsert never runs).
 //
-// Source-version supersede policy:
+// Index-revision supersede policy:
 //
 //   - Read asset by id; missing → treat as success (a separate event
 //     will arrive for the new aggregate or this one is already covered).
-//   - If asset.metadata_json.$.content_hash differs from the event
-//     payload's source_version, return a *SupersedeError. The Pool
-//     routes the row to MarkSuperseded (status='superseded') without
-//     burning max_attempts. The newer event in the queue (or the
-//     already-indexed state) provides the canonical current point.
+//   - If the asset's current canonical index_revision
+//     (media_assets.metadata_json.$.index_revision, with legacy
+//     content_hash fallback via SourceVersionFor) differs from the
+//     event's index_revision (legacy source_version alias falls back at
+//     parse time), return a *SupersedeError. The Pool routes the row to
+//     MarkSuperseded (status='superseded') without burning max_attempts.
+//     The newer event in the queue (or the already-indexed state)
+//     provides the canonical current point. Byte identity (content_sha256)
+//     is NEVER the comparison value (godlike/06).
 //
 // Schema versioning (QDRANT-002 item I):
 //
@@ -172,11 +176,18 @@ type SourceVersionQuerier interface {
 // payload that would make the event bloom to MBs. The handler
 // reaches back into SQLite (asset_id lookup) to fetch current state.
 type indexRequestV1 struct {
-	SchemaVersion      string   `json:"schema_version"`
-	EventID            string   `json:"event_id"`
-	AssetID            string   `json:"asset_id"`
-	Operation          string   `json:"operation,omitempty"`
-	SourceVersion      string   `json:"source_version"`
+	SchemaVersion string `json:"schema_version"`
+	EventID       string `json:"event_id"`
+	AssetID       string `json:"asset_id"`
+	Operation     string `json:"operation,omitempty"`
+	SourceVersion string `json:"source_version"`
+	// IndexRevision is the canonical supersede fingerprint — the
+	// indexable-snapshot revision the supersede gate compares against the
+	// current asset index_revision (via SourceVersionFor, which reads
+	// metadata_json.$.index_revision first). Producers write both this and
+	// the legacy SourceVersion (same value); legacy events without
+	// index_revision fall back to source_version at parse time.
+	IndexRevision      string   `json:"index_revision,omitempty"`
 	TargetIndexVersion string   `json:"target_index_version,omitempty"`
 	RequestedVectors   []string `json:"requested_vectors,omitempty"`
 	RequestedAt        string   `json:"requested_at,omitempty"`

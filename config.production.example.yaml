@@ -180,6 +180,9 @@ jobs:
   maintenance_interval: "24h"
   backup_interval: "6h"
   indexing_interval: "15m"
+  # YouTube clip extraction policy: max per-clip duration in seconds.
+  # Canonical default is 60; raise it (e.g. 120) for longer clips.
+  youtube_max_segment_duration_seconds: 60
 
 scripts:
   capability:
@@ -189,6 +192,11 @@ scripts:
     require_database: true
   batch_web_search_concurrency: 4
   batch_chapter_concurrency: 3
+  # Canonical default Google Drive folder for script documents.
+  # Canonical config: env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID. Leave empty
+  # unless a docs.enabled=true request must fail closed when docs.folder_id
+  # is omitted.
+  script_docs_folder_id: ""
 
 concurrency:
   max_concurrent_video_extracts: 2
@@ -203,7 +211,6 @@ features:
   artlist_enabled: true
   youtube_enabled: false
   drive_enabled: true
-  script_docs_enabled: false
   script_clips_enabled: false
   images_enabled: true
   stock_pipeline_enabled: true

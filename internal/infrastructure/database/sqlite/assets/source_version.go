@@ -29,6 +29,9 @@ package assets
 import (
 	"context"
 	"database/sql"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // QueryRowContexter is the structural surface flowing through this
@@ -49,13 +52,23 @@ type QueryRowContexter interface {
 //
 // Priority invariants — these are load-bearing, do NOT reorder:
 //
-//  1. metadata_json.$.content_hash is the dispatcher-aware write
-//     boundary (the Dispatcher writes it atomically inside the same
-//     tx as the outbox event publish, so producer and worker agree
-//     on the fingerprint). When MULTIPLE keys are populated and
-//     DISAGREE, content_hash wins — it represents the same write
-//     boundary as the event's source_version stamp so the two are
-//     guaranteed to be consistent within a single ingest.
+//  0. metadata_json.$.index_revision is the indexable-snapshot
+//     fingerprint (folds byte identity + text tracks + metadata). It
+//     is the value the supersede gate must compare against the event's
+//     source_version, and it is what changes when transcripts/tags/
+//     metadata change WITHOUT corrupting byte identity (godlike/06:
+//     content_sha256 vs index_revision). Present only for rows written
+//     after the content_sha256/index_revision separation (Aug 2026);
+//     legacy rows fall through to the byte-identity chain below.
+//
+//  1. metadata_json.$.content_hash is the dispatcher-aware BYTE
+//     identity boundary (the Dispatcher writes it atomically inside
+//     the same tx as the outbox event publish, so producer and worker
+//     agree on the fingerprint). When MULTIPLE keys are populated and
+//     DISAGREE, content_hash wins over the remaining legacy tiers —
+//     it represents the same write boundary as the event's
+//     source_version stamp so the two are guaranteed to be consistent
+//     within a single ingest.
 //
 //  2. metadata_json.$.file_hash is a fallback for non-dispatcher
 //     ingest paths (legacy CLI direct upserts, older YouTube sync
@@ -98,16 +111,20 @@ func SourceVersionFor(ctx context.Context, q QueryRowContexter, assetID string) 
 	// query. JSON-extract returns NULL when the slot is absent;
 	// the bare column reference reads media_assets.file_hash at
 	// the top level (so the legacy 3rd tier is honoured even for
-	// rows pre-dating the metadata_json column).
+	// rows pre-dating the metadata_json column). Tier 0
+	// (index_revision) is the canonical SSOT field name
+	// (mediaregistry.IndexRevisionField), injected so a future
+	// rename has one owner.
 	var v string
-	err := q.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT COALESCE(
+			json_extract(metadata_json, '$.%s'),
 			json_extract(metadata_json, '$.content_hash'),
 			json_extract(metadata_json, '$.file_hash'),
 			file_hash,
 			''
 		) FROM media_assets WHERE id = ?
-	`, assetID).Scan(&v)
+	`, mediaregistry.IndexRevisionField), assetID).Scan(&v)
 	return v, err
 }
 

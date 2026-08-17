@@ -83,6 +83,11 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		OrderingStrategy:   "",
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
 		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
+		// A clip summary/description is sufficient grounding evidence for
+		// the explicit clips workflow. Transcript timing remains optional;
+		// when a transcript is absent the canonical summary is retained and
+		// no transcript is fabricated.
+		AllowMetadataFallback: true,
 		// P0 #3 (June 2026): DriveLink required only when caller
 		// wants document or scene images.
 		RequireDriveLink: resCtx.RequireDriveLink,

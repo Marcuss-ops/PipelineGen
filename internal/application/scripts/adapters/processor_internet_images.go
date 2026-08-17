@@ -121,7 +121,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			plan.PromptVersion,
 			fmt.Sprintf("%d", perQueryLimit),
 		)
-		if !plan.MediaPlan.ForceRefreshAssets {
+		if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
 				if payload, ok := cached.(internetImageCachePayload); ok {
 					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
@@ -143,7 +143,9 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
 				updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, persisted.Candidates)
 				updated.Cache.InternetImages = "HIT_EXACT"
-				cacheStore(&vidrushImageCache, cacheKey, persisted)
+				if len(persisted.Candidates) > 0 {
+					cacheStore(&vidrushImageCache, cacheKey, persisted)
+				}
 				updatedSegments = append(updatedSegments, updated)
 				if p.metrics != nil {
 					p.metrics.IncAssetCache("internet_images", true)
@@ -165,35 +167,45 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		type queryResult struct {
 			candidates []scriptpkg.SegmentAssetCandidate
 			query      string
+			fromCache  bool
 			err        error
 		}
 		queryResults, mapErr := concurrent.Map(ctx, imageQueries, 4, func(ctx context.Context, _ int, query string) (queryResult, error) {
-			entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(query)), plan.Language)
-			if entityImagesEnabled && !plan.MediaPlan.ForceRefreshAssets {
+			// The per-query cache is keyed on (topic, query, language), NOT
+			// on the segment TextHash. On the research path the generated
+			// scene text (and therefore its TextHash) is non-deterministic
+			// across runs, but the topic and the derived entity/image query
+			// are stable when the research source is stable. Keying on them
+			// lets a warm replay reuse the same assets without re-calling
+			// the provider, even though entity_images binding is disabled.
+			entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
+			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
 					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
-						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query}, nil
+						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query, fromCache: true}, nil
 					}
 				}
 				var persisted []scriptpkg.SegmentAssetCandidate
 				if hit, err := loadVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, &persisted); err != nil {
 					return queryResult{}, err
 				} else if hit {
-					cacheStore(&entityImageCache, entityCacheKey, persisted)
-					return queryResult{candidates: persisted, query: query}, nil
+					// Never promote an empty result into the no-TTL L1 map: a
+					// persistent empty hit is re-read from L2 on each warm replay.
+					if len(persisted) > 0 {
+						cacheStore(&entityImageCache, entityCacheKey, persisted)
+					}
+					return queryResult{candidates: persisted, query: query, fromCache: true}, nil
 				}
 			}
 			var entityLock *sync.Mutex
-			if entityImagesEnabled {
+			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				actual, _ := entityImageLocks.LoadOrStore(entityCacheKey, &sync.Mutex{})
 				entityLock = actual.(*sync.Mutex)
 				entityLock.Lock()
 				defer entityLock.Unlock()
-				if !plan.MediaPlan.ForceRefreshAssets {
-					if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
-						if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
-							return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query}, nil
-						}
+				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
+					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query, fromCache: true}, nil
 					}
 				}
 			}
@@ -215,8 +227,17 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				})
 				return searchErr
 			})
-			if err == nil && entityImagesEnabled && len(results) > 0 {
-				cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
+			if err == nil {
+				// Empty results are durable-cached in L2 (TTL 48h) so a warm
+				// replay of the same query does not re-call the provider, but
+				// they are kept out of the no-TTL L1 map to avoid unbounded
+				// growth of empty in-memory entries.
+				if len(results) > 0 {
+					cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
+				}
+				if results == nil {
+					results = []scriptpkg.SegmentAssetCandidate{}
+				}
 				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
 					return queryResult{}, cacheErr
 				}
@@ -266,24 +287,36 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			}
 		}
 
+		allCacheHits := mapErr == nil && len(queryResults) > 0
+		for _, qr := range queryResults {
+			if !qr.fromCache {
+				allCacheHits = false
+				break
+			}
+		}
 		updated.Cache.InternetImages = "MISS"
 		if plan.MediaPlan.ForceRefreshAssets {
 			updated.Cache.InternetImages = "REFRESHED"
+		} else if allCacheHits {
+			updated.Cache.InternetImages = "HIT_EXACT"
 		}
 		if len(candidates) > 0 {
 			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
-			cacheStore(&vidrushImageCache, cacheKey, internetImageCachePayload{
-				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
-			})
-			if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, internetImageCachePayload{
-				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
-			}); cacheErr != nil {
-				return nil, cacheErr
-			}
 		}
-		// Empty provider results are deliberately not cached because these
-		// in-memory entries have no TTL and would otherwise become permanent.
+		payload := internetImageCachePayload{
+			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+		}
+		if len(payload.Candidates) > 0 {
+			cacheStore(&vidrushImageCache, cacheKey, payload)
+		}
+		// Empty provider results are durable-cached in L2 (TTL 48h) so a warm
+		// replay of the same segment is deterministic and does not re-call the
+		// provider, but they stay out of the no-TTL L1 map to avoid unbounded
+		// growth of empty in-memory entries.
+		if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, payload); cacheErr != nil {
+			return nil, cacheErr
+		}
 		updatedSegments = append(updatedSegments, updated)
 	}
 
@@ -331,7 +364,8 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,
 					DriveLink: candidate.DriveLink, Source: candidate.Provider,
-					License: candidate.RightsBasis,
+					License:    candidate.RightsBasis,
+					PreviewURL: entityImagePreviewURL(candidate),
 				}
 			}
 		}
@@ -404,6 +438,12 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		if !validVidRushCandidate(candidate) || strings.TrimSpace(candidate.AssetID) == "" {
 			continue
 		}
+		// Entity images are internet-images-only by contract: a candidate from
+		// any other provider (even a fully materialized video whose query
+		// matches the person) must never bind as a person/org/place image.
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			continue
+		}
 		entityText := normalizeEntityMatch(candidate.Entity)
 		query := normalizeEntityMatch(candidate.Query)
 		candidateQuery := strings.TrimSpace(strings.TrimPrefix(query, "describe "))
@@ -419,6 +459,16 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		}
 	}
 	return scriptpkg.SegmentAssetCandidate{}, false
+}
+
+// entityImagePreviewURL returns the direct image URL used for inline rendering:
+// the candidate's source image first, then its preview URL. It never falls back
+// to the Drive view-page link, which is not a renderable image.
+func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
+	if url := strings.TrimSpace(candidate.SourceURL); url != "" {
+		return url
+	}
+	return strings.TrimSpace(candidate.PreviewURL)
 }
 
 func normalizeEntityMatch(value string) string {

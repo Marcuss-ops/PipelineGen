@@ -40,7 +40,7 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 	if entityCount <= 0 {
 		entityCount = 5
 	}
-	analysis, err := a.client.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, selectedEntityModel())
+	analysis, err := a.client.ExtractEntitiesFromScriptWithModelAndLanguage(ctx, segments, entityCount, selectedEntityModel(), req.Language)
 	if err != nil {
 		return nil, err
 	}
@@ -130,13 +130,17 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntitiesBatch(ctx context.Context,
 	}
 	texts := make([]string, len(reqs))
 	entityCount := 5
+	language := ""
 	for i, req := range reqs {
 		texts[i] = req.Text
 		if req.EntityCount > 0 {
 			entityCount = req.EntityCount
 		}
+		if language == "" {
+			language = req.Language
+		}
 	}
-	results, err := a.client.ExtractEntitiesFromBatchWithModel(ctx, texts, entityCount, selectedEntityModel())
+	results, err := a.client.ExtractEntitiesFromBatchWithModel(ctx, texts, entityCount, selectedEntityModel(), language)
 	if err != nil {
 		return nil, err
 	}

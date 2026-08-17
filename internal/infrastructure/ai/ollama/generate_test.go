@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // TestResolveGenerationFormat is the canonical SSOT for the PR-3
@@ -89,6 +91,55 @@ func TestGenerateScriptForwardsExplicitModelOverride(t *testing.T) {
 	}
 	if result == nil || result.Script != "Testo breve" {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+// TestGenerateScriptRecordsCanonicalOperation certifies the provider-owned
+// inference boundary: when a Run is bound to ctx, GenerateScript must emit the
+// canonical ollama/generate operation with a positive duration and completed
+// status (so script_gemma stops being unmeasured on real jobs).
+func TestGenerateScriptRecordsCanonicalOperation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The canonical-operation assertion below requires a strictly positive
+		// DurationMs, but a local httptest roundtrip routinely completes in
+		// under a millisecond (Milliseconds() rounds to 0). Hold the response
+		// briefly so the recorded duration is measurably non-zero.
+		time.Sleep(2 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true}`))
+	}))
+	defer server.Close()
+
+	gen := NewGenerator(client.NewClient(server.URL, "gemma4:e4b", 5))
+
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	if _, err := gen.GenerateScript(ctx, types.TextGenerationRequest{
+		Model: "gemma2:2b", Language: "it", Title: "test", Prompt: "scrivi una frase",
+		SourceText: "testo", MaxChars: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run.Finish()
+
+	var found bool
+	for _, op := range run.Report().Operations {
+		if op.Component == string(kernobs.ComponentOllama) && op.Operation == string(kernobs.OperationGenerate) {
+			found = true
+			if op.DurationMs <= 0 {
+				t.Errorf("generate operation duration = %d, want > 0", op.DurationMs)
+			}
+			if op.Status != kernobs.StageStatusCompleted {
+				t.Errorf("generate operation status = %q, want completed", op.Status)
+			}
+			if op.Stage != string(kernobs.StageGenerate) {
+				t.Errorf("generate operation stage = %q, want %q", op.Stage, kernobs.StageGenerate)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected an ollama/generate operation in the run report")
 	}
 }
 

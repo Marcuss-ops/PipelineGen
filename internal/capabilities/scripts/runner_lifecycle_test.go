@@ -9,8 +9,7 @@
 //
 //   - IsRunCompletable gates on (result != nil) ∧ (len(Scenes) > 0)
 //     ∧ (every scene has text for every requested language) ∧
-//     (every requested language has a document) ∧ (render_job
-//     present iff render_video=true).
+//     (every requested language has a document with ID and link).
 //   - ResumeFrom maps terminal state to StageCompleted; FAILED +
 //     non-empty FailedStage → that stage; RUNNING → CurrentStage;
 //     PENDING → StageNormalizing; nil → StageNormalizing.
@@ -43,15 +42,14 @@ func TestIsRunCompletable(t *testing.T) {
 			"en": {ID: "doc-en", Link: "https://doc-en"},
 			"es": {ID: "doc-es", Link: "https://doc-es"},
 		},
-		RenderJob: &RenderReference{JobID: "render-1", Status: "QUEUED"},
 	}
 
 	t.Run("nil result", func(t *testing.T) {
-		assert.False(t, IsRunCompletable(nil, []Language{"en"}, false))
+		assert.False(t, IsRunCompletable(nil, []Language{"en"}))
 	})
 
 	t.Run("empty scenes", func(t *testing.T) {
-		assert.False(t, IsRunCompletable(&GenerateResult{}, []Language{"en"}, false))
+		assert.False(t, IsRunCompletable(&GenerateResult{}, []Language{"en"}))
 	})
 
 	t.Run("missing translation", func(t *testing.T) {
@@ -64,7 +62,7 @@ func TestIsRunCompletable(t *testing.T) {
 				"es": {ID: "doc-es", Link: "https://doc-es"},
 			},
 		}
-		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}, false),
+		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}),
 			"missing ES translation should be incompletable")
 	})
 
@@ -77,29 +75,15 @@ func TestIsRunCompletable(t *testing.T) {
 				"en": {ID: "doc-en", Link: "https://doc-en"},
 			},
 		}
-		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}, false),
+		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}),
 			"missing ES doc should be incompletable")
 	})
 
-	t.Run("missing render job when video enabled", func(t *testing.T) {
-		r := &GenerateResult{
-			Scenes: []Scene{
-				{Text: map[Language]string{"en": "text1", "es": "texto1"}},
-			},
-			Documents: map[Language]DocumentReference{
-				"en": {ID: "doc-en", Link: "https://doc-en"},
-				"es": {ID: "doc-es", Link: "https://doc-es"},
-			},
-		}
-		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}, true),
-			"missing render job should be incompletable when render_video=true")
-	})
-
 	t.Run("valid complete result", func(t *testing.T) {
-		assert.True(t, IsRunCompletable(validResult, []Language{"en", "es"}, true))
+		assert.True(t, IsRunCompletable(validResult, []Language{"en", "es"}))
 	})
 
-	t.Run("no video needed", func(t *testing.T) {
+	t.Run("single language complete", func(t *testing.T) {
 		r := &GenerateResult{
 			Scenes: []Scene{
 				{Text: map[Language]string{"en": "text1"}},
@@ -108,8 +92,8 @@ func TestIsRunCompletable(t *testing.T) {
 				"en": {ID: "doc-en", Link: "https://doc-en"},
 			},
 		}
-		assert.True(t, IsRunCompletable(r, []Language{"en"}, false),
-			"should be completable without render job when render_video=false")
+		assert.True(t, IsRunCompletable(r, []Language{"en"}),
+			"should be completable with scenes and documents present")
 	})
 }
 
@@ -160,9 +144,8 @@ func TestStageIndex(t *testing.T) {
 	assert.Equal(t, 1, StageIndex(StageGeneratingSceneText))
 	assert.Equal(t, 2, StageIndex(StageTranslatingScenes))
 	assert.Equal(t, 3, StageIndex(StageGeneratingVoiceovers))
-	assert.Equal(t, 6, StageIndex(StagePublishingDocuments))
-	assert.Equal(t, 4, StageIndex(StageBuildingRenderPayload))
-	assert.Equal(t, 5, StageIndex(StageEnqueuingRender))
+	assert.Equal(t, 4, StageIndex(StageCompilingAudio))
+	assert.Equal(t, 5, StageIndex(StagePublishingDocuments))
 	assert.Equal(t, -1, StageIndex(StageCompleted), "terminal stages should return -1")
 	assert.Equal(t, -1, StageIndex(StageFailed), "terminal stages should return -1")
 	assert.Equal(t, -1, StageIndex("UNKNOWN"), "unknown stage should return -1")
@@ -175,10 +158,8 @@ func TestStageIsTerminal(t *testing.T) {
 	assert.False(t, StageGeneratingSceneText.IsTerminal())
 	assert.False(t, StageTranslatingScenes.IsTerminal())
 	assert.False(t, StageGeneratingVoiceovers.IsTerminal())
+	assert.False(t, StageCompilingAudio.IsTerminal())
 	assert.False(t, StagePublishingDocuments.IsTerminal())
-	assert.False(t, StageBuildingRenderPayload.IsTerminal())
-	assert.False(t, StageEnqueuingRender.IsTerminal())
-	assert.False(t, StageWorkerQueued.IsTerminal())
 }
 
 func TestRetryDelay(t *testing.T) {

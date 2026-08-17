@@ -90,3 +90,18 @@ func TestResolveDisplayURL_PathRel(t *testing.T) {
 	// test the logic through the helper that takes the asset
 	_ = asset
 }
+
+func TestBuildPrimaryPrompt_FirstCandidate(t *testing.T) {
+	sec := Section{Title: "Leonardo da Vinci", Text: "He was a great artist."}
+	got := BuildPrimaryPrompt(sec, "Renaissance")
+	if got != "cinematic documentary image of Leonardo da Vinci" {
+		t.Fatalf("expected primary prompt to use title, got %q", got)
+	}
+}
+
+func TestBuildPrimaryPrompt_EmptySection(t *testing.T) {
+	got := BuildPrimaryPrompt(Section{}, "")
+	if got != "" {
+		t.Fatalf("expected empty prompt for empty section + empty topic, got %q", got)
+	}
+}

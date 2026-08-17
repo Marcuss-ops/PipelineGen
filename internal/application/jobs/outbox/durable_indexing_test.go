@@ -584,6 +584,12 @@ ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN namespace TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN asset_kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN semantic_role TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN tags TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN tags_norm TEXT NOT NULL DEFAULT '';
 `
 
 func openInMemDB_Integration(t *testing.T) *sql.DB {

@@ -24,7 +24,7 @@ func (m AudioMode) Normalize() AudioMode {
 	}
 }
 
-func ResolveAudioMode(requested AudioMode, voiceoverEnabled bool, renderVideo bool) (AudioMode, error) {
+func ResolveAudioMode(requested AudioMode, voiceoverEnabled bool) (AudioMode, error) {
 	mode := requested
 	if mode == "" {
 		// An omitted mode is only valid when audio is not requested. The
@@ -38,9 +38,11 @@ func ResolveAudioMode(requested AudioMode, voiceoverEnabled bool, renderVideo bo
 	if mode == "" {
 		return "", fmt.Errorf("unsupported audio mode %q", requested)
 	}
-	if mode == AudioModeCombinedTimeline && !renderVideo {
-		return "", fmt.Errorf("COMBINED_TIMELINE requires render_video=true")
-	}
+	// COMBINED_TIMELINE compiles one certified final_audio.m4a from the
+	// canonical timeline + compiled audio plan. It requires only
+	// audio/timeline prerequisites (narration, canonical timeline, audio
+	// plan) — NOT video rendering. Audio mode resolution is fully
+	// independent of any video flag.
 	return mode, nil
 }
 

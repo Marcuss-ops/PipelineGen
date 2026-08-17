@@ -22,7 +22,8 @@
 // AGENTS.md Pattern 5:
 //
 //	deletion.go        — thin service: ports, struct, constructor
-//	delete_clip.go     — DeleteClip, DeleteByDriveFile, FindClipByDriveFileID
+//	delete_clip.go     — DeleteAsset, DeleteClip, DeleteByDriveFile,
+//	                      FindClipByDriveFileID
 //	complete_asset.go  — CompleteAsset, extractDriveFileID, isPastDriveDeleted,
 //	                      driveLinkFileIDPattern
 //	cleanup_orphan.go  — CleanupOrphanFiles

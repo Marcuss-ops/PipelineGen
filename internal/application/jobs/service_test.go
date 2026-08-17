@@ -48,7 +48,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 		started_at TEXT,
 		completed_at TEXT,
 		cancelled_at TEXT,
-		parent_state_typed TEXT NOT NULL DEFAULT ''
+		parent_state_typed TEXT NOT NULL DEFAULT '',
+		parent_job_id TEXT NOT NULL DEFAULT '',
+		root_job_id TEXT NOT NULL DEFAULT ''
 	);
 	CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority DESC, created_at ASC);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_key ON jobs(active_key) WHERE active_key != '';
@@ -62,6 +64,31 @@ func setupTestDB(t *testing.T) *sql.DB {
 		created_at TEXT NOT NULL,
 		FOREIGN KEY(job_id) REFERENCES jobs(id)
 	);
+	-- The canonical job.completed outbox event is emitted atomically with
+	-- Complete / Fail (derived performance-projection trigger), so the
+	-- fixture must carry the outbox_events table (mirrors migration 092).
+	CREATE TABLE IF NOT EXISTS outbox_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_type TEXT NOT NULL,
+		aggregate_id TEXT NOT NULL DEFAULT '',
+		aggregate_type TEXT NOT NULL DEFAULT '',
+		payload_json TEXT NOT NULL DEFAULT '{}',
+		event_key TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		attempt_count INTEGER NOT NULL DEFAULT 0,
+		max_attempts INTEGER NOT NULL DEFAULT 10,
+		last_error TEXT NOT NULL DEFAULT '',
+		next_attempt_at TEXT,
+		worker_id TEXT NOT NULL DEFAULT '',
+		lease_id TEXT NOT NULL DEFAULT '',
+		lease_expiry TEXT,
+		completed_at TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL DEFAULT '',
+		priority INTEGER NOT NULL DEFAULT 5
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+		ON outbox_events(event_key);
 	`
 	return drive.NewTestDBWithSchema(t, schema)
 }

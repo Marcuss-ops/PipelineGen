@@ -37,6 +37,7 @@ import (
 	"github.com/google/uuid"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -86,6 +87,12 @@ func updateMediaAssetsMetadataTx(
 	if m.Title != "" {
 		meta["title"] = m.Title
 	}
+	if m.Description != "" {
+		meta["description"] = m.Description
+	}
+	if len(m.Tags) > 0 {
+		meta["tags"] = m.Tags
+	}
 	if m.SourceTitle != "" {
 		meta["source_title"] = m.SourceTitle
 	}
@@ -114,6 +121,14 @@ func updateMediaAssetsMetadataTx(
 	}
 	if m.ContentHash != "" {
 		meta["content_hash"] = m.ContentHash
+	}
+	// index_revision is the SEPARATE indexable-snapshot fingerprint
+	// (folds byte identity + text tracks + metadata). It is what the
+	// supersede gate compares. content_hash above stays pure BYTE
+	// identity and is never folded with text tracks (godlike/06:
+	// content_sha256 vs index_revision are distinct fingerprints).
+	if m.SourceVersion != "" {
+		meta[mediaregistry.IndexRevisionField] = m.SourceVersion
 	}
 	if m.Hook != "" {
 		meta["hook"] = m.Hook
@@ -173,11 +188,15 @@ func buildMetadataPayload(
 	// event_id field (UUID) that the handler validates.
 	eventID := uuid.NewString()
 	payload := map[string]any{
-		"schema_version":   outboxevents.ReindexEnvelopeV1Schema,
-		"event_id":         eventID,
-		"clip_id":          clipID,
-		"asset_id":         m.AssetID,
-		"source_version":   m.SourceVersion,
+		"schema_version": outboxevents.ReindexEnvelopeV1Schema,
+		"event_id":       eventID,
+		"clip_id":        clipID,
+		"asset_id":       m.AssetID,
+		"source_version": m.SourceVersion,
+		// index_revision is the canonical supersede fingerprint (m.SourceVersion
+		// already carries ComputeIndexRevision when text tracks are present);
+		// source_version above is the legacy alias carrying the same value.
+		"index_revision":   m.SourceVersion,
 		"job_id":           m.JobID,
 		"quality_score":    m.QualityScore,
 		"sponsor_segment":  m.SponsorSegment,

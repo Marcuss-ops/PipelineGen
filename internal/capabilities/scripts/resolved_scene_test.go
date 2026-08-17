@@ -14,7 +14,7 @@ func TestResolvedScenesRoundTripPreservesCanonicalTimingAndAssets(t *testing.T) 
 	for i, clipID := range clipIDs {
 		scenes[i] = Scene{ID: "scene-" + string(rune('0'+i)), Index: i, DurationUS: int64(3+i) * 1_000_000, Clip: &ClipReference{ID: clipID, SourceInMS: int64(i+1) * 1000, SourceOutMS: int64(i+4) * 1000, AudioPath: "/media/" + clipID + ".m4a"}, Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: clipID, SourceInUS: int64(i+1) * 1_000_000, SourceDurationUS: 3_000_000, UseOriginalAudio: true}, Voiceover: map[Language]AudioReference{"it": {ID: "vo-" + string(rune('a'+i)), FilePath: "/voiceover/" + clipID + ".m4a", Duration: float64(2 + i%2)}}}
 	}
-	before, err := ResolveScenes(scenes, "it")
+	before, err := ResolveScenes(scenes, "it", audio.AudioModeNone, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestResolvedScenesCarryContiguousTimelineStart(t *testing.T) {
 		{ID: "scene-1", Index: 1, DurationUS: 5_000_000},
 		{ID: "scene-2", Index: 2, DurationUS: 2_000_000},
 	}
-	resolved, err := ResolveScenes(scenes, "it")
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeNone, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,108 @@ func TestResolvedScenesCarryContiguousTimelineStart(t *testing.T) {
 	}
 	if !containsJSONField(t, raw, "timeline_start_us") {
 		t.Fatalf("resolved scenes JSON must carry timeline_start_us: %s", raw)
+	}
+}
+
+func TestSceneDurationResolverCombinedClipBoundFreezesUnderLongerVoiceover(t *testing.T) {
+	// wiring seals the clip's visual span into DurationUS (16s); the certified
+	// voiceover is longer (17.52s). COMBINED_TIMELINE must freeze the clip
+	// under the narration, so the canonical duration is the voiceover span.
+	clip := &ClipReference{ID: "clip-16", SourceInMS: 0, SourceOutMS: 16000, AudioPath: "/media/clip-16.m4a"}
+	scenes := []Scene{{
+		ID:         "scene-8",
+		Index:      0,
+		DurationUS: 16_000_000,
+		Clip:       clip,
+		Clips:      []*ClipReference{clip},
+		Audio:      audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-16", SourceInUS: 0, SourceDurationUS: 16_000_000, UseOriginalAudio: true},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-16", SourceInUS: 0, SourceDurationUS: 16_000_000, UseOriginalAudio: true},
+		},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-8", FilePath: "/media/vo-8.m4a", Duration: 17.52}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 17_520_000 {
+		t.Fatalf("scene duration = %dus, want 17520000us (max(video 16s, voiceover 17.52s))", got)
+	}
+}
+
+func TestSceneDurationResolverCombinedClipBoundClipWinsWhenLonger(t *testing.T) {
+	// clip 18.8s is longer than the 17.544s narration: no freeze, the clip
+	// duration is the canonical scene duration.
+	clip := &ClipReference{ID: "clip-18", SourceInMS: 0, SourceOutMS: 18800, AudioPath: "/media/clip-18.m4a"}
+	scenes := []Scene{{
+		ID:         "scene-0",
+		Index:      0,
+		DurationUS: 18_800_000,
+		Clip:       clip,
+		Clips:      []*ClipReference{clip},
+		Audio:      audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-18", SourceInUS: 0, SourceDurationUS: 18_800_000, UseOriginalAudio: true},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-18", SourceInUS: 0, SourceDurationUS: 18_800_000, UseOriginalAudio: true},
+		},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 17.544}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 18_800_000 {
+		t.Fatalf("scene duration = %dus, want 18800000us (max(video 18.8s, voiceover 17.544s))", got)
+	}
+}
+
+func TestSceneDurationResolverNonCombinedKeepsEditorialDuration(t *testing.T) {
+	// max() belongs to COMBINED_TIMELINE only. In any other mode the explicit
+	// editorial duration still wins, even when the narration is longer.
+	clip := &ClipReference{ID: "clip-16", SourceInMS: 0, SourceOutMS: 16000, AudioPath: "/media/clip-16.m4a"}
+	scenes := []Scene{{
+		ID:         "scene-8",
+		Index:      0,
+		DurationUS: 16_000_000,
+		Clip:       clip,
+		Clips:      []*ClipReference{clip},
+		Audio:      audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-16", SourceInUS: 0, SourceDurationUS: 16_000_000, UseOriginalAudio: true},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-16", SourceInUS: 0, SourceDurationUS: 16_000_000, UseOriginalAudio: true},
+		},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-8", FilePath: "/media/vo-8.m4a", Duration: 17.52}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeNone, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 16_000_000 {
+		t.Fatalf("scene duration = %dus, want 16000000us (editorial duration wins outside COMBINED_TIMELINE)", got)
+	}
+}
+
+func TestSceneDurationResolverCombinedAudioOnlyIgnoresClipSpan(t *testing.T) {
+	// The clip is evidence metadata, not materialized video. A long clip must
+	// never stretch a VO-governed scene, so the sealed narration duration
+	// (30s) wins over max(45s, 30s).
+	clip := &ClipReference{ID: "clip-45", SourceInMS: 0, SourceOutMS: 45000, AudioPath: "/media/clip-45.m4a"}
+	scenes := []Scene{{
+		ID:         "scene-0",
+		Index:      0,
+		DurationUS: 30_000_000,
+		Clip:       clip,
+		Clips:      []*ClipReference{clip},
+		Audio:      audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-45", SourceInUS: 0, SourceDurationUS: 45_000_000, UseOriginalAudio: true},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-45", SourceInUS: 0, SourceDurationUS: 45_000_000, UseOriginalAudio: true},
+		},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 30.0}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 30_000_000 {
+		t.Fatalf("scene duration = %dus, want 30000000us (audio-only must not stretch to the clip span)", got)
 	}
 }
 

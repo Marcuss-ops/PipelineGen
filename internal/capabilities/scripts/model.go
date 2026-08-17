@@ -17,11 +17,17 @@
 // to pure payload transformation.
 package scriptgeneration
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 import capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-import capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+import capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+import capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+import mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 // ── Value types ─────────────────────────────────────────────────────
 
@@ -30,14 +36,29 @@ type Language string
 
 // Source describes where the generation input comes from.
 type Source struct {
-	Type         SourceType `json:"type"`
-	Topic        string     `json:"topic,omitempty"`
-	SourceText   string     `json:"source_text,omitempty"`
-	ClipIDs      []string   `json:"clip_ids,omitempty"`
-	IntroClipIDs []string   `json:"intro_clip_ids,omitempty"`
-	NumClips     int        `json:"num_clips,omitempty"`
-	Query        string     `json:"query,omitempty"`
-	MaxClips     int        `json:"max_clips,omitempty"`
+	Type               SourceType                  `json:"type"`
+	Topic              string                      `json:"topic,omitempty"`
+	SourceText         string                      `json:"source_text,omitempty"`
+	ClipIDs            []string                    `json:"clip_ids,omitempty"`
+	IntroClipIDs       []string                    `json:"intro_clip_ids,omitempty"`
+	NumClips           int                         `json:"num_clips,omitempty"`
+	Query              string                      `json:"query,omitempty"`
+	MaxClips           int                         `json:"max_clips,omitempty"`
+	MinCoverage        float64                     `json:"min_coverage,omitempty"`
+	MinQualityScore    *float64                    `json:"min_quality_score,omitempty"`
+	MinTranscriptWords *int                        `json:"min_transcript_words,omitempty"`
+	Guidelines         string                      `json:"guidelines,omitempty"`
+	TranscriptPolicy   string                      `json:"transcript_policy,omitempty"`
+	OrderingStrategy   string                      `json:"ordering_strategy,omitempty"`
+	GroundingPolicy    string                      `json:"grounding_policy,omitempty"`
+	FallbackPolicy     string                      `json:"fallback_policy,omitempty"`
+	ForceRefresh       bool                        `json:"force_refresh,omitempty"`
+	Search             bool                        `json:"search,omitempty"`
+	AllowTextOnly      bool                        `json:"allow_text_only,omitempty"`
+	SourceFilter       string                      `json:"source_filter,omitempty"`
+	MediaTypeFilter    string                      `json:"media_type_filter,omitempty"`
+	CachePolicy        scriptpkg.SourceCachePolicy `json:"cache,omitempty"`
+	Research           scriptpkg.ResearchPolicy    `json:"research,omitempty"`
 }
 
 // SourceType enumerates the supported generation sources.
@@ -53,18 +74,66 @@ const (
 
 // ClipReference identifies a single media clip.
 type ClipReference struct {
-	ID           string  `json:"id"`
-	SourceID     string  `json:"source_id,omitempty"`
-	Title        string  `json:"title,omitempty"`
-	DriveLink    string  `json:"drive_link,omitempty"`
-	Duration     float64 `json:"duration,omitempty"` // seconds
-	AudioAssetID string  `json:"audio_asset_id,omitempty"`
-	AudioPath    string  `json:"audio_path,omitempty"`
-	Path         string  `json:"path,omitempty"`
-	SHA256       string  `json:"sha256,omitempty"`
-	FrameCount   int64   `json:"frame_count,omitempty"`
-	SourceInMS   int64   `json:"source_in_ms,omitempty"`
-	SourceOutMS  int64   `json:"source_out_ms,omitempty"`
+	ID        string `json:"id"`
+	SourceID  string `json:"source_id,omitempty"`
+	Title     string `json:"title,omitempty"`
+	DriveLink string `json:"drive_link,omitempty"`
+	// Duration is the legacy wire field carrying the asset total duration in
+	// float seconds. DEPRECATED for internal computation — read DurationUS
+	// (integer microseconds) + DurationSource (provenance) instead.
+	Duration float64 `json:"duration,omitempty"` // seconds (legacy)
+	// DurationUS is the canonical total duration of the complete source asset
+	// in integer microseconds, resolved once at the media boundary.
+	DurationUS int64 `json:"duration_us,omitempty"`
+	// DurationSource is the canonical provenance of DurationUS
+	// (probe / provider_metadata / unknown).
+	DurationSource kernelasset.DurationSource `json:"duration_source,omitempty"`
+	AudioAssetID   string                     `json:"audio_asset_id,omitempty"`
+	AudioPath      string                     `json:"audio_path,omitempty"`
+	Path           string                     `json:"path,omitempty"`
+	SHA256         string                     `json:"sha256,omitempty"`
+	FrameCount     int64                      `json:"frame_count,omitempty"`
+	SourceInMS     int64                      `json:"source_in_ms,omitempty"`
+	SourceOutMS    int64                      `json:"source_out_ms,omitempty"`
+	// Subject identity of the clip, threaded from the canonical asset
+	// metadata (ClipSemanticMetadata). The scene↔clip identity gate uses
+	// the union of Speakers + MentionedPeople + Subject to certify that a
+	// clip actually features the subject its scene narrates (the
+	// "Tom Holland / Adam Sandler" class of error).
+	Speakers        []string `json:"speakers,omitempty"`
+	MentionedPeople []string `json:"mentioned_people,omitempty"`
+	Subject         string   `json:"subject,omitempty"`
+}
+
+// AssetDuration resolves the canonical total duration of this clip with
+// provenance, applying the contract invariants (positive known values,
+// explicit unknown — never a fabricated 0). DurationUS + DurationSource are
+// the canonical fields; a legacy caller that only populated Duration (no
+// source) is mapped to provider_metadata — the pre-contract value came from
+// asset metadata, not a fresh local probe — so it stays known while remaining
+// distinguishable from a real probe measurement.
+func (c *ClipReference) AssetDuration() kernelasset.AssetDuration {
+	if c == nil {
+		return kernelasset.UnknownDuration()
+	}
+	us := c.DurationUS
+	if us <= 0 && c.Duration > 0 {
+		us = checkedFloatSeconds(c.Duration, "clip duration")
+	}
+	if us <= 0 {
+		return kernelasset.UnknownDuration()
+	}
+	switch c.DurationSource {
+	case kernelasset.DurationProbe:
+		return kernelasset.ProbedDuration(us)
+	case kernelasset.DurationProvider:
+		return kernelasset.ProviderDuration(us)
+	case kernelasset.DurationUnknown:
+		return kernelasset.UnknownDuration()
+	default:
+		// Legacy unprovenanced value: known but not a fresh probe.
+		return kernelasset.ProviderDuration(us)
+	}
 }
 
 // AudioReference identifies a generated voiceover audio asset.
@@ -73,6 +142,18 @@ type AudioReference struct {
 	URL      string  `json:"url,omitempty"`
 	FilePath string  `json:"file_path,omitempty"`
 	Duration float64 `json:"duration,omitempty"` // seconds
+	// Timing is the canonical word-level timing captured in the SAME
+	// synthesis stream that produced the audio (the Edge WordBoundary
+	// payload). It is the SSOT from which the phrase→timestamp projection
+	// (GenerateResult.PhraseTimings) is derived. Nil when timing capture
+	// was not requested or unavailable for this voiceover.
+	Timing *capabilityaudio.SpeechTimingArtifact `json:"timing,omitempty"`
+	// TimingBundle carries the published timing bundle references
+	// (timing.json SSOT + optional SRT/VTT links + hashes) for this
+	// voiceover language. It is the document-facing summary; the word-level
+	// SSOT stays in Timing (never inlined). Nil when no timing bundle was
+	// published (timing disabled / unavailable / failed).
+	TimingBundle *scriptpkg.VoiceoverTimingBinding `json:"timing_bundle,omitempty"`
 }
 
 // DocumentReference identifies a published Google Doc.
@@ -81,10 +162,11 @@ type DocumentReference struct {
 	Link string `json:"link"`
 }
 
-// RenderReference identifies an enqueued render job and, once the render
-// completes, carries the certified artifact the downstream document/assembly
-// steps consume. The Artifact field is nil while the job is still queued or
-// running.
+// RenderReference identifies a completed RenderingGen queue job (the future
+// Chronon overlay render path) and carries the certified artifact the
+// downstream document/assembly steps consume. It is retained for that path
+// and is NOT part of the removed video render pipeline. The Artifact field is
+// nil while the job is still queued or running.
 type RenderReference struct {
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
@@ -115,6 +197,16 @@ type RenderArtifact struct {
 	CodecProfile       string `json:"codec_profile,omitempty"`
 	ClosedGOP          bool   `json:"closed_gop,omitempty"`
 	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
+	// RenderMS and EncodeMS are the worker-measured wall durations of the
+	// Chronon render and encode phases (from the queue artifact's metrics
+	// map: render_ms / encode_ms). Zero means the worker did not report them.
+	RenderMS int64 `json:"render_ms,omitempty"`
+	EncodeMS int64 `json:"encode_ms,omitempty"`
+	// DriveFileID and DriveLink are the Google Drive publication identity of
+	// the rendered artifact (populated by the worker's publish phase). Empty
+	// when the artifact was not published to Drive.
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
 }
 
 type FinalAudioReference struct {
@@ -238,9 +330,13 @@ type DocumentsConfig struct {
 // Zero I/O in the builder.
 type GenerateRequest struct {
 	Audio capabilityaudio.AudioMode `json:"audio_mode,omitempty"`
-	// RenderFrameRate is optional for legacy requests; when present it is
-	// preserved as an exact rational and compiled through FrameResolver.
-	RenderFrameRate *capabilityaudio.FrameRate `json:"render_frame_rate,omitempty"`
+	// Timing is the canonical voiceover timing policy nested inside the
+	// audio config (wire key "timing"). nil means the pipeline applies the
+	// canonical defaults (best_effort / word / [json]) — timing capture is
+	// never implicitly mandatory. Forwarded to the per-scene VoiceoverInput
+	// so the required/best-effort fail-closed semantics are honoured
+	// end-to-end by the per-item voiceover pipeline.
+	Timing *capabilityaudio.TimingRequest `json:"voiceover_timing,omitempty"`
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 
@@ -256,6 +352,12 @@ type GenerateRequest struct {
 	// scene planner fall back to an unbounded prose envelope.
 	ScriptParams scriptpkg.ScriptSpec `json:"script_params,omitempty"`
 
+	// MediaPlan carries the caller's visual media policy (provider toggles,
+	// extraction limits, locked assignments). It is the same contract the
+	// incremental VidRush coordinator consumes to run provider fan-out and
+	// extraction with the caller's configured limits.
+	MediaPlan mediadomain.MediaPlanSpec `json:"media_plan,omitempty"`
+
 	// SourceLanguage is the primary language of the input (e.g. "en").
 	// Scenes in this language are NOT translated.
 	SourceLanguage Language `json:"source_language"`
@@ -263,14 +365,29 @@ type GenerateRequest struct {
 	// Languages lists the target languages for translation and docs.
 	Languages []Language `json:"languages"`
 
-	// RenderVideo triggers the render enqueue step at the end.
-	RenderVideo bool `json:"render_video"`
+	// GenerateTimeline requests the canonical timeline metadata artifact
+	// (scene durations, video segments) without binary render
+	// materialization. PipelineGen is audio-only: a timeline is produced
+	// from Drive-only clips (transcript + metadata) and there is no
+	// video render toggle — the run stops at the certified final audio.
+	GenerateTimeline bool `json:"generate_timeline,omitempty"`
+
+	// EnforceClipIdentity promotes the scene↔clip identity gate from
+	// report-only (metric + warning, no block) to fail-closed. Default
+	// false: mismatches are recorded but do not fail the run, so the gate
+	// can be validated on real traffic before it ever blocks.
+	EnforceClipIdentity bool `json:"enforce_clip_identity,omitempty"`
 
 	// Docs is the explicit document publishing config.
 	// Verdetto: document creation MUST be explicit (docs.enabled),
 	// NOT implicit based on whether drive_output_folder is present.
 	// One document per language is created, not one bilingual doc.
 	Docs DocumentsConfig `json:"docs"`
+
+	// SaveToDB requests persistence of the generated script through the
+	// canonical SQLite script writer. It is deliberately carried on the
+	// durable capability request instead of being re-derived downstream.
+	SaveToDB bool `json:"save_to_db,omitempty"`
 
 	// DEPRECATED: use Docs.Enabled instead. Kept for backward compat.
 	// Remove after all callers migrate to the Docs config struct.
@@ -283,8 +400,28 @@ type GenerateRequest struct {
 	// Title is the output title (mirrors the caller's title).
 	Title string `json:"title,omitempty"`
 
+	// Project is the canonical semantic project namespace for artifact
+	// routing (voiceover publish). It is resolved ONCE by
+	// BuildGenerateRequest from the explicit generation input and propagated verbatim
+	// downstream: runner → VoiceoverInput.Project → per-item command →
+	// ProcessSegmentCommand.Project → VoiceoverPublishCommand.Project.
+	// A voiceover-enabled generation with an empty Project fails closed
+	// BEFORE the first TTS call (ErrProjectRequired) — no component may
+	// silently invent a fallback namespace.
+	Project string `json:"project,omitempty"`
+
 	// OutputName is the caller-specified output filename.
 	OutputName string `json:"output_name,omitempty"`
+
+	// VoiceoverFolderID is the explicit Drive folder for voiceover
+	// artifacts supplied by the caller (output.voiceover_folder_id).
+	// Empty means "use the configured default" (drive.voiceover_root_folder).
+	// It is resolved ONCE by BuildGenerateRequest from the generation
+	// input and threaded verbatim through the routing context into the
+	// per-scene TTS command so a caller-explicit destination is never
+	// replaced by the configured default (mirror of plan.VoiceoverFolderID
+	// honored by the legacy processor_voiceover path).
+	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
 }
 
 // Scene represents a single scene within the generated output.
@@ -304,17 +441,58 @@ type Scene struct {
 	Voiceover    map[Language]AudioReference   `json:"voiceover,omitempty"`
 	Audio        capabilityaudio.AudioIntent   `json:"audio"`
 	AudioIntents []capabilityaudio.AudioIntent `json:"audio_intents,omitempty"`
+	// Annotations is the deterministic scene-local semantic surface
+	// (primary/secondary entities grounded in this scene's text). It is
+	// projected from the VidRush segment enrichment results and surfaced
+	// verbatim in the document SpecScene; nil when no enrichment produced
+	// entities for this scene.
+	Annotations *scriptpkg.SceneAnnotations `json:"annotations,omitempty"`
+
+	// Entities is the canonical per-scene entity extraction result using the
+	// SAME EntityResult model as the document aggregate (persons / places /
+	// concepts / important phrases / important words). It is populated
+	// automatically right after scene text generation — per scene, never a
+	// second endpoint that re-reads the script. A scene that legitimately
+	// carries no entities keeps an explicit empty result (entities=[]) with
+	// EntityOverlayRequired=false; an entity is never invented.
+	Entities *scriptpkg.EntityResult `json:"entities,omitempty"`
+
+	// EntityOverlayRequired is true when the scene carries at least one
+	// entity that may drive an overlay intent. It is derived from Entities
+	// (false when entities=[]), never invented.
+	EntityOverlayRequired bool `json:"entity_overlay_required"`
+}
+
+// GenerateOutput is the durable plain-text projection of the generated
+// narration. Scenes remain the structured source for timeline work; this
+// field keeps the canonical output.text/word_count contract available to
+// durable workers and API consumers.
+type GenerateOutput struct {
+	Text      string `json:"text"`
+	WordCount int    `json:"word_count"`
 }
 
 // GenerateResult is the complete output of a script generation run.
 // It carries every artifact produced by the workflow.
 type GenerateResult struct {
+	// Output is the canonical plain-text result projection. It is derived once
+	// from the ordered scenes and is never independently generated.
+	Output GenerateOutput `json:"output"`
 	// SourceTrace is the durable retrieval trace. It is kept alongside the
 	// capability result so the broker/API cannot lose the accepted Qdrant
 	// clip IDs between the durable runner and the legacy job envelope.
 	SourceTrace scriptpkg.SourceTrace `json:"source,omitempty"`
 	// Scenes is the ordered list of generated scenes.
 	Scenes []Scene `json:"scenes"`
+
+	// Segments is the compatibility projection of the canonical VidRush
+	// enrichment results. Each entry preserves insights.entities for legacy
+	// consumers; it is never a second extraction source.
+	Segments []scriptpkg.VidRushSegmentResult `json:"segments,omitempty"`
+
+	// Artifacts contains compatibility projections derived from this result.
+	Artifacts *GenerateArtifacts `json:"artifacts,omitempty"`
+
 	// ResolvedScenes is the sealed technical projection consumed by canonical
 	// timeline/audio/render compilation. Scenes remain editorial input.
 	ResolvedScenes []ResolvedScene `json:"resolved_scenes,omitempty"`
@@ -324,16 +502,72 @@ type GenerateResult struct {
 	// independent offsets on either side of the enqueue boundary.
 	CanonicalTimeline *capabilityaudio.CanonicalTimeline `json:"canonical_timeline,omitempty"`
 	AudioPlan         *capabilityaudio.CompiledAudioPlan `json:"audio_plan,omitempty"`
-	RenderPlan        *capabilityrender.RenderPlan       `json:"render_plan,omitempty"`
+
+	// PhraseTimings is the deterministic per-scene phrase→timestamp
+	// projection. Each entry anchors one script phrase to the canonical
+	// word timing (local span) and the final combined timeline (global
+	// span = the scene's canonical timeline offset + local span). It is a
+	// read-only projection of the canonical SpeechTimingArtifact files —
+	// recomputable and verifiable, never a source of truth.
+	PhraseTimings []capabilityaudio.PhraseTiming `json:"phrase_timings,omitempty"`
+
+	// SceneSpeechTimings is the scene-level speech timing projection: one
+	// entry per scene that captured canonical word timing, bundling that
+	// scene's word boundaries with its derived phrase spans. It is the
+	// durable, document-facing mirror of PhraseTimings (the flat projection);
+	// both are read-only projections of the canonical SpeechTimingArtifact
+	// files, never a source of truth.
+	SceneSpeechTimings []capabilityaudio.SceneSpeechTiming `json:"scene_speech_timings,omitempty"`
+
+	// Entities is the deterministic typed entity aggregate (persons /
+	// places / concepts) projected from the run's VidRush segment
+	// enrichment results. It is the durable-surface mirror of the legacy
+	// Artifacts.Entities block: consumers read the typed fields and never
+	// parse raw JSON. Nil when the incremental enrichment plane did not
+	// run (or produced no entities).
+	Entities *scriptpkg.EntityResult `json:"entities,omitempty"`
+
+	// ScriptID is the canonical SQLite scripts-row identifier returned by
+	// the single persistence port. Zero means persistence was not requested.
+	ScriptID int64 `json:"script_id,omitempty"`
+
+	// EntityTimeline is the canonical entity→timestamp projection: every
+	// entity occurrence of the source language is anchored to the real word
+	// timing of the voiceover actually used (audio boundaries come from the
+	// SpeechTimingArtifact, never from text-length estimates) and mapped onto
+	// the final combined timeline via the scene's canonical offset. It is
+	// the SSOT the overlay resolver reads to place entity cards. Nil when no
+	// scene carried both annotations and word timing.
+	EntityTimeline *capabilityentities.EntityTimeline `json:"entity_timeline,omitempty"`
+
+	// OverlayPlan is the semantic overlay plan derived from the run's
+	// certified timing surfaces (phrase timings + entity timeline + scene
+	// annotations): IMPORTANT_PHRASE / IMPORTANT_WORD / IMAGE_OVERLAY /
+	// PERSON / NUMBER / QUOTE / LOCATION / PRODUCT / LOGO, each terminating
+	// in a canonical primitive (Text / Image / Video / Shape) when compiled
+	// via overlays.CompileChrononPlan. It is the PipelineGen-side
+	// instruction set for the RenderingGen queue. Nil when the run carried
+	// no derivable overlay surface.
+	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
+
+	// OverlayIntents are the pre-timing entity→template bindings, created
+	// immediately after entity extraction. Each intent binds one entity
+	// occurrence to its resolved template without timing dependency,
+	// enabling overlay.prepare to start template resolution and asset
+	// prefetch in parallel with TTS. Empty when no entities were extracted.
+	OverlayIntents []capabilityoverlay.OverlayIntent `json:"overlay_intents,omitempty"`
+
+	// EditingTimeline is the canonical editing projection built from frozen
+	// facts (CanonicalTimeline + FinalAudio + OverlayPlan + EntityTimeline).
+	// It is the single JSON document downstream editing consumes; no
+	// component maintains a second independently calculated timeline.
+	EditingTimeline *EditingTimelineV1 `json:"editing_timeline,omitempty"`
 
 	// Documents maps each language to the published Google Doc.
 	Documents               map[Language]DocumentReference `json:"documents,omitempty"`
 	DocumentRenderers       map[Language]string            `json:"document_renderers,omitempty"`
 	DocumentSpecSceneSHA256 map[Language]string            `json:"document_specscene_sha256,omitempty"`
 	DocumentSceneCounts     map[Language]int               `json:"document_scene_counts,omitempty"`
-
-	// RenderJob is non-nil when the workflow enqueued a render.
-	RenderJob *RenderReference `json:"render_job,omitempty"`
 
 	// Title is the output title (mirrors GenerateRequest.Title).
 	Title string `json:"title,omitempty"`
@@ -407,17 +641,26 @@ const (
 type Stage string
 
 const (
-	StageNormalizing           Stage = "NORMALIZING"
-	StageGeneratingSceneText   Stage = "GENERATING_SCENE_TEXT"
-	StageTranslatingScenes     Stage = "TRANSLATING_SCENES"
-	StageGeneratingVoiceovers  Stage = "GENERATING_VOICEOVERS"
-	StagePublishingDocuments   Stage = "PUBLISHING_DOCUMENTS"
-	StageBuildingRenderPayload Stage = "BUILDING_RENDER_PAYLOAD"
-	StageEnqueuingRender       Stage = "ENQUEUING_RENDER"
-	StageWorkerQueued          Stage = "WORKER_QUEUED"
-	StageCompleted             Stage = "COMPLETED"
-	StageFailed                Stage = "FAILED"
+	StageNormalizing          Stage = "NORMALIZING"
+	StageGeneratingSceneText  Stage = "GENERATING_SCENE_TEXT"
+	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
+	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"
+	StageCompilingAudio       Stage = "COMPILING_AUDIO"
+	StagePublishingDocuments  Stage = "PUBLISHING_DOCUMENTS"
+	StageCompleted            Stage = "COMPLETED"
+	StageFailed               Stage = "FAILED"
 )
+
+// ErrProjectRequired is the typed sentinel surfaced when a
+// voiceover-enabled generation reaches the voiceover phase with no resolved
+// Project. The runner fails the run BEFORE the first TTS call instead of
+// letting the publisher fail after TTS work is already spent
+// (godlike/07 NO-FAKE-AVAILABILITY — no silent "scene" namespace fallback).
+var ErrProjectRequired = errors.New("scriptgeneration: Project is required for voiceover-enabled generation (resolve it once via BuildGenerateRequest before the voiceover phase)")
+
+// ErrMinimumTextGate identifies a durable generation that produced no usable
+// narration or fewer words than the caller's explicit script_params.min_words.
+var ErrMinimumTextGate = errors.New("scriptgeneration: generated text failed the minimum word gate")
 
 // ── Document config helper ──────────────────────────────────────────
 
@@ -462,9 +705,8 @@ func (s Stage) IsTerminal() bool {
 //	ogni voiceover richiesto è READY
 //	documento EN ha id e link
 //	documento ES ha id e link
-//	render_job_id presente, quando render_video=true
 //	nessuna fase richiesta è PENDING
-func IsRunCompletable(result *GenerateResult, wantedLanguages []Language, renderVideo bool) bool {
+func IsRunCompletable(result *GenerateResult, wantedLanguages []Language) bool {
 	if result == nil {
 		return false
 	}
@@ -487,11 +729,6 @@ func IsRunCompletable(result *GenerateResult, wantedLanguages []Language, render
 		if !ok || doc.ID == "" || doc.Link == "" {
 			return false
 		}
-	}
-
-	// When render_video is true, a render job must exist.
-	if renderVideo && (result.RenderJob == nil || result.RenderJob.JobID == "") {
-		return false
 	}
 
 	return true
@@ -539,8 +776,7 @@ var stageOrder = []Stage{
 	StageGeneratingSceneText,
 	StageTranslatingScenes,
 	StageGeneratingVoiceovers,
-	StageBuildingRenderPayload,
-	StageEnqueuingRender,
+	StageCompilingAudio,
 	StagePublishingDocuments,
 }
 

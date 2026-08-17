@@ -184,11 +184,16 @@ func buildReindexEnvelopeV1(assetID, targetSchemaVersion, sourceVersion string, 
 		eventKey += forceEventKeySuffix
 	}
 	payload := map[string]any{
-		"schema_version":       ReindexEnvelopeV1Schema,
-		"event_id":             eventID,
-		"asset_id":             assetID,
-		"operation":            "UPSERT",
-		"source_version":       sourceVersion,
+		"schema_version": ReindexEnvelopeV1Schema,
+		"event_id":       eventID,
+		"asset_id":       assetID,
+		"operation":      "UPSERT",
+		"source_version": sourceVersion,
+		// index_revision is the canonical supersede fingerprint the worker
+		// compares against the current asset index_revision (godlike/06:
+		// content_sha256 vs index_revision are distinct). source_version
+		// above is retained as the legacy alias carrying the same value.
+		"index_revision":       sourceVersion,
 		"target_index_version": targetSchemaVersion,
 		"requested_vectors":    []string{"text", "transcript"},
 		"requested_at":         requestedAt.UTC().Format(time.RFC3339Nano),

@@ -186,13 +186,21 @@ func metadataFallbackText(opts *ClipGenerationOptions, clipID string) string {
 	return strings.TrimSpace(opts.MetadataFallbackText)
 }
 
+// clipHasMetadataEvidence reports whether the asset has any groundable
+// metadata evidence (the four non-transcript tiers of the canonical
+// EvidenceResolver). search_text is intentionally NOT part of the
+// precedence (strict 5-source contract).
 func clipHasMetadataEvidence(clip *asset.Asset) bool {
 	if clip == nil {
 		return false
 	}
-	return strings.TrimSpace(clip.SearchText) != "" ||
-		strings.TrimSpace(clip.GetMetadataString("description")) != "" ||
-		strings.TrimSpace(clip.GetMetadataString("visual_summary")) != ""
+	return asset.ResolveEvidence(asset.EvidenceInput{
+		AssetID:         clip.ID,
+		SemanticSummary: clip.GetMetadataString("semantic_summary"),
+		VisualSummary:   clip.GetMetadataString("visual_summary"),
+		Summary:         clip.GetMetadataString("summary"),
+		Description:     clip.GetMetadataString("description"),
+	}).Groundable()
 }
 
 // transcriptFallbackAllowed permits a missing transcript only when the

@@ -1,10 +1,9 @@
 // Package scriptgeneration — runner_happy_path_test.go covers the
-// canonical end-to-end success path: all 7 stages (Normalize →
-// SceneText → Translate → Voiceover → PublishDocs →
-// BuildRenderPayload → EnqueueRender) MUST complete cleanly,
-// the run MUST reach RunStatusCompleted + StageCompleted, and
-// every materialized artifact (scenes.text, scenes.voiceover,
-// documents, render_job) MUST be present.
+// canonical end-to-end success path: all stages (Normalize →
+// SceneText → Translate → Voiceover → AudioCompile → PublishDocs)
+// MUST complete cleanly, the run MUST reach RunStatusCompleted +
+// StageCompleted, and every materialized artifact (scenes.text,
+// scenes.voiceover, documents, final audio) MUST be present.
 //
 // godlike/06 SSOT invariants asserted:
 //
@@ -14,8 +13,7 @@
 //     both present after a single happy-path run
 //   - DocumentPublisher UpsertDocument called exactly len(Docs.Languages)
 //     times (here 2: EN + ES)
-//   - RenderEnqueuer produces a RenderReference with Status="QUEUED"
-//   - WordCount is intentionally 0 (not computed by the runner yet)
+//   - Output.Text and WordCount are projected from the ordered scenes
 package scriptgeneration
 
 import (
@@ -33,6 +31,9 @@ import (
 func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	runner, repo, _, _, _, docPub, _ := newTestRunner()
 	req := defaultTestRequest()
+	// Compile the canonical audio timeline alongside the chunked voiceovers so
+	// the happy path exercises the timeline projection (audio/timeline-only).
+	req.GenerateTimeline = true
 
 	// Execute the run.
 	runID := "run-happy-001"
@@ -89,19 +90,10 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 		}
 	}
 
-	// Assert the sealed canonical render contract reaches the enqueue stage.
+	// Assert the canonical timeline is persisted (audio/timeline-only).
 	require.NotNil(t, final.Result.CanonicalTimeline, "canonical timeline should be persisted")
-	require.NotNil(t, final.Result.RenderPlan, "render plan should be persisted")
-	assert.NotEmpty(t, final.Result.RenderPlan.TimelineHash)
-	assert.NotEmpty(t, final.Result.RenderPlan.ManifestSHA256)
-	assert.NotEmpty(t, final.Result.RenderPlan.PlanSHA256)
-	assert.NoError(t, final.Result.RenderPlan.Validate())
 
-	// Assert render enqueued.
-	require.NotNil(t, final.Result.RenderJob, "render job should exist")
-	assert.Equal(t, "render-xyz-789", final.Result.RenderJob.JobID)
-	assert.Equal(t, "QUEUED", final.Result.RenderJob.Status)
-
-	// WordCount is not computed by the current runner — left as 0.
-	assert.Equal(t, 0, final.Result.WordCount, "word count is not computed yet")
+	assert.Equal(t, "First scene text\n\nSecond scene text\n\nThird scene text", final.Result.Output.Text)
+	assert.Equal(t, 9, final.Result.WordCount, "word count should be projected from generated text")
+	assert.Equal(t, final.Result.WordCount, final.Result.Output.WordCount)
 }

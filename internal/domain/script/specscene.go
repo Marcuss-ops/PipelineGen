@@ -223,8 +223,12 @@ type EntityImageBinding struct {
 	AssetID     string `json:"asset_id,omitempty"`
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	DriveLink   string `json:"drive_link,omitempty"`
-	Source      string `json:"source,omitempty"`
-	License     string `json:"license,omitempty"`
+	// PreviewURL is the direct image URL used for inline rendering in the
+	// Google Doc (IDEAL PASS). It is the candidate's source image URL, never
+	// a Drive view-page link. Empty when no direct image is available.
+	PreviewURL string `json:"preview_url,omitempty"`
+	Source     string `json:"source,omitempty"`
+	License    string `json:"license,omitempty"`
 }
 
 // Validate checks structural invariants on a single scene.

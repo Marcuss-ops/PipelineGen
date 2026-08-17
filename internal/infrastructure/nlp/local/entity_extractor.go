@@ -20,6 +20,10 @@ func NewExtractor() *Extractor { return &Extractor{} }
 
 var (
 	properNameRE = regexp.MustCompile(`(?:\b[\p{Lu}][\p{L}'’-]+)(?:\s+[\p{Lu}][\p{L}'’-]+)+`)
+	// singleNameRE matches one capitalized word; it is only used to detect
+	// single-word known places ("London", "Roma", "Parigi", "Londra") that
+	// properNameRE (2+ capitalized words) cannot capture.
+	singleNameRE = regexp.MustCompile(`\b[\p{Lu}][\p{L}'’-]+\b`)
 	acronymRE    = regexp.MustCompile(`\b[A-Z]{2,8}\b`)
 	yearRE       = regexp.MustCompile(`\b(?:1[89]\d{2}|20\d{2})\b`)
 	wordRE       = regexp.MustCompile(`[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?`)
@@ -37,8 +41,9 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 		return result, nil
 	}
 	seen := map[string]struct{}{}
-	for _, match := range properNameRE.FindAllString(text, -1) {
-		value := strings.TrimSpace(trimEntityPrefix(match))
+	properSpans := properNameRE.FindAllStringIndex(text, -1)
+	for _, span := range properSpans {
+		value := strings.TrimSpace(trimEntityPrefix(text[span[0]:span[1]]))
 		kind := classifyName(value)
 		appendEntity(result, seen, kind, value, 0.90)
 	}
@@ -50,6 +55,20 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 	}
 	for _, match := range yearRE.FindAllString(text, -1) {
 		appendEntity(result, seen, "DATE", match, 0.99)
+	}
+	// Single-word known places are emitted conservatively: only capitalized
+	// words present in the knownPlaces lexicon and not already covered by a
+	// multi-word proper name (so "Los" / "Angeles" are never double-counted
+	// after "Los Angeles").
+	for _, span := range singleNameRE.FindAllStringIndex(text, -1) {
+		if spanInside(span, properSpans) {
+			continue
+		}
+		word := strings.TrimSpace(text[span[0]:span[1]])
+		if _, ok := knownPlaces[strings.ToLower(word)]; !ok {
+			continue
+		}
+		appendEntity(result, seen, "GPE", word, 0.90)
 	}
 
 	// One and only one phrase is selected for each scene. The ranker prefers
@@ -73,6 +92,18 @@ func classifyName(value string) string {
 		return "ORG"
 	}
 	return "PERSON"
+}
+
+// spanInside reports whether span lies fully within one of the provided
+// spans, used to keep single-word place detection from re-emitting words that
+// already belong to a multi-word proper name.
+func spanInside(span []int, spans [][]int) bool {
+	for _, s := range spans {
+		if span[0] >= s[0] && span[1] <= s[1] {
+			return true
+		}
+	}
+	return false
 }
 
 func trimEntityPrefix(value string) string {

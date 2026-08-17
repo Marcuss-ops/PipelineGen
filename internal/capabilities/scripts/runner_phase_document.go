@@ -5,9 +5,12 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
 	// ── Publish Documents after the final audio/render payload ───
 	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
 	if startErr != nil {
@@ -17,7 +20,10 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 	// Verdetto: docs.enabled must be explicitly true. One document per
 	// language is created (not one bilingual doc). The identity is
 	// deterministic (run_id + language) for idempotent Upsert.
-	docsEnabled, docsLangs, docsFolderID := req.ResolveDocsConfig()
+	// Folder routing comes from the canonical routing context resolved once at
+	// generation start; only the enabled/languages toggle is request-local.
+	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
+	docsFolderID := routing.DocsFolderID
 
 	documentSkipped := stageSkipped(resumeIdx, StagePublishingDocuments) || r.docPublisher == nil || !docsEnabled || len(docsLangs) == 0
 	if !documentSkipped {
@@ -39,13 +45,15 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		for _, lang := range docsLangs {
 			model := modelScriptOutputForDocument(result, lang)
 			content, renderErr := r.documentRenderer.RenderDocument(model, DocumentRenderOptions{
-				Title:           req.Title,
-				Language:        lang,
-				DefaultLanguage: req.SourceLanguage,
-				FullAudio:       documentAudioRef(result, lang),
-				FinalAudio:      result.FinalAudio,
-				AudioTimeline:   result.CanonicalTimeline,
-				Overlay:         documentOverlayRef(result),
+				Title:              req.Title,
+				Language:           lang,
+				DefaultLanguage:    req.SourceLanguage,
+				FullAudio:          documentAudioRef(result, lang),
+				FinalAudio:         result.FinalAudio,
+				AudioTimeline:      result.CanonicalTimeline,
+				SceneSpeechTimings: result.SceneSpeechTimings,
+				ClipMetadata:       clipAssetMetadataForDocument(result),
+				AudioSummary:       documentAudioSummaryFor(result),
 			})
 			if renderErr != nil {
 				cause := fmt.Errorf("render document for language %s failed: %w", lang, renderErr)
@@ -64,15 +72,26 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			if title == "" {
 				title = "Script"
 			}
-			docRef, err := r.docPublisher.UpsertDocument(ctx, DocumentInput{
-				RunID:    runID,
-				Language: lang,
-				Title:    title + "_" + string(lang),
-				Content:  content,
-				FolderID: docsFolderID,
-			})
-			if err != nil {
-				cause := fmt.Errorf("upsert document for language %s failed: %w", lang, err)
+			// google_docs.publish is the external Google Docs boundary. The
+			// canonical Run clock records the UpsertDocument invocation as an
+			// OperationReport under the document stage.
+			var docRef DocumentReference
+			if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+				Stage:     kernobs.StageName(stageDocument),
+				Component: kernobs.ComponentGoogleDocs,
+				Operation: kernobs.OperationPublish,
+			}, func(opCtx context.Context) error {
+				var upsertErr error
+				docRef, upsertErr = r.docPublisher.UpsertDocument(opCtx, DocumentInput{
+					RunID:    runID,
+					Language: lang,
+					Title:    title + "_" + string(lang),
+					Content:  content,
+					FolderID: docsFolderID,
+				})
+				return upsertErr
+			}); opErr != nil {
+				cause := fmt.Errorf("upsert document for language %s failed: %w", lang, opErr)
 				r.failExecutionStep(ctx, exec, documentStep, cause)
 				r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 				return false
@@ -113,25 +132,5 @@ func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioR
 	return &DocumentAudioRef{
 		AssetID: ref.AssetID, Language: string(language), DriveLink: ref.DriveLink,
 		DurationMS: ref.DurationMS, SHA256: ref.FinalAudioSHA256,
-	}
-}
-
-// documentOverlayRef projects the completed render artifact into the
-// published-only DocumentOverlayRef the document consumes. It never leaks a
-// local path: only the artifact URL, its integrity hash and the copy-only
-// certification survive.
-func documentOverlayRef(result *GenerateResult) *DocumentOverlayRef {
-	if result == nil || result.RenderJob == nil || result.RenderJob.Artifact == nil {
-		return nil
-	}
-	artifact := result.RenderJob.Artifact
-	return &DocumentOverlayRef{
-		ArtifactID:   artifact.ID,
-		JobID:        result.RenderJob.JobID,
-		URL:          artifact.URL,
-		SHA256:       artifact.SHA256,
-		DurationUS:   artifact.DurationUS,
-		ProfileID:    artifact.ProfileID,
-		CopyEligible: artifact.CopyEligible,
 	}
 }

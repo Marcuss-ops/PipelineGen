@@ -16,6 +16,7 @@ package schema
 
 import (
 	"fmt"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"strconv"
 	"strings"
 )
@@ -70,8 +71,8 @@ func ConceptIndexSchema() *IndexSchema {
 		DenseVectors: []EmbeddingSpec{
 			{
 				Channel:       "text",
-				Model:         "multilingual-e5-base",
-				ModelVersion:  "2026-06-16-v1",
+				Model:         coreembedding.ModelIDMultilingualE5,
+				ModelVersion:  coreembedding.ModelRevisionMultilingualE5,
 				Dimensions:    768,
 				Distance:      "Cosine",
 				Normalized:    true,

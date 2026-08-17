@@ -25,6 +25,11 @@ import (
 type GeneratedDraft struct {
 	EngineResult *EngineResult
 	EngineMs     int64
+	// EngineReport is the canonical script.engine StageReport observation, so
+	// the orchestrator can project EngineMs via CanonicalTimingAdapter without
+	// starting a second clock. EngineMs is the same value, kept for callers
+	// that read the flat field.
+	EngineReport kernobs.StageReport
 }
 
 // GenerationEngineRunner invokes the script generation engine for a
@@ -65,7 +70,7 @@ func (r *GenerationEngineRunner) Generate(
 	tracker.PhaseGenerateStart()
 	var engineResult *EngineResult
 	var engineErr error
-	stageReport, measureErr := kernobs.MeasureStageReport(ctx, kernobs.StageName("script.generate"), func(opCtx context.Context) error {
+	stageReport, measureErr := kernobs.MeasureStageReport(ctx, stageScriptEngine, func(opCtx context.Context) error {
 		engineResult, engineErr = r.engine.Generate(opCtx, &plan)
 		return engineErr
 	})
@@ -101,6 +106,7 @@ func (r *GenerationEngineRunner) Generate(
 	return &GeneratedDraft{
 		EngineResult: engineResult,
 		EngineMs:     engineMs,
+		EngineReport: stageReport,
 	}, nil
 }
 

@@ -25,7 +25,7 @@ func TestRunnerCombinedTimelineRequiresCertifiedRenderer(t *testing.T) {
 	}
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
-	if final.Status != RunStatusFailed || final.FailedStage != StageBuildingRenderPayload {
+	if final.Status != RunStatusFailed || final.FailedStage != StageCompilingAudio {
 		t.Fatalf("status=%s failed_stage=%s", final.Status, final.FailedStage)
 	}
 }
@@ -50,18 +50,19 @@ func TestRunnerCombinedTimelinePersistsFinalAudioReference(t *testing.T) {
 	}
 }
 
-// TestRunnerFinalAudioTimelineAndRenderPlanShareOneAsset certifies the
+// TestRunnerFinalAudioTimelineAndAudioPlanShareOneAsset certifies the
 // production runner flow (not just the compile helpers) keeps a single
-// master asset across the three audio-side artifacts:
+// master asset across the audio-side artifacts:
 //
-//	final_audio.m4a   (CombinedAudioRenderer → result.FinalAudio)
-//	CanonicalTimeline (result.CanonicalTimeline / result.AudioPlan)
-//	RenderPlan.FinalAudio (result.RenderPlan.FinalAudio)
+//	final_audio.m4a        (CombinedAudioRenderer → result.FinalAudio)
+//	CanonicalTimeline      (result.CanonicalTimeline)
+//	AudioPlan              (result.AudioPlan)
 //
 // The renderer produces final_audio.m4a certified against the canonical
-// plan; the render plan must then carry the exact same audio_asset_id,
-// plan hash, and file hash so the video executor muxes the same file.
-func TestRunnerFinalAudioTimelineAndRenderPlanShareOneAsset(t *testing.T) {
+// plan; the final audio reference must carry the exact same plan hash so
+// the certified master is the one and only audio artifact. PipelineGen is
+// audio-only: there is no video render surface anymore.
+func TestRunnerFinalAudioTimelineAndAudioPlanShareOneAsset(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	renderer := &stubCombinedAudioRenderer{}
 	runner.SetCombinedAudioRenderer(renderer)
@@ -78,34 +79,13 @@ func TestRunnerFinalAudioTimelineAndRenderPlanShareOneAsset(t *testing.T) {
 	}
 
 	res := final.Result
-	if res == nil || res.FinalAudio == nil || res.RenderPlan == nil || res.RenderPlan.FinalAudio == nil || res.AudioPlan == nil || res.CanonicalTimeline == nil {
-		t.Fatalf("result missing final_audio/render_plan/audio_plan/timeline: %+v", res)
+	if res == nil || res.FinalAudio == nil || res.AudioPlan == nil || res.CanonicalTimeline == nil {
+		t.Fatalf("result missing final_audio/audio_plan/timeline: %+v", res)
 	}
 
-	// 1) final_audio.m4a and RenderPlan.FinalAudio share one audio_asset_id.
-	if res.RenderPlan.FinalAudio.AssetID != res.FinalAudio.AssetID {
-		t.Fatalf("render plan final audio asset_id=%q, want final_audio asset_id=%q", res.RenderPlan.FinalAudio.AssetID, res.FinalAudio.AssetID)
-	}
-
-	// 2) The render plan's final audio is the same master: same plan hash,
-	//    same file hash, same path.
-	if res.RenderPlan.FinalAudio.PlanSHA256 != res.AudioPlan.PlanSHA256 || res.RenderPlan.FinalAudio.SHA256 != res.FinalAudio.FinalAudioSHA256 || res.RenderPlan.FinalAudio.Path != res.FinalAudio.Path {
-		t.Fatalf("render plan final audio diverges: %+v vs %+v", res.RenderPlan.FinalAudio, res.FinalAudio)
-	}
-
-	// 3) final_audio.m4a was certified against this exact canonical plan.
+	// final_audio.m4a was certified against this exact canonical plan.
 	if res.FinalAudio.PlanSHA256 != res.AudioPlan.PlanSHA256 {
 		t.Fatalf("final_audio plan_sha256=%q, want %q", res.FinalAudio.PlanSHA256, res.AudioPlan.PlanSHA256)
-	}
-
-	// 4) The render plan embeds the same canonical timeline the audio plan
-	//    was compiled from.
-	timelineHash, err := res.CanonicalTimeline.Hash()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.RenderPlan.TimelineHash != timelineHash {
-		t.Fatalf("render plan timeline hash=%q, want canonical %q", res.RenderPlan.TimelineHash, timelineHash)
 	}
 }
 

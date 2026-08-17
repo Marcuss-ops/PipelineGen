@@ -121,10 +121,12 @@ func TestSentinels_ExistAndAreDistinct(t *testing.T) {
 		"ErrSynthesizeFailed":   ErrSynthesizeFailed,
 		"ErrOutputMissing":      ErrOutputMissing,
 		"ErrInvalidFilename":    ErrInvalidFilename,
+		"ErrEmptyAudio":         ErrEmptyAudio,
+		"ErrSilentAudio":        ErrSilentAudio,
 	}
 
-	if len(sentinels) != 5 {
-		t.Fatalf("expected 5 typed sentinels, got %d", len(sentinels))
+	if len(sentinels) != 7 {
+		t.Fatalf("expected 7 typed sentinels, got %d", len(sentinels))
 	}
 
 	for name, s := range sentinels {
@@ -539,5 +541,116 @@ func TestSentinels_ErrorsIsProbesAcrossDualWw(t *testing.T) {
 	}
 	if !errors.Is(wrapped, cause) {
 		t.Error("errors.Is must recover the underlying cause from dual-%w chain")
+	}
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Empty-audio classification + retry
+// ───────────────────────────────────────────────────────────────────────
+
+// TestIsBridgeEmptyAudioError pins the single classification site for the
+// two bridge empty-audio strings (legacy CLI "Empty file" + persistent
+// worker "generated file is empty or missing").
+func TestIsBridgeEmptyAudioError(t *testing.T) {
+	t.Parallel()
+
+	for _, msg := range []string{"Empty file", "generated file is empty or missing", "  Empty file\n"} {
+		if !isBridgeEmptyAudioError(msg) {
+			t.Errorf("isBridgeEmptyAudioError(%q) = false, want true", msg)
+		}
+	}
+	for _, msg := range []string{"", "no voice for lang xyz", "edge-tts exploded", "empty"} {
+		if isBridgeEmptyAudioError(msg) {
+			t.Errorf("isBridgeEmptyAudioError(%q) = true, want false", msg)
+		}
+	}
+}
+
+// TestSendSynthesizeRequest_EmptyFileWrapsErrEmptyAudio pins the worker
+// path: an ok=false "Empty file" response must wrap BOTH ErrEmptyAudio and
+// ErrSynthesizeFailed so Generate can retry and callers can probe the cause.
+func TestSendSynthesizeRequest_EmptyFileWrapsErrEmptyAudio(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{
+			OK:    false,
+			Error: "Empty file",
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProcessor(t, srv.URL, "en-US", nil)
+	_, err := p.sendSynthesizeRequest(context.Background(), &AudioInput{
+		Text:      "hi",
+		Language:  "en-US",
+		Filename:  "hi_en.mp3",
+		OutputDir: t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("expected error for Empty file response")
+	}
+	if !errors.Is(err, ErrEmptyAudio) {
+		t.Errorf("expected ErrEmptyAudio wrapped; got err=%v", err)
+	}
+	if !errors.Is(err, ErrSynthesizeFailed) {
+		t.Errorf("expected ErrSynthesizeFailed also wrapped; got err=%v", err)
+	}
+}
+
+// TestGenerate_RetriesOnEmptyAudio pins the Generate retry contract: a
+// first synthesis that returns an empty audio file is retried (a fresh
+// synthesis) instead of failing immediately, and the retry's result wins.
+func TestGenerate_RetriesOnEmptyAudio(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	outFile := writeOutputFile(t, filepath.Join(outDir, "hello_en.mp3"))
+
+	var synthCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/synthesize":
+			synthCalls++
+			w.Header().Set("Content-Type", "application/json")
+			if synthCalls == 1 {
+				_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{
+					OK:    false,
+					Error: "Empty file",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{
+				OK:    true,
+				Voice: "en-US-RogerNeural",
+				Path:  outFile,
+			})
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProcessor(t, srv.URL, "en-US", nil)
+	result, err := p.Generate(context.Background(), &AudioInput{
+		Text:      "hello world",
+		Language:  "en-US",
+		Filename:  "hello_en.mp3",
+		OutputDir: outDir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error after retry: %v", err)
+	}
+	if result == nil {
+		t.Fatal("nil result")
+	}
+	if synthCalls != 2 {
+		t.Errorf("expected 2 synthesize attempts (empty + retry), got %d", synthCalls)
+	}
+	if result.LocalPath != outFile {
+		t.Errorf("LocalPath = %q, want %q", result.LocalPath, outFile)
 	}
 }

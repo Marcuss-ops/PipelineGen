@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // GoldenQueryExecutor runs one query against a candidate collection and

@@ -63,7 +63,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		zap.String("asset_id", p.AssetID),
 		zap.Int64("event_id", evt.ID),
 		zap.String("outbox_event_id", p.EventID),
-		zap.String("source_version", p.SourceVersion),
+		zap.String("index_revision", p.IndexRevision),
 		zap.Int("attempt", evt.AttemptCount),
 	}
 	if p.RequestedAt != "" {
@@ -73,19 +73,21 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		reqLog = append(reqLog, zap.String("operation", p.Operation))
 	}
 
-	// Source-version supersede gate (QDRANT-002 item F — "Se l'evento
+	// Index-revision supersede gate (QDRANT-002 item F — "Se l'evento
 	// è obsoleto, marcarlo SUPERSEDED senza indicizzare dati vecchi").
-	// Read the current asset's source fingerprint via the
-	// SourceVersionQuerier port (PR 11 follow-up: this replaced the
-	// previous AssetSourceChecker.GetClip pattern, which had a
-	// producer-/consumer-side priority-chain drift — see
-	// internal/infrastructure/database/sqlite/assets/source_version.go
-	// for the canonical priority list and the regression test that
-	// pins it).
+	// Compare the event's index_revision (the indexable-snapshot revision;
+	// legacy source_version alias falls back at parse time) against the
+	// CURRENT canonical index_revision read via the SourceVersionQuerier
+	// port (PR 11 follow-up: replaced the AssetSourceChecker.GetClip pattern
+	// — see internal/infrastructure/database/sqlite/assets/source_version.go
+	// for the canonical priority list, which reads metadata_json.$.index_revision
+	// FIRST and only falls back to content_hash/file_hash for legacy rows).
+	// The gate NEVER compares byte identity (content_sha256) — the index
+	// revision is the separate snapshot fingerprint (godlike/06).
 	//
 	// Three outcomes from the helper:
 	//   (a) (value, nil)             — fingerprint present. If differs
-	//                                  from the event's source_version,
+	//                                  from the event's index_revision,
 	//                                  return *SupersedeError so the
 	//                                  pool routes the row to
 	//                                  MarkSuperseded without burning
@@ -113,7 +115,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		}
 		// sql.ErrNoRows (row missing) — fall through.
 		// (value, nil) — proceed; supersede if value differs.
-		if qerr == nil && curVersion != "" && curVersion != p.SourceVersion && !p.Force {
+		if qerr == nil && curVersion != "" && curVersion != p.IndexRevision && !p.Force {
 			// Stamp the metric before returning so dashboards
 			// surface the supersede delta even when the handler
 			// short-circuits before the duration observation
@@ -122,10 +124,10 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 			outcome = "superseded"
 			log.Info("asset.index.requested: event superseded by newer aggregate version",
 				append(reqLog,
-					zap.String("current_source_version", curVersion),
+					zap.String("current_index_revision", curVersion),
 				)...,
 			)
-			return outboxevents.NewSupersede(p.AssetID, curVersion, p.SourceVersion)
+			return outboxevents.NewSupersede(p.AssetID, curVersion, p.IndexRevision)
 		}
 	}
 

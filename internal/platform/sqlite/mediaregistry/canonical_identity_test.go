@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
     source_video_id TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT NOT NULL DEFAULT '',
     source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
     content_sha256 TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS media_asset_sources (
@@ -90,6 +92,17 @@ func TestResolveSource_Ambiguous(t *testing.T) {
 	_, err := r.ResolveSource(context.Background(), "youtube", "dQw4w9")
 	if !errors.Is(err, capregistry.ErrCanonicalIdentityAmbiguous) {
 		t.Fatalf("err = %v, want ErrCanonicalIdentityAmbiguous", err)
+	}
+}
+
+func TestCanonicalSourceID_DoesNotDependOnAssetID(t *testing.T) {
+	a := capregistry.DeriveCanonicalSourceID("youtube", "dQw4w9", "")
+	b := capregistry.DeriveCanonicalSourceID("youtube", "dQw4w9", "")
+	if a == "" || a != b {
+		t.Fatalf("canonical source id must be stable for the source tuple: %q vs %q", a, b)
+	}
+	if a == capregistry.DeriveAssetSourceID("asset-a", "youtube", "dQw4w9", "") {
+		t.Fatal("canonical source id must not silently retain the legacy asset-dependent format")
 	}
 }
 
@@ -191,5 +204,30 @@ func TestBackfill_Idempotent(t *testing.T) {
 	}
 	if report.SourcesBackfilled != 0 || report.SourcesAlreadyKnown != 1 {
 		t.Fatalf("second backfill must be idempotent: backfilled=%d already=%d", report.SourcesBackfilled, report.SourcesAlreadyKnown)
+	}
+}
+
+func TestBackfill_SourceCollisionFailsClosed(t *testing.T) {
+	r, db := newCanonicalIdentityResolver(t)
+	if _, err := db.Exec(`
+		INSERT INTO media_assets (id, source, media_type, lifecycle_state, source_video_id) VALUES
+			('asset-a', 'youtube', 'video', 'ACTIVE', 'same-video'),
+			('asset-b', 'youtube', 'video', 'ACTIVE', 'same-video')`); err != nil {
+		t.Fatalf("seed assets: %v", err)
+	}
+
+	report, err := r.Backfill(context.Background())
+	if err != nil {
+		t.Fatalf("Backfill: %v", err)
+	}
+	if report.SourcesBackfilled != 1 || report.SourcesAmbiguous != 1 || report.SourcesUnknown != 1 {
+		t.Fatalf("collision report = %+v, want one backfill and one fail-closed ambiguity", report)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_asset_sources WHERE source_type='youtube' AND source_uri='same-video'`).Scan(&count); err != nil {
+		t.Fatalf("count source: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("collision must not create multiple canonical source rows, got %d", count)
 	}
 }

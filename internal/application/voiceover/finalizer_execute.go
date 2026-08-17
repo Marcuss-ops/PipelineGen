@@ -186,16 +186,19 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// godlike/06 SSOT: when Committer is wired, it is the SOLE canonical
 	// producer of both writes; the dispatcher is the SOLE canonical
 	// consumer of the outbox event.
+	//
+	// The canonical AssetCommitter owns the media_assets write even when the
+	// bytes are not materialized yet. Empty FileHash means REGISTERED-only:
+	// CommitTx persists the asset and deliberately suppresses the index event.
+	// The LifecycleService branch remains only as a migration compatibility
+	// seam for old compositions where the committer is not wired.
 	if f.deps.Committer != nil {
 		if _, err := f.deps.Committer.CommitTx(ctx, tx, buildVoiceoverCommitRequest(cmd, textPreview)); err != nil {
 			return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitTx (media_assets + outbox): %w", err)
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
-		// Step 5: when Committer is wired, FileHash guard-skip is the
-		// ONLY data-state branch (Committer emits the outbox event
-		// unconditionally when EmitIndexEvent=true; we set it true
-		// iff FileHash is non-empty so the guard-skip mirrors the
-		// pre-Cutover Step 5 contract).
+		// Empty FileHash is an explicit registered-only guard: no semantic
+		// indexing event is emitted until content identity is known.
 		if cmd.FileHash != "" {
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
 		} else {
@@ -230,7 +233,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		// Audit P0 #2: Outbox nil is fatal (fail-fast above). FileHash
 		// empty is a data-state guard-skip with execution marker.
 		if cmd.FileHash != "" {
-			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.FileHash); err != nil {
+			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.FileHash); err != nil {
 				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
 			}
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))

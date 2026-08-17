@@ -129,15 +129,47 @@ func durationSeconds(opts mediaexec.NormalizeOptions) float64 {
 	return float64(opts.Duration)
 }
 
+// parseTimeSeconds converts a media timestamp to seconds. It accepts BOTH
+// the plain float-seconds form used by stock/audio callers ("0", "15.5")
+// and the HH:MM:SS.mmm form produced by youtube_pipeline.formatTime
+// ("00:00:15.000"). Previously only strconv.ParseFloat was used, so the
+// formatted timestamps failed to parse and degraded to endSec=0, which made
+// the Rust cut run `-t 0` and publish an empty 262-byte MP4 stub while
+// still returning ok=true (the root cause of the silent stub clips).
+func parseTimeSeconds(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty timestamp")
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return v, nil
+	}
+	// HH:MM:SS.mmm (or HH:MM:SS) — split on ':' so the seconds field keeps
+	// its optional fractional part ("15.000" → 15.0).
+	parts := strings.Split(s, ":")
+	if len(parts) == 2 || len(parts) == 3 {
+		var secs float64
+		for _, part := range parts {
+			v, err := strconv.ParseFloat(part, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid timestamp %q: %w", s, err)
+			}
+			secs = secs*60 + v
+		}
+		return secs, nil
+	}
+	return 0, fmt.Errorf("invalid timestamp %q", s)
+}
+
 func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end string, noAudio bool) error {
-	startSec, _ := strconv.ParseFloat(start, 64)
-	endSec, _ := strconv.ParseFloat(end, 64)
+	startSec, _ := parseTimeSeconds(start)
+	endSec, _ := parseTimeSeconds(end)
 	return p.run(ctx, request{Operation: "cut_copy", SourcePath: input, OutputPath: output, StartSec: startSec, EndSec: endSec, NoAudio: noAudio})
 }
 
 func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts mediaexec.CutAndNormalizeOptions) error {
-	startSec, _ := strconv.ParseFloat(start, 64)
-	endSec, _ := strconv.ParseFloat(end, 64)
+	startSec, _ := parseTimeSeconds(start)
+	endSec, _ := parseTimeSeconds(end)
 	profile, err := p.resolvedProfile(cutProfile(opts))
 	if err != nil {
 		return err
@@ -279,31 +311,15 @@ func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan au
 	}
 	var metrics scripts.AudioPipelineMetrics
 	metrics.MixMS = result.Metadata.MixMS
-	metrics.AACEncodeMS = result.Metadata.EncodeMS
+	metrics.AACEncodeMS = result.Metadata.AACEncodeMS
 	metrics.ProbeMS = result.Metadata.ProbeMS
-
-	file, err := os.Open(output)
-	if err != nil {
-		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("open rendered audio for certification: %w", err)
-	}
-	hashStarted := time.Now()
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		_ = file.Close()
-		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("hash rendered audio: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("close rendered audio: %w", err)
-	}
-	// Clamp sub-millisecond hashing to a floor of 1ms so a stage that ran
-	// never reports 0 (a 0ms value reads as "not instrumented").
-	metrics.HashMS = max(time.Since(hashStarted).Milliseconds(), 1)
+	metrics.HashMS = result.Metadata.HashMS
 
 	stat, err := os.Stat(output)
 	if err != nil {
 		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("stat rendered audio: %w", err)
 	}
-	asset := audio.FinalAudioAsset{AssetID: output, AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: fmt.Sprintf("%x", hasher.Sum(nil)), Codec: result.Metadata.AudioCodec, Profile: result.Metadata.AudioProfile, SampleRate: int(result.Metadata.SampleRate), Channels: int(result.Metadata.Channels), ChannelLayout: plan.Output.ChannelLayout, Bitrate: result.Metadata.Bitrate, DurationMS: int64(result.Metadata.DurationSec*1000 + 0.5), StartPTS: result.Metadata.StartPTS, SizeBytes: stat.Size(), FinalMix: true, CopyEligible: true}
+	asset := audio.FinalAudioAsset{AssetID: output, AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: result.Metadata.FinalAudioSHA256, Codec: result.Metadata.AudioCodec, Profile: result.Metadata.AudioProfile, SampleRate: int(result.Metadata.SampleRate), Channels: int(result.Metadata.Channels), ChannelLayout: plan.Output.ChannelLayout, Bitrate: result.Metadata.Bitrate, DurationMS: int64(result.Metadata.DurationSec*1000 + 0.5), StartPTS: result.Metadata.StartPTS, SizeBytes: stat.Size(), FinalMix: true, CopyEligible: true}
 	if err := audio.ValidateFinalAudio(asset, plan); err != nil {
 		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("rendered audio certification failed: %w", err)
 	}

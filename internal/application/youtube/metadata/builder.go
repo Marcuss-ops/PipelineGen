@@ -61,3 +61,23 @@ import (
 type ClipMetadataBuilder interface {
 	Build(ctx context.Context, in youtubetypes.ClipMetadataInput) (youtubetypes.CanonicalClipMetadata, error)
 }
+
+// MetadataAnalyzer is the typed port for the PURE metadata-analysis step.
+// It produces a CanonicalClipEnrichment (the semantic snapshot: description,
+// summary, topics, speakers, mentioned people, hook, quality score, tags,
+// search text, text tracks) WITHOUT writing media_assets. The write is a
+// separate concern owned by the caller (the canonical asset commit), not by
+// the analyzer.
+//
+// AnalyzeClip contract:
+//
+//   - MUST be side-effect free with respect to media_assets: it calls the
+//     builder + deterministic fallback and returns the enrichment, never
+//     persisting a row or emitting an outbox event.
+//   - MUST return a non-empty AssetID when the input ClipID is non-empty.
+//     The deterministic fallback path always produces a real enrichment
+//     (godlike/07 NO-FAKE-AVAILABILITY), so AnalyzeClip only errors on
+//     invalid input (empty ClipID) or a builder-level failure.
+type MetadataAnalyzer interface {
+	AnalyzeClip(ctx context.Context, in youtubetypes.ClipMetadataInput) (CanonicalClipEnrichment, error)
+}

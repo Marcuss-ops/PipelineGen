@@ -197,6 +197,59 @@ func TestEnqueue_ExistingCorrelationID_DedupReturnsExisting(t *testing.T) {
 	}
 }
 
+// TestEnqueue_PopulatesRootJobID_CanonicalLineage — the canonical
+// enqueue-time correlation fix. A root job (no parent linkage in the
+// payload) resolves root_job_id to its own id; a child inherits its
+// parent's already-resolved root. This pins the single canonical owner
+// of the lineage fact (godlike/06 SSOT): derived projections no longer
+// have to guess root_job_id from parent_job_id.
+func TestEnqueue_PopulatesRootJobID_CanonicalLineage(t *testing.T) {
+	t.Parallel()
+	reg := newWiringRegistry(t, 1*time.Minute, 3)
+
+	store, cleanup := newSqliteStoreForTest(t)
+	defer cleanup()
+
+	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
+
+	// nil dispatcher skips the handler-registration gate; this test
+	// exercises lineage resolution, not handler wiring.
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	// Root job: no parent linkage → root_job_id is its own id.
+	root, err := svc.Enqueue(context.Background(), &job.EnqueueRequest{
+		Type:    wiringTestType,
+		Payload: map[string]any{"item": "root"},
+	})
+	if err != nil {
+		t.Fatalf("Enqueue root: %v", err)
+	}
+	if root.RootJobID != root.ID {
+		t.Errorf("root job: RootJobID = %q, want self %q", root.RootJobID, root.ID)
+	}
+	if root.ParentJobID != "" {
+		t.Errorf("root job: ParentJobID = %q, want empty", root.ParentJobID)
+	}
+
+	// Child job: parent linkage in payload → inherits the parent's root.
+	child, err := svc.Enqueue(context.Background(), &job.EnqueueRequest{
+		Type:    wiringTestType,
+		Payload: map[string]any{"item": "child", "parent_job_id": root.ID},
+	})
+	if err != nil {
+		t.Fatalf("Enqueue child: %v", err)
+	}
+	if child.ParentJobID != root.ID {
+		t.Errorf("child job: ParentJobID = %q, want %q", child.ParentJobID, root.ID)
+	}
+	if child.RootJobID != root.ID {
+		t.Errorf("child job: RootJobID = %q, want parent's root %q", child.RootJobID, root.ID)
+	}
+}
+
 // ── Typed sqlite3 probe contract (synthetic-error unit tests) ──────────
 //
 // These tests pin the probe behavior the inline Enqueue() probe

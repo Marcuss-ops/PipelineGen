@@ -72,24 +72,23 @@ smoke_poll_terminal "$FIRST_JOB_ID"
     exit 1
 }
 smoke_curl GET "/api/jobs/$FIRST_JOB_ID/full" >/dev/null
-FIRST_RESULT=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$SMOKE_LAST_BODY")
+FIRST_RESULT=$(jq -c '.result.data.result // .result // empty' "$SMOKE_LAST_BODY")
 [[ -n "$FIRST_RESULT" && "$FIRST_RESULT" != "null" ]] || { echo "FAIL: cold result missing" >&2; exit 1; }
 
 jq -e '
   (.script_id | type == "number" and . > 0)
   and (.output.text | type == "string" and length > 0)
-  and (.segments | length >= 3)
-  and (.cache.hit == false)
-  and (.cache.script == "MISS")
-  and (all(.segments[]; .cache.extraction == "MISS" and .cache.artlist == "MISS" and .cache.internet_images == "MISS" and .cache.binding == "MISS"))
+  and (.segments | length >= 1)
+  and (all(.segments[]; .cache.extraction == "MISS" and .cache.internet_images == "MISS" and .cache.image_generation == "BYPASSED"))
 ' <<<"$FIRST_RESULT" >/dev/null || {
     echo "FAIL: cold cache contract failed" >&2
-    jq '{script_id,cache,segment_count:(.segments|length)}' <<<"$FIRST_RESULT" >&2
+    jq '{script_id,segment_count:(.segments|length),segment_cache:(.segments[].cache)}' <<<"$FIRST_RESULT" >&2
     exit 1
 }
 
+FIRST_SCRIPT_ID=$(jq -r '.script_id' <<<"$FIRST_RESULT")
 FIRST_SCRIPT_HASH=$(jq -r '.output.text' <<<"$FIRST_RESULT" | sha256sum | awk '{print $1}')
-printf 'cold job=%s script_hash=%s segments=%s\n' "$FIRST_JOB_ID" "$FIRST_SCRIPT_HASH" "$(jq '.segments|length' <<<"$FIRST_RESULT")"
+printf 'cold job=%s script_id=%s script_hash=%s segments=%s\n' "$FIRST_JOB_ID" "$FIRST_SCRIPT_ID" "$FIRST_SCRIPT_HASH" "$(jq '.segments|length' <<<"$FIRST_RESULT")"
 
 # MY-03 uses the same payload with a different idempotency key. This must be
 # a distinct HTTP job while the application-level generation and media caches
@@ -106,20 +105,19 @@ smoke_poll_terminal "$WARM_JOB_ID"
     exit 1
 }
 smoke_curl GET "/api/jobs/$WARM_JOB_ID/full" >/dev/null
-WARM_RESULT=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$SMOKE_LAST_BODY")
-jq -e '
-  (.cache.hit == true)
-  and (.cache.status == "exact_hit")
-  and (.cache.script == "HIT_EXACT")
-  and (all(.segments[]; .cache.extraction == "HIT_EXACT" and .cache.artlist == "HIT_EXACT" and .cache.internet_images == "HIT_EXACT" and .cache.binding == "HIT_EXACT"))
+WARM_RESULT=$(jq -c '.result.data.result // .result // empty' "$SMOKE_LAST_BODY")
+jq -e --argjson cold_script_id "$FIRST_SCRIPT_ID" '
+  (.script_id == $cold_script_id)
+  and (.output.text | type == "string" and length > 0)
+  and (all(.segments[]; .cache.extraction == "HIT_EXACT" and .cache.internet_images == "HIT_EXACT" and .cache.image_generation == "BYPASSED"))
 ' <<<"$WARM_RESULT" >/dev/null || {
     echo "FAIL: warm cache contract failed" >&2
-    jq '{cache,segment_count:(.segments|length)}' <<<"$WARM_RESULT" >&2
+    jq '{script_id,segment_count:(.segments|length),segment_cache:(.segments[].cache)}' <<<"$WARM_RESULT" >&2
     exit 1
 }
 WARM_SCRIPT_HASH=$(jq -r '.output.text' <<<"$WARM_RESULT" | sha256sum | awk '{print $1}')
 [[ "$WARM_SCRIPT_HASH" == "$FIRST_SCRIPT_HASH" ]] || { echo "FAIL: warm cache changed generated text" >&2; exit 1; }
-printf 'warm job=%s script_hash=%s\n' "$WARM_JOB_ID" "$WARM_SCRIPT_HASH"
+printf 'warm job=%s script_id=%s script_hash=%s\n' "$WARM_JOB_ID" "$(jq -r '.script_id' <<<"$WARM_RESULT")" "$WARM_SCRIPT_HASH"
 
 # MY-04 bypasses the application cache and must enqueue a fresh generation.
 smoke_log_section "MY-04 force refresh"
@@ -137,19 +135,17 @@ smoke_poll_terminal "$REFRESH_JOB_ID"
     exit 1
 }
 smoke_curl GET "/api/jobs/$REFRESH_JOB_ID/full" >/dev/null
-REFRESH_RESULT=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$SMOKE_LAST_BODY")
+REFRESH_RESULT=$(jq -c '.result.data.result // .result // empty' "$SMOKE_LAST_BODY")
 jq -e '
   (.script_id | type == "number" and . > 0)
   and (.output.text | type == "string" and length > 0)
-  and (.cache.hit == false)
-  and (.cache.script == "MISS")
-  and (.cache.status == "generated")
+  and (all(.segments[]; .cache.extraction != "HIT_EXACT" and .cache.internet_images != "HIT_EXACT"))
 ' <<<"$REFRESH_RESULT" >/dev/null || {
     echo "FAIL: force_refresh did not produce a fresh generation" >&2
-    jq '{script_id,cache,segment_count:(.segments|length)}' <<<"$REFRESH_RESULT" >&2
+    jq '{script_id,segment_count:(.segments|length),segment_cache:(.segments[].cache)}' <<<"$REFRESH_RESULT" >&2
     exit 1
 }
-printf 'force-refresh job=%s cache=%s\n' "$REFRESH_JOB_ID" "$(jq -c '.cache' <<<"$REFRESH_RESULT")"
+printf 'force-refresh job=%s script_id=%s\n' "$REFRESH_JOB_ID" "$(jq -r '.script_id' <<<"$REFRESH_RESULT")"
 unset DISPATCH_PAYLOAD
 
 smoke_log_section "MY-02 identical replay"

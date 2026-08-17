@@ -119,6 +119,46 @@ type EntityExtractor interface {
 	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
 }
 
+// FallbackEntityExtractor preserves a usable semantic extraction path when a
+// primary model returns an empty result. The fallback is still source-bound:
+// it only receives the exact request text and never invents entity values.
+type FallbackEntityExtractor struct {
+	Primary  EntityExtractor
+	Fallback EntityExtractor
+}
+
+func NewFallbackEntityExtractor(primary, fallback EntityExtractor) EntityExtractor {
+	if primary == nil {
+		return fallback
+	}
+	if fallback == nil {
+		return primary
+	}
+	return &FallbackEntityExtractor{Primary: primary, Fallback: fallback}
+}
+
+func (e *FallbackEntityExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	if e == nil {
+		return nil, ErrEntityExtractorUnavailable
+	}
+	result, primaryErr := e.Primary.ExtractEntities(ctx, req)
+	if primaryErr == nil && entityResultHasValues(result) {
+		return result, nil
+	}
+	fallbackResult, fallbackErr := e.Fallback.ExtractEntities(ctx, req)
+	if fallbackErr == nil && fallbackResult != nil {
+		return fallbackResult, nil
+	}
+	if primaryErr != nil {
+		return nil, primaryErr
+	}
+	return result, fallbackErr
+}
+
+func entityResultHasValues(result *scriptpkg.EntityResult) bool {
+	return result != nil && len(result.Persons)+len(result.Places)+len(result.Concepts) > 0
+}
+
 // batchEntityExtractor is an internal capability probe on the canonical port.
 // It avoids a second public extractor ecosystem while keeping older adapters
 // source-compatible during the migration.

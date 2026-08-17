@@ -1,0 +1,218 @@
+{
+  "_comment": "Canonical YouTube CLIPS fixture (not stock) for Di-Awl0XyQs — 9 consecutive celebrity-interview clips. Wire shape mirrors /api/clips/process ExtractRequest (internal/application/youtube/dto/types.go). Drift source of truth: dto/types.go::ExtractRequest + ::Segment. NOTE: 4 of 9 segments exceed the 60s default SegmentPolicy.MaxDuration; the server must run with VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS >= 118 or those segments fail with FailureCodeDurationOutOfRange.",
+  "url": "https://www.youtube.com/watch?v=Di-Awl0XyQs",
+  "strategy": "replace",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "normalize": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1PsGwnbDO-iyABUwQ1Ed_yDurptmAYCjG",
+    "subfolder_name": "Di-Awl0XyQs_Celebrity_Interviews",
+    "create_subfolder": true
+  },
+  "segments": [
+    {
+      "start": "00:00:00",
+      "end": "00:01:25",
+      "name": "Margot Robbie commenta il fisico di Alexander Skarsgard in Tarzan",
+      "summary": "Durante le interviste promozionali per il film The Legend of Tarzan, Margot Robbie racconta con assoluta franchezza la reazione del cast e della troupe quando Alexander Skarsgard si è tolto la maglietta sul set, descrivendo l'ammirazione generale per i suoi addominali e l'intensità delle scene girate insieme.",
+      "tags": [
+        "Margot Robbie",
+        "Alexander Skarsgard",
+        "The Legend of Tarzan",
+        "Fisico",
+        "Intervista",
+        "Dietro le Quinte"
+      ],
+      "mentioned_people": [
+        "Margot Robbie",
+        "Alexander Skarsgard"
+      ],
+      "topics": [
+        "The Legend of Tarzan",
+        "intervista",
+        "dietro le quinte"
+      ]
+    },
+    {
+      "start": "00:01:25",
+      "end": "00:02:15",
+      "name": "Taylor Swift e Justin Timberlake impazziscono agli American Music Awards",
+      "summary": "Durante la cerimonia degli American Music Awards, Justin Timberlake scherza e crea un siparietto comico con Taylor Swift mentre entrambi festeggiano le rispettive vittorie ed esprimono reciproca stima artistica.",
+      "tags": [
+        "Taylor Swift",
+        "Justin Timberlake",
+        "American Music Awards",
+        "Reazione Fan",
+        "Musica Pop"
+      ],
+      "mentioned_people": [
+        "Taylor Swift",
+        "Justin Timberlake"
+      ],
+      "topics": [
+        "American Music Awards",
+        "musica pop",
+        "premiazioni"
+      ]
+    },
+    {
+      "start": "00:02:15",
+      "end": "00:02:47",
+      "name": "Le presentatrici di The View flirtano con Michael B Jordan per i suoi bicipiti",
+      "summary": "Ospite al talk show The View, Michael B. Jordan viene travolto dai complimenti e dal palese corteggiamento delle conduttrici, che ammettono di non riuscire a concentrarsi sulle sue risposte a causa del maglione attillato sui suoi muscoli.",
+      "tags": [
+        "Michael B. Jordan",
+        "The View",
+        "Talk Show",
+        "Complimenti",
+        "Bicipiti"
+      ],
+      "mentioned_people": [
+        "Michael B. Jordan"
+      ],
+      "topics": [
+        "The View",
+        "talk show",
+        "intervista"
+      ]
+    },
+    {
+      "start": "00:02:47",
+      "end": "00:04:18",
+      "name": "Dakota Johnson e Leslie Mann flirtano apertamente con il giornalista",
+      "summary": "Durante il junket promozionale di How to Be Single, Dakota Johnson e Leslie Mann dirottano completamente l'intervista iniziando a corteggiare il giornalista in studio, chiedendogli se è single e arrivando a fargli sbottonare la camicia in diretta.",
+      "tags": [
+        "Dakota Johnson",
+        "Leslie Mann",
+        "How to Be Single",
+        "Junket",
+        "Flirt Comico",
+        "Intervista"
+      ],
+      "mentioned_people": [
+        "Dakota Johnson",
+        "Leslie Mann"
+      ],
+      "topics": [
+        "How to Be Single",
+        "junket",
+        "intervista"
+      ]
+    },
+    {
+      "start": "00:04:18",
+      "end": "00:04:47",
+      "name": "L effetto travolgente dello sguardo e del fascino di Henry Cavill",
+      "summary": "La collega racconta quanto sia difficile lavorare ogni giorno con Henry Cavill, sfidando chiunque a guardarlo dritto negli occhi per più di cinque secondi senza iniziare a ridacchiare per l'imbarazzo e la bellezza del suo viso.",
+      "tags": [
+        "Henry Cavill",
+        "Amy Adams",
+        "Superman",
+        "Fascino",
+        "Intervista"
+      ],
+      "mentioned_people": [
+        "Henry Cavill",
+        "Amy Adams"
+      ],
+      "topics": [
+        "Superman",
+        "intervista",
+        "cinema"
+      ]
+    },
+    {
+      "start": "00:04:47",
+      "end": "00:05:35",
+      "name": "Jenna Dewan flirta con Channing Tatum dietro le quinte",
+      "summary": "Un filmato dietro le quinte in cui Jenna Dewan scherza e flirta teneramente con Channing Tatum credendo di essere in posa per una fotografia, prima di rendersi conto che si tratta di un video.",
+      "tags": [
+        "Jenna Dewan",
+        "Channing Tatum",
+        "Backstage",
+        "Dietro le Quinte",
+        "Coppia"
+      ],
+      "mentioned_people": [
+        "Jenna Dewan",
+        "Channing Tatum"
+      ],
+      "topics": [
+        "backstage",
+        "dietro le quinte",
+        "cinema"
+      ]
+    },
+    {
+      "start": "00:05:35",
+      "end": "00:05:56",
+      "name": "Madonna scherza sull eta e l interesse per Justin Bieber da Ellen",
+      "summary": "Ospite da Ellen DeGeneres, Madonna ironizza sulla differenza di età e sul suo interesse scherzoso per Justin Bieber appena diventato maggiorenne.",
+      "tags": [
+        "Madonna",
+        "Justin Bieber",
+        "The Ellen Show",
+        "Scherzo",
+        "Intervista TV"
+      ],
+      "mentioned_people": [
+        "Madonna",
+        "Justin Bieber",
+        "Ellen DeGeneres"
+      ],
+      "topics": [
+        "The Ellen Show",
+        "intervista TV"
+      ]
+    },
+    {
+      "start": "00:05:56",
+      "end": "00:07:54",
+      "name": "Will Smith e Margot Robbie parlano delle loro scene in Focus",
+      "summary": "Durante la promozione del film Focus, Will Smith e Margot Robbie scherzano sulla loro intesa sul set, sulle scene di bacio e sull'alito fresco di Will che sapeva di Natale.",
+      "tags": [
+        "Will Smith",
+        "Margot Robbie",
+        "Focus",
+        "Scene di Bacio",
+        "Intesa",
+        "Intervista"
+      ],
+      "mentioned_people": [
+        "Will Smith",
+        "Margot Robbie"
+      ],
+      "topics": [
+        "Focus",
+        "cinema",
+        "intervista"
+      ]
+    },
+    {
+      "start": "00:07:54",
+      "end": "00:08:58",
+      "name": "Sandra Bullock e Keanu Reeves ricordano la loro intesa e i baci storici",
+      "summary": "Sandra Bullock e Keanu Reeves discutono con affetto e ironia della loro sintonia sul set, analizzando la differenza tra i vari baci scambiati nei film Speed e The Lake House e punzecchiandosi sulla loro reciproca attrazione.",
+      "tags": [
+        "Sandra Bullock",
+        "Keanu Reeves",
+        "Speed",
+        "The Lake House",
+        "Intesa Sul Set",
+        "Bacio"
+      ],
+      "mentioned_people": [
+        "Sandra Bullock",
+        "Keanu Reeves"
+      ],
+      "topics": [
+        "Speed",
+        "The Lake House",
+        "cinema"
+      ]
+    }
+  ]
+}

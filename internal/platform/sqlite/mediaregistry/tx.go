@@ -66,7 +66,8 @@ func appendEvent(ctx context.Context, e execer, event capregistry.Event) (int64,
 		INSERT INTO registry_events
 		(event_id, asset_id, event_type, run_id, actor, before_hash, after_hash,
 		 payload_json, git_sha, app_version, created_at)
-		VALUES (?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(event_id) DO NOTHING`,
 		event.EventID, event.AssetID, event.EventType, event.RunID, event.Actor,
 		event.BeforeHash, event.AfterHash, defaultJSON(event.PayloadJSON), event.GitSHA,
 		event.AppVersion, event.CreatedAt)
@@ -74,8 +75,13 @@ func appendEvent(ctx context.Context, e execer, event capregistry.Event) (int64,
 		return 0, fmt.Errorf("append registry event %q: %w", event.EventID, err)
 	}
 	seq, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read registry event sequence %q: %w", event.EventID, err)
+	if err != nil || seq == 0 {
+		if queryErr := e.QueryRowContext(ctx, `SELECT seq FROM registry_events WHERE event_id = ?`, event.EventID).Scan(&seq); queryErr != nil {
+			if err != nil {
+				return 0, fmt.Errorf("read registry event sequence %q: %w", event.EventID, err)
+			}
+			return 0, fmt.Errorf("read existing registry event sequence %q: %w", event.EventID, queryErr)
+		}
 	}
 	return seq, nil
 }

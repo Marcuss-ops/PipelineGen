@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -138,7 +139,8 @@ func runIndexDriveClip(args []string) error {
 		return fmt.Errorf("close local clip: %w", err)
 	}
 
-	probeDuration, probeErr := probeSoundEffectDuration(ctx, localPath)
+	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+	probeDuration, probeErr := probeSoundEffectDuration(ctx, prober, localPath)
 	duration, durationSource, err := resolveClipDuration(probeDuration, probeErr, manifest.DurationFallbackSeconds, *allowDeclared)
 	if err != nil {
 		return err

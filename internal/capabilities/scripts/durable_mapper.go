@@ -14,11 +14,22 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	if in == nil {
 		return nil
 	}
+	outputText := strings.TrimSpace(in.Output.Text)
+	if outputText == "" {
+		outputText = scenesText(in)
+	}
+	wordCount := in.Output.WordCount
+	if wordCount <= 0 {
+		wordCount = in.WordCount
+	}
+	if wordCount <= 0 {
+		wordCount = len(strings.Fields(outputText))
+	}
 	out := &domain.GenerationResult{
 		Title: in.Title, Language: string(inLanguage(in)), VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
 		AudioStrategy: string(in.AudioStrategy),
 		Source:        in.SourceTrace,
-		Output:        domain.ScriptOutput{Text: scenesText(in), WordCount: in.WordCount},
+		Output:        domain.ScriptOutput{Text: outputText, WordCount: wordCount},
 	}
 	out.Output.SpecScene.Version = 1
 	out.Output.SpecScene.Scenes = make([]domain.SpecScene, 0, len(in.Scenes))
@@ -42,10 +53,10 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 			}
 		}
 		if vo, ok := scene.Voiceover[Language(lang)]; ok {
-			ds.Bindings.Voiceover = &domain.VoiceoverBinding{Status: "completed", Link: vo.URL, Links: map[string]string{lang: vo.URL}, LocalPath: vo.FilePath, DurationMs: int64(vo.Duration * 1000)}
+			ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
 		} else {
 			for _, vo := range scene.Voiceover {
-				ds.Bindings.Voiceover = &domain.VoiceoverBinding{Status: "completed", Link: vo.URL, Links: map[string]string{lang: vo.URL}, LocalPath: vo.FilePath, DurationMs: int64(vo.Duration * 1000)}
+				ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
 				break
 			}
 		}
@@ -60,7 +71,32 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 			ChannelLayout: fa.ChannelLayout, Bitrate: fa.Bitrate, DurationUS: fa.DurationUS, DurationMS: fa.DurationMS,
 			StartPTS: fa.StartPTS, SizeBytes: fa.SizeBytes, FinalMix: fa.FinalMix, CopyEligible: fa.CopyEligible}
 	}
+	// The durable entity aggregate mirrors the legacy Artifacts.Entities
+	// block so the persisted domain surface and the wire result agree on the
+	// same typed persons/places/concepts projection.
+	if in.Entities != nil {
+		out.Artifacts.Entities = in.Entities
+	}
 	return out
+}
+
+// durableVoiceoverBinding projects one durable AudioReference onto the legacy
+// domain VoiceoverBinding surface. The published timing bundle (timing.json
+// SSOT + optional SRT/VTT links + hashes) is preserved per language so the
+// legacy domain envelope exposes the same timing references as the durable
+// capability result.
+func durableVoiceoverBinding(lang string, vo AudioReference) *domain.VoiceoverBinding {
+	binding := &domain.VoiceoverBinding{
+		Status:     "completed",
+		Link:       vo.URL,
+		Links:      map[string]string{lang: vo.URL},
+		LocalPath:  vo.FilePath,
+		DurationMs: int64(vo.Duration * 1000),
+	}
+	if vo.TimingBundle != nil {
+		binding.Timing = map[string]domain.VoiceoverTimingBinding{lang: *vo.TimingBundle}
+	}
+	return binding
 }
 
 func inLanguage(in *GenerateResult) Language {

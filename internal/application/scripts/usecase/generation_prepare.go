@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"
 )
@@ -33,6 +34,17 @@ type PreparedGeneration struct {
 	Item           scriptpkg.GenerationItemV2
 	Plan           scriptpkg.ResolvedGenerationPlan
 	ResolvedSource *scriptpkg.ResolvedSource
+}
+
+// PrepareStageReports holds the canonical StageReport observations for the
+// prepare substages. The orchestrator projects them into the legacy
+// GenerationTimings via CanonicalTimingAdapter (no second clock). Reports are
+// zero-valued when no Run is bound (instrumentation never changes behaviour).
+type PrepareStageReports struct {
+	Normalize kernobs.StageReport
+	Validate  kernobs.StageReport
+	Resolve   kernobs.StageReport
+	Plan      kernobs.StageReport
 }
 
 // GenerationPreparer orchestrates the prepare phase for a single
@@ -90,22 +102,37 @@ func (p *GenerationPreparer) SetVoiceoverRouting(resolver scriptports.VoiceoverG
 }
 
 // Prepare runs the prepare phase for a single item and returns a
-// PreparedGeneration. The method is deterministic and side-effect
-// free except for tracker events and logging.
+// PreparedGeneration plus the canonical substage reports. The method is
+// deterministic and side-effect free except for tracker events and logging.
 func (p *GenerationPreparer) Prepare(
 	ctx context.Context,
 	item scriptpkg.GenerationItemV2,
 	preset scriptpkg.Preset,
 	tracker *ProgressTracker,
-) (*PreparedGeneration, error) {
+) (*PreparedGeneration, PrepareStageReports, error) {
+	var reports PrepareStageReports
+
 	// ── Phase 1: Normalize ──────────────────────────────────────────
+	// The canonical Run owns the timing; MeasureStageReport is the only
+	// clock (no ad-hoc time.Now() at a phase boundary).
 	tracker.PhaseNormalize()
-	adapters.NormalizeItem(&item, preset, p.cfg)
+	if report, err := kernobs.MeasureStageReport(ctx, stageScriptNormalize, func(stageCtx context.Context) error {
+		adapters.NormalizeItem(&item, preset, p.cfg)
+		return nil
+	}); err != nil {
+		return nil, PrepareStageReports{}, p.logPhaseError(item, "normalize", scriptpkg.ErrPlanInvalid, err, tracker)
+	} else {
+		reports.Normalize = report
+	}
 
 	// ── Phase 2: Validate ─────────────────────────────────────────────
 	tracker.PhaseValidate()
-	if err := ValidateItem(item); err != nil {
-		return nil, p.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err, tracker)
+	if report, err := kernobs.MeasureStageReport(ctx, stageScriptValidate, func(stageCtx context.Context) error {
+		return ValidateItem(item)
+	}); err != nil {
+		return nil, PrepareStageReports{}, p.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err, tracker)
+	} else {
+		reports.Validate = report
 	}
 	tracker.TrackEvent("request.validated", "Generation request validated", map[string]any{
 		"item_id":     item.ID,
@@ -113,131 +140,153 @@ func (p *GenerationPreparer) Prepare(
 	})
 
 	// ── Phase 3: Source enrichment / resolution ───────────────────────
+	// source.resolve is a STAGE boundary; the cache/resolver calls are the
+	// work it encloses. The resolved source escapes the closure so plan
+	// building can consume it below.
 	tracker.PhaseResolveSource()
 	var resolved *scriptpkg.ResolvedSource
 	if p.registry != nil {
-		resCtx := buildResolutionContext(item)
+		if report, err := kernobs.MeasureStageReport(ctx, stageSourceResolve, func(stageCtx context.Context) error {
+			resCtx := buildResolutionContext(item)
 
-		// Try the research cache short-circuit first. On hit the real
-		// resolver (and any LLM it would call) is skipped entirely.
-		cacheHit := false
-		if p.enricher != nil {
-			cacheResult, cacheErr := p.enricher.Enrich(ctx, &item)
-			if cacheErr != nil {
-				return nil, p.logPhaseError(item, "source_enrichment", scriptpkg.ErrSourceResolutionFailed, cacheErr, tracker)
+			// Try the research cache short-circuit first. On hit the real
+			// resolver (and any LLM it would call) is skipped entirely.
+			cacheHit := false
+			if p.enricher != nil {
+				cacheResult, cacheErr := p.enricher.Enrich(stageCtx, &item)
+				if cacheErr != nil {
+					return p.logPhaseError(item, "source_enrichment", scriptpkg.ErrSourceResolutionFailed, cacheErr, tracker)
+				}
+				cacheHit = cacheResult == scriptports.EnrichHit
 			}
-			cacheHit = cacheResult == scriptports.EnrichHit
-		}
 
-		if !cacheHit {
-			var resolveErr error
-			resolved, resolveErr = p.registry.Resolve(ctx, item.Source, resCtx)
-			if resolveErr != nil {
-				return nil, p.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr, tracker)
-			}
-			// Persist the freshly resolved source text so the next
-			// identical request avoids the LLM call.
-			if p.enricher != nil && resolved != nil && resolved.SourceText != "" {
-				if saveErr := p.enricher.Save(ctx, item, resolved.SourceText); saveErr != nil && p.log != nil {
-					p.log.Warn("source cache save failed", zap.String("item_id", item.ID), zap.Error(saveErr))
+			if !cacheHit {
+				var resolveErr error
+				resolved, resolveErr = p.registry.Resolve(stageCtx, item.Source, resCtx)
+				if resolveErr != nil {
+					return p.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr, tracker)
+				}
+				// Persist the freshly resolved source text so the next
+				// identical request avoids the LLM call.
+				if p.enricher != nil && resolved != nil && resolved.SourceText != "" {
+					if saveErr := p.enricher.Save(stageCtx, item, resolved.SourceText); saveErr != nil && p.log != nil {
+						p.log.Warn("source cache save failed", zap.String("item_id", item.ID), zap.Error(saveErr))
+					}
+				}
+			} else {
+				// Cache hit already populated item.Source.SourceText; build a
+				// minimal ResolvedSource so downstream plan building works.
+				resolved = &scriptpkg.ResolvedSource{
+					Type:       scriptpkg.SourceType(item.Source.Type),
+					Topic:      item.Source.Topic,
+					Title:      item.Title,
+					SourceText: item.Source.SourceText,
+					Language:   item.Language,
 				}
 			}
+			return nil
+		}); err != nil {
+			return nil, PrepareStageReports{}, err
 		} else {
-			// Cache hit already populated item.Source.SourceText; build a
-			// minimal ResolvedSource so downstream plan building works.
-			resolved = &scriptpkg.ResolvedSource{
-				Type:       scriptpkg.SourceType(item.Source.Type),
-				Topic:      item.Source.Topic,
-				Title:      item.Title,
-				SourceText: item.Source.SourceText,
-				Language:   item.Language,
-			}
+			reports.Resolve = report
 		}
 	}
 	p.trackSourceResolved(item, resolved, tracker)
 
 	// ── Phase 4: Build plan ─────────────────────────────────────────
+	// script.plan is a STAGE boundary enclosing voiceover routing, plan
+	// build, resolved-source merge, cache-key derivation and the clip
+	// evidence + registry validation gates. plan escapes the closure so
+	// the orchestrator can return it.
 	tracker.PhaseBuildPlan()
-	resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
-		ctx, item, p.voGroupResolver, p.voRootID, p.log,
-	)
-	if resolveVOErr != nil {
-		return nil, p.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr, tracker)
-	}
-	item = resolvedItem
-	plan := BuildPlan(item)
+	var plan scriptpkg.ResolvedGenerationPlan
+	if report, err := kernobs.MeasureStageReport(ctx, stageScriptPlan, func(stageCtx context.Context) error {
+		resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
+			stageCtx, item, p.voGroupResolver, p.voRootID, p.log,
+		)
+		if resolveVOErr != nil {
+			return p.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr, tracker)
+		}
+		item = resolvedItem
+		plan = BuildPlan(item)
 
-	// Merge resolved source into plan.
-	if resolved != nil {
-		if resolved.Topic != "" {
-			plan.Topic = resolved.Topic
-		}
-		if resolved.Title != "" {
-			plan.Title = resolved.Title
-		}
-		// Wave 2.x directive (PR-REFACTOR-P1-CYCLOMATIC, July 2026):
-		// ResolvedSource.SourceText MUST NOT overwrite plan.SourceText.
-		// rationale: plan.SourceText is owned by the normalizer + BuildPlan
-		// (item.Source.SourceText); letting the source resolver overwrite it
-		// re-introduces a side-effect where the same logical plan has two
-		// textual identities (item.Source.SourceText vs resolved.SourceText).
-		// The clip-evidence text assembled into plan.ClipEvidence.NarrativeText
-		// remains the canonical editorial substrate (consumed by the engine
-		// via plan.ClipEvidence.ModelSourceText()).
-		if resolved.ClipEvidence != nil {
-			plan.ClipEvidence = resolved.ClipEvidence
-		}
-		if len(resolved.SearchResults) > 0 {
-			plan.SearchResults = append([]scriptpkg.SearchResultItem(nil), resolved.SearchResults...)
-		}
-		if resolved.Fingerprint != "" {
-			plan.SourceFingerprint = resolved.Fingerprint
-		}
-		if resolved.Type != "" {
-			plan.SourceKind = string(resolved.Type)
-		}
-		if resolved.ResearchReport != nil {
-			plan.ResearchSources = make([]scriptpkg.SourceReference, 0, len(resolved.ResearchReport.Sources))
-			for _, source := range resolved.ResearchReport.Sources {
-				plan.ResearchSources = append(plan.ResearchSources, scriptpkg.SourceReference{Title: source.Title, URL: source.URL, Type: "article"})
+		// Merge resolved source into plan.
+		if resolved != nil {
+			if resolved.Topic != "" {
+				plan.Topic = resolved.Topic
+			}
+			if resolved.Title != "" {
+				plan.Title = resolved.Title
+			}
+			// Wave 2.x directive (PR-REFACTOR-P1-CYCLOMATIC, July 2026):
+			// ResolvedSource.SourceText MUST NOT overwrite plan.SourceText.
+			// rationale: plan.SourceText is owned by the normalizer + BuildPlan
+			// (item.Source.SourceText); letting the source resolver overwrite it
+			// re-introduces a side-effect where the same logical plan has two
+			// textual identities (item.Source.SourceText vs resolved.SourceText).
+			// The clip-evidence text assembled into plan.ClipEvidence.NarrativeText
+			// remains the canonical editorial substrate (consumed by the engine
+			// via plan.ClipEvidence.ModelSourceText()).
+			if resolved.ClipEvidence != nil {
+				plan.ClipEvidence = resolved.ClipEvidence
+			}
+			if len(resolved.SearchResults) > 0 {
+				plan.SearchResults = append([]scriptpkg.SearchResultItem(nil), resolved.SearchResults...)
+			}
+			if resolved.Fingerprint != "" {
+				plan.SourceFingerprint = resolved.Fingerprint
+			}
+			if resolved.Type != "" {
+				plan.SourceKind = string(resolved.Type)
+			}
+			if resolved.ResearchReport != nil {
+				plan.ResearchSources = make([]scriptpkg.SourceReference, 0, len(resolved.ResearchReport.Sources))
+				for _, source := range resolved.ResearchReport.Sources {
+					plan.ResearchSources = append(plan.ResearchSources, scriptpkg.SourceReference{Title: source.Title, URL: source.URL, Type: "article"})
+				}
+			}
+			if item.Source.GroundingPolicy != "" {
+				plan.GroundingPolicy = item.Source.GroundingPolicy
 			}
 		}
-		if item.Source.GroundingPolicy != "" {
-			plan.GroundingPolicy = item.Source.GroundingPolicy
+		plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
+
+		// ── Phase 4b: Clip evidence support check ─────────────────────────
+		// For clip-based sources, the caller-provided source_text must not
+		// exceed what the resolved clip evidence duration can support.
+		if err := enforceClipEvidenceTextSupport(&plan, p.cfg); err != nil {
+			return p.logPhaseError(item, "plan_validation", scriptpkg.ErrPlanInvalid, err, tracker)
 		}
-	}
-	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
 
-	// ── Phase 4b: Clip evidence support check ─────────────────────────
-	// For clip-based sources, the caller-provided source_text must not
-	// exceed what the resolved clip evidence duration can support.
-	if err := enforceClipEvidenceTextSupport(&plan, p.cfg); err != nil {
-		return nil, p.logPhaseError(item, "plan_validation", scriptpkg.ErrPlanInvalid, err, tracker)
-	}
-
-	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
-		tracker.TrackEvent("clip_evidence.built", "Clip evidence assembled into plan", map[string]any{
-			"item_id":    item.ID,
-			"clip_count": len(plan.ClipEvidence.AcceptedClipIDs),
+		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+			tracker.TrackEvent("clip_evidence.built", "Clip evidence assembled into plan", map[string]any{
+				"item_id":    item.ID,
+				"clip_count": len(plan.ClipEvidence.AcceptedClipIDs),
+			})
+		}
+		tracker.TrackEvent("narrative.planned", "Generation plan built", map[string]any{
+			"item_id":      item.ID,
+			"source_kind":  plan.SourceKind,
+			"target_words": plan.TargetWords,
 		})
-	}
-	tracker.TrackEvent("narrative.planned", "Generation plan built", map[string]any{
-		"item_id":      item.ID,
-		"source_kind":  plan.SourceKind,
-		"target_words": plan.TargetWords,
-	})
 
-	if p.ppReg != nil {
-		if err := p.ppReg.ValidateRequested(adapters.ProcessorNamesFromStrings(plan.Postprocessors)); err != nil {
-			return nil, p.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err, tracker)
+		if p.ppReg != nil {
+			if err := p.ppReg.ValidateRequested(adapters.ProcessorNamesFromStrings(plan.Postprocessors)); err != nil {
+				return p.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err, tracker)
+			}
 		}
+		return nil
+	}); err != nil {
+		return nil, PrepareStageReports{}, err
+	} else {
+		reports.Plan = report
 	}
 
 	return &PreparedGeneration{
 		Item:           item,
 		Plan:           plan,
 		ResolvedSource: resolved,
-	}, nil
+	}, reports, nil
 }
 
 // trackSourceResolved emits tracker events for source resolution.

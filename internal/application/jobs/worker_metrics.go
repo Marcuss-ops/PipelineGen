@@ -80,9 +80,17 @@ func (r *JobRegistryRecorder) Start(ctx context.Context, j *kernjob.Job, workerI
 	if j.StartedAt != nil && !j.StartedAt.IsZero() {
 		started = j.StartedAt.UTC()
 	}
+	// Anchor the persisted execution window to the run's start, not the
+	// claim: duration_ms is RunReport.WallTimeMs (measured from run start),
+	// so completed_at − started_at must not include the claim→run gap.
+	if run := kernobs.FromContext(ctx); run != nil {
+		if rep := run.Report(); rep != nil && !rep.StartedAt.IsZero() {
+			started = rep.StartedAt.UTC()
+		}
+	}
 	stepID := executionStepID(j.ID, attemptID, j.Revision)
 	payload := rawJSON(j.Payload)
-	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt)}); err != nil {
+	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started)}); err != nil {
 		r.warn("record job start", j.ID, err)
 	}
 	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: "RUNNING", StartedAt: started.Format(time.RFC3339Nano), CreatedAt: started.Format(time.RFC3339Nano)}); err != nil {
@@ -147,7 +155,7 @@ func (r *JobRegistryRecorder) RecordCanonicalOutputs(ctx context.Context, jobID,
 // capability that produced it. Render jobs are tracked separately from
 // generated source/media artifacts for reconciliation and statistics.
 func OutputRelationForJobType(jobType string) string {
-	if strings.Contains(strings.ToLower(jobType), "render") || jobType == TypeRenderVideo {
+	if strings.Contains(strings.ToLower(jobType), "render") {
 		return "RENDERED"
 	}
 	return "GENERATED"
@@ -171,6 +179,12 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	if j.StartedAt != nil && !j.StartedAt.IsZero() {
 		started = j.StartedAt.UTC()
 	}
+	// Anchor started_at to the run's start: duration_ms is RunReport.WallTimeMs,
+	// measured from run start, so the claim→run dispatch gap (~1s) must not
+	// inflate completed_at − started_at.
+	if report != nil && !report.StartedAt.IsZero() {
+		started = report.StartedAt.UTC()
+	}
 	duration := finished.Sub(started).Milliseconds()
 	if report != nil && report.WallTimeMs > 0 {
 		duration = report.WallTimeMs
@@ -184,13 +198,13 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	}
 	resultJSON := rawJSON(result)
 	completed := finished.Format(time.RFC3339Nano)
-	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt), CompletedAt: completed, DurationMS: duration}); err != nil {
+	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration}); err != nil {
 		r.warn("record job terminal state", j.ID, err)
 	}
 	if stepID == "" {
 		stepID = executionStepID(j.ID, attemptID, j.Revision)
 	}
-	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: statusForStep(status), StartedAt: formatTimePtr(j.StartedAt), CompletedAt: completed, DurationMS: duration, MetricsJSON: reportJSON(report), CreatedAt: completed, ErrorMessage: message}); err != nil {
+	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: statusForStep(status), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration, MetricsJSON: reportJSON(report), CreatedAt: completed, ErrorMessage: message}); err != nil {
 		r.warn("record worker step terminal state", j.ID, err)
 	}
 	if report != nil {
@@ -216,7 +230,13 @@ func (r *JobRegistryRecorder) recordReport(ctx context.Context, jobID, stepID st
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, metricStepID, name+".items"), JobID: jobID, StepID: stepID, Name: name + ".items", Unit: "count", Value: float64(operation.Items)})
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, metricStepID, name+".bytes"), JobID: jobID, StepID: stepID, Name: name + ".bytes", Unit: "bytes", Value: float64(operation.Bytes)})
 	}
-	for name, value := range map[string]float64{"wall_time_ms": float64(report.WallTimeMs), "queue_wait_ms": float64(report.QueueWaitMs), "cache_hits": float64(report.Counters.CacheHits), "cache_misses": float64(report.Counters.CacheMisses)} {
+	// Run-level durations are milliseconds; counters are dimensionless. The
+	// two families are recorded separately so a wall/queue duration never
+	// masquerades as a count in downstream aggregations.
+	for name, value := range map[string]float64{"wall_time_ms": float64(report.WallTimeMs), "queue_wait_ms": float64(report.QueueWaitMs)} {
+		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, stepID, name), JobID: jobID, StepID: stepID, Name: name, Unit: "ms", Value: value})
+	}
+	for name, value := range map[string]float64{"cache_hits": float64(report.Counters.CacheHits), "cache_misses": float64(report.Counters.CacheMisses)} {
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, stepID, name), JobID: jobID, StepID: stepID, Name: name, Unit: "count", Value: value})
 	}
 }
@@ -326,6 +346,12 @@ func metricID(jobID, stepID, name string) string {
 	return "metric_" + hex.EncodeToString(sum[:])
 }
 func payloadHash(raw string) string {
+	// Canonical empty guard: jobregistry.hashPayload maps an empty or
+	// whitespace-only payload to "{}" before hashing so the persisted hash is
+	// stable across both producers (SSOT edge case).
+	if strings.TrimSpace(raw) == "" {
+		raw = "{}"
+	}
 	var value any
 	if json.Unmarshal([]byte(raw), &value) == nil {
 		if b, err := json.Marshal(value); err == nil {
@@ -353,12 +379,6 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
-}
-func formatTimePtr(value *time.Time) string {
-	if value == nil {
-		return ""
-	}
-	return formatTime(*value)
 }
 func parentJobID(raw []byte) string { return payloadString(raw, "parent_job_id") }
 func rootJobID(raw []byte) string   { return payloadString(raw, "root_job_id") }

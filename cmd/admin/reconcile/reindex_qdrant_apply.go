@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // newGoldenQueryExecutor builds the GoldenQueryExecutor that embeds the query
@@ -140,7 +141,7 @@ func applyQdrant(
 		}
 		log.Info("golden query certification passed",
 			zap.String("target", targetCollection),
-			zap.Int("queries", len(schema.CanonicalGoldenQueries())))
+			zap.Int("queries", len(platformschema.CanonicalGoldenQueries())))
 	}
 
 	if err := collectionMgr.ActivateProjection(ctx, targetCollection, 0); err != nil {

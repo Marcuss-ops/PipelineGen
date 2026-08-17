@@ -113,14 +113,19 @@ class WhisperDeploymentContractTest(unittest.TestCase):
 
     def test_start_server_preserves_systemd_whisper_environment(self):
         start_server = (ROOT / "start_server.sh").read_text()
+        # The missing-only dotenv loader never overrides the systemd
+        # EnvironmentFile: caller-exported whisper vars survive the restart
+        # because load_dotenv_missing only fills unset/empty variables.
+        self.assertIn("load_dotenv_missing", start_server)
+        self.assertIn("scripts/lib/dotenv.sh", start_server)
+        # start_server must not hardcode whisper runtime defaults that would
+        # clobber the systemd-supplied values.
         for name in (
-            "CANONICAL_PATH",
-            "CANONICAL_LD_LIBRARY_PATH",
-            "CANONICAL_WHISPER_DEVICE",
-            "CANONICAL_WHISPER_MODEL",
-            "CANONICAL_WHISPER_CUDA_LIB_DIR",
+            "VELOX_WHISPER_DEVICE",
+            "VELOX_WHISPER_MODEL",
+            "VELOX_WHISPER_CUDA_LIB_DIR",
         ):
-            self.assertIn(name, start_server)
+            self.assertNotRegex(start_server, rf"export\s+{name}=")
 
     def test_canonical_preflight_is_the_single_runtime_source(self):
         preflight = ROOT / "scripts/tools/whisper_preflight.py"

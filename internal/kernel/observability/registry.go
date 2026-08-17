@@ -44,6 +44,7 @@ const (
 	ComponentTTS            ComponentName = "tts"
 	ComponentGoogleDocs     ComponentName = "google_docs"
 	ComponentInternetImages ComponentName = "internet_images"
+	ComponentRenderQueue    ComponentName = "render_queue"
 )
 
 // WaitKind identifies a typed interval during which the run could not make progress.
@@ -55,6 +56,8 @@ const (
 	WaitRetryBackoff    WaitKind = "retry_backoff"
 	WaitChildDependency WaitKind = "child_dependency_wait"
 	WaitResourceLock    WaitKind = "resource_lock"
+	WaitCompletion      WaitKind = "completion_wait"
+	WaitOutboxDelivery  WaitKind = "outbox_delivery_wait"
 )
 
 // WaitInfo describes one blocked interval. The interval timestamps are
@@ -123,5 +126,6 @@ func AllComponents() []ComponentName {
 		ComponentFFmpeg, ComponentDrive, ComponentSQLite,
 		ComponentQdrant, ComponentNLP, ComponentTTS,
 		ComponentGoogleDocs, ComponentInternetImages,
+		ComponentRenderQueue,
 	}
 }

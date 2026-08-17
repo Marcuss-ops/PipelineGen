@@ -34,7 +34,7 @@ invocation.
 | `make verify-research` | `research` | Research resolver, web fetcher, and research persistence |
 | `make verify-qdrant` | `qdrant` | Qdrant domain, application, and infrastructure |
 | `make verify-indexing` | `indexing` | Indexing application and infrastructure |
-| `make verify-docs` | `docs` | Document generation, document APIs, and script-docs |
+| `make verify-docs` | `docs` | Document generation and document APIs |
 | `make verify-voiceover` | `voiceover` | Voiceover domain, application, and API |
 | `make verify-database` | `database` | SQLite/database infrastructure and adapters |
 | `make verify-jobs` | `jobs` | Job application, API, and SQLite job persistence |

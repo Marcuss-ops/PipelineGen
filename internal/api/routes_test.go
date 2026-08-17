@@ -337,7 +337,6 @@ func (testRateLimitAdapter) RateLimitRequests() int { return 0 }
 type testFeatureFlagsAdapter struct{}
 
 func (testFeatureFlagsAdapter) ArtlistEnabled() bool     { return false }
-func (testFeatureFlagsAdapter) ScriptDocsEnabled() bool  { return false }
 func (testFeatureFlagsAdapter) ScriptClipsEnabled() bool { return false }
 
 // TestMetricsRouteReleaseMode is the fail-closed matrix for /metrics

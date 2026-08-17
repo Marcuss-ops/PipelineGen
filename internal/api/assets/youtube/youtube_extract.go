@@ -1,11 +1,15 @@
-// ── POST /api/clips/extract + POST /api/clips/extract-important ──────
+// ── POST /api/clips/process ──────
 //
-// Extract enqueues a YouTube clip extraction job. When Destination.Group
-// is set the caller's root folder is rewritten to a per-group channel
-// subfolder so clips land in Root/<Group>/video-title/.
+// Extract enqueues a YouTube clip extraction job. When Destination.Group or
+// Destination.SubfolderName is set, the caller's root folder is rewritten to
+// the requested child folder. An explicit FolderID without a requested child
+// remains a flat destination; the handler must not derive a child from the
+// source video ID.
 //
-// ExtractImportant enqueues an LLM-driven YouTube clip extraction job
-// (PR-GEMMA-EXTRACT-IMPORTANT Step 5).
+// selection.mode (explicit | important) is resolved inside the canonical
+// extraction pipeline by the SegmentSelectionResolver — the HTTP handler
+// only enqueues the request; it never runs a second download/upload/hash/
+// commit pipeline.
 
 package youtube
 
@@ -73,56 +77,6 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
-// ExtractImportant enqueues an LLM-driven YouTube clip extraction job.
-//
-// PR-GEMMA-EXTRACT-IMPORTANT Step 5: POST /api/clips/extract-important.
-// The jobType dispatches to ExtractImportantClipsJobHandler via the broker.
-//
-// Payload mapping: the handler uses the canonical yttypes.ExtractRequest DTO
-// but builds a payload map compatible with ExtractImportantClipsCommand:
-//   - url             → req.URL
-//   - video_id        → extracted from req.URL via urlutil.ExtractVideoID
-//   - max_segments    → default 5 (the DTO has no segments field; LLM decides)
-//   - drive_root_folder → req.Destination.FolderID (or empty string)
-//   - language        → "en" (forward-pointer: add a query param)
-//
-// godlike/07 NO-FAKE-AVAILABILITY: nil jobsSvc returns 503 BEFORE dispatch;
-// nil Destination or empty FolderID will cause the use case to fail with
-// ErrInvalidInput (drive_root_folder required).
-func (h *YouTubeClipHandler) ExtractImportant(c *gin.Context) {
-	req, ok := apiutil.BindJSON[yttypes.ExtractRequest](c)
-	if !ok {
-		return
-	}
-
-	// Extract video_id from URL.
-	videoID, err := urlutil.ExtractVideoID(req.URL)
-	if err != nil || videoID == "" {
-		apiutil.BadRequest(c, "could not extract video_id from url (use a standard youtube.com/watch?v=... URL)")
-		return
-	}
-
-	driveRootFolder := ""
-	if req.Destination != nil {
-		driveRootFolder = req.Destination.FolderID
-	}
-
-	payloadMap := map[string]any{
-		"video_id":          videoID,
-		"url":               req.URL,
-		"max_segments":      5,
-		"drive_root_folder": driveRootFolder,
-		"language":          "en",
-	}
-
-	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    appjobs.TypeYouTubeClipExtractImportant,
-		Payload: payloadMap,
-	}, "YouTube clip extraction (LLM-driven) job enqueued."); ok {
-		return
-	}
-}
-
 // normalizeExtractionDestination resolves the canonical folder naming
 // pieces used by the clip extraction endpoint.
 func normalizeExtractionDestination(dest *yttypes.DestinationRequest, videoID string) (groupName, subfolderName, folderPath string, createSubfolder bool) {
@@ -145,13 +99,10 @@ func normalizeExtractionDestination(dest *yttypes.DestinationRequest, videoID st
 	if explicitFlatFolder {
 		return "", "", strings.TrimSpace(dest.FolderPath), false
 	}
-	// Default to a child folder when we have a concrete video ID.
-	// This keeps direct clip extraction runs from dumping multiple
-	// clips into the same Drive root when the caller only supplied
-	// folder_id. Callers that want a flat upload can still force it
-	// by omitting videoID at this layer (not possible for /process)
-	// or by providing an explicit folder_path.
-	createSubfolder = subfolderName != "" || strings.TrimSpace(dest.FolderID) == "" || groupName != "" || dest.CreateSubfolder || strings.TrimSpace(videoID) != ""
+	// An explicit FolderID is already a complete destination. Do not derive a
+	// child folder from videoID: callers that want one must name it through
+	// group, subfolder_name, or folder_path/create_subfolder.
+	createSubfolder = subfolderName != "" || strings.TrimSpace(dest.FolderID) == "" || groupName != "" || dest.CreateSubfolder
 	if createSubfolder && subfolderName == "" && strings.TrimSpace(videoID) != "" {
 		subfolderName = pathutil.SafeFolderName(strings.TrimPrefix(videoID, "yt_"))
 	}

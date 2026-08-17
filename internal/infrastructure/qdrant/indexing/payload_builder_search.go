@@ -2,7 +2,7 @@
 // for the writer-side payload builder.
 //
 // The canonical DocumentText composition now lives in
-// internal/application/indexing/semanticdoc (item 7): SemanticDocumentComposer
+// internal/kernel/semanticdoc (item 7): SemanticDocumentComposer
 // is the SINGLE owner of the embedding document text. This file adapts the
 // infra IndexedMetadata shape into the semanticdoc.Input shape and returns the
 // composed SemanticDocument — it does NOT re-compose a second, different text.
@@ -16,7 +16,8 @@
 package indexing
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/semanticdoc"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/semanticdoc"
 )
 
 // composeSemanticDocument maps the infra IndexedMetadata onto the canonical
@@ -36,6 +37,7 @@ func composeSemanticDocument(doc *IndexDocument) semanticdoc.SemanticDocument {
 		AssetID:          doc.AssetID,
 		Title:            doc.Metadata.Title,
 		Description:      doc.Metadata.Description,
+		SemanticSummary:  doc.Metadata.SemanticSummary,
 		Summary:          doc.Metadata.Summary,
 		VisualSummary:    doc.Metadata.VisualSummary,
 		OriginalLanguage: doc.Metadata.OriginalLanguage,
@@ -46,5 +48,25 @@ func composeSemanticDocument(doc *IndexDocument) semanticdoc.SemanticDocument {
 		Tags:             doc.Metadata.Tags,
 		Event:            doc.Metadata.Event,
 		Scene:            doc.Metadata.Scene,
+		Evidence:         resolveIndexedEvidence(doc),
+	})
+}
+
+// resolveIndexedEvidence projects the IndexedMetadata candidates onto the
+// canonical EvidenceResolver (single precedence SSOT). The transcript tier
+// reads Metadata.Transcript (the canonical multilingual concatenated block);
+// the metadata tiers read Summary / VisualSummary / Description directly.
+func resolveIndexedEvidence(doc *IndexDocument) asset.EvidenceDocument {
+	if doc == nil {
+		return asset.EvidenceDocument{}
+	}
+	return asset.ResolveEvidence(asset.EvidenceInput{
+		AssetID:         doc.AssetID,
+		Transcript:      doc.Metadata.Transcript,
+		SemanticSummary: doc.Metadata.SemanticSummary,
+		VisualSummary:   doc.Metadata.VisualSummary,
+		Summary:         doc.Metadata.Summary,
+		Description:     doc.Metadata.Description,
+		Language:        doc.Metadata.OriginalLanguage,
 	})
 }

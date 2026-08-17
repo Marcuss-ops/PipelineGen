@@ -3,7 +3,24 @@ package clipindexer
 import (
 	"context"
 	"time"
+
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
+
+// MediaIndexer is the canonical indexing surface. IndexAsset indexes a single
+// canonical media asset (clip, stock_video, stock_image, web_image, …) into
+// the semantic index, honoring the IndexEligibility policy. The legacy
+// IndexClip vocabulary delegates to it for backward compatibility.
+type MediaIndexer interface {
+	IndexAsset(ctx context.Context, assetID string) error
+}
+
+// IndexEligibilityResolver is the single policy gate for semantic searchability.
+// It reports whether an asset is SEARCHABLE (embed + project) or merely
+// REGISTERED (real asset, not semantic-searchable).
+type IndexEligibilityResolver interface {
+	Eligibility(ctx context.Context, assetID string) (capregistry.IndexEligibility, error)
+}
 
 // VectorStoreIndexer defines the interface for upserting indexed assets into a vector store.
 // This keeps the clipindexer decoupled from the actual Qdrant implementation.

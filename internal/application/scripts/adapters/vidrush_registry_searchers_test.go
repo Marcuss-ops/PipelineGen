@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -231,5 +232,110 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	}
 	if len(result.Assets.SecondaryImages) == 0 {
 		t.Fatal("expected internet image candidates in secondary images")
+	}
+}
+
+// TestVidRushProviderFanoutCachesEmptyImageResults certifies the durable-runner
+// provider fanout caches empty internet_images results in L2 (TTL 48h) so a
+// warm replay of the same segment is deterministic and does not re-call the
+// provider:
+//   - Run A (cold, force_refresh_assets=true): a real provider call, the empty
+//     result is stored in L2.
+//   - Run B (warm, same segment identity): the L2 hit replays the empty result
+//     as HIT_EXACT with zero provider calls.
+func TestVidRushProviderFanoutCachesEmptyImageResults(t *testing.T) {
+	vidrushImageCache = sync.Map{}
+	entityImageCache = sync.Map{}
+	searcher := &emptyInternetImageSearcher{}
+	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
+
+	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
+		return &scriptpkg.ResolvedGenerationPlan{
+			Topic:    "civiltà maya",
+			Language: "it",
+			MediaPlan: mediadomain.MediaPlanSpec{
+				ProviderPolicy:     mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+				ForceRefreshAssets: forceRefresh,
+			},
+		}
+	}
+	segment := func(textHash string) scriptpkg.VidRushSegmentResult {
+		return scriptpkg.VidRushSegmentResult{
+			SegmentID: "scene-0",
+			TextHash:  textHash,
+			Insights: scriptpkg.SegmentInsights{
+				ImageQueries: []string{"valle remota"},
+			},
+		}
+	}
+
+	// Run A — cold: real provider call, empty result cached in L2.
+	a, err := fanout.ResolveProviders(context.Background(), plan(true), segment("cold-text-hash"))
+	if err != nil {
+		t.Fatalf("run A failed: %v", err)
+	}
+	if searcher.calls != 1 {
+		t.Fatalf("run A provider calls = %d, want 1 real search", searcher.calls)
+	}
+	if got := a.Cache.InternetImages; got != "REFRESHED" {
+		t.Fatalf("run A cache state = %q, want REFRESHED", got)
+	}
+
+	// Run B — warm: L2 hit replays the empty result, no provider call.
+	b, err := fanout.ResolveProviders(context.Background(), plan(false), segment("cold-text-hash"))
+	if err != nil {
+		t.Fatalf("run B failed: %v", err)
+	}
+	if searcher.calls != 1 {
+		t.Fatalf("run B provider calls = %d, want still 1 (L2 empty hit must not search)", searcher.calls)
+	}
+	if got := b.Cache.InternetImages; got != "HIT_EXACT" {
+		t.Fatalf("run B cache state = %q, want HIT_EXACT", got)
+	}
+}
+
+// TestVidRushProviderFanoutForceRefreshBypassesCache pins that plan.ForceRefresh
+// (top-level force_refresh) bypasses the internet_images asset cache even when
+// the segment identity and per-query key (topic+query+language) are unchanged,
+// so a force-refresh run re-searches instead of reporting HIT_EXACT.
+func TestVidRushProviderFanoutForceRefreshBypassesCache(t *testing.T) {
+	vidrushImageCache = sync.Map{}
+	entityImageCache = sync.Map{}
+	searcher := &emptyInternetImageSearcher{}
+	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
+
+	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
+		return &scriptpkg.ResolvedGenerationPlan{
+			Topic:        "civiltà maya",
+			Language:     "it",
+			ForceRefresh: forceRefresh,
+			MediaPlan: mediadomain.MediaPlanSpec{
+				ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			},
+		}
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-0", TextHash: "same-hash",
+		Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"valle remota"}},
+	}
+
+	// Seed a cold search (empty) so the caches are populated.
+	if _, err := fanout.ResolveProviders(context.Background(), plan(false), segment); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+	if searcher.calls != 1 {
+		t.Fatalf("seed provider calls = %d, want 1", searcher.calls)
+	}
+
+	// force_refresh with identical segment identity: must re-search.
+	b, err := fanout.ResolveProviders(context.Background(), plan(true), segment)
+	if err != nil {
+		t.Fatalf("force-refresh failed: %v", err)
+	}
+	if searcher.calls != 2 {
+		t.Fatalf("force-refresh provider calls = %d, want 2 (cache must be bypassed)", searcher.calls)
+	}
+	if got := b.Cache.InternetImages; got == "HIT_EXACT" {
+		t.Fatalf("force-refresh cache state = %q, want a fresh search (MISS/REFRESHED)", got)
 	}
 }

@@ -35,10 +35,10 @@ func TestReindexVerifier_PointCountStrict_UnderCountBlocks(t *testing.T) {
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
-			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+		"embedding_version_text": "2026-06-26-v1",
+		"embedding_version_transcript": "2026-06-26-v1",
+		"embedding_version_visual": "2026-06-16-v1",
+		"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -75,10 +75,10 @@ func TestReindexVerifier_PointCountStrict_OverCountBlocks(t *testing.T) {
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -181,10 +181,10 @@ func TestReindexVerifier_NonCanonicalPointIDBlocking(t *testing.T) {
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, nonCanonicalUUID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -225,7 +225,7 @@ func TestReindexVerifier_PerChannelCheckEveryPage_SampleRemoved(t *testing.T) {
 	page1 := canonicalPointPayload("asset-2-missing-channel")
 	// Strip the per-channel key for asset-2 so the test point is
 	// valid except for the missing-channel vector.
-	page1MissingChannel := strings.Replace(page1, `"embedding_version_text": "2026-06-16-v1",`, "", 1)
+	page1MissingChannel := strings.Replace(page1, `"embedding_version_text": "2026-06-26-v1",`, "", 1)
 	srv := mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
 		PagePayloads: []string{
 			canonicalPointPayload("asset-1"), // page 0
@@ -266,10 +266,10 @@ func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
 			"name": "a1",
 			"source": "youtube",
 			"embedding_version": "v3",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -298,6 +298,7 @@ func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
 	assert.True(t, gd.PayloadValidation.Passed, "payload_validation")
 	assert.True(t, gd.EmbeddingVersion.Passed, "embedding_version")
 	assert.True(t, gd.CanonicalPointID.Passed, "canonical_point_id")
+	assert.True(t, gd.DuplicatePoints.Passed, "duplicate_points")
 	assert.True(t, gd.DeadLetters.Passed, "dead_letters")
 	assert.True(t, gd.GoldenQueries.Passed, "golden_queries")
 	assert.True(t, gd.FilterSmoke.Passed, "filter_smoke")
@@ -319,10 +320,10 @@ func canonicalPointPayload(assetID string) string {
 			"asset_id": %q,
 			"name": "n",
 			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID, assetID)
 }

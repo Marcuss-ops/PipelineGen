@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -110,6 +111,14 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		return fmt.Errorf("complete: insert job event: %w", err)
 	}
 
+	// Emit the canonical job.completed outbox event atomically with the
+	// SUCCEEDED flip. Derived projections (performance_runs/
+	// performance_steps) consume it and rebuild from the finalized run
+	// report — no manual backfill required for new jobs.
+	if err := enqueueJobCompletedOutboxEvent(ctx, tx, id, nowStr); err != nil {
+		return fmt.Errorf("complete: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("complete: commit: %w", err)
 	}
@@ -171,8 +180,35 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		return fmt.Errorf("fail: insert job event: %w", err)
 	}
 
+	// Emit the canonical job.completed outbox event atomically with the
+	// FAILED flip (same derived-projection trigger as the SUCCEEDED path).
+	if err := enqueueJobCompletedOutboxEvent(ctx, tx, id, nowStr); err != nil {
+		return fmt.Errorf("fail: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("fail: commit: %w", err)
+	}
+	return nil
+}
+
+// enqueueJobCompletedOutboxEvent emits the canonical job.completed outbox
+// event inside the caller's open transaction, atomically with the terminal
+// status flip (SUCCEEDED or FAILED). It is the durable trigger consumed by
+// the outbox pool's performance-projection handler, which rebuilds
+// performance_runs / performance_steps from the finalized run report — no
+// manual backfill is required for new jobs.
+//
+// Idempotency: the event_key is `job.completed:<id>`. Each job reaches a
+// terminal state at most once (the CAS fence above guarantees a single
+// successful flip), and the outbox's ON CONFLICT(event_key) DO NOTHING
+// collapses any retry-side duplicate.
+func enqueueJobCompletedOutboxEvent(ctx context.Context, tx *sql.Tx, jobID, nowStr string) error {
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`,
+		outboxevents.EventJobCompleted, jobID, "", `{"job_id":"`+jobID+`"}`, outboxevents.JobCompletedEventKey(jobID), nowStr, nowStr,
+	); err != nil {
+		return fmt.Errorf("enqueue job.completed outbox event: %w", err)
 	}
 	return nil
 }

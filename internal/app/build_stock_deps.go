@@ -202,6 +202,10 @@ type StockEnrichmentDeps struct {
 	// (nil = disabled-mode wiring; the handler's godlike/07
 	// nil-tolerance logs a Warn and skips the emit step).
 	EnrichmentEmitter stockenrich.AssetPublishedEmitter
+
+	// AssetMetadataUpdater is the canonical MediaCommitter-owned mutation
+	// surface for enrichment results.
+	AssetMetadataUpdater stockenrich.AssetMetadataUpdater
 }
 
 // validateStockSymmetricGate enforces the godlike/07 production pairing

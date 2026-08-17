@@ -47,6 +47,15 @@ func parseAndValidateRequest(payloadJSON string, evt outboxevents.Event, log *za
 		)
 	}
 
+	// index_revision is the canonical supersede fingerprint (godlike/06:
+	// content_sha256 vs index_revision). Legacy events that only carry the
+	// source_version alias fall back to it so the supersede gate keeps
+	// comparing the SAME semantic (indexable-snapshot revision), never the
+	// byte hash.
+	if p.IndexRevision == "" {
+		p.IndexRevision = p.SourceVersion
+	}
+
 	// Strict v1 envelope validation. Each missing/mismatched field is
 	// TERMINAL — retrying won't bring the field into existence.
 	if p.SchemaVersion != IndexRequestSchemaVersion {
@@ -79,17 +88,17 @@ func parseAndValidateRequest(payloadJSON string, evt outboxevents.Event, log *za
 			fmt.Errorf("asset.index.requested: empty asset_id (terminal — retry cannot conjure an id)"),
 		)
 	}
-	if p.SourceVersion == "" {
-		// Empty source_version is the canonical supersede amibiguity
-		// signal — we cannot verify the event is current, so retrying
-		// won't fix it. Producers MUST send the ingest-time content
-		// hash. Terminal so producers upgrade.
-		log.Warn("asset.index.requested: missing source_version (terminal)",
+	if p.IndexRevision == "" {
+		// Empty index_revision (and its legacy source_version alias) is
+		// the canonical supersede ambiguity signal — we cannot verify the
+		// event is current, so retrying won't fix it. Producers MUST send
+		// the indexable-snapshot revision. Terminal so producers upgrade.
+		log.Warn("asset.index.requested: missing index_revision (terminal)",
 			zap.Int64("event_id", evt.ID),
 			zap.String("aggregate_id", evt.AggregateID),
 		)
 		return nil, outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: source_version is required for the supersede gate (terminal — retry cannot conjure a fingerprint)"),
+			fmt.Errorf("asset.index.requested: index_revision (or legacy source_version) is required for the supersede gate (terminal — retry cannot conjure a fingerprint)"),
 		)
 	}
 	if p.IdempotencyKey == "" {

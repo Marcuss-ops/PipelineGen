@@ -49,6 +49,7 @@ func checkSemanticSearchReal(ctx context.Context, deps readinessDeps) checkStatu
 		Actor: search.Actor{
 			WorkspaceID: canary.workspaceID,
 			UserID:      "readiness-canary",
+			IsSystem:    canary.workspaceID == "",
 			IsAdmin:     false,
 		},
 	}
@@ -81,6 +82,14 @@ func checkSemanticSearchReal(ctx context.Context, deps readinessDeps) checkStatu
 			"semantic canary asset %q (search_text=%q) not found in top %d results",
 			canary.assetID, canary.searchText, len(result.Items),
 		)}
+	}
+
+	// Legacy rows may predate workspace assignment. They are searched only
+	// through the explicit system scope above; there is no tenant boundary to
+	// test for such a row. Newly ingested assets must carry a real workspace
+	// and are covered by the isolation branch below.
+	if canary.workspaceID == "" {
+		return checkStatus{Pass: true}
 	}
 
 	// Cross-workspace isolation: a different workspace must NOT see this asset.
@@ -126,15 +135,35 @@ type semanticCanary struct {
 // non-empty embedding_json and at least one of search_text/name.
 func findSemanticCanary(ctx context.Context, db *sql.DB) (semanticCanary, error) {
 	query := `
-		SELECT id, COALESCE(workspace_id, ''), COALESCE(search_text, name, '')
+		SELECT id, COALESCE(workspace_id, ''), COALESCE(NULLIF(search_text, ''), name, '')
 		FROM media_assets
 		WHERE lifecycle_state = 'ACTIVE'
 		  AND COALESCE(embedding_json, '') != ''
 		  AND COALESCE(embedding_json, '') != '[]'
-		  AND (COALESCE(search_text, '') != '' OR COALESCE(name, '') != '')
-		ORDER BY id
-		LIMIT 1
+		  AND (COALESCE(NULLIF(search_text, ''), name, '') != '')
 	`
+	// Keep the readiness fixture backwards-compatible while using the
+	// canonical Qdrant eligibility boundary in production databases.
+	// The small in-memory fixtures intentionally contain only the older
+	// minimal schema, so optional predicates are added only when their
+	// columns are present.
+	columns, err := tableColumns(ctx, db, "media_assets")
+	if err != nil {
+		return semanticCanary{}, err
+	}
+	if columns["index_state"] && columns["media_type"] && columns["asset_kind"] && columns["namespace"] && columns["source_type"] {
+		query += `
+		  AND index_state = 'INDEXED'
+		  AND ((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
+		       OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
+		  AND COALESCE(namespace, '') != ''
+		  AND COALESCE(source_type, '') != ''
+		ORDER BY CASE WHEN media_type IN ('video', 'image') THEN 0 ELSE 1 END, id
+		LIMIT 1
+		`
+	} else {
+		query += ` ORDER BY id LIMIT 1`
+	}
 	var canary semanticCanary
 	if err := db.QueryRowContext(ctx, query).Scan(
 		&canary.assetID, &canary.workspaceID, &canary.searchText,
@@ -149,9 +178,27 @@ func findSemanticCanary(ctx context.Context, db *sql.DB) (semanticCanary, error)
 	if canary.searchText == "" {
 		return semanticCanary{}, fmt.Errorf("canary asset %q has empty search_text/name", canary.assetID)
 	}
-	if canary.workspaceID == "" {
-		canary.workspaceID = "default"
-	}
-
 	return canary, nil
+}
+
+func tableColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return nil, fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	columns := make(map[string]bool)
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, fmt.Errorf("scan %s columns: %w", table, err)
+		}
+		columns[strings.ToLower(name)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s columns: %w", table, err)
+	}
+	return columns, nil
 }

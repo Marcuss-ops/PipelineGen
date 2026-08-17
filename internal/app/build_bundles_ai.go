@@ -187,6 +187,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// Translator. The adapter bridges scriptgeneration.GenerateRequest
 	// to the existing engine ResolvedGenerationPlan.
 	sceneTextGen := wiring.NewSceneTextGenerator(engine, log)
+	sceneTextGen.SetMemoryService(memSvc)
 	if repos != nil && repos.ClipsRepo != nil {
 		sceneTextGen.SetClipAssetResolver(repos.ClipsRepo)
 		log.Info("wiring.SceneTextGenerator canonical clip asset resolver configured")

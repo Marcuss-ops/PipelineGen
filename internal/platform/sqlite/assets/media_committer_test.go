@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,
     source TEXT, name TEXT, filename TEXT, media_type TEXT,
     category TEXT NOT NULL DEFAULT '', duration_ms INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT '', tags_norm TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT, drive_link TEXT, download_link TEXT,
     local_path TEXT, file_hash TEXT, binary_sha256 TEXT NOT NULL DEFAULT '',
     folder_id TEXT, folder_path TEXT,

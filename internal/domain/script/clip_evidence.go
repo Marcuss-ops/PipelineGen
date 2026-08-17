@@ -154,16 +154,17 @@ func BuildSegmentClipEvidence(segments []ScriptSegment, evidence *ClipEvidence) 
 
 // ClipDetail carries the primary evidence for one accepted clip.
 type ClipDetail struct {
-	Name           string   `json:"name,omitempty"`
-	Description    string   `json:"description,omitempty"`
-	Transcript     string   `json:"transcript,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	StartMs        int64    `json:"start_ms,omitempty"`
-	EndMs          int64    `json:"end_ms,omitempty"`
-	DriveLink      string   `json:"drive_link,omitempty"`
-	SubtitleLink   string   `json:"subtitle_link,omitempty"`
-	SubtitleFileID string   `json:"subtitle_file_id,omitempty"`
-	LocalPath      string   `json:"-"`
+	Name            string   `json:"name,omitempty"`
+	Description     string   `json:"description,omitempty"`
+	Transcript      string   `json:"transcript,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
+	StartMs         int64    `json:"start_ms,omitempty"`
+	EndMs           int64    `json:"end_ms,omitempty"`
+	TotalDurationMs int64    `json:"total_duration_ms,omitempty"`
+	DriveLink       string   `json:"drive_link,omitempty"`
+	SubtitleLink    string   `json:"subtitle_link,omitempty"`
+	SubtitleFileID  string   `json:"subtitle_file_id,omitempty"`
+	LocalPath       string   `json:"-"`
 }
 
 // ModelClipView is the model-facing projection of one clip.

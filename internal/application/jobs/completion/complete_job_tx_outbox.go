@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // emitOutboxEvents fans out canonical outbox events for the
@@ -24,11 +25,13 @@ import (
 // event_kind) idempotency key so retries collapse to one row in
 // the outbox_events table.
 func (s *Service) emitOutboxEvents(ctx context.Context, tx TxContext, req *remote.CompleteJobRequest, artifactIDs []string) error {
-	// One summary JOB_COMPLETED event.
-	jcKey := remote.CompleteJobIdempotencyKey(req.JobID, req.Attempt, "JOB_COMPLETED")
+	// One summary JOB_COMPLETED event. The event_key is the canonical
+	// `job.completed:<jobID>` shared with SQLiteStore.Complete/Fail and the
+	// JobFinalizer so a cross-path re-completion of the same job dedups to
+	// one outbox row (ON CONFLICT(event_key) DO NOTHING).
 	if err := tx.InsertOutboxEnvelope(ctx, OutboxEnvelope{
-		IdempotencyKey: jcKey,
-		EventKind:      "job.completed",
+		IdempotencyKey: outboxevents.JobCompletedEventKey(req.JobID),
+		EventKind:      outboxevents.EventJobCompleted,
 		Payload:        req.Result,
 	}); err != nil {
 		return fmt.Errorf("insert job.completed envelope: %w", err)

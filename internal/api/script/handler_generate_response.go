@@ -29,6 +29,7 @@ package script
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -82,6 +83,11 @@ func writeGenerateSubmitError(c *gin.Context, err error) {
 	c.JSON(status, gin.H{
 		"ok":    false,
 		"error": "operations submission failed",
+		"cause": gin.H{
+			"stage":  "submission",
+			"code":   "SCRIPT_GENERATION_SUBMISSION_FAILED",
+			"reason": fmt.Sprintf("%v", err),
+		},
 	})
 }
 
@@ -126,7 +132,7 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 //   - Otherwise             → 202 with GenerateResponse.asyncWithStage
 //
 // The run's CurrentStage reflects the initial pipeline phase
-// (NORMALIZING → GENERATING_SCENE_TEXT → ... → WORKER_QUEUED).
+// (NORMALIZING → GENERATING_SCENE_TEXT → ... → PUBLISHING_DOCUMENTS).
 func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, res *opsapp.SubmitResult, isReplay bool) {
 	if isReplay {
 		c.Writer.Header().Set("X-Idempotency-Replay", "true")

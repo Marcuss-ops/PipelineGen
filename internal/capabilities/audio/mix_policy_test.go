@@ -62,11 +62,29 @@ func TestCompileWithMixPolicy_DuckedClipAppliesGainAndAutomation(t *testing.T) {
 	if a.TargetTrackID != "clip_audio" || a.TriggerTrackID != "voiceover" || a.GainDB != DuckClipActiveGainDB {
 		t.Fatalf("ducking automation = %+v", a)
 	}
-	if a.StartUS != 0 || a.EndUS != 10_000_000 {
-		t.Fatalf("duck window = [%d,%d), want [0,10000000)", a.StartUS, a.EndUS)
+	if a.StartUS != 0 || a.EndUS != 8_000_000 {
+		t.Fatalf("duck window = [%d,%d), want [0,8000000) (ends at the 8s voiceover source duration)", a.StartUS, a.EndUS)
 	}
 	if a.AttackUS != DuckAttackUS || a.ReleaseUS != DuckReleaseUS {
 		t.Fatalf("duck ramps = [%d,%d), want [%d,%d)", a.AttackUS, a.ReleaseUS, DuckAttackUS, DuckReleaseUS)
+	}
+}
+
+func TestCompileWithMixPolicy_DuckingCoversWholeWindowWhenSourceDurationMatches(t *testing.T) {
+	tl := combinedTimeline()
+	// Voiceover source duration equals the scene window: the duck zone must
+	// span the full window (no early release).
+	tl.Segments[0].AudioIntents[0].SourceDurationUS = 10_000_000
+	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Automation) != 1 {
+		t.Fatalf("automation = %+v, want exactly one ducking entry", plan.Automation)
+	}
+	a := plan.Automation[0]
+	if a.StartUS != 0 || a.EndUS != 10_000_000 {
+		t.Fatalf("duck window = [%d,%d), want [0,10000000)", a.StartUS, a.EndUS)
 	}
 }
 

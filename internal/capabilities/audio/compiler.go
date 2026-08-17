@@ -124,7 +124,12 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 	for _, ce := range clip.Events {
 		clipEnd := ce.TimelineStartUS + ce.DurationUS
 		for _, ve := range vo.Events {
-			voEnd := ve.TimelineStartUS + ve.DurationUS
+			// Duck only while speech is actually present. DurationUS is the
+			// scene window; SourceDurationUS is the certified speech length.
+			// The duck zone ends at the shorter of the two so the clip returns
+			// to its base gain as soon as the narration stops instead of
+			// staying ducked for the whole scene window.
+			voEnd := ve.TimelineStartUS + min(ve.DurationUS, ve.SourceDurationUS)
 			start := ce.TimelineStartUS
 			if ve.TimelineStartUS > start {
 				start = ve.TimelineStartUS

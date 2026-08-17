@@ -35,8 +35,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // stubServiceForGetFull is the minimal job.Service stub that
@@ -311,6 +313,130 @@ func TestGetFull_ExposesTimingReferences(t *testing.T) {
 	assert.Contains(t, result, `"duration_us"`, "the timing bundle must expose the duration")
 	assert.NotContains(t, result, `"words"`, "the /full payload must NOT inline the word-level timing array")
 	_ = body
+}
+
+// stubHistoryReader is the minimal appjobs.HistoryReader stub that returns a
+// canned run-report JSON for GetRunReport (the timing-diagnostics surface).
+type stubHistoryReader struct {
+	report json.RawMessage
+	err    error
+}
+
+func (s *stubHistoryReader) ListHistory(_ context.Context, _ appjobs.HistoryFilter) ([]appjobs.HistoryItem, error) {
+	return nil, nil
+}
+func (s *stubHistoryReader) GetRunReport(_ context.Context, _ string) (json.RawMessage, error) {
+	return s.report, s.err
+}
+
+var _ appjobs.HistoryReader = (*stubHistoryReader)(nil)
+
+// runGetFullWithHistory wires the canonical handler with a stub service AND a
+// history reader, then fires GET /api/jobs/{id}/full.
+func runGetFullWithHistory(t *testing.T, stub *stubServiceForGetFull, history appjobs.HistoryReader) []byte {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	h := NewJobsHandler(stub, nil, zap.NewNop())
+	h.SetHistoryReader(history)
+	router := gin.New()
+	rg := router.Group("/jobs")
+	h.RegisterRoutes(rg)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/jobs/"+stub.outID+"/full", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	return rec.Body.Bytes()
+}
+
+// TestGetFull_ExposesTimingBreakdown pins the PR-SCRIPT-TIMING contract: the
+// /full payload exposes a `timing` object derived from the canonical run
+// report (wall, attributed/unattributed, bottleneck, per-stage and
+// per-operation work) — never from job timestamps.
+func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
+	report := kernobs.RunReport{
+		WallTimeMs: 86721,
+		Stages: []kernobs.StageReport{
+			{Name: "source.resolve", Status: "completed", DurationMs: 1840},
+			{Name: "script.plan", Status: "completed", DurationMs: 365},
+			{Name: "script.engine", Status: "completed", DurationMs: 79320},
+			{Name: "script.postprocess", Status: "completed", DurationMs: 2994},
+			{Name: "persistence.sqlite", Status: "completed", DurationMs: 281},
+			{Name: "document.publish", Status: "completed", DurationMs: 918},
+		},
+		Operations: []kernobs.OperationReport{
+			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 420},
+			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 690},
+			{Stage: "script.engine", Component: "ollama", Operation: "generate", DurationMs: 78910},
+			{Stage: "document.publish", Component: "google_docs", Operation: "publish", DurationMs: 710},
+		},
+	}
+	raw, err := json.Marshal(&report)
+	require.NoError(t, err)
+
+	stub := &stubServiceForGetFull{
+		outID:     "job-timing-diag-1",
+		outType:   pushedType,
+		outStatus: job.StatusSucceeded,
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{report: raw})
+
+	var envelope struct {
+		Timing kernobs.TimingSummary `json:"timing"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+
+	timing := envelope.Timing
+	assert.Equal(t, int64(86721), timing.WallMs, "timing.wall_ms must equal the canonical run wall time")
+	assert.Equal(t, "script.engine", timing.BottleneckStage, "bottleneck_stage must be the top-level max-duration stage")
+	assert.Equal(t, "ollama.generate", timing.BottleneckOperation, "bottleneck_operation must be the dominant operation under the bottleneck stage")
+
+	stageMs := make(map[string]int64, len(timing.Stages))
+	for _, st := range timing.Stages {
+		stageMs[st.Name] = st.DurationMs
+	}
+	assert.Equal(t, int64(1840), stageMs["source.resolve"], "source.resolve stage wall must surface")
+	assert.Equal(t, int64(281), stageMs["persistence.sqlite"], "persistence.sqlite stage wall must surface")
+	assert.Equal(t, int64(918), stageMs["document.publish"], "document.publish stage wall must surface")
+
+	opWork := make(map[string]int64, len(timing.Operations))
+	for _, op := range timing.Operations {
+		opWork[op.Component+"."+op.Operation] = op.WorkMs
+	}
+	assert.Equal(t, int64(420), opWork["qdrant.search"], "qdrant.search work must surface")
+	assert.Equal(t, int64(690), opWork["sqlite.hydrate"], "sqlite.hydrate work must surface")
+	assert.Equal(t, int64(78910), opWork["ollama.generate"], "ollama.generate work must surface")
+	assert.Equal(t, int64(710), opWork["google_docs.publish"], "google_docs.publish work must surface")
+}
+
+// TestGetFull_TimingNullWithoutReport pins the shape-stability contract: the
+// `timing` key is always present on /full (null when no history reader or no
+// report exists) so polling clients never see a missing field.
+func TestGetFull_TimingNullWithoutReport(t *testing.T) {
+	stub := &stubServiceForGetFull{
+		outID:     "job-timing-diag-2",
+		outType:   pushedType,
+		outStatus: job.StatusRunning,
+	}
+
+	// No history reader → timing must be null (not absent).
+	gin.SetMode(gin.TestMode)
+	h := NewJobsHandler(stub, nil, zap.NewNop())
+	router := gin.New()
+	rg := router.Group("/jobs")
+	h.RegisterRoutes(rg)
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/jobs/"+stub.outID+"/full", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var envelope struct {
+		Timing *kernobs.TimingSummary `json:"timing"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
+	assert.Nil(t, envelope.Timing, "timing must be null when no run report is available")
+	assert.Contains(t, string(rec.Body.Bytes()), `"timing":null`, "timing key must serialize as null")
 }
 
 // TestGetFull_BackwardCompat_ExistingFieldsPreserved locks the

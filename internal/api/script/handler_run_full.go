@@ -104,7 +104,6 @@ type FullJobRunResponse struct {
 	// Generation artifacts.
 	Scenes    []SceneView             `json:"scenes,omitempty"`
 	Documents map[string]DocumentView `json:"documents,omitempty"`
-	RenderJob *RenderJobView          `json:"render_job,omitempty"`
 	WordCount int                     `json:"word_count,omitempty"`
 
 	// Failure metadata.
@@ -135,12 +134,6 @@ type VoiceoverView struct {
 type DocumentView struct {
 	ID   string `json:"id"`
 	Link string `json:"link"`
-}
-
-// RenderJobView is the public wire representation of a render job.
-type RenderJobView struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
 }
 
 // ── Enriched GetFullJobRun handler (reference-only, unmounted per SSOT) ─
@@ -232,12 +225,6 @@ func buildFullRunResponse(j *job.Job, run *scriptgen.GenerationRun) FullJobRunRe
 			resp.Scenes = convertScenesToView(run.Result.Scenes)
 			resp.Documents = convertDocumentsToView(run.Result.Documents)
 			resp.WordCount = run.Result.WordCount
-			if run.Result.RenderJob != nil {
-				resp.RenderJob = &RenderJobView{
-					JobID:  run.Result.RenderJob.JobID,
-					Status: run.Result.RenderJob.Status,
-				}
-			}
 		}
 	} else {
 		// No run found — derive current_stage from job status.
@@ -263,10 +250,8 @@ func buildStageStatusMap(run *scriptgen.GenerationRun) map[string]stageStatus {
 		scriptgen.StageGeneratingSceneText,
 		scriptgen.StageTranslatingScenes,
 		scriptgen.StageGeneratingVoiceovers,
+		scriptgen.StageCompilingAudio,
 		scriptgen.StagePublishingDocuments,
-		scriptgen.StageBuildingRenderPayload,
-		scriptgen.StageEnqueuingRender,
-		scriptgen.StageWorkerQueued,
 	}
 
 	stages := make(map[string]stageStatus, len(allStages)+2)

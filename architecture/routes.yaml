@@ -84,10 +84,10 @@ routes:
       path: /api/clips/search
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/clips/stats
+      path: /api/drive/files
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/drive/files
+      path: /api/history
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/images/diagnostics
@@ -150,9 +150,6 @@ routes:
       path: /api/media/index-health
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/script-assets/catalog
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
       path: /api/scripts
       source: cmd/admin/gen_api_docs.go
     - method: GET
@@ -160,9 +157,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/system/doctor
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/ui/health
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /assets/*filepath
@@ -231,13 +225,7 @@ routes:
       path: /api/assets/operator/bulk
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/clips/extract-important
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/clips/process
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/clips/search
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/clips/stock
@@ -262,9 +250,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/drive/resolve-by-id
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/fullimages/image/generate
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/images/batch-generate
@@ -306,12 +291,6 @@ routes:
       path: /api/media/:source/clips/:id/reupload
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/media/clips/:source/bulk/tags/add
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media/clips/:source/bulk/tags/remove
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/media/clips/:source/cleanup
       source: cmd/admin/gen_api_docs.go
     - method: POST
@@ -322,9 +301,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips/:id/fix-hash
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media/clips/:source/clips/:id/reindex
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips/:id/reprocess
@@ -346,9 +322,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/enrich
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media/clips/enrich/batch
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/ingest/ai-stock
@@ -379,9 +352,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/voiceover/generate
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/script-docs/generate
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /vlm/autotag/analyze-file

@@ -107,7 +107,7 @@ Submit it with curl (replace the token with your admin token):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/stock-pipeline/run \
-  -H "Authorization: Bearer test-admin-token-12345" \
+  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d @payload.json
 ```
@@ -138,7 +138,7 @@ Poll the job until it reaches a terminal state:
 ```bash
 JOB_ID="job_..."
 curl -s http://127.0.0.1:8000/api/jobs/$JOB_ID/full \
-  -H "Authorization: Bearer test-admin-token-12345"
+  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN"
 ```
 
 ## Payload fields

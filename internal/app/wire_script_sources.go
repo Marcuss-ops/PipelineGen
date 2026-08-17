@@ -74,8 +74,14 @@ import (
 // Qdrant client quietly omitted the SourceSearch resolver from
 // the registry instead of failing composition.
 type qdrantSemanticSearchPort struct {
-	searcher   *search.Searcher
-	embedder   search.TextEmbedder
+	searcher *search.Searcher
+	embedder search.TextEmbedder
+	// hydrator is deliberately the canonical SQLite resolver. Qdrant is
+	// only a projection: a point is never accepted as a clip until the
+	// exact payload asset_id exists in media_assets.
+	hydrator interface {
+		ResolveByMediaAssetID(context.Context, string) (*asset.Asset, error)
+	}
 	vectorName string
 	log        *zap.Logger
 }
@@ -86,8 +92,8 @@ type qdrantSemanticSearchPort struct {
 // the single seam between Qdrant-shaped payloads and the
 // source-resolver typed-port contract.
 func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query string, limit int, language string) ([]usecase.SemanticSearchResult, error) {
-	if p == nil || p.searcher == nil || p.embedder == nil {
-		return nil, nil
+	if p == nil || p.searcher == nil || p.embedder == nil || p.hydrator == nil {
+		return nil, fmt.Errorf("qdrant semantic search: canonical SQLite hydration is unavailable")
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -122,8 +128,15 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 		Limit:            searchLimit,
 		MinScore:         minScore,
 		Filter: map[string]any{
-			"must": []any{
-				map[string]any{"key": "media_type", "match": map[string]any{"value": "clip"}},
+			// Older clip projections use media_type=clip; the current
+			// canonical media registry uses media_type=video. Both are
+			// video clip evidence and must enter the same hydration gate.
+			"should": map[string]any{
+				"conditions": []any{
+					map[string]any{"key": "media_type", "match": map[string]any{"value": "clip"}},
+					map[string]any{"key": "media_type", "match": map[string]any{"value": "video"}},
+				},
+				"min_count": 1,
 			},
 			// Clip evidence is indexed as ACTIVE while stock/media
 			// projections are commonly PUBLISHED. Keep the source
@@ -146,9 +159,18 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 	}
 
 	out := make([]usecase.SemanticSearchResult, 0, len(results))
+	hydrationFailed := 0
+	pointWithoutAsset := 0
 	for _, r := range results {
 		assetID := qdrantPayloadStr(r.Payload, "asset_id")
 		if assetID == "" {
+			pointWithoutAsset++
+			hydrationFailed++
+			continue
+		}
+		canonical, resolveErr := p.hydrator.ResolveByMediaAssetID(ctx, assetID)
+		if resolveErr != nil || canonical == nil || strings.TrimSpace(canonical.ID) != assetID {
+			hydrationFailed++
 			continue
 		}
 		out = append(out, usecase.SemanticSearchResult{
@@ -167,6 +189,15 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 			),
 			AnchorCoverageRatio: 1.0,
 		})
+	}
+	if p.log != nil {
+		p.log.Info("qdrant semantic search hydration gate",
+			zap.Int("qdrant_results", len(results)),
+			zap.Int("sqlite_hydrated", len(out)),
+			zap.Int("hydration_failed", hydrationFailed),
+			zap.Int("accepted_clips", len(out)),
+			zap.Int("qdrant_point_without_sqlite_asset", pointWithoutAsset),
+		)
 	}
 	return out, nil
 }

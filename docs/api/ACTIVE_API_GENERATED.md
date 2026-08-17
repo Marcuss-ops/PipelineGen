@@ -79,10 +79,7 @@
 | GET | `/api/clips/diagnostics` | Clips diagnostics |
 | GET | `/api/clips/info` | Get YouTube video metadata |
 | GET | `/api/clips/search` | Search and rank YouTube videos by topic |
-| GET | `/api/clips/stats` | Get clips statistics |
-| POST | `/api/clips/extract-important` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/clips/process` | Download and process clips |
-| POST | `/api/clips/search` | Search and rank YouTube videos by topic (POST variant) |
 | POST | `/api/clips/stock` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/drive
@@ -98,11 +95,11 @@
 | POST | `/api/drive/rename` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/drive/resolve-by-id` | Resolve Drive folder by ID |
 
-## /api/fullimages
+## /api/history
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/fullimages/image/generate` | Generate one image per section (fullimages image-only pipeline) |
+| GET | `/api/history` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/images
 
@@ -113,7 +110,7 @@
 | GET | `/api/images/generated/styles` | List generated image styles |
 | GET | `/api/images/retrieved/search` | Search retrieved images |
 | GET | `/api/images/search` | Search images by territory |
-| POST | `/api/images/batch-generate` | Batch generate AI images asynchronously |
+| POST | `/api/images/batch-generate` | Batch generate AI images asynchronously (items or mode=sections) |
 | POST | `/api/images/generated/generate` | Generate an AI image |
 | POST | `/api/images/sync` | Sync images to Drive |
 | POST | `/api/images/upload` | Upload an image |
@@ -127,7 +124,6 @@
 | GET | `/api/jobs/:id/events` | Get job event stream |
 | GET | `/api/jobs/:id/full` | Get full job details |
 | GET | `/api/jobs/stats` | Get job statistics |
-| GET | `/api/history` | Get canonical operation history |
 | POST | `/api/jobs` | Enqueue a new job |
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |
@@ -150,13 +146,10 @@
 | PATCH | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/:source/clips/:id/download` | Download clip |
 | POST | `/api/media/:source/clips/:id/reupload` | Re-upload clip to Drive |
-| POST | `/api/media/clips/:source/bulk/tags/add` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/bulk/tags/remove` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/cleanup` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/duplicates` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/fix-hash` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/reindex` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/reprocess` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/status` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/verify` | ⚠️ MISSING DESCRIPTION |
@@ -164,7 +157,6 @@
 | POST | `/api/media/clips/:source/folders/:id/manifest` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/reconcile` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/enrich` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/enrich/batch` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/ingest/ai-stock` | Ingest an AI-generated stock clip from visual analysis + Drive video |
 | POST | `/api/media/clips/upload-video` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
@@ -187,18 +179,6 @@
 | POST | `/api/media-memory/bindings/:id/reject` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media-memory/resolve` | ⚠️ MISSING DESCRIPTION |
 
-## /api/script-assets
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/script-assets/catalog` | ⚠️ MISSING DESCRIPTION |
-
-## /api/script-docs
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/script-docs/generate` | ⚠️ MISSING DESCRIPTION |
-
 ## /api/scripts
 
 | Method | Path | Description |
@@ -211,12 +191,6 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/system/doctor` | System diagnostics |
-
-## /api/ui
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/ui/health` | ⚠️ MISSING DESCRIPTION |
 
 ## /assets/*filepath
 

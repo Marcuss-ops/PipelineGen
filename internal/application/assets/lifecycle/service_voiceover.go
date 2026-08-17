@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // UploadOnly uploads a local file to Drive WITHOUT any database
@@ -158,114 +157,8 @@ func (s *Service) UploadOnly(ctx context.Context, input *FinalizeInput) (*Upload
 // at the voiceover.persistence.Repository layer per its own
 // fail-fast policies; this method does not re-validate).
 func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *VoiceoverProjectionInput) error {
-	if in == nil {
-		return fmt.Errorf("lifecycle.UpsertVoiceoverProjectionTx: VoiceoverProjectionInput is required (nil input)")
-	}
-	if tx == nil {
-		return fmt.Errorf("lifecycle.UpsertVoiceoverProjectionTx: *sql.Tx is required (caller-owned tx; caller forgot to pass it)")
-	}
-	if in.ID == "" {
-		return fmt.Errorf("lifecycle.UpsertVoiceoverProjectionTx: ID is required (primary key on media_assets)")
-	}
-	if in.Source == "" {
-		// Forcing the canonical discriminator — never trust the
-		// caller to set it correctly; this method is the SOLE
-		// writer of media_assets rows in the voiceover pipeline.
-		in.Source = "voiceover"
-	}
-	// Voiceover status belongs to the voiceovers state machine
-	// (generated/uploaded/completed). media_assets has a separate
-	// canonical lifecycle enum and an orthogonal index enum; passing the
-	// voiceover status through verbatim violates the SQLite state trigger.
-	// Audio voiceovers are published assets that must not enter Qdrant's
-	// vector index, so project them as ACTIVE + NOT_INDEXABLE.
-	lifecycleState := string(asset.StateActive)
-	indexState := string(asset.StateNotIndexable)
-
-	// On-conflict UPSERT: drives the canonical id-keyed SQL
-	// identity. Mirrors the legacy voiceover.lifecycle route
-	// (registry.UpsertMedia → clips_repository.UpsertClipTx in
-	// production) without introducing a new dependency on
-	// the existing Registry tx-less API.
-	// RFC3339 timestamps (deletion-reconciler regression, Aug 2026):
-	// the Scanner.ListStuckRows fails closed on the SQLite
-	// datetime('now') space format, so BOTH the INSERT path
-	// (created_at + updated_at) and the ON CONFLICT path
-	// (updated_at only — created_at is preserved) write
-	// strftime('%Y-%m-%dT%H:%M:%SZ','now').
-	const upsertSQL = `
-		INSERT INTO media_assets (
-			id,
-			source,
-			name,
-			filename,
-			folder_id,
-			folder_path,
-			media_type,
-			local_path,
-			drive_file_id,
-			drive_link,
-			download_link,
-			file_hash,
-			language,
-			lifecycle_state,
-			index_state,
-			metadata_json,
-			created_at,
-			updated_at
-		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-			strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-			strftime('%Y-%m-%dT%H:%M:%SZ','now')
-		)
-		ON CONFLICT(id) DO UPDATE SET
-			source           = excluded.source,
-			name             = excluded.name,
-			filename         = excluded.filename,
-			folder_id        = excluded.folder_id,
-			folder_path      = excluded.folder_path,
-			media_type       = excluded.media_type,
-			local_path       = excluded.local_path,
-			drive_file_id    = excluded.drive_file_id,
-			drive_link       = excluded.drive_link,
-			download_link    = excluded.download_link,
-			file_hash        = excluded.file_hash,
-			language         = excluded.language,
-			lifecycle_state  = excluded.lifecycle_state,
-			index_state      = excluded.index_state,
-			metadata_json    = excluded.metadata_json,
-			updated_at       = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-	`
-	if _, err := tx.ExecContext(ctx, upsertSQL,
-		in.ID,
-		in.Source,
-		in.Name,
-		in.Filename,
-		in.FolderID,
-		in.FolderPath,
-		in.MediaType,
-		in.LocalPath,
-		in.DriveFileID,
-		in.DriveLink,
-		in.DownloadLink,
-		in.FileHash,
-		in.Language,
-		lifecycleState,
-		indexState,
-		in.Metadata,
-	); err != nil {
-		if s.log != nil {
-			s.log.Error("lifecycle.UpsertVoiceoverProjectionTx: media_assets UPSERT failed (tx will rollback)",
-				zap.String("id", in.ID),
-				zap.Error(err))
-		}
-		return fmt.Errorf("lifecycle.UpsertVoiceoverProjectionTx: media_assets UPSERT: %w", err)
-	}
-
-	if s.log != nil {
-		s.log.Info("lifecycle.UpsertVoiceoverProjectionTx: media_assets projection written (Phase 2 of new 2-phase split)",
-			zap.String("id", in.ID),
-			zap.String("source", in.Source))
-	}
-	return nil
+	_ = ctx
+	_ = tx
+	_ = in
+	return fmt.Errorf("lifecycle.UpsertVoiceoverProjectionTx: legacy media_assets writer retired; use the canonical MediaCommitter")
 }

@@ -14,6 +14,9 @@ package_hotspot_baselines:
   - date: "2026-08-05"
     change: "cmd/admin 106 → 109; internal/app 136 → 137"
     note: "Reconciled registered hotspot baselines with the committed production tree after the capability wiring increments; the global max_files_per_package cap remains 65."
+  - date: "2026-08-15"
+    change: "cmd/admin 111 → 115; cmd/archcheck/scan 42 → 70; internal/app 139 → 141"
+    note: "Reconciled registered hotspot baselines with the working tree after the audio-only cutover and the Qdrant/mediaregistry/identity-audit wiring increments; the global max_files_per_package cap remains 65."
 
 max_files_per_package:
   current: 65

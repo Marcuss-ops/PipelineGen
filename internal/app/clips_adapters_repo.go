@@ -66,14 +66,6 @@ func (a *clipsRepoAdapter) DeleteFolder(ctx context.Context, id string) error {
 	return a.inner.DeleteFolder(ctx, id)
 }
 
-func (a *clipsRepoAdapter) BulkAddTags(ctx context.Context, ids, tags []string) error {
-	return a.inner.BulkAddTags(ctx, ids, tags)
-}
-
-func (a *clipsRepoAdapter) BulkRemoveTags(ctx context.Context, ids, tags []string) error {
-	return a.inner.BulkRemoveTags(ctx, ids, tags)
-}
-
 func (a *clipsRepoAdapter) ListClipsPaged(ctx context.Context, source string, limit, offset int, query string) ([]*asset.Asset, error) {
 	return a.inner.ListClipsPaged(ctx, source, limit, offset, query)
 }

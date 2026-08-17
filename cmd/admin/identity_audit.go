@@ -28,7 +28,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 

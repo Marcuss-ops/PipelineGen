@@ -1,0 +1,244 @@
+{
+  "schema_version": "pipelinegen.e2e.report.v1",
+  "generated_at": "2026-08-15T08:34:46Z",
+  "status": "FAIL",
+  "scope": {
+    "audio_mode": "NONE",
+    "render_video": false,
+    "save_to_db": true,
+    "docs_folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4",
+    "video_jobs_expected": 0
+  },
+  "jobs": {
+    "maya_cold": {
+      "job_id": "job_1786782690424735554_d210a21b",
+      "job_status": "SUCCEEDED",
+      "status": "FAIL",
+      "research": {
+        "status": "PASS",
+        "sources_count": 3,
+        "claims_verified": 3,
+        "search_query_count": 1,
+        "pages_fetched": 4,
+        "source_hash_present": true,
+        "research_report_present": true,
+        "quality_gate_passed": true
+      },
+      "cache": {
+        "status": "PASS",
+        "mode": "force_refresh",
+        "cache_saved": true
+      },
+      "persistence": {
+        "status": "FAIL",
+        "script_id": 79,
+        "script_id_positive": true,
+        "sqlite_row_exists": true,
+        "sqlite_status": "completed",
+        "result_word_count": 55,
+        "sqlite_final_word_count": 48,
+        "word_count_consistent": false
+      },
+      "entities": {
+        "status": "PASS",
+        "valid_entity_count": 5,
+        "segments_insights_entities": true,
+        "artifacts_entities": true
+      },
+      "images": {
+        "status": "PASS",
+        "internet_images_count": 2,
+        "provider": "internet_images"
+      },
+      "docs": {
+        "status": "PASS",
+        "document_present": true,
+        "drive_parent_verified": true,
+        "requested_folder_match": true
+      },
+      "video": {
+        "status": "PASS",
+        "video_job_count": 0
+      },
+      "output": {
+        "text_present": true,
+        "text_char_count": 363,
+        "word_count": 55,
+        "minimum_word_gate": true,
+        "audio_mode": "NONE",
+        "render_video": false
+      }
+    },
+    "maya_cache_hit": {
+      "job_id": "job_1786782766847657660_ec9252f3",
+      "job_status": "SUCCEEDED",
+      "status": "FAIL",
+      "research": {
+        "status": "PASS",
+        "sources_count": 3,
+        "claims_verified": 3,
+        "search_query_count": 1,
+        "pages_fetched": 4,
+        "source_hash_present": true,
+        "research_report_present": true,
+        "quality_gate_passed": true
+      },
+      "cache": {
+        "status": "PASS",
+        "mode": "prefer_cache",
+        "cache_hit_observed": true,
+        "hit_count": 22,
+        "last_used": "2026-08-15 08:32:47"
+      },
+      "persistence": {
+        "status": "FAIL",
+        "script_id": 79,
+        "script_id_positive": true,
+        "sqlite_row_exists": true,
+        "sqlite_status": "completed",
+        "result_word_count": 51,
+        "sqlite_final_word_count": 48,
+        "word_count_consistent": false
+      },
+      "entities": {
+        "status": "PASS",
+        "valid_entity_count": 5,
+        "segments_insights_entities": true,
+        "artifacts_entities": true
+      },
+      "images": {
+        "status": "PASS",
+        "internet_images_count": 2,
+        "provider": "internet_images"
+      },
+      "docs": {
+        "status": "PASS",
+        "document_present": true,
+        "drive_parent_verified": true,
+        "requested_folder_match": true
+      },
+      "video": {
+        "status": "PASS",
+        "video_job_count": 0
+      },
+      "output": {
+        "text_present": true,
+        "text_char_count": 336,
+        "word_count": 51,
+        "minimum_word_gate": true,
+        "audio_mode": "NONE",
+        "render_video": false
+      }
+    },
+    "etruschi": {
+      "job_id": "job_1786782602931002829_69fe62cd",
+      "job_status": "SUCCEEDED",
+      "status": "FAIL",
+      "research": {
+        "status": "PASS",
+        "sources_count": 3,
+        "claims_verified": 3,
+        "search_query_count": 1,
+        "pages_fetched": 3,
+        "source_hash_present": true,
+        "research_report_present": true,
+        "quality_gate_passed": true
+      },
+      "cache": {
+        "status": "PASS",
+        "mode": "force_refresh",
+        "cache_saved": true
+      },
+      "persistence": {
+        "status": "FAIL",
+        "script_id": 79,
+        "script_id_positive": true,
+        "sqlite_row_exists": true,
+        "sqlite_status": "completed",
+        "result_word_count": 99,
+        "sqlite_final_word_count": 48,
+        "word_count_consistent": false
+      },
+      "entities": {
+        "status": "PASS",
+        "valid_entity_count": 5,
+        "segments_insights_entities": true,
+        "artifacts_entities": true
+      },
+      "images": {
+        "status": "PASS",
+        "internet_images_count": 2,
+        "provider": "internet_images"
+      },
+      "docs": {
+        "status": "PASS",
+        "document_present": true,
+        "drive_parent_verified": true,
+        "requested_folder_match": true
+      },
+      "video": {
+        "status": "PASS",
+        "video_job_count": 0
+      },
+      "output": {
+        "text_present": true,
+        "text_char_count": 721,
+        "word_count": 99,
+        "minimum_word_gate": true,
+        "audio_mode": "NONE",
+        "render_video": false
+      }
+    }
+  },
+  "aggregate": {
+    "research": {
+      "status": "PASS",
+      "jobs_passed": 3,
+      "jobs_total": 3
+    },
+    "cache": {
+      "status": "PASS",
+      "maya_cache_hit": true,
+      "maya_hit_count": 22
+    },
+    "persistence": {
+      "status": "FAIL",
+      "script_ids_positive": true,
+      "sqlite_rows_present": true,
+      "word_count_consistent_for_all_jobs": false,
+      "known_issue": "All three results reuse script_id 79 while scripts.final_word_count remains 48."
+    },
+    "entities": {
+      "status": "PASS",
+      "jobs_with_at_least_five_valid_entities": 3,
+      "jobs_total": 3
+    },
+    "images": {
+      "status": "PASS",
+      "internet_image_assets_by_job": {
+        "maya_cold": 2,
+        "maya_cache_hit": 2,
+        "etruschi": 2
+      }
+    },
+    "docs": {
+      "status": "PASS",
+      "documents_resolved": 3,
+      "documents_with_requested_parent": 3,
+      "parent_match_ratio": "3/3"
+    },
+    "video": {
+      "status": "PASS",
+      "video_job_count_total": 0,
+      "video_job_count_by_job": {
+        "maya_cold": 0,
+        "maya_cache_hit": 0,
+        "etruschi": 0
+      }
+    }
+  },
+  "security": {
+    "credentials_exposed": false,
+    "database_manually_modified": false
+  }
+}

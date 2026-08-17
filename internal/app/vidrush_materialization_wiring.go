@@ -24,7 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -44,7 +43,7 @@ func buildVidRushMaterialization(cfg *config.Config, root *wiring.ComposeRoot, a
 	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, nil
 	}
-	committer := assets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+	committer := newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
 	assetTx := assetfinalizer.NewAssetTxFinalizer(log, committer)
 	preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 	finalizer := &vidRushArtifactFinalizer{db: root.DB.DB, preparation: preparation, assetTx: assetTx}

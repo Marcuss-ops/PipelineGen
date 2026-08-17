@@ -7,6 +7,7 @@ import (
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // fakeProjectionManager records the lifecycle calls RebuildV4Projection
@@ -91,7 +92,7 @@ func deterministicGolden() GoldenQueryExecutor {
 
 func TestRebuildV4Projection_DerivesSignedNameAndRunsLifecycle(t *testing.T) {
 	pm := &fakeProjectionManager{}
-	sig := schema.CanonicalV4Signature()
+	sig := platformschema.CanonicalV4Signature()
 	wantName, err := sig.PhysicalName()
 	if err != nil {
 		t.Fatalf("PhysicalName: %v", err)
@@ -120,7 +121,7 @@ func TestRebuildV4Projection_DerivesSignedNameAndRunsLifecycle(t *testing.T) {
 
 func TestRebuildV4Projection_InvalidSignatureFailsBeforeBuild(t *testing.T) {
 	pm := &fakeProjectionManager{}
-	sig := schema.CanonicalV4Signature()
+	sig := platformschema.CanonicalV4Signature()
 	sig.EmbeddingContractHash = "not-a-hash"
 
 	if _, err := RebuildV4Projection(context.Background(), pm, sig, "build-v4", 42, 10, nil, deterministicGolden()); err == nil {
@@ -148,7 +149,7 @@ func TestRebuildV4Projection_GoldenDriftFails(t *testing.T) {
 		return ids, nil
 	}
 
-	if _, err := RebuildV4Projection(context.Background(), pm, schema.CanonicalV4Signature(), "build-v4", 42, 10, nil, golden); err == nil {
+	if _, err := RebuildV4Projection(context.Background(), pm, platformschema.CanonicalV4Signature(), "build-v4", 42, 10, nil, golden); err == nil {
 		t.Fatal("RebuildV4Projection must fail on golden query drift")
 	}
 	if len(pm.activateCalls) != 0 {
@@ -158,7 +159,7 @@ func TestRebuildV4Projection_GoldenDriftFails(t *testing.T) {
 
 func TestRebuildV4Projection_ValidateFailureStopsLifecycle(t *testing.T) {
 	pm := &fakeProjectionManager{validateErr: errors.New("point count mismatch")}
-	if _, err := RebuildV4Projection(context.Background(), pm, schema.CanonicalV4Signature(), "build-v4", 42, 10, nil, deterministicGolden()); err == nil {
+	if _, err := RebuildV4Projection(context.Background(), pm, platformschema.CanonicalV4Signature(), "build-v4", 42, 10, nil, deterministicGolden()); err == nil {
 		t.Fatal("RebuildV4Projection must propagate a validation failure")
 	}
 	if len(pm.activateCalls) != 0 {

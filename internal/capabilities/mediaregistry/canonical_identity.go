@@ -62,12 +62,19 @@ type CanonicalIdentityResolver interface {
 	ResolveContent(ctx context.Context, contentSHA256 string) (CanonicalIdentity, error)
 }
 
-// DeriveAssetSourceID derives the deterministic source identity
-// sha256(asset_id | source_type | source_uri | source_version). This is the
-// canonical media_asset_sources.source_id constructor, shared by the
-// MediaCommitter and the identity backfill so both write the same key.
+// DeriveAssetSourceID derives the historical asset-dependent source identity
+// sha256(asset_id | source_type | source_uri | source_version). It remains
+// available only for compatibility with legacy rows and migration tests.
 func DeriveAssetSourceID(assetID, sourceType, sourceURI, sourceVersion string) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{assetID, sourceType, sourceURI, sourceVersion}, "|")))
+	return hex.EncodeToString(sum[:])
+}
+
+// DeriveCanonicalSourceID derives the source identity from the source tuple
+// itself. AssetID is deliberately absent: one provider source must resolve to
+// one canonical asset even when legacy callers disagree about the asset ID.
+func DeriveCanonicalSourceID(sourceType, sourceURI, sourceVersion string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{sourceType, sourceURI, sourceVersion}, "|")))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -79,6 +86,7 @@ type BackfillReport struct {
 	SourcesBackfilled       int `json:"sources_backfilled"`
 	SourcesAlreadyKnown     int `json:"sources_already_known"`
 	SourcesUnknown          int `json:"sources_unknown"`
+	SourcesAmbiguous        int `json:"sources_ambiguous"`
 	ContentSHAKnown         int `json:"content_sha_known"`
 	ContentSHAUnknown       int `json:"content_sha_unknown"`
 	DuplicateSourceIdentity int `json:"duplicate_source_identity"`
@@ -89,9 +97,9 @@ type BackfillReport struct {
 // is separate from runtime taxonomy resolution: only the admin backfill may
 // use historical source/media_type columns as input.
 type TaxonomyBackfillReport struct {
-	AssetsConsidered     int `json:"assets_considered"`
-	TaxonomyBackfilled   int `json:"taxonomy_backfilled"`
-	TaxonomyUnknown      int `json:"taxonomy_unknown"`
+	AssetsConsidered   int `json:"assets_considered"`
+	TaxonomyBackfilled int `json:"taxonomy_backfilled"`
+	TaxonomyUnknown    int `json:"taxonomy_unknown"`
 }
 
 // CanonicalIdentityBackfiller is the expand/backfill/cutover tooling surface.

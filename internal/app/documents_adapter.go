@@ -11,6 +11,13 @@ import (
 
 type driveDocumentPublisherAdapter struct{ client drive.DocClient }
 
+func (a *driveDocumentPublisherAdapter) Preflight(_ context.Context, folderID string) error {
+	if a == nil || a.client == nil || strings.TrimSpace(folderID) == "" {
+		return fmt.Errorf("GOOGLE_DOCS_UNAVAILABLE: real Drive document publisher or destination is unavailable")
+	}
+	return nil
+}
+
 func newDriveDocumentPublisherAdapter(client drive.DocClient) ports.DocumentPublisher {
 	if client == nil {
 		return nil

@@ -9,8 +9,8 @@
 // godlike/06 SSOT invariants asserted:
 //
 //   - Service.Start rejects requests with empty idempotency_key,
-//     empty source.type, render_video=true with no RenderEnqueuer,
-//     and docs.enabled=true with no languages configured.
+//     empty source.type, and docs.enabled=true with no languages
+//     configured.
 //   - Service.Start happy path creates a run with id, status
 //     PENDING, stage NORMALIZING, and a status URL containing
 //     the run id; the background runner eventually drives the
@@ -37,9 +37,9 @@ func TestServiceStart_Validation(t *testing.T) {
 	translator := newStubTranslator()
 	voiceoverGen := newStubVoiceoverGenerator()
 	docPub := newStubDocumentPublisher()
-	renderEnq := newStubRenderEnqueuer()
 
-	svc := NewService(repo, textGen, translator, voiceoverGen, docPub, renderEnq, canonicalTestDocumentRenderer{})
+	svc := NewService(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	svc.SetScriptDocsFolderID("test-docs-folder")
 
 	t.Run("missing idempotency key", func(t *testing.T) {
 		req := defaultTestRequest()
@@ -55,15 +55,6 @@ func TestServiceStart_Validation(t *testing.T) {
 		assert.ErrorContains(t, err, "source.type")
 	})
 
-	t.Run("render_video without renderEnqueuer", func(t *testing.T) {
-		// Create a service without renderEnqueuer.
-		svcNoRender := NewService(repo, textGen, translator, voiceoverGen, docPub, nil, canonicalTestDocumentRenderer{})
-		req := defaultTestRequest()
-		req.RenderVideo = true
-		_, err := svcNoRender.Start(context.Background(), req)
-		assert.ErrorContains(t, err, "render_video requires a RenderEnqueuer")
-	})
-
 	t.Run("docs enabled without languages", func(t *testing.T) {
 		req := defaultTestRequest()
 		req.Docs = DocumentsConfig{Enabled: true, Languages: nil}
@@ -74,6 +65,11 @@ func TestServiceStart_Validation(t *testing.T) {
 
 	t.Run("happy path start", func(t *testing.T) {
 		req := defaultTestRequest()
+		// The fixture publisher is intentionally a stub. Documents are
+		// opt-in, and docs.enabled=true now requires the real-provider
+		// preflight, so this service smoke test exercises the non-Docs path.
+		req.Docs.Enabled = false
+		req.Docs.Languages = nil
 		result, err := svc.Start(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -98,25 +94,25 @@ func TestNewService_PanicsOnNilRequiredPorts(t *testing.T) {
 	docPub := newStubDocumentPublisher()
 
 	assert.Panics(t, func() {
-		NewService(nil, textGen, translator, nil, docPub, nil)
+		NewService(nil, textGen, translator, nil, docPub)
 	}, "nil repo should panic")
 
 	assert.Panics(t, func() {
-		NewService(repo, nil, translator, nil, docPub, nil)
+		NewService(repo, nil, translator, nil, docPub)
 	}, "nil textGen should panic")
 
 	assert.Panics(t, func() {
-		NewService(repo, textGen, nil, nil, docPub, nil)
+		NewService(repo, textGen, nil, nil, docPub)
 	}, "nil translator should panic")
 
 	assert.Panics(t, func() {
-		NewService(repo, textGen, translator, nil, nil, nil)
+		NewService(repo, textGen, translator, nil, nil)
 	}, "nil docPublisher should panic")
 }
 
 func TestNewRunner_PanicsOnNilRepo(t *testing.T) {
 	assert.Panics(t, func() {
-		NewRunner(nil, nil, nil, nil, nil, nil)
+		NewRunner(nil, nil, nil, nil, nil)
 	}, "nil repo should panic")
 }
 

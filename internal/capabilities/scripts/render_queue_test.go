@@ -2,15 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"encoding/json"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // fakeRenderQueueClient implements RenderQueueClient in-memory for the
@@ -42,112 +39,177 @@ func (f *fakeRenderQueueClient) Get(_ context.Context, id string) (RenderQueueJo
 	return job, nil
 }
 
-// validQueueTestPlan compiles a valid single-segment render plan backed by a
-// real temp file so ValidateRenderPlan's manifest re-hashing passes.
-func validQueueTestPlan(t *testing.T, jobID string) render.RenderPlan {
-	t.Helper()
-	path := t.TempDir() + "/clip.mp4"
-	contents := []byte("clip content")
-	if err := os.WriteFile(path, contents, 0o600); err != nil {
-		t.Fatal(err)
+// transitioningRenderClient reports "queued" on the first poll and
+// "completed" afterwards, so the enqueuer performs at least one real poll
+// interval and the recorded completion wait has a measurable duration.
+type transitioningRenderClient struct{ polls int }
+
+func (c *transitioningRenderClient) Submit(_ context.Context, job RenderQueueJob) error { return nil }
+func (c *transitioningRenderClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	c.polls++
+	if c.polls < 2 {
+		return RenderQueueJob{ID: id, State: "queued"}, nil
 	}
-	sum := sha256.Sum256(contents)
-	timeline := audio.CanonicalTimeline{
-		Version:    audio.TimelineVersion,
-		DurationUS: 1000000,
-		Segments: []audio.TimelineSegment{{ID: "scene", Index: 0, DurationUS: 1000000,
-			Video: audio.VideoSegment{AssetID: "clip", SourceInUS: 0, SourceDurationUS: 1000000},
-			Audio: audio.AudioIntent{Mode: audio.AudioSilence}}},
-	}
-	plan, err := render.Compile(render.CompileInput{
-		JobID:      jobID,
-		Revision:   "generation.v1",
-		OutputPath: "final.mp4",
-		FPS:        30,
-		Timeline:   timeline,
-		Manifest:   []render.AssetManifestEntry{{AssetID: "clip", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 100}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return plan
+	return RenderQueueJob{ID: id, State: "completed"}, nil
 }
 
-func TestQueueRenderEnqueuerWaitsForArtifact(t *testing.T) {
+// TestQueueRenderEnqueuerChrononPlan pins the production path that makes
+// PipelineGen produce visual instructions for Chronon: the semantic
+// GoldenOverlayPlanV1 is compiled to the chronon.render-plan.v1 document and
+// submitted through the queue exactly as the RenderingGen worker expects it
+// (render_plan + content-addressed assets), then the enqueuer waits for the
+// certified artifact.
+func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	client := newFakeRenderQueueClient()
-	enqueuer, err := NewQueueRenderEnqueuer(client, renderTestFS{})
+	enqueuer, err := NewQueueRenderEnqueuer(client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	enqueuer.pollInterval = time.Millisecond
 
-	plan := validQueueTestPlan(t, "job-render-1")
-	// Pre-seed a completed job with a certified artifact.
-	client.jobs[plan.JobID] = RenderQueueJob{
-		ID:    plan.JobID,
+	// Compile the golden semantic plan up front so the pre-seeded completion
+	// can carry the right job id and the already-recorded spec/assets.
+	compiled, err := capoverlay.CompileChrononPlan(capoverlay.GoldenOverlayPlanV1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := compiled.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.jobs[compiled.Plan.JobID] = RenderQueueJob{
+		ID:          compiled.Plan.JobID,
+		OverlaySpec: spec,
+		Assets: []RenderQueueAsset{
+			{Hash: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
+			{Hash: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
+		},
 		State: "completed",
 		Artifact: &RenderArtifact{
-			ID:                 "art-1",
-			URL:                "https://store/overlay.mp4",
-			SHA256:             "ab",
-			ProfileID:          "velox-copy-v1",
-			CopyEligible:       true,
-			DurationUS:         1000000,
-			FirstFrameKeyframe: true,
+			ID:           "art-golden",
+			URL:          "https://store/result.mp4",
+			SHA256:       "ab",
+			MimeType:     "video/mp4",
+			ProfileID:    "chronon-copy-v1",
+			CopyEligible: true,
+			Width:        1280,
+			Height:       720,
+			FPSNum:       30,
+			FrameCount:   150,
+			DurationUS:   5000000,
+			Codec:        "h264",
 		},
 	}
 
-	ref, err := enqueuer.Enqueue(context.Background(), GenerateResult{RenderPlan: &plan})
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref.JobID != plan.JobID || ref.Status != "COMPLETED" {
+	if ref.JobID != "golden-overlay-v1" || ref.Status != "COMPLETED" {
 		t.Fatalf("unexpected reference: %+v", ref)
 	}
-	if ref.Artifact == nil || ref.Artifact.ID != "art-1" || !ref.Artifact.CopyEligible || ref.Artifact.ProfileID != "velox-copy-v1" {
+	if ref.Artifact == nil || ref.Artifact.ProfileID != "chronon-copy-v1" || !ref.Artifact.CopyEligible || ref.Artifact.FrameCount != 150 {
 		t.Fatalf("artifact not propagated: %+v", ref.Artifact)
 	}
+
+	// The submitted job must carry the chronon.render-plan.v1 document (not
+	// the media render-plan.v2) and the content-addressed golden assets, so
+	// the RenderingGen worker writes the plan Chronon actually executes.
+	submitted, ok := client.jobs["golden-overlay-v1"]
+	if !ok {
+		t.Fatal("job was not submitted to the queue")
+	}
+	var doc struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(submitted.OverlaySpec, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Schema != capoverlay.ChrononSchema {
+		t.Fatalf("submitted plan schema = %q, want %q", doc.Schema, capoverlay.ChrononSchema)
+	}
+	if len(submitted.Assets) != 2 {
+		t.Fatalf("submitted assets = %d, want 2", len(submitted.Assets))
+	}
+	if submitted.Assets[0].Hash != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
+		t.Fatalf("asset 0 not projected: %+v", submitted.Assets[0])
+	}
+	if submitted.Assets[1].Hash != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
+		t.Fatalf("asset 1 not projected: %+v", submitted.Assets[1])
+	}
 }
 
-func TestQueueRenderEnqueuerPropagatesFailure(t *testing.T) {
+// TestQueueRenderEnqueuerRecordsAttemptAnalytics pins the analytics wiring:
+// when a recorder is attached, one completed render attempt produces exactly
+// one analytics record derived from the plan census + the certified artifact.
+func TestQueueRenderEnqueuerRecordsAttemptAnalytics(t *testing.T) {
 	client := newFakeRenderQueueClient()
-	enqueuer, err := NewQueueRenderEnqueuer(client, renderTestFS{})
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.pollInterval = time.Millisecond
+	recorder := &fakeAttemptRecorder{}
+	enqueuer.SetRecorder(recorder)
+
+	client.jobs["golden-overlay-v1"] = RenderQueueJob{
+		ID:    "golden-overlay-v1",
+		State: "completed",
+		Artifact: &RenderArtifact{
+			SHA256: "ab", RenderMS: 500, EncodeMS: 100, Width: 1280, Height: 720,
+			DriveFileID: "drive-1", DriveLink: "https://drive.google.com/file/d/drive-1/view",
+		},
+	}
+
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.recorded) != 1 {
+		t.Fatalf("recorded attempts = %d, want 1", len(recorder.recorded))
+	}
+	got := recorder.recorded[0]
+	if got.AttemptID != "golden-overlay-v1" || got.SHA256 != "ab" || got.RenderMS != 500 || got.EncodeMS != 100 ||
+		got.DriveFileID != "drive-1" || got.DriveLink != "https://drive.google.com/file/d/drive-1/view" {
+		t.Fatalf("recorded attempt = %+v", got)
+	}
+	if got.Content.Images == 0 {
+		t.Fatalf("content census empty: %+v", got.Content)
+	}
+}
+
+// TestQueueRenderEnqueuerRecorderFailureFailsClosed pins the fail-closed
+// analytics contract: a recorder error fails the enqueue rather than being
+// silently swallowed (never represent an unavailable backend as success).
+func TestQueueRenderEnqueuerRecorderFailureFailsClosed(t *testing.T) {
+	client := newFakeRenderQueueClient()
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.pollInterval = time.Millisecond
+	enqueuer.SetRecorder(&fakeAttemptRecorder{err: errors.New("analytics db down")})
+
+	client.jobs["golden-overlay-v1"] = RenderQueueJob{ID: "golden-overlay-v1", State: "completed", Artifact: &RenderArtifact{SHA256: "ab"}}
+
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
+		t.Fatal("recorder failure must fail the enqueue")
+	}
+}
+
+// TestQueueRenderEnqueuerChrononPlanPropagatesFailure pins failure
+// propagation on the Chronon plan path (mirror of the media-plan failure
+// test).
+func TestQueueRenderEnqueuerChrononPlanPropagatesFailure(t *testing.T) {
+	client := newFakeRenderQueueClient()
+	enqueuer, err := NewQueueRenderEnqueuer(client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	enqueuer.pollInterval = time.Millisecond
 
-	plan := validQueueTestPlan(t, "job-render-2")
-	client.jobs[plan.JobID] = RenderQueueJob{ID: plan.JobID, State: "failed", FailReason: "chronon exploded"}
+	client.jobs["golden-overlay-v1"] = RenderQueueJob{ID: "golden-overlay-v1", State: "failed", FailReason: "chronon exploded"}
 
-	if _, err := enqueuer.Enqueue(context.Background(), GenerateResult{RenderPlan: &plan}); err == nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
 		t.Fatal("expected failure to propagate")
-	}
-}
-
-func TestQueueRenderEnqueuerIdempotentReplay(t *testing.T) {
-	client := newFakeRenderQueueClient()
-	enqueuer, err := NewQueueRenderEnqueuer(client, renderTestFS{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	enqueuer.pollInterval = time.Millisecond
-
-	plan := validQueueTestPlan(t, "job-render-3")
-	// First submit records the job; the enqueuer then waits and sees the
-	// already-completed state.
-	client.jobs[plan.JobID] = RenderQueueJob{ID: plan.JobID, State: "completed"}
-
-	ref, err := enqueuer.Enqueue(context.Background(), GenerateResult{RenderPlan: &plan})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ref.JobID != plan.JobID || ref.Status != "COMPLETED" {
-		t.Fatalf("unexpected reference: %+v", ref)
-	}
-	// The pre-seeded job made Submit return ErrJobExists; the enqueuer must
-	// still have proceeded (idempotent replay), so Submit was attempted once.
-	if client.calls != 1 {
-		t.Fatalf("expected one submit attempt, got %d", client.calls)
 	}
 }

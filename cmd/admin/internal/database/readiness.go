@@ -83,7 +83,6 @@ func (r *SQLiteReadinessInspector) CollectReadinessCounters(ctx context.Context)
 			COALESCE(transcript_embedding, ''),
 			COALESCE(visual_embedding, ''),
 			COALESCE(audio_embedding, ''),
-			COALESCE(status, ''),
 			COALESCE(lifecycle_state, ''),
 			COALESCE(metadata_json, '{}')
 		FROM media_assets
@@ -95,8 +94,8 @@ func (r *SQLiteReadinessInspector) CollectReadinessCounters(ctx context.Context)
 
 	var counters ports.ReadinessCounters
 	for rows.Next() {
-		var id, mediaType, localPath, textJSON, transcriptJSON, visualJSON, audioJSON, status, lifecycleState, metaJSON string
-		if err := rows.Scan(&id, &mediaType, &localPath, &textJSON, &transcriptJSON, &visualJSON, &audioJSON, &status, &lifecycleState, &metaJSON); err != nil {
+		var id, mediaType, localPath, textJSON, transcriptJSON, visualJSON, audioJSON, lifecycleState, metaJSON string
+		if err := rows.Scan(&id, &mediaType, &localPath, &textJSON, &transcriptJSON, &visualJSON, &audioJSON, &lifecycleState, &metaJSON); err != nil {
 			return ports.ReadinessCounters{}, fmt.Errorf("scan readiness row: %w", err)
 		}
 		_ = id
@@ -104,7 +103,7 @@ func (r *SQLiteReadinessInspector) CollectReadinessCounters(ctx context.Context)
 		counters.TotalAssets++
 
 		switch strings.ToLower(strings.TrimSpace(mediaType)) {
-		case "video", "audio", "image":
+		case "video", "audio", "image", "document", "folder", "text":
 		default:
 			counters.NonMediaAssets++
 		}
@@ -133,9 +132,10 @@ func (r *SQLiteReadinessInspector) CollectReadinessCounters(ctx context.Context)
 		if strings.TrimSpace(localPath) == "" {
 			counters.MissingSourceFile++
 		}
-		if status != "" && !strings.EqualFold(status, lifecycleState) && lifecycleState != "" {
-			counters.LegacyStatusRows++
-		}
+		// The retired `status` column is intentionally absent from the
+		// canonical media_assets schema. Legacy status rows are therefore
+		// zero by construction; probing the removed column would make the
+		// readiness gate fail on every current database.
 		if hasLegacyLocatorKey(metaJSON) {
 			counters.LegacyLocatorRows++
 		}

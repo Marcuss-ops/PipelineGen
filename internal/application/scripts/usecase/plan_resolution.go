@@ -140,7 +140,11 @@ func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceRes
 		// deprecated OutputSpec.SourceRequireDriveLink field to
 		// restore caller override capability (OUT OF SCOPE per
 		// AGENTS.md).
-		RequireDriveLink:  true,
-		RequireLocalMedia: item.Output.GenerateTimeline,
+		RequireDriveLink: true,
+		// RequireLocalMedia gates clip resolution on binary presence. The
+		// video render path is removed (PipelineGen is audio-only), so local
+		// binary media is never required; resolution works with transcript +
+		// Drive reference.
+		RequireLocalMedia: false,
 	}
 }

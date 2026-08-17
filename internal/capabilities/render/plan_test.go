@@ -108,6 +108,49 @@ func TestCompileUsesRationalFrameRate(t *testing.T) {
 	}
 }
 
+func TestCompileMapsFreezeTailToSingleFrozenSourceFrame(t *testing.T) {
+	// A clip (16s) shorter than its narration (17.52s) freezes on its final
+	// frame: the freeze tail stretches one source frame across the remaining
+	// destination frames instead of inventing a black gap in the renderer.
+	timeline := audio.CanonicalTimeline{
+		Version:    audio.TimelineVersion,
+		DurationUS: 17_520_000,
+		Segments: []audio.TimelineSegment{{
+			ID: "scene", Index: 0, TimelineStartUS: 0, DurationUS: 17_520_000,
+			VideoSegments: []audio.VideoSegment{
+				{AssetID: "clip-a", SourceInUS: 0, SourceDurationUS: 16_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 16_000_000},
+				{AssetID: "clip-a", SourceInUS: 16_000_000, TimelineOffsetUS: 16_000_000, TimelineDurationUS: 1_520_000, Freeze: true},
+			},
+			Audio: audio.AudioIntent{Mode: audio.AudioSilence},
+		}},
+	}
+	plan, err := Compile(CompileInput{
+		JobID: "job-freeze", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		Timeline: timeline,
+		Manifest: []AssetManifestEntry{
+			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 480},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segments := plan.VideoTracks[0].Segments
+	if len(segments) != 2 {
+		t.Fatalf("render plan must carry real clip + freeze tail, got %+v", segments)
+	}
+	real := segments[0]
+	if real.Freeze || real.Source != (RenderSource{InFrame: 0, FrameCount: 480}) || real.Timeline.FrameCount != 480 {
+		t.Fatalf("real clip segment = %+v, want 480 real frames", real)
+	}
+	freeze := segments[1]
+	if !freeze.Freeze || freeze.Source.FrameCount != 1 || freeze.Source.InFrame != 479 || freeze.Timeline.StartFrame != 480 || freeze.Timeline.FrameCount != 46 {
+		t.Fatalf("freeze tail = %+v, want 1 frozen source frame (479) stretched over 46 destination frames from frame 480", freeze)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("freeze-tail plan did not validate: %v", err)
+	}
+}
+
 func TestCompileRejectsSourceRangeBeyondAssetFrameCount(t *testing.T) {
 	_, err := Compile(CompileInput{
 		JobID: "job-range", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,

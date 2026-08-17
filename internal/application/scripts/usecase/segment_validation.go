@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -257,7 +258,21 @@ func (e *Engine) generateSegments(
 	req ports.TextGenerationRequest,
 ) (*ports.GenerationResult, error) {
 	if plan == nil || len(plan.Segments) == 0 {
-		return e.ollamaGen.GenerateScript(ctx, req)
+		// ollama.generate is the external LLM boundary. The canonical Run
+		// clock records it as an OperationReport under script.engine.
+		var out *ports.GenerationResult
+		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     stageScriptEngine,
+			Component: kernobs.ComponentOllama,
+			Operation: kernobs.OperationGenerate,
+		}, func(opCtx context.Context) error {
+			var genErr error
+			out, genErr = e.ollamaGen.GenerateScript(opCtx, req)
+			return genErr
+		}); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	settings := e.segmentSettings()
 	texts := make([]string, len(plan.Segments))
@@ -277,11 +292,18 @@ func (e *Engine) generateSegments(
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
 		var result *ports.GenerationResult
-		var err error
 		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
-			result, err = e.ollamaGen.GenerateScript(ctx, segmentReq)
-			if err != nil {
-				return nil, err
+			// Each per-segment LLM call is its own ollama.generate operation.
+			if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+				Stage:     stageScriptEngine,
+				Component: kernobs.ComponentOllama,
+				Operation: kernobs.OperationGenerate,
+			}, func(opCtx context.Context) error {
+				var genErr error
+				result, genErr = e.ollamaGen.GenerateScript(opCtx, segmentReq)
+				return genErr
+			}); opErr != nil {
+				return nil, opErr
 			}
 			candidate := splitGeneratedSegmentParagraphs(result.Script)
 			// This request owns exactly one editorial segment. Models may

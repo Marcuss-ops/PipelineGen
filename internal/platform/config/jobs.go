@@ -8,10 +8,16 @@ type JobsConfig struct {
 	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
 	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
 	YouTubeExtractTimeout int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
-	MaintenanceInterval   string `yaml:"maintenance_interval" default:"24h"`
-	BackupInterval        string `yaml:"backup_interval" default:"6h"`
-	IndexingInterval      string `yaml:"indexing_interval" default:"15m"`
-	RetentionDays         int    `yaml:"retention_days" env:"VELOX_RETENTION_DAYS" default:"30"`
+	// YoutubeMaxSegmentDurationSeconds caps the per-clip duration the
+	// YouTube segment pipeline accepts (SegmentPolicy.MaxDuration). The
+	// canonical default is 60s (DefaultSegmentPolicy); production may
+	// raise it (e.g. 120 for 2-minute clips) via config/env without
+	// touching the shared default policy.
+	YoutubeMaxSegmentDurationSeconds int    `yaml:"youtube_max_segment_duration_seconds" env:"VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS" default:"60"`
+	MaintenanceInterval              string `yaml:"maintenance_interval" default:"24h"`
+	BackupInterval                   string `yaml:"backup_interval" default:"6h"`
+	IndexingInterval                 string `yaml:"indexing_interval" default:"15m"`
+	RetentionDays                    int    `yaml:"retention_days" env:"VELOX_RETENTION_DAYS" default:"30"`
 	// RetentionInterval is the periodic sweeper tick interval — controls how
 	// often the job_events retention sweeper runs (when RetentionDays > 0).
 	// Default 12h: balances bounded DELETE-load (lock contention) against

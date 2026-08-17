@@ -7,6 +7,10 @@
 // endpoint; field renames or additions must be reflected here first.
 package images
 
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
+)
+
 // UploadRequest is the JSON body for POST /api/images/upload (legacy
 // image-asset URL ingestion). The canonical multipart clip upload
 // lives at internal/api/assets/clips/ingest.go — this endpoint is
@@ -59,11 +63,31 @@ type ImageGenerationRequest struct {
 // (FASE 3, June 2026). Each item becomes an independent
 // image.generate.google job; concurrency is controlled server-side
 // by the worker pool, not by the client.
+//
+// IMAGES-LEGACY-CLEANUP (August 2026): mode="sections" was merged in from
+// the retired POST /api/fullimages/image/generate surface. Each section
+// becomes one image.generate.google job whose prompt is the canonical
+// section→prompt composition (fullimages.BuildPrimaryPrompt).
 type GenerateBatchRequest struct {
 	// RequestID is an optional caller-supplied identifier for correlation.
 	RequestID string `json:"request_id,omitempty"`
-	// Items is the list of images to generate (required, min 1).
-	Items []GenerateBatchItem `json:"items" binding:"required,min=1"`
+
+	// Mode selects the input shape: "" | "items" (default) or "sections".
+	Mode string `json:"mode,omitempty"`
+
+	// Items is the list of images to generate (required when mode is
+	// empty or "items").
+	Items []GenerateBatchItem `json:"items"`
+
+	// Topic and Language feed the sections-mode prompt composition.
+	// Topic is the overall subject/theme; Language is accepted for wire
+	// parity with the retired fullimages request shape.
+	Topic    string `json:"topic,omitempty"`
+	Language string `json:"language,omitempty"`
+
+	// Sections is the list of text sections (required when mode is
+	// "sections"). Each section → one image.generate.google job.
+	Sections []fullimages.Section `json:"sections"`
 }
 
 // GenerateBatchItem describes a single image to generate in a batch.

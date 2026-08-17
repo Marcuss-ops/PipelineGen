@@ -130,7 +130,12 @@ func buildDomainMediaServices(
 		cfg.External.ResolveYouTubeCookiesPath() != "",
 	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
-	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
+	clipWriter = assets.NewClipAtomicWriterAdapterWithCommitter(
+		dbs.DualPool.Writer,
+		outbox.EventsRepo,
+		newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, log),
+		log,
+	)
 	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
@@ -194,21 +199,39 @@ func buildDomainMediaServices(
 	// composition-root wiring below sources the 17 fields from the
 	// same canonical production dep set the previous ProcessSegmentDeps
 	// literal used; no port is added, dropped, or renamed.
-	// Subtitles / Stager / FFProbe are intentionally left zero (matches
-	// the previous literal's behaviour; those optional ports are not
+	// Subtitles / Stager are intentionally left zero (matches the
+	// previous literal's behaviour; those optional ports are not
 	// exercised by the YouTube orchestrator at composition time).
+	//
+	// FFProbe is WIRED (Aug 2026 stub-recovery): Step 5a is the
+	// fail-closed gate that rejects a 262-byte empty MP4 stub (no video
+	// stream / zero duration) produced when a bot-checked yt-dlp section
+	// download exits zero but writes no media data. Before wiring, the
+	// Step 5 gate (size > 0) accepted the stub and the job "succeeded"
+	// with a dead artifact on Drive + Qdrant. The gate reuses the same
+	// shared media probe (rustexec) that cut_and_normalize uses, so the
+	// validation and the encode agree on the same execution plane.
+	// SegmentPolicy is config-driven: the canonical default is 4-60s
+	// (DefaultSegmentPolicy); production raises the max via
+	// cfg.Jobs.YoutubeMaxSegmentDurationSeconds (e.g. 120 for
+	// 2-minute clips) without mutating the shared default.
+	segmentPolicy := youtubetypes.DefaultSegmentPolicy()
+	if maxDur := cfg.Jobs.YoutubeMaxSegmentDurationSeconds; maxDur > 0 {
+		segmentPolicy.MaxDuration = maxDur
+	}
 	processSegCore := youtube.ProcessSegmentCoreDeps{
 		Cache:         clipCache,
 		VideoPipeline: videoPipelineAdapter,
 		Hash:          hashAdapter,
 		Writer:        clipWriter, // legacy writer for non-localized callers
 		SegmentsSvc:   youtube.NewSegmentsService(),
-		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+		SegmentPolicy: segmentPolicy,
 		Log:           log,
 	}
 	processSegMedia := youtube.ProcessSegmentMediaDeps{
 		DriveFolderMgr:    youtubePubAdapter,
 		TextTrackResolver: textTrackResolver,
+		FFProbe:           ytinfra.NewFFProbeAdapter(clipProcessor),
 	}
 	processSegMetadata := youtube.ProcessSegmentMetadataDeps{
 		// Phase 2.b atomic super-tx (clipWriter satisfies both ports —

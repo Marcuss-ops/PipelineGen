@@ -86,15 +86,15 @@ func TestAsSearchTextInput_Stock_PopulatesAdditional(t *testing.T) {
 	}
 }
 
-func TestAsSearchTextInput_EmptySource_DetectsFromAssetID(t *testing.T) {
+func TestAsSearchTextInput_EmptySource_DoesNotInferFromAssetID(t *testing.T) {
 	t.Parallel()
 	m := ClipSemanticMetadata{
 		AssetID: "yt_abc_0_60_v1",
 		Title:   "Test",
 	}
 	sti := m.AsSearchTextInput("")
-	if sti.Source != "youtube" {
-		t.Errorf("Source = %q, want %q (auto-detected from AssetID)", sti.Source, "youtube")
+	if sti.Source != "" {
+		t.Errorf("Source = %q, want empty source until registry resolution", sti.Source)
 	}
 }
 

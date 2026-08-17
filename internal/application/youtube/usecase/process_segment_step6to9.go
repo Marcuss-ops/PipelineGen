@@ -36,6 +36,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -205,8 +206,32 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// godlike/06 SSOT: the chain's selection is the authoritative
 	// source — flipping the order here would silently demote
 	// priority 2-5 wins back to the payload (audit 2026-07-11 §2.b).
+	clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
+
+	// ── Metadata analysis BEFORE the canonical commit ───────────────
+	// (PR-ASSET-COMMITTER-ENRICHMENT, August 2026): the metadata
+	// analyzer runs BEFORE the atomic super-tx so the SINGLE commit
+	// carries the complete semantic snapshot (summary / topics /
+	// speakers / mentioned people / hook / quality score / tags) plus
+	// the canonical taxonomy. The post-commit metadata-only write
+	// (Step 10) is retired — there is no second media_assets write and
+	// no second asset.index.requested event. Analysis failure is
+	// fail-closed: a semantically-poor clip is never committed.
+	if u.metadata.MetadataService != nil {
+		enrichment, analyzeErr := u.analyzeClipForCommit(ctx, cmd, clipID, startSec, endSec, bundle)
+		if analyzeErr != nil {
+			typed := NewExtractionError(FailureCodeMetadataFailed, false,
+				fmt.Sprintf("metadata analysis failed before commit: %v", analyzeErr), analyzeErr)
+			u.core.Log.Warn("metadata analysis failed BEFORE clip write — clip not committed",
+				zap.String("clip_id", clipID),
+				zap.String("failure_code", string(FailureCodeMetadataFailed)),
+				zap.Error(analyzeErr))
+			return nil, u.fail(out, typed)
+		}
+		clipAsset = foldEnrichmentIntoClipAsset(clipAsset, enrichment)
+	}
+
 	if u.metadata.LocalizedWriter != nil {
-		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
@@ -296,8 +321,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		// legacy CommitClipAndIndexEvent. This branch MUST NOT be
 		// hit in production — composition always wires both
 		// instance-to-instance — but it's retained for the
-		// dev/legacy composition root paths.
-		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
+		// dev/legacy composition root paths. clipAsset is the
+		// SAME enrichment-folded asset built above (single
+		// canonical snapshot).
 		event := youtubeports.IndexEventPayload{
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
@@ -318,4 +344,91 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	}
 
 	return bundle, nil
+}
+
+// analyzeClipForCommit runs the PURE metadata analyzer (MetadataAnalyzer.
+// AnalyzeClip) against the resolved transcript bundle. It returns the
+// CanonicalClipEnrichment that the caller folds into the ClipAsset BEFORE
+// the canonical atomic commit — the analyzer never writes media_assets.
+//
+// godlike/07 fail-closed: a nil MetadataService yields a zero enrichment
+// (no analysis) and the caller commits the caller-supplied segment metadata
+// verbatim. An analyzer error is returned to the caller, which MUST fail
+// the run BEFORE the commit (no semantically-poor clip is persisted).
+func (u *ProcessYouTubeSegmentUseCase) analyzeClipForCommit(
+	ctx context.Context,
+	cmd youtubetypes.ProcessSegmentCommand,
+	clipID string,
+	startSec int,
+	endSec int,
+	bundle *asset.ResolvedTextBundle,
+) (ytmetadata.CanonicalClipEnrichment, error) {
+	if u.metadata.MetadataService == nil {
+		return ytmetadata.CanonicalClipEnrichment{}, nil
+	}
+	transcript := ""
+	if bundle != nil && !bundle.IsEmpty() {
+		transcript = bundle.PlainText
+	}
+	in := youtubetypes.ClipMetadataInput{
+		ClipID:           clipID,
+		Title:            cmd.Segment.Name,
+		Description:      segmentDescription(cmd.Segment.Texts),
+		Summary:          cmd.Segment.Summary,
+		Tags:             append([]string(nil), cmd.Segment.Tags...),
+		Transcript:       transcript,
+		ClipDuration:     endSec - startSec,
+		SourceURL:        cmd.VideoURL,
+		SourceTitle:      cmd.Segment.SourceTitle,
+		SourceChannel:    cmd.Segment.SourceChannel,
+		SourceProvider:   "youtube",
+		VideoID:          cmd.VideoID,
+		ClipStartSec:     startSec,
+		ClipEndSec:       endSec,
+		PolicyVersion:    cmd.PolicyVersion,
+		Group:            deriveNormalizedGroup(cmd),
+		Hook:             cmd.Segment.Hook,
+		SearchVisibility: cmd.Segment.SearchVisibility,
+		Topics:           append([]string(nil), cmd.Segment.Topics...),
+		Speakers:         append([]string(nil), cmd.Segment.Speakers...),
+		MentionedPeople:  append([]string(nil), cmd.Segment.MentionedPeople...),
+	}
+	return u.metadata.MetadataService.AnalyzeClip(ctx, in)
+}
+
+// foldEnrichmentIntoClipAsset merges the analyzer's CanonicalClipEnrichment
+// into the canonical ClipAsset. Analyzer-produced values win over the raw
+// segment metadata (they are the authoritative semantic snapshot); empty
+// enrichment fields leave the existing value untouched. The canonical search
+// text is recomputed from the FOLDED metadata so the search surface stays
+// consistent with the committed summary/topics/speakers/mentioned people/hook.
+func foldEnrichmentIntoClipAsset(asset youtubetypes.ClipAsset, en ytmetadata.CanonicalClipEnrichment) youtubetypes.ClipAsset {
+	if en.Summary != "" {
+		asset.Metadata.Summary = en.Summary
+	}
+	if len(en.Topics) > 0 {
+		asset.Metadata.Topics = en.Topics
+	}
+	if len(en.Speakers) > 0 {
+		asset.Metadata.Speakers = en.Speakers
+	}
+	if len(en.MentionedPeople) > 0 {
+		asset.Metadata.MentionedPeople = en.MentionedPeople
+	}
+	if en.Hook != "" {
+		asset.Metadata.Hook = en.Hook
+	}
+	if en.QualityScore != 0 {
+		asset.Metadata.QualityScore = en.QualityScore
+	}
+	if en.Description != "" {
+		asset.Metadata.Description = en.Description
+	}
+	if len(en.Tags) > 0 {
+		asset.Metadata.Tags = en.Tags
+	}
+	// Recompute from the folded snapshot so search_text reflects the
+	// committed semantic fields (godlike/06 SSOT: one composer).
+	asset.SearchText = composeYouTubeClipSearchText(asset.Metadata, asset.Metadata.Hook)
+	return asset
 }

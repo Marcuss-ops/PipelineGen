@@ -39,6 +39,11 @@ type VideoSegment struct {
 	SourceDurationUS   int64  `json:"source_duration_us,omitempty"`
 	TimelineOffsetUS   int64  `json:"timeline_offset_us,omitempty"`
 	TimelineDurationUS int64  `json:"timeline_duration_us,omitempty"`
+	// Freeze marks a synthetic tail that holds the clip's last frame for
+	// TimelineDurationUS (a scene whose narration outlasts its clip). Its
+	// SourceInUS is the exclusive source end of the preceding real segment;
+	// SourceDurationUS is 0 and ignored.
+	Freeze bool `json:"freeze,omitempty"`
 }
 
 type AudioIntent struct {
@@ -211,15 +216,19 @@ func (p CanonicalAudioProfile) Output() AudioOutputContract {
 }
 
 type CompiledAudioPlan struct {
-	Version         string              `json:"audio_plan_version"`
-	TimelineVersion string              `json:"timeline_version"`
-	DurationUS      int64               `json:"duration_us"`
-	Events          []AudioEvent        `json:"primary_events,omitempty"`
-	Tracks          []AudioTrack        `json:"tracks,omitempty"`
-	BackgroundMusic []AudioLayer        `json:"background_music,omitempty"`
-	SFX             []AudioLayer        `json:"sfx,omitempty"`
-	Automation      []AudioAutomation   `json:"automation,omitempty"`
-	Output          AudioOutputContract `json:"canonical_audio_profile"`
+	Version         string `json:"audio_plan_version"`
+	TimelineVersion string `json:"timeline_version"`
+	DurationUS      int64  `json:"duration_us"`
+	// MasterDurationUS is the duration the mixer pads the mastered file to
+	// (the frame-aligned video duration). It must be >= DurationUS. Zero means
+	// "use DurationUS" (audio-only runs, where there is no video to cover).
+	MasterDurationUS int64               `json:"master_duration_us,omitempty"`
+	Events           []AudioEvent        `json:"primary_events,omitempty"`
+	Tracks           []AudioTrack        `json:"tracks,omitempty"`
+	BackgroundMusic  []AudioLayer        `json:"background_music,omitempty"`
+	SFX              []AudioLayer        `json:"sfx,omitempty"`
+	Automation       []AudioAutomation   `json:"automation,omitempty"`
+	Output           AudioOutputContract `json:"canonical_audio_profile"`
 	// MixPolicy records the editorial mix decision applied by the compiler
 	// (VOICEOVER_ONLY vs VOICEOVER_DUCKED_CLIP). Empty means no policy was
 	// applied (legacy full-volume overlap). It is part of the plan hash.
@@ -255,7 +264,10 @@ func (t CanonicalTimeline) Validate() error {
 		videos := s.EffectiveVideoSegments()
 		var videoEnd int64
 		for _, video := range videos {
-			if video.AssetID == "" || video.SourceInUS < 0 || video.SourceDurationUS <= 0 || video.TimelineOffsetUS < 0 || video.TimelineDurationUS <= 0 || video.TimelineOffsetUS != videoEnd || video.TimelineDurationUS > s.DurationUS-video.TimelineOffsetUS {
+			if video.AssetID == "" || video.TimelineOffsetUS < 0 || video.TimelineDurationUS <= 0 || video.TimelineOffsetUS != videoEnd || video.TimelineDurationUS > s.DurationUS-video.TimelineOffsetUS {
+				return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
+			}
+			if !video.Freeze && (video.SourceInUS < 0 || video.SourceDurationUS <= 0) {
 				return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
 			}
 			videoEnd += video.TimelineDurationUS
@@ -283,6 +295,9 @@ func (t CanonicalTimeline) Validate() error {
 func (p *CompiledAudioPlan) Validate() error {
 	if p == nil || (p.Version != AudioPlanVersion && p.Version != LegacyAudioPlanVersion) || p.TimelineVersion != TimelineVersion || p.DurationUS < 0 {
 		return fmt.Errorf("%w: version or duration", ErrInvalidAudioPlan)
+	}
+	if p.MasterDurationUS < 0 || (p.MasterDurationUS > 0 && p.MasterDurationUS < p.DurationUS) {
+		return fmt.Errorf("%w: master duration must be zero or >= duration_us", ErrInvalidAudioPlan)
 	}
 	if p.Output != (AudioOutputContract{}) && (p.Output.Codec == "" || p.Output.SampleRate <= 0 || p.Output.Channels <= 0 || p.Output.ChannelLayout == "") {
 		return fmt.Errorf("%w: incomplete output contract", ErrInvalidAudioPlan)

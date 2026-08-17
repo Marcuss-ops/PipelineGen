@@ -166,6 +166,28 @@ func TestNewMetadataService_RequiresWriter(t *testing.T) {
 	}
 }
 
+func TestNewMetadataAnalyzer_AllowsNilWriter(t *testing.T) {
+	t.Parallel()
+	svc, err := NewMetadataAnalyzer(MetadataDeps{Builder: &stubBuilder{}})
+	if err != nil {
+		t.Fatalf("NewMetadataAnalyzer with nil writer must succeed; got %v", err)
+	}
+	if svc == nil {
+		t.Fatal("expected non-nil analyzer")
+	}
+}
+
+func TestNewMetadataAnalyzer_RequiresBuilder(t *testing.T) {
+	t.Parallel()
+	_, err := NewMetadataAnalyzer(MetadataDeps{})
+	if err == nil {
+		t.Fatal("expected error for nil Builder; got nil")
+	}
+	if !strings.Contains(err.Error(), "ClipMetadataBuilder") {
+		t.Errorf("error must mention ClipMetadataBuilder; got %q", err.Error())
+	}
+}
+
 // ── EnrichClip tests ────────────────────────────────────────────────────
 
 func TestEnrichClip_CallsWriter(t *testing.T) {
@@ -217,6 +239,108 @@ func TestEnrichClip_WriterErrorPropagates(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "writer") {
 		t.Errorf("error must mention writer; got %q", err.Error())
+	}
+}
+
+// ── AnalyzeClip (pure analyzer) tests ─────────────────────────────────
+
+func TestAnalyzeClip_ReturnsEnrichmentWithoutWriting(t *testing.T) {
+	t.Parallel()
+	w := &stubWriter{}
+	svc, err := NewMetadataService(MetadataDeps{
+		Builder: &stubBuilder{out: youtubetypes.CanonicalClipMetadata{Summary: "enriched", QualityScore: 0.75}},
+		Writer:  w,
+	})
+	if err != nil {
+		t.Fatalf("ctor: %v", err)
+	}
+	out, err := svc.AnalyzeClip(context.Background(), youtubetypes.ClipMetadataInput{
+		ClipID:       "yt_abc_0_60_v1",
+		Title:        "t",
+		ClipDuration: 60,
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeClip: %v", err)
+	}
+	if out.AssetID != "yt_abc_0_60_v1" {
+		t.Errorf("AssetID: want yt_abc_0_60_v1 got %q", out.AssetID)
+	}
+	if out.Summary != "enriched" {
+		t.Errorf("Summary: want enriched got %q", out.Summary)
+	}
+	if out.QualityScore != 0.75 {
+		t.Errorf("QualityScore: want 0.75 got %v", out.QualityScore)
+	}
+	if w.called != 0 {
+		t.Errorf("AnalyzeClip must be pure (no writer call); writer called %d times", w.called)
+	}
+}
+
+func TestAnalyzeClip_EmptyClipIDFailsClosed(t *testing.T) {
+	t.Parallel()
+	svc, err := NewMetadataAnalyzer(MetadataDeps{Builder: &stubBuilder{}})
+	if err != nil {
+		t.Fatalf("ctor: %v", err)
+	}
+	if _, err := svc.AnalyzeClip(context.Background(), youtubetypes.ClipMetadataInput{}); err == nil {
+		t.Fatal("expected error for empty ClipID; got nil")
+	}
+}
+
+func TestComposeCanonicalClipEnrichment_MapsFields(t *testing.T) {
+	t.Parallel()
+	out := ComposeCanonicalClipEnrichment(youtubetypes.CanonicalClipMetadata{
+		ClipID:           "yt_abc_0_60_v1",
+		Description:      "desc",
+		Summary:          "summary",
+		Topics:           []string{"a", "b"},
+		Speakers:         []string{"p"},
+		MentionedPeople:  []string{"q"},
+		Hook:             "hook",
+		QualityScore:     0.6,
+		Tags:             []string{"tag1"},
+		EmbeddingText:    "search text",
+		CleanTranscript:  "hello world",
+		OriginalLanguage: "en",
+	})
+	if out.AssetID != "yt_abc_0_60_v1" {
+		t.Errorf("AssetID: got %q", out.AssetID)
+	}
+	if out.Description != "desc" || out.Summary != "summary" || out.Hook != "hook" {
+		t.Errorf("semantic fields not mapped: %+v", out)
+	}
+	if len(out.Topics) != 2 || len(out.Speakers) != 1 || len(out.MentionedPeople) != 1 {
+		t.Errorf("list fields not mapped: %+v", out)
+	}
+	if out.QualityScore != 0.6 || out.SearchText != "search text" {
+		t.Errorf("quality/search text not mapped: %+v", out)
+	}
+	if len(out.Tags) != 1 || out.Tags[0] != "tag1" {
+		t.Errorf("tags not mapped: %+v", out.Tags)
+	}
+	if len(out.TextTracks) != 1 {
+		t.Fatalf("expected 1 transcript text track, got %d", len(out.TextTracks))
+	}
+	tr := out.TextTracks[0]
+	if tr.TextKind != asset.TextTrackTranscript || tr.TextContent != "hello world" || tr.LanguageCode != "en" || !tr.IsOriginal {
+		t.Errorf("transcript text track not composed correctly: %+v", tr)
+	}
+}
+
+func TestComposeCanonicalClipEnrichment_SearchTextFallsBack(t *testing.T) {
+	t.Parallel()
+	out := ComposeCanonicalClipEnrichment(youtubetypes.CanonicalClipMetadata{
+		ClipID:          "yt_abc_0_60_v1",
+		CleanTitle:      "Title",
+		Summary:         "Summary",
+		Topics:          []string{"topic"},
+		CleanTranscript: "transcript",
+	})
+	if out.SearchText == "" {
+		t.Fatal("SearchText must fall back to BuildFallbackSearchText when EmbeddingText is empty")
+	}
+	if !strings.Contains(out.SearchText, "Title") {
+		t.Errorf("fallback SearchText must include the title; got %q", out.SearchText)
 	}
 }
 

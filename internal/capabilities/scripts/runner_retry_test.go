@@ -10,9 +10,6 @@
 //   - On Translator failure at scene N, scenes that already have
 //     translated text for the target language are SKIPPED on
 //     retry (scene-level idempotency).
-//   - On Enqueue failure (which now precedes Docs), the second Execute
-//     resumes from StageEnqueuingRender, re-enqueues the render and then
-//     publishes the documents, without re-generating voiceovers.
 package scriptgeneration
 
 import (
@@ -86,7 +83,7 @@ func TestRunner_TextGeneratorFails_RetryResumesFromCheckpoint(t *testing.T) {
 // StageTranslatingScenes and SKIPS scenes that already have the
 // target-language text (scene-level idempotency).
 func TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated(t *testing.T) {
-	runner, repo, _, translator, _, docPub, renderEnq := newTestRunner()
+	runner, repo, _, translator, _, docPub, _ := newTestRunner()
 	req := defaultTestRequest()
 
 	// Configure translator to fail for scene-1.
@@ -133,67 +130,4 @@ func TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated(t *testing.T)
 		assert.NotEmpty(t, s.Voiceover["en"].ID, "scene %d should have EN voiceover", i)
 	}
 	assert.Equal(t, 2, len(docPub.records), "docs should be upserted exactly 2 times total")
-	assert.GreaterOrEqual(t, renderEnq.callCount, 1, "render should be enqueued")
-}
-
-// TestRunner_EnqueueFailsBeforeDocs_RetryPublishesDocs covers
-// Verdetto scenario 4: RenderEnqueuer fails BEFORE documents are
-// published (enqueue now precedes docs) → first attempt fails → reset stub →
-// second Execute resumes from StageEnqueuingRender, re-enqueues the render and
-// then publishes the documents, without re-generating voiceovers.
-func TestRunner_EnqueueFailsBeforeDocs_RetryPublishesDocs(t *testing.T) {
-	runner, repo, _, _, voiceoverGen, docPub, renderEnq := newTestRunner()
-	req := defaultTestRequest()
-
-	// Configure renderEnq to fail on first call.
-	renderEnq.err = errors.New("enqueue render failed: worker queue full")
-	renderEnq.failAfter = 0
-
-	runID := "run-enqueue-fail-001"
-	err := repo.Create(context.Background(), &GenerationRun{
-		ID:           runID,
-		Request:      req,
-		Status:       RunStatusPending,
-		CurrentStage: StageNormalizing,
-	})
-	require.NoError(t, err)
-
-	// Execute — first attempt fails at enqueue.
-	runner.Execute(context.Background(), runID, req)
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Confirm failure.
-	run, err := repo.Get(context.Background(), runID)
-	require.NoError(t, err)
-	assert.Equal(t, RunStatusFailed, run.Status)
-	assert.Equal(t, StageEnqueuingRender, run.FailedStage)
-
-	// Enqueue precedes documents: no doc was published before the enqueue failed.
-	firstVOCalls := voiceoverGen.callCount
-	assert.Empty(t, docPub.records, "no docs should be published before the render enqueue succeeds")
-
-	// Reset renderEnq to succeed on retry.
-	renderEnq.err = nil
-	renderEnq.failAfter = -1
-
-	// Second attempt — should resume from ENQUEUING_RENDER.
-	// Translations and voiceovers should NOT be recreated.
-	runner.Execute(context.Background(), runID, req)
-
-	final := awaitCompletion(t, repo, runID, 5*time.Second)
-	require.NotNil(t, final)
-	assert.Equal(t, RunStatusCompleted, final.Status)
-
-	// Docs are published only after the enqueue resumes and succeeds (2 langs).
-	assert.Len(t, docPub.records, 2, "docs should be published after the render enqueue succeeds")
-
-	// Voiceover calls should NOT increase on retry.
-	assert.Equal(t, firstVOCalls, voiceoverGen.callCount,
-		"voiceover calls should not increase on retry")
-
-	// Render enqueue should succeed on retry.
-	assert.GreaterOrEqual(t, renderEnq.callCount, 2, "renderEnq should be called again on retry")
-	require.NotNil(t, final.Result.RenderJob)
-	assert.Equal(t, "render-xyz-789", final.Result.RenderJob.JobID)
 }

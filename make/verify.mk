@@ -185,8 +185,13 @@ verify-main-clip: verify-foundation verify-static verify-architecture verify-cli
 # same check systemd runs via ExecStartPre. Fails closed when the requested
 # device is unusable (e.g. VELOX_WHISPER_DEVICE=cuda without a usable GPU).
 # Usage: make whisper-preflight [VELOX_WHISPER_DEVICE=cuda]
+#
+# Recreate the host venv on demand (it is gitignored — see .gitignore):
+#   python3 -m venv .venv-whisper
+#   .venv-whisper/bin/python -m pip install --no-cache-dir \
+#       -r requirements/whisper.lock.txt
 whisper-preflight:
-	@test -x .venv-whisper/bin/python3 || { echo "❌ .venv-whisper missing — create it and install scripts/requirements-whisper.txt" >&2; exit 1; }
+	@test -x .venv-whisper/bin/python3 || { echo "❌ .venv-whisper missing — recreate it (see the comment above): python3 -m venv .venv-whisper && .venv-whisper/bin/pip install -r requirements/whisper.lock.txt" >&2; exit 1; }
 	@.venv-whisper/bin/python3 scripts/tools/whisper_preflight.py
 
 # verify-release — pre-deploy gate: the complete headless gate plus the

@@ -159,6 +159,14 @@ type ScriptsConfig struct {
 	// generation. Default 2 (at most three provider calls total).
 	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"2"`
 
+	// ScriptDocsFolderID is the canonical default Google Drive folder for
+	// script documents (env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Precedence:
+	// explicit payload docs.folder_id > this configured default > fail
+	// closed when docs.enabled=true and still empty (the folder must never
+	// be invented by an agent or worker). Empty default means "not
+	// configured" — resolve via the canonical script docs resolver.
+	ScriptDocsFolderID string `yaml:"script_docs_folder_id" env:"PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID" default:""`
+
 	// Capability gates ScriptFlow wiring.
 	Capability ScriptCapabilityConfig `yaml:"capability"`
 }
