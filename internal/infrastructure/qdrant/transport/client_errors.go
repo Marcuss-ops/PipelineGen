@@ -2,8 +2,8 @@
 //
 // PR2 mechanical split (June 2026): relocated from client.go without
 // signature or behaviour changes. The op* constants below are the
-// canonical labels passed to Client.parseErrorWith by every method
-// (each call site picks one of these so the resulting *APIError.Operation
+// canonical labels passed to Client.parseErrorWith by the methods
+// that need an operation label (so the resulting *APIError.Operation
 // field carries the originating method name into log lines and the
 // jobs.Service retry-decision path). They live next to parseError /
 // parseErrorWith because that is their only consumer; placing them
@@ -18,24 +18,13 @@ import (
 )
 
 // Operation names used as APIError.Operation discriminator.
-// Keep in sync with parseErrorWith call sites; the labels flow
-// into log lines (`qdrant.GetCollection: HTTP 404: …`) so per-method
+// Only the call sites that actually pass a label are kept; the
+// retired labels were removed as dead code. The labels flow into
+// log lines (`qdrant.GetCollection: HTTP 404: …`) so per-method
 // operators can grep them without parsing the underlying message.
 const (
-	opGetCollection    = "GetCollection"
-	opListCollections  = "ListCollections"
-	opCreateCollection = "CreateCollection"
-	opDeleteCollection = "DeleteCollection"
-	opGetAliasTarget   = "GetAliasTarget"
-	opUpdateAliases    = "UpdateAliases"
-	opUpsertPoints     = "UpsertPoints"
-	opDeletePoints     = "DeletePoints"
-	opCountPoints      = "CountPoints"
-	opScrollPoints     = "ScrollPoints"
-	opSearchPoints     = "SearchPoints"
-	opHybridSearch     = "HybridSearchPoints"
-	opDeletePayloadKey = "DeletePayloadKeys"
-	opCreatePayloadIdx = "CreatePayloadIndex"
+	opGetCollection = "GetCollection"
+	opCountPoints   = "CountPoints"
 )
 
 // parseError converts a non-2xx Qdrant response into a typed *APIError.
