@@ -136,6 +136,30 @@ def detect_language(audio_path: str, model_size: str = "tiny", language: Optiona
     }
 
 
+def _segments_to_result(segments, info, elapsed: float) -> dict:
+    """Project materialized whisper segments + info into the canonical JSON
+    result shape shared by transcribe() and transcribe_pcm_stream()."""
+    transcript = " ".join(seg.text.strip() for seg in segments)
+    cues = []
+    for seg in segments:
+        cues.append({
+            "start_ms": int(seg.start * 1000),
+            "end_ms": int(seg.end * 1000),
+            "text": seg.text.strip()
+        })
+    return {
+        "language": info.language,
+        "probability": round(info.language_probability, 4),
+        "duration_seconds": round(info.duration, 1),
+        "transcription_time_seconds": round(elapsed, 1),
+        "num_segments": len(segments),
+        "transcript_length": len(transcript),
+        "transcript_preview": transcript[:500],
+        "transcript_full": transcript,
+        "cues": cues,
+    }
+
+
 def transcribe(audio_path: str, model_size: str = "base", language: Optional[str] = None) -> dict:
     """Full transcription with language detection.
     
@@ -149,27 +173,33 @@ def transcribe(audio_path: str, model_size: str = "base", language: Optional[str
     segments, info = model.transcribe(audio_path, beam_size=5, language=language)
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
+    return _segments_to_result(segments, info, elapsed)
 
-    transcript = " ".join(seg.text.strip() for seg in segments)
-    cues = []
-    for seg in segments:
-        cues.append({
-            "start_ms": int(seg.start * 1000),
-            "end_ms": int(seg.end * 1000),
-            "text": seg.text.strip()
-        })
 
-    return {
-        "language": info.language,
-        "probability": round(info.language_probability, 4),
-        "duration_seconds": round(info.duration, 1),
-        "transcription_time_seconds": round(elapsed, 1),
-        "num_segments": len(segments),
-        "transcript_length": len(transcript),
-        "transcript_preview": transcript[:500],
-        "transcript_full": transcript,
-        "cues": cues,
-    }
+def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = "base", language: Optional[str] = None) -> dict:
+    """Transcribe raw PCM fed through a pipe — zero WAV on disk.
+
+    The Go side decodes the source audio with FFmpeg straight to a
+    s16le 16kHz mono pipe and streams the bytes into this helper's stdin.
+    faster-whisper accepts a numpy float32 array, so the raw PCM is
+    converted in memory (never written to a temp WAV).
+    """
+    if not pcm_bytes:
+        return {"error": "empty PCM stream"}
+    try:
+        import numpy as np
+    except ImportError:
+        return {"error": "numpy not installed; required for PCM streaming"}
+    audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    if audio.size == 0:
+        return {"error": "empty PCM stream after conversion"}
+
+    model = _get_model(model_size)
+    start = time.time()
+    segments, info = model.transcribe(audio, beam_size=5, language=language)
+    segments = list(segments)  # materialize generator
+    elapsed = time.time() - start
+    return _segments_to_result(segments, info, elapsed)
 
 
 def _log(msg: str, json_only: bool = False):
@@ -185,7 +215,7 @@ if __name__ == "__main__":
         description="Universal language detection + transcription via faster-whisper. "
                     "Works for ANY audio/video file. Returns JSON for Go consumption."
     )
-    parser.add_argument("file", help="Path to audio or video file")
+    parser.add_argument("file", nargs="?", help="Path to audio or video file (not required with --pcm-stdin)")
     parser.add_argument("--model", default="tiny",
                         help="Whisper model size: tiny (fastest, for detection), "
                              "base/small/medium/large (slower, for transcription)")
@@ -197,8 +227,27 @@ if __name__ == "__main__":
                              "Log messages go to stderr. Use this for Go integration.")
     parser.add_argument("--language", default=None,
                         help="Force Whisper language, e.g. en; omit to auto-detect")
+    parser.add_argument("--pcm-stdin", action="store_true",
+                        help="Read raw s16le 16kHz mono PCM from stdin instead of a file "
+                             "(zero temp WAV — the caller pipes FFmpeg's PCM decode)")
 
     args = parser.parse_args()
+
+    if args.pcm_stdin:
+        # prepare_cuda_runtime may re-exec this script (os.execve) to put
+        # the CUDA lib dirs on LD_LIBRARY_PATH. The re-exec'd process
+        # inherits the SAME stdin pipe — so the (possible) re-exec MUST
+        # happen BEFORE draining stdin, or the second process would read
+        # an already-consumed pipe (empty PCM).
+        prepare_cuda_runtime()
+        pcm = sys.stdin.buffer.read()
+        _log("Transcribing streaming PCM with model '%s'..." % args.model, args.json_only)
+        result = transcribe_pcm_stream(pcm, args.model, args.language)
+        if "error" in result:
+            print(json.dumps(result))
+            sys.exit(1)
+        print(json.dumps(result))
+        sys.exit(0)
 
     file_path = args.file
     if not os.path.exists(file_path):

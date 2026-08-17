@@ -369,6 +369,15 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if root.Domains != nil {
 		transcriptResolver.cueWriter = root.Domains.CueWriter
 	}
+	// Streaming PCM transcriber (spec §4: zero temp WAV). Construction is
+	// fail-closed with a typed error when python3/ffmpeg/bridge are missing;
+	// the resolver falls back to the canonical WAV-chain with a warning.
+	if streaming, err := newClipRenderStreamingTranscriber(cfg, log); err != nil {
+		log.Warn("registerClipRender: streaming transcriber unavailable; transcript generation will use the WAV chain",
+			zap.String("reason", err.Error()))
+	} else {
+		transcriptResolver.streaming = streaming
+	}
 
 	preparer, err := cliprender.NewPreparer(
 		resolver,
