@@ -293,11 +293,11 @@ func golden06Timeline() *capabilityentities.EntityTimeline {
 }
 
 type queueJob struct {
-	ID         string                          `json:"id"`
-	Schema     string                          `json:"schema"`
-	Version    int                             `json:"version"`
-	RenderPlan capabilityoverlay.ChrononPlan   `json:"render_plan"`
-	Assets     []queueAsset                    `json:"assets"`
+	ID         string                        `json:"id"`
+	Schema     string                        `json:"schema"`
+	Version    int                           `json:"version"`
+	RenderPlan capabilityoverlay.ChrononPlan `json:"render_plan"`
+	Assets     []queueAsset                  `json:"assets"`
 }
 
 type queueAsset struct {

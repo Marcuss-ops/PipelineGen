@@ -130,8 +130,8 @@ type fakeDeletionHandler struct {
 	eventType string
 }
 
-func (f fakeDeletionHandler) EventType() string { return f.eventType }
-func (f fakeDeletionHandler) IdempotencyKey() string { return f.eventType + ".v1" }
+func (f fakeDeletionHandler) EventType() string                                { return f.eventType }
+func (f fakeDeletionHandler) IdempotencyKey() string                           { return f.eventType + ".v1" }
 func (f fakeDeletionHandler) Handle(context.Context, outboxevents.Event) error { return nil }
 
 // TestCheckDeletionHandlers_MissingHandler pins the fail-fast contract: a
