@@ -257,18 +257,6 @@ func tokenizeFilterQuery(q string) []string {
 	return out
 }
 
-// anyTokenInHaystack returns true iff at least one token is a
-// substring of haystack (case-insensitive; tokens are already
-// lowercased and haystack is the caller's responsibility).
-func anyTokenInHaystack(tokens []string, haystack string) bool {
-	for _, t := range tokens {
-		if strings.Contains(haystack, t) {
-			return true
-		}
-	}
-	return false
-}
-
 // categoryMatches returns true iff candidateCategories shares at
 // least one normalized entry with the operator's allowed list.
 func categoryMatches(candidateCategories, allowed []string) bool {

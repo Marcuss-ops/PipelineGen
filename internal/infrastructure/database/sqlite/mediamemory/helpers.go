@@ -19,8 +19,6 @@
 package mediamemory
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -98,12 +96,4 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
-// execContext is a thin alias on (context.Context, execer) that
-// centralizes the "internal-package-can-coalesce-nil-error"
-// pattern for repositories whose methods return no result. Kept
-// here rather than per-repo to avoid drift.
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }

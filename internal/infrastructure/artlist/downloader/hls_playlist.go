@@ -238,16 +238,3 @@ func attrInt(line, name string) (int, bool) {
 	}
 	return v, true
 }
-
-// attrInt64 extracts an int64 attribute from an HLS tag.
-func attrInt64(line, name string) (int64, bool) {
-	s, ok := attrString(line, name)
-	if !ok {
-		return 0, false
-	}
-	v, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
-}

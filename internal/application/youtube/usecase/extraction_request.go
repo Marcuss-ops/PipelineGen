@@ -9,27 +9,10 @@
 package usecase
 
 import (
-	"fmt"
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
-
-// cleanClipName trims + SafeName + falls back to segment_NNN on empty.
-// Mirrors cleanSegmentName in process_segment.go (canonical use case);
-// the orchestrator-side fallback (RequestNormalize path) lives here so
-// Extract's preflight branch is self-contained without crossing the
-// use case boundary.
-func cleanClipName(name string, idx int) string {
-	name = strings.TrimSpace(name)
-	name = textutil.SafeName(name)
-	name = strings.TrimSpace(name)
-	if name == "" {
-		name = fmt.Sprintf("segment_%03d", idx+1)
-	}
-	return name
-}
 
 // resolveKeepAudio is the canonical nil-check for the *bool KeepAudio
 // DTO field. PR-C YouTube Cutover Commit 2/6 introduced the typed-pointer

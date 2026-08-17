@@ -7,11 +7,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
-// estimateDurationSeconds uses the resolved WPM carried by the request.
-func estimateDurationSeconds(wordCount int) int {
-	return estimateDurationSecondsWithWPM(wordCount, 0)
-}
-
 func estimateDurationSecondsWithWPM(wordCount, wordsPerMinute int) int {
 	if wordCount <= 0 {
 		return 0

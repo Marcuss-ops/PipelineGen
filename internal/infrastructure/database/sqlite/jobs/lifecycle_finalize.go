@@ -14,16 +14,6 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// Aggregate-flipper port (godlike/07 typed-error contract) — narrows the
-// pattern-0 port for aggregator-only callers of FinalizeAggregateParent. The canonical
-// SQLiteStore implements this (see FinalizeAggregateParent below). Other broker
-// adapters (e.g. future Postgres) MUST also implement it.
-//
-// FASE 2 (July 2026): expectedVersion added for version-based CAS.
-type aggregateFlipper interface {
-	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
-}
-
 // parentStateTypedColumn is the SQL-side canonical constant for the
 // `parent_state_typed` column added by migration 129 (P1.2 typed-state
 // column migration, EXPAND→BACKFILL→CUTOVER sequence per
