@@ -56,18 +56,6 @@ func splitSentences(text string) []string {
 	return result
 }
 
-func trimPhrase(text string, maxLen int) string {
-	text = strings.TrimSpace(text)
-	if text == "" || maxLen <= 0 {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= maxLen {
-		return text
-	}
-	return string(runes[:maxLen]) + "..."
-}
-
 func uniqueLocalStrings(input []string) []string {
 	if len(input) == 0 {
 		return nil

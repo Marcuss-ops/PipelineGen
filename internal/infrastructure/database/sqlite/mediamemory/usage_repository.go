@@ -47,11 +47,6 @@ const usageSelectColumns = `id, project_id, scene_id, concept_id,
 		selected, manually_selected, rejected, render_completed,
 		created_at`
 
-// usageInsertColumnAliases keeps the INSERT placeholder ? count
-// in lock-step with usageSelectColumns (godlike/06 SSOT: a drift
-// between SELECT and INSERT is a silent runtime fault).
-const usageInsertColumnCount = 14
-
 // Append is the canonical entrypoint. The port signature is
 // `Append(ctx, ev) error` per godlike/06 SSOT — an append-only
 // audit log need not return the persisted row (the caller
