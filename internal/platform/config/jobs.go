@@ -25,14 +25,6 @@ type JobsConfig struct {
 	// matching the qdrant-stale-cleaner cadence in pre-Wave 22 docs).
 	// Accepts a duration string ("30m", "12h", "1h"); empty falls back to 12h.
 	RetentionInterval string `yaml:"retention_interval" env:"VELOX_RETENTION_INTERVAL" default:"12h"`
-	// RetentionSweepLimit caps the number of rows the retention sweeper
-	// deletes per tick. Prevents unbounded DELETE-tx contention against
-	// concurrent INSERTs on hot 100-worker deployments where single-tick
-	// bursts can reach 500k+ events. Default 10000 rows/tick = ~833 rows/s
-	// over 12h; sweeper catches up across multiple ticks if the delete
-	// rate falls behind the insert rate. 0 disables the cap (single
-	// unbounded DELETE per tick — risk of lock contention).
-	RetentionSweepLimit int `yaml:"retention_sweep_limit" env:"VELOX_RETENTION_SWEEP_LIMIT" default:"10000"`
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): exponential-backoff
 	// knobs for the server-side Worker poll loop. Three new fields
 	// (all forwarded into Worker.BackoffConfig at composition time):
@@ -111,24 +103,12 @@ type JobsConfig struct {
 	SplitDBEnabled bool   `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"false"`
 	JobsDBPath     string `yaml:"jobs_db_path" env:"VELOX_JOBS_DB_PATH" default:""`
 
-	// LegacyAliasEnabled (FOR FUTURE PR-Queue-Split-LEGACY) — when true,
-	// the legacy-compatibility reader (media.db.sqlite jobs tables) becomes
-	// available alongside the canonical jobs.db.sqlite reads. Today this is
-	// a reserved-shape knob; EXPAND itself does NOT implement the alias
-	// (that lands in a future PR-Queue-Split-CUTOVER following bench results).
-	// Default OFF: no legacy reads; *SQLiteStore reads are exclusive (jobs
-	// DB OR media DB, never both per the gate).
-	LegacyAliasEnabled bool `yaml:"legacy_alias_enabled" env:"VELOX_LEGACY_ALIAS_ENABLED" default:"false"`
 	// EnableBackgroundJobs controls whether background workers/schedulers run.
 	// Default true; set to false via env VELOX_ENABLE_BACKGROUND_JOBS=false for dev mode.
 	EnableBackgroundJobs bool `yaml:"enable_background_jobs" env:"VELOX_ENABLE_BACKGROUND_JOBS" default:"true"`
 	// EnableChannelMonitor controls the YouTube channel monitor scheduler.
 	// Default false; opt-in via env VELOX_ENABLE_CHANNEL_MONITOR=true.
 	EnableChannelMonitor bool `yaml:"enable_channel_monitor" env:"VELOX_ENABLE_CHANNEL_MONITOR" default:"false"`
-	// EnableTestJobHandlers registers test-only job handlers (echo, slow, fail).
-	// Default false; set via env VELOX_ENABLE_TEST_JOB_HANDLERS=true for dev/testing.
-	EnableTestJobHandlers bool `yaml:"enable_test_job_handlers" env:"VELOX_ENABLE_TEST_JOB_HANDLERS" default:"false"`
-
 	// PR-Deletion-Reconciler / Blocco 3.2 (June 2026): two knobs
 	// gate the DeletionReconciler ticker.
 	//

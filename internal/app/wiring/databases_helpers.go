@@ -193,7 +193,6 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 		log.Info("PR-Queue-Split-EXPAND: Jobs DB opened alongside media DB",
 			zap.String("main_db", dbs.Main.Path()),
 			zap.String("jobs_db", jobsDB.Path()),
-			zap.Bool("legacy_alias_enabled", cfg.Jobs.LegacyAliasEnabled),
 		)
 	}
 

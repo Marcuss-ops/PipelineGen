@@ -29,11 +29,6 @@ type StorageConfig struct {
 	// then DELETEd from the live DB. 0 disables rotation. See
 	// ARCHITECTURE.md §12 (observability retention policy).
 	ObservabilityMaxAgeDays int `yaml:"observability_max_age_days" env:"VELOX_OBSERVABILITY_MAX_AGE_DAYS" default:"7"`
-	// ObservabilityMaxSizeMB is the soft cap on the observability DB
-	// size. After each rotation, `admin db status` reports the WAL
-	// + main file size; if it exceeds this, an operator should run
-	// `admin db rotate` with a smaller -max-age-days.
-	ObservabilityMaxSizeMB int `yaml:"observability_max_size_mb" env:"VELOX_OBSERVABILITY_MAX_SIZE_MB" default:"1024"`
 	// MediaDir / TempDir are kept for backward-compat with the legacy
 	// on-disk filesystem layout (voiceovers, images, youtube, etc.).
 	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
