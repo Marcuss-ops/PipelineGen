@@ -44,6 +44,7 @@ type Worker struct {
 	preparer     *Preparer
 	workspaceDir string
 	subtitles    SubtitleCompiler // optional until the ASS-compiler step wires it
+	renderer     RenderExecutor   // optional until the render-phase step consumes it
 	log          *zap.Logger
 }
 
@@ -67,6 +68,17 @@ func NewWorker(preparer *Preparer, workspaceDir string, log *zap.Logger) (*Worke
 func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 	if w != nil {
 		w.subtitles = c
+	}
+	return w
+}
+
+// WithRenderExecutor attaches the Rust render_clip boundary. The render
+// phase consumes it; until the phase lands, Handle still fails closed with
+// ErrRenderPhaseNotImplemented (a sealed plan is never reported as a
+// rendered clip).
+func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
+	if w != nil {
+		w.renderer = r
 	}
 	return w
 }
@@ -138,15 +150,16 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 
 	// ── Seal the fully-resolved plan ───────────────────────────────────
 	plan, err := Compile(CompileInput{
-		RunID:         j.ID,
-		Source:        prepared.Source,
-		Watermark:     prepared.Watermark,
-		WatermarkSpec: req.Watermark,
-		Background:    prepared.Background,
-		Subtitles:     subtitleArtifact,
-		Contract:      prepared.Contract,
-		AudioMode:     req.Audio.Mode,
-		OutputPath:    filepath.Join(runDir, "rendered-clip.mp4"),
+		RunID:          j.ID,
+		Source:         prepared.Source,
+		Watermark:      prepared.Watermark,
+		WatermarkSpec:  req.Watermark,
+		Background:     prepared.Background,
+		BackgroundMode: req.Background.Mode,
+		Subtitles:      subtitleArtifact,
+		Contract:       prepared.Contract,
+		AudioMode:      req.Audio.Mode,
+		OutputPath:     filepath.Join(runDir, "rendered-clip.mp4"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: compile plan: %w", err)

@@ -45,15 +45,16 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 141,
+      "baseline_files": 144,
       "baseline": {
-        "files": 141,
+        "files": 144,
         "max_loc": 26637
       },
       "current": {
-        "files": 138,
+        "files": 144,
         "max_loc": 23098
       },
+      "note": "Composition-root adapters for the clip.render capability (cliprender_adapters.go, cliprender_transcript.go, cliprender_plan.go) registered under this hotspot; owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/app/workerruntime",
         "internal/app/wiring",

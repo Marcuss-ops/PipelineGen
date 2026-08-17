@@ -6,12 +6,12 @@ verify-audio-chunked:
 	@echo "✅ CHUNKED_VOICEOVER gate passed"
 
 verify-audio-combined:
-	go test ./internal/capabilities/audio ./internal/capabilities/scripts ./internal/infrastructure/media/rustexec
+	go test ./internal/capabilities/audio ./internal/capabilities/scripts ./internal/platform/media/rustexec
 	cargo test --manifest-path rust/pipelinegen-muscles/Cargo.toml
 	@echo "✅ COMBINED_TIMELINE gate passed"
 
 verify-audio-copy:
-	go test ./internal/infrastructure/media/rustexec -run 'Test(MuxFinalAudioCopy|RequestValidate.*MuxAudioCopy)'
+	go test ./internal/platform/media/rustexec -run 'Test(MuxFinalAudioCopy|RequestValidate.*MuxAudioCopy)'
 	cargo test --manifest-path rust/pipelinegen-muscles/Cargo.toml
 	@echo "✅ FINAL_AUDIO_COPY gate passed"
 

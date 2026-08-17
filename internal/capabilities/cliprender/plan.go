@@ -115,15 +115,16 @@ type ClipRenderPlanV1 struct {
 // from the parallel preparation phase (+ the compiled ASS artifact); Compile
 // never resolves anything itself.
 type CompileInput struct {
-	RunID         string
-	Source        *MaterializedAsset
-	Watermark     *MaterializedAsset // nil when disabled
-	WatermarkSpec *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
-	Background    *MaterializedAsset // nil when mode none/blur_source
-	Subtitles     *SubtitleArtifact  // nil when disabled
-	Contract      *ResolvedContract
-	AudioMode     string
-	OutputPath    string
+	RunID          string
+	Source         *MaterializedAsset
+	Watermark      *MaterializedAsset // nil when disabled
+	WatermarkSpec  *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
+	Background     *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
+	BackgroundMode string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
+	Subtitles      *SubtitleArtifact  // nil when disabled
+	Contract       *ResolvedContract
+	AudioMode      string
+	OutputPath     string
 }
 
 // Compile builds the sealed plan from the resolved inputs. Fail-closed: any
@@ -175,12 +176,32 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		OutputPath: strings.TrimSpace(in.OutputPath),
 	}
 
-	switch {
-	case in.Background == nil:
+	// Background mode is a request-level business selection resolved here;
+	// blur_source carries no asset block (Rust derives the blurred background
+	// from the source itself), mode=asset requires the verified materialized
+	// asset, and none requires no asset.
+	backgroundMode := in.BackgroundMode
+	if backgroundMode == "" {
+		if in.Background == nil {
+			backgroundMode = BackgroundModeNone
+		} else {
+			backgroundMode = BackgroundModeAsset
+		}
+	}
+	switch backgroundMode {
+	case BackgroundModeNone:
+		if in.Background != nil {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=none must not carry an asset", ErrInvalidClipPlan)
+		}
 		plan.Background = &PlanBackground{Mode: BackgroundModeNone}
-	default:
-		if in.Background.LocalPath == "" || !isSHA256Hex(in.Background.SHA256) {
-			return ClipRenderPlanV1{}, fmt.Errorf("%w: background asset requires path + sha256", ErrInvalidClipPlan)
+	case BackgroundModeBlurSource:
+		if in.Background != nil {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=blur_source must not carry an asset", ErrInvalidClipPlan)
+		}
+		plan.Background = &PlanBackground{Mode: BackgroundModeBlurSource}
+	case BackgroundModeAsset:
+		if in.Background == nil || in.Background.LocalPath == "" || !isSHA256Hex(in.Background.SHA256) {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=asset requires the materialized asset with path + sha256", ErrInvalidClipPlan)
 		}
 		plan.Background = &PlanBackground{
 			Mode:    BackgroundModeAsset,
@@ -188,6 +209,8 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			Path:    in.Background.LocalPath,
 			SHA256:  in.Background.SHA256,
 		}
+	default:
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: invalid background mode %q", ErrInvalidClipPlan, backgroundMode)
 	}
 
 	if in.Watermark != nil {

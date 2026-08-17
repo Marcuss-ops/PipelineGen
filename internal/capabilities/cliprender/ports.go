@@ -49,3 +49,30 @@ type TranscriptResolver interface {
 type ContractResolver interface {
 	Resolve(ctx context.Context, req *RenderRequest) (*ResolvedContract, error)
 }
+
+// RenderOutcome is the typed result of executing a sealed ClipRenderPlanV1
+// through the Rust render_clip boundary (feature spec §6/§9). Every media
+// fact (duration, geometry, copy policy, CPU subtitle stage, native encode
+// wall time) comes from the Rust response metadata; the concrete adapter
+// never re-derives them.
+type RenderOutcome struct {
+	OutputPath        string
+	SizeBytes         int64
+	DurationSec       float64
+	Width             uint32
+	Height            uint32
+	FPS               uint32
+	FFmpegMS          int64
+	AudioCopyEligible *bool
+	AudioEncodePasses *int
+	SubtitleRasterCPU *bool
+}
+
+// RenderExecutor executes the sealed ClipRenderPlanV1 in a single render
+// pass on the Rust boundary. The plan is fully resolved before this port is
+// invoked — the executor makes zero business selections. Fail-closed: the
+// output must exist and be non-empty on success; a missing or drifted
+// artifact is a typed error, never a silent no-op.
+type RenderExecutor interface {
+	Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
+}

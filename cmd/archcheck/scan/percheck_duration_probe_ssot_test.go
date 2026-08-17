@@ -71,7 +71,7 @@ var _ = exec.CommandContext(context.Background(), "ffmpeg", "-i", "x")
 func TestDurationProbeSSOT_CanonicalCapabilityExempt(t *testing.T) {
 	dir := t.TempDir()
 	durationProbeWriteTree(t, dir, map[string]string{
-		"internal/infrastructure/media/rustexec/executor.go": `package rustexec
+		"internal/platform/media/rustexec/executor.go": `package rustexec
 import "os/exec"
 var _ = exec.Command("ffmpeg", "-i", "x")
 `,
