@@ -2,6 +2,8 @@ package cliprender
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -63,10 +65,11 @@ func (f *fakeMaterializer) Materialize(_ context.Context, ref AssetRef) (*Materi
 	if f.err != nil {
 		return nil, f.err
 	}
+	sum := sha256.Sum256([]byte(ref.AssetID))
 	return &MaterializedAsset{
 		AssetID:   ref.AssetID,
 		LocalPath: "/scratch/" + ref.AssetID + ".mp4",
-		SHA256:    "sha-" + ref.AssetID,
+		SHA256:    hex.EncodeToString(sum[:]),
 		SizeBytes: 1024,
 		FromCache: ref.LocalPath != "",
 	}, nil
@@ -228,7 +231,8 @@ func TestPrepare_TranscriptGenerateOnMiss(t *testing.T) {
 	if len(tr.genSources) != 1 {
 		t.Fatalf("expected exactly 1 Generate call, got %d", len(tr.genSources))
 	}
-	if got := tr.genSources[0]; got == nil || got.SHA256 != "sha-asset-source" {
+	sum := sha256.Sum256([]byte("asset-source"))
+	if got := tr.genSources[0]; got == nil || got.SHA256 != hex.EncodeToString(sum[:]) {
 		t.Fatalf("Generate must receive the materialized source with its sha256, got %+v", got)
 	}
 	if prepared.Transcript == nil || prepared.Transcript.Text != "generated" {

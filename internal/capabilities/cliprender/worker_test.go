@@ -11,7 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func newTestWorker() (*Worker, *fakeMaterializer, *fakeTranscriptResolver) {
+func newTestWorker(t *testing.T) (*Worker, *fakeMaterializer, *fakeTranscriptResolver) {
+	t.Helper()
 	resolver := newFakeAssetResolver(map[string]AssetRef{
 		"asset-source": {AssetID: "asset-source"},
 	})
@@ -21,7 +22,7 @@ func newTestWorker() (*Worker, *fakeMaterializer, *fakeTranscriptResolver) {
 		existingOK: true,
 	}
 	preparer := newTestPreparer(resolver, mat, tr)
-	w, err := NewWorker(preparer, zap.NewNop())
+	w, err := NewWorker(preparer, t.TempDir(), zap.NewNop())
 	if err != nil {
 		panic(err)
 	}
@@ -42,7 +43,7 @@ func renderJobPayload(t *testing.T, req *RenderRequest) json.RawMessage {
 // terminal error (render phase not implemented — fail-closed, never a
 // silent success).
 func TestWorker_ValidPayload_PreparesAndFailsClosed(t *testing.T) {
-	w, mat, _ := newTestWorker()
+	w, mat, _ := newTestWorker(t)
 
 	req := baseRenderRequest()
 	payload := renderJobPayload(t, req)
@@ -59,12 +60,12 @@ func TestWorker_ValidPayload_PreparesAndFailsClosed(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected result envelope with prepared artifacts")
 	}
-	if result["phase"] != "prepared" {
-		t.Errorf("phase: got %v, want prepared", result["phase"])
+	if result["phase"] != "plan_sealed" {
+		t.Errorf("phase: got %v, want plan_sealed", result["phase"])
 	}
-	source, ok := result["source"].(map[string]any)
-	if !ok || source["asset_id"] != "asset-source" {
-		t.Errorf("source: got %v", result["source"])
+	plan, ok := result["plan"].(map[string]any)
+	if !ok || plan["plan_sha256"] == "" {
+		t.Errorf("plan envelope: got %v", result["plan"])
 	}
 	if got := result["contract_id"]; got != OutputContractVeloxEditingClipV1 {
 		t.Errorf("contract_id: got %v", got)
@@ -77,7 +78,7 @@ func TestWorker_ValidPayload_PreparesAndFailsClosed(t *testing.T) {
 // TestWorker_InvalidPayload_Terminal verifies an undecodable payload fails
 // with the typed terminal sentinel before any preparation runs.
 func TestWorker_InvalidPayload_Terminal(t *testing.T) {
-	w, mat, _ := newTestWorker()
+	w, mat, _ := newTestWorker(t)
 
 	result, err := w.Handle(context.Background(), &job.Job{ID: "job-2", Payload: json.RawMessage(`{not json`)}, nil)
 	if !errors.Is(err, ErrInvalidJobPayload) {
@@ -94,7 +95,7 @@ func TestWorker_InvalidPayload_Terminal(t *testing.T) {
 // TestWorker_ValidationFailure_Terminal verifies an invalid (non-normalized)
 // request fails with the typed terminal sentinel.
 func TestWorker_ValidationFailure_Terminal(t *testing.T) {
-	w, mat, _ := newTestWorker()
+	w, mat, _ := newTestWorker(t)
 
 	// Missing source_asset_id — fails Validate after Normalize.
 	raw, _ := json.Marshal(&RenderRequest{})
@@ -117,7 +118,7 @@ func TestWorker_PrepareFailure_Wrapped(t *testing.T) {
 	mat := &fakeMaterializer{}
 	tr := &fakeTranscriptResolver{}
 	preparer := newTestPreparer(resolver, mat, tr)
-	w, err := NewWorker(preparer, zap.NewNop())
+	w, err := NewWorker(preparer, t.TempDir(), zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
