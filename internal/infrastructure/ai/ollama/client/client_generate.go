@@ -29,10 +29,12 @@ func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, 
 		model = c.model
 	}
 
+	format, options := extractGenerateFormat(options)
 	req := types.GenerateRequest{
 		Model:   model,
 		Prompt:  prompt,
 		Stream:  false,
+		Format:  format,
 		Options: options,
 	}
 
@@ -73,6 +75,28 @@ func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, 
 	)
 
 	return result.Response, nil
+}
+
+// extractGenerateFormat keeps the public options map backward-compatible
+// while placing Ollama's structured-output format at the request level. The
+// Ollama API ignores format when it is nested inside options.
+func extractGenerateFormat(options map[string]any) (any, map[string]any) {
+	if len(options) == 0 {
+		return nil, nil
+	}
+	copyOptions := make(map[string]any, len(options))
+	var format any
+	for key, value := range options {
+		if key == "format" {
+			format = value
+			continue
+		}
+		copyOptions[key] = value
+	}
+	if len(copyOptions) == 0 {
+		copyOptions = nil
+	}
+	return format, copyOptions
 }
 
 // SimpleGenerate is a convenience wrapper for the common pattern of calling

@@ -35,6 +35,15 @@ func modelSourceText(plan *scriptpkg.ResolvedGenerationPlan) (string, error) {
 		}
 		return strings.TrimSpace(plan.ClipEvidence.ModelSourceText()), nil
 	}
+	if plan.ResearchEvidence != nil || plan.SourceKind == string(scriptpkg.SourceResearch) {
+		if plan.ResearchEvidence == nil {
+			return "", &scriptpkg.PlanInvalidError{ItemID: plan.ID, Details: []string{"research plan requires research evidence"}}
+		}
+		if err := plan.ResearchEvidence.Validate(); err != nil {
+			return "", &scriptpkg.PlanInvalidError{ItemID: plan.ID, Details: []string{err.Error()}}
+		}
+		return strings.TrimSpace(plan.ResearchEvidence.ModelSourceText()), nil
+	}
 	return strings.TrimSpace(plan.SourceText), nil
 }
 
@@ -256,6 +265,14 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		builtPrompt += clipRules
 	}
 	builtPrompt += plainTextInstruction
+	// Research evidence is global for auditability, but the narrative must be
+	// partitioned by candidate. Append this contract after the generic prose
+	// contract so it is the last editorial instruction seen by the model.
+	if plan.ResearchEvidence != nil {
+		if narrativePlan := plan.ResearchEvidence.NarrativePlanInstructions(); narrativePlan != "" {
+			builtPrompt += "\n\n" + narrativePlan
+		}
+	}
 
 	ollamaReq := ports.TextGenerationRequest{
 		Language:         language,

@@ -210,6 +210,11 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 		if ledgerErr != nil {
 			return nil, fmt.Errorf("buildQdrantDeps: media registry ledger: %w", ledgerErr)
 		}
+		// Keep the ACTIVE projection checkpoint current with incremental
+		// indexing so the startup sequence gate (ValidateProjectionSequence)
+		// does not fail closed on the next restart after assets are
+		// committed + embedded outside a full reindex.
+		clipIndexerService.SetProjectionSequenceAdvancer(registryLedger)
 		var rerr error
 		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
 			QdrantCfg: &schema.Config{

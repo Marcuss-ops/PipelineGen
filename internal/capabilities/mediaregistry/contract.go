@@ -181,6 +181,16 @@ type ProjectionReader interface {
 	ListProjections(context.Context) ([]Projection, error)
 }
 
+// ProjectionSequenceAdvancer is an optional refinement of Ledger. It advances
+// the ACTIVE projection's source_registry_seq to the latest Qdrant-eligible
+// registry sequence after an incremental index upsert. Without this, the
+// ACTIVE projection's checkpoint only moves on a full reindex, so the startup
+// sequence gate (ValidateProjectionSequence) sees a stale projection and
+// fails closed on every restart after new assets are committed + embedded.
+type ProjectionSequenceAdvancer interface {
+	AdvanceActiveProjectionSequence(context.Context) error
+}
+
 // AssetSource is a single provenance record: one logical asset, one place it
 // was discovered. An asset may have MULTIPLE sources — the same bytes found
 // on Drive, YouTube and a manual upload share ONE content object but keep

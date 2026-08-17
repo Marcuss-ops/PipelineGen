@@ -105,6 +105,27 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 	}
 }
 
+// documentSkeletonInputForScenes projects the scene-text-only skeleton inputs
+// for every docs language from the durable scene list. It reads only the final
+// scene text (immutable after translation), so it can be captured at
+// SceneTextReady and rendered by the prepare branch concurrently with TTS
+// without touching the mutable Scene struct.
+func documentSkeletonInputForScenes(title string, scenes []Scene, langs []Language) map[Language]DocumentSkeletonInput {
+	inputs := make(map[Language]DocumentSkeletonInput, len(langs))
+	for _, lang := range langs {
+		in := DocumentSkeletonInput{Title: title}
+		for i := range scenes {
+			in.Scenes = append(in.Scenes, DocumentSceneText{
+				ID:    scenes[i].ID,
+				Index: scenes[i].Index,
+				Text:  strings.TrimSpace(scenes[i].Text[lang]),
+			})
+		}
+		inputs[lang] = in
+	}
+	return inputs
+}
+
 func clipBindingFromReference(clip *ClipReference) scriptpkg.ClipBinding {
 	if clip == nil {
 		return scriptpkg.ClipBinding{}

@@ -61,6 +61,7 @@ const (
 	// Watermark positions.
 	PositionTopLeft     = "top_left"
 	PositionTopRight    = "top_right"
+	PositionCenter      = "center"
 	PositionBottomLeft  = "bottom_left"
 	PositionBottomRight = "bottom_right"
 
@@ -243,9 +244,9 @@ func (r *RenderRequest) Validate() error {
 			return fmt.Errorf("%w: watermark.enabled=true requires watermark.asset_id (a canonical watermark asset, never a raw path)", ErrInvalidRequest)
 		}
 		switch r.Watermark.Position {
-		case PositionTopLeft, PositionTopRight, PositionBottomLeft, PositionBottomRight:
+		case PositionTopLeft, PositionTopRight, PositionCenter, PositionBottomLeft, PositionBottomRight:
 		default:
-			return fmt.Errorf("%w: watermark.position must be one of top_left, top_right, bottom_left, bottom_right (got %q)", ErrInvalidRequest, r.Watermark.Position)
+			return fmt.Errorf("%w: watermark.position must be one of top_left, top_right, center, bottom_left, bottom_right (got %q)", ErrInvalidRequest, r.Watermark.Position)
 		}
 		if r.Watermark.Opacity < 0 || r.Watermark.Opacity > 1 {
 			return fmt.Errorf("%w: watermark.opacity must be within [0,1] (got %v)", ErrInvalidRequest, r.Watermark.Opacity)

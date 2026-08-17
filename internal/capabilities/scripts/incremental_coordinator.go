@@ -414,23 +414,28 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	c.mu.Lock()
 	c.barrierStart = barrierStart
 	c.barrierEnd = barrierEnd
+	firstStart := c.firstEnrichmentStart
 	overlapMS := c.overlapMSLocked()
-	defer c.mu.Unlock()
 	indexes := make([]int, 0, len(c.latest))
 	for idx := range c.latest {
 		indexes = append(indexes, idx)
 	}
+	c.mu.Unlock()
 	sort.Ints(indexes)
 
+	var resultErr error
 	results := make([]scriptpkg.VidRushSegmentResult, 0, len(indexes))
 	for _, idx := range indexes {
+		c.mu.Lock()
 		latest := c.latest[idx]
 		record, ok := c.records[idx]
+		c.mu.Unlock()
 		if !ok {
 			continue
 		}
 		if record.err != nil {
-			return nil, fmt.Errorf("vidrush scene %q (index %d) enrichment: %w", latest.SceneID, idx, record.err)
+			resultErr = fmt.Errorf("vidrush scene %q (index %d) enrichment: %w", latest.SceneID, idx, record.err)
+			break
 		}
 		// Defensive final fence: never apply a result whose identity does not
 		// match the latest committed scene text.
@@ -439,11 +444,29 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 		}
 		results = append(results, record.result)
 	}
-	if c.metrics != nil {
+	if resultErr == nil && c.metrics != nil {
 		c.metrics.BarrierWait(barrierEnd.Sub(barrierStart).Seconds())
 		c.metrics.GenerationOverlap(float64(overlapMS) / 1000.0)
 	}
+	c.recordSceneAnalysisStage(ctx, firstStart, barrierEnd, resultErr)
+	if resultErr != nil {
+		return nil, resultErr
+	}
 	return results, nil
+}
+
+// recordSceneAnalysisStage projects the owner-measured scene_analysis fan-out
+// wall (first enrichment start → barrier end) onto the canonical Run clock as
+// a stage, so the fan-out report exposes a nonzero scene_analysis wall_ms
+// separate from the accumulated nlp.extract work instead of leaking the NLP
+// wall into unattributed time. It is recorded only when at least one
+// enrichment ran (firstStart non-zero); when no Run is bound to ctx it is a
+// no-op (instrumentation must never change behaviour).
+func (c *VidRushIncrementalCoordinator) recordSceneAnalysisStage(ctx context.Context, firstStart, barrierEnd time.Time, err error) {
+	if firstStart.IsZero() {
+		return
+	}
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageSceneAnalysis}, firstStart, barrierEnd, err)
 }
 
 // StaleResults reports how many enrichment results were discarded because a

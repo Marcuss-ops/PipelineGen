@@ -48,6 +48,47 @@ func renderJobPayload(t *testing.T, req *RenderRequest) json.RawMessage {
 	return raw
 }
 
+type fakeRenderExecutor struct {
+	called  int
+	plan    ClipRenderPlanV1
+	outcome *RenderOutcome
+}
+
+func (f *fakeRenderExecutor) Render(_ context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error) {
+	f.called++
+	f.plan = plan
+	return f.outcome, nil
+}
+
+func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1080,
+		Height:      1920,
+		FPS:         60,
+		FFmpegMS:    1234,
+	}}
+	w.WithRenderExecutor(renderer)
+
+	result, err := w.Handle(context.Background(), &job.Job{ID: "job-render", Payload: renderJobPayload(t, baseRenderRequest())}, nil)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if renderer.called != 1 || renderer.plan.PlanSHA256 == "" {
+		t.Fatalf("renderer calls/plan = %d/%+v", renderer.called, renderer.plan)
+	}
+	if result["phase"] != "rendered" {
+		t.Fatalf("phase = %v, want rendered", result["phase"])
+	}
+	render, ok := result["render"].(map[string]any)
+	if !ok || render["ffmpeg_ms"] != int64(1234) {
+		t.Fatalf("render result = %v", result["render"])
+	}
+}
+
 // TestWorker_ValidPayload_PreparesAndFailsClosed verifies the full worker
 // path: decode → validate → prepare → result envelope emitted + typed
 // terminal error (render phase not implemented — fail-closed, never a

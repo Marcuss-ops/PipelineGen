@@ -68,26 +68,12 @@ func TestCompileMissingImageFailsClosed(t *testing.T) {
 	}
 }
 
-// TestCompileUnicodeTextRuneCounting certifies multilingual text: rune counts
-// drive the auto-fit buckets (never UTF-8 byte counts), and accented/emojis/
-// CJK text compiles without error.
+// TestCompileUnicodeTextRuneCounting certifies multilingual text: accented/
+// emojis/CJK text compiles without error (font/style/layout are Chronon-owned,
+// so the plan only transports the text).
 func TestCompileUnicodeTextRuneCounting(t *testing.T) {
-	cases := []struct {
-		text string
-		// wantRunes is the rune count displayRunes must report (not bytes).
-		wantRunes int
-	}{
-		{"È CAMBIATO", 10},
-		{"MÜNCHEN", 7},
-		{"L'IPHONE", 8},
-		{"日本", 2},
-		{"€50 MILIONI", 11},
-		{"90%", 3},
-	}
+	cases := []string{"È CAMBIATO", "MÜNCHEN", "L'IPHONE", "日本", "€50 MILIONI", "90%"}
 	for _, tc := range cases {
-		if got := displayRunes(tc.text); got != tc.wantRunes {
-			t.Errorf("displayRunes(%q) = %d, want %d (rune count, not byte count)", tc.text, got, tc.wantRunes)
-		}
 		plan := OverlayPlan{
 			SchemaVersion:   SchemaVersionPlan,
 			PlanID:          "unicode",
@@ -98,19 +84,19 @@ func TestCompileUnicodeTextRuneCounting(t *testing.T) {
 			FPS:             30,
 			RendererVersion: "chronon",
 			Items: []OverlayItem{{
-				ID: "phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 0, EndMs: 2000, Text: tc.text,
+				ID: "phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 0, EndMs: 2000, Text: tc,
 			}},
 		}
 		if _, err := CompileChrononPlan(plan); err != nil {
-			t.Errorf("unicode text %q failed to compile: %v", tc.text, err)
+			t.Errorf("unicode text %q failed to compile: %v", tc, err)
 		}
 	}
 }
 
-// TestCompileHugeTextScalesDownNeverZero certifies the huge-text contract:
-// display text far beyond the budget scales to the smallest deterministic
-// bucket (32), never zero (which would mean a clipped/default-size failure).
-func TestCompileHugeTextScalesDownNeverZero(t *testing.T) {
+// TestCompileHugeTextCarriesNoFontSize certifies that even very long display
+// text compiles without a font_size override: sizing is Chronon's preset
+// (StyleResolver), never a PipelineGen auto-fit bucket.
+func TestCompileHugeTextCarriesNoFontSize(t *testing.T) {
 	huge := "THIS IS A VERY LONG IMPORTANT PHRASE THAT SHOULD NEVER FIT ON ONE LINE AND MUST SCALE DOWN DETERMINISTICALLY"
 	plan := OverlayPlan{
 		SchemaVersion:   SchemaVersionPlan,
@@ -130,11 +116,8 @@ func TestCompileHugeTextScalesDownNeverZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	layer := got.Plan.Layers[0]
-	if layer.FontSize == 0 {
-		t.Fatal("huge text must carry a font_size override (never default-size clipping)")
-	}
-	if layer.FontSize != 32 {
-		t.Fatalf("huge text font_size = %v, want the deterministic max-reduction bucket 32", layer.FontSize)
+	if layer.Font != "" || layer.FontSize != 0 {
+		t.Fatalf("text layer must not carry font/font_size: %+v", layer)
 	}
 }
 

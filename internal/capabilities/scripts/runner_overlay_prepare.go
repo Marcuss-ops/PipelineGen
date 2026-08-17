@@ -48,10 +48,14 @@ type vidRushPrepareResult struct {
 }
 
 // vidRushPrepareOutcome is the channel payload the prepare branch sends back
-// to the main goroutine.
+// to the main goroutine. skeletons carries the per-language document
+// skeletons rendered at SceneTextReady (the early DocsPrepare pass) for the
+// late-bound injection in the document phase; it is nil when the renderer
+// does not implement the early/late split.
 type vidRushPrepareOutcome struct {
-	result vidRushPrepareResult
-	err    error
+	result    vidRushPrepareResult
+	skeletons map[Language]string
+	err       error
 }
 
 // applyVidRushPrepareProjections projects the prepare branch's outputs onto

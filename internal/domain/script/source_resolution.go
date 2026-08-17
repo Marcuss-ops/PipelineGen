@@ -32,11 +32,12 @@ type ResolvedSource struct {
 	Title      string     `json:"title"`
 	SourceText string     `json:"source_text"`
 	// Segments is the resolver-owned canonical segment list.
-	Segments        []ScriptSegment    `json:"segments,omitempty"`
-	Language        string             `json:"language,omitempty"`
-	ClipEvidence    *ClipEvidence      `json:"clip_evidence,omitempty"`
-	SearchResults   []SearchResultItem `json:"search_results,omitempty"`
-	GroundingPolicy string             `json:"grounding_policy,omitempty"`
-	Fingerprint     string             `json:"fingerprint,omitempty"`
-	ResearchReport  *ResearchReport    `json:"research_report,omitempty"`
+	Segments         []ScriptSegment       `json:"segments,omitempty"`
+	Language         string                `json:"language,omitempty"`
+	ClipEvidence     *ClipEvidence         `json:"clip_evidence,omitempty"`
+	SearchResults    []SearchResultItem    `json:"search_results,omitempty"`
+	GroundingPolicy  string                `json:"grounding_policy,omitempty"`
+	Fingerprint      string                `json:"fingerprint,omitempty"`
+	ResearchReport   *ResearchReport       `json:"research_report,omitempty"`
+	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`
 }

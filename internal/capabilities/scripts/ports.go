@@ -212,6 +212,17 @@ type DocumentRenderer interface {
 	RenderDocument(*scriptpkg.ModelScriptOutputV1, DocumentRenderOptions) (string, error)
 }
 
+// SplittableDocumentRenderer is the optional early/late rendering seam. When
+// a renderer implements it, the runner renders the scene-text-only skeleton
+// at SceneTextReady (so the CPU half of DocsPrepare overlaps TTS and NLP) and
+// then fills the late-bound markers after the audio join. Renderers that only
+// implement DocumentRenderer keep the one-shot path; the two paths must be
+// byte-equivalent for a non-nil model.
+type SplittableDocumentRenderer interface {
+	RenderDocumentSkeleton(DocumentSkeletonInput) string
+	InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) string
+}
+
 // IdentifiedDocumentRenderer is an optional observability seam. Production
 // renderers implement it so completed runs prove which formatter was used;
 // test renderers may omit it and remain valid port fakes.

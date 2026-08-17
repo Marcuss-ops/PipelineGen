@@ -78,9 +78,9 @@ type ExternalConfig struct {
 	// system reports "SearXNG unavailable" in /api/system/doctor and the
 	// affected code paths are documented in AGENTS.md.
 	SearxngURL              string `yaml:"searxng_url" env:"SEARXNG_URL" default:"http://127.0.0.1:8080"`
-	SearxngMaxResults       int    `yaml:"searxng_max_results"     env:"SEARXNG_MAX_RESULTS"     default:"5"`
+	SearxngMaxResults       int    `yaml:"searxng_max_results"     env:"SEARXNG_MAX_RESULTS"     default:"12"`
 	SearxngLanguage         string `yaml:"searxng_language" env:"SEARXNG_LANGUAGE" default:"en"`
-	SearxngEngines          string `yaml:"searxng_engines" env:"SEARXNG_ENGINES" default:"bing,mwmbl,wiby"`
+	SearxngEngines          string `yaml:"searxng_engines" env:"SEARXNG_ENGINES" default:"bing,mwmbl"`
 	WebSearchTimeoutSeconds int    `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
 
 	// Artlist scraper optimizations

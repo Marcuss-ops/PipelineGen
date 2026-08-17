@@ -235,6 +235,7 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 			zap.String("clip_id", clipID), zap.Error(setErr))
 		return false
 	}
+	s.advanceProjectionSequence(ctx, clipID)
 	return true
 }
 
@@ -260,6 +261,7 @@ func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash, source
 	if err := s.setIndexedAt(ctx, clipID, contentHash, sourceVersion); err != nil {
 		return fmt.Errorf("failed to persist indexed state for %s: %w", clipID, err)
 	}
+	s.advanceProjectionSequence(ctx, clipID)
 	s.log.Info("clip fully indexed and upserted to Qdrant", zap.String("clip_id", clipID))
 	return nil
 }

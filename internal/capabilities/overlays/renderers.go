@@ -34,10 +34,13 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 	frameAt := func(ms int64) int64 {
 		return int64(math.Round(float64(ms) * float64(fps) / 1000.0))
 	}
+	// The preset is resolved through the single SemanticOverlayResolver
+	// (semantic_role → Chronon preset), never from the geometry table.
+	preset, _ := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
 	layer := ChrononLayer{
 		ID:             item.ID,
 		Type:           spec.LayerType,
-		Preset:         spec.Preset,
+		Preset:         preset,
 		Fit:            spec.Fit,
 		BoxWidth:       spec.BoxWidth,
 		BoxHeight:      spec.BoxHeight,
@@ -51,11 +54,8 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 	if strings.TrimSpace(item.Text) != "" {
 		layer.Text = item.Text
 	}
-	// Text layers must declare a font (the runtime bundles none): the
-	// canonical vendored fixture is the default, mirroring the compiler.
-	if spec.Primitive == PrimitiveText {
-		layer.Font = CanonicalTextFontPath
-	}
+	// Text layers carry no font: Chronon's VisualPresetRegistry owns the
+	// font asset and size via StyleResolver.
 	if v, ok := paramString(item.Params, "fit"); ok {
 		layer.Fit = v
 	}

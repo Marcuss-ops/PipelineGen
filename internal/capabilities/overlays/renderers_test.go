@@ -22,13 +22,14 @@ func testRenderPlan() OverlayPlan {
 func TestRenderers_CompileEntityCards(t *testing.T) {
 	plan := testRenderPlan()
 	cases := []struct {
-		renderer Renderer
-		name     string
-		template string
+		renderer   Renderer
+		name       string
+		template   string
+		wantPreset string
 	}{
-		{PersonCardRenderer{}, "PersonCardRenderer", "person_default"},
-		{OrganizationCardRenderer{}, "OrganizationCardRenderer", "org_default"},
-		{LocationCardRenderer{}, "LocationCardRenderer", "gpe_default"},
+		{PersonCardRenderer{}, "PersonCardRenderer", "person_default", "lower_third_safe"},
+		{OrganizationCardRenderer{}, "OrganizationCardRenderer", "org_default", "organization_card"},
+		{LocationCardRenderer{}, "LocationCardRenderer", "gpe_default", "location_card"},
 	}
 	for _, tc := range cases {
 		item := OverlayItem{ID: "item", Kind: "entity_card", TemplateID: tc.template, Text: "Ada", StartMs: 1000, EndMs: 3000}
@@ -42,8 +43,8 @@ func TestRenderers_CompileEntityCards(t *testing.T) {
 		if layer.Type != "text" {
 			t.Errorf("%s: layer.Type = %q, want text", tc.name, layer.Type)
 		}
-		if layer.Preset != "entity_card" {
-			t.Errorf("%s: layer.Preset = %q, want entity_card", tc.name, layer.Preset)
+		if layer.Preset != tc.wantPreset {
+			t.Errorf("%s: layer.Preset = %q, want %s", tc.name, layer.Preset, tc.wantPreset)
 		}
 		if layer.Text != "Ada" {
 			t.Errorf("%s: layer.Text = %q, want Ada", tc.name, layer.Text)
@@ -64,8 +65,8 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lt.Type != "text" || lt.Preset != "lower_third" {
-		t.Fatalf("lower_third layer = %+v, want text/lower_third", lt)
+	if lt.Type != "text" || lt.Preset != "lower_third_safe" {
+		t.Fatalf("lower_third layer = %+v, want text/lower_third_safe", lt)
 	}
 
 	popup, err := (ImagePopupRenderer{}).Compile(OverlayItem{
@@ -83,16 +84,16 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quote.Type != "text" || quote.Preset != "quote" {
-		t.Fatalf("quote layer = %+v, want text/quote", quote)
+	if quote.Type != "text" || quote.Preset != "caption_card" {
+		t.Fatalf("quote layer = %+v, want text/caption_card", quote)
 	}
 
 	number, err := (NumberRenderer{}).Compile(OverlayItem{ID: "n", Kind: "number", TemplateID: "NUMBER", Text: "47%", StartMs: 0, EndMs: 2000}, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if number.Type != "text" || number.Preset != "number" {
-		t.Fatalf("number layer = %+v, want text/number", number)
+	if number.Type != "text" || number.Preset != "active_word_pop" {
+		t.Fatalf("number layer = %+v, want text/active_word_pop", number)
 	}
 
 	product, err := (ProductRenderer{}).Compile(OverlayItem{
@@ -165,7 +166,7 @@ func TestRenderers_RegistryResolvesToConcreteRenderer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layer.Preset != "entity_card" || layer.Text != "Tom Hanks" {
+	if layer.Preset != "lower_third_safe" || layer.Text != "Tom Hanks" {
 		t.Fatalf("resolved renderer layer = %+v", layer)
 	}
 }

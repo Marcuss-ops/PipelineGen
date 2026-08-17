@@ -124,3 +124,60 @@ func TestDocumentPrepareRecordsStage(t *testing.T) {
 	require.True(t, prepare, "document.prepare stage must be recorded, got %+v", run.Report().Stages)
 	require.True(t, publish, "document.publish stage must be recorded, got %+v", run.Report().Stages)
 }
+
+// TestSceneAnalysisFanoutWallIsReported pins that the scene_analysis fan-out
+// wall is recorded as a stage on the canonical Run clock after the barrier
+// completes, so the fan-out report exposes a nonzero wall_ms separate from the
+// accumulated nlp.extract work instead of leaking the NLP wall into
+// unattributed time.
+func TestSceneAnalysisFanoutWallIsReported(t *testing.T) {
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	enricher := newBlockingSegmentEnricher()
+	coordinator := NewVidRushIncrementalCoordinator(enricher, &scriptpkg.ResolvedGenerationPlan{Language: "en"}, 4)
+
+	commitWithCtx := func(sceneID string, idx int, text string) {
+		require.NoError(t, coordinator.OnSceneCommitted(ctx, SceneCommitted{
+			RunID: "run-1", SceneID: sceneID, SceneIndex: idx,
+			Text: text, TextHash: SceneTextHash(text), Revision: 1, Language: "en",
+		}))
+	}
+	commitWithCtx("scene-0", 0, "First scene text")
+	commitWithCtx("scene-1", 1, "Second scene text")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := coordinator.WaitForVidRush(ctx, "run-1")
+		done <- err
+	}()
+
+	// Hold the barrier open while enrichments are still pending so the
+	// first-enrichment → barrier-end wall window is measurably non-zero.
+	time.Sleep(10 * time.Millisecond)
+	close(enricher.release)
+
+	require.NoError(t, <-done)
+	run.Finish()
+
+	var stage *kernobs.StageReport
+	for i := range run.Report().Stages {
+		if run.Report().Stages[i].Name == string(StageSceneAnalysis) {
+			stage = &run.Report().Stages[i]
+			break
+		}
+	}
+	require.NotNil(t, stage, "scene_analysis stage must be recorded, got %+v", run.Report().Stages)
+	require.Greater(t, stage.DurationMs, int64(0), "scene_analysis wall must be non-zero")
+
+	var fanout *kernobs.FanoutReport
+	for _, f := range run.Report().FanoutReports() {
+		if f.Stage == string(StageSceneAnalysis) {
+			fanout = &f
+			break
+		}
+	}
+	require.NotNil(t, fanout, "scene_analysis fan-out report must be present")
+	require.Greater(t, fanout.WallMs, int64(0), "scene_analysis fan-out wall_ms must be non-zero, got %+v", fanout)
+	require.Equal(t, int64(2), fanout.Calls, "two enrichments must be counted")
+}

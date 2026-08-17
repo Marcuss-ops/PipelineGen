@@ -36,10 +36,9 @@ package overlays
 
 // ── Content01 — Important Phrases ─────────────────────────────────────────
 //
-// background.jpg + two important phrases. The first stays under the
-// display-text character budget (no font_size override); the second
-// ("THIS CHANGES EVERYTHING", 23 runes) exercises the deterministic auto-fit
-// override (font_size 56) so a long headline never clips ink.
+// background.jpg + two important phrases. Font and size are Chronon-owned
+// (VisualPresetRegistry → StyleResolver): PipelineGen emits no font/font_size
+// regardless of headline length.
 
 // GoldenOverlayPlanContent01Phrases is the semantic instruction set for the
 // Important Phrases content scenario.
@@ -111,8 +110,7 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 			ID:             "important_phrase_1",
 			Type:           "text",
 			Text:           "A MAJOR CHANGE",
-			Font:           CanonicalTextFontPath,
-			Preset:         "title_centered",
+			Preset:         "caption_card",
 			StartFrame:     24,
 			DurationFrames: 48,
 		},
@@ -120,9 +118,7 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 			ID:             "important_phrase_2",
 			Type:           "text",
 			Text:           "THIS CHANGES EVERYTHING",
-			Font:           CanonicalTextFontPath,
-			FontSize:       56,
-			Preset:         "title_centered",
+			Preset:         "caption_card",
 			StartFrame:     90,
 			DurationFrames: 54,
 		},
@@ -140,8 +136,7 @@ var GoldenChrononAssetsContent01Phrases = []ChrononAsset{
 // ── Content02 — Important Words ───────────────────────────────────────────
 //
 // background.jpg + four kinetic words, each carrying its canonical motion
-// preset. Every word stays under the display budget: the kinetic_word preset
-// renders them at its default size.
+// preset. Every word renders at the active_word_pop preset's default size.
 
 // GoldenOverlayPlanContent02Words is the semantic instruction set for the
 // Important Words content scenario.
@@ -231,8 +226,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 			ID:             "important_word_1",
 			Type:           "text",
 			Text:           "ELON MUSK",
-			Font:           CanonicalTextFontPath,
-			Preset:         "kinetic_word",
+			Preset:         "active_word_pop",
 			StartFrame:     15,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
@@ -241,8 +235,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 			ID:             "important_word_2",
 			Type:           "text",
 			Text:           "TESLA",
-			Font:           CanonicalTextFontPath,
-			Preset:         "kinetic_word",
+			Preset:         "active_word_pop",
 			StartFrame:     45,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
@@ -251,8 +244,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 			ID:             "important_word_3",
 			Type:           "text",
 			Text:           "$10 BILLION",
-			Font:           CanonicalTextFontPath,
-			Preset:         "kinetic_word",
+			Preset:         "active_word_pop",
 			StartFrame:     75,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_shift_vertical"},
@@ -261,8 +253,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 			ID:             "important_word_4",
 			Type:           "text",
 			Text:           "OPENAI",
-			Font:           CanonicalTextFontPath,
-			Preset:         "kinetic_word",
+			Preset:         "active_word_pop",
 			StartFrame:     105,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
@@ -388,6 +379,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 			ID:             "image_overlay_1",
 			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
+			Preset:         "image_focus_in",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Fit:            "contain",
@@ -399,6 +391,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 			ID:             "image_overlay_2",
 			Type:           "image",
 			Asset:          "assets/overlay_chart.png",
+			Preset:         "image_focus_in",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Fit:            "contain",
@@ -410,6 +403,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 			ID:             "image_overlay_3",
 			Type:           "image",
 			Asset:          "assets/apple.png",
+			Preset:         "image_focus_in",
 			BoxWidth:       260,
 			BoxHeight:      260,
 			Fit:            "contain",
@@ -546,6 +540,7 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 			ID:             "image_overlay",
 			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
+			Preset:         "image_focus_in",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Fit:            "contain",
@@ -567,8 +562,7 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 			ID:             "important_word",
 			Type:           "text",
 			Text:           "-20%",
-			Font:           CanonicalTextFontPath,
-			Preset:         "kinetic_word",
+			Preset:         "active_word_pop",
 			StartFrame:     30,
 			DurationFrames: 30,
 		},
@@ -576,8 +570,7 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 			ID:             "important_phrase",
 			Type:           "text",
 			Text:           "A MASSIVE DROP",
-			Font:           CanonicalTextFontPath,
-			Preset:         "title_centered",
+			Preset:         "caption_card",
 			StartFrame:     24,
 			DurationFrames: 60,
 		},

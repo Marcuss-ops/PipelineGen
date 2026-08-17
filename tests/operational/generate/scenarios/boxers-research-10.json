@@ -1,0 +1,64 @@
+{
+  "name": "10 boxers live research fanout",
+  "case_prefix": "boxers-research-10",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "The 10 Greatest Boxers in History __CASE_MARKER__",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "Rank the 10 boxers by overall historical boxing greatness. Consider achievements, quality of opposition, longevity, championship accomplishments and historical impact.",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 4,
+            "results_per_query": 12,
+            "max_pages": 12,
+            "min_sources": 3,
+            "timeout_seconds": 90,
+            "require_citations": true,
+            "max_parallel": 4,
+            "candidates": [
+              "Muhammad Ali",
+              "Mike Tyson",
+              "Floyd Mayweather Jr.",
+              "Manny Pacquiao",
+              "Sugar Ray Leonard",
+              "Roberto Duran",
+              "Joe Frazier",
+              "George Foreman",
+              "Lennox Lewis",
+              "Canelo Alvarez"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 1000,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": true
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 700,
+    "max_words": 1400,
+    "keywords": ["Muhammad Ali", "Mike Tyson", "Floyd Mayweather"],
+    "language_regex": ["\\b(the|and|boxing|champion)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true,
+    "idempotency": false,
+    "missing_key": false
+  }
+}

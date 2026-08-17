@@ -181,37 +181,16 @@ func TestLayoutTextNeverAutoLaidOut(t *testing.T) {
 	if layer.Position != nil {
 		t.Fatalf("text layers must not carry a layout position, got %v", layer.Position)
 	}
-	if layer.Type != "text" || layer.Preset != "title_centered" {
+	if layer.Type != "text" || layer.Preset != "caption_card" {
 		t.Fatalf("unexpected layer: %s/%s", layer.Type, layer.Preset)
 	}
 }
 
-// TestAutoFitFontSize: display text within the budget carries no font_size;
-// longer text scales down deterministically by character buckets.
-func TestAutoFitFontSize(t *testing.T) {
-	for _, text := range []string{"QUESTO CAMBIA TUTTO", "IL FUTURO È ADESSO"} {
-		size, ok := fitFontSize(displayRunes(text))
-		if ok {
-			t.Fatalf("%q: expected no override, got %v", text, size)
-		}
-	}
-	// 42 runes → bucket (33,44] → 48.
-	got, ok := fitFontSize(displayRunes("UNA FRASE MOLTO LUNGA CHE SUPERA IL BUDGET"))
-	if got != 48 || !ok {
-		t.Fatalf("42 runes: want 48,true got %v,%v", got, ok)
-	}
-	for n, want := range map[int]float64{23: 56, 33: 48, 45: 40, 57: 32} {
-		size, ok := fitFontSize(n)
-		if !ok || size != want {
-			t.Fatalf("fitFontSize(%d): want %v,true got %v,%v", n, want, size, ok)
-		}
-	}
-}
-
-// TestCompileEmitsFontSizeForLongText: a long IMPORTANT_PHRASE compiles to a
-// text layer carrying the auto-fit font_size; a short one carries none.
-func TestCompileEmitsFontSizeForLongText(t *testing.T) {
-	longPlan := OverlayPlan{
+// TestCompileEmitsNoFontOrFontSizeForText certifies the preset-ownership
+// contract: text layers carry neither font nor font_size — Chronon's
+// VisualPresetRegistry + StyleResolver own both.
+func TestCompileEmitsNoFontOrFontSizeForText(t *testing.T) {
+	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "fit-long", VideoID: "v", ProjectID: "p",
 		Width: 1280, Height: 720, FPS: 30,
@@ -219,30 +198,24 @@ func TestCompileEmitsFontSizeForLongText(t *testing.T) {
 			item("phrase", "IMPORTANT_PHRASE", 0, 3000, nil),
 		},
 	}
-	longPlan.Items[0].Text = "UNA FRASE MOLTO LUNGA CHE SUPERA AMPIAMENTE IL BUDGET DI VISUALIZZAZIONE"
-	got, err := CompileChrononPlan(longPlan)
+	plan.Items[0].Text = "UNA FRASE MOLTO LUNGA CHE SUPERA AMPIAMENTE IL BUDGET DI VISUALIZZAZIONE"
+	got, err := CompileChrononPlan(plan)
 	if err != nil {
-		t.Fatalf("compile long: %v", err)
+		t.Fatalf("compile: %v", err)
 	}
-	if got.Plan.Layers[0].FontSize == 0 {
-		t.Fatalf("long text must carry font_size override")
+	layer := got.Plan.Layers[0]
+	if layer.Font != "" || layer.FontSize != 0 {
+		t.Fatalf("text layer must not carry font/font_size: %+v", layer)
 	}
-
-	shortPlan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
-		PlanID:        "fit-short", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
-		Items: []OverlayItem{
-			item("phrase", "IMPORTANT_PHRASE", 0, 3000, nil),
-		},
+	// The queue still carries the canonical font bytes for materialization.
+	found := false
+	for _, a := range got.Assets {
+		if a.Hash == GoldenFontHash && a.LogicalPath == CanonicalTextFontPath {
+			found = true
+		}
 	}
-	shortPlan.Items[0].Text = "CORTO"
-	got, err = CompileChrononPlan(shortPlan)
-	if err != nil {
-		t.Fatalf("compile short: %v", err)
-	}
-	if got.Plan.Layers[0].FontSize != 0 {
-		t.Fatalf("short text must not carry font_size override")
+	if !found {
+		t.Fatalf("queue assets must carry the canonical font: %+v", got.Assets)
 	}
 }
 

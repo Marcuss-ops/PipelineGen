@@ -343,6 +343,15 @@ func isPrintableASCII(s string) bool {
 // apiutilError is a thin local helper so this package doesn't pull
 // pkg/apiutil (which would lift gin dependencies onto the leaf
 // utility package). Mirrors apiutil.Error.
+//
+// It aborts the gin chain after writing the error body. Without
+// c.Abort(), returning from a middleware skips only the handlers
+// already run by a nested c.Next(); the outer c.Next() loop continues
+// to the next handler, so the downstream route handler would still
+// execute and append its own response to the error body (e.g. a 409
+// in-flight reply followed by the handler's 200 "enqueued" payload,
+// and a duplicate job).
 func apiutilError(c *gin.Context, status int, msg string) {
 	c.JSON(status, gin.H{"ok": false, "error": msg})
+	c.Abort()
 }

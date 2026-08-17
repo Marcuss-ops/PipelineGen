@@ -193,6 +193,88 @@ func TestIdempotency_InFlightSameKeyReturns409(t *testing.T) {
 	}
 }
 
+func TestIdempotency_InFlightAbortsDownstreamHandler(t *testing.T) {
+	// Regression: a 409 in-flight reply must NOT fall through to the
+	// downstream route handler. Without c.Abort() the outer c.Next()
+	// loop runs the handler anyway, appending its 200 body to the 409
+	// payload and enqueueing a duplicate side-effect (PR-idempotency-abort).
+	store := inMemStore(t)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	idemMw := NewIdempotency(store, zap.NewNop())
+	defer idemMw.Stop()
+
+	if _, _, err := store.TryInsert(context.Background(), "key-409-abort", ""); err != nil {
+		t.Fatalf("manual TryInsert: %v", err)
+	}
+
+	var invocations int
+	r.Use(idemMw.Handler())
+	r.POST("/x", func(c *gin.Context) {
+		invocations++
+		c.JSON(http.StatusOK, gin.H{"handler_ran": true})
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "key-409-abort")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if invocations != 0 {
+		t.Fatalf("downstream handler MUST NOT run on 409 in-flight (invocations=%d)", invocations)
+	}
+	if strings.Contains(rec.Body.String(), "handler_ran") {
+		t.Fatalf("409 body must not contain handler output; got %q", rec.Body.String())
+	}
+}
+
+func TestIdempotency_BodyConflictAbortsDownstreamHandler(t *testing.T) {
+	store := inMemStore(t)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	idemMw := NewIdempotency(store, zap.NewNop())
+	defer idemMw.Stop()
+
+	var invocations int
+	r.Use(idemMw.Handler())
+	r.POST("/x", func(c *gin.Context) {
+		invocations++
+		c.JSON(http.StatusOK, gin.H{"handler_ran": true})
+	})
+
+	// Fill the cache with body {"a":1}.
+	req1 := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"a":1}`))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", "key-422-abort")
+	rec1 := httptest.NewRecorder()
+	r.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first: status=%d body=%s", rec1.Code, rec1.Body.String())
+	}
+	invocations = 0
+
+	// Same key + different body → 422; handler must not run.
+	req2 := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"a":2}`))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", "key-422-abort")
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec2.Code, rec2.Body.String())
+	}
+	if invocations != 0 {
+		t.Fatalf("downstream handler MUST NOT run on 422 body conflict (invocations=%d)", invocations)
+	}
+	if strings.Contains(rec2.Body.String(), "handler_ran") {
+		t.Fatalf("422 body must not contain handler output; got %q", rec2.Body.String())
+	}
+}
+
 func TestIdempotency_OnlyWhitespacePassesThrough(t *testing.T) {
 	store := inMemStore(t)
 	r := newRouter(t, store)

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -26,8 +25,8 @@ const (
 // the deterministic Go extractor as the explicit CPU/auto fallback. The GPU
 // bridge performs NER locally; it never calls an LLM.
 type HybridExtractor struct {
-	cpu       adapters.EntityExtractor
-	gpu       adapters.EntityExtractor
+	cpu       EntityExtractor
+	gpu       EntityExtractor
 	available func(context.Context) bool
 	once      sync.Once
 	gpuOK     bool
@@ -52,7 +51,7 @@ func (e *HybridExtractor) ExtractEntities(ctx context.Context, req scriptpkg.Ent
 		return e.cpu.ExtractEntities(ctx, req)
 	case DeviceGPU:
 		if e.gpu == nil || !e.gpuAvailable(ctx) {
-			return nil, fmt.Errorf("%w: GPU semantic extractor unavailable", adapters.ErrEntityExtractorUnavailable)
+			return nil, fmt.Errorf("%w: GPU semantic extractor unavailable", scriptpkg.ErrEntityExtractorUnavailable)
 		}
 		return e.gpu.ExtractEntities(ctx, req)
 	case DeviceAuto:
@@ -64,7 +63,7 @@ func (e *HybridExtractor) ExtractEntities(ctx context.Context, req scriptpkg.Ent
 		}
 		return e.cpu.ExtractEntities(ctx, req)
 	default:
-		return nil, fmt.Errorf("%w: unsupported local extraction device %q", adapters.ErrEntityExtractorUnavailable, req.Device)
+		return nil, fmt.Errorf("%w: unsupported local extraction device %q", scriptpkg.ErrEntityExtractorUnavailable, req.Device)
 	}
 }
 
@@ -109,7 +108,7 @@ func (e *GPUExtractor) Available(ctx context.Context) bool {
 
 func (e *GPUExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
 	if e == nil || !e.Available(ctx) {
-		return nil, fmt.Errorf("%w: GPU bridge or CUDA runtime unavailable", adapters.ErrEntityExtractorUnavailable)
+		return nil, fmt.Errorf("%w: GPU bridge or CUDA runtime unavailable", scriptpkg.ErrEntityExtractorUnavailable)
 	}
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -124,7 +123,7 @@ func (e *GPUExtractor) ExtractEntities(ctx context.Context, req scriptpkg.Entity
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%w: GPU bridge failed: %v (%s)", adapters.ErrEntityExtractorUnavailable, err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("%w: GPU bridge failed: %v (%s)", scriptpkg.ErrEntityExtractorUnavailable, err, strings.TrimSpace(stderr.String()))
 	}
 	var result scriptpkg.EntityResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -133,5 +132,5 @@ func (e *GPUExtractor) ExtractEntities(ctx context.Context, req scriptpkg.Entity
 	return &result, nil
 }
 
-var _ adapters.EntityExtractor = (*HybridExtractor)(nil)
-var _ adapters.EntityExtractor = (*GPUExtractor)(nil)
+var _ EntityExtractor = (*HybridExtractor)(nil)
+var _ EntityExtractor = (*GPUExtractor)(nil)

@@ -424,6 +424,9 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		if resolved.ClipEvidence != nil {
 			plan.ClipEvidence = resolved.ClipEvidence
 		}
+		if resolved.ResearchEvidence != nil {
+			plan.ResearchEvidence = resolved.ResearchEvidence.Clone()
+		}
 		if resolved.Fingerprint != "" {
 			plan.SourceFingerprint = resolved.Fingerprint
 		}

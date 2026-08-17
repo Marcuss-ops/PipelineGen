@@ -2,19 +2,15 @@ package cliprender
 
 // worker.go is the canonical Master job handler for clip.render.
 //
-// Pipeline (this step):
+// Pipeline:
 //
 //	decode payload → Normalize + Validate → parallel preparation
 //	(Preparer) → compile ASS artifact (when subtitles enabled) →
-//	compile + seal ClipRenderPlanV1 → emit plan as job event → fail
-//	closed with ErrRenderPhaseNotImplemented.
+//	compile + seal ClipRenderPlanV1 → single-pass Rust render_clip.
 //
-// The terminal failure is deliberate (godlike/07 fail-closed): preparation
-// and plan compilation are real and observable, but the render phase
-// (single-pass Rust render_clip + contract validation + Drive upload +
-// derived asset commit) lands in the follow-up step. A job that prepared and
-// sealed its plan but could not render must NEVER report success — the typed
-// sentinel keeps the queue honest until the render phase replaces it.
+// The renderer and publisher remain mandatory at execution time: a plan
+// that is only sealed or only rendered locally is never reported as a
+// successful clip.
 
 import (
 	"context"
@@ -27,10 +23,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// ErrRenderPhaseNotImplemented is the typed terminal sentinel returned by the
-// worker after a successful preparation + plan seal. The render phase (single
-// Rust render pass + validation + Drive upload + derived asset commit)
-// replaces this failure in the follow-up step.
+// ErrRenderPhaseNotImplemented is retained for the fail-closed case where a
+// composition root exposes the job without attaching a render executor.
 var ErrRenderPhaseNotImplemented = errors.New("clip.render: render phase not implemented yet (plan sealed — render_clip lands in the follow-up step)")
 
 // ErrInvalidJobPayload is the typed sentinel for an undecodable job payload.
@@ -45,6 +39,7 @@ type Worker struct {
 	workspaceDir string
 	subtitles    SubtitleCompiler // optional until the ASS-compiler step wires it
 	renderer     RenderExecutor   // optional until the render-phase step consumes it
+	publisher    RenderPublisher  // optional in unit tests; required by production wiring
 	log          *zap.Logger
 }
 
@@ -72,13 +67,22 @@ func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
 	return w
 }
 
-// WithRenderExecutor attaches the Rust render_clip boundary. The render
-// phase consumes it; until the phase lands, Handle still fails closed with
-// ErrRenderPhaseNotImplemented (a sealed plan is never reported as a
-// rendered clip).
+// WithRenderExecutor attaches the Rust render_clip boundary. A missing
+// executor remains a typed failure; a sealed plan is never reported as a
+// rendered clip.
 func (w *Worker) WithRenderExecutor(r RenderExecutor) *Worker {
 	if w != nil {
 		w.renderer = r
+	}
+	return w
+}
+
+// WithRenderPublisher attaches the canonical Drive publication + SQLite
+// commit boundary. Production composition must wire it before exposing the
+// route; tests may omit it when exercising preparation only.
+func (w *Worker) WithRenderPublisher(p RenderPublisher) *Worker {
+	if w != nil {
+		w.publisher = p
 	}
 	return w
 }
@@ -174,23 +178,60 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"watermark":    plan.Watermark != nil,
 		"background":   plan.Background.Mode,
 	})
-	progress(90, "plan sealed; render phase pending")
+	if w.renderer == nil {
+		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
+		result["phase"] = "plan_sealed"
+		return result, fmt.Errorf(
+			"%w: job_id=%s source_asset_id=%s plan_sha256=%s",
+			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
+	}
 
-	result := preparedResult(j, &req, prepared, plan, subtitleArtifact)
-	// Fail closed: a sealed plan is not a rendered clip. The follow-up step
-	// replaces this terminal error with the single-pass render execution.
-	return result, fmt.Errorf("%w: job_id=%s source_asset_id=%s plan_sha256=%s (plan sealed; render_clip lands in the follow-up step)",
-		ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
+	progress(90, "plan sealed; rendering with Rust")
+	outcome, err := w.renderer.Render(ctx, plan)
+	if err != nil {
+		return nil, fmt.Errorf("clip.render: render plan: %w", err)
+	}
+	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
+		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
+	}
+	if w.publisher == nil {
+		return nil, fmt.Errorf("clip.render: render publisher is not wired")
+	}
+	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
+		RunID:         j.ID,
+		SourceAssetID: req.SourceAssetID,
+		OutputPath:    outcome.OutputPath,
+		Outcome:       outcome,
+		Contract:      prepared.Contract,
+		Transcript:    prepared.Transcript,
+		Subtitles:     subtitleArtifact,
+		DriveFolderID: req.Destination.DriveFolderID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clip.render: publish result: %w", err)
+	}
+	if publication == nil || publication.AssetID == "" || publication.DriveFileID == "" {
+		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
+	}
+	emit("clip.render.completed", "Rust render_clip completed", map[string]any{
+		"output_path":  outcome.OutputPath,
+		"size_bytes":   outcome.SizeBytes,
+		"duration_sec": outcome.DurationSec,
+		"ffmpeg_ms":    outcome.FFmpegMS,
+	})
+	progress(100, "clip.render completed")
+
+	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, publication), nil
 }
 
-// preparedResult projects the *Prepared + sealed plan into the canonical job
-// result map. Only JSON-safe values — the result envelope is persisted by the
-// Master.
-func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact) job.Result {
+// renderedResult projects the *Prepared + sealed plan + render outcome +
+// published derived asset into the canonical job result map. Only JSON-safe
+// values — the result envelope is persisted by the Master.
+func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, published *RenderPublishResult) job.Result {
 	result := job.Result{
 		"job_id":          j.ID,
 		"source_asset_id": req.SourceAssetID,
-		"phase":           "plan_sealed",
+		"phase":           "rendered",
 		"transcript_mode": req.Transcript.Mode,
 		"contract_id":     prepared.Contract.ContractID,
 		"contract": map[string]any{
@@ -247,6 +288,29 @@ func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"path":   subtitleArtifact.LocalPath,
 			"sha256": subtitleArtifact.SHA256,
 			"mode":   subtitleArtifact.Mode,
+		}
+	}
+	if outcome != nil {
+		result["render"] = map[string]any{
+			"output_path":         outcome.OutputPath,
+			"size_bytes":          outcome.SizeBytes,
+			"duration_sec":        outcome.DurationSec,
+			"width":               outcome.Width,
+			"height":              outcome.Height,
+			"fps":                 outcome.FPS,
+			"ffmpeg_ms":           outcome.FFmpegMS,
+			"audio_copy_eligible": outcome.AudioCopyEligible,
+			"audio_encode_passes": outcome.AudioEncodePasses,
+			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
+		}
+	}
+	if published != nil {
+		result["asset"] = map[string]any{
+			"asset_id":      published.AssetID,
+			"drive_file_id": published.DriveFileID,
+			"drive_link":    published.DriveLink,
+			"size_bytes":    published.SizeBytes,
+			"sidecar_link":  published.SidecarLink,
 		}
 	}
 	return result
