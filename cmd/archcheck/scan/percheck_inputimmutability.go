@@ -33,19 +33,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// inputImmutabilityPatterns are the forbidden mutation patterns.
-// The first matches whole-struct reassignment; the second matches
-// field assignment on a parameter named req/input/request/params.
-var inputImmutabilityPatterns = []struct {
-	re   *regexp.Regexp
-	desc string
-}{
-	{regexp.MustCompile(`\*(?i)\b(req|input|request|params)\b\s*=`),
-		"whole input struct reassignment"},
-	{regexp.MustCompile(`(?i)\b(req|input|request|params)\b\.[A-Za-z_][A-Za-z0-9_]*\s*=`),
-		"input struct field assignment"},
-}
-
 // ScanInputImmutability walks <root>/internal/application/** and
 // <root>/internal/api/** for non-test .go files and flags mutations
 // of input parameters.

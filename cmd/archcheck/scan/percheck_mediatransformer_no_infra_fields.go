@@ -235,26 +235,6 @@ const mediaTransformerRule = "percheck_mediatransformer_no_infra_fields"
 // of truth) to keep the violation JSON payload compact.
 const mediaTransformerNote = "forbidden field in MediaTransformer DTO (PR-MEDIATRANSFORMER-RENAME step 1, July 2026; PR-DIAGNOSI-FINALE rule 9, July 2026; PR-MEDIATRANSFORMER-WB, July 2026 word-boundary fix): the MediaTransformer is a local-only transformer and MUST NOT carry Drive/Qdrant/SQLite/provider-specific fields in its DTOs; the matcher is now word-bounded (`?\\bname\\b?` regex per forbidden entry) so legitimate composite names like MD5ChecksumStr do not false-positive trip. Route the infrastructure concern through the orchestrator + finalizer + commit layers downstream. Step 2 of PR-MEDIATRANSFORMER-RENAME deletes the existing forbidden fields and this gate will pass"
 
-// mediaTransformerSkipDirs mirrors percheck_asset_state_no_shadow_enum.go's
-// standard skip-dir set.
-var mediaTransformerSkipDirs = map[string]bool{
-	".git":         true,
-	"vendor":       true,
-	"node_modules": true,
-	"node-scraper": true,
-	"examples":     true,
-	"archivist":    true,
-	"docs":         true,
-	"data":         true,
-}
-
-// mediaTransformerSkipPathPrefixes is the scan's own package
-// exemption — this file declares regex literals matching the
-// forbidden substrings (false-positive exemption).
-var mediaTransformerSkipPathPrefixes = []string{
-	"cmd/archcheck/scan",
-}
-
 // mediaTransformerWarn is the WARN-bucket emitter for
 // residue-accounting. Mirrors assetStateWarn.
 func mediaTransformerWarn(r *report.Report, label, msg string) {
