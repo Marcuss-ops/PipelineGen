@@ -145,3 +145,64 @@ func TestGetDescription_JobsStatsBug(t *testing.T) {
 		t.Logf("GET /api/jobs/stats description: %q", desc)
 	}
 }
+
+// TestDescriptionKeyMatchesRoute verifies the reverse-drift matcher that
+// powers the stale-description gate: a "METHOD path" key matches a
+// registered route exactly or via :param/*wildcard pattern segments, with
+// method discrimination.
+func TestDescriptionKeyMatchesRoute(t *testing.T) {
+	routes := []gin.RouteInfo{
+		{Method: "GET", Path: "/api/jobs/:id"},
+		{Method: "POST", Path: "/api/media/clips/:source/clips/:id/download"},
+		{Method: "GET", Path: "/assets/*filepath"},
+	}
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"GET /api/jobs/:id", true},        // exact
+		{"GET /api/jobs/:job_id", true},    // param name differs, still matches
+		{"GET /api/jobs/stats", false},     // no route
+		{"POST /api/jobs/:id", false},      // method mismatch
+		{"GET /api/jobs", false},           // too few segments
+		{"GET /api/jobs/:id/extra", false}, // too many segments
+		{"GET /assets/*filepath", true},    // wildcard exact
+		{"DELETE /api/jobs/:id", false},    // method mismatch
+		{"POST /api/media/clips/:source/clips/:id/download", true},
+		{"GET /api/media/clips/:source/clips/:id/download", false}, // method mismatch
+	}
+	for _, tt := range tests {
+		if got := descriptionKeyMatchesRoute(tt.key, routes); got != tt.want {
+			t.Errorf("descriptionKeyMatchesRoute(%q) = %v, want %v", tt.key, got, tt.want)
+		}
+	}
+}
+
+// TestStaleDescriptionKeys verifies the gate surfaces exactly the keys that
+// match no registered route and are not in the gated allow-list, sorted for
+// deterministic output.
+func TestStaleDescriptionKeys(t *testing.T) {
+	descs := map[string]string{
+		"GET /health":               "live",
+		"GET /api/jobs/:id":         "live",
+		"POST /api/retired/thing":   "stale",
+		"DELETE /api/jobs/:id":      "stale (method mismatch)",
+		"POST /api/script/generate": "gated (live in prod, absent from minimal snapshot)",
+	}
+	routes := []gin.RouteInfo{
+		{Method: "GET", Path: "/health"},
+		{Method: "GET", Path: "/api/jobs/123"},
+	}
+	gated := map[string]bool{"POST /api/script/generate": true}
+
+	got := staleDescriptionKeys(descs, routes, gated)
+	want := []string{"DELETE /api/jobs/:id", "POST /api/retired/thing"}
+	if len(got) != len(want) {
+		t.Fatalf("staleDescriptionKeys() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("staleDescriptionKeys()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

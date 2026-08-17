@@ -85,6 +85,9 @@ func runGenAPIDocs(args []string) error {
 	engine := router.Setup()
 
 	routes := engine.Routes()
+	if stale := staleDescriptionKeys(routeDescriptions, routes, routeDescriptionsGated); len(stale) > 0 {
+		return fmt.Errorf("%d routeDescriptions key(s) have no matching registered route — remove or retarget them so the docs never drift from the live router:\n  - %s", len(stale), strings.Join(stale, "\n  - "))
+	}
 	md, missing := generateMarkdown(routes)
 	if missing > 0 {
 		fmt.Printf("⚠️  %d route(s) have no description — add them to routeDescriptions in cmd/admin/gen_api_docs.go\n", missing)
@@ -129,9 +132,6 @@ var routeDescriptions = map[string]string{
 
 	// ── Root ──────────────────────────────────────────────────
 	"GET /": "API root (redirects or 404)",
-
-	// ── Internal ──────────────────────────────────────────────
-	"GET /api/internal/slug": "Generate URL slug from text",
 
 	// ── Artlist ───────────────────────────────────────────────
 	"POST /api/artlist/run":           "Start Artlist pipeline for a term",
@@ -178,9 +178,9 @@ var routeDescriptions = map[string]string{
 	"GET /api/scripts/:id": "Get script by ID",
 
 	// ── Script generation ─────────────────────────────────────
-	"GET /api/script/jobs/:job_id":      "Get script job status",
-	"GET /api/script/jobs/:job_id/full": "Get full script job details",
-	"GET /api/script/clips/search":      "Search script clips by name", "POST /api/script/generate": "Generate scripts from text, clips, catalog or search sources",
+	"GET /api/script/jobs/:id":     "Get script job status",
+	"GET /api/script/clips/search": "Search script clips by name",
+	"POST /api/script/generate":    "Generate scripts from text, clips, catalog or search sources",
 
 	// ── Media — voiceover ────────────────────────────────────
 	"POST /api/media/voiceover/generate": "Generate voiceover",
@@ -220,10 +220,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/media/clips/:source/folders/:id/manifest": "Get folder manifest",
 	"DELETE /api/media/clips/:source/folders/:id":        "Trash folder",
 	"POST /api/media/clips/:source/reconcile":            "Reconcile source metadata",
-
-	// ── Assets ───────────────────────────────────────────────
-	"GET /api/assets/search": "Search assets",
-	"GET /api/assets/stats":  "Get asset statistics",
 
 	// ── System ───────────────────────────────────────────────
 	"GET /api/system/doctor": "System diagnostics",
@@ -349,6 +345,58 @@ func matchRoutePattern(pattern, path string) bool {
 		}
 	}
 	return true
+}
+
+// descriptionKeyMatchesRoute reports whether a "METHOD path" description
+// key matches any registered route (exact path, or :param/*wildcard pattern).
+func descriptionKeyMatchesRoute(key string, routes []gin.RouteInfo) bool {
+	parts := strings.SplitN(key, " ", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	method, pattern := parts[0], parts[1]
+	for _, r := range routes {
+		if r.Method != method {
+			continue
+		}
+		if pattern == r.Path || matchRoutePattern(pattern, r.Path) {
+			return true
+		}
+	}
+	return false
+}
+
+// routeDescriptionsGated lists description keys whose routes are live in
+// production but gated behind a feature bundle (AI/DB) that the docs
+// generator's minimal snapshot does not wire. They are expected to have no
+// matching registered route in that snapshot, so the stale-description gate
+// skips them — their absence is gating, not drift. Keep in sync: when a gated
+// route is re-registered unconditionally, remove its key here so the gate
+// covers it again.
+var routeDescriptionsGated = map[string]bool{
+	"GET /api/script/clips/search": true,
+	"GET /api/script/jobs/:id":     true,
+	"POST /api/script/generate":    true,
+}
+
+// staleDescriptionKeys returns the description keys that match no registered
+// route and are not in the gated allow-list. This is the reverse direction of
+// the "missing description" warning: when a route is removed or renamed, its
+// description key survives and the committed docs silently rot. runGenAPIDocs
+// fails closed on any such key so routeDescriptions stays a 1:1 mirror of the
+// live router.
+func staleDescriptionKeys(descs map[string]string, routes []gin.RouteInfo, gated map[string]bool) []string {
+	var stale []string
+	for key := range descs {
+		if gated[key] {
+			continue
+		}
+		if !descriptionKeyMatchesRoute(key, routes) {
+			stale = append(stale, key)
+		}
+	}
+	sort.Strings(stale)
+	return stale
 }
 
 // ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
