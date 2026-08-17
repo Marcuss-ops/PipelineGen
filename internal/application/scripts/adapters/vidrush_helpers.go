@@ -301,26 +301,6 @@ func compactArtlistQuery(query string) string {
 	return normalizeRetrievalQuery(strings.Join(tokens, " "), 6)
 }
 
-func pairImportantWords(words []string) []string {
-	clean := make([]string, 0, len(words))
-	for _, word := range words {
-		word = strings.TrimSpace(word)
-		if word == "" || textutil.IsStopWord(strings.ToLower(word)) {
-			continue
-		}
-		clean = append(clean, word)
-	}
-	pairCapacity := 0
-	if len(clean) > 1 {
-		pairCapacity = len(clean) - 1
-	}
-	pairs := make([]string, 0, pairCapacity)
-	for i := 0; i+1 < len(clean); i++ {
-		pairs = append(pairs, clean[i]+" "+clean[i+1])
-	}
-	return pairs
-}
-
 func normalizeRetrievalQueries(candidates []string, maxWords int) []string {
 	if maxWords < 2 {
 		return nil

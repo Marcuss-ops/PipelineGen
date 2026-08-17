@@ -165,13 +165,6 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	}
 }
 
-func metadataFallbackAllowed(opts *ClipGenerationOptions, clip *asset.Asset) bool {
-	if !metadataFallbackEnabled(opts) {
-		return false
-	}
-	return clipHasMetadataEvidence(clip) || strings.TrimSpace(opts.MetadataFallbackText) != ""
-}
-
 func metadataFallbackEnabled(opts *ClipGenerationOptions) bool {
 	return opts != nil && opts.AllowMetadataFallback
 }
