@@ -380,10 +380,13 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build preparer: %w", err)
 	}
-	worker, err := cliprender.NewWorker(preparer, log)
+	worker, err := cliprender.NewWorker(preparer, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build worker: %w", err)
 	}
+	// The canonical ASS compiler (reuse of the existing
+	// texttracks.SubtitleArtifactMaterializer) is wired by the ASS-compiler
+	// step; until then subtitled jobs fail closed with the typed sentinel.
 
 	descriptor, err := cliprender.Build(cliprender.Dependencies{
 		Jobs:        root.Jobs.Facade,

@@ -5,32 +5,33 @@ package cliprender
 // Pipeline (this step):
 //
 //	decode payload → Normalize + Validate → parallel preparation
-//	(Preparer) → emit prepared artifacts as job events → fail closed
-//	with ErrRenderPhaseNotImplemented.
+//	(Preparer) → compile ASS artifact (when subtitles enabled) →
+//	compile + seal ClipRenderPlanV1 → emit plan as job event → fail
+//	closed with ErrRenderPhaseNotImplemented.
 //
-// The terminal failure is deliberate (godlike/07 fail-closed): the
-// preparation phase is real and observable, but the render phase
-// (ClipRenderPlanV1 compilation + single-pass Rust render_clip +
-// contract validation + Drive upload + derived asset commit) lands in
-// the follow-up step. A job that prepared successfully but could not
-// render must NEVER report success — the typed sentinel keeps the
-// queue honest until the render phase replaces it.
+// The terminal failure is deliberate (godlike/07 fail-closed): preparation
+// and plan compilation are real and observable, but the render phase
+// (single-pass Rust render_clip + contract validation + Drive upload +
+// derived asset commit) lands in the follow-up step. A job that prepared and
+// sealed its plan but could not render must NEVER report success — the typed
+// sentinel keeps the queue honest until the render phase replaces it.
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
-// ErrRenderPhaseNotImplemented is the typed terminal sentinel returned by
-// the worker after a successful preparation. The render phase (single Rust
-// render pass + validation + Drive upload + derived asset commit) replaces
-// this failure in the follow-up step.
-var ErrRenderPhaseNotImplemented = errors.New("clip.render: render phase not implemented yet (preparation completed — render_clip lands in the follow-up step)")
+// ErrRenderPhaseNotImplemented is the typed terminal sentinel returned by the
+// worker after a successful preparation + plan seal. The render phase (single
+// Rust render pass + validation + Drive upload + derived asset commit)
+// replaces this failure in the follow-up step.
+var ErrRenderPhaseNotImplemented = errors.New("clip.render: render phase not implemented yet (plan sealed — render_clip lands in the follow-up step)")
 
 // ErrInvalidJobPayload is the typed sentinel for an undecodable job payload.
 // Terminal: retrying the same payload can never succeed.
@@ -40,20 +41,34 @@ var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 // the Preparer and bound to the Master via
 // job.Service.RegisterHandler(TypeClipRender, job.HandlerFunc(worker.Handle)).
 type Worker struct {
-	preparer *Preparer
-	log      *zap.Logger
+	preparer     *Preparer
+	workspaceDir string
+	subtitles    SubtitleCompiler // optional until the ASS-compiler step wires it
+	log          *zap.Logger
 }
 
 // NewWorker constructs the canonical worker. Fail-closed: preparer and log
-// are mandatory.
-func NewWorker(preparer *Preparer, log *zap.Logger) (*Worker, error) {
+// are mandatory; workspaceDir is the scratch root for run artifacts
+// (rendered-clip.mp4 + subtitles.ass land under workspaceDir/runs/<run-id>/).
+func NewWorker(preparer *Preparer, workspaceDir string, log *zap.Logger) (*Worker, error) {
 	if preparer == nil {
 		return nil, fmt.Errorf("cliprender.NewWorker: Preparer is required")
 	}
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Worker{preparer: preparer, log: log}, nil
+	return &Worker{preparer: preparer, workspaceDir: workspaceDir, log: log}, nil
+}
+
+// WithSubtitleCompiler attaches the canonical ASS compiler. Optional: when
+// subtitles are disabled no compiler is needed; when enabled and nil, the
+// worker fails closed with ErrSubtitleCompileUnavailable (never a plan
+// without its ASS artifact).
+func (w *Worker) WithSubtitleCompiler(c SubtitleCompiler) *Worker {
+	if w != nil {
+		w.subtitles = c
+	}
+	return w
 }
 
 // Handle is the job.Handler-shaped entry point bound to the Master.
@@ -92,35 +107,77 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: prepare: %w", err)
 	}
 
-	// Emit the prepared artifacts so the run is observable even though the
-	// render phase is not yet implemented (fail-closed terminal below).
-	emit("clip.render.prepare.done", "parallel preparation completed", map[string]any{
-		"source_asset_id":  req.SourceAssetID,
-		"source_path":      prepared.Source.LocalPath,
-		"source_sha256":    prepared.Source.SHA256,
-		"transcript_mode":  req.Transcript.Mode,
-		"transcript_reuse": prepared.Transcript.Reused,
-		"contract_id":      prepared.Contract.ContractID,
-		"total_wall_ms":    prepared.Timings.TotalWallMS,
-		"total_work_ms":    prepared.Timings.TotalWorkMS,
-		"parallel":         prepared.Timings.Parallel,
-	})
-	progress(90, "preparation complete; render phase pending")
+	// ── ASS artifact (subtitles enabled) ────────────────────────────────
+	runDir := filepath.Join(w.workspaceDir, "runs", j.ID)
+	var subtitleArtifact *SubtitleArtifact
+	if req.Subtitles.Enabled {
+		if w.subtitles == nil {
+			return nil, fmt.Errorf("%w: subtitles.enabled=true but no SubtitleCompiler is wired (the ASS-compiler step wires the canonical materializer)", ErrSubtitleCompileUnavailable)
+		}
+		subtitleArtifact, err = w.subtitles.Compile(ctx, SubtitleCompileInput{
+			RunID:          j.ID,
+			AssetID:        req.SourceAssetID,
+			Language:       prepared.Transcript.Language,
+			Mode:           req.Subtitles.Mode,
+			StyleID:        req.Subtitles.StyleID,
+			Cues:           prepared.Transcript.Cues,
+			ClipDurationMS: prepared.Source.DurationMS,
+			SourceSHA256:   prepared.Source.SHA256,
+			OutputDir:      runDir,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: compile subtitles: %w", err)
+		}
+		emit("clip.render.subtitles.compiled", "ASS artifact compiled", map[string]any{
+			"path":      subtitleArtifact.LocalPath,
+			"sha256":    subtitleArtifact.SHA256,
+			"mode":      subtitleArtifact.Mode,
+			"cue_count": len(prepared.Transcript.Cues),
+		})
+	}
 
-	result := preparedResult(j, &req, prepared)
-	// Fail closed: preparation is not a rendered clip. The follow-up step
-	// replaces this terminal error with the single-pass render.
-	return result, fmt.Errorf("%w: job_id=%s source_asset_id=%s (prepared artifacts emitted; render_clip lands in the follow-up step)",
-		ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID)
+	// ── Seal the fully-resolved plan ───────────────────────────────────
+	plan, err := Compile(CompileInput{
+		RunID:         j.ID,
+		Source:        prepared.Source,
+		Watermark:     prepared.Watermark,
+		WatermarkSpec: req.Watermark,
+		Background:    prepared.Background,
+		Subtitles:     subtitleArtifact,
+		Contract:      prepared.Contract,
+		AudioMode:     req.Audio.Mode,
+		OutputPath:    filepath.Join(runDir, "rendered-clip.mp4"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clip.render: compile plan: %w", err)
+	}
+
+	emit("clip.render.plan.sealed", "ClipRenderPlanV1 sealed — fully resolved before Rust", map[string]any{
+		"plan_version": plan.Version,
+		"plan_sha256":  plan.PlanSHA256,
+		"output_path":  plan.OutputPath,
+		"source":       plan.Source.Path,
+		"subtitles":    plan.Subtitles != nil,
+		"watermark":    plan.Watermark != nil,
+		"background":   plan.Background.Mode,
+	})
+	progress(90, "plan sealed; render phase pending")
+
+	result := preparedResult(j, &req, prepared, plan, subtitleArtifact)
+	// Fail closed: a sealed plan is not a rendered clip. The follow-up step
+	// replaces this terminal error with the single-pass render execution.
+	return result, fmt.Errorf("%w: job_id=%s source_asset_id=%s plan_sha256=%s (plan sealed; render_clip lands in the follow-up step)",
+		ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
 }
 
-// preparedResult projects the *Prepared into the canonical job result map.
-// Only JSON-safe values — the result envelope is persisted by the Master.
-func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared) job.Result {
+// preparedResult projects the *Prepared + sealed plan into the canonical job
+// result map. Only JSON-safe values — the result envelope is persisted by the
+// Master.
+func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact) job.Result {
 	result := job.Result{
 		"job_id":          j.ID,
 		"source_asset_id": req.SourceAssetID,
-		"phase":           "prepared",
+		"phase":           "plan_sealed",
 		"transcript_mode": req.Transcript.Mode,
 		"contract_id":     prepared.Contract.ContractID,
 		"contract": map[string]any{
@@ -130,6 +187,13 @@ func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared) job.Resu
 			"video_codec":  prepared.Contract.VideoCodec,
 			"audio_codec":  prepared.Contract.AudioCodec,
 			"pixel_format": prepared.Contract.PixelFormat,
+		},
+		"plan": map[string]any{
+			"version":     plan.Version,
+			"plan_sha256": plan.PlanSHA256,
+			"output_path": plan.OutputPath,
+			"audio_mode":  plan.Audio.Mode,
+			"background":  plan.Background.Mode,
 		},
 		"source": map[string]any{
 			"asset_id":   prepared.Source.AssetID,
@@ -163,6 +227,13 @@ func preparedResult(j *job.Job, req *RenderRequest, prepared *Prepared) job.Resu
 			"asset_id": prepared.Background.AssetID,
 			"path":     prepared.Background.LocalPath,
 			"sha256":   prepared.Background.SHA256,
+		}
+	}
+	if subtitleArtifact != nil {
+		result["subtitles"] = map[string]any{
+			"path":   subtitleArtifact.LocalPath,
+			"sha256": subtitleArtifact.SHA256,
+			"mode":   subtitleArtifact.Mode,
 		}
 	}
 	return result
