@@ -26,8 +26,8 @@ func TestGenerateMarkdown_Deterministic(t *testing.T) {
 		{Method: "GET", Path: "/api/scripts"},
 		{Method: "GET", Path: "/api/scripts/:id"},
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
-		{Method: "GET", Path: "/api/media/:source/folders"},
-		{Method: "POST", Path: "/api/media/:source/clips/:id/delete"},
+		{Method: "GET", Path: "/api/media/clips/:source/folders"},
+		{Method: "DELETE", Path: "/api/media/clips/:source/clips/:id"},
 	}
 
 	// Run twice — output must be identical.
@@ -63,8 +63,8 @@ func TestGenerateMarkdown_GoldenFile(t *testing.T) {
 		{Method: "GET", Path: "/api/scripts"},
 		{Method: "GET", Path: "/api/scripts/:id"},
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
-		{Method: "GET", Path: "/api/media/:source/folders"},
-		{Method: "POST", Path: "/api/media/:source/clips/:id/delete"},
+		{Method: "GET", Path: "/api/media/clips/:source/folders"},
+		{Method: "DELETE", Path: "/api/media/clips/:source/clips/:id"},
 		// An undocumented route to test the MISSING DESCRIPTION sentinel.
 		{Method: "POST", Path: "/api/some/new/endpoint"},
 	}
