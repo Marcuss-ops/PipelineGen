@@ -41,7 +41,7 @@
 | GET | `/api/artlist/diagnostics` | Artlist diagnostics |
 | GET | `/api/artlist/job-consumer` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/artlist/runs/:run_id` | Get Artlist pipeline run status |
-| GET | `/api/artlist/search/live` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/artlist/search/live` | Search Artlist catalog (live, no cache) |
 | GET | `/api/artlist/stats` | Get Artlist statistics |
 | POST | `/api/artlist/import` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/artlist/recommend` | Get Artlist recommendations for a term |
@@ -132,40 +132,40 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
-| DELETE | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
-| DELETE | `/api/media/clips/:source/folders/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/breadcrumb` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/folders` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/folders/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/folders/:id/children` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media/clips/:source/tree` | ⚠️ MISSING DESCRIPTION |
+| DELETE | `/api/media/clips/:source/clips/:id` | Trash clip |
+| DELETE | `/api/media/clips/:source/folders/:id` | Trash folder |
+| GET | `/api/media/clips/:source/breadcrumb` | Get breadcrumb path to folder |
+| GET | `/api/media/clips/:source/clips` | List clips by source |
+| GET | `/api/media/clips/:source/clips/:id` | Get clip by ID |
+| GET | `/api/media/clips/:source/folders` | List media folders by source |
+| GET | `/api/media/clips/:source/folders/:id` | Get media folder by ID |
+| GET | `/api/media/clips/:source/folders/:id/children` | List child folders |
+| GET | `/api/media/clips/:source/tree` | Get folder tree by source |
 | GET | `/api/media/diagnostics` | Media diagnostics |
 | GET | `/api/media/index-health` | Media index health check |
-| PATCH | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/:source/clips/:id/download` | Download clip |
-| POST | `/api/media/:source/clips/:id/reupload` | Re-upload clip to Drive |
-| POST | `/api/media/clips/:source/cleanup` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/duplicates` | ⚠️ MISSING DESCRIPTION |
+| PATCH | `/api/media/clips/:source/clips/:id` | Update clip metadata |
+| POST | `/api/media/clips/:source/cleanup` | Clean up source artifacts |
+| POST | `/api/media/clips/:source/clips` | Create clip under source |
+| POST | `/api/media/clips/:source/clips/:id/download` | Download clip |
+| POST | `/api/media/clips/:source/clips/:id/duplicates` | Find duplicate clips |
 | POST | `/api/media/clips/:source/clips/:id/fix-hash` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/reprocess` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/status` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/verify` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/:id/reprocess` | Re-process clip |
+| POST | `/api/media/clips/:source/clips/:id/reupload` | Re-upload clip to Drive |
+| POST | `/api/media/clips/:source/clips/:id/status` | Get clip processing status |
+| POST | `/api/media/clips/:source/clips/:id/verify` | Verify clip integrity |
 | POST | `/api/media/clips/:source/clips/bulk-upload-youtube-clips` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/folders/:id/manifest` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/reconcile` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/enrich` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/folders/:id/manifest` | Get folder manifest |
+| POST | `/api/media/clips/:source/reconcile` | Reconcile source metadata |
+| POST | `/api/media/clips/enrich` | Enrich a media asset with AI metadata |
 | POST | `/api/media/clips/ingest/ai-stock` | Ingest an AI-generated stock clip from visual analysis + Drive video |
-| POST | `/api/media/clips/upload-video` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/upload-video` | Upload video clip |
 | POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
 | POST | `/api/media/register-batch` | Batch register assets |
 | POST | `/api/media/register-from-youtube` | Register asset from YouTube URL |
 | POST | `/api/media/resolve/:asset_id` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/search` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/search` | Search media assets |
 | POST | `/api/media/sound_effect/generate` | Generate sound effect |
-| POST | `/api/media/sync` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/sync` | Sync a Drive folder into media index |
 | POST | `/api/media/voiceover/generate` | Generate voiceover |
 
 ## /api/media-memory

@@ -285,16 +285,13 @@ routes:
       path: /api/media-memory/resolve
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/media/:source/clips/:id/download
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media/:source/clips/:id/reupload
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/media/clips/:source/cleanup
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/clips/:source/clips/:id/download
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips/:id/duplicates
@@ -304,6 +301,9 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips/:id/reprocess
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/clips/:source/clips/:id/reupload
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/clips/:source/clips/:id/status

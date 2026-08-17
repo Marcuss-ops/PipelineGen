@@ -27,15 +27,15 @@ func TestBuild_RegistersCanonicalSourceScopedDownloadRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	engine := gin.New()
-	descriptor.RegisterRoutes(engine.Group("/api/media"))
+	descriptor.RegisterRoutes(engine.Group("/api/media/clips"))
 
 	have := make(map[string]bool)
 	for _, route := range engine.Routes() {
 		have[route.Method+" "+route.Path] = true
 	}
 
-	require.True(t, have["POST /api/media/:source/clips/:id/download"],
-		"publication must mount the canonical public download route directly under /api/media")
-	require.True(t, have["POST /api/media/:source/clips/:id/reupload"],
+	require.True(t, have["POST /api/media/clips/:source/clips/:id/download"],
+		"publication must mount the canonical public download route under /api/media/clips")
+	require.True(t, have["POST /api/media/clips/:source/clips/:id/reupload"],
 		"publication must keep the canonical source-scoped reupload route alongside download")
 }

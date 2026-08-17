@@ -71,10 +71,8 @@ type ClipsModule struct {
 	Processing *processing.Descriptor
 	Operations *operations.Descriptor
 
-	publication       *publication.Descriptor
-	publicationRoutes api.Module
-	bulk              *bulk.Descriptor
-	jobReg            *clipJobRegistrar
+	bulk   *bulk.Descriptor
+	jobReg *clipJobRegistrar
 }
 
 func (m *ClipsModule) Name() string  { return m.Module.Name() }
@@ -82,14 +80,6 @@ func (m *ClipsModule) Enabled() bool { return m.Module.Enabled() }
 
 func (m *ClipsModule) RegisterRoutes(rg *gin.RouterGroup) {
 	m.Module.RegisterRoutes(rg)
-	// Publication's source-scoped routes are mounted directly on the
-	// Assets parent. Other Clips operations retain their established
-	// `/media/clips` module prefix, while download/reupload use the
-	// canonical `/api/media/:source/clips/:id/...` paths. If the
-	// publication descriptor is unavailable, no publication routes mount.
-	if m.publicationRoutes != nil && m.publicationRoutes.Enabled() {
-		m.publicationRoutes.RegisterRoutes(rg)
-	}
 }
 
 func (m *ClipsModule) RegisterJobHandlers(svc api.JobRegistrar) error {
@@ -212,21 +202,19 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		"/clips",
 		&subModuleAdapter{subModules: []api.Descriptor{
 			catalogDesc, ingestDesc, processingDesc,
-			operationsDesc, bulkDesc,
+			operationsDesc, bulkDesc, publicationDesc,
 		}},
 		log,
 		deps.Transport.ModuleOpts...,
 	)
 
 	return &ClipsModule{
-		Module:            mod,
-		Catalog:           catalogDesc,
-		Ingest:            ingestDesc,
-		Processing:        processingDesc,
-		Operations:        operationsDesc,
-		publication:       publicationDesc,
-		publicationRoutes: publicationDesc.Module(),
-		bulk:              bulkDesc,
+		Module:     mod,
+		Catalog:    catalogDesc,
+		Ingest:     ingestDesc,
+		Processing: processingDesc,
+		Operations: operationsDesc,
+		bulk:       bulkDesc,
 		jobReg: &clipJobRegistrar{
 			bulkUploadWorker: deps.Handlers.NonOps.BulkUploadWorker,
 			jobsSvc:          deps.Handlers.NonOps.JobsSvc,
