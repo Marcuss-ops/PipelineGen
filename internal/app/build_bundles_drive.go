@@ -243,7 +243,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 	// resolver, and consumers fail closed when a subfolder is requested.
 	var destResolver asset.Resolver
 	if admin != nil {
-		destResolver = drive.NewAssetDestResolver(admin)
+		destResolver = NewAssetDestResolver(admin)
 	}
 
 	return &wiring.DriveBundle{

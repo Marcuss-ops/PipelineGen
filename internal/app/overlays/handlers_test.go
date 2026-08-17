@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,6 +22,36 @@ func (f *fakeRenderer) Render(_ context.Context, _ []byte, output string) error 
 	return os.WriteFile(output, []byte("chronon-overlay"), 0644)
 }
 
+// fakeProber returns contract-valid facts (DefaultOverlayContractV1:
+// 1920x1080@30fps prores/yuva444p/mov, zero audio streams) and hashes the
+// on-disk bytes so the manifest's sha256/size stay byte-exact. It never
+// inspects actual media — it stands in for the canonical rustexec probe.
+type fakeProber struct{ err error }
+
+func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+	if f.err != nil {
+		return capoverlay.OverlayProbeResult{}, f.err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return capoverlay.OverlayProbeResult{}, err
+	}
+	sum := sha256.Sum256(b)
+	return capoverlay.OverlayProbeResult{
+		Width:        1920,
+		Height:       1080,
+		DurationUS:   1_000_000,
+		FPSNum:       30,
+		FPSDen:       1,
+		AudioStreams: 0,
+		Codec:        "prores",
+		PixelFormat:  "yuva444p",
+		Container:    "mov",
+		SizeBytes:    int64(len(b)),
+		SHA256:       hex.EncodeToString(sum[:]),
+	}, nil
+}
+
 func testPlan() capoverlay.OverlayPlan {
 	return capoverlay.OverlayPlan{SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1", Width: 1920, Height: 1080, FPS: 30, Items: []capoverlay.OverlayItem{{ID: "overlay-1", TemplateID: "entity-card@1", StartMs: 100, EndMs: 1100, Text: "Ada"}}}
 }
@@ -35,7 +66,7 @@ func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewHandlerSet(cache, r, gate, "test-renderer")
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +113,24 @@ func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
 	if meta["duration_ms"] != int64(1000) {
 		t.Fatalf("duration_ms=%v, want 1000", meta["duration_ms"])
 	}
+	// Probed media-contract facts + READY certification must be durable on
+	// the manifest: the overlay is READY only after render + probe + contract
+	// validation + hash (upload + persist complete on the Sender side).
+	if meta["status"] != capoverlay.OverlayStatusReady {
+		t.Fatalf("status=%v, want %q", meta["status"], capoverlay.OverlayStatusReady)
+	}
+	if meta["container"] != "mov" || meta["codec"] != "prores" || meta["pixel_format"] != "yuva444p" {
+		t.Fatalf("probed contract facts = container=%v codec=%v pixel_format=%v, want mov/prores/yuva444p", meta["container"], meta["codec"], meta["pixel_format"])
+	}
+	if meta["audio_streams"] != 0 {
+		t.Fatalf("audio_streams=%v, want 0 (video-only overlay)", meta["audio_streams"])
+	}
+	if meta["media_contract"] != capoverlay.DefaultOverlayContractV1.ID {
+		t.Fatalf("media_contract=%v, want %q", meta["media_contract"], capoverlay.DefaultOverlayContractV1.ID)
+	}
+	if meta["template_id"] != "entity-card@1" {
+		t.Fatalf("template_id=%v, want entity-card@1", meta["template_id"])
+	}
 	if a := m.Artifacts[0]; a.SHA256 == "" || a.SizeBytes <= 0 {
 		t.Fatalf("manifest artifact must carry sha256 + size_bytes: sha256=%q size=%d", a.SHA256, a.SizeBytes)
 	}
@@ -101,7 +150,7 @@ func TestRenderHandler_ProbeSHA256AndSizeMatchFileBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewHandlerSet(cache, r, gate, "test-renderer")
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +188,87 @@ func TestRenderHandler_ProbeSHA256AndSizeMatchFileBytes(t *testing.T) {
 	}
 }
 
+// TestPrepareHandlerConsumesPrepareRequest locks the overlay.prepare payload
+// contract: the handler consumes the pre-timing PrepareRequest (OverlayIntents
+// with PENDING timing state), warms the entity-image assets they reference,
+// and reports the prepared count. It never requires a timed OverlayPlan —
+// prepare runs before any timing exists.
+func TestPrepareHandlerConsumesPrepareRequest(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := capoverlay.PrepareRequest{
+		SchemaVersion: capoverlay.SchemaVersionPrepare,
+		PlanID:        "run-001",
+		VideoID:       "run-001",
+		Width:         1280, Height: 720, FPS: 30,
+		Intents: []capoverlay.OverlayIntent{{
+			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
+			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
+			Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+			Kind:   string(capoverlay.KindEntityCard), TemplateID: "person_default",
+			Payload: capoverlay.IntentPayload{Name: "Tom Hanks"}, TimingState: capoverlay.TimingStatePending,
+		}},
+	}
+	payload, _ := json.Marshal(req)
+	result, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["schema_version"] != capoverlay.SchemaVersionPrepare {
+		t.Fatalf("schema_version = %v, want %q", result["schema_version"], capoverlay.SchemaVersionPrepare)
+	}
+	if result["plan_id"] != "run-001" || result["prepared"] != 1 {
+		t.Fatalf("prepare result = %+v", result)
+	}
+	if r.calls != 0 {
+		t.Fatalf("prepare must not render (renderer calls = %d)", r.calls)
+	}
+}
+
+// TestPrepareHandlerRejectsFrozenIntent locks the fail-closed contract: a
+// prepare request carrying a FROZEN intent is rejected before any asset work.
+func TestPrepareHandlerRejectsFrozenIntent(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := capoverlay.PrepareRequest{
+		SchemaVersion: capoverlay.SchemaVersionPrepare,
+		PlanID:        "run-001", VideoID: "run-001", Width: 1280, Height: 720, FPS: 30,
+		Intents: []capoverlay.OverlayIntent{{
+			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
+			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
+			Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+			Kind:   string(capoverlay.KindEntityCard), TemplateID: "person_default",
+			Payload: capoverlay.IntentPayload{Name: "Tom Hanks"}, TimingState: capoverlay.TimingStateFrozen,
+		}},
+	}
+	payload, _ := json.Marshal(req)
+	if _, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil); err == nil {
+		t.Fatal("a FROZEN intent must be rejected")
+	}
+}
+
 func TestRenderHandlerUsesContentCache(t *testing.T) {
 	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
 	if err != nil {
@@ -149,7 +279,7 @@ func TestRenderHandlerUsesContentCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewHandlerSet(cache, r, gate, "test-renderer")
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{}, "test-renderer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,4 +295,76 @@ func TestRenderHandlerUsesContentCache(t *testing.T) {
 	if r.calls != 1 {
 		t.Fatalf("renderer calls=%d, want 1 after cache hit", r.calls)
 	}
+}
+
+// TestRenderHandler_RejectsMediaContractViolation pins the fail-closed probe
+// gate: a render that exited 0 but whose probed facts violate the
+// OverlayMediaContract (here, an audio stream in a video-only overlay) must
+// NOT publish an artifact — the renderer's exit code is never a validity
+// criterion.
+func TestRenderHandler_RejectsMediaContractViolation(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &audioViolatingProber{}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := testPlan()
+	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(context.Background(), &job.Job{ID: "job-invalid", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err == nil {
+		t.Fatal("a contract-violating render must fail closed")
+	}
+}
+
+// TestRenderHandler_ProbeFailureFailsClosed pins that a probe error (the
+// canonical ffprobe capability is unavailable) fails the render instead of
+// being treated as a successful no-op.
+func TestRenderHandler_ProbeFailureFailsClosed(t *testing.T) {
+	cache, err := infra.NewCache(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRenderer{}
+	gate, err := infra.NewGPUGate(filepath.Join(t.TempDir(), "gpu.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandlerSet(cache, r, gate, &fakeProber{err: errors.New("probe unavailable")}, "test-renderer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := testPlan()
+	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(context.Background(), &job.Job{ID: "job-probe-fail", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err == nil {
+		t.Fatal("a probe failure must fail closed")
+	}
+}
+
+// audioViolatingProber returns an otherwise-valid probe that carries one
+// audio stream, which violates the video-only OverlayMediaContract.
+type audioViolatingProber struct{}
+
+func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+	b, _ := os.ReadFile(path)
+	sum := sha256.Sum256(b)
+	return capoverlay.OverlayProbeResult{
+		Width:        1920,
+		Height:       1080,
+		DurationUS:   1_000_000,
+		FPSNum:       30,
+		FPSDen:       1,
+		AudioStreams: 1, // violation: overlays must be video-only
+		Codec:        "prores",
+		PixelFormat:  "yuva444p",
+		Container:    "mov",
+		SizeBytes:    int64(len(b)),
+		SHA256:       hex.EncodeToString(sum[:]),
+	}, nil
 }

@@ -266,6 +266,18 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
+		// Render only after canonical timing and the semantic OverlayPlan are
+		// frozen. The prepare job, when configured, already ran independently.
+		if r.overlayRenderEnqueuer != nil && result.OverlayPlan != nil {
+			ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *result.OverlayPlan)
+			if renderErr != nil {
+				cause := fmt.Errorf("overlay render failed: %w", renderErr)
+				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
+			}
+			result.OverlayRender = &ref
+		}
 		// ── EDITING TIMELINE PROJECTION ──────────────────────────────
 		// Build the canonical EditingTimelineV1 from frozen facts. This is
 		// the single projection consumed by downstream editing; no component

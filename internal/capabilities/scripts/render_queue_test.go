@@ -79,6 +79,7 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	}
 	client.jobs[compiled.Plan.JobID] = RenderQueueJob{
 		ID:          compiled.Plan.JobID,
+		JobType:     capoverlay.JobTypeRender,
 		OverlaySpec: spec,
 		Assets: []RenderQueueAsset{
 			{Hash: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
@@ -118,6 +119,9 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	submitted, ok := client.jobs["golden-overlay-v1"]
 	if !ok {
 		t.Fatal("job was not submitted to the queue")
+	}
+	if submitted.JobType != capoverlay.JobTypeRender {
+		t.Fatalf("submitted job type = %q, want %q", submitted.JobType, capoverlay.JobTypeRender)
 	}
 	var doc struct {
 		Schema string `json:"schema"`
@@ -193,6 +197,121 @@ func TestQueueRenderEnqueuerRecorderFailureFailsClosed(t *testing.T) {
 
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
 		t.Fatal("recorder failure must fail the enqueue")
+	}
+}
+
+// ── overlay.prepare enqueuer ──────────────────────────────────────────
+
+func prepareTestRequest(planID string) capoverlay.PrepareRequest {
+	return capoverlay.PrepareRequest{
+		SchemaVersion: capoverlay.SchemaVersionPrepare,
+		PlanID:        planID,
+		VideoID:       planID,
+		Width:         1280,
+		Height:        720,
+		FPS:           30,
+		Intents: []capoverlay.OverlayIntent{
+			{
+				Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom-hanks",
+				SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
+				Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+				Kind:   string(capoverlay.KindEntityCard), TemplateID: "person_default",
+				Payload: capoverlay.IntentPayload{Name: "Tom Hanks"}, TimingState: capoverlay.TimingStatePending,
+			},
+			{
+				Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-apple",
+				SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
+				Entity: capoverlay.EntityBinding{Type: "LOGO", CanonicalName: "Apple"},
+				Kind:   string(capoverlay.KindLogo), TemplateID: "LOGO",
+				Payload: capoverlay.IntentPayload{
+					Name: "Apple",
+					AssetRefs: []capoverlay.OverlayAssetRef{
+						{AssetID: "apple-logo", URL: "https://cdn.example.com/apple.png", SHA256: "abc123"},
+						{AssetID: "apple-logo", URL: "https://cdn.example.com/apple.png", SHA256: "ABC123"}, // dedup by hash
+					},
+				},
+				TimingState: capoverlay.TimingStatePending,
+			},
+		},
+	}
+}
+
+// TestQueuePrepareEnqueuer_SubmitsPrepareJob pins the overlay.prepare
+// path: the pre-timing PrepareRequest is submitted as an overlay.prepare
+// job whose id is "prepare-"+planID (idempotency key), whose spec round-trips
+// back to the same intents, and whose assets are the deduplicated
+// entity-image refs carried on the intents.
+func TestQueuePrepareEnqueuer_SubmitsPrepareJob(t *testing.T) {
+	client := newFakeRenderQueueClient()
+	enqueuer, err := NewQueuePrepareEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := prepareTestRequest("run-prepare-001")
+	if err := enqueuer.EnqueuePrepare(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	job, ok := client.jobs["prepare-run-prepare-001"]
+	if !ok {
+		t.Fatal("prepare job was not submitted")
+	}
+	if job.JobType != capoverlay.JobTypePrepare {
+		t.Fatalf("job type = %q, want %q", job.JobType, capoverlay.JobTypePrepare)
+	}
+	var got capoverlay.PrepareRequest
+	if err := json.Unmarshal(job.OverlaySpec, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PlanID != req.PlanID || got.SchemaVersion != capoverlay.SchemaVersionPrepare {
+		t.Fatalf("spec did not round-trip: %+v", got)
+	}
+	if len(got.Intents) != 2 || got.Intents[0].TemplateID != "person_default" || got.Intents[1].TimingState != capoverlay.TimingStatePending {
+		t.Fatalf("intents not projected: %+v", got.Intents)
+	}
+	// Assets are deduplicated by content hash (case-insensitive).
+	if len(job.Assets) != 1 || job.Assets[0].Hash != "abc123" || job.Assets[0].URL != "https://cdn.example.com/apple.png" {
+		t.Fatalf("prepare assets = %+v", job.Assets)
+	}
+}
+
+// TestQueuePrepareEnqueuer_IdempotentOnReplay pins that a retry never
+// double-prepares: an existing job (ErrJobExists) is treated as success.
+func TestQueuePrepareEnqueuer_IdempotentOnReplay(t *testing.T) {
+	client := newFakeRenderQueueClient()
+	client.jobs["prepare-run-prepare-001"] = RenderQueueJob{ID: "prepare-run-prepare-001"}
+	enqueuer, err := NewQueuePrepareEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := enqueuer.EnqueuePrepare(context.Background(), prepareTestRequest("run-prepare-001")); err != nil {
+		t.Fatalf("replay must be idempotent: %v", err)
+	}
+}
+
+// TestQueuePrepareEnqueuer_RejectsInvalidRequest pins fail-closed: an
+// invalid PrepareRequest is rejected before any submit.
+func TestQueuePrepareEnqueuer_RejectsInvalidRequest(t *testing.T) {
+	client := newFakeRenderQueueClient()
+	enqueuer, err := NewQueuePrepareEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := prepareTestRequest("run-prepare-001")
+	req.Intents[0].TimingState = capoverlay.TimingStateFrozen
+	if err := enqueuer.EnqueuePrepare(context.Background(), req); err == nil {
+		t.Fatal("a FROZEN intent must fail before submit")
+	}
+	if client.calls != 0 {
+		t.Fatalf("submit calls = %d, want 0", client.calls)
+	}
+}
+
+// TestQueuePrepareEnqueuer_NilClientFailsClosed pins that an unconfigured
+// enqueuer never silently succeeds.
+func TestQueuePrepareEnqueuer_NilClientFailsClosed(t *testing.T) {
+	if _, err := NewQueuePrepareEnqueuer(nil); err == nil {
+		t.Fatal("nil client must fail construction")
 	}
 }
 

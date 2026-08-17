@@ -1,7 +1,7 @@
-// Package drive — asset_dest_resolver_test.go pins the reconnected
+// Package app — asset_dest_resolver_test.go pins the reconnected
 // asset.Resolver → drive.EnsureFolderPath get-or-create contract and the
 // godlike/07 typed-error fail-closed boundary.
-package drive
+package app
 
 import (
 	"context"
@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	infradrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// fakeAdmin is a minimal drive.Admin test double that records the last
+// fakeDestAdmin is a minimal drive.Admin test double that records the last
 // GetOrCreateFolder invocation.
-type fakeAdmin struct {
+type fakeDestAdmin struct {
 	getOrCreateCalls int
 	lastName         string
 	lastParentID     string
@@ -22,7 +23,7 @@ type fakeAdmin struct {
 	getOrCreateErr   error
 }
 
-func (f *fakeAdmin) GetOrCreateFolder(_ context.Context, name, parentID string) (string, error) {
+func (f *fakeDestAdmin) GetOrCreateFolder(_ context.Context, name, parentID string) (string, error) {
 	f.getOrCreateCalls++
 	f.lastName = name
 	f.lastParentID = parentID
@@ -31,21 +32,21 @@ func (f *fakeAdmin) GetOrCreateFolder(_ context.Context, name, parentID string) 
 
 // The remaining Admin methods are ctor/stub surfaces not exercised by the
 // resolver; they satisfy the interface contract.
-func (f *fakeAdmin) GetFolderName(context.Context, string) (string, error) { return "", nil }
-func (f *fakeAdmin) TrashFolder(context.Context, string) error             { return nil }
-func (f *fakeAdmin) DeleteFolder(context.Context, string) error            { return nil }
-func (f *fakeAdmin) TrashFile(context.Context, string) error               { return nil }
-func (f *fakeAdmin) DeleteFile(context.Context, string) error              { return nil }
-func (f *fakeAdmin) MoveFile(context.Context, string, string, string) error {
+func (f *fakeDestAdmin) GetFolderName(context.Context, string) (string, error) { return "", nil }
+func (f *fakeDestAdmin) TrashFolder(context.Context, string) error             { return nil }
+func (f *fakeDestAdmin) DeleteFolder(context.Context, string) error            { return nil }
+func (f *fakeDestAdmin) TrashFile(context.Context, string) error               { return nil }
+func (f *fakeDestAdmin) DeleteFile(context.Context, string) error              { return nil }
+func (f *fakeDestAdmin) MoveFile(context.Context, string, string, string) error {
 	return nil
 }
-func (f *fakeAdmin) RenameFile(context.Context, string, string) error { return nil }
-func (f *fakeAdmin) Ping(context.Context) error                       { return nil }
+func (f *fakeDestAdmin) RenameFile(context.Context, string, string) error { return nil }
+func (f *fakeDestAdmin) Ping(context.Context) error                       { return nil }
 
-var _ Admin = (*fakeAdmin)(nil)
+var _ infradrive.Admin = (*fakeDestAdmin)(nil)
 
 func TestAssetDestResolver_CreateSubfolder_UsesGetOrCreate(t *testing.T) {
-	admin := &fakeAdmin{cannedID: "child-folder-id"}
+	admin := &fakeDestAdmin{cannedID: "child-folder-id"}
 	r := NewAssetDestResolver(admin)
 	if r == nil {
 		t.Fatal("NewAssetDestResolver must return a non-nil resolver for a non-nil admin")
@@ -73,7 +74,7 @@ func TestAssetDestResolver_CreateSubfolder_UsesGetOrCreate(t *testing.T) {
 }
 
 func TestAssetDestResolver_PassThroughExplicitFolder_NoDriveIO(t *testing.T) {
-	admin := &fakeAdmin{}
+	admin := &fakeDestAdmin{}
 	r := NewAssetDestResolver(admin)
 
 	got, err := r.Resolve(context.Background(), &asset.ResolveRequest{
@@ -92,7 +93,7 @@ func TestAssetDestResolver_PassThroughExplicitFolder_NoDriveIO(t *testing.T) {
 }
 
 func TestAssetDestResolver_CreateSubfolderWithoutParent_FailsClosed(t *testing.T) {
-	r := NewAssetDestResolver(&fakeAdmin{cannedID: "child"})
+	r := NewAssetDestResolver(&fakeDestAdmin{cannedID: "child"})
 
 	_, err := r.Resolve(context.Background(), &asset.ResolveRequest{
 		SubfolderName:   "sub",
@@ -107,7 +108,7 @@ func TestAssetDestResolver_CreateSubfolderWithoutParent_FailsClosed(t *testing.T
 }
 
 func TestAssetDestResolver_GetOrCreateError_FailsClosedTyped(t *testing.T) {
-	admin := &fakeAdmin{getOrCreateErr: context.DeadlineExceeded}
+	admin := &fakeDestAdmin{getOrCreateErr: context.DeadlineExceeded}
 	r := NewAssetDestResolver(admin)
 
 	_, err := r.Resolve(context.Background(), &asset.ResolveRequest{
@@ -127,7 +128,7 @@ func TestAssetDestResolver_GetOrCreateError_FailsClosedTyped(t *testing.T) {
 }
 
 func TestAssetDestResolver_EmptyChildID_FailsClosedTyped(t *testing.T) {
-	admin := &fakeAdmin{cannedID: ""}
+	admin := &fakeDestAdmin{cannedID: ""}
 	r := NewAssetDestResolver(admin)
 
 	_, err := r.Resolve(context.Background(), &asset.ResolveRequest{

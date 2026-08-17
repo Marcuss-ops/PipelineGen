@@ -161,3 +161,74 @@ func TestBreakdown_DominantOperationPrefersLargestDuration(t *testing.T) {
 		t.Fatalf("BottleneckOperation = %q, want ollama.generate", bd.BottleneckOperation)
 	}
 }
+
+// TestBreakdown_BottleneckPercent pins that the bottleneck stage's share of
+// total wall time is reported as a percentage, and stays 0 when wall is 0.
+func TestBreakdown_BottleneckPercent(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 86721,
+		Stages: []StageReport{
+			stageAt("script.prepare", 0, 3000),
+			stageAt("script.engine", 3000, 82000),
+			stageAt("audio.pipeline", 85000, 86000),
+		},
+	}
+	bd := report.Breakdown()
+	if bd.BottleneckStage != "script.engine" {
+		t.Fatalf("BottleneckStage = %q, want script.engine", bd.BottleneckStage)
+	}
+	want := float64(79000) / float64(86721) * 100
+	if math.Abs(bd.BottleneckPercent-want) > 1e-9 {
+		t.Fatalf("BottleneckPercent = %v, want %v", bd.BottleneckPercent, want)
+	}
+	if (&RunReport{}).Breakdown().BottleneckPercent != 0 {
+		t.Fatal("zero-wall report must have BottleneckPercent = 0")
+	}
+}
+
+// TestBreakdown_CriticalPathOrderedByWallStart pins that the critical path is
+// the top-level stages ordered by wall-time start (execution order), each with
+// its percentage of total wall.
+func TestBreakdown_CriticalPathOrderedByWallStart(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 100000,
+		Stages: []StageReport{
+			// Deliberately out of execution order: the critical path must
+			// re-order by StartedAt, not preserve input order.
+			stageAt("audio.pipeline", 85000, 90000),
+			stageAt("script.engine", 3000, 82000),
+			stageAt("script.prepare", 0, 3000),
+			stageAt("script.postprocess", 82000, 85000),
+		},
+	}
+	bd := report.Breakdown()
+	if len(bd.CriticalPath) != 4 {
+		t.Fatalf("CriticalPath len = %d, want 4", len(bd.CriticalPath))
+	}
+	wantOrder := []string{"script.prepare", "script.engine", "script.postprocess", "audio.pipeline"}
+	for i, want := range wantOrder {
+		if bd.CriticalPath[i].Name != want {
+			t.Fatalf("CriticalPath[%d] = %q, want %q (order %+v)", i, bd.CriticalPath[i].Name, want, bd.CriticalPath)
+		}
+	}
+	engine := bd.CriticalPath[1]
+	if engine.DurationMs != 79000 {
+		t.Fatalf("engine DurationMs = %d, want 79000", engine.DurationMs)
+	}
+	wantPct := float64(79000) / float64(100000) * 100
+	if math.Abs(engine.Percent-wantPct) > 1e-9 {
+		t.Fatalf("engine Percent = %v, want %v", engine.Percent, wantPct)
+	}
+}
+
+// TestBreakdown_CriticalPathNilAndEmptyIsSafe pins nil/empty safety: a report
+// with no top-level stages yields no critical path.
+func TestBreakdown_CriticalPathNilAndEmptyIsSafe(t *testing.T) {
+	var nilReport *RunReport
+	if bd := nilReport.Breakdown(); bd.CriticalPath != nil || bd.BottleneckPercent != 0 {
+		t.Fatalf("nil report breakdown must be zero, got %+v", bd)
+	}
+	if bd := (&RunReport{WallTimeMs: 1000}).Breakdown(); bd.CriticalPath != nil {
+		t.Fatalf("empty report must have nil critical path, got %+v", bd.CriticalPath)
+	}
+}

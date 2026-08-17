@@ -1,6 +1,10 @@
 package observability
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // TimingSummary is the canonical timing-diagnostic projection of a completed
 // run. It is derived from the persisted Stages / Operations / WallTimeMs on
@@ -31,6 +35,12 @@ type TimingSummary struct {
 	// BottleneckOperation is "component.operation" of the dominant operation
 	// recorded directly under BottleneckStage, or "" when absent.
 	BottleneckOperation string `json:"bottleneck_operation,omitempty"`
+	// BottleneckPercent is the bottleneck stage's wall time as a percentage of
+	// wall_ms.
+	BottleneckPercent float64 `json:"bottleneck_percent,omitempty"`
+	// CriticalPath is the ordered chain of top-level (sequential) stages,
+	// ordered by wall-time start, each with its wall time and share of wall_ms.
+	CriticalPath []CriticalPathStage `json:"critical_path,omitempty"`
 	// Stages is the exhaustive per-stage wall-time list (nested stages
 	// included), aggregated by name and sorted by name.
 	Stages []TimingStage `json:"stages,omitempty"`
@@ -67,18 +77,48 @@ func (r *RunReport) TimingSummary() TimingSummary {
 	if r == nil {
 		return TimingSummary{}
 	}
-	bd := r.Breakdown()
+	return r.timingSummaryWithWall(nonNegative(r.WallTimeMs))
+}
+
+// timingSummaryWithWall is the wall-parameterized core of TimingSummary so
+// callers with a live clock (a still-running Run using ElapsedMs) can derive
+// the same summary before WallTimeMs is finalized.
+func (r *RunReport) timingSummaryWithWall(wallMs int64) TimingSummary {
+	bd := r.breakdownWithWall(wallMs)
 	return TimingSummary{
-		WallMs:              nonNegative(r.WallTimeMs),
+		WallMs:              wallMs,
 		AttributedMs:        bd.AttributedStageMs,
 		UnattributedMs:      bd.UnattributedMs,
 		UnattributedPercent: bd.UnattributedPercent,
 		BottleneckStage:     bd.BottleneckStage,
 		BottleneckOperation: bd.BottleneckOperation,
+		BottleneckPercent:   bd.BottleneckPercent,
+		CriticalPath:        bd.CriticalPath,
 		Stages:              timingStages(r.Stages),
 		Operations:          timingOperations(r.Operations),
 		Fanout:              r.FanoutReports(),
 	}
+}
+
+// FormatCriticalPath renders the critical path as a single compact,
+// operator-friendly line: "stage_a(3.5%) > stage_b(91.1%) > ...".
+// Percentages carry one decimal so log output stays stable and grep-able.
+// It returns "" for a report with no critical path.
+func (s TimingSummary) FormatCriticalPath() string {
+	if len(s.CriticalPath) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, st := range s.CriticalPath {
+		if i > 0 {
+			b.WriteString(" > ")
+		}
+		b.WriteString(st.Name)
+		b.WriteByte('(')
+		b.WriteString(fmt.Sprintf("%.1f%%", st.Percent))
+		b.WriteByte(')')
+	}
+	return b.String()
 }
 
 // timingStages aggregates stages by name (summing durations for repeated

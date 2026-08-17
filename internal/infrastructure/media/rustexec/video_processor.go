@@ -222,6 +222,13 @@ func (p *VideoProcessor) Probe(ctx context.Context, path string) (*mediaexec.Med
 		VideoCodec: m.VideoCodec, AudioCodec: m.AudioCodec,
 		SampleRate: int(m.SampleRate), Channels: int(m.Channels),
 		HasVideo: m.HasVideo, HasAudio: m.HasAudio,
+		PixelFormat:      m.PixelFormat,
+		FormatName:       m.FormatName,
+		VideoStreamCount: int(m.VideoStreamCount),
+		StreamCount:      int(m.StreamCount),
+		AudioStreamCount: int(m.AudioStreamCount),
+		FPSNum:           int(m.FPSNum),
+		FPSDen:           int(m.FPSDen),
 	}, nil
 }
 

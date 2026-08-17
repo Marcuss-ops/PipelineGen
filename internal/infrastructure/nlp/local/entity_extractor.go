@@ -19,7 +19,11 @@ type Extractor struct{}
 func NewExtractor() *Extractor { return &Extractor{} }
 
 var (
+	// properNameRE is retained for phrase ranking. Entity extraction itself
+	// uses entitySpanRE below so internal organization connectors are kept in
+	// the same candidate span.
 	properNameRE = regexp.MustCompile(`(?:\b[\p{Lu}][\p{L}'’-]+)(?:\s+[\p{Lu}][\p{L}'’-]+)+`)
+	entitySpanRE = regexp.MustCompile(`\b(?:[A-Z]{2,10}|[\p{Lu}][\p{L}'’-]+)(?:\s+(?:(?:of|and|the|for|&)|[A-Z]{2,10}|[\p{Lu}][\p{L}'’-]+))*`)
 	// singleNameRE matches one capitalized word; it is only used to detect
 	// single-word known places ("London", "Roma", "Parigi", "Londra") that
 	// properNameRE (2+ capitalized words) cannot capture.
@@ -34,6 +38,24 @@ var knownPlaces = map[string]struct{}{
 	"las vegas": {}, "stati uniti": {}, "united states": {}, "new york": {}, "roma": {}, "parigi": {}, "londra": {}, "london": {}, "los angeles": {},
 }
 
+var knownConcepts = map[string]struct{}{
+	"genesis mission": {},
+}
+
+var titleCaseVerbs = map[string]struct{}{
+	"accelerates": {}, "accelerate": {}, "appears": {}, "described": {}, "discussed": {},
+	"joins": {}, "presented": {}, "presents": {}, "said": {}, "spoke": {},
+	"supports": {}, "supported": {}, "works": {},
+}
+
+// nonEntityLeadWords are the tokens that must never begin a candidate entity
+// (sentence-initial connectives/determiners that are not names). Kept as a
+// slice because these are entity-extraction lead blockers, not a stop-word
+// lexicon — the canonical stop-word SSOT lives in linguistics.
+var nonEntityLeadWords = []string{
+	"among", "at", "central", "from", "furthermore", "in", "the", "this",
+}
+
 func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
 	text := strings.TrimSpace(req.Text)
 	result := &scriptpkg.EntityResult{Persons: []scriptpkg.Entity{}, Places: []scriptpkg.Entity{}, Concepts: []scriptpkg.Entity{}, ImportantPhrases: []string{}, ImportantWords: []string{}, ArtlistPhrases: []string{}}
@@ -41,17 +63,14 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 		return result, nil
 	}
 	seen := map[string]struct{}{}
-	properSpans := properNameRE.FindAllStringIndex(text, -1)
+	properSpans := entitySpans(text)
 	for _, span := range properSpans {
-		value := strings.TrimSpace(trimEntityPrefix(text[span[0]:span[1]]))
-		kind := classifyName(value)
-		appendEntity(result, seen, kind, value, 0.90)
-	}
-	for _, match := range acronymRE.FindAllString(text, -1) {
-		if strings.EqualFold(match, "I") {
+		value := normalizeEntityValue(trimEntityPrefix(text[span[0]:span[1]]))
+		if isNonEntityLead(value) {
 			continue
 		}
-		appendEntity(result, seen, "ORG", match, 0.86)
+		kind := classifyName(value)
+		appendEntity(result, seen, kind, value, 0.90)
 	}
 	for _, match := range yearRE.FindAllString(text, -1) {
 		appendEntity(result, seen, "DATE", match, 0.99)
@@ -84,14 +103,140 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 }
 
 func classifyName(value string) string {
+	value = normalizeEntityValue(value)
 	lower := strings.ToLower(strings.TrimSpace(trimEntityPrefix(value)))
 	if _, ok := knownPlaces[lower]; ok {
 		return "GPE"
+	}
+	if _, ok := knownConcepts[lower]; ok {
+		return "CONCEPT"
+	}
+	if strings.EqualFold(strings.TrimSpace(value), "Earth") {
+		return "CONCEPT"
+	}
+	if strings.Contains(lower, "white house") || strings.Contains(lower, " office ") ||
+		strings.Contains(lower, " agency") || strings.Contains(lower, " administration") ||
+		strings.Contains(lower, " department") || strings.Contains(lower, " institute") ||
+		strings.Contains(lower, " university") || strings.HasSuffix(lower, " corporation") ||
+		strings.HasSuffix(lower, " company") {
+		return "ORG"
+	}
+	if acronymRE.MatchString(strings.TrimSpace(value)) && !strings.Contains(value, " ") {
+		return "ORG"
 	}
 	if strings.Contains(lower, " council") || strings.Contains(lower, " federation") || strings.Contains(lower, " association") {
 		return "ORG"
 	}
 	return "PERSON"
+}
+
+func normalizeEntityValue(value string) string {
+	return strings.Trim(strings.TrimSpace(value), ".,;:!?\"'’”)]}>")
+}
+
+func isNonEntityLead(value string) bool {
+	parts := strings.Fields(strings.ToLower(normalizeEntityValue(value)))
+	if len(parts) == 0 {
+		return true
+	}
+	for _, blocked := range nonEntityLeadWords {
+		if blocked == parts[0] {
+			return true
+		}
+	}
+	return false
+}
+
+// entitySpans resolves candidate names before classification. It keeps
+// capitalized runs and organization connectors together, splits title-case
+// verbs that commonly start the predicate after an acronym/name, and applies
+// longest-span-wins so contained tokens cannot become separate entities.
+func entitySpans(text string) [][]int {
+	raw := entitySpanRE.FindAllStringIndex(text, -1)
+	spans := make([][]int, 0, len(raw))
+	for _, span := range raw {
+		value := strings.TrimSpace(text[span[0]:span[1]])
+		if value == "" {
+			continue
+		}
+		parts := strings.Fields(value)
+		// An acronym at the beginning is a complete candidate even when the
+		// following title-case words continue in the same headline. This keeps
+		// "NASA and the Genesis Mission" as NASA + Genesis Mission.
+		if len(parts) > 1 && acronymRE.MatchString(parts[0]) {
+			acronym := strings.TrimSpace(parts[0])
+			if offset := strings.Index(text[span[0]:span[1]], acronym); offset >= 0 {
+				spans = append(spans, []int{span[0] + offset, span[0] + offset + len(acronym)})
+			}
+			start := 1
+			for start < len(parts) {
+				lower := strings.ToLower(strings.Trim(parts[start], ".,;:!?()[]{}\"'"))
+				if lower != "of" && lower != "and" && lower != "the" && lower != "for" && lower != "&" {
+					break
+				}
+				start++
+			}
+			if start >= len(parts) {
+				continue
+			}
+			value = strings.Join(parts[start:], " ")
+			parts = parts[start:]
+			spanStart := strings.Index(text[span[0]:span[1]], value)
+			if spanStart >= 0 {
+				span = []int{span[0] + spanStart, span[0] + spanStart + len(value)}
+			}
+		}
+		start := 0
+		for i, part := range parts {
+			lower := strings.ToLower(strings.Trim(part, ".,;:!?()[]{}\"'"))
+			if i > 0 {
+				if _, verb := titleCaseVerbs[lower]; verb {
+					// Title-case verbs are predicates, not entity names. Drop the
+					// verb and start a fresh candidate after it.
+					start = i + 1
+				}
+			}
+		}
+		candidate := strings.TrimSpace(strings.Join(parts[start:], " "))
+		candidate = normalizeEntityValue(candidate)
+		if len(parts) == 1 && !acronymRE.MatchString(parts[0]) {
+			lower := strings.ToLower(strings.Trim(parts[0], ".,;:!?()[]{}\"'"))
+			if _, place := knownPlaces[lower]; !place {
+				if _, concept := knownConcepts[lower]; !concept && lower != "earth" {
+					continue
+				}
+			}
+		}
+		if candidate != "" {
+			if offset := strings.Index(text[span[0]:span[1]], candidate); offset >= 0 {
+				spans = append(spans, []int{span[0] + offset, span[0] + offset + len(candidate)})
+			}
+		}
+	}
+	// Longest valid spans win. Stable source order is retained for equal
+	// lengths, which keeps the result deterministic for callers and tests.
+	sort.SliceStable(spans, func(i, j int) bool {
+		li, lj := spans[i][1]-spans[i][0], spans[j][1]-spans[j][0]
+		if li != lj {
+			return li > lj
+		}
+		return spans[i][0] < spans[j][0]
+	})
+	selected := make([][]int, 0, len(spans))
+	for _, span := range spans {
+		contained := false
+		for _, kept := range selected {
+			if span[0] >= kept[0] && span[1] <= kept[1] {
+				contained = true
+				break
+			}
+		}
+		if !contained {
+			selected = append(selected, span)
+		}
+	}
+	sort.SliceStable(selected, func(i, j int) bool { return selected[i][0] < selected[j][0] })
+	return selected
 }
 
 // spanInside reports whether span lies fully within one of the provided
@@ -110,7 +255,8 @@ func trimEntityPrefix(value string) string {
 	parts := strings.Fields(strings.TrimSpace(value))
 	for len(parts) > 0 {
 		switch strings.ToLower(parts[0]) {
-		case "a", "ad", "al", "alla", "da", "dal", "dalla", "di", "il", "la", "nel", "nella", "in", "the":
+		case "a", "ad", "al", "alla", "da", "dal", "dalla", "di", "il", "la", "nel", "nella", "in", "the",
+			"president", "prime", "minister", "senator", "governor", "director", "dr", "mr", "mrs", "ms":
 			parts = parts[1:]
 		default:
 			return strings.Join(parts, " ")

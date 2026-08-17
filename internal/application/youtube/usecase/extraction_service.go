@@ -30,6 +30,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	assetdomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -81,7 +82,7 @@ type ExtractionService struct {
 	// []dto.Segment shape (explicit | important). A nil resolver
 	// means only the explicit mode is supported (selection.mode=
 	// "important" fails closed at resolve time, godlike/07).
-	resolver *SegmentSelectionResolver
+	resolver *capyoutubeusecase.SegmentSelectionResolver
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.
@@ -114,7 +115,7 @@ func NewExtractionService(deps ExtractionDeps, cb ExtractionCallbacks) *Extracti
 // only the explicit mode is supported — selection.mode="important"
 // fails closed with a typed error instead of silently processing zero
 // segments (godlike/07 no-fake-availability).
-func (s *ExtractionService) SetSegmentSelectionResolver(r *SegmentSelectionResolver) {
+func (s *ExtractionService) SetSegmentSelectionResolver(r *capyoutubeusecase.SegmentSelectionResolver) {
 	if s == nil {
 		return
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -72,6 +73,18 @@ func NewService(cfg *Config, db *storage.SQLiteDB, dbPath string, log *zap.Logge
 		log:        log,
 		scriptPath: cfg.ScriptPath,
 	}
+}
+
+// Compile-time assertions: Service satisfies the canonical indexing ports.
+var _ MediaIndexer = (*Service)(nil)
+var _ IndexEligibilityResolver = (*Service)(nil)
+
+// Eligibility resolves the searchability decision for an asset via the
+// canonical mediaregistry resolver. A missing row or an empty taxonomy
+// resolves to REGISTERED (fail-closed: an asset is only SEARCHABLE once
+// explicitly classified as video/image).
+func (s *Service) Eligibility(ctx context.Context, assetID string) (capregistry.IndexEligibility, error) {
+	return capregistry.ResolveIndexEligibility(ctx, s.db, assetID)
 }
 
 func (s *Service) IsEnabled() bool {

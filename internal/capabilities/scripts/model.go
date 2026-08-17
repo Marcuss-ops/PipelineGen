@@ -550,6 +550,10 @@ type GenerateResult struct {
 	// no derivable overlay surface.
 	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
 
+	// OverlayRender is populated after the timing-frozen Chronon render has
+	// completed and its media contract has been certified.
+	OverlayRender *RenderReference `json:"overlay_render,omitempty"`
+
 	// OverlayIntents are the pre-timing entity→template bindings, created
 	// immediately after entity extraction. Each intent binds one entity
 	// occurrence to its resolved template without timing dependency,

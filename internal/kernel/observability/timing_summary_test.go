@@ -145,3 +145,45 @@ func TestTimingSummary_NilSafe(t *testing.T) {
 		t.Fatalf("empty report summary must be zero, got %+v", s)
 	}
 }
+
+// TestTimingSummary_CarriesCriticalPathAndBottleneckPercent pins that the
+// summary surfaces the ordered critical path and the bottleneck percentage.
+func TestTimingSummary_CarriesCriticalPathAndBottleneckPercent(t *testing.T) {
+	report := &RunReport{
+		WallTimeMs: 86721,
+		Stages: []StageReport{
+			stageAt("script.prepare", 0, 3000),
+			stageAt("script.engine", 3000, 82000),
+			stageAt("script.postprocess", 82000, 85000),
+			stageAt("audio.pipeline", 85000, 86000),
+		},
+	}
+	s := report.TimingSummary()
+	if s.BottleneckStage != "script.engine" {
+		t.Fatalf("BottleneckStage = %q, want script.engine", s.BottleneckStage)
+	}
+	want := float64(79000) / float64(86721) * 100
+	if math.Abs(s.BottleneckPercent-want) > 1e-9 {
+		t.Fatalf("BottleneckPercent = %v, want %v", s.BottleneckPercent, want)
+	}
+	if len(s.CriticalPath) != 4 || s.CriticalPath[1].Name != "script.engine" {
+		t.Fatalf("CriticalPath = %+v, want 4 ordered stages with script.engine second", s.CriticalPath)
+	}
+}
+
+// TestTimingSummary_FormatCriticalPath pins the compact single-line rendering
+// used by logs, including one-decimal percentages and empty-path safety.
+func TestTimingSummary_FormatCriticalPath(t *testing.T) {
+	got := (TimingSummary{CriticalPath: []CriticalPathStage{
+		{Name: "script.prepare", DurationMs: 3000, Percent: 3.5},
+		{Name: "script.engine", DurationMs: 79000, Percent: 91.1},
+		{Name: "audio.pipeline", DurationMs: 1000, Percent: 1.2},
+	}}).FormatCriticalPath()
+	want := "script.prepare(3.5%) > script.engine(91.1%) > audio.pipeline(1.2%)"
+	if got != want {
+		t.Fatalf("FormatCriticalPath = %q, want %q", got, want)
+	}
+	if got := (TimingSummary{}).FormatCriticalPath(); got != "" {
+		t.Fatalf("empty summary FormatCriticalPath = %q, want empty", got)
+	}
+}

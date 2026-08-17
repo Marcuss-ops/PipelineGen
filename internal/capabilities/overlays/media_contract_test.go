@@ -221,6 +221,40 @@ func TestOverlayContractForCanvas_NoAlpha(t *testing.T) {
 	}
 }
 
+func TestResolveMediaContract_KnownIDs(t *testing.T) {
+	for _, id := range []string{"", "overlay-v1", DefaultOverlayContractV1.ID} {
+		c, err := ResolveMediaContract(id)
+		if err != nil {
+			t.Fatalf("ResolveMediaContract(%q): %v", id, err)
+		}
+		if c.ID != DefaultOverlayContractV1.ID {
+			t.Fatalf("ResolveMediaContract(%q).ID = %q, want %q", id, c.ID, DefaultOverlayContractV1.ID)
+		}
+	}
+	c, err := ResolveMediaContract(DefaultOverlayContractNoAlpha.ID)
+	if err != nil {
+		t.Fatalf("ResolveMediaContract(no-alpha): %v", err)
+	}
+	if c.Codec != "h264" {
+		t.Fatalf("no-alpha codec = %q, want h264", c.Codec)
+	}
+}
+
+func TestResolveMediaContract_UnknownFailsClosed(t *testing.T) {
+	if _, err := ResolveMediaContract("overlay-v99"); err == nil {
+		t.Fatal("unknown contract id must fail closed")
+	}
+}
+
+func TestContractIDForCanvas(t *testing.T) {
+	if id := ContractIDForCanvas(1280, 720, 30, true); id != DefaultOverlayContractV1.ID {
+		t.Fatalf("alpha contract id = %q, want %q", id, DefaultOverlayContractV1.ID)
+	}
+	if id := ContractIDForCanvas(1280, 720, 30, false); id != DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("no-alpha contract id = %q, want %q", id, DefaultOverlayContractNoAlpha.ID)
+	}
+}
+
 func TestOverlayMediaContract_FPSComparisonRational(t *testing.T) {
 	contract := OverlayMediaContract{
 		ID:      "test-fps",
@@ -242,5 +276,45 @@ func TestOverlayMediaContract_FPSComparisonRational(t *testing.T) {
 	}
 	if err := contract.Validate(probed); err != nil {
 		t.Errorf("23.976 fps rational comparison should pass: %v", err)
+	}
+}
+
+func TestOverlayMediaContract_ContainerCommaTokenAware(t *testing.T) {
+	contract := DefaultOverlayContractV1
+	// ffprobe's format_name is a comma-joined container family list; the
+	// first token is the canonical container identity.
+	probed := OverlayProbeResult{
+		Width:        1920,
+		Height:       1080,
+		DurationUS:   5000000,
+		FPSNum:       30,
+		FPSDen:       1,
+		AudioStreams: 0,
+		Codec:        "prores",
+		PixelFormat:  "yuva444p",
+		Container:    "mov,mp4,m4a,3gp,3g2,mj2",
+		SizeBytes:    1024000,
+	}
+	if err := contract.Validate(probed); err != nil {
+		t.Errorf("comma-token container should match: %v", err)
+	}
+}
+
+func TestOverlayMediaContract_RejectsZeroFPS(t *testing.T) {
+	contract := DefaultOverlayContractV1
+	probed := OverlayProbeResult{
+		Width:        1920,
+		Height:       1080,
+		DurationUS:   5000000,
+		FPSNum:       0, // no usable frame rate reported
+		FPSDen:       0,
+		AudioStreams: 0,
+		Codec:        "prores",
+		PixelFormat:  "yuva444p",
+		Container:    "mov",
+		SizeBytes:    1024000,
+	}
+	if err := contract.Validate(probed); err == nil {
+		t.Error("a 0/0 fps probe must fail closed (not trivially cross-multiply to zero)")
 	}
 }

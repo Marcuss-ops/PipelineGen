@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -74,7 +74,7 @@ func buildDomainScriptServices(
 	// Analyzer is the nil-tolerant forward-pointer: failClosedAnalyzerAdapter
 	// surfaces ErrAnalyzerUnavailable until the real LLM analyzer lands.
 	analyzer := &failClosedAnalyzerAdapter{}
-	segmentSelectionResolver := youtube.NewSegmentSelectionResolver(log, transcriptFetcher, analyzer)
+	segmentSelectionResolver := capyoutubeusecase.NewSegmentSelectionResolver(log, transcriptFetcher, analyzer)
 	bundle.YoutubeClipService.SetSegmentSelectionResolver(segmentSelectionResolver)
 
 	return nil

@@ -14,6 +14,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // ─── Pure parser ────────────────────────────────────────────────────────────
@@ -25,7 +27,7 @@ func TestParseVolumedetect_ExtractsMeanAndMax(t *testing.T) {
 		"[Parsed_volumedetect_0 @ 0x1] max_volume: -2.1 dB\n" +
 		"[Parsed_volumedetect_0 @ 0x1] histogram_0db: 1234\n"
 
-	l, err := parseVolumedetect([]byte(out))
+	l, err := capabilityaudio.ParseVolumedetect([]byte(out))
 	if err != nil {
 		t.Fatalf("parseVolumedetect: %v", err)
 	}
@@ -42,7 +44,7 @@ func TestParseVolumedetect_SilenceIsNegativeInf(t *testing.T) {
 		"[Parsed_volumedetect_0 @ 0x1] mean_volume: -inf dB\n" +
 		"[Parsed_volumedetect_0 @ 0x1] max_volume: -91.0 dB\n"
 
-	l, err := parseVolumedetect([]byte(out))
+	l, err := capabilityaudio.ParseVolumedetect([]byte(out))
 	if err != nil {
 		t.Fatalf("parseVolumedetect: %v", err)
 	}
@@ -56,7 +58,7 @@ func TestParseVolumedetect_SilenceIsNegativeInf(t *testing.T) {
 
 func TestParseVolumedetect_MissingStatFailsClosed(t *testing.T) {
 	out := "[Parsed_volumedetect_0 @ 0x1] max_volume: -2.1 dB\n"
-	if _, err := parseVolumedetect([]byte(out)); err == nil {
+	if _, err := capabilityaudio.ParseVolumedetect([]byte(out)); err == nil {
 		t.Fatal("expected error when mean_volume is missing")
 	}
 }
@@ -70,15 +72,15 @@ func TestLoudness_IsSilentBoundary(t *testing.T) {
 		sil  bool
 	}{
 		{"audible speech", -6.0, false},
-		{"just above floor", MinAudibleMaxVolumeDB + 0.1, false},
-		{"just below floor", MinAudibleMaxVolumeDB - 0.1, true},
+		{"just above floor", capabilityaudio.MinAudibleMaxVolumeDB + 0.1, false},
+		{"just below floor", capabilityaudio.MinAudibleMaxVolumeDB - 0.1, true},
 		{"digital silence", -91.0, true},
 		{"negative infinity", math.Inf(-1), true},
 		{"NaN", math.NaN(), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (Loudness{MaxDB: tc.max}).IsSilent(); got != tc.sil {
+			if got := (capabilityaudio.Loudness{MaxDB: tc.max}).IsSilent(); got != tc.sil {
 				t.Fatalf("IsSilent(max=%.2f) = %v, want %v", tc.max, got, tc.sil)
 			}
 		})
@@ -89,11 +91,11 @@ func TestLoudness_IsSilentBoundary(t *testing.T) {
 
 type fakeLoudnessProber struct {
 	calls int
-	loud  Loudness
+	loud  capabilityaudio.Loudness
 	err   error
 }
 
-func (f *fakeLoudnessProber) MeasureLoudness(_ context.Context, _ string) (Loudness, error) {
+func (f *fakeLoudnessProber) MeasureLoudness(_ context.Context, _ string) (capabilityaudio.Loudness, error) {
 	f.calls++
 	return f.loud, f.err
 }
@@ -127,7 +129,7 @@ func TestGenerate_RetriesOnSilentAudio(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProcessor(t, srv.URL, "en-US", nil)
-	prober := &fakeLoudnessProber{loud: Loudness{MeanDB: -50, MaxDB: -3}}
+	prober := &fakeLoudnessProber{loud: capabilityaudio.Loudness{MeanDB: -50, MaxDB: -3}}
 	p.SetLoudnessProber(prober)
 
 	result, err := p.Generate(context.Background(), &AudioInput{
@@ -206,12 +208,12 @@ type switchableProber struct {
 	audibleAfterCalls int
 }
 
-func (s *switchableProber) MeasureLoudness(_ context.Context, _ string) (Loudness, error) {
+func (s *switchableProber) MeasureLoudness(_ context.Context, _ string) (capabilityaudio.Loudness, error) {
 	s.calls++
 	if s.calls <= s.audibleAfterCalls {
-		return Loudness{MeanDB: -91, MaxDB: -91}, nil
+		return capabilityaudio.Loudness{MeanDB: -91, MaxDB: -91}, nil
 	}
-	return Loudness{MeanDB: -30, MaxDB: -3}, nil
+	return capabilityaudio.Loudness{MeanDB: -30, MaxDB: -3}, nil
 }
 
 // TestGenerate_SilentAudioExhaustsRetriesFailsClosed pins the hard failure:
@@ -243,7 +245,7 @@ func TestGenerate_SilentAudioExhaustsRetriesFailsClosed(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProcessor(t, srv.URL, "en-US", nil)
-	p.SetLoudnessProber(&fakeLoudnessProber{loud: Loudness{MeanDB: -91, MaxDB: -91}})
+	p.SetLoudnessProber(&fakeLoudnessProber{loud: capabilityaudio.Loudness{MeanDB: -91, MaxDB: -91}})
 
 	_, err := p.Generate(context.Background(), &AudioInput{
 		Text:      "hello world",

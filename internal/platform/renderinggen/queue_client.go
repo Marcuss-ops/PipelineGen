@@ -29,6 +29,7 @@ func New(baseURL string) *Client {
 func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error {
 	err := c.q.Submit(ctx, queueclient.Job{
 		ID:         job.ID,
+		JobType:    job.JobType,
 		RenderPlan: job.OverlaySpec,
 		Assets:     toQueueAssets(job.Assets),
 	})

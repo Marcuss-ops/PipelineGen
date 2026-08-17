@@ -52,7 +52,7 @@ func CollectionVersion() string { return collectionVersion }
 func (s *Service) IndexAsset(ctx context.Context, assetID string) error {
 	eligibility, err := s.Eligibility(ctx, assetID)
 	if err != nil {
-		if errors.Is(err, errTaxonomySchemaUnavailable) {
+		if errors.Is(err, capregistry.ErrTaxonomySchemaUnavailable) {
 			// Compatibility window for databases predating the taxonomy
 			// migration. Once the columns exist, every lookup error is
 			// fail-closed below.

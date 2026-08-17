@@ -14,19 +14,32 @@ const (
 	SchemaVersionResult = "renderinggen.overlay-result.v1"
 	JobTypePrepare      = "overlay.prepare"
 	JobTypeRender       = "overlay.render"
+	// OverlayStatusReady is the canonical render-worker certification state.
+	// It is stamped only after the artifact has been rendered, probed,
+	// contract-validated and hashed — never from the renderer's exit code
+	// alone. Drive upload + persistence complete on the Sender side (the
+	// manifest's drive_file_id/drive_link slots + the asset's
+	// lifecycle_state=PUBLISHED); together they are the full "READY".
+	OverlayStatusReady = "ready"
 )
 
 type OverlayPlan struct {
-	SchemaVersion   string        `json:"schema_version"`
-	PlanID          string        `json:"plan_id"`
-	VideoID         string        `json:"video_id"`
-	ProjectID       string        `json:"project_id,omitempty"`
-	Width           int           `json:"width"`
-	Height          int           `json:"height"`
-	FPS             int           `json:"fps"`
-	RendererVersion string        `json:"renderer_version,omitempty"`
-	Items           []OverlayItem `json:"items"`
-	Fingerprint     string        `json:"fingerprint,omitempty"`
+	SchemaVersion   string `json:"schema_version"`
+	PlanID          string `json:"plan_id"`
+	VideoID         string `json:"video_id"`
+	ProjectID       string `json:"project_id,omitempty"`
+	Width           int    `json:"width"`
+	Height          int    `json:"height"`
+	FPS             int    `json:"fps"`
+	RendererVersion string `json:"renderer_version,omitempty"`
+	// MediaContract is the ID of the OverlayMediaContract the renderer must
+	// honor (container/codec/pixel format, audio_streams==0, alpha policy).
+	// Empty means "renderer default". When set, it MUST resolve through
+	// ResolveMediaContract; the compiled chronon output derives its
+	// container/codec/pixel format from the resolved contract.
+	MediaContract string        `json:"media_contract,omitempty"`
+	Items         []OverlayItem `json:"items"`
+	Fingerprint   string        `json:"fingerprint,omitempty"`
 }
 
 type OverlayItem struct {
@@ -39,6 +52,15 @@ type OverlayItem struct {
 	Kind     string `json:"kind,omitempty"`
 	StartMs  int64  `json:"start_ms"`
 	EndMs    int64  `json:"end_ms"`
+	// StartUS / DurationUS carry the canonical integer-microsecond timing
+	// (start_us / duration_us) derived from the frozen CanonicalTimeline and
+	// certified speech timing. They are the authoritative timing; StartMs /
+	// EndMs are the millisecond projection (floor start, ceil end). A zero
+	// DurationUS means the item was authored on the legacy millisecond path
+	// (golden fixtures, planner tests), in which case the compiler falls back
+	// to StartMs/EndMs.
+	StartUS    int64 `json:"start_us,omitempty"`
+	DurationUS int64 `json:"duration_us,omitempty"`
 	// TemplateID is the semantic template (e.g. "person_default" for an
 	// entity card, "IMPORTANT_PHRASE" for a phrase).
 	TemplateID string            `json:"template_id"`
@@ -79,6 +101,24 @@ type RenderResult struct {
 	DurationMs      int64  `json:"duration_ms"`
 	HasAlpha        bool   `json:"has_alpha"`
 	RendererVersion string `json:"renderer_version"`
+	// SceneID and TemplateID tag the overlay's semantic origin (which scene
+	// and which resolved template) so the persisted artifact is traceable
+	// back to its OverlayIntent.
+	SceneID    string `json:"scene_id,omitempty"`
+	TemplateID string `json:"template_id,omitempty"`
+	// MediaContract is the ID of the OverlayMediaContract the artifact was
+	// certified against. Container / Codec / PixelFormat / AudioStreams are
+	// the probed facts from the canonical media probe that passed Validate().
+	MediaContract string `json:"media_contract,omitempty"`
+	Container     string `json:"container,omitempty"`
+	Codec         string `json:"codec,omitempty"`
+	PixelFormat   string `json:"pixel_format,omitempty"`
+	AudioStreams  int    `json:"audio_streams"`
+	// Status is the canonical render-worker certification state
+	// (OverlayStatusReady). It is only ever OverlayStatusReady because the
+	// handler returns before building a RenderResult when probe or contract
+	// validation fails.
+	Status string `json:"status"`
 }
 
 func ValidateResultForPlan(plan OverlayPlan, result RenderResult) error {
@@ -99,6 +139,24 @@ func ValidateResultForPlan(plan OverlayPlan, result RenderResult) error {
 	return fmt.Errorf("overlay result: render key does not belong to current plan")
 }
 
+// StartUSValue returns the item's start in integer microseconds (canonical
+// timing), falling back to the millisecond projection for legacy items.
+func (i OverlayItem) StartUSValue() int64 {
+	if i.DurationUS > 0 {
+		return i.StartUS
+	}
+	return i.StartMs * 1000
+}
+
+// EndUSValue returns the item's end in integer microseconds (canonical
+// timing), falling back to the millisecond projection for legacy items.
+func (i OverlayItem) EndUSValue() int64 {
+	if i.DurationUS > 0 {
+		return i.StartUS + i.DurationUS
+	}
+	return i.EndMs * 1000
+}
+
 func (p *OverlayPlan) Validate() error {
 	if p == nil {
 		return fmt.Errorf("overlay plan: nil")
@@ -111,6 +169,11 @@ func (p *OverlayPlan) Validate() error {
 	}
 	if p.Width <= 0 || p.Height <= 0 || p.FPS <= 0 {
 		return fmt.Errorf("overlay plan: width, height and fps must be positive")
+	}
+	if strings.TrimSpace(p.MediaContract) != "" {
+		if _, err := ResolveMediaContract(p.MediaContract); err != nil {
+			return fmt.Errorf("overlay plan: %w", err)
+		}
 	}
 	seenIDs := make(map[string]struct{}, len(p.Items))
 	for i := range p.Items {
@@ -125,6 +188,20 @@ func (p *OverlayPlan) Validate() error {
 		if item.StartMs < 0 || item.EndMs <= item.StartMs {
 			return fmt.Errorf("overlay plan: item %q has invalid time range", item.ID)
 		}
+		// Integer-microsecond timing, when present, must be internally valid
+		// and consistent with the millisecond projection (floor start, ceil
+		// end) so the two representations never drift.
+		if item.DurationUS < 0 || item.StartUS < 0 {
+			return fmt.Errorf("overlay plan: item %q has invalid microsecond timing", item.ID)
+		}
+		if item.DurationUS > 0 {
+			if wantStart := item.StartUS / 1000; item.StartMs != wantStart {
+				return fmt.Errorf("overlay plan: item %q start_ms %d diverges from start_us %d", item.ID, item.StartMs, item.StartUS)
+			}
+			if wantEnd := (item.StartUS + item.DurationUS + 999) / 1000; item.EndMs != wantEnd {
+				return fmt.Errorf("overlay plan: item %q end_ms %d diverges from start_us+duration_us %d", item.ID, item.EndMs, item.StartUS+item.DurationUS)
+			}
+		}
 		for assetIndex, ref := range item.AssetRefs {
 			if strings.TrimSpace(ref.AssetID) == "" {
 				return fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
@@ -132,7 +209,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, TemplateID: item.TemplateID, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -171,8 +248,9 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		Assets                           []string
 		Width, Height, FPS               int
 		StartMs, EndMs                   int64
+		StartUS, DurationUS              int64
 	}{
-		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPS, item.StartMs, item.EndMs,
+		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPS, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
 	}
 	b, _ := json.Marshal(input)
 	h := sha256.Sum256(b)

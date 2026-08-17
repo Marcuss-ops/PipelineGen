@@ -41,6 +41,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -95,11 +96,11 @@ var _ youtubeports.WhisperTranscriberPort = (*countingTranscriber)(nil)
 type noSubtitleFetcher struct{}
 
 func (noSubtitleFetcher) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*asset.ResolvedTextBundle, error) {
-	return nil, ErrSubtitleUnavailable
+	return nil, capyoutubeusecase.ErrSubtitleUnavailable
 }
 
 func (noSubtitleFetcher) SliceSubtitles(_ context.Context, _ string, _, _ int, _ string) error {
-	return ErrSubtitleUnavailable
+	return capyoutubeusecase.ErrSubtitleUnavailable
 }
 
 // compile-time assertion: noSubtitleFetcher satisfies SubtitleFetcherPort.

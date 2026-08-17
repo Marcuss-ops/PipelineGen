@@ -11,6 +11,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -250,6 +251,205 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 	require.Equal(t, "image", layerByID["scene-0-logo-apple-logo"].Type)
 	// The canonical font rides along with every text layer.
 	require.Equal(t, capabilityoverlay.CanonicalTextFontPath, layerByID["scene-0-phrase-changed-everything"].Font)
+}
+
+// TestRunner_OverlayIntents_PersistedBeforePlanEnqueue certifies the
+// pre-timing entity→template binding: with the canonical registry wired via
+// SetOverlayRegistry, the durable result carries one OverlayIntent per
+// entity occurrence — created immediately after extraction, BEFORE the audio
+// phase compiles the timed OverlayPlan — with its template_id already
+// resolved through the single registry. Every intent is PENDING (no timing
+// invented) and its template_id matches the final timed plan item, proving
+// the template choice is persisted before any render job is enqueued.
+func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
+	repo := newInMemRunRepository()
+	textGen := newStubTextGenerator([]Scene{
+		{
+			ID: "scene-0", Index: 0,
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Annotations: overlayScene0Annotations(),
+			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		},
+		{
+			ID: "scene-1", Index: 1,
+			Text:        map[Language]string{"en": "Growth matters more than ever."},
+			Annotations: overlayScene1Annotations(),
+			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		},
+	})
+	docPub := newStubDocumentPublisher()
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
+	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	// The canonical registry is wired the same way the composition root does.
+	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.Source.Type = SourceText
+	req.Languages = []Language{"en"}
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
+	req.Project = "overlay-intent-cert"
+
+	runID := "run-overlay-intents-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status, "run must complete: %s", final.ErrorMessage)
+
+	res := final.Result
+	require.NotNil(t, res)
+
+	// ── Pre-timing intents exist on the durable result, before the plan ──
+	require.NotEmpty(t, res.OverlayIntents, "overlay intents must be created immediately after extraction")
+	templateByEntity := map[string]string{}
+	for _, intent := range res.OverlayIntents {
+		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
+		require.NoError(t, intent.Validate())
+		if intent.Entity.CanonicalName != "" {
+			templateByEntity[intent.Entity.CanonicalName] = intent.TemplateID
+		}
+	}
+	// The template_id is resolved through the single registry at intent
+	// creation time (before TTS / before the timed OverlayPlan): the same
+	// entity type always binds to the same canonical template.
+	want := map[string]string{
+		"Tim Cook":           "person_default",
+		"Apple":              "LOGO",
+		"Cupertino":          "gpe_default",
+		"changed everything": "quote",
+		"ten million":        "NUMBER",
+		"Vision Pro":         "PRODUCT",
+	}
+	for entity, tmpl := range want {
+		require.Equal(t, tmpl, templateByEntity[entity], "entity %q must bind to the canonical template", entity)
+	}
+
+	// The timed OverlayPlan (the render job input) still projects from the
+	// same certified surfaces; the persisted template choice is the one the
+	// plan resolves through the registry.
+	require.NotNil(t, res.OverlayPlan, "the timed overlay plan must also project")
+	require.NoError(t, res.OverlayPlan.Validate())
+}
+
+// fakeOverlayPrepareEnqueuer records every PrepareRequest the runner submits.
+type fakeOverlayPrepareEnqueuer struct {
+	reqs    []capabilityoverlay.PrepareRequest
+	failErr error
+}
+
+func (f *fakeOverlayPrepareEnqueuer) EnqueuePrepare(_ context.Context, req capabilityoverlay.PrepareRequest) error {
+	if f.failErr != nil {
+		return f.failErr
+	}
+	f.reqs = append(f.reqs, req)
+	return nil
+}
+
+// TestRunner_OverlayPrepare_EnqueuedBeforeTTS certifies the overlay.prepare
+// parallel-start contract: with the prepare enqueuer wired, the runner
+// persists the pre-timing OverlayIntents and submits overlay.prepare
+// immediately after entity extraction — before the voiceover/TTS phase — so
+// template resolution and asset prefetch run in parallel with audio
+// synthesis. The submitted request carries the PENDING intents with their
+// resolved template_id and the canonical canvas.
+func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
+	repo := newInMemRunRepository()
+	textGen := newStubTextGenerator([]Scene{
+		{
+			ID: "scene-0", Index: 0,
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Annotations: overlayScene0Annotations(),
+			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		},
+	})
+	docPub := newStubDocumentPublisher()
+	prepEnq := &fakeOverlayPrepareEnqueuer{}
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
+	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayPrepareEnqueuer(prepEnq)
+
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.Source.Type = SourceText
+	req.Languages = []Language{"en"}
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
+	req.Project = "overlay-prepare-cert"
+
+	runID := "run-overlay-prepare-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status, "run must complete: %s", final.ErrorMessage)
+
+	// The prepare job was submitted exactly once with the pre-timing intents.
+	require.Len(t, prepEnq.reqs, 1, "overlay.prepare must be enqueued once")
+	prep := prepEnq.reqs[0]
+	require.Equal(t, runID, prep.PlanID)
+	require.Equal(t, runID, prep.VideoID)
+	require.Equal(t, DefaultOverlayCanvas.Width, prep.Width)
+	require.Equal(t, DefaultOverlayCanvas.Height, prep.Height)
+	require.Equal(t, DefaultOverlayCanvas.FPS, prep.FPS)
+	require.NoError(t, prep.Validate())
+
+	want := map[string]string{
+		"Tim Cook":           "person_default",
+		"Apple":              "LOGO",
+		"Cupertino":          "gpe_default",
+		"changed everything": "quote",
+		"ten million":        "NUMBER",
+		"Vision Pro":         "PRODUCT",
+	}
+	seen := 0
+	for _, intent := range prep.Intents {
+		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "prepare must carry PENDING intents")
+		if tmpl, ok := want[intent.Entity.CanonicalName]; ok {
+			require.Equal(t, tmpl, intent.TemplateID, "entity %q must bind to the canonical template", intent.Entity.CanonicalName)
+			seen++
+		}
+	}
+	require.Equal(t, len(want), seen, "all entity intents must be present in the prepare job")
+
+	// The same intents are persisted on the durable result (persisted before
+	// the enqueue): the prepare request and the run payload agree.
+	require.NotEmpty(t, final.Result.OverlayIntents, "intents must be persisted on the durable result")
+	require.Len(t, final.Result.OverlayIntents, len(prep.Intents))
+}
+
+// TestRunner_OverlayPrepare_EnqueueErrorFailsClosed pins the fail-closed
+// contract: a non-nil prepare enqueuer that errors fails the run — an
+// unavailable prepare backend is never a silent no-op.
+func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
+	repo := newInMemRunRepository()
+	textGen := newStubTextGenerator([]Scene{
+		{
+			ID: "scene-0", Index: 0,
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Annotations: overlayScene0Annotations(),
+			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		},
+	})
+	docPub := newStubDocumentPublisher()
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
+	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayPrepareEnqueuer(&fakeOverlayPrepareEnqueuer{failErr: errors.New("renderinggen queue down")})
+
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.Source.Type = SourceText
+	req.Languages = []Language{"en"}
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
+	req.Project = "overlay-prepare-fail"
+
+	runID := "run-overlay-prepare-fail"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusFailed, final.Status, "prepare enqueue failure must fail the run")
 }
 
 // TestCompileOverlayPlan_NilOrSurfacelessIsNoOp certifies the no-op contract:

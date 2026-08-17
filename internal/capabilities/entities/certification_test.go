@@ -244,8 +244,8 @@ func certifyJob(t *testing.T, job certJob) {
 	for _, scene := range job.scenes {
 		occurrence := findOccurrence(t, timeline, scene.id, scene.keyEntity)
 		item := findItem(t, plan, "overlay-"+scene.id+"-"+occurrence.EntityID)
-		require.Equal(t, string(entityOverlayKind(occurrence.Type)), item.Kind)
-		wantTemplate, err := capabilityoverlay.DefaultChrononOverlayRegistry.ResolveTemplate(string(entityOverlayKind(occurrence.Type)))
+		require.Equal(t, string(capabilityoverlay.EntityTypeToKind(occurrence.Type)), item.Kind)
+		wantTemplate, err := capabilityoverlay.DefaultChrononOverlayRegistry.ResolveTemplate(string(capabilityoverlay.EntityTypeToKind(occurrence.Type)))
 		require.NoError(t, err)
 		require.Equal(t, wantTemplate, item.TemplateID)
 		require.Equal(t, occurrence.Name, item.Text)

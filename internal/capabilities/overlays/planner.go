@@ -59,22 +59,28 @@ func (c PlannerConfig) withDefaults() PlannerConfig {
 
 // TimedAnnotation is a semantic annotation already projected onto the final
 // timeline. StartMs/EndMs must come from certified speech timing; the planner
-// never estimates them from text length or scene duration.
+// never estimates them from text length or scene duration. StartUS/DurationUS
+// are the integer-microsecond canonical timing (authoritative); StartMs/EndMs
+// are their millisecond projection.
 type TimedAnnotation struct {
-	Text    string
-	StartMs int64
-	EndMs   int64
-	Score   float64
+	Text       string
+	StartMs    int64
+	EndMs      int64
+	StartUS    int64
+	DurationUS int64
+	Score      float64
 }
 
 type ImageCandidate struct {
-	AssetID   string
-	URL       string
-	SHA256    string
-	MediaType string
-	StartMs   int64
-	EndMs     int64
-	Score     float64
+	AssetID    string
+	URL        string
+	SHA256     string
+	MediaType  string
+	StartMs    int64
+	EndMs      int64
+	StartUS    int64
+	DurationUS int64
+	Score      float64
 }
 
 type SceneInput struct {
@@ -140,7 +146,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "image", image.AssetID), SceneID: scene.ID,
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
-				StartMs: image.StartMs, EndMs: image.EndMs,
+				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, SHA256: image.SHA256, MediaType: image.MediaType}},
 				Params:    map[string]any{"position": "right", "style": "popup", "priority": image.Score},
 			})
@@ -154,7 +160,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "product", product.AssetID), SceneID: scene.ID,
 				Kind: "product", TemplateID: "PRODUCT",
-				StartMs: product.StartMs, EndMs: product.EndMs,
+				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: product.AssetID, URL: product.URL, SHA256: product.SHA256, MediaType: product.MediaType}},
 				Params:    map[string]any{"position": "right", "style": "popup", "priority": product.Score},
 			})
@@ -168,7 +174,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "logo", logo.AssetID), SceneID: scene.ID,
 				Kind: "logo", TemplateID: "LOGO",
-				StartMs: logo.StartMs, EndMs: logo.EndMs,
+				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: logo.AssetID, URL: logo.URL, SHA256: logo.SHA256, MediaType: logo.MediaType}},
 				Params:    map[string]any{"position": "corner", "style": "logo", "priority": logo.Score},
 			})
@@ -182,7 +188,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "number", number.Text), SceneID: scene.ID,
 				Kind: "number", TemplateID: "NUMBER", Text: number.Text,
-				StartMs: number.StartMs, EndMs: number.EndMs,
+				StartMs: number.StartMs, EndMs: number.EndMs, StartUS: number.StartUS, DurationUS: number.DurationUS,
 				Params: map[string]any{"position": "center", "style": "stat", "priority": number.Score},
 			})
 		}
@@ -195,7 +201,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "quote", quote.Text), SceneID: scene.ID,
 				Kind: "quote", TemplateID: "QUOTE", Text: quote.Text,
-				StartMs: quote.StartMs, EndMs: quote.EndMs,
+				StartMs: quote.StartMs, EndMs: quote.EndMs, StartUS: quote.StartUS, DurationUS: quote.DurationUS,
 				Params: map[string]any{"position": "center", "style": "quote", "priority": quote.Score},
 			})
 		}
@@ -208,7 +214,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "keyword", candidate.Text), SceneID: scene.ID,
 				Kind: "keyword", TemplateID: "IMPORTANT_WORD", Text: candidate.Text,
-				StartMs: candidate.StartMs, EndMs: candidate.EndMs,
+				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "top", "style": "alert", "priority": candidate.Score},
 			})
 		}
@@ -221,7 +227,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: itemID(scene.ID, "phrase", candidate.Text), SceneID: scene.ID,
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
-				StartMs: candidate.StartMs, EndMs: candidate.EndMs,
+				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
 		}

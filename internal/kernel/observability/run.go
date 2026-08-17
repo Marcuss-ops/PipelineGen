@@ -254,6 +254,18 @@ func (r *Run) ElapsedMs() int64 {
 	}
 	return nonNegative(r.now().Sub(r.started).Milliseconds())
 }
+
+// TimingSummary returns the canonical diagnostic projection of the current
+// run. It derives the breakdown from the run's live elapsed wall time
+// (ElapsedMs), so callers can log the critical path and bottleneck before the
+// run is finished. The finished-run form (RunReport.TimingSummary) uses the
+// finalized WallTimeMs instead.
+func (r *Run) TimingSummary() TimingSummary {
+	if r == nil {
+		return TimingSummary{}
+	}
+	return r.Report().timingSummaryWithWall(r.ElapsedMs())
+}
 func cloneReport(in *RunReport) *RunReport {
 	if in == nil {
 		return nil

@@ -17,28 +17,26 @@ type HandlerSet struct {
 	Cache           *overlays.Cache
 	Renderer        overlays.Renderer
 	GPUGate         *overlays.GPUGate
+	Prober          capoverlay.MediaProber
 	RendererVersion string
 }
 
-func NewHandlerSet(cache *overlays.Cache, renderer overlays.Renderer, gate *overlays.GPUGate, version string) (*HandlerSet, error) {
-	if cache == nil || renderer == nil || gate == nil {
-		return nil, fmt.Errorf("overlay handlers: cache, renderer and gpu gate are required")
+func NewHandlerSet(cache *overlays.Cache, renderer overlays.Renderer, gate *overlays.GPUGate, prober capoverlay.MediaProber, version string) (*HandlerSet, error) {
+	if cache == nil || renderer == nil || gate == nil || prober == nil {
+		return nil, fmt.Errorf("overlay handlers: cache, renderer, gpu gate and media prober are required")
 	}
 	if version == "" {
 		version = "renderinggen-dev"
 	}
-	return &HandlerSet{Cache: cache, Renderer: renderer, GPUGate: gate, RendererVersion: version}, nil
+	return &HandlerSet{Cache: cache, Renderer: renderer, GPUGate: gate, Prober: prober, RendererVersion: version}, nil
 }
 
 func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutionTools) (map[string]any, error) {
-	var plan capoverlay.OverlayPlan
-	if err := json.Unmarshal(j.Payload, &plan); err != nil {
+	var req capoverlay.PrepareRequest
+	if err := json.Unmarshal(j.Payload, &req); err != nil {
 		return nil, fmt.Errorf("overlay.prepare payload: %w", err)
 	}
-	if plan.RendererVersion == "" {
-		plan.RendererVersion = h.RendererVersion
-	}
-	if err := plan.Validate(); err != nil {
+	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	select {
@@ -46,20 +44,22 @@ func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutio
 		return nil, ctx.Err()
 	default:
 	}
-	for _, item := range plan.Items {
-		for _, ref := range item.AssetRefs {
+	// Pre-timing prepare: prefetch the entity-image assets referenced by the
+	// OverlayIntents so the later timing-frozen overlay.render finds them
+	// warm. Template resolution is PipelineGen-owned (the template_id is
+	// already bound on each intent); this worker only warms the assets.
+	for _, intent := range req.Intents {
+		for _, ref := range intent.Payload.AssetRefs {
 			if _, err := h.Cache.EnsureAsset(ctx, ref.URL, ref.SHA256); err != nil {
 				return nil, fmt.Errorf("overlay.prepare asset %s: %w", ref.AssetID, err)
 			}
 		}
 	}
-	hits := 0
-	for _, item := range plan.Items {
-		if h.Cache.Has("overlays", item.RenderKey, "overlay.mov") {
-			hits++
-		}
-	}
-	return map[string]any{"schema_version": capoverlay.SchemaVersionResult, "plan_id": plan.PlanID, "plan_fingerprint": plan.Fingerprint, "prepared": len(plan.Items), "cache_hits": hits}, nil
+	return map[string]any{
+		"schema_version": capoverlay.SchemaVersionPrepare,
+		"plan_id":        req.PlanID,
+		"prepared":       len(req.Intents),
+	}, nil
 }
 
 func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecutionTools) (map[string]any, error) {
@@ -91,6 +91,17 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 			return nil, fmt.Errorf("overlay.render asset %s: %w", ref.AssetID, err)
 		}
 	}
+	// The render container/codec/alpha come from the plan's media contract —
+	// never a hardcoded .mov guess. The contract is the single owner of the
+	// output format; the worker only materializes it.
+	contract, err := capoverlay.ResolveMediaContract(req.Plan.MediaContract)
+	if err != nil {
+		return nil, err
+	}
+	container := contract.Container
+	if container == "" {
+		container = "mp4"
+	}
 	// Must match worker.Workspace.JobDir: the runner owns cleanup after the
 	// manifest has been uploaded. RenderingGen never leaves job state in its
 	// disposable cache.
@@ -98,9 +109,9 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	if err := os.MkdirAll(jobDir, 0755); err != nil {
 		return nil, err
 	}
-	output := filepath.Join(jobDir, safeName(item.ID)+".mov")
-	if h.Cache.Has("overlays", item.RenderKey, "overlay.mov") {
-		cached := h.Cache.Path("overlays", item.RenderKey, "overlay.mov")
+	output := filepath.Join(jobDir, safeName(item.ID)+"."+container)
+	if h.Cache.Has("overlays", item.RenderKey, "overlay."+container) {
+		cached := h.Cache.Path("overlays", item.RenderKey, "overlay."+container)
 		if err := copyFile(cached, output); err != nil {
 			return nil, err
 		}
@@ -119,19 +130,32 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 			return nil, err
 		}
 		release()
-		if _, err := h.Cache.PutFile("overlays", item.RenderKey, "overlay.mov", output); err != nil {
+		if _, err := h.Cache.PutFile("overlays", item.RenderKey, "overlay."+container, output); err != nil {
 			return nil, err
 		}
 	}
-	sha, err := fileSHA(output)
+	// The rendered artifact is certified only after a canonical probe (ffprobe
+	// via rustexec.VideoProcessor.Probe, never a raw subprocess) + content
+	// hash. The renderer's exit code is NOT a validity criterion: an invalid
+	// or stub render that still exited 0 fails closed here.
+	probed, err := h.Prober.ProbeOverlay(ctx, output)
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(output)
-	if err != nil {
-		return nil, err
+	if err := contract.Validate(probed); err != nil {
+		return nil, fmt.Errorf("overlay.render media contract: %w", err)
 	}
-	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(item.ID) + ".mov", LocalPath: output, SHA256: sha, SizeBytes: info.Size(), MIMEType: "video/quicktime", Width: req.Plan.Width, Height: req.Plan.Height, FPS: req.Plan.FPS, DurationMs: item.EndMs - item.StartMs, HasAlpha: true, RendererVersion: h.RendererVersion}
+	mime := "video/mp4"
+	if container == "mov" {
+		mime = "video/quicktime"
+	}
+	// Canonical integer-microsecond timing drives the artifact duration;
+	// the millisecond projection is only a reporting convenience.
+	durationUS := item.EndUSValue() - item.StartUSValue()
+	// The result is stamped READY only here — after render + probe + contract
+	// validation + hash have all succeeded. The probed facts travel with the
+	// result so the Sender can persist them durably.
+	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(item.ID) + "." + container, LocalPath: output, SHA256: probed.SHA256, SizeBytes: probed.SizeBytes, MIMEType: mime, Width: probed.Width, Height: probed.Height, FPS: req.Plan.FPS, DurationMs: (durationUS + 999) / 1000, HasAlpha: contract.RequiresAlpha, RendererVersion: h.RendererVersion, SceneID: item.SceneID, TemplateID: item.TemplateID, MediaContract: contract.ID, Container: probed.Container, Codec: probed.Codec, PixelFormat: probed.PixelFormat, AudioStreams: probed.AudioStreams, Status: capoverlay.OverlayStatusReady}
 	return artifactResult(j.ID, req.Plan.VideoID, req.Plan.ProjectID, result)
 }
 
@@ -160,14 +184,25 @@ func artifactResult(jobID, videoID, projectID string, result capoverlay.RenderRe
 			"plan_fingerprint": result.PlanFingerprint,
 			"render_key":       result.RenderKey,
 			"overlay_id":       result.OverlayID,
+			// Probed media-contract facts + render-worker certification. These
+			// are the durable record that the artifact was contract-validated
+			// and hashed before publication; the Sender fills drive_file_id /
+			// drive_link (on the Artifact struct) after the Drive publisher
+			// runs, completing the READY gate (rendered + probed +
+			// contract-valid + hashed + uploaded + persisted).
+			"media_contract": result.MediaContract,
+			"container":      result.Container,
+			"codec":          result.Codec,
+			"pixel_format":   result.PixelFormat,
+			"audio_streams":  result.AudioStreams,
+			"scene_id":       result.SceneID,
+			"template_id":    result.TemplateID,
+			"status":         result.Status,
 		},
 	}}}
 	return map[string]any{"schema_version": capoverlay.SchemaVersionResult, "overlay_result": result, job.ManifestKey: manifest}, nil
 }
 
-func fileSHA(path string) (string, error) {
-	return overlays.SHA256File(path)
-}
 func copyFile(src, dst string) error {
 	b, err := os.ReadFile(src)
 	if err != nil {

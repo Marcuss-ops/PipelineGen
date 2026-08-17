@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -142,7 +143,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// records it as an OperationReport under source.resolve; no ad-hoc timer.
 	var results []SemanticSearchResult
 	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage:     stageSourceResolve,
+		Stage:     scriptgen.StageSourceResolve,
 		Component: kernobs.ComponentQdrant,
 		Operation: kernobs.OperationSearch,
 	}, func(opCtx context.Context) error {
@@ -199,7 +200,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		// hydrated clip so the accumulated work never masquerades as wall time.
 		var evidence *scriptpkg.ClipEvidence
 		if hydrateErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage:     stageSourceResolve,
+			Stage:     scriptgen.StageSourceResolve,
 			Component: kernobs.ComponentSQLite,
 			Operation: kernobs.OperationName("hydrate"),
 		}, func(opCtx context.Context) error {

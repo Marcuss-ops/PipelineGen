@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -95,6 +96,22 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 		zap.String("run_id", runID),
 		zap.Int("scene_count", len(result.Scenes)),
 	)
+	// Print the canonical critical path + bottleneck percentage from the live
+	// run clock so operators see the dominant sequential chain per run without
+	// querying /api/jobs/:id/full. Best-effort: a unit runtime with no Run
+	// bound to ctx is a silent no-op (instrumentation never changes behaviour).
+	if run := kernobs.FromContext(ctx); run != nil {
+		sum := run.TimingSummary()
+		if len(sum.CriticalPath) > 0 {
+			r.log.Info("scriptgeneration: critical path",
+				zap.String("run_id", runID),
+				zap.String("critical_path", sum.FormatCriticalPath()),
+				zap.String("bottleneck_stage", sum.BottleneckStage),
+				zap.Float64("bottleneck_percent", sum.BottleneckPercent),
+				zap.Int64("wall_ms", sum.WallMs),
+			)
+		}
+	}
 	r.checkpoint(ctx, runID, result)
 	if updateErr := r.repo.UpdateStage(ctx, runID, RunStatusCompleted, StageCompleted); updateErr != nil {
 		r.log.Error("failed to persist run completion",

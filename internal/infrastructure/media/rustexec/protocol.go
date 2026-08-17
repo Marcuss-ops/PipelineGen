@@ -253,20 +253,26 @@ type cutItem struct {
 }
 
 type mediaMetadata struct {
-	DurationSec  float64 `json:"duration_sec"`
-	Bitrate      int64   `json:"bitrate"`
-	Width        uint32  `json:"width"`
-	Height       uint32  `json:"height"`
-	FPS          float64 `json:"fps"`
-	VideoCodec   string  `json:"video_codec"`
-	PixelFormat  string  `json:"pixel_format"`
-	AudioCodec   string  `json:"audio_codec"`
-	AudioProfile string  `json:"audio_profile"`
-	SampleRate   uint32  `json:"sample_rate"`
-	Channels     uint32  `json:"channels"`
-	StartPTS     int64   `json:"start_pts"`
-	HasVideo     bool    `json:"has_video"`
-	HasAudio     bool    `json:"has_audio"`
+	DurationSec      float64 `json:"duration_sec"`
+	Bitrate          int64   `json:"bitrate"`
+	Width            uint32  `json:"width"`
+	Height           uint32  `json:"height"`
+	FPS              float64 `json:"fps"`
+	VideoCodec       string  `json:"video_codec"`
+	PixelFormat      string  `json:"pixel_format"`
+	FormatName       string  `json:"format_name"`
+	StreamCount      uint32  `json:"stream_count"`
+	VideoStreamCount uint32  `json:"video_stream_count"`
+	AudioStreamCount uint32  `json:"audio_stream_count"`
+	FPSNum           uint32  `json:"fps_num"`
+	FPSDen           uint32  `json:"fps_den"`
+	AudioCodec       string  `json:"audio_codec"`
+	AudioProfile     string  `json:"audio_profile"`
+	SampleRate       uint32  `json:"sample_rate"`
+	Channels         uint32  `json:"channels"`
+	StartPTS         int64   `json:"start_pts"`
+	HasVideo         bool    `json:"has_video"`
+	HasAudio         bool    `json:"has_audio"`
 	// Stage timings populated only by render_audio_plan (mix → AAC encode →
 	// probe → hash). Zero everywhere else; final_audio_sha256 is the digest
 	// Rust computed over the published output.
