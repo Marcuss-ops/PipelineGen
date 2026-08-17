@@ -6,13 +6,12 @@
 //
 // Owns: searchWikimediaCommons and the Commons REST types/helpers
 // (commonsRESTSearchPayload, commonsRESTFilePayload, commonsImageInfo,
-// waitForCommonsRequest, firstCommonsMetadata, commonsMetadataText,
+// waitForCommonsRequest, firstCommonsMetadata,
 // commonsLicenseIsExplicit, stripHTMLMetadata).
 package images
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -169,20 +168,6 @@ func (s *ImageStorageService) waitForCommonsRequest(ctx context.Context) error {
 	}
 	s.commonsLastSearch = time.Now()
 	return nil
-}
-
-func commonsMetadataText(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
-		return ""
-	}
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		return strings.TrimSpace(text)
-	}
-	// Numeric/boolean metadata is valid Commons metadata but is not useful
-	// as a license or author. Keep the decoder tolerant without inventing
-	// rights evidence from an arbitrary JSON representation.
-	return ""
 }
 
 func commonsLicenseIsExplicit(license string) bool {

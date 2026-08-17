@@ -141,12 +141,6 @@ func (f *Finalizer) handleIdempotentCompletion(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-// hashResult computes a SHA-256 hash of the result data for
-// idempotent completion comparison.
-func hashResult(data json.RawMessage) string {
-	return hashJSONString(string(data))
-}
-
 func hashJSONString(s string) string {
 	if s == "" || s == "null" {
 		s = "{}"

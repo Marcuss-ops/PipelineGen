@@ -65,29 +65,6 @@ func newLiveSearchCache() *liveSearchCache {
 	}
 }
 
-// newPersistentLiveSearchCache creates a cache backed by the
-// supplied typed cache port. The optional parentCtx is used for
-// tracing in the background warm-up goroutine. Pass nil to use
-// context.Background().
-//
-// godlike/06 SSOT post-migration (P0-3): the constructor signature
-// is the typed-port analogue of the legacy `*sql.DB` shape. The
-// concrete SQLite adapter is wired by the composition root
-// (internal/app/build_bundles_artlist_artlist.go future cable); no
-// production caller wires this today, but the shape is correct
-// for the next wave.
-func newPersistentLiveSearchCache(cache ArtlistSearchCachePort, log *zap.Logger, parentCtx ...context.Context) *liveSearchCache {
-	c := newLiveSearchCache()
-	c.cache = cache
-	c.log = log
-	var warmCtx context.Context = context.Background()
-	if len(parentCtx) > 0 && parentCtx[0] != nil {
-		warmCtx = parentCtx[0]
-	}
-	c.warmFromCache(warmCtx)
-	return c
-}
-
 // warmFromCache asks the persistent port to bulk-load recent
 // entries into the in-memory map. Failures are logged and the
 // in-memory map proceeds empty (fail-soft, mirroring legacy).

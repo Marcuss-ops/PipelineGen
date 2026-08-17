@@ -162,14 +162,6 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 // Merged from ollama_calls.go, indexing.go, extractor_classify.go,
 // segment_cache.go, enrichment_skipped.go (CPR-CC-6, June 2026).
 
-// metadataMetadataModel returns the model to use for metadata generation.
-func (s *Service) metadataMetadataModel() string {
-	if s == nil {
-		return "gemma4:e2b"
-	}
-	return s.cfg.OllamaMetadataModel
-}
-
 // triggerAutoIndexing is preserved as an interface method for ExtractionCallbacks
 // compatibility, but the body is intentionally a no-op as of Commit F (June 2026).
 //

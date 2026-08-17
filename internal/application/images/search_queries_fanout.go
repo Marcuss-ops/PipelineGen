@@ -116,31 +116,6 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 	return img, src, page
 }
 
-// runRetrievalFallback (Step 8 + B5 fan-out) walks the retrieval
-// backends in PARALLEL via fanOutRetrieval and returns the first
-// non-empty hit. The 4 legacy backends (Wikipedia / SearXNG / DDG
-// in the no-Registry path) plus the Step-8 retrieval-registry
-// providers all fan out together. Returns (imgURL, source, pageURL)
-// tuples aligned with the legacy cascade semantics:
-//   - Wikipedia hit → source="wikipedia", pageURL points at the wiki page
-//   - SearXNG hit    → source="searxng", pageURL=imgURL
-//   - DuckDuckGo hit → source="duckduckgo", pageURL=imgURL
-//   - Drive hit      → source="drive", pageURL=imgURL
-//   - registry-only   → source from registry.Provider, pageURL from registry
-//
-// When the registry is nil (tests that pre-date Step 8), the
-// 3-backend legacy path is used (B5 still parallelizes the 3).
-//
-// B5 SSOT refactor (PR-IMAGES-AI-VS-NORMAL-PLAN, July 2026):
-// replaces the pre-B5 sequential cascade Wikipedia → SearXNG →
-// DDG → Registry with 4-way concurrent fan-out. Worst-case
-// latency drops from ~800ms (4 backends × 200ms, registry last)
-// to ~200ms (parallel — slowest wins). Cancellable, panic-safe
-// via pkg/concurrent.Group's per-goroutine panic-recover wrapper.
-func (s *ImageStorageService) runRetrievalFallback(ctx context.Context, query, lang string) (imgURL, source, pageURL string) {
-	return s.runRetrievalFallbackForProvider(ctx, query, lang, "")
-}
-
 // runRetrievalFallbackForProvider resolves an explicit provider from the
 // shared registry when requested. The empty provider preserves the normal
 // fan-out behavior. Explicit selection is used by live canaries and keeps

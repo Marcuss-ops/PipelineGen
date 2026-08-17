@@ -92,13 +92,6 @@ type renewLeaseLoopOpts struct {
 	jobCancel context.CancelFunc
 }
 
-// renewLeaseLoop is the no-op-opts entry point — preserves the
-// pre-Fase-4 signature for backward compatibility with the
-// pre-refactor callers (godlike/07 minimum-blast-radius).
-func (w *Worker) renewLeaseLoop(ctx context.Context, jobID string, stop <-chan struct{}, done chan<- struct{}) {
-	w.renewLeaseLoopWith(ctx, jobID, stop, done, renewLeaseLoopOpts{})
-}
-
 // renewLeaseLoopWith drives the heartbeat ticker. The for-select
 // loop structure / ctx-cancel / stop-channel / done-channel
 // invariants are unchanged from the pre-extract version — the

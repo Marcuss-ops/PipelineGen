@@ -404,14 +404,6 @@ func joinSearchTextTags(tags []string) string {
 	return strings.Join(kept, " ")
 }
 
-// joinSearchTextList is the historical helper name used by the
-// source-specific strategies in this file. It intentionally reuses
-// the tag joiner because the semantics are identical: trim entries,
-// skip empties, join with spaces.
-func joinSearchTextList(items []string) string {
-	return joinSearchTextTags(items)
-}
-
 // NOTE: joinSearchTextTags is used for both tags and string lists
 // (speakers, topics). The function is generic over []string; callers
 // pass the appropriate slice.

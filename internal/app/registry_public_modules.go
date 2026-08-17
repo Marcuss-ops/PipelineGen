@@ -116,40 +116,6 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 	return nil
 }
 
-// registerUtility wires the /utility module.
-func registerUtility(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
-	if err := tryRegisterModuleStrict(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility), WithRegistrationPoint("register.Utility")); err != nil {
-		return fmt.Errorf("wire registry: utility module: %w", err)
-	}
-	return nil
-}
-
-// registerRealtime wires the realtime module (clip-search lateral).
-//
-// Wave 15 (June 2026): wiring.DomainBundle.RealtimeMatcher is the typed
-// assetsapi.RealtimeMatcher — drop the runtime cast.
-//
-// Note: realtimeEnabled is hardcoded false because the Realtime package
-// was removed in commit d61068b3. The route-module closure still exists
-// for future re-introduction.
-func registerRealtime(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	if root.Domains == nil || root.Domains.RealtimeMatcher == nil {
-		return nil
-	}
-	realtimeEnabled := false // Realtime package removed (commit d61068b3)
-	matcher := root.Domains.RealtimeMatcher
-	if err := tryRegisterModuleStrict(registry, log, module.NewRouteModule(
-		"realtime",
-		func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
-		"",
-		assetsapi.NewRealtimeMatchHandler(matcher, log),
-		log,
-	), WithRegistrationPoint("register.Realtime")); err != nil {
-		return fmt.Errorf("wire registry: realtime module: %w", err)
-	}
-	return nil
-}
-
 // registerChannelsCapability wires the channels capability via
 // channels.Build(deps). Build runs at most once per call; the resulting
 // Descriptor is registered via tryRegisterModuleStrict exactly once.

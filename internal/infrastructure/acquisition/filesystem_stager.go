@@ -46,7 +46,6 @@ package acquisition
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -182,12 +181,3 @@ func (f *FilesystemStager) acquirePrepareLock(stageID string) func() {
 		f.prepareLocksMu.Unlock()
 	}
 }
-
-// ── ErrFSStagerNotConfigured ───────────────────────────────────────
-
-// errFSStagerNotConfigured is a development-time check at the
-// concrete level. The port's ErrAcquisitionNotWired is the
-// canonical sentinel; this private error is wired so the concrete's
-// own tests can disambiguate. Typed as `errors.New` to keep
-// godlike/07 alignment.
-var errFSStagerNotConfigured = errors.New("acquisition.FilesystemStager: not configured (constructor returned nil)")

@@ -1,61 +1,16 @@
-// Single canonical owner of artlist persistence methods persistRenditions/stagePersistResults/buildPublishedArtifact + fileSizeFromPath. Receiver *RunOrchestratorService remains in service.go (godlike/06 SSOT Commit C).
+// Single canonical owner of artlist persistence methods stagePersistResults/buildPublishedArtifact + fileSizeFromPath. Receiver *RunOrchestratorService remains in service.go (godlike/06 SSOT Commit C).
 package artlist
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 )
-
-// persistRenditions records each generated rendition as an
-// asset_locations row + asset_renditions row. The location is marked
-// as primary only for the mezzanine (the canonical edited master).
-func (o *RunOrchestratorService) persistRenditions(ctx context.Context, assetID string, renditions []asset.RenditionOutput) error {
-	if o.svc.locationRepo == nil || o.svc.renditionRepo == nil {
-		return nil
-	}
-	for _, r := range renditions {
-		if r.LocalPath == "" {
-			continue
-		}
-		loc := &asset.Location{
-			AssetID:       assetID,
-			LocationKind:  asset.LocationKindLocal,
-			URI:           r.LocalPath,
-			MimeType:      r.MimeType,
-			FileSizeBytes: r.SizeBytes,
-			FileHash:      r.FileHash,
-			IsPrimary:     r.Kind == asset.RenditionKindMezzanine,
-		}
-		if err := o.svc.locationRepo.Upsert(ctx, loc); err != nil {
-			return fmt.Errorf("upsert location for %s/%s: %w", assetID, r.Kind, err)
-		}
-
-		rend := &asset.AssetRendition{
-			AssetID:    assetID,
-			LocationID: &loc.ID,
-			Kind:       r.Kind,
-			Container:  r.Container,
-			Codec:      r.Codec,
-			Width:      r.Width,
-			Height:     r.Height,
-			FPS:        r.FPS,
-			Bitrate:    r.Bitrate, SHA256: r.FileHash,
-			SizeBytes: r.SizeBytes,
-		}
-		if _, err := o.svc.renditionRepo.Create(ctx, rend); err != nil {
-			return fmt.Errorf("create rendition for %s/%s: %w", assetID, r.Kind, err)
-		}
-	}
-	return nil
-}
 
 // stagePersistResults persists each processed clip through the canonical
 // AssetFinalizerTx. This replaces the legacy dispatchBridge path and

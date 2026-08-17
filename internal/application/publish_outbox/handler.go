@@ -174,11 +174,6 @@ func (h *Handler) IdempotencyKey() string {
 	return EventTypeArtifactPublishRequested
 }
 
-// now returns the Handler's monotonic time source (UTC-normalised).
-// Exposed as a method so tests can override nowFn via a
-// field assignment post-construction.
-func (h *Handler) now() time.Time { return h.nowFn().UTC() }
-
 // Handle decodes the inbound event's PayloadJSON as a
 // PublishRequestPayload, validates required fields, opens the
 // SourceURI as an io.Reader, and forwards the request to
