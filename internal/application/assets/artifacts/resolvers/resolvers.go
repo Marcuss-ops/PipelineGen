@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 )
@@ -57,7 +58,7 @@ func isBlockedIP(ip net.IP) bool {
 
 // isBlockedHost checks if a hostname resolves to a blocked address.
 // Also blocks cloud metadata endpoints.
-func isBlockedHost(rawHost string) error {
+func isBlockedHost(ctx context.Context, rawHost string) error {
 	// Block cloud metadata hostnames
 	lowerHost := strings.ToLower(rawHost)
 	blockedHosts := []string{
@@ -72,14 +73,15 @@ func isBlockedHost(rawHost string) error {
 		}
 	}
 
-	// Resolve hostname
-	ips, err := net.LookupIP(rawHost)
+	// Context-aware resolve: net.LookupIP would block indefinitely on a
+	// stalled resolver, holding a request goroutine on a low-latency path.
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, rawHost)
 	if err != nil {
 		return fmt.Errorf("failed to resolve host %q: %w", rawHost, err)
 	}
 	for _, ip := range ips {
-		if isBlockedIP(ip) {
-			return fmt.Errorf("host %q resolves to blocked IP %s", rawHost, ip.String())
+		if isBlockedIP(ip.IP) {
+			return fmt.Errorf("host %q resolves to blocked IP %s", rawHost, ip.IP.String())
 		}
 	}
 	return nil
@@ -91,7 +93,7 @@ func validateRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("too many redirects")
 	}
 	host := req.URL.Hostname()
-	return isBlockedHost(host)
+	return isBlockedHost(req.Context(), host)
 }
 
 // ── Local Resolver ─────────────────────────────────────────────────────
@@ -199,6 +201,13 @@ type HTTPResolver struct {
 	client *http.Client
 }
 
+// httpResolverDialTimeout bounds the TCP connect for HTTPS artifact
+// resolution so a black-holed upstream cannot pin a request goroutine
+// indefinitely. It is a dial-only bound: the resolver streams the response
+// body, so a whole-request http.Client.Timeout is intentionally NOT set
+// (it would cut off large downloads mid-read).
+const httpResolverDialTimeout = 15 * time.Second
+
 // NewHTTPResolver creates an HTTP resolver with SSRF protection.
 func NewHTTPResolver() *HTTPResolver {
 	transport := &http.Transport{
@@ -207,16 +216,19 @@ func NewHTTPResolver() *HTTPResolver {
 			if err != nil {
 				host = addr
 			}
-			ips, err := net.LookupIP(host)
+			// Context-aware DNS: net.LookupIP would block indefinitely on a
+			// stalled resolver. LookupIPAddr honours the caller's deadline /
+			// cancellation instead.
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 			if err != nil {
 				return nil, err
 			}
 			for _, ip := range ips {
-				if isBlockedIP(ip) {
-					return nil, fmt.Errorf("blocked IP: %s", ip.String())
+				if isBlockedIP(ip.IP) {
+					return nil, fmt.Errorf("blocked IP: %s", ip.IP.String())
 				}
 			}
-			dialer := &net.Dialer{}
+			dialer := &net.Dialer{Timeout: httpResolverDialTimeout, KeepAlive: 30 * time.Second}
 			return dialer.DialContext(ctx, network, addr)
 		},
 	}
@@ -242,7 +254,7 @@ func (r *HTTPResolver) Open(ctx context.Context, ref artifacts.Reference) (io.Re
 	}
 
 	host := u.Hostname()
-	if err := isBlockedHost(host); err != nil {
+	if err := isBlockedHost(ctx, host); err != nil {
 		return nil, err
 	}
 
@@ -276,7 +288,7 @@ func (r *HTTPResolver) Stat(ctx context.Context, ref artifacts.Reference) (artif
 	}
 
 	host := u.Hostname()
-	if err := isBlockedHost(host); err != nil {
+	if err := isBlockedHost(ctx, host); err != nil {
 		return artifacts.ObjectInfo{}, err
 	}
 
