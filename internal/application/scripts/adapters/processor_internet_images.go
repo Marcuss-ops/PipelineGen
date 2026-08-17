@@ -346,11 +346,29 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			allowed[normalizeAnnotationType(raw)] = true
 		}
 	}
+	// Pre-index segments by SegmentID and SceneID (first occurrence wins, so
+	// the min-index semantics of the old linear scan are preserved). The
+	// per-scene lookup then becomes O(1) instead of a full O(segments) scan
+	// for every scene.
+	bySegmentID := make(map[string]int, len(segments))
+	bySceneID := make(map[string]int, len(segments))
+	for i := range segments {
+		if segments[i].SegmentID != "" {
+			if _, ok := bySegmentID[segments[i].SegmentID]; !ok {
+				bySegmentID[segments[i].SegmentID] = i
+			}
+		}
+		if segments[i].SceneID != "" {
+			if _, ok := bySceneID[segments[i].SceneID]; !ok {
+				bySceneID[segments[i].SceneID] = i
+			}
+		}
+	}
 	for i := range out.Scenes {
 		if out.Scenes[i].Annotations == nil {
 			continue
 		}
-		seg := findSegmentForScene(out.Scenes[i], segments)
+		seg := findSegmentForScene(out.Scenes[i], segments, bySegmentID, bySceneID)
 		for entityIndex := range out.Scenes[i].Annotations.PrimaryEntities {
 			entity := &out.Scenes[i].Annotations.PrimaryEntities[entityIndex]
 			if !allowed[normalizeAnnotationType(entity.Type)] {
@@ -407,19 +425,34 @@ func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, segment scriptpkg
 	return nil
 }
 
-func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRushSegmentResult) *scriptpkg.VidRushSegmentResult {
-	for i := range segments {
-		if scene.SegmentID != "" && scene.SegmentID == segments[i].SegmentID {
-			return &segments[i]
+func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRushSegmentResult, bySegmentID, bySceneID map[string]int) *scriptpkg.VidRushSegmentResult {
+	if scene.SegmentID == "" && scene.ID == "" {
+		// Positional fallback for scenes that carry neither identity key.
+		for i := range segments {
+			if scene.Index == segments[i].Position {
+				return &segments[i]
+			}
 		}
-		if scene.ID != "" && scene.ID == segments[i].SceneID {
-			return &segments[i]
-		}
-		if scene.SegmentID == "" && scene.ID == "" && scene.Index == segments[i].Position {
-			return &segments[i]
+		return nil
+	}
+	// The old single-pass scan returned the first index where EITHER key
+	// matched; taking the min of the two first-occurrence indices preserves
+	// that exactly.
+	best := -1
+	if scene.SegmentID != "" {
+		if i, ok := bySegmentID[scene.SegmentID]; ok {
+			best = i
 		}
 	}
-	return nil
+	if scene.ID != "" {
+		if i, ok := bySceneID[scene.ID]; ok && (best == -1 || i < best) {
+			best = i
+		}
+	}
+	if best == -1 {
+		return nil
+	}
+	return &segments[best]
 }
 
 func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) (scriptpkg.SegmentAssetCandidate, bool) {
