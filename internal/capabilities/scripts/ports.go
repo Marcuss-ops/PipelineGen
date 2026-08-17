@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -206,6 +207,24 @@ type IdentifiedDocumentRenderer interface {
 // The video render enqueue port was removed with the video render path.
 // The future Chronon overlay path submits through
 // QueueRenderEnqueuer.EnqueueChrononPlan, which does not need this port.
+
+// OverlayPrepareEnqueuer enqueues the overlay.prepare job for the run's
+// pre-timing OverlayIntents. It is fire-and-forget: prepare resolves
+// templates and prefetches entity assets independently of the timing-frozen
+// render path and must never block the pipeline. The runner treats a nil
+// enqueuer as "prepare not registered" (a legitimate no-op for environments
+// without a RenderingGen queue) and a non-nil enqueuer as fail-closed (an
+// enqueue error fails the run — never a silent no-op).
+type OverlayPrepareEnqueuer interface {
+	EnqueuePrepare(context.Context, capabilityoverlay.PrepareRequest) error
+}
+
+// OverlayRenderEnqueuer submits the timing-frozen OverlayPlan to
+// RenderingGen and returns the certified Chronon artifact. Prepare is
+// fire-and-forget; render is allowed only after canonical timing exists.
+type OverlayRenderEnqueuer interface {
+	EnqueueChrononPlan(context.Context, capabilityoverlay.OverlayPlan) (RenderReference, error)
+}
 
 // CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
 // return a probed, certified final audio artifact; the runner never falls

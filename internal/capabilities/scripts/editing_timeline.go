@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // EditingTimelineVersion is the schema version of the editing timeline.
@@ -67,6 +68,11 @@ type EditingOverlaySpan struct {
 	EndUS      int64  `json:"end_us"`
 	DriveLink  string `json:"drive_link,omitempty"`
 	SHA256     string `json:"sha256"`
+	// MediaContract is the ID of the OverlayMediaContract the rendered
+	// artifact was certified against (container/codec/pixel format,
+	// audio_streams==0). It comes from the frozen OverlayPlan, never from a
+	// second independent derivation.
+	MediaContract string `json:"media_contract,omitempty"`
 }
 
 // Validate checks structural invariants on the editing timeline.
@@ -198,6 +204,16 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		return nil
 	}
 
+	// The rendered artifact is a single certified queue artifact for the
+	// whole plan. Its Drive publication identity (DriveLink/SHA256) is the
+	// immutable reference every overlay span carries; empty when the render
+	// has not completed or was not published yet.
+	var driveLink, sha256 string
+	if result.OverlayRender != nil && result.OverlayRender.Artifact != nil {
+		driveLink = result.OverlayRender.Artifact.DriveLink
+		sha256 = result.OverlayRender.Artifact.SHA256
+	}
+
 	// Build entity timeline lookup for microsecond-precision timing.
 	occByEntityID := map[string]struct {
 		startUS int64
@@ -216,8 +232,10 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 
 	overlays := make([]EditingOverlaySpan, 0, len(plan.Items))
 	for _, item := range plan.Items {
-		startUS := item.StartMs * 1000
-		endUS := item.EndMs * 1000
+		// Canonical integer-microsecond timing travels on the item; fall back
+		// to the millisecond projection for legacy (golden) plans.
+		startUS := item.StartUSValue()
+		endUS := item.EndUSValue()
 
 		// Entity card overlays: prefer EntityTimeline microsecond timing.
 		if item.EntityID != "" {
@@ -228,12 +246,15 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		}
 
 		overlays = append(overlays, EditingOverlaySpan{
-			ArtifactID: item.ID,
-			SceneID:    item.SceneID,
-			Entity:     item.Text,
-			TemplateID: item.TemplateID,
-			StartUS:    startUS,
-			EndUS:      endUS,
+			ArtifactID:    item.ID,
+			SceneID:       item.SceneID,
+			Entity:        item.Text,
+			TemplateID:    item.TemplateID,
+			StartUS:       startUS,
+			EndUS:         endUS,
+			DriveLink:     driveLink,
+			SHA256:        sha256,
+			MediaContract: plan.MediaContract,
 		})
 	}
 	return overlays
@@ -269,55 +290,64 @@ func EditingOverlayPlanItem(span EditingOverlaySpan) capabilityoverlay.OverlayIt
 	}
 }
 
-// planOverlayIntents projects per-scene entity annotations onto the neutral
-// input types the overlay planner consumes, then calls PlanOverlayIntents.
-// It is the bridge between the domain Scene.Annotations (AnnotatedEntity)
-// and the overlay planner's EntityOverlayInput. Nil-safe: returns nil when
-// the result has no scenes with annotations.
-func planOverlayIntents(scenes []Scene, registry *capabilityoverlay.ChrononOverlayRegistry) []capabilityoverlay.OverlayIntent {
+// planOverlayIntentsForAnnotations plans overlay intents from the read-only
+// snapshot + the per-scene computed annotations (keyed by scene index). It is
+// the pure counterpart of planOverlayIntents used by the concurrent
+// overlay.prepare branch, which never reads the mutable Scene struct.
+func planOverlayIntentsForAnnotations(snapshot []sceneTextSnapshot, annotations map[int]*scriptpkg.SceneAnnotations, registry *capabilityoverlay.ChrononOverlayRegistry) []capabilityoverlay.OverlayIntent {
 	var inputs []capabilityoverlay.SceneEntityInput
-	for i, scene := range scenes {
-		if scene.Annotations == nil {
-			continue
+	for i, s := range snapshot {
+		if input, ok := sceneEntityInput(s.ID, i, annotations[i]); ok {
+			inputs = append(inputs, input)
 		}
-		var entities []capabilityoverlay.EntityOverlayInput
-		for _, entity := range scene.Annotations.PrimaryEntities {
-			name := strings.TrimSpace(entity.CanonicalName)
-			if name == "" {
-				continue
-			}
-			entities = append(entities, capabilityoverlay.EntityOverlayInput{
-				Name:       name,
-				Type:       strings.TrimSpace(entity.Type),
-				Confidence: entity.Confidence,
-			})
-		}
-		for _, entity := range scene.Annotations.SecondaryEntities {
-			name := strings.TrimSpace(entity.CanonicalName)
-			if name == "" {
-				continue
-			}
-			entities = append(entities, capabilityoverlay.EntityOverlayInput{
-				Name:       name,
-				Type:       strings.TrimSpace(entity.Type),
-				Confidence: entity.Confidence,
-			})
-		}
-		var phrases []capabilityoverlay.OverlayAnnotationInput
-		for _, phrase := range scene.Annotations.ImportantPhrases {
-			phrases = append(phrases, capabilityoverlay.OverlayAnnotationInput{ID: phrase.ID, Text: phrase.Text})
-		}
-		var words []capabilityoverlay.OverlayAnnotationInput
-		for _, word := range scene.Annotations.ImportantWords {
-			words = append(words, capabilityoverlay.OverlayAnnotationInput{ID: word.ID, Text: word.Text})
-		}
-		inputs = append(inputs, capabilityoverlay.SceneEntityInput{
-			SceneID:    scene.ID,
-			SceneIndex: i,
-			Entities:   entities,
-			Phrases:    phrases,
-			Words:      words,
-		})
 	}
 	return capabilityoverlay.PlanOverlayIntents(inputs, registry)
+}
+
+// sceneEntityInput projects one scene's grounded annotations onto the neutral
+// input types the overlay planner consumes. It returns false when the scene
+// has no annotations (or no derivable entities/phrases/words), so the caller
+// can skip it.
+func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnotations) (capabilityoverlay.SceneEntityInput, bool) {
+	if ann == nil {
+		return capabilityoverlay.SceneEntityInput{}, false
+	}
+	var entities []capabilityoverlay.EntityOverlayInput
+	for _, entity := range ann.PrimaryEntities {
+		name := strings.TrimSpace(entity.CanonicalName)
+		if name == "" {
+			continue
+		}
+		entities = append(entities, capabilityoverlay.EntityOverlayInput{
+			Name:       name,
+			Type:       strings.TrimSpace(entity.Type),
+			Confidence: entity.Confidence,
+		})
+	}
+	for _, entity := range ann.SecondaryEntities {
+		name := strings.TrimSpace(entity.CanonicalName)
+		if name == "" {
+			continue
+		}
+		entities = append(entities, capabilityoverlay.EntityOverlayInput{
+			Name:       name,
+			Type:       strings.TrimSpace(entity.Type),
+			Confidence: entity.Confidence,
+		})
+	}
+	var phrases []capabilityoverlay.OverlayAnnotationInput
+	for _, phrase := range ann.ImportantPhrases {
+		phrases = append(phrases, capabilityoverlay.OverlayAnnotationInput{ID: phrase.ID, Text: phrase.Text})
+	}
+	var words []capabilityoverlay.OverlayAnnotationInput
+	for _, word := range ann.ImportantWords {
+		words = append(words, capabilityoverlay.OverlayAnnotationInput{ID: word.ID, Text: word.Text})
+	}
+	return capabilityoverlay.SceneEntityInput{
+		SceneID:    sceneID,
+		SceneIndex: sceneIndex,
+		Entities:   entities,
+		Phrases:    phrases,
+		Words:      words,
+	}, true
 }

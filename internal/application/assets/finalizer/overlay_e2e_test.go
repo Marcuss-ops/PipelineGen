@@ -2,6 +2,8 @@ package finalizer_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -28,6 +30,32 @@ func (f *fakeChrononRenderer) Render(_ context.Context, _ []byte, output string)
 }
 
 var _ infraoverlays.Renderer = (*fakeChrononRenderer)(nil)
+
+// fakeChrononProber stands in for the canonical rustexec probe: it returns
+// contract-valid facts (DefaultOverlayContractV1) and hashes the on-disk
+// bytes so the manifest's sha256/size stay byte-exact.
+type fakeChrononProber struct{}
+
+func (fakeChrononProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return capoverlay.OverlayProbeResult{}, err
+	}
+	sum := sha256.Sum256(b)
+	return capoverlay.OverlayProbeResult{
+		Width:        1920,
+		Height:       1080,
+		DurationUS:   1_000_000,
+		FPSNum:       30,
+		FPSDen:       1,
+		AudioStreams: 0,
+		Codec:        "prores",
+		PixelFormat:  "yuva444p",
+		Container:    "mov",
+		SizeBytes:    int64(len(b)),
+		SHA256:       hex.EncodeToString(sum[:]),
+	}, nil
+}
 
 // stubDeliveryPublisher is the Drive HTTP boundary substitute. It records the
 // PublishRequest (for routing assertions) and returns a canned Drive identity.
@@ -78,7 +106,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	renderer := &fakeChrononRenderer{bytes: []byte("chronon-overlay-e2e")}
-	h, err := appoverlays.NewHandlerSet(cache, renderer, gate, "chronon-e2e")
+	h, err := appoverlays.NewHandlerSet(cache, renderer, gate, &fakeChrononProber{}, "chronon-e2e")
 	if err != nil {
 		t.Fatal(err)
 	}

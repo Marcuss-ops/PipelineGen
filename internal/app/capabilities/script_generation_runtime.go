@@ -10,6 +10,7 @@ import (
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
@@ -19,6 +20,7 @@ import (
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"go.uber.org/zap"
 )
@@ -169,6 +171,32 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	// Wire the canonical entity type→template registry so the
+	// EntityOverlayPlanner runs in production: OverlayIntents (with their
+	// resolved template_id) are created immediately after entity extraction
+	// and persisted to the durable run payload before any render job is
+	// enqueued.
+	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	// Wire the overlay.prepare job enqueuer: the pre-timing OverlayIntents
+	// are persisted and then overlay.prepare starts in parallel with TTS.
+	// When the RenderingGen queue URL is not configured, prepare is not
+	// registered (a legitimate no-op); when configured, an enqueue error
+	// fails the run fail-closed.
+	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
+		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(renderinggen.New(queueURL))
+		if err != nil {
+			return nil, fmt.Errorf("build queue prepare enqueuer: %w", err)
+		}
+		runner.SetOverlayPrepareEnqueuer(prepareEnqueuer)
+		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(renderinggen.New(queueURL))
+		if err != nil {
+			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
+		}
+		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
+		log.Info("overlay.prepare enqueuer wired to RenderingGen queue", zap.String("url", queueURL))
+	} else {
+		log.Warn("overlay.prepare enqueue disabled: RENDERINGGEN_QUEUE_URL is not configured")
+	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		runner.SetScriptPersistence(newScriptGenerationPersistence(
 			sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo), log,
@@ -227,8 +255,21 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		}),
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
 	})
-	runner.SetGenerationGate(scriptgen.NewGenerationGate())
-	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)")
+	// Shared worker pools: the generation gate capacity matches the certified
+	// NLP concurrency (VidRush extraction fans out to at most 4 concurrent
+	// scenes), and the TTS voiceover pool defaults to 4 with the voiceover
+	// MaxConcurrentTTS config as the operator override (so the runner pool
+	// stays in sync with the lower-level provider bound). Docs publishing and
+	// the Rust final-audio render remain single-threaded.
+	runner.SetGenerationGate(scriptgen.NewGenerationGateWithCapacity(scriptgen.DefaultNLPConcurrency))
+	ttsConcurrency := scriptgen.DefaultTTSConcurrency
+	if cfg.Voiceover.MaxConcurrentTTS > 0 {
+		ttsConcurrency = cfg.Voiceover.MaxConcurrentTTS
+	}
+	runner.SetTTSConcurrency(ttsConcurrency)
+	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)",
+		zap.Int("nlp_concurrency", scriptgen.DefaultNLPConcurrency),
+		zap.Int("tts_concurrency", ttsConcurrency))
 
 	return runner, nil
 }

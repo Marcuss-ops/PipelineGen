@@ -131,6 +131,84 @@ func TestCompileChrononPlanAssets(t *testing.T) {
 	}
 }
 
+// TestCompileChrononPlan_MicrosecondTiming certifies that an OverlayPlan item
+// carrying integer microseconds (start_us / duration_us) compiles to the exact
+// frame range those microseconds imply — Chronon never rounds through the
+// millisecond projection when microsecond timing is present.
+func TestCompileChrononPlan_MicrosecondTiming(t *testing.T) {
+	plan := OverlayPlan{
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "us-plan",
+		VideoID:       "us-video",
+		Width:         1280,
+		Height:        720,
+		FPS:           30,
+		Items: []OverlayItem{{
+			ID:         "precise",
+			TemplateID: "IMPORTANT_PHRASE",
+			Text:       "MICROSECOND",
+			StartMs:    1240, // 1.24s
+			EndMs:      5440, // 5.44s
+			StartUS:    1_240_000,
+			DurationUS: 4_200_000,
+		}},
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("plan should validate: %v", err)
+	}
+	got, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layer := got.Plan.Layers[0]
+	if layer.StartFrame != 37 {
+		t.Fatalf("start_frame = %d, want 37 (1_240_000us @30fps)", layer.StartFrame)
+	}
+	if layer.DurationFrames != 126 {
+		t.Fatalf("duration_frames = %d, want 126 (4_200_000us @30fps)", layer.DurationFrames)
+	}
+	// Canvas duration follows the microsecond end (5_440_000us → frame 163).
+	if got.Plan.Canvas.DurationFrames != 163 {
+		t.Fatalf("canvas duration_frames = %d, want 163", got.Plan.Canvas.DurationFrames)
+	}
+}
+
+// TestCompileChrononPlan_HonorsMediaContract certifies the compiled output
+// block derives container/codec/pixel format from the plan's media contract
+// (alpha ProRes MOV), never a hardcoded mp4/h264 guess.
+func TestCompileChrononPlan_HonorsMediaContract(t *testing.T) {
+	plan := GoldenOverlayPlanV1()
+	plan.MediaContract = DefaultOverlayContractV1.ID
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("plan should validate: %v", err)
+	}
+	got, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Plan.Output.Path != "result.mov" {
+		t.Fatalf("output path = %q, want result.mov", got.Plan.Output.Path)
+	}
+	if got.Plan.Output.Format != "mov" || got.Plan.Output.Codec != "prores" || got.Plan.Output.PixelFormat != "yuva444p" {
+		t.Fatalf("output = %+v, want mov/prores/yuva444p", got.Plan.Output)
+	}
+}
+
+// TestCompileChrononPlan_DefaultOutputUnchanged certifies the legacy (no
+// contract) output stays mp4/h264 so the cross-repo golden is untouched.
+func TestCompileChrononPlan_DefaultOutputUnchanged(t *testing.T) {
+	got, err := CompileChrononPlan(GoldenOverlayPlanV1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Plan.Output.Path != "result.mp4" || got.Plan.Output.Format != "mp4" || got.Plan.Output.Codec != "h264" {
+		t.Fatalf("default output = %+v, want result.mp4/mp4/h264", got.Plan.Output)
+	}
+	if got.Plan.Output.PixelFormat != "" {
+		t.Fatalf("default output must not carry a pixel format, got %q", got.Plan.Output.PixelFormat)
+	}
+}
+
 func TestCompileChrononPlanRejectsUnsupportedTemplate(t *testing.T) {
 	plan := GoldenOverlayPlanV1()
 	plan.Items[0].TemplateID = "FLYING_LOGO" // no template spec

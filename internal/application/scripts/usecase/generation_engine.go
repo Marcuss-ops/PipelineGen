@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strings"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -70,7 +71,7 @@ func (r *GenerationEngineRunner) Generate(
 	tracker.PhaseGenerateStart()
 	var engineResult *EngineResult
 	var engineErr error
-	stageReport, measureErr := kernobs.MeasureStageReport(ctx, stageScriptEngine, func(opCtx context.Context) error {
+	stageReport, measureErr := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptEngine, func(opCtx context.Context) error {
 		engineResult, engineErr = r.engine.Generate(opCtx, &plan)
 		return engineErr
 	})

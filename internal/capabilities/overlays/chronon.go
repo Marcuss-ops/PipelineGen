@@ -104,153 +104,6 @@ type TemplateSpec struct {
 	Loop bool
 }
 
-// templateRegistry is the canonical semantic→concrete template table. It is
-// the single place that knows every semantic entity's concrete layer shape
-// AND the canonical primitive it terminates in — the golden workload shapes
-// used by GoldenOverlayPlanV1 plus the extended semantic entity vocabulary.
-//
-// Every entry MUST declare its canonical Primitive: the compiler fails closed
-// on a template without one, so a new entity can never be added without
-// deciding which of Text/Image/Video/Shape it terminates in.
-var templateRegistry = map[string]TemplateSpec{
-	"BACKGROUND": {
-		LayerType:  "image",
-		Fit:        "cover",
-		Primitive:  PrimitiveImage,
-		FullCanvas: true,
-	},
-	"IMPORTANT_PHRASE": {
-		LayerType: "text",
-		Preset:    "title_centered",
-		Primitive: PrimitiveText,
-	},
-	"IMPORTANT_WORD": {
-		LayerType: "text",
-		Preset:    "kinetic_word",
-		Primitive: PrimitiveText,
-	},
-	"IMAGE_OVERLAY": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  260,
-		BoxHeight: 260,
-		Position:  []float64{380, 0},
-		Primitive: PrimitiveImage,
-	},
-	// ── The canonical semantic entity vocabulary ────────────────────────
-	// PERSON, LOCATION and QUOTE are the semantic spellings of the concrete
-	// entity-card / quote templates below (aliases are pinned by tests);
-	// NUMBER is a centered stat card; PRODUCT and LOGO are asset-driven
-	// images (they fail closed when the item carries no asset).
-	"PERSON": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	"NUMBER": {
-		LayerType: "text",
-		Preset:    "number",
-		Primitive: PrimitiveText,
-	},
-	"QUOTE": {
-		LayerType: "text",
-		Preset:    "quote",
-		Primitive: PrimitiveText,
-	},
-	"LOCATION": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	"PRODUCT": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  420,
-		BoxHeight: 420,
-		Position:  []float64{380, 0},
-		Primitive: PrimitiveImage,
-	},
-	"LOGO": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  180,
-		BoxHeight: 180,
-		Position:  []float64{1060, 500},
-		Primitive: PrimitiveImage,
-	},
-	// ── The Video and Shape primitives ──────────────────────────────────
-	// VIDEO_BACKGROUND is the full-canvas video counterpart of BACKGROUND;
-	// SHAPE is a full-canvas solid-color rect (Chronon "color" layer),
-	// defaulting to a semi-transparent wash overridable via Params["color"].
-	"VIDEO_BACKGROUND": {
-		LayerType:  "video",
-		Fit:        "cover",
-		Primitive:  PrimitiveVideo,
-		FullCanvas: true,
-	},
-	"SHAPE": {
-		LayerType: "color",
-		Color:     []float64{0, 0, 0, 0.35},
-		Primitive: PrimitiveShape,
-	},
-	// LIGHT_LEAK is a composited video effect layer: a light-leak clip blended
-	// over the background (screen blend by default). Its opacity and
-	// loop/terminate behavior are per-item params; the source is the leak
-	// clip (Video primitive → layer.source).
-	"LIGHT_LEAK": {
-		LayerType: "video",
-		Fit:       "cover",
-		Primitive: PrimitiveVideo,
-		BlendMode: "screen",
-	},
-	// ── Concrete templates referenced by the kind registry / renderers ──
-	// Entity cards (entity_card kind) compile to a text layer carrying the
-	// entity name with the entity_card preset; the preset decides the final
-	// portrait/name geometry. The optional image AssetRef becomes the card's
-	// portrait (layer.Asset) alongside the name (layer.Text).
-	"person_default": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	"org_default": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	"gpe_default": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	"concept_default": {
-		LayerType: "text",
-		Preset:    "entity_card",
-		Primitive: PrimitiveText,
-	},
-	// Non-entity visual capabilities (ChrononOverlayRegistry kinds): a lower
-	// third docks text in the bottom-left safe area, an image popup is a
-	// contained image on the right, and a quote is centered text.
-	"lower_third": {
-		LayerType: "text",
-		Preset:    "lower_third",
-		Primitive: PrimitiveText,
-	},
-	"image_popup": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  260,
-		BoxHeight: 260,
-		Position:  []float64{380, 0},
-		Primitive: PrimitiveImage,
-	},
-	"quote": {
-		LayerType: "text",
-		Preset:    "quote",
-		Primitive: PrimitiveText,
-	},
-}
-
 // ChrononLayerAnimation mirrors the chronon.render-plan.v1 layer animation
 // block: the motion preset applied to the layer (e.g. "fade_in", "slide_up",
 // "scale_in") plus the optional explicit window. The compiler projects only
@@ -314,11 +167,15 @@ type ChrononLayer struct {
 }
 
 // ChrononOutput mirrors the chronon.render-plan.v1 output block. The worker
-// renders to this path inside the job workspace (output/result.mp4).
+// renders to this path inside the job workspace (output/result.mp4). The
+// Format/Codec/PixelFormat fields are derived from the plan's media contract
+// (never hardcoded per layer); the cross-repo golden (no contract) pins
+// mp4/h264 with no pixel format.
 type ChrononOutput struct {
-	Path   string `json:"path"`
-	Format string `json:"format,omitempty"`
-	Codec  string `json:"codec,omitempty"`
+	Path        string `json:"path"`
+	Format      string `json:"format,omitempty"`
+	Codec       string `json:"codec,omitempty"`
+	PixelFormat string `json:"pixel_format,omitempty"`
 }
 
 // ChrononPlan is the full chronon.render-plan.v1 document.
@@ -343,6 +200,27 @@ type ChrononAsset struct {
 type ChrononCompileResult struct {
 	Plan   ChrononPlan
 	Assets []ChrononAsset
+}
+
+// chrononOutputFor derives the chronon.render-plan.v1 output block from the
+// plan's media contract. An empty contract keeps the legacy mp4/h264 default
+// pinned by the cross-repo golden (no alpha, no pixel format); a resolved
+// contract drives container/codec/pixel format so the renderer never guesses
+// a codec per layer. An unknown contract id fails closed.
+func chrononOutputFor(plan OverlayPlan) (ChrononOutput, error) {
+	if strings.TrimSpace(plan.MediaContract) == "" {
+		return ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"}, nil
+	}
+	contract, err := ResolveMediaContract(plan.MediaContract)
+	if err != nil {
+		return ChrononOutput{}, err
+	}
+	return ChrononOutput{
+		Path:        "result." + contract.Container,
+		Format:      contract.Container,
+		Codec:       contract.Codec,
+		PixelFormat: contract.PixelFormat,
+	}, nil
 }
 
 // CompileChrononPlan compiles a validated semantic OverlayPlan into the
@@ -373,17 +251,36 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 	}
 
 	fps := plan.FPS
-	frameAt := func(ms int64) int64 {
+	frameAtMS := func(ms int64) int64 {
 		return int64(math.Round(float64(ms) * float64(fps) / 1000.0))
 	}
+	frameAtUS := func(us int64) int64 {
+		return int64(math.Round(float64(us) * float64(fps) / 1_000_000.0))
+	}
+	// itemFrameRange returns the item's [start, end) in integer frames from
+	// its canonical timing: integer microseconds when present, else the legacy
+	// millisecond projection. The compiler never estimates or re-derives
+	// timing — Chronon receives exact, PipelineGen-owned frames.
+	itemFrameRange := func(item OverlayItem) (int64, int64) {
+		if item.DurationUS > 0 {
+			return frameAtUS(item.StartUS), frameAtUS(item.StartUS + item.DurationUS)
+		}
+		return frameAtMS(item.StartMs), frameAtMS(item.EndMs)
+	}
+	itemEndUS := func(item OverlayItem) int64 {
+		if item.DurationUS > 0 {
+			return item.StartUS + item.DurationUS
+		}
+		return item.EndMs * 1000
+	}
 
-	var maxEnd int64
+	var maxEndUS int64
 	for _, item := range plan.Items {
-		if item.EndMs > maxEnd {
-			maxEnd = item.EndMs
+		if end := itemEndUS(item); end > maxEndUS {
+			maxEndUS = end
 		}
 	}
-	if maxEnd <= 0 {
+	if maxEndUS <= 0 {
 		return ChrononCompileResult{}, fmt.Errorf("overlay plan: no item has a positive end time")
 	}
 
@@ -418,6 +315,7 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 				return ChrononCompileResult{}, fmt.Errorf("overlay plan: item %q (%s) requires a resolvable asset (url or content hash)", item.ID, spec.Primitive)
 			}
 		}
+		startFrame, endFrame := itemFrameRange(item)
 		layer := ChrononLayer{
 			ID:             item.ID,
 			Type:           spec.LayerType,
@@ -426,8 +324,8 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 			BoxWidth:       spec.BoxWidth,
 			BoxHeight:      spec.BoxHeight,
 			Position:       spec.Position,
-			StartFrame:     frameAt(item.StartMs),
-			DurationFrames: frameAt(item.EndMs) - frameAt(item.StartMs),
+			StartFrame:     startFrame,
+			DurationFrames: endFrame - startFrame,
 			BlendMode:      spec.BlendMode,
 			Opacity:        spec.Opacity,
 			Loop:           spec.Loop,
@@ -458,7 +356,7 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 			layer.BoxWidth = plan.Width
 			layer.BoxHeight = plan.Height
 			layer.StartFrame = 0
-			layer.DurationFrames = frameAt(maxEnd)
+			layer.DurationFrames = frameAtUS(maxEndUS)
 		}
 		// Per-item params override template defaults (fit/position/box).
 		if v, ok := paramString(item.Params, "fit"); ok {
@@ -551,6 +449,10 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		}
 	}
 
+	output, err := chrononOutputFor(plan)
+	if err != nil {
+		return ChrononCompileResult{}, err
+	}
 	return ChrononCompileResult{
 		Plan: ChrononPlan{
 			Schema:  ChrononSchema,
@@ -560,10 +462,10 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 				Width:          plan.Width,
 				Height:         plan.Height,
 				FPS:            fps,
-				DurationFrames: frameAt(maxEnd),
+				DurationFrames: frameAtUS(maxEndUS),
 			},
 			Layers: layers,
-			Output: ChrononOutput{Path: "result.mp4", Format: "mp4", Codec: "h264"},
+			Output: output,
 		},
 		Assets: assets,
 	}, nil

@@ -120,4 +120,6 @@ type MediaInfo struct {
 	HasVideo, HasAudio            bool
 	PixelFormat, FormatName       string
 	VideoStreamCount, StreamCount int
+	AudioStreamCount              int
+	FPSNum, FPSDen                int
 }

@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
@@ -52,7 +53,7 @@ type Processor struct {
 	httpClient *http.Client
 	started    bool
 	media      mediaexec.AudioProcessor
-	loudness   loudnessProber
+	loudness   capabilityaudio.LoudnessProber
 }
 
 // processorShape mirrors the GENERATE-side surface of
@@ -112,7 +113,7 @@ func (p *Processor) SetMediaExecutor(media mediaexec.AudioProcessor) {
 // measures the synthesized VO's peak level and fails closed with
 // ErrSilentAudio (retried like empty audio) when it is inaudible. When unset
 // (default), the gate is skipped — the capability is simply not registered.
-func (p *Processor) SetLoudnessProber(l loudnessProber) {
+func (p *Processor) SetLoudnessProber(l capabilityaudio.LoudnessProber) {
 	if p == nil {
 		return
 	}

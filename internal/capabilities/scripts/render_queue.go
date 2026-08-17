@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -29,9 +30,11 @@ type RenderQueueAsset struct {
 
 // RenderQueueJob is the queue-side view of a submitted render job. It is the
 // wire contract with the central RenderingGen queue (POST /jobs and
-// GET /jobs/{id}).
+// GET /jobs/{id}). JobType is the canonical overlay job type
+// (overlay.prepare / overlay.render) the queue worker dispatches on.
 type RenderQueueJob struct {
 	ID          string             `json:"id"`
+	JobType     string             `json:"job_type,omitempty"`
 	OverlaySpec json.RawMessage    `json:"overlay_spec"`
 	Assets      []RenderQueueAsset `json:"assets"`
 	State       string             `json:"state"`
@@ -104,7 +107,16 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	for _, a := range compiled.Assets {
 		assets = append(assets, RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath})
 	}
-	job := RenderQueueJob{ID: plan.PlanID, OverlaySpec: spec, Assets: assets}
+	// Keep the queue dispatch explicit. RenderingGen uses this discriminator to
+	// route the job through the overlay renderer (and to apply the overlay media
+	// contract/ffprobe checks); omitting it silently falls back to the legacy
+	// render_segment path.
+	job := RenderQueueJob{
+		ID:          plan.PlanID,
+		JobType:     capoverlay.JobTypeRender,
+		OverlaySpec: spec,
+		Assets:      assets,
+	}
 
 	if err := e.client.Submit(ctx, job); err != nil {
 		if !errors.Is(err, ErrJobExists) {
@@ -123,6 +135,74 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		}
 	}
 	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+}
+
+// ── overlay.prepare ───────────────────────────────────────────────────
+
+// QueuePrepareEnqueuer submits the overlay.prepare job for the run's
+// pre-timing OverlayIntents to the central RenderingGen queue. Unlike the
+// render enqueuer it is fire-and-forget: prepare resolves templates and
+// prefetches entity assets independently of the timing-frozen render path
+// and must never block the pipeline. The job id is deterministic
+// ("prepare-"+planID) so replays are idempotent.
+type QueuePrepareEnqueuer struct {
+	client RenderQueueClient
+}
+
+// NewQueuePrepareEnqueuer creates a queue-backed prepare enqueuer.
+func NewQueuePrepareEnqueuer(client RenderQueueClient) (*QueuePrepareEnqueuer, error) {
+	if client == nil {
+		return nil, fmt.Errorf("queue prepare enqueuer requires a queue client")
+	}
+	return &QueuePrepareEnqueuer{client: client}, nil
+}
+
+// EnqueuePrepare submits the prepare job and returns immediately. A job that
+// already exists (ErrJobExists) is treated as idempotent success so a retry
+// never double-prepares.
+func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverlay.PrepareRequest) error {
+	if e == nil || e.client == nil {
+		return fmt.Errorf("queue prepare enqueuer is not configured")
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+	spec, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("chronon queue prepare marshal: %w", err)
+	}
+	job := RenderQueueJob{
+		ID:          "prepare-" + req.PlanID,
+		JobType:     capoverlay.JobTypePrepare,
+		OverlaySpec: spec,
+		Assets:      prepareAssets(req.Intents),
+	}
+	if err := e.client.Submit(ctx, job); err != nil {
+		if errors.Is(err, ErrJobExists) {
+			return nil // idempotent replay
+		}
+		return fmt.Errorf("chronon queue prepare submit failed: %w", err)
+	}
+	return nil
+}
+
+// prepareAssets collects the entity-image assets referenced by the intents,
+// deduplicated by content hash, so the queue worker can prefetch them during
+// the prepare phase.
+func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
+	var assets []RenderQueueAsset
+	seen := make(map[string]bool)
+	for _, intent := range intents {
+		for _, ref := range intent.Payload.AssetRefs {
+			hash := strings.ToLower(strings.TrimSpace(ref.SHA256))
+			if hash == "" || seen[hash] {
+				continue
+			}
+			seen[hash] = true
+			assets = append(assets, RenderQueueAsset{Hash: hash, URL: ref.URL})
+		}
+	}
+	return assets
 }
 
 // waitForCompletion polls the queue until the job reaches a terminal state.

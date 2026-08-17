@@ -19,14 +19,14 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
-	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 )
 
 // ── Compile-time pins (godlike/06 lock signature drift to build-failure) ──
 
 var (
-	_ youtubeusecase.TranscriptFetcherPort = (*transcriptFetcherAdapter)(nil)
-	_ youtubeusecase.AnalyzerPort          = (*failClosedAnalyzerAdapter)(nil)
+	_ capyoutubeusecase.TranscriptFetcherPort = (*transcriptFetcherAdapter)(nil)
+	_ capyoutubeusecase.AnalyzerPort          = (*failClosedAnalyzerAdapter)(nil)
 )
 
 // ── 1. TranscriptFetcherAdapter ─────────────────────────────────────
@@ -39,7 +39,7 @@ type transcriptFetcherAdapter struct {
 	sub transcripts.SubtitleSource
 }
 
-func (a *transcriptFetcherAdapter) FetchTranscript(ctx context.Context, videoID, language string) (*youtubeusecase.Transcript, error) {
+func (a *transcriptFetcherAdapter) FetchTranscript(ctx context.Context, videoID, language string) (*capyoutubeusecase.Transcript, error) {
 	if a.sub == nil {
 		return nil, fmt.Errorf("transcriptFetcherAdapter: subtitle adapter unwired")
 	}
@@ -48,12 +48,12 @@ func (a *transcriptFetcherAdapter) FetchTranscript(ctx context.Context, videoID,
 	if err != nil {
 		return nil, fmt.Errorf("transcriptFetcherAdapter: fetch %s: %w", videoURL, err)
 	}
-	out := &youtubeusecase.Transcript{
+	out := &capyoutubeusecase.Transcript{
 		VideoID:  doc.VideoID,
 		Language: doc.Language,
 	}
 	for _, e := range doc.Entries {
-		out.Entries = append(out.Entries, youtubeusecase.TranscriptEntry{
+		out.Entries = append(out.Entries, capyoutubeusecase.TranscriptEntry{
 			Text:     e.Text,
 			StartSec: e.Start,
 			EndSec:   e.End,
@@ -71,6 +71,6 @@ func (a *transcriptFetcherAdapter) FetchTranscript(ctx context.Context, videoID,
 // no silent 0-segments success.
 type failClosedAnalyzerAdapter struct{}
 
-func (a *failClosedAnalyzerAdapter) AnalyzeImportantSegments(ctx context.Context, transcript *youtubeusecase.Transcript, max int) ([]youtubeusecase.Segment, error) {
-	return nil, fmt.Errorf("%w: analyzer backend not yet wired (forward-pointer)", youtubeusecase.ErrAnalyzerUnavailable)
+func (a *failClosedAnalyzerAdapter) AnalyzeImportantSegments(ctx context.Context, transcript *capyoutubeusecase.Transcript, max int) ([]capyoutubeusecase.Segment, error) {
+	return nil, fmt.Errorf("%w: analyzer backend not yet wired (forward-pointer)", capyoutubeusecase.ErrAnalyzerUnavailable)
 }

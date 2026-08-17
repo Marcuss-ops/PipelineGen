@@ -22,6 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
@@ -116,7 +117,7 @@ func (p *GenerationPreparer) Prepare(
 	// The canonical Run owns the timing; MeasureStageReport is the only
 	// clock (no ad-hoc time.Now() at a phase boundary).
 	tracker.PhaseNormalize()
-	if report, err := kernobs.MeasureStageReport(ctx, stageScriptNormalize, func(stageCtx context.Context) error {
+	if report, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptNormalize, func(stageCtx context.Context) error {
 		adapters.NormalizeItem(&item, preset, p.cfg)
 		return nil
 	}); err != nil {
@@ -127,7 +128,7 @@ func (p *GenerationPreparer) Prepare(
 
 	// ── Phase 2: Validate ─────────────────────────────────────────────
 	tracker.PhaseValidate()
-	if report, err := kernobs.MeasureStageReport(ctx, stageScriptValidate, func(stageCtx context.Context) error {
+	if report, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptValidate, func(stageCtx context.Context) error {
 		return ValidateItem(item)
 	}); err != nil {
 		return nil, PrepareStageReports{}, p.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err, tracker)
@@ -146,7 +147,7 @@ func (p *GenerationPreparer) Prepare(
 	tracker.PhaseResolveSource()
 	var resolved *scriptpkg.ResolvedSource
 	if p.registry != nil {
-		if report, err := kernobs.MeasureStageReport(ctx, stageSourceResolve, func(stageCtx context.Context) error {
+		if report, err := kernobs.MeasureStageReport(ctx, scriptgen.StageSourceResolve, func(stageCtx context.Context) error {
 			resCtx := buildResolutionContext(item)
 
 			// Try the research cache short-circuit first. On hit the real
@@ -200,7 +201,7 @@ func (p *GenerationPreparer) Prepare(
 	// the orchestrator can return it.
 	tracker.PhaseBuildPlan()
 	var plan scriptpkg.ResolvedGenerationPlan
-	if report, err := kernobs.MeasureStageReport(ctx, stageScriptPlan, func(stageCtx context.Context) error {
+	if report, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptPlan, func(stageCtx context.Context) error {
 		resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
 			stageCtx, item, p.voGroupResolver, p.voRootID, p.log,
 		)

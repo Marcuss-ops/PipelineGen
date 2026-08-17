@@ -10,6 +10,7 @@
 package overlays
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -103,7 +104,13 @@ func (c OverlayMediaContract) Validate(probed OverlayProbeResult) error {
 		return fmt.Errorf("overlay media contract: height mismatch: probed %d, want %d", probed.Height, c.Height)
 	}
 
-	// FPS check (compare as rational to avoid floating-point drift).
+	// FPS check (compare as rational to avoid floating-point drift). A
+	// 0/0 probe means the stream reported no usable frame rate, which must
+	// fail closed rather than trivially cross-multiplying to zero.
+	if probed.FPSNum <= 0 || probed.FPSDen <= 0 {
+		return fmt.Errorf("overlay media contract: probed fps %d/%d must be positive",
+			probed.FPSNum, probed.FPSDen)
+	}
 	if probed.FPSNum*c.FPSDen != c.FPSNum*probed.FPSDen {
 		return fmt.Errorf("overlay media contract: fps mismatch: probed %d/%d, want %d/%d",
 			probed.FPSNum, probed.FPSDen, c.FPSNum, c.FPSDen)
@@ -115,8 +122,9 @@ func (c OverlayMediaContract) Validate(probed OverlayProbeResult) error {
 			probed.AudioStreams, c.AudioStreams)
 	}
 
-	// Container check (case-insensitive).
-	if c.Container != "" && !strings.EqualFold(probed.Container, c.Container) {
+	// Container check (case-insensitive, comma-token aware: ffprobe's
+	// format_name is a comma-joined list like "mov,mp4,m4a,3gp,3g2,mj2").
+	if c.Container != "" && !strings.EqualFold(firstContainerToken(probed.Container), firstContainerToken(c.Container)) {
 		return fmt.Errorf("overlay media contract: container mismatch: probed %q, want %q",
 			probed.Container, c.Container)
 	}
@@ -228,4 +236,50 @@ func OverlayContractForCanvas(width, height, fpsNum, fpsDen int, requiresAlpha b
 	c.FPSNum = fpsNum
 	c.FPSDen = fpsDen
 	return c
+}
+
+// ResolveMediaContract resolves a contract ID (the OverlayPlan.MediaContract
+// field) to its canonical OverlayMediaContract. It is the single owner of the
+// ID → contract mapping; a plan carrying an unknown ID fails closed rather
+// than silently rendering with the wrong codec/container.
+func ResolveMediaContract(id string) (OverlayMediaContract, error) {
+	switch strings.TrimSpace(id) {
+	case "", DefaultOverlayContractV1.ID:
+		return DefaultOverlayContractV1, nil
+	case DefaultOverlayContractNoAlpha.ID:
+		return DefaultOverlayContractNoAlpha, nil
+	default:
+		return OverlayMediaContract{}, fmt.Errorf("overlay media contract: unknown contract id %q", id)
+	}
+}
+
+// ContractIDForCanvas returns the canonical contract ID for the given canvas
+// and alpha requirement. It is the single owner of canvas → contract-ID
+// selection; callers stamp it onto OverlayPlan.MediaContract so the render
+// contract travels with the plan instead of being re-derived downstream.
+func ContractIDForCanvas(width, height, fps int, requiresAlpha bool) string {
+	return OverlayContractForCanvas(width, height, fps, 1, requiresAlpha).ID
+}
+
+// firstContainerToken returns the first comma-separated token of an ffprobe
+// format_name string, trimmed. ffprobe reports container families as a
+// comma-joined list ("mov,mp4,m4a,3gp,3g2,mj2"); the first token is the
+// canonical container identity used for contract comparison.
+func firstContainerToken(v string) string {
+	v = strings.TrimSpace(v)
+	if idx := strings.IndexByte(v, ','); idx >= 0 {
+		v = v[:idx]
+	}
+	return strings.TrimSpace(v)
+}
+
+// MediaProber is the port the render worker uses to certify a rendered
+// overlay artifact. Implementations probe the rendered file through the
+// canonical media probe capability (rustexec.VideoProcessor.Probe — never a
+// raw ffprobe/ffmpeg subprocess) and hash it, returning the facts that
+// OverlayMediaContract.Validate compares. A rendered artifact is valid only
+// when it has been probed AND its facts match the contract; the renderer's
+// exit code is never a validity criterion.
+type MediaProber interface {
+	ProbeOverlay(ctx context.Context, path string) (OverlayProbeResult, error)
 }

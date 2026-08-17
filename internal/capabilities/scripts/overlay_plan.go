@@ -168,6 +168,11 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Width:         canvas.Width,
 		Height:        canvas.Height,
 		FPS:           canvas.FPS,
+		// Overlays are composited over the master video, so they require an
+		// alpha channel. The contract travels with the plan (never re-derived
+		// downstream); the compiled chronon output derives container/codec/
+		// pixel format from it.
+		MediaContract: capabilityoverlay.ContractIDForCanvas(canvas.Width, canvas.Height, canvas.FPS, true),
 		Items:         items,
 	}
 	if err := plan.Validate(); err != nil {
@@ -212,10 +217,12 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 	}
 	timed := func(p *capabilityaudio.PhraseTiming, score float64) capabilityoverlay.TimedAnnotation {
 		return capabilityoverlay.TimedAnnotation{
-			Text:    p.Text,
-			StartMs: p.GlobalStartUS / 1000,
-			EndMs:   (p.GlobalEndUS + 999) / 1000,
-			Score:   score,
+			Text:       p.Text,
+			StartMs:    p.GlobalStartUS / 1000,
+			EndMs:      (p.GlobalEndUS + 999) / 1000,
+			StartUS:    p.GlobalStartUS,
+			DurationUS: p.GlobalEndUS - p.GlobalStartUS,
+			Score:      score,
 		}
 	}
 	// IMPORTANT_PHRASE / IMPORTANT_WORD: verbatim in the real word timing.
@@ -245,27 +252,31 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 		if score <= 0 {
 			score = 0.9
 		}
-		switch entityOverlayKindFor(entity.Type) {
-		case "NUMBER":
+		switch capabilityoverlay.EntityTypeToKind(entity.Type) {
+		case capabilityoverlay.KindNumber:
 			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{
-				Text:    entity.CanonicalName,
-				StartMs: occ.AudioStartUS / 1000,
-				EndMs:   (occ.AudioEndUS + 999) / 1000,
-				Score:   score,
+				Text:       entity.CanonicalName,
+				StartMs:    occ.AudioStartUS / 1000,
+				EndMs:      (occ.AudioEndUS + 999) / 1000,
+				StartUS:    occ.AudioStartUS,
+				DurationUS: occ.AudioEndUS - occ.AudioStartUS,
+				Score:      score,
 			})
-		case "QUOTE":
+		case capabilityoverlay.KindQuote:
 			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{
-				Text:    entity.CanonicalName,
-				StartMs: occ.AudioStartUS / 1000,
-				EndMs:   (occ.AudioEndUS + 999) / 1000,
-				Score:   score,
+				Text:       entity.CanonicalName,
+				StartMs:    occ.AudioStartUS / 1000,
+				EndMs:      (occ.AudioEndUS + 999) / 1000,
+				StartUS:    occ.AudioStartUS,
+				DurationUS: occ.AudioEndUS - occ.AudioStartUS,
+				Score:      score,
 			})
-		case "PRODUCT":
+		case capabilityoverlay.KindProduct:
 			if entity.Image == nil {
 				continue
 			}
 			out.Products = append(out.Products, imageCandidate(entity.Image, occ, score))
-		case "LOGO":
+		case capabilityoverlay.KindLogo:
 			if entity.Image == nil {
 				continue
 			}
@@ -283,27 +294,11 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 	return &out, nil
 }
 
-// entityOverlayKindFor maps an annotation entity type onto the planner-owned
-// overlay bucket. Everything else is either an entity card (resolver) or an
-// IMAGE_OVERLAY when it carries an image.
-func entityOverlayKindFor(entityType string) string {
-	switch strings.ToUpper(strings.TrimSpace(entityType)) {
-	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
-		return "NUMBER"
-	case "QUOTE":
-		return "QUOTE"
-	case "PRODUCT":
-		return "PRODUCT"
-	case "LOGO":
-		return "LOGO"
-	default:
-		return ""
-	}
-}
-
 // plannerOwnedEntityIDs collects the SafeEntityID of every annotation entity
-// the planner renders (NUMBER / QUOTE / PRODUCT / LOGO), so the resolver
-// never emits a second overlay for the same entity.
+// the planner renders (NUMBER / QUOTE / PRODUCT / LOGO — the kinds
+// EntityTypeToKind owns), so the resolver never emits a second overlay for
+// the same entity. Everything else is either an entity card (resolver) or an
+// IMAGE_OVERLAY when it carries an image.
 func plannerOwnedEntityIDs(result *GenerateResult) map[string]bool {
 	owned := map[string]bool{}
 	for i := range result.Scenes {
@@ -312,10 +307,10 @@ func plannerOwnedEntityIDs(result *GenerateResult) map[string]bool {
 			continue
 		}
 		for _, entity := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
-			if entityOverlayKindFor(entity.Type) == "" {
-				continue
+			switch capabilityoverlay.EntityTypeToKind(entity.Type) {
+			case capabilityoverlay.KindNumber, capabilityoverlay.KindQuote, capabilityoverlay.KindProduct, capabilityoverlay.KindLogo:
+				owned[capabilityentities.SafeEntityID(entity.CanonicalName)] = true
 			}
-			owned[capabilityentities.SafeEntityID(entity.CanonicalName)] = true
 		}
 	}
 	return owned
@@ -351,12 +346,14 @@ func entityCardTemplate(templateID string) bool {
 // the compiled layer references a fetchable image.
 func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentities.EntityOccurrence, score float64) capabilityoverlay.ImageCandidate {
 	return capabilityoverlay.ImageCandidate{
-		AssetID:   binding.AssetID,
-		URL:       entityImageURL(binding),
-		MediaType: "image",
-		StartMs:   occ.AudioStartUS / 1000,
-		EndMs:     (occ.AudioEndUS + 999) / 1000,
-		Score:     score,
+		AssetID:    binding.AssetID,
+		URL:        entityImageURL(binding),
+		MediaType:  "image",
+		StartMs:    occ.AudioStartUS / 1000,
+		EndMs:      (occ.AudioEndUS + 999) / 1000,
+		StartUS:    occ.AudioStartUS,
+		DurationUS: occ.AudioEndUS - occ.AudioStartUS,
+		Score:      score,
 	}
 }
 

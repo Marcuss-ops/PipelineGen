@@ -1,5 +1,20 @@
 package observability
 
+import "sort"
+
+// CriticalPathStage is one sequential stage on the run's critical path — the
+// ordered chain of top-level (non-nested) stages. The chain is ordered by
+// wall-time start, so it reflects the actual execution sequence (never a
+// name sort) and lets operators read the dominant serial chain directly.
+type CriticalPathStage struct {
+	// Name is the stage name.
+	Name string `json:"name"`
+	// DurationMs is the stage's wall time.
+	DurationMs int64 `json:"duration_ms"`
+	// Percent is the stage's share of total run wall time.
+	Percent float64 `json:"percent"`
+}
+
 // Breakdown is the canonical per-run timing breakdown derived from a
 // RunReport's TOP-LEVEL stage wall times — never from nested-duration sums.
 //
@@ -24,6 +39,13 @@ type Breakdown struct {
 	// recorded directly under BottleneckStage, or "" when that stage has no
 	// direct operation (its work is further nested).
 	BottleneckOperation string
+	// BottleneckPercent is BottleneckStage's wall time as a percentage of
+	// total run wall time.
+	BottleneckPercent float64
+	// CriticalPath is the ordered chain of top-level (sequential) stages,
+	// ordered by wall-time start. Each entry carries its wall time and its
+	// percentage of total run wall time.
+	CriticalPath []CriticalPathStage
 }
 
 // Breakdown computes the canonical timing breakdown for the report. It is
@@ -33,12 +55,18 @@ func (r *RunReport) Breakdown() Breakdown {
 	if r == nil {
 		return Breakdown{}
 	}
+	return r.breakdownWithWall(nonNegative(r.WallTimeMs))
+}
+
+// breakdownWithWall is the wall-parameterized core of Breakdown so callers
+// with a live clock (a still-running Run using ElapsedMs) can derive the
+// same breakdown before WallTimeMs is finalized.
+func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 	top := topLevelStages(r.Stages)
 	attributed := int64(0)
 	for _, st := range top {
 		attributed += nonNegative(st.DurationMs)
 	}
-	wall := nonNegative(r.WallTimeMs)
 	unattributed := int64(0)
 	if wall > attributed {
 		unattributed = wall - attributed
@@ -46,6 +74,7 @@ func (r *RunReport) Breakdown() Breakdown {
 	b := Breakdown{
 		AttributedStageMs: attributed,
 		UnattributedMs:    unattributed,
+		CriticalPath:      criticalPathStages(top, wall),
 	}
 	if wall > 0 {
 		b.UnattributedPercent = float64(unattributed) / float64(wall) * 100
@@ -59,8 +88,44 @@ func (r *RunReport) Breakdown() Breakdown {
 		}
 		b.BottleneckStage = best.Name
 		b.BottleneckOperation = dominantOperation(r.Operations, best.Name)
+		if wall > 0 {
+			b.BottleneckPercent = float64(best.DurationMs) / float64(wall) * 100
+		}
 	}
 	return b
+}
+
+// criticalPathStages projects the top-level stages onto the ordered critical
+// path. Stages are ordered by wall-time start; stages without a start anchor
+// keep their input order and sort after anchored ones so legacy unanchored
+// stages remain represented deterministically.
+func criticalPathStages(top []StageReport, wall int64) []CriticalPathStage {
+	if len(top) == 0 {
+		return nil
+	}
+	ordered := append([]StageReport(nil), top...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		si, sj := ordered[i].StartedAt, ordered[j].StartedAt
+		if si.IsZero() != sj.IsZero() {
+			return !si.IsZero()
+		}
+		if si.IsZero() {
+			return false // stable: preserve input order for unanchored stages
+		}
+		if si.Equal(sj) {
+			return ordered[i].FinishedAt.Before(ordered[j].FinishedAt)
+		}
+		return si.Before(sj)
+	})
+	out := make([]CriticalPathStage, 0, len(ordered))
+	for _, st := range ordered {
+		cp := CriticalPathStage{Name: st.Name, DurationMs: nonNegative(st.DurationMs)}
+		if wall > 0 {
+			cp.Percent = float64(st.DurationMs) / float64(wall) * 100
+		}
+		out = append(out, cp)
+	}
+	return out
 }
 
 // topLevelStages returns the stages whose wall-time interval is not strictly

@@ -13,6 +13,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"go.uber.org/zap"
@@ -56,7 +57,11 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	if err != nil {
 		return nil, nil, err
 	}
-	handlers, err := appoverlays.NewHandlerSet(cache, renderer, gate, os.Getenv("RENDERINGGEN_VERSION"))
+	// The media prober certifies every rendered overlay via the canonical
+	// probe port (rustexec.VideoProcessor.Probe → ffprobe) + content hash.
+	// The renderer's exit code alone is never a validity criterion.
+	prober := infraoverlays.NewMediaContractProber(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
+	handlers, err := appoverlays.NewHandlerSet(cache, renderer, gate, prober, os.Getenv("RENDERINGGEN_VERSION"))
 	if err != nil {
 		return nil, nil, err
 	}

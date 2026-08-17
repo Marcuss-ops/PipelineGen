@@ -214,15 +214,17 @@ func finalize06(plan *capabilityoverlay.OverlayPlan) {
 
 func golden06Result() *scriptgen.GenerateResult {
 	wordCount := len(golden06Words)
-	timing := capabilityaudio.SpeechTimingArtifact{
-		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
-		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
-		TextSHA256: "golden-06-text", AudioSHA256: "golden-06-audio",
-		DurationUS: int64(wordCount) * 100_000,
-		Words:      make([]capabilityaudio.SpeechWordTiming, wordCount),
-	}
+	words := make([]capabilityaudio.SpeechWordTiming, wordCount)
 	for i, w := range golden06Words {
-		timing.Words[i] = capabilityaudio.SpeechWordTiming{Index: i, Text: w, StartUS: int64(i) * 100_000, EndUS: int64(i+1) * 100_000}
+		words[i] = capabilityaudio.SpeechWordTiming{Index: i, Text: w, StartUS: int64(i) * 100_000, EndUS: int64(i+1) * 100_000}
+	}
+	timing, err := capabilityaudio.BuildSpeechTimingArtifact(
+		"edge_tts", "en", "", "golden-06-text", "golden-06-audio",
+		int64(wordCount)*100_000, words,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "golden06 timing: %v\n", err)
+		os.Exit(1)
 	}
 	return &scriptgen.GenerateResult{
 		Scenes: []scriptgen.Scene{{
@@ -230,7 +232,7 @@ func golden06Result() *scriptgen.GenerateResult {
 			Index: 0,
 			Text:  map[scriptgen.Language]string{"en": golden06Script},
 			Voiceover: map[scriptgen.Language]scriptgen.AudioReference{
-				"en": {ID: "vo-scene-0-en", Duration: 2.9, Timing: &timing},
+				"en": {ID: "vo-scene-0-en", Duration: 2.9, Timing: timing},
 			},
 			Annotations: golden06Annotations(),
 		}},

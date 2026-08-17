@@ -33,6 +33,7 @@ import (
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
@@ -231,7 +232,7 @@ func buildDomainMediaServices(
 	processSegMedia := youtube.ProcessSegmentMediaDeps{
 		DriveFolderMgr:    youtubePubAdapter,
 		TextTrackResolver: textTrackResolver,
-		FFProbe:           ytinfra.NewFFProbeAdapter(clipProcessor),
+		FFProbe:           ytplatform.NewFFProbeAdapter(clipProcessor),
 	}
 	processSegMetadata := youtube.ProcessSegmentMetadataDeps{
 		// Phase 2.b atomic super-tx (clipWriter satisfies both ports —

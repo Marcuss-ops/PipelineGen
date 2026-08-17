@@ -10,6 +10,7 @@ import (
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
@@ -59,9 +60,24 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 	seenEntities := make(map[string]struct{})
 
 	for _, seg := range analysis.SegmentEntities {
+		// The model is useful for concepts and editorial insights, but its
+		// named-entity output is not authoritative: small models may split a
+		// multi-word name into token-sized fragments. Resolve spans from the
+		// source text first, then use those canonical candidates to suppress
+		// contained model fragments.
+		deterministic, _ := localnlp.NewExtractor().ExtractEntities(ctx, script.EntityExtractionRequest{
+			Text: seg.SegmentText, Language: req.Language, EntityCount: req.EntityCount,
+		})
+		canonicalValues := deterministicEntityValues(deterministic)
+		if deterministic != nil {
+			appendDeterministicEntities(result, seenEntities, deterministic)
+		}
 		for _, rawName := range seg.NomiSpeciali {
 			kind, value := parseTypedEntity(rawName)
 			if value == "" {
+				continue
+			}
+			if isContainedEntityFragment(value, canonicalValues) {
 				continue
 			}
 			switch kind {
@@ -116,6 +132,63 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 		result.Raw = string(rawBytes)
 	}
 	return result, nil
+}
+
+func deterministicEntityValues(result *script.EntityResult) []string {
+	if result == nil {
+		return nil
+	}
+	values := make([]string, 0, len(result.Persons)+len(result.Places)+len(result.Concepts))
+	for _, group := range [][]script.Entity{result.Persons, result.Places, result.Concepts} {
+		for _, entity := range group {
+			if entity.Type != "KEYWORD" && strings.TrimSpace(entity.Value) != "" {
+				values = append(values, entity.Value)
+			}
+		}
+	}
+	return values
+}
+
+func appendDeterministicEntities(dst *script.EntityResult, seen map[string]struct{}, source *script.EntityResult) {
+	for _, entity := range source.Persons {
+		appendUniqueEntity(&dst.Persons, seen, "PERSON", entity.Value, entity.Score)
+	}
+	for _, entity := range source.Places {
+		kind := entity.Type
+		if kind == "GPE" {
+			kind = "PLACE"
+		}
+		appendUniqueEntity(&dst.Places, seen, kind, entity.Value, entity.Score)
+	}
+	for _, entity := range source.Concepts {
+		if entity.Type == "KEYWORD" {
+			continue
+		}
+		appendUniqueEntity(&dst.Concepts, seen, entity.Type, entity.Value, entity.Score)
+	}
+}
+
+func isContainedEntityFragment(value string, canonical []string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, full := range canonical {
+		full = strings.TrimSpace(full)
+		if strings.EqualFold(value, full) {
+			return true
+		}
+		if len([]rune(full)) <= len([]rune(value)) {
+			continue
+		}
+		lowerFull, lowerValue := strings.ToLower(full), strings.ToLower(value)
+		for _, token := range strings.Fields(lowerFull) {
+			if token == lowerValue {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ExtractEntitiesBatch is the bounded implementation of the canonical entity
@@ -210,7 +283,7 @@ func parseTypedEntity(raw string) (kind, value string) {
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.Index(raw, "]"); end > 1 {
 			kind = normalizeEntityKind(raw[1:end])
-			value = strings.TrimSpace(raw[end+1:])
+			value = normalizeExtractedEntityValue(raw[end+1:])
 			if kind != "" && value != "" {
 				return kind, value
 			}
@@ -219,7 +292,7 @@ func parseTypedEntity(raw string) (kind, value string) {
 	for _, separator := range []string{":", "|"} {
 		if before, after, ok := strings.Cut(raw, separator); ok {
 			candidateKind := normalizeEntityKind(before)
-			candidateValue := strings.TrimSpace(after)
+			candidateValue := normalizeExtractedEntityValue(after)
 			if candidateKind != "" && candidateValue != "" {
 				return candidateKind, candidateValue
 			}
@@ -227,7 +300,11 @@ func parseTypedEntity(raw string) (kind, value string) {
 	}
 	// Untyped legacy names stay searchable but are not falsely labelled as
 	// people. The new prompt emits explicit types for high-confidence routing.
-	return "CONCEPT", raw
+	return "CONCEPT", normalizeExtractedEntityValue(raw)
+}
+
+func normalizeExtractedEntityValue(value string) string {
+	return strings.Trim(strings.TrimSpace(value), ".,;:!?\"'’”)]}>")
 }
 
 func normalizeEntityKind(raw string) string {

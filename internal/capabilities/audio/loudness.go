@@ -1,4 +1,4 @@
-// Package audioasset — loudness.go (PR-VO-LOUDNESS-GATE, August 2026):
+// Package audio — loudness.go (PR-VO-LOUDNESS-GATE, August 2026):
 // minimum-loudness gate for synthesized voiceover.
 //
 // The TTS bridge occasionally returns a non-empty but silent audio file
@@ -11,9 +11,9 @@
 // Architecture note: the measurement itself (exec.CommandContext("ffmpeg",
 // ...)) is an ARCH-ALLOWLIST'd process invocation at the same seam as the
 // legacy TTS spawn-per-call path (processor.go::generateLegacy) — the only
-// other external-process site in this package. The narrow loudnessProber
-// port keeps the gate testable without shelling out.
-package audioasset
+// other external-process site in the voiceover audio stack. The narrow
+// LoudnessProber port keeps the gate testable without shelling out.
+package audio
 
 import (
 	"context"
@@ -49,10 +49,10 @@ func (l Loudness) IsSilent() bool {
 	return l.MaxDB < MinAudibleMaxVolumeDB
 }
 
-// loudnessProber is the narrow port the TTS synthesis depends on for the
+// LoudnessProber is the narrow port the TTS synthesis depends on for the
 // minimum-loudness gate. The concrete ffmpegLoudnessProber satisfies it; the
 // interface exists so tests can inject a fake without shelling out.
-type loudnessProber interface {
+type LoudnessProber interface {
 	MeasureLoudness(ctx context.Context, path string) (Loudness, error)
 }
 
@@ -63,7 +63,7 @@ type ffmpegLoudnessProber struct {
 
 // NewFFmpegLoudnessProber builds the production loudness prober for a given
 // ffmpeg binary path. An empty path falls back to "ffmpeg" on PATH.
-func NewFFmpegLoudnessProber(ffmpegBin string) loudnessProber {
+func NewFFmpegLoudnessProber(ffmpegBin string) LoudnessProber {
 	if strings.TrimSpace(ffmpegBin) == "" {
 		ffmpegBin = "ffmpeg"
 	}
@@ -71,26 +71,26 @@ func NewFFmpegLoudnessProber(ffmpegBin string) loudnessProber {
 }
 
 func (p ffmpegLoudnessProber) MeasureLoudness(ctx context.Context, path string) (Loudness, error) {
-	return measureVolume(ctx, p.ffmpegBin, path)
+	return MeasureVolume(ctx, p.ffmpegBin, path)
 }
 
-// measureVolume runs `ffmpeg -hide_banner -i <path> -af volumedetect -f null -`
+// MeasureVolume runs `ffmpeg -hide_banner -i <path> -af volumedetect -f null -`
 // and parses the mean_volume / max_volume lines from stderr.
-func measureVolume(ctx context.Context, ffmpegBin, path string) (Loudness, error) {
+func MeasureVolume(ctx context.Context, ffmpegBin, path string) (Loudness, error) {
 	cmd := exec.CommandContext(ctx, ffmpegBin,
 		"-hide_banner", "-i", path, "-af", "volumedetect", "-f", "null", "-")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return Loudness{}, fmt.Errorf("audioasset: volumedetect %q failed: %w: %s",
+		return Loudness{}, fmt.Errorf("audio: volumedetect %q failed: %w: %s",
 			path, err, strings.TrimSpace(string(out)))
 	}
-	return parseVolumedetect(out)
+	return ParseVolumedetect(out)
 }
 
-// parseVolumedetect extracts mean_volume and max_volume from ffmpeg's
+// ParseVolumedetect extracts mean_volume and max_volume from ffmpeg's
 // volumedetect stderr. It is a pure function so it is unit-testable without
 // ffmpeg.
-func parseVolumedetect(output []byte) (Loudness, error) {
+func ParseVolumedetect(output []byte) (Loudness, error) {
 	l := Loudness{MeanDB: math.Inf(-1), MaxDB: math.Inf(-1)}
 	var foundMean, foundMax bool
 	for _, line := range strings.Split(string(output), "\n") {
@@ -115,7 +115,7 @@ func parseVolumedetect(output []byte) (Loudness, error) {
 		}
 	}
 	if !foundMean || !foundMax {
-		return Loudness{}, fmt.Errorf("audioasset: volumedetect produced no mean_volume/max_volume")
+		return Loudness{}, fmt.Errorf("audio: volumedetect produced no mean_volume/max_volume")
 	}
 	return l, nil
 }
@@ -125,14 +125,14 @@ func parseVolumedetect(output []byte) (Loudness, error) {
 // silence.
 func parseVolumeValue(fields []string, i int, line string) (float64, error) {
 	if i+2 >= len(fields) || fields[i+2] != "dB" {
-		return 0, fmt.Errorf("audioasset: volumedetect stat malformed: %q", line)
+		return 0, fmt.Errorf("audio: volumedetect stat malformed: %q", line)
 	}
 	if fields[i+1] == "-inf" {
 		return math.Inf(-1), nil
 	}
 	v, err := strconv.ParseFloat(fields[i+1], 64)
 	if err != nil {
-		return 0, fmt.Errorf("audioasset: volumedetect stat malformed: %q: %w", line, err)
+		return 0, fmt.Errorf("audio: volumedetect stat malformed: %q: %w", line, err)
 	}
 	return v, nil
 }

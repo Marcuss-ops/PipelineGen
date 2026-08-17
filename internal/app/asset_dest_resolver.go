@@ -1,4 +1,4 @@
-// Package drive — asset_dest_resolver.go reconnects the canonical
+// Package app — asset_dest_resolver.go reconnects the canonical
 // asset.Resolver port (internal/kernel/asset) to the real Drive
 // get-or-create surface.
 //
@@ -18,7 +18,7 @@
 // Fail-closed: an unwired admin, a missing parent, or a subfolder-creation
 // failure surfaces a typed sentinel (probe via errors.Is) instead of
 // silently landing assets in the wrong folder (godlike/07).
-package drive
+package app
 
 import (
 	"context"
@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 
+	infradrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -57,13 +58,13 @@ var (
 // canonical asset.Resolver binding for callers that resolve an explicit
 // Drive folder and optionally materialise a child subfolder.
 type AssetDestResolver struct {
-	admin Admin
+	admin infradrive.Admin
 }
 
 // NewAssetDestResolver constructs the resolver. Typed-nil-safe: a nil admin
 // returns nil so callers can rely on the canonical `!= nil` nil-port pattern
 // (the caller owns the fail-closed decision when Drive is not configured).
-func NewAssetDestResolver(admin Admin) *AssetDestResolver {
+func NewAssetDestResolver(admin infradrive.Admin) *AssetDestResolver {
 	if admin == nil {
 		return nil
 	}
@@ -93,7 +94,7 @@ func (r *AssetDestResolver) Resolve(ctx context.Context, req *asset.ResolveReque
 		// Canonical path: drive.EnsureFolderPath walks the segments under
 		// the parent via drive.Admin.GetOrCreateFolder and returns the leaf
 		// (child) folder id.
-		childID, err := EnsureFolderPath(ctx, r.admin, folderID, subfolderName)
+		childID, err := infradrive.EnsureFolderPath(ctx, r.admin, folderID, subfolderName)
 		if err != nil {
 			return nil, fmt.Errorf("%w: create subfolder %q under %q: %w", ErrAssetDestSubfolderFailed, subfolderName, folderID, err)
 		}

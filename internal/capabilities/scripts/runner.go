@@ -22,6 +22,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,68 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
+
+// enqueueOverlayPrepare builds the overlay.prepare job for the run's
+// pre-timing OverlayIntents and submits it (fire-and-forget). The plan id is
+// the run id — the same idempotency key the overlay plan uses — so a retry
+// never double-prepares.
+func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req GenerateRequest, intents []capabilityoverlay.OverlayIntent) error {
+	if r.overlayPrepareEnqueuer == nil || len(intents) == 0 {
+		return nil
+	}
+	canvas := r.overlayCanvas.withDefaults()
+	// overlay.prepare is a business stage boundary: the enqueue itself is
+	// measured on the canonical Run clock so the run's critical path shows
+	// the prepare submit wall time (which runs in parallel with TTS) instead
+	// of hiding it inside the generate phase.
+	if _, err := kernobs.MeasureStageReport(ctx, StageOverlayPrepare, func(stageCtx context.Context) error {
+		return r.overlayPrepareEnqueuer.EnqueuePrepare(stageCtx, capabilityoverlay.PrepareRequest{
+			SchemaVersion: capabilityoverlay.SchemaVersionPrepare,
+			PlanID:        runID,
+			VideoID:       runID,
+			ProjectID:     strings.TrimSpace(req.Project),
+			Width:         canvas.Width,
+			Height:        canvas.Height,
+			FPS:           canvas.FPS,
+			Intents:       intents,
+		})
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// runVidRushJoinAndPrepare is the background branch of the SceneTextReady
+// fan-out: it awaits the VidRush barrier, computes the per-scene entity
+// annotations and the pre-timing OverlayIntents from a read-only scene-text
+// snapshot, and enqueues overlay.prepare. It runs concurrently with TTS and
+// never touches the mutable result (or result.Scenes), so prepare starts as
+// soon as NLP results arrive without waiting for TTS or final audio and
+// without racing the TTS writer. The caller applies the returned projections
+// to result after the join.
+func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
+	// Final VidRush barrier: wait only for enrichments still running, never
+	// re-running the whole-document EntitiesProcessor. The fenced per-scene
+	// results are projected onto the durable result after the join.
+	segments, err := r.waitForVidRush(ctx, runID)
+	if err != nil {
+		return vidRushPrepareResult{}, err
+	}
+	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments)
+	var intents []capabilityoverlay.OverlayIntent
+	if r.overlayRegistry != nil {
+		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
+		// Submit overlay.prepare (fire-and-forget): it resolves templates and
+		// prefetches entity assets independently of the timing-frozen render
+		// path. overlay.render never waits for it — render enqueues only
+		// after the canonical timing is frozen in the audio-compile phase.
+		// Fail-closed — an enqueue error fails the run, never a silent no-op.
+		if err := r.enqueueOverlayPrepare(ctx, runID, req, intents); err != nil {
+			return vidRushPrepareResult{}, err
+		}
+	}
+	return vidRushPrepareResult{segments: segments, annotations: annotations, intents: intents}, nil
+}
 
 func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 	trace := scriptpkg.SourceTrace{}
@@ -76,6 +139,12 @@ type Runner struct {
 	generationGate        *GenerationGate
 	vidRushPipeline       *VidRushPipeline
 
+	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
+	// phase fans out scene×language synthesis to at most this many concurrent
+	// calls. It defaults to DefaultTTSConcurrency; SetTTSConcurrency overrides
+	// it. Docs publishing and Rust final-audio render stay single-threaded.
+	ttsConcurrency int
+
 	// vidRushRuns is the per-run VidRush wiring registry. beginVidRush
 	// registers the fresh coordinator for its run so concurrent runs on this
 	// shared Runner never observe each other's coordinator (the pre-registry
@@ -102,6 +171,13 @@ type Runner struct {
 	// by the EntityOverlayPlanner. Nil means overlay intent planning is
 	// skipped (no overlay intents created).
 	overlayRegistry *capabilityoverlay.ChrononOverlayRegistry
+
+	// overlayPrepareEnqueuer submits the overlay.prepare job for the run's
+	// pre-timing OverlayIntents. Nil means prepare is not registered (a
+	// legitimate no-op for environments without a RenderingGen queue);
+	// non-nil is fail-closed (an enqueue error fails the run).
+	overlayPrepareEnqueuer OverlayPrepareEnqueuer
+	overlayRenderEnqueuer  OverlayRenderEnqueuer
 
 	log *zap.Logger
 }
@@ -140,6 +216,7 @@ func NewRunner(
 		documentRenderer: documentRenderer,
 		recorder:         noopExecutionRecorder{},
 		vidRushRuns:      make(map[string]vidRushWiring),
+		ttsConcurrency:   DefaultTTSConcurrency,
 		log:              zap.NewNop(),
 	}
 }
@@ -184,6 +261,21 @@ func (r *Runner) SetOverlayCanvas(canvas OverlayCanvasSpec) {
 func (r *Runner) SetOverlayRegistry(registry *capabilityoverlay.ChrononOverlayRegistry) {
 	if r != nil {
 		r.overlayRegistry = registry
+	}
+}
+
+// SetOverlayPrepareEnqueuer wires the overlay.prepare job enqueuer. Nil-safe;
+// nil means prepare is not registered (no prepare job is enqueued).
+func (r *Runner) SetOverlayPrepareEnqueuer(enqueuer OverlayPrepareEnqueuer) {
+	if r != nil {
+		r.overlayPrepareEnqueuer = enqueuer
+	}
+}
+
+// SetOverlayRenderEnqueuer wires the timing-frozen overlay.render path.
+func (r *Runner) SetOverlayRenderEnqueuer(enqueuer OverlayRenderEnqueuer) {
+	if r != nil {
+		r.overlayRenderEnqueuer = enqueuer
 	}
 }
 
@@ -238,14 +330,27 @@ func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	}
 }
 
-// SetGenerationGate wires the single-slot priority gate shared with VidRush
-// entity extraction. Scene generation acquires it with high priority, so when
-// the text generator and the entity extractor share the same local Ollama
-// model, generation preempts extraction instead of queuing behind it.
+// SetGenerationGate wires the capacity-bounded priority gate shared with
+// VidRush entity extraction. Scene generation acquires it with high priority,
+// so when the text generator and the entity extractor share the same local
+// Ollama model, generation preempts extraction instead of queuing behind it.
+// The gate capacity should match the NLP concurrency (DefaultNLPConcurrency).
 func (r *Runner) SetGenerationGate(gate *GenerationGate) {
 	if r != nil {
 		r.generationGate = gate
 	}
+}
+
+// SetTTSConcurrency sets the TTS voiceover worker-pool size. Values <= 0
+// fall back to the certified default (DefaultTTSConcurrency).
+func (r *Runner) SetTTSConcurrency(concurrency int) {
+	if r == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultTTSConcurrency
+	}
+	r.ttsConcurrency = concurrency
 }
 
 // SetVidRushTimingRecorder wires the recorder that receives the scene-
@@ -495,49 +600,82 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	if result == nil {
 		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 	}
-	// Final VidRush barrier: wait only for enrichments still running, never
-	// re-running the whole-document EntitiesProcessor. The fenced per-scene
-	// results are then projected onto the durable result so a SUCCEEDED run
-	// exposes its typed entity aggregate (persons/places/concepts) on the
-	// surface — never a silent no-op for a backend that did run.
-	segments, err := r.waitForVidRush(ctx, runID)
-	if err != nil {
-		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
-		return
-	}
-	if len(segments) > 0 {
-		result.Entities = aggregateEntityResult(segments)
-		// Project each segment's entities onto its scene's annotations so the
-		// document SpecScene and the /full surface carry the same grounded
-		// per-scene entity proof (primary/secondary), never just the flat
-		// aggregate.
-		applySegmentEntityAnnotations(result, req.SourceLanguage, segments)
-		// Project each segment's typed entities onto its scene's canonical
-		// per-scene EntityResult (the same model as the document aggregate —
-		// no second entity model), and derive entity_overlay_required. A
-		// scene with no entities keeps entities=[] + entity_overlay_required=
-		// false; no entity is invented.
-		applySegmentEntityResults(result, segments)
-	}
-	projectEntityCompatibility(result, segments)
-	// ── OVERLAY INTENT PLANNING ──────────────────────────────────────
-	// Create OverlayIntents from per-scene entity annotations immediately
-	// after extraction. This runs BEFORE TTS so overlay.prepare can start
-	// template resolution and asset prefetch in parallel with audio synthesis.
-	if r.overlayRegistry != nil {
-		result.OverlayIntents = planOverlayIntents(result.Scenes, r.overlayRegistry)
-	}
-	result.SourceTrace = sourceTraceFromResult(result)
+	// ── SCENE-TEXT-READY FAN-OUT ──────────────────────────────────────
+	// Committing the scene text during the generate phase is the canonical
+	// SceneTextReady boundary. SceneAnalysis (VidRush) already started per
+	// scene on that boundary; translation and TTS are the other branches of
+	// the same fan-out. They depend only on the final scene text — never on
+	// entities/phrases/words — so they run in parallel with analysis instead
+	// of waiting for the VidRush barrier below.
 	if !r.measurePhase(ctx, kernobs.StageName(stageTranslation), func(c context.Context) bool {
 		return r.runTranslationPhase(c, runID, req, exec, resumeIdx, result)
 	}) {
 		return
 	}
+	// ── SCENE-TEXT-READY FAN-OUT (prepare branch) ────────────────────
+	// The VidRush join + overlay.prepare is the OTHER branch of the
+	// SceneTextReady fan-out, running concurrently with TTS below. It awaits
+	// the VidRush barrier, computes the per-scene entity annotations and the
+	// pre-timing OverlayIntents from a read-only scene-text snapshot, and
+	// enqueues overlay.prepare — so prepare starts as soon as NLP results
+	// arrive and never waits for TTS or final audio. The branch never touches
+	// result (or result.Scenes), so it runs alongside TTS without racing; the
+	// projections are applied after the join below.
+	snapshot := snapshotSceneText(result.Scenes, req.SourceLanguage)
+	prepareCtx, cancelPrepare := context.WithCancel(ctx)
+	defer cancelPrepare()
+	prepareDone := make(chan vidRushPrepareOutcome, 1)
+	go func() {
+		res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
+		prepareDone <- vidRushPrepareOutcome{result: res, err: err}
+	}()
+
+	// TTS runs in the main goroutine, in parallel with the prepare branch.
 	if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
 		return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
 	}) {
+		// TTS failed: the deferred cancelPrepare stops the prepare branch.
 		return
 	}
+
+	// Join the prepare branch; an error fails the run (fail-closed).
+	outcome := <-prepareDone
+	if outcome.err != nil {
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, outcome.err)
+		return
+	}
+	prepared := outcome.result
+
+	// Apply the prepare branch's projections to the durable result: entity
+	// aggregate, per-scene annotations + entity results, compatibility
+	// surfaces, and the pre-timing OverlayIntents.
+	if len(prepared.segments) > 0 {
+		result.Entities = aggregateEntityResult(prepared.segments)
+		// Project each segment's entities onto its scene's annotations so the
+		// document SpecScene and the /full surface carry the same grounded
+		// per-scene entity proof (primary/secondary), never just the flat
+		// aggregate.
+		for idx, ann := range prepared.annotations {
+			if idx >= 0 && idx < len(result.Scenes) {
+				result.Scenes[idx].Annotations = ann
+			}
+		}
+		// Project each segment's typed entities onto its scene's canonical
+		// per-scene EntityResult (the same model as the document aggregate —
+		// no second entity model), and derive entity_overlay_required. A
+		// scene with no entities keeps entities=[] + entity_overlay_required=
+		// false; no entity is invented.
+		applySegmentEntityResults(result, prepared.segments)
+	}
+	projectEntityCompatibility(result, prepared.segments)
+	result.OverlayIntents = prepared.intents
+
+	// Both branches joined: persist the voiceovers, entity projections, and
+	// pre-timing OverlayIntents in one durable checkpoint before audio
+	// compile.
+	r.checkpoint(ctx, runID, result)
+
+	result.SourceTrace = sourceTraceFromResult(result)
 	if !r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {
 		if !r.runAudioCompilePhase(c, runID, req, exec, resumeIdx, result) {
 			return false

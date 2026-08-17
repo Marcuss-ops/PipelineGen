@@ -136,21 +136,22 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 // TestResolveEntityOverlayPlan_TypeKindMapping pins the NLP-type → overlay-kind
 // translation: PERSON→entity_card, ORG→organization, GPE/LOCATION→location,
 // NUMBER→number, QUOTE→quote, PRODUCT→product, LOGO→logo, everything
-// else→concept. The kind→template mapping itself is owned by
-// ChrononOverlayRegistry (resolved below, not hard-coded here).
+// else→concept. The mapping has ONE owner (overlays.EntityTypeToKind); the
+// kind→template mapping itself is owned by ChrononOverlayRegistry (resolved
+// below, not hard-coded here).
 func TestResolveEntityOverlayPlan_TypeKindMapping(t *testing.T) {
-	require.Equal(t, capabilityoverlay.KindEntityCard, entityOverlayKind("PERSON"))
-	require.Equal(t, capabilityoverlay.KindOrganization, entityOverlayKind("ORG"))
-	require.Equal(t, capabilityoverlay.KindOrganization, entityOverlayKind("ORGANIZATION"))
-	require.Equal(t, capabilityoverlay.KindLocation, entityOverlayKind("GPE"))
-	require.Equal(t, capabilityoverlay.KindLocation, entityOverlayKind("LOCATION"))
-	require.Equal(t, capabilityoverlay.KindNumber, entityOverlayKind("NUMBER"))
-	require.Equal(t, capabilityoverlay.KindNumber, entityOverlayKind("NUM"))
-	require.Equal(t, capabilityoverlay.KindQuote, entityOverlayKind("QUOTE"))
-	require.Equal(t, capabilityoverlay.KindProduct, entityOverlayKind("PRODUCT"))
-	require.Equal(t, capabilityoverlay.KindLogo, entityOverlayKind("LOGO"))
-	require.Equal(t, capabilityoverlay.KindConcept, entityOverlayKind("EVENT"))
-	require.Equal(t, capabilityoverlay.KindConcept, entityOverlayKind(""))
+	require.Equal(t, capabilityoverlay.KindEntityCard, capabilityoverlay.EntityTypeToKind("PERSON"))
+	require.Equal(t, capabilityoverlay.KindOrganization, capabilityoverlay.EntityTypeToKind("ORG"))
+	require.Equal(t, capabilityoverlay.KindOrganization, capabilityoverlay.EntityTypeToKind("ORGANIZATION"))
+	require.Equal(t, capabilityoverlay.KindLocation, capabilityoverlay.EntityTypeToKind("GPE"))
+	require.Equal(t, capabilityoverlay.KindLocation, capabilityoverlay.EntityTypeToKind("LOCATION"))
+	require.Equal(t, capabilityoverlay.KindNumber, capabilityoverlay.EntityTypeToKind("NUMBER"))
+	require.Equal(t, capabilityoverlay.KindNumber, capabilityoverlay.EntityTypeToKind("NUM"))
+	require.Equal(t, capabilityoverlay.KindQuote, capabilityoverlay.EntityTypeToKind("QUOTE"))
+	require.Equal(t, capabilityoverlay.KindProduct, capabilityoverlay.EntityTypeToKind("PRODUCT"))
+	require.Equal(t, capabilityoverlay.KindLogo, capabilityoverlay.EntityTypeToKind("LOGO"))
+	require.Equal(t, capabilityoverlay.KindConcept, capabilityoverlay.EntityTypeToKind("EVENT"))
+	require.Equal(t, capabilityoverlay.KindConcept, capabilityoverlay.EntityTypeToKind(""))
 }
 
 // TestResolveEntityOverlayPlan_TypeTemplateViaRegistry pins that the template
@@ -169,7 +170,7 @@ func TestResolveEntityOverlayPlan_TypeTemplateViaRegistry(t *testing.T) {
 		"something": "concept_default",
 	}
 	for entityType, wantTemplate := range cases {
-		kind := entityOverlayKind(entityType)
+		kind := capabilityoverlay.EntityTypeToKind(entityType)
 		tmpl, err := capabilityoverlay.DefaultChrononOverlayRegistry.ResolveTemplate(string(kind))
 		require.NoError(t, err)
 		require.Equal(t, wantTemplate, tmpl, "entity type %q", entityType)

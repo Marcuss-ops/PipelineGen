@@ -10,13 +10,30 @@ import (
 	"sync"
 )
 
+// ── Certified worker-pool defaults ────────────────────────────────────
+//
+// The script-generation DAG fans out two independent branches from the
+// SceneTextReady boundary: the NLP/entity branch (VidRush extraction) and
+// the TTS voiceover branch. Both run through bounded shared worker pools;
+// these certified defaults keep each branch parallel without unbounded
+// rate-limit or CPU contention. Docs publishing and the Rust final-audio
+// render stay single-threaded (concurrency 1) and are not governed here.
+
+// DefaultNLPConcurrency bounds the certified default for the NLP/entity
+// extraction branch: up to this many scenes enrich concurrently.
+const DefaultNLPConcurrency = 4
+
+// DefaultTTSConcurrency bounds the certified default for the TTS voiceover
+// branch: up to this many scene×language synthesis calls run concurrently.
+const DefaultTTSConcurrency = 4
+
 // VidRushBackpressure holds the independent concurrency limits for the three
 // VidRush stages. Keeping them separate means a slow stage (e.g. a provider
 // download) can never consume the whole budget of a faster stage (e.g. entity
 // extraction). Values <= 0 fall back to the stage default.
 type VidRushBackpressure struct {
-	// ExtractionLimit bounds concurrent entity-extraction calls. The local
-	// Ollama model is single-slot, so the default is 1.
+	// ExtractionLimit bounds concurrent entity-extraction calls. The default
+	// is the certified NLP concurrency (DefaultNLPConcurrency).
 	ExtractionLimit int
 	// ProviderSearchLimit bounds concurrent provider fan-out searches
 	// (Artlist, internet images) after entities are ready. Default 4.
@@ -30,7 +47,7 @@ type VidRushBackpressure struct {
 // non-positive value.
 func (b VidRushBackpressure) resolved() VidRushBackpressure {
 	if b.ExtractionLimit <= 0 {
-		b.ExtractionLimit = 1
+		b.ExtractionLimit = DefaultNLPConcurrency
 	}
 	if b.ProviderSearchLimit <= 0 {
 		b.ProviderSearchLimit = 4
@@ -41,29 +58,42 @@ func (b VidRushBackpressure) resolved() VidRushBackpressure {
 	return b
 }
 
-// DefaultVidRushBackpressure returns the canonical stage limits: extraction is
-// single-slot (local Ollama), provider search is bounded at 4, and
+// DefaultVidRushBackpressure returns the canonical stage limits: extraction
+// bounded at the certified NLP concurrency, provider search at 4, and
 // materialization at 2.
 func DefaultVidRushBackpressure() VidRushBackpressure {
 	return VidRushBackpressure{}.resolved()
 }
 
-// GenerationGate is a single-slot priority gate shared by scene generation
-// (high priority) and VidRush entity extraction (low priority) when both use
-// the same single-slot local Ollama model. A high-priority acquisition jumps
-// the queue ahead of waiting low-priority acquisitions, so text generation is
-// never starved by concurrent entity extraction; extraction fills the gaps
-// between generation calls instead of competing with them.
+// GenerationGate is a capacity-bounded priority gate shared by scene
+// generation (high priority) and VidRush entity extraction (low priority)
+// when both use the same local Ollama model. A high-priority acquisition
+// jumps the queue ahead of waiting low-priority acquisitions, so text
+// generation is never starved by concurrent entity extraction; extraction
+// fills the remaining slots between generation calls instead of competing
+// with them. The default capacity is 1 (single-slot model); a capacity of N
+// admits N concurrent holders.
 type GenerationGate struct {
 	mu       sync.Mutex
-	held     bool
+	capacity int
+	held     int
 	highWait []chan struct{}
 	lowWait  []chan struct{}
 }
 
-// NewGenerationGate constructs an empty (unheld) priority gate.
+// NewGenerationGate constructs an empty single-slot priority gate. Use
+// NewGenerationGateWithCapacity for a bounded pool larger than one.
 func NewGenerationGate() *GenerationGate {
-	return &GenerationGate{}
+	return NewGenerationGateWithCapacity(1)
+}
+
+// NewGenerationGateWithCapacity constructs an empty priority gate with the
+// given number of slots. Values <= 0 fall back to a single slot.
+func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
+	if capacity <= 0 {
+		capacity = 1
+	}
+	return &GenerationGate{capacity: capacity}
 }
 
 // AcquireHigh blocks until the slot is available, with priority over any
@@ -80,9 +110,10 @@ func (g *GenerationGate) AcquireLow(ctx context.Context) error {
 	return g.acquire(ctx, false)
 }
 
-// Release returns the slot to the pool. The slot is granted to the next
+// Release returns one slot to the pool. The slot is granted to the next
 // high-priority waiter if any, otherwise the next low-priority waiter;
-// otherwise the gate becomes unheld. Release on an unheld gate is a no-op.
+// otherwise the held count is decremented. Release when no slot is held and
+// no waiter is queued is a no-op.
 func (g *GenerationGate) Release() {
 	if g == nil {
 		return
@@ -98,10 +129,13 @@ func (g *GenerationGate) Release() {
 		next = g.lowWait[0]
 		g.lowWait = g.lowWait[1:]
 	default:
-		g.held = false
+		if g.held > 0 {
+			g.held--
+		}
 		return
 	}
-	// Hand the slot to the selected waiter; it becomes the new holder.
+	// Hand the released slot directly to the selected waiter; held is
+	// unchanged because the slot is transferred, not freed.
 	close(next)
 }
 
@@ -110,8 +144,8 @@ func (g *GenerationGate) acquire(ctx context.Context, high bool) error {
 		return nil
 	}
 	g.mu.Lock()
-	if !g.held {
-		g.held = true
+	if g.held < g.capacity {
+		g.held++
 		g.mu.Unlock()
 		return nil
 	}

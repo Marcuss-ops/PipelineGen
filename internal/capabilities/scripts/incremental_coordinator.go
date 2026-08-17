@@ -14,6 +14,7 @@ import (
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // VidRushBarrier is the run-scoped final barrier for incremental VidRush
@@ -121,9 +122,10 @@ func (c *VidRushIncrementalCoordinator) SetSegmentMaterializer(materializer Segm
 	}
 }
 
-// SetGenerationGate wires the single-slot priority gate shared with scene
-// generation. Entity extraction acquires it with low priority, so generation
-// can preempt extraction when both use the same local Ollama model.
+// SetGenerationGate wires the capacity-bounded priority gate shared with
+// scene generation. Entity extraction acquires it with low priority, so
+// generation can preempt extraction when both use the same local Ollama
+// model.
 func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) {
 	if c != nil {
 		c.gate = gate
@@ -281,7 +283,23 @@ func (c *VidRushIncrementalCoordinator) enrichSegment(ctx context.Context, scene
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	defer c.release(c.extractSem)
-	return c.enricher.Enrich(ctx, c.plan, scene)
+	// scene_analysis is the per-scene entity/phrase/word extraction
+	// boundary. Each enrichment is recorded as an nlp.extract operation on
+	// the canonical Run clock, so fan-out reports expose calls / accumulated
+	// work / max call separate from the run wall time.
+	var out scriptpkg.VidRushSegmentResult
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     StageSceneAnalysis,
+		Component: kernobs.ComponentNLP,
+		Operation: kernobs.OperationExtract,
+	}, func(opCtx context.Context) error {
+		var enrichErr error
+		out, enrichErr = c.enricher.Enrich(opCtx, c.plan, scene)
+		return enrichErr
+	}); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	return out, nil
 }
 
 // searchProviders runs the provider fan-out stage under its own bounded

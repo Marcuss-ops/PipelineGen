@@ -175,6 +175,121 @@ func TestEditingTimeline_AudioSHA256MatchesFinalAudio(t *testing.T) {
 	}
 }
 
+func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
+		},
+		FinalAudio: &FinalAudioReference{
+			AssetID:          "final-audio-001",
+			FinalAudioSHA256: "abc123",
+			DurationUS:       15000000,
+			DurationMS:       15000,
+		},
+		OverlayPlan: &capabilityoverlay.OverlayPlan{
+			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+			PlanID:        "test-plan",
+			VideoID:       "test-video",
+			Width:         1920,
+			Height:        1080,
+			FPS:           30,
+			MediaContract: "overlay-v1",
+			Items: []capabilityoverlay.OverlayItem{
+				{
+					ID:         "overlay-scene-01-tom-hanks",
+					SceneID:    "scene-01",
+					Kind:       "entity_card",
+					TemplateID: "person_default",
+					Text:       "Tom Hanks",
+					StartMs:    3240,
+					EndMs:      5100,
+				},
+			},
+		},
+		OverlayRender: &RenderReference{
+			JobID:  "test-plan",
+			Status: "COMPLETED",
+			Artifact: &RenderArtifact{
+				SHA256:      "overlay-sha256",
+				DriveLink:   "https://drive.google.com/file/d/overlay",
+				DriveFileID: "drive-overlay-1",
+			},
+		},
+	}
+	et, err := BuildEditingTimeline(result)
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline failed: %v", err)
+	}
+	if len(et.Overlays) != 1 {
+		t.Fatalf("expected 1 overlay, got %d", len(et.Overlays))
+	}
+	ov := et.Overlays[0]
+	if ov.SHA256 != "overlay-sha256" {
+		t.Errorf("overlay sha256 = %q, want overlay-sha256", ov.SHA256)
+	}
+	if ov.DriveLink != "https://drive.google.com/file/d/overlay" {
+		t.Errorf("overlay drive_link = %q, want drive link", ov.DriveLink)
+	}
+	if ov.MediaContract != "overlay-v1" {
+		t.Errorf("overlay media_contract = %q, want overlay-v1", ov.MediaContract)
+	}
+}
+
+func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
+		},
+		FinalAudio: &FinalAudioReference{
+			AssetID:          "final-audio-001",
+			FinalAudioSHA256: "abc123",
+			DurationUS:       15000000,
+			DurationMS:       15000,
+		},
+		OverlayPlan: &capabilityoverlay.OverlayPlan{
+			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+			PlanID:        "test-plan",
+			VideoID:       "test-video",
+			Width:         1920,
+			Height:        1080,
+			FPS:           30,
+			Items: []capabilityoverlay.OverlayItem{
+				{
+					ID:         "overlay-scene-01-tom-hanks",
+					SceneID:    "scene-01",
+					Kind:       "entity_card",
+					TemplateID: "person_default",
+					Text:       "Tom Hanks",
+					StartMs:    3240,
+					EndMs:      5100,
+				},
+			},
+		},
+	}
+	et, err := BuildEditingTimeline(result)
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline failed: %v", err)
+	}
+	if len(et.Overlays) != 1 {
+		t.Fatalf("expected 1 overlay, got %d", len(et.Overlays))
+	}
+	ov := et.Overlays[0]
+	if ov.SHA256 != "" {
+		t.Errorf("overlay sha256 = %q, want empty when render absent", ov.SHA256)
+	}
+	if ov.DriveLink != "" {
+		t.Errorf("overlay drive_link = %q, want empty when render absent", ov.DriveLink)
+	}
+}
+
 func TestEditingTimeline_NilResultReturnsNil(t *testing.T) {
 	et, err := BuildEditingTimeline(nil)
 	if err != nil {

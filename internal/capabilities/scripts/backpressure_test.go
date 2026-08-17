@@ -19,14 +19,19 @@ import (
 
 func TestVidRushBackpressure_Defaults(t *testing.T) {
 	bp := DefaultVidRushBackpressure()
-	assert.Equal(t, 1, bp.ExtractionLimit, "extraction is single-slot by default (local Ollama)")
+	assert.Equal(t, DefaultNLPConcurrency, bp.ExtractionLimit, "extraction defaults to the certified NLP concurrency")
 	assert.Equal(t, 4, bp.ProviderSearchLimit)
 	assert.Equal(t, 2, bp.MaterializationLimit)
 
 	resolved := (VidRushBackpressure{}).resolved()
-	assert.Equal(t, 1, resolved.ExtractionLimit)
+	assert.Equal(t, DefaultNLPConcurrency, resolved.ExtractionLimit)
 	assert.Equal(t, 4, resolved.ProviderSearchLimit)
 	assert.Equal(t, 2, resolved.MaterializationLimit)
+}
+
+func TestDefaultConcurrency_IsFour(t *testing.T) {
+	assert.Equal(t, 4, DefaultNLPConcurrency, "certified NLP concurrency must be 4")
+	assert.Equal(t, 4, DefaultTTSConcurrency, "certified TTS concurrency must be 4")
 }
 
 func TestVidRushBackpressure_RespectsExplicitLimits(t *testing.T) {
@@ -123,6 +128,48 @@ func TestGenerationGate_FIFOWithinSamePriority(t *testing.T) {
 	}
 	require.NoError(t, gate.AcquireHigh(context.Background()))
 	gate.Release()
+}
+
+func TestGenerationGate_CapacityAllowsNConcurrentHolders(t *testing.T) {
+	gate := NewGenerationGateWithCapacity(2)
+
+	require.NoError(t, gate.AcquireLow(context.Background()))
+	require.NoError(t, gate.AcquireLow(context.Background()))
+
+	thirdAcquired := make(chan struct{})
+	go func() {
+		if err := gate.AcquireLow(context.Background()); err != nil {
+			return
+		}
+		close(thirdAcquired)
+		gate.Release()
+	}()
+
+	// The third acquisition must block while both slots are held.
+	select {
+	case <-thirdAcquired:
+		t.Fatal("third acquisition acquired while both slots were held")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Release one holder; the queued waiter acquires the freed slot.
+	gate.Release()
+	select {
+	case <-thirdAcquired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("third acquisition did not acquire after a release")
+	}
+
+	// Release the remaining holders.
+	gate.Release()
+	gate.Release()
+}
+
+func TestGenerationGate_ZeroCapacityFallsBackToSingle(t *testing.T) {
+	gate := NewGenerationGateWithCapacity(0)
+	if gate.capacity != 1 {
+		t.Fatalf("capacity = %d, want 1 (zero falls back to single-slot)", gate.capacity)
+	}
 }
 
 func TestGenerationGate_AcquireCancelledWhileWaiting(t *testing.T) {

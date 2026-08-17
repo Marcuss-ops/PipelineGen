@@ -209,35 +209,13 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 	if len(scenes) == 0 || registry == nil {
 		return nil
 	}
+	resolver := NewTemplateResolver(registry)
 	var intents []OverlayIntent
 	for _, scene := range scenes {
 		for _, entity := range scene.Entities {
-			name := strings.TrimSpace(entity.Name)
-			etype := strings.TrimSpace(entity.Type)
-			if name == "" || etype == "" {
-				continue
+			if intent, ok := bindEntityIntent(scene, entity, resolver); ok {
+				intents = append(intents, intent)
 			}
-			kind := entityOverlayKindForIntent(etype)
-			entry, err := registry.Resolve(string(kind))
-			if err != nil {
-				continue // unknown kind → skip, never invent
-			}
-			intent := OverlayIntent{
-				Version:    OverlayIntentVersion,
-				IntentID:   intentID(scene.SceneID, name),
-				SceneID:    scene.SceneID,
-				SceneIndex: scene.SceneIndex,
-				Entity: EntityBinding{
-					Type:          etype,
-					CanonicalName: name,
-				},
-				Kind:        string(kind),
-				TemplateID:  entry.Template,
-				Payload:     IntentPayload{Name: name},
-				TimingState: TimingStatePending,
-				Source:      IntentSourceEntity,
-			}
-			intents = append(intents, intent)
 		}
 		entityNames := make(map[string]struct{}, len(scene.Entities))
 		for _, entity := range scene.Entities {
@@ -293,12 +271,18 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 	return intents
 }
 
-// entityOverlayKindForIntent maps an NLP entity type to the canonical
-// overlay kind. This is the same mapping used by the entity overlay
-// resolver (entities/overlay_resolver.go) — the single owner of this
-// decision. Kept here as a pure function to avoid importing the entities
-// package.
-func entityOverlayKindForIntent(entityType string) OverlayKind {
+// EntityTypeToKind is the SINGLE canonical owner of the NLP entity-type →
+// overlay-kind translation. Every planner, the entity overlay resolver and
+// the overlay-plan compiler map an entity's NLP type through this one
+// function instead of scattering switch statements (switch PERSON, switch
+// ORG, …) across packages. The kind → template/renderer mapping is owned by
+// ChrononOverlayRegistry; this is only the type-vocabulary bridge.
+//
+//	PERSON → entity_card, ORG/ORGANIZATION → organization,
+//	GPE/PLACE/LOCATION/CITY/COUNTRY → location,
+//	NUMBER/NUM/CARDINAL/ORDINAL/MONEY/PERCENT → number,
+//	QUOTE → quote, PRODUCT → product, LOGO → logo, everything else → concept.
+func EntityTypeToKind(entityType string) OverlayKind {
 	switch strings.ToUpper(strings.TrimSpace(entityType)) {
 	case "PERSON":
 		return KindEntityCard
@@ -306,7 +290,7 @@ func entityOverlayKindForIntent(entityType string) OverlayKind {
 		return KindOrganization
 	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
 		return KindLocation
-	case "NUMBER", "NUM":
+	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
 		return KindNumber
 	case "QUOTE":
 		return KindQuote
@@ -317,6 +301,113 @@ func entityOverlayKindForIntent(entityType string) OverlayKind {
 	default:
 		return KindConcept
 	}
+}
+
+// TemplateResolver resolves an entity's NLP type to its canonical
+// template_id through the single entity-type → kind → template chain
+// (EntityTypeToKind + ChrononOverlayRegistry). It is the deterministic
+// surface the EntityOverlayPlanner uses, so the template_id bound to an
+// OverlayIntent is always the registry's canonical template — never a
+// hard-coded switch.
+type TemplateResolver struct {
+	registry *ChrononOverlayRegistry
+}
+
+// NewTemplateResolver builds a resolver over the given registry; nil falls
+// back to the process-wide DefaultChrononOverlayRegistry.
+func NewTemplateResolver(registry *ChrononOverlayRegistry) *TemplateResolver {
+	if registry == nil {
+		registry = DefaultChrononOverlayRegistry
+	}
+	return &TemplateResolver{registry: registry}
+}
+
+// Resolve maps an entity type to its canonical template_id.
+func (t *TemplateResolver) Resolve(entityType string) (string, error) {
+	e, err := t.ResolveEntry(entityType)
+	if err != nil {
+		return "", err
+	}
+	return e.Template, nil
+}
+
+// ResolveEntry maps an entity type to its full canonical overlay entry
+// (template + renderer + policies) through EntityTypeToKind + the registry.
+func (t *TemplateResolver) ResolveEntry(entityType string) (OverlayEntry, error) {
+	if t == nil || t.registry == nil {
+		return OverlayEntry{}, fmt.Errorf("template resolver: %w: %q", ErrUnknownOverlayKind, entityType)
+	}
+	kind := EntityTypeToKind(entityType)
+	return t.registry.Resolve(string(kind))
+}
+
+// EntityOverlayPlanner is the deterministic pre-timing binding of per-scene
+// entities to their resolved templates. It owns OverlayIntent creation;
+// Chronon owns the pixels; timing owns the when. The template_id is always
+// resolved through the TemplateResolver (single registry owner) so the same
+// entity type always binds to the same template — never duplicated switches.
+type EntityOverlayPlanner struct {
+	resolver *TemplateResolver
+}
+
+// NewEntityOverlayPlanner builds a planner over the given resolver; nil
+// falls back to the default registry.
+func NewEntityOverlayPlanner(resolver *TemplateResolver) *EntityOverlayPlanner {
+	if resolver == nil {
+		resolver = NewTemplateResolver(nil)
+	}
+	return &EntityOverlayPlanner{resolver: resolver}
+}
+
+// Plan creates the PENDING entity OverlayIntents for the given scenes. It
+// is deterministic: same input → same intents in the same order. An entity
+// whose kind cannot be resolved is skipped (never invented). Timing is
+// absent (PENDING) because no timing is available at this point; the caller
+// promotes timing after the CanonicalTimeline is frozen.
+func (p *EntityOverlayPlanner) Plan(scenes []SceneEntityInput) []OverlayIntent {
+	if len(scenes) == 0 || p == nil || p.resolver == nil {
+		return nil
+	}
+	var intents []OverlayIntent
+	for _, scene := range scenes {
+		for _, entity := range scene.Entities {
+			if intent, ok := bindEntityIntent(scene, entity, p.resolver); ok {
+				intents = append(intents, intent)
+			}
+		}
+	}
+	return intents
+}
+
+// bindEntityIntent resolves one entity occurrence to its canonical template
+// and builds the PENDING OverlayIntent. ok=false when the entity name/type
+// is empty or its kind cannot be resolved — an overlay is never invented.
+func bindEntityIntent(scene SceneEntityInput, entity EntityOverlayInput, resolver *TemplateResolver) (OverlayIntent, bool) {
+	name := strings.TrimSpace(entity.Name)
+	etype := strings.TrimSpace(entity.Type)
+	if name == "" || etype == "" || resolver == nil {
+		return OverlayIntent{}, false
+	}
+	kind := EntityTypeToKind(etype)
+	entry, err := resolver.ResolveEntry(etype)
+	if err != nil {
+		return OverlayIntent{}, false // unknown kind → skip, never invent
+	}
+	return OverlayIntent{
+		Version:    OverlayIntentVersion,
+		IntentID:   intentID(scene.SceneID, name),
+		SceneID:    scene.SceneID,
+		SceneIndex: scene.SceneIndex,
+		Entity: EntityBinding{
+			Type:          etype,
+			CanonicalName: name,
+		},
+		Kind:        string(kind),
+		TemplateID:  entry.Template,
+		Payload:     IntentPayload{Name: name},
+		TimingState: TimingStatePending,
+		Source:      IntentSourceEntity,
+	}, true
 }
 
 // intentID derives the deterministic, collision-free intent id for one

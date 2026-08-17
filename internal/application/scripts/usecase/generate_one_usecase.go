@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
@@ -157,7 +158,7 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 	// audio.pipeline STAGE and shares the canonical Run clock.
 	var asset capabilityaudio.FinalAudioAsset
 	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage:     stageAudioPipeline,
+		Stage:     scriptgen.StageAudioPipeline,
 		Component: kernobs.ComponentName("rust"),
 		Operation: kernobs.OperationName("audio_render"),
 	}, func(opCtx context.Context) error {
@@ -245,7 +246,7 @@ func (uc *GenerateOneUseCase) Execute(
 	// ── Phases 1-4: Prepare ─────────────────────────────────────────
 	var prepared *PreparedGeneration
 	var prepareReports PrepareStageReports
-	_, err := kernobs.MeasureStageReport(ctx, stageScriptPrepare, func(stageCtx context.Context) error {
+	_, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptPrepare, func(stageCtx context.Context) error {
 		var prepareErr error
 		prepared, prepareReports, prepareErr = uc.preparer.Prepare(stageCtx, item, preset, tracker)
 		return prepareErr
@@ -258,8 +259,8 @@ func (uc *GenerateOneUseCase) Execute(
 	resolved := prepared.ResolvedSource
 	// Legacy response fields are projections only, derived from the canonical
 	// substage reports via CanonicalTimingAdapter.
-	timingAdapter.ProjectGenerationTimings(&timings, string(stageSourceResolve), prepareReports.Resolve)
-	timingAdapter.ProjectGenerationTimings(&timings, string(stageScriptPlan), prepareReports.Plan)
+	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageSourceResolve), prepareReports.Resolve)
+	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageScriptPlan), prepareReports.Plan)
 
 	// ── Phase 5: Generate script ────────────────────────────────────
 	draft, err := uc.engineRunner.Generate(ctx, item, plan, tracker)
@@ -267,14 +268,14 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, err, tracker)
 	}
 	engineResult := draft.EngineResult
-	timingAdapter.ProjectGenerationTimings(&timings, string(stageScriptEngine), draft.EngineReport)
+	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageScriptEngine), draft.EngineReport)
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	// script.postprocess is the parent STAGE; the per-processor stages
 	// (entities, persistence, document, ...) are already recorded inside
 	// the registry on the same canonical clock.
 	var processed *ProcessedGeneration
-	if _, err = kernobs.MeasureStageReport(ctx, stageScriptPostprocess, func(stageCtx context.Context) error {
+	if _, err = kernobs.MeasureStageReport(ctx, scriptgen.StageScriptPostprocess, func(stageCtx context.Context) error {
 		var ppErr error
 		processed, ppErr = uc.postprocessor.Process(stageCtx, item, plan, engineResult, tracker)
 		return ppErr
@@ -318,7 +319,7 @@ func (uc *GenerateOneUseCase) Execute(
 		// audio.pipeline is a STAGE boundary; the canonical Run clock is the
 		// only wall-time source (the legacy AudioPipelineTotalMs field remains
 		// a compatibility projection populated by renderCombinedAudio).
-		if _, audioErr := kernobs.MeasureStageReport(ctx, stageAudioPipeline, func(stageCtx context.Context) error {
+		if _, audioErr := kernobs.MeasureStageReport(ctx, scriptgen.StageAudioPipeline, func(stageCtx context.Context) error {
 			return uc.renderCombinedAudio(stageCtx, item, result, processed.PostResult)
 		}); audioErr != nil {
 			return nil, uc.logPhaseError(item, "combined_audio", scriptpkg.ErrGenerationFailed, audioErr, tracker)
