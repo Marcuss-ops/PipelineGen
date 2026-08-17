@@ -197,7 +197,14 @@ func normalizePhraseToken(token string) string {
 		b.WriteRune(r)
 	}
 	token = b.String()
-	return strings.TrimFunc(token, func(r rune) bool {
+	token = strings.TrimFunc(token, func(r rune) bool {
 		return r != '\'' && unicode.IsPunct(r)
 	})
+	// Possessive suffix: a TRAILING apostrophe is grammar ("States'"), not part
+	// of the token, so strip it — this lets the entity "United States" anchor
+	// to a spoken "United States'" without inventing a timestamp. Internal
+	// apostrophes (contractions like "l'Italia" / "don't") are untouched by
+	// the edge trim above and stay intact. All typographic apostrophes were
+	// already folded to ASCII ' by the loop above, so trimming "'" suffices.
+	return strings.TrimRight(token, "'")
 }

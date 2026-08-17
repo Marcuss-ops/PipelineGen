@@ -142,6 +142,41 @@ func TestPhraseLocator_ItalianApostrophes(t *testing.T) {
 	require.Equal(t, 2, results[0].WordStart)
 }
 
+// TestPhraseLocator_PossessiveTrailingApostrophe pins the possessive case: a
+// trailing apostrophe is grammar, not part of the token, so the entity
+// "United States" anchors to a spoken "United States'" (the NASA source's
+// possessive form). Internal contractions ("l'Italia", "don't") keep their
+// apostrophe and still match exactly.
+func TestPhraseLocator_PossessiveTrailingApostrophe(t *testing.T) {
+	timing := SpeechTimingArtifact{
+		Version:      SpeechTimingVersion,
+		BoundaryMode: BoundaryWord,
+		TextSHA256:   "text-hash",
+		AudioSHA256:  "audio-hash",
+		DurationUS:   300_000,
+		Words: []SpeechWordTiming{
+			{Index: 0, Text: "The", StartUS: 0, EndUS: 100_000},
+			{Index: 1, Text: "United", StartUS: 100_000, EndUS: 200_000},
+			{Index: 2, Text: "States'", StartUS: 200_000, EndUS: 300_000},
+		},
+	}
+	results, err := LocatePhrase(timing, "United States")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, 1, results[0].WordStart)
+	require.Equal(t, 2, results[0].WordEnd)
+	require.Equal(t, int64(100_000), results[0].StartUS)
+	require.Equal(t, int64(300_000), results[0].EndUS)
+
+	// Typographic trailing apostrophe folds to ASCII before the possessive
+	// trim, so it anchors too.
+	timing.Words[2].Text = "States’"
+	results, err = LocatePhrase(timing, "United States")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, 2, results[0].WordEnd)
+}
+
 func TestPhraseLocator_AccentedText(t *testing.T) {
 	// NFC precomposed "cambiò" in the artifact; NFD decomposed query.
 	results, err := LocatePhrase(phraseLocatorArtifact(), "cambio\u0300")
