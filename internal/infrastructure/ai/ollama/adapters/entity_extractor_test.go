@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestParseTypedEntity(t *testing.T) {
@@ -36,6 +37,38 @@ func TestIsContainedEntityFragment_SuppressesModelTokenFragments(t *testing.T) {
 	}
 	if isContainedEntityFragment("NASA", canonical) {
 		t.Fatal("unrelated entity NASA was suppressed")
+	}
+}
+
+// TestEntityResultFromAnalysis_ConsolidatesEntitiesPhrasesWordsFromSingleResult
+// certifies the SceneAnalysis single-pass boundary: one LLM response (one
+// asset.EntityExtractionResult) carries named entities, important phrases, and
+// important words together, and the adapter projects all three categories from
+// that single result — never via three independent extraction requests.
+func TestEntityResultFromAnalysis_ConsolidatesEntitiesPhrasesWordsFromSingleResult(t *testing.T) {
+	analysis := &asset.EntityExtractionResult{
+		FrasiImportanti:  []string{"the Apollo program"},
+		ParoleImportanti: []string{"solar wind", "samples"},
+		NomiSpeciali:     []string{"PERSON: Ada Lovelace", "PLACE: London"},
+		EntitaSenzaTesto: map[string]string{"rocket": "launch pad"},
+		ArtlistPhrases:   []string{"rocket launch"},
+	}
+	got := entityResultFromAnalysis(analysis)
+
+	if len(got.Persons) != 1 || got.Persons[0].Value != "Ada Lovelace" {
+		t.Fatalf("persons = %+v, want Ada Lovelace from the single result", got.Persons)
+	}
+	if len(got.Places) != 1 || got.Places[0].Value != "London" || got.Places[0].Type != "PLACE" {
+		t.Fatalf("places = %+v, want PLACE London from the single result", got.Places)
+	}
+	if len(got.ImportantPhrases) != 1 || got.ImportantPhrases[0] != "the Apollo program" {
+		t.Fatalf("important phrases = %+v, want phrase from the single result", got.ImportantPhrases)
+	}
+	if len(got.ImportantWords) != 2 {
+		t.Fatalf("important words = %+v, want both words from the single result", got.ImportantWords)
+	}
+	if len(got.Concepts) != 1 || got.Concepts[0].Value != "rocket" || got.Concepts[0].Type != "VISUAL_SUBJECT" {
+		t.Fatalf("concepts = %+v, want visual subject from the single result", got.Concepts)
 	}
 }
 

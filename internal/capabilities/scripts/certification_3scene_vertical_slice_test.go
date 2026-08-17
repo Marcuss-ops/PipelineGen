@@ -272,10 +272,11 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	// Every overlay span is projected from the canonical entity timeline
 	// (microsecond word boundaries), never a second independent calculation.
 	require.NotNil(t, res.EntityTimeline, "entity timeline must be projected for timing grounding")
-	occByEntity := map[string]struct{ startUS, endUS int64 }{}
+	type occKey struct{ scene, name string }
+	canonicalOcc := map[occKey]struct{ startUS, endUS int64 }{}
 	for _, scene := range res.EntityTimeline.Scenes {
 		for _, occ := range scene.Entities {
-			occByEntity[occ.EntityID] = struct{ startUS, endUS int64 }{occ.AudioStartUS, occ.AudioEndUS}
+			canonicalOcc[occKey{scene.SceneID, occ.Name}] = struct{ startUS, endUS int64 }{occ.AudioStartUS, occ.AudioEndUS}
 		}
 	}
 	for _, ov := range et.Overlays {
@@ -285,18 +286,12 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 		require.Equal(t, "overlay-sha256-certified", ov.SHA256, "overlay span must carry the certified artifact SHA")
 		require.Equal(t, "https://drive.google.com/file/d/drive-overlay-001/view", ov.DriveLink, "overlay span must carry the Drive link")
 		require.Equal(t, capabilityoverlay.DefaultOverlayContractV1.ID, ov.MediaContract, "overlay span must carry the media contract")
-	}
-	// Entity-card overlays must match the canonical entity occurrence timing
-	// exactly (zero timing mismatch against the EntityTimeline SSOT).
-	for _, ov := range et.Overlays {
-		for _, scene := range res.EntityTimeline.Scenes {
-			for _, occ := range scene.Entities {
-				if occ.EntityID == ov.ArtifactID || occ.EntityID+"-card" == ov.ArtifactID {
-					require.Equal(t, occ.AudioStartUS, ov.StartUS, "overlay %q start must match canonical entity timing", ov.ArtifactID)
-					require.Equal(t, occ.AudioEndUS, ov.EndUS, "overlay %q end must match canonical entity timing", ov.ArtifactID)
-				}
-			}
-		}
+		// Zero timing mismatch: the overlay span's start/end must equal the
+		// canonical entity occurrence timing from the EntityTimeline SSOT.
+		occ, ok := canonicalOcc[occKey{ov.SceneID, ov.Entity}]
+		require.True(t, ok, "overlay %q entity %q must map to a canonical occurrence", ov.ArtifactID, ov.Entity)
+		require.Equal(t, occ.startUS, ov.StartUS, "overlay %q start must match canonical entity timing", ov.ArtifactID)
+		require.Equal(t, occ.endUS, ov.EndUS, "overlay %q end must match canonical entity timing", ov.ArtifactID)
 	}
 
 	// Scenes are contiguous and cover the canonical timeline exactly.
