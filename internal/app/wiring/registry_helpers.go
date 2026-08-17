@@ -1,9 +1,8 @@
 // Package app — helper functions extracted from registry.go.
 //
 // Per AGENTS.md Pattern 5 (June 2026): one concept per file. This file holds
-// standalone helpers used by WireRegistry: asset service initialisation,
-// media processor construction, sync target building, and Drive folder
-// definition.
+// standalone helpers used by WireRegistry: media processor construction,
+// sync target building, and Drive folder definition.
 //
 // Wave A Item 15 (June 2026): ensureStyleDriveFolders + style-folder
 // pre-creation REMOVED — the canonical StyleRegistry already serves
@@ -15,17 +14,14 @@
 package wiring
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
@@ -35,19 +31,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-// ── Asset service initialisation ────────────────────────────────────────────
-
-func initAssetServices(dbs *Databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
-	assetIndexRepo := assetindex.NewRepository(dbs.DualPool.Writer)
-	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.DualPool.Writer, log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
-	}
-	assetTreeService := assettree.NewService(assetTreeRepo, log)
-	return assetIndexService, assetTreeService, nil
-}
 
 // ── Drive destinations ──────────────────────────────────────────────────────
 
