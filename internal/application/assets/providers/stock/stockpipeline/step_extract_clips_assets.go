@@ -121,8 +121,3 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 
 	return a
 }
-
-// composeStockChunkSearchText builds searchable text for a stock clip chunk.
-func composeStockChunkSearchText(plan ClipPlan) string {
-	return plan.Title + " " + plan.Description + " " + plan.Category + " " + plan.SourceID
-}

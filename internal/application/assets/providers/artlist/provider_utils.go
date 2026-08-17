@@ -3,7 +3,6 @@ package artlist
 import (
 	"context"
 	"errors"
-	"strings"
 )
 
 // SearcherFallbackChain chains multiple Searcher implementations and tries them
@@ -60,32 +59,4 @@ func getIntFromResult(m map[string]any, key string) int {
 	default:
 		return 0
 	}
-}
-
-// bestPexelsVideoURL selects the best-quality video URL from Pexels video files.
-func bestPexelsVideoURL(files []struct {
-	ID       int     `json:"id"`
-	Quality  string  `json:"quality"`
-	FileType string  `json:"file_type"`
-	Width    int     `json:"width"`
-	Height   int     `json:"height"`
-	FPS      float64 `json:"fps"`
-	Link     string  `json:"link"`
-}) string {
-	var bestURL string
-	bestScore := -1
-	for _, f := range files {
-		if strings.TrimSpace(f.Link) == "" {
-			continue
-		}
-		score := f.Width * f.Height
-		if strings.EqualFold(f.Quality, "hd") {
-			score += 1_000_000
-		}
-		if score > bestScore {
-			bestScore = score
-			bestURL = f.Link
-		}
-	}
-	return bestURL
 }

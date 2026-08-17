@@ -21,7 +21,6 @@ package mediamemory
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"sort"
@@ -490,9 +489,3 @@ func sortLayersByCanonicalSlot(layers []Layer, order []SlotKind) []Layer {
 	})
 	return layers
 }
-
-// errInternalGenerator is the canonical sentinel for a
-// programming error inside the generator. godlike/07
-// NO-FAKE-AVAILABILITY: never surfaced to the wire — the
-// generator returns it wrapped via ErrSemanticNotConfigured.
-var errInternalGenerator = errors.New("mediamemory: scene_visual_plan_generator: internal invariant broken")

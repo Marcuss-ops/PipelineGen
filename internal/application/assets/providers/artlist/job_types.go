@@ -274,13 +274,6 @@ func toDomain(m *asset.Asset) *asset.Asset {
 	return m
 }
 
-// toDomainSlice converts a slice of asset.Asset to asset.Asset (passthrough).
-func toDomainSlice(items []asset.Asset) []asset.Asset {
-	out := make([]asset.Asset, len(items))
-	copy(out, items)
-	return out
-}
-
 // toDomainPtrSlice converts a slice of *asset.Asset to *asset.Asset (passthrough).
 func toDomainPtrSlice(items []*asset.Asset) []*asset.Asset {
 	out := make([]*asset.Asset, len(items))

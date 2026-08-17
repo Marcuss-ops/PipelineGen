@@ -2,8 +2,6 @@ package images
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -22,12 +20,6 @@ func decodeImageDimensions(data []byte) (int, int) {
 		return 0, 0
 	}
 	return cfg.Width, cfg.Height
-}
-
-// sha256Hash computes a short SHA-256 hash for idempotency keys.
-func sha256Hash(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return fmt.Sprintf("%x", h[:8])
 }
 
 // extractFilename extracts a filename from a URL with slug-based fallback.
@@ -57,31 +49,6 @@ func extractVQD(html string) string {
 		}
 	}
 	return ""
-}
-
-// pickBestImage selects the largest image from DuckDuckGo results.
-func pickBestImage(results []ddgImageResult) string {
-	best := ""
-	bestScore := 0
-	for _, r := range results {
-		img := r.Image
-		if img == "" {
-			if r.Thumbnail != "" {
-				img = r.Thumbnail
-			} else {
-				continue
-			}
-		}
-		if !strings.HasPrefix(img, "http") {
-			continue
-		}
-		score := ddgImageScore(r)
-		if score > bestScore {
-			bestScore = score
-			best = img
-		}
-	}
-	return best
 }
 
 func uniqueAppend(slice []string, items ...string) []string {

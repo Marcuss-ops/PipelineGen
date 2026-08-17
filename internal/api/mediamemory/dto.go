@@ -137,20 +137,6 @@ type errorEnvelope struct {
 	Timestamp string `json:"timestamp"`
 }
 
-// bindingListResponse is the GET /bindings response shape.
-type bindingListResponse struct {
-	OK        bool         `json:"ok"`
-	Bindings  []bindingDTO `json:"bindings"`
-	Timestamp string       `json:"timestamp"`
-}
-
-// okEnvelope is the canonical 2xx success body for routes whose
-// response is solely time-stamped (no payload beyond a counter).
-type okEnvelope struct {
-	OK        bool   `json:"ok"`
-	Timestamp string `json:"timestamp"`
-}
-
 // ── Resolve (POST /api/media-memory/resolve) ──────────────────────
 
 // resolveCreateRequest is the POST /api/media-memory/resolve body.

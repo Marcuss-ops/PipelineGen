@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"net/url"
 	"strings"
 	"time"
@@ -176,24 +175,6 @@ type commonsMetadataValue struct {
 	Value json.RawMessage `json:"value"`
 }
 
-type commonsImageInfo struct {
-	URL         string                          `json:"url"`
-	ThumbURL    string                          `json:"thumburl"`
-	Width       int                             `json:"width"`
-	Height      int                             `json:"height"`
-	MIME        string                          `json:"mime"`
-	ExtMetadata map[string]commonsMetadataValue `json:"extmetadata"`
-}
-
-func firstCommonsMetadata(values map[string]commonsMetadataValue, keys ...string) string {
-	for _, key := range keys {
-		if value := commonsMetadataText(values[key].Value); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func commonsMetadataText(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -219,21 +200,4 @@ func commonsLicenseIsExplicit(license string) bool {
 		}
 	}
 	return false
-}
-
-func stripHTMLMetadata(value string) string {
-	value = html.UnescapeString(value)
-	for {
-		start := strings.IndexByte(value, '<')
-		if start < 0 {
-			break
-		}
-		end := strings.IndexByte(value[start:], '>')
-		if end < 0 {
-			value = value[:start]
-			break
-		}
-		value = value[:start] + value[start+end+1:]
-	}
-	return strings.TrimSpace(value)
 }

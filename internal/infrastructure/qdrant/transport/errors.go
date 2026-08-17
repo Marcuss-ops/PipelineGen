@@ -110,27 +110,6 @@ func classifyRetryability(status int) bool {
 // surprises and accidental PII capture.
 const maxAPIBodyBytes = 1024 * 1024 // 1 MiB (was 4 KiB; hybrid search payloads with full metadata exceed 4 KiB)
 
-// newAPIErrorFromResponse is the canonical constructor used by
-// Client.parseError. It centralises the body read + status classification.
-func newAPIErrorFromResponse(op string, resp *http.Response) error {
-	if resp == nil {
-		return &APIError{
-			Operation: op,
-			Status:    0,
-			Message:   "nil response",
-			Retryable: true,
-		}
-	}
-	body := readAPIBody(resp.Body)
-	return &APIError{
-		Operation: op,
-		Status:    resp.StatusCode,
-		Message:   body, // legacy behaviour: "HTTP %d: <body>"
-		Body:      body,
-		Retryable: classifyRetryability(resp.StatusCode),
-	}
-}
-
 func readAPIBody(r io.Reader) string {
 	if r == nil {
 		return ""

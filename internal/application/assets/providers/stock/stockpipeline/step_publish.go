@@ -158,8 +158,4 @@ func stockTimestampParentGroupName(in *RunInput) string {
 
 func perClipLeafName(plan ClipPlan) string { return stockpublish.PerClipLeafName(plan) }
 
-func timestampParentLeafName(plan ClipPlan) string {
-	return stockpublish.TimestampParentLeafName(plan)
-}
-
 func slugifyTitle(title string) string { return stockpublish.SlugifyTitle(title) }

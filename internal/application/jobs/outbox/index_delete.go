@@ -61,16 +61,6 @@ import (
 // belong here, NOT in handler-side transient error returns.
 var indexLifecycleTerminalErr = errors.New("index_delete: terminal envelope error")
 
-// assetErrTerminalEnvelope is a sub-sentinel used on Drive-block
-// guard rejections. The wrapped error message explicitly mentions
-// (a) the guard identifier ("drive_file_alive_block"), (b) the
-// Italian "ancora vivo" diagnostic hint per the user spec ("errore
-// chiaro" — file Drive ancora vivo blocks INDEX_DELETED), and
-// (c) the retry guidance ("re-enqueue only after DriveDeleteHandler
-// stamps DRIVE_DELETED"). Pinning all three in a sentinel-wrapped
-// error keeps the operator log greps + dashboards operational.
-var assetErrTerminalEnvelope = fmt.Errorf("%w: drive_file_alive_block guard", indexLifecycleTerminalErr)
-
 // DeleteRequestSchemaVersion is the canonical, EXACT string the handler
 // accepts. Producers MUST send "asset.index.delete_requested.v1"
 // literally. Mismatch is TERMINAL — no retry — so producers upgrade

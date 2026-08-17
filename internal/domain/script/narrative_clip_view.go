@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -240,14 +239,4 @@ func assertTagAllowed(tag string) error {
 		"%w: JSON field name %q not in allow-list %v",
 		ErrNarrativeClipViewRedactionLeak, tag,
 		AllowedNarrativeClipViewJSONFields)
-}
-
-// sortForAudit is a deterministic ordering helper for the
-// audit-stable serialization of the deny-list during fail-mode
-// diagnostics. Currently unused directly — kept as godlike/06
-// SSOT for future audit dumps.
-func sortForAudit(names []string) []string {
-	out := append([]string(nil), names...)
-	sort.Strings(out)
-	return out
 }

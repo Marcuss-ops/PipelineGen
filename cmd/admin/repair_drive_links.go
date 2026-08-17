@@ -17,7 +17,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"flag"
@@ -435,31 +434,4 @@ func runRepairDriveLinks(args []string) error {
 		log.Warn("repair completed with transport errors", zap.Int("count", report.TransportErrors))
 	}
 	return nil
-}
-
-// updateAssetDriveLink updates the drive_link in media_assets for a
-// single asset. Returns nil on success (including when the asset does
-// not exist — that's handled by the ORPHAN state elsewhere).
-func updateAssetDriveLink(ctx context.Context, db *sql.DB, assetID, newLink string) error {
-	aid := strings.TrimSpace(assetID)
-	if aid == "" || strings.HasPrefix(aid, "voiceover:") {
-		return nil // voiceover links have no SQLite asset row.
-	}
-	_, err := db.ExecContext(ctx, "UPDATE media_assets SET drive_link = ? WHERE id = ? AND drive_link != ?",
-		newLink, aid, newLink)
-	return err
-}
-
-// clearAssetDriveLink clears the drive_link and drive_file_id in
-// media_assets for a single asset. Both fields are cleared together
-// to avoid inconsistent rows where drive_file_id points to a
-// non-existent file.
-func clearAssetDriveLink(ctx context.Context, db *sql.DB, assetID string) error {
-	aid := strings.TrimSpace(assetID)
-	if aid == "" || strings.HasPrefix(aid, "voiceover:") {
-		return nil
-	}
-	_, err := db.ExecContext(ctx, "UPDATE media_assets SET drive_link = '', drive_file_id = '' WHERE id = ? AND (drive_link != '' OR drive_file_id != '')",
-		aid)
-	return err
 }

@@ -110,4 +110,3 @@ func cuesWithText(timing []asset.TimedCue, text string) []asset.TimedCue {
 	}
 	return out
 }
-
