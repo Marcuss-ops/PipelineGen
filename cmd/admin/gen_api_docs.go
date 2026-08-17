@@ -32,6 +32,7 @@ func runGenAPIDocs(args []string) error {
 			VoiceoverEnabled:   true,
 			ImagesEnabled:      true,
 			ScriptClipsEnabled: true,
+			ClipRenderEnabled:  true,
 		},
 		Storage: config.StorageConfig{
 			DataDir: "/tmp/test-data",
@@ -155,6 +156,7 @@ var routeDescriptions = map[string]string{
 
 	// ── Clips ─────────────────────────────────────────────────
 	"POST /api/clips/process":    "Download and process clips",
+	"POST /api/clips/render":     "Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job)",
 	"GET /api/clips/info":        "Get YouTube video metadata",
 	"GET /api/clips/search":      "Search and rank YouTube videos by topic",
 	"GET /api/clips/diagnostics": "Clips diagnostics",

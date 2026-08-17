@@ -96,8 +96,13 @@ type WorkersConfig struct {
 
 // FeaturesConfig controls optional modules.
 type FeaturesConfig struct {
-	ArtlistEnabled       bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
-	YouTubeEnabled       bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
+	ArtlistEnabled bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
+	YouTubeEnabled bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
+	// ClipRenderEnabled gates POST /api/clips/render + the clip.render
+	// job binding (canonical VeloxEditing-compatible clip
+	// post-processing capability). Default false: operators opt in
+	// explicitly, mirroring the other feature flags.
+	ClipRenderEnabled    bool `yaml:"clip_render_enabled" env:"VELOX_FEATURE_CLIP_RENDER_ENABLED" default:"false"`
 	DriveEnabled         bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
 	ScriptClipsEnabled   bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
 	VoiceoverEnabled     bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`

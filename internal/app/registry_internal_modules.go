@@ -16,8 +16,10 @@ import (
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
@@ -168,6 +170,13 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// Fase 4.1: native Pexels image search provider. Registered
 	// alongside Artlist + YouTube so the canonical SearchFanOut
 	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut, idemHandler); err != nil {
+		return registryCrossStepState{}, err
+	}
+
+	// Clip render (canonical VeloxEditing-compatible clip
+	// post-processing): a NEW capability on the same Master queue —
+	// no second renderer, no second queue.
+	if err := registerClipRender(registry, log, cfg, root, idemHandler); err != nil {
 		return registryCrossStepState{}, err
 	}
 
@@ -324,6 +333,40 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 	log.Info("created YouTubeClip module via youtube.Build (Blocco C1-Step 4)")
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
+}
+
+func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
+	if !cfg.Features.ClipRenderEnabled {
+		log.Info("registerClipRender: ClipRender feature is disabled; skipping HTTP route registration + job binding")
+		return nil
+	}
+	if root.Jobs == nil || root.Jobs.Facade == nil {
+		return fmt.Errorf("registerClipRender: root.Jobs.Facade is required when ClipRenderEnabled=true (the POST /clips/render enqueue path needs the Master job service)")
+	}
+
+	descriptor, err := cliprender.Build(cliprender.Dependencies{
+		Jobs:        root.Jobs.Facade,
+		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
+		Idempotency: idempotencyHandler,
+		Logger:      log,
+		ModuleOpts:  nil,
+	})
+	if err != nil {
+		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
+	}
+
+	// Scaffold handler binding. The enqueue fail-closed gate rejects
+	// job types without a registered handler, so clip.render needs a
+	// binding before the canonical worker lands. The temporary
+	// NotImplementedHandler fails claimed jobs loudly with a typed
+	// sentinel — never a silent success. The follow-up step swaps this
+	// for the canonical render worker.
+	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(cliprender.NotImplementedHandler)); err != nil {
+		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
+	}
+
+	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing)")
+	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
 }
 
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {

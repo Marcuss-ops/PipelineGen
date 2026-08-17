@@ -228,6 +228,9 @@ routes:
       path: /api/clips/process
       source: cmd/admin/gen_api_docs.go
     - method: POST
+      path: /api/clips/render
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
       path: /api/clips/stock
       source: cmd/admin/gen_api_docs.go
     - method: POST
