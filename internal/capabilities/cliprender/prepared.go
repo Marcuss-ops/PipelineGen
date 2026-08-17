@@ -69,6 +69,10 @@ type TranscriptResult struct {
 	Reused            bool
 	SourceAudioSHA256 string
 	DurationMS        int64
+	Confidence        *float64
+	// StreamSourceType records the concrete generation source (whisper chain,
+	// streaming PCM bridge, ...) so persistence can tag the canonical track.
+	StreamSourceType string
 }
 
 // HasText reports whether the result carries usable transcript content.

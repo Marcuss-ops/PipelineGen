@@ -38,7 +38,7 @@ def _language() -> str:
     return os.environ.get("VELOX_WHISPER_LANGUAGE", "").strip()
 
 
-def _run_helper(local_path: str) -> dict:
+def _run_helper(local_path: str, pcm_stdin: bool = False) -> dict:
     helper = _helper_script_path()
     if not helper.is_file():
         return {"error": f"helper script not found: {helper}"}
@@ -46,16 +46,25 @@ def _run_helper(local_path: str) -> dict:
     cmd = [
         sys.executable,
         str(helper),
-        local_path,
         "--model",
         _model_name(),
         "--transcribe",
         "--json-only",
     ]
+    if pcm_stdin:
+        # Streaming PCM mode: the caller pipes raw s16le 16kHz mono PCM into
+        # this bridge's stdin; the helper feeds it to Whisper as a numpy
+        # array. No temp WAV is ever written (feature spec §4).
+        cmd.append("--pcm-stdin")
+    else:
+        cmd.append(local_path)
     language = _language()
     if language:
         cmd.extend(["--language", language])
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    pcm = sys.stdin.buffer.read() if pcm_stdin else None
+    proc = subprocess.run(cmd, capture_output=True, input=pcm)
+    proc.stdout = proc.stdout.decode("utf-8", errors="replace")
+    proc.stderr = proc.stderr.decode("utf-8", errors="replace")
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         stdout = (proc.stdout or "").strip()
@@ -91,8 +100,19 @@ def _run_helper(local_path: str) -> dict:
 
 
 def main() -> int:
+    pcm_stdin = "--pcm-stdin" in sys.argv[1:]
+    if pcm_stdin:
+        # Streaming PCM mode: no local path required — raw s16le 16kHz mono
+        # PCM is read from stdin (piped by the Go side from FFmpeg's decode).
+        result = _run_helper("", pcm_stdin=True)
+        if result.get("error"):
+            print(json.dumps(result), file=sys.stderr)
+            return 1
+        print(json.dumps(result))
+        return 0
+
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: whisper_transcriber.py <local_path>"}), file=sys.stderr)
+        print(json.dumps({"error": "usage: whisper_transcriber.py <local_path> | --pcm-stdin"}), file=sys.stderr)
         return 2
 
     local_path = sys.argv[1]
