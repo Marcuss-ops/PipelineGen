@@ -120,6 +120,12 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 	if vo == nil || clip == nil {
 		return nil
 	}
+	// The two track IDs are invariant across the entire duck zone. Hoist
+	// the lowercase conversions out of the nested clip×voiceover loop so
+	// the compiler does not re-allocate the same two strings for every
+	// overlapping pair (GC pressure on long ducked mixes).
+	clipTrackID := strings.ToLower(string(TrackClipAudio))
+	voTrackID := strings.ToLower(string(TrackVoiceover))
 	var out []AudioAutomation
 	for _, ce := range clip.Events {
 		clipEnd := ce.TimelineStartUS + ce.DurationUS
@@ -142,8 +148,8 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 				continue
 			}
 			out = append(out, AudioAutomation{
-				TargetTrackID:  strings.ToLower(string(TrackClipAudio)),
-				TriggerTrackID: strings.ToLower(string(TrackVoiceover)),
+				TargetTrackID:  clipTrackID,
+				TriggerTrackID: voTrackID,
 				StartUS:        start,
 				EndUS:          end,
 				GainDB:         DuckClipActiveGainDB,
