@@ -421,14 +421,6 @@ func CompileCanonicalTimeline(result GenerateResult) (audio.CanonicalTimeline, e
 	return compileResolvedSceneTimeline(resolved)
 }
 
-func compileSceneTimeline(result GenerateResult) (audio.CanonicalTimeline, error) {
-	resolved, err := resolvedScenesFor(result, "it", false)
-	if err != nil {
-		return audio.CanonicalTimeline{}, err
-	}
-	return compileResolvedSceneTimeline(resolved)
-}
-
 func resolvedScenesFor(result GenerateResult, language Language, clipBound bool) ([]ResolvedScene, error) {
 	if len(result.ResolvedScenes) > 0 {
 		return append([]ResolvedScene(nil), result.ResolvedScenes...), nil
