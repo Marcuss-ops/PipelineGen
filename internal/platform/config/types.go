@@ -119,10 +119,6 @@ type VoiceoverConcurrencyConfig struct {
 	// upload attempt (NOT the cumulative retry budget). Default: 300 (5 min).
 	DriveUploadTimeoutSec int `yaml:"drive_upload_timeout_sec" env:"VELOX_VOICEOVER_DRIVE_UPLOAD_TIMEOUT_SEC" default:"300"`
 
-	// OllamaTimeoutSec is the per-call timeout for Ollama translation calls
-	// from the voiceover pipeline. Default: 120 (2 min).
-	OllamaTimeoutSec int `yaml:"ollama_timeout_sec" env:"VELOX_VOICEOVER_OLLAMA_TIMEOUT_SEC" default:"120"`
-
 	// TTS retry + circuit breaker (FASE 6, July 2026).
 
 	// TTSMaxRetries is the maximum number of TTS synthesis attempts

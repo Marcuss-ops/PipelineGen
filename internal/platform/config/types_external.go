@@ -45,13 +45,6 @@ type ExternalConfig struct {
 	UseNvidiaForLLM        bool   `yaml:"use_nvidia_for_llm" env:"VELOX_USE_NVIDIA_FOR_LLM" default:"false"`
 	NvidiaLLMModel         string `yaml:"nvidia_llm_model" env:"VELOX_NVIDIA_LLM_MODEL" default:"meta/llama-3.1-8b-instruct"`
 
-	// vLLM backend for continuous batching (OpenAI-compatible API).
-	// When USE_VLLM=true, the Chat() client sends requests to VLLM_URL
-	// instead of Ollama. Mutually exclusive with UseNvidiaForLLM.
-	UseVLLM   bool   `yaml:"use_vllm" env:"USE_VLLM" default:"false"`
-	VLLMURL   string `yaml:"vllm_url" env:"VLLM_URL" default:"http://localhost:8000"`
-	VLLMModel string `yaml:"vllm_model" env:"VLLM_MODEL" default:"gemma4:e4b"`
-
 	PixabayAPIKey  string `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
 	PixabayBaseURL string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
 	PexelsAPIKey   string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
