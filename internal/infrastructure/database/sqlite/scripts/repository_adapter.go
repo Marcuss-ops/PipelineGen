@@ -135,15 +135,6 @@ func buildOutlineSectionRows(in []ports.ScriptOutlineSectionRecord) *OutlineSect
 	return b
 }
 
-func toSQLiteGenerationLog(in ports.ScriptGenerationLog) ScriptGenerationLog {
-	return ScriptGenerationLog{
-		ScriptID: in.ScriptID, Phase: in.Phase, PromptHash: in.PromptHash,
-		Model: in.Model, InputWords: in.InputWords, OutputWords: in.OutputWords,
-		DurationMs: in.DurationMs, RetryCount: in.RetryCount,
-		CacheStatus: in.CacheStatus, Error: in.Error,
-	}
-}
-
 // ── Interface methods ───────────────────────────────────────────────
 
 func (a *sqliteRepoAdapter) SaveScript(ctx context.Context, rec *ports.ScriptRecord, sections []ports.ScriptSectionRecord, matches []ports.ScriptStockMatchRecord) (int64, error) {

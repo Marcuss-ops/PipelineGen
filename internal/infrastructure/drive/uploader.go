@@ -136,8 +136,3 @@ func (u *Uploader) openReader(path string) (*os.File, error) {
 	}
 	return os.Open(path)
 }
-
-func (u *Uploader) folderLockFor(key string) *sync.Mutex {
-	lock, _ := u.folderLocks.LoadOrStore(key, &sync.Mutex{})
-	return lock.(*sync.Mutex)
-}

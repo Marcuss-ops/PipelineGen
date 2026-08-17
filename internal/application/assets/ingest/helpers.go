@@ -45,21 +45,6 @@ func normalizeKind(kind string) Kind {
 	}
 }
 
-func defaultGroupForKind(kind Kind, req *Request) string {
-	switch kind {
-	case KindImage:
-		return slugOrFallback(textutil.FirstNonEmpty(req.Group, req.Name, req.SourceID, "images"))
-	case KindVoiceover:
-		return slugOrFallback(textutil.FirstNonEmpty(req.Group, req.Name, "voiceover"))
-	case KindClip:
-		return slugOrFallback(textutil.FirstNonEmpty(req.Group, req.Source, req.Name, "clips"))
-	case KindStock:
-		return slugOrFallback(textutil.FirstNonEmpty(req.Group, req.Source, req.Name, "stock"))
-	default:
-		return ""
-	}
-}
-
 func slugOrFallback(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -70,18 +55,6 @@ func slugOrFallback(value string) string {
 		return value
 	}
 	return slug
-}
-
-func splitFolderPath(p string) []string {
-	raw := strings.Split(p, "/")
-	parts := make([]string, 0, len(raw))
-	for _, part := range raw {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			parts = append(parts, part)
-		}
-	}
-	return parts
 }
 
 func mergeMetadata(base map[string]any, extra map[string]any) map[string]any {

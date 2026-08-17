@@ -185,11 +185,6 @@ type commonsImageInfo struct {
 	ExtMetadata map[string]commonsMetadataValue `json:"extmetadata"`
 }
 
-type commonsPage struct {
-	Title     string             `json:"title"`
-	ImageInfo []commonsImageInfo `json:"imageinfo"`
-}
-
 func firstCommonsMetadata(values map[string]commonsMetadataValue, keys ...string) string {
 	for _, key := range keys {
 		if value := commonsMetadataText(values[key].Value); value != "" {
