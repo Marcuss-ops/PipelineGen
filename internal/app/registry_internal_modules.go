@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -23,6 +25,7 @@ import (
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -344,6 +347,44 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: root.Jobs.Facade is required when ClipRenderEnabled=true (the POST /clips/render enqueue path needs the Master job service)")
 	}
 
+	// Parallel-preparation adapters (composition root owns mechanics,
+	// the capability owns the ports). Every adapter is fail-closed at
+	// call time when a dependency is missing.
+	resolver := &clipRenderAssetResolver{assets: root.Repos.Assets}
+	var driveReader drivepkg.Reader
+	if root.Drive != nil {
+		driveReader = root.Drive.Reader
+	}
+	materializer := &clipRenderMaterializer{
+		drive:      driveReader,
+		scratchDir: filepath.Join(cfg.Storage.TempPath(), "cliprender"),
+	}
+	transcriptResolver := &clipRenderTranscriptResolver{log: log}
+	if root.Repos != nil {
+		transcriptResolver.repo = root.Repos.TextTrackRepo
+	}
+	if root.TextTracks != nil {
+		transcriptResolver.acquire = root.TextTracks.AcquireService
+	}
+	if root.Domains != nil {
+		transcriptResolver.cueWriter = root.Domains.CueWriter
+	}
+
+	preparer, err := cliprender.NewPreparer(
+		resolver,
+		materializer,
+		transcriptResolver,
+		cliprender.NewContractResolver(),
+		log,
+	)
+	if err != nil {
+		return fmt.Errorf("registerClipRender: build preparer: %w", err)
+	}
+	worker, err := cliprender.NewWorker(preparer, log)
+	if err != nil {
+		return fmt.Errorf("registerClipRender: build worker: %w", err)
+	}
+
 	descriptor, err := cliprender.Build(cliprender.Dependencies{
 		Jobs:        root.Jobs.Facade,
 		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
@@ -355,17 +396,14 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
 	}
 
-	// Scaffold handler binding. The enqueue fail-closed gate rejects
-	// job types without a registered handler, so clip.render needs a
-	// binding before the canonical worker lands. The temporary
-	// NotImplementedHandler fails claimed jobs loudly with a typed
-	// sentinel — never a silent success. The follow-up step swaps this
-	// for the canonical render worker.
-	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(cliprender.NotImplementedHandler)); err != nil {
+	// Canonical worker binding: parallel preparation is real and runs on
+	// claimed jobs; the render phase still fails closed with the typed
+	// sentinel until the follow-up step lands render_clip.
+	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(worker.Handle)); err != nil {
 		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
 	}
 
-	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing)")
+	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing, parallel preparation wired)")
 	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
 }
 
