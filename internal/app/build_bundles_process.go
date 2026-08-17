@@ -193,7 +193,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	)
 	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
 	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
-	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
+	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log,
+		newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log))
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
 	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps
@@ -220,6 +221,10 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Derived performance projection: job.completed events → performance_runs/
+	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
+	registerPerformanceProjectionHandler(eventsRegistry, dbs, log)
 
 	// ── Pool construction (post fail-closed). ─────────────────────
 	cfgPoll := 500 * time.Millisecond

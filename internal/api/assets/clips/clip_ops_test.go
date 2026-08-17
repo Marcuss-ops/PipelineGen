@@ -72,9 +72,7 @@ func (r *handlerClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset
 func (r *handlerClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
-func (r *handlerClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
-func (r *handlerClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
+func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
 func (r *handlerClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
 	if r == nil {
 		return nil, nil

@@ -212,6 +212,75 @@ func TestPhraseLocator_SelectOccurrence(t *testing.T) {
 	require.Equal(t, int64(250_000), third.StartUS)
 }
 
+// TestPhraseLocator_DashJoinedWordMatchesSeparateBoundaries pins the
+// dash-splitting contract: Edge TTS reports dash-joined script words
+// ("interpretation—in") as SEPARATE word boundaries ("interpretation",
+// "in"), so the phrase side must split dash fragments too and the span must
+// reference the real first→last boundary words.
+func TestPhraseLocator_DashJoinedWordMatchesSeparateBoundaries(t *testing.T) {
+	timing := SpeechTimingArtifact{
+		Version:      SpeechTimingVersion,
+		BoundaryMode: BoundaryWord,
+		TextSHA256:   "text-hash",
+		AudioSHA256:  "audio-hash",
+		DurationUS:   300_000,
+		Words: []SpeechWordTiming{
+			{Index: 0, Text: "That", StartUS: 0, EndUS: 50_000},
+			{Index: 1, Text: "interpretation", StartUS: 50_000, EndUS: 150_000},
+			{Index: 2, Text: "in", StartUS: 150_000, EndUS: 200_000},
+			{Index: 3, Text: "court", StartUS: 200_000, EndUS: 300_000},
+		},
+	}
+	// Em-dash-joined script word matches the two separate TTS boundaries.
+	results, err := LocatePhrase(timing, "interpretation—in")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	got := results[0]
+	require.Equal(t, 1, got.WordStart)
+	require.Equal(t, 2, got.WordEnd)
+	require.Equal(t, int64(50_000), got.StartUS)
+	require.Equal(t, int64(200_000), got.EndUS)
+
+	// Hyphen-joined variant matches too.
+	results, err = LocatePhrase(timing, "interpretation-in")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, 1, results[0].WordStart)
+	require.Equal(t, 2, results[0].WordEnd)
+}
+
+// TestPhraseLocator_MultiWordBoundaryChunkMatchesSeparatePhraseTokens pins
+// the whitespace-splitting contract on the boundary side: Edge TTS can emit a
+// SINGLE WordBoundary chunk that carries several space-separated words
+// (observed: "corso degli anni"). The phrase side splits on whitespace, so the
+// boundary side must split the same way or the whole narration fails to align.
+func TestPhraseLocator_MultiWordBoundaryChunkMatchesSeparatePhraseTokens(t *testing.T) {
+	timing := SpeechTimingArtifact{
+		Version:      SpeechTimingVersion,
+		BoundaryMode: BoundaryWord,
+		TextSHA256:   "text-hash",
+		AudioSHA256:  "audio-hash",
+		DurationUS:   300_000,
+		Words: []SpeechWordTiming{
+			{Index: 0, Text: "il", StartUS: 0, EndUS: 50_000},
+			// Edge TTS grouped three words into a SINGLE WordBoundary chunk.
+			{Index: 1, Text: "corso degli anni", StartUS: 50_000, EndUS: 150_000},
+			{Index: 2, Text: "sul", StartUS: 150_000, EndUS: 200_000},
+			{Index: 3, Text: "palco", StartUS: 200_000, EndUS: 300_000},
+		},
+	}
+	// The phrase keeps the words separated (the canonical narration text).
+	results, err := LocatePhrase(timing, "il corso degli anni sul palco")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	got := results[0]
+	// The span still references the real first→last boundary words.
+	require.Equal(t, 0, got.WordStart)
+	require.Equal(t, 3, got.WordEnd)
+	require.Equal(t, int64(0), got.StartUS)
+	require.Equal(t, int64(300_000), got.EndUS)
+}
+
 func TestPhraseLocator_NotFoundTypedError(t *testing.T) {
 	_, err := LocatePhrase(phraseLocatorArtifact(), "Mussolini")
 	require.ErrorIs(t, err, ErrPhraseNotFound)

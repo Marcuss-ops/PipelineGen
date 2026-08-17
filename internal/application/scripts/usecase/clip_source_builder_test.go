@@ -464,7 +464,10 @@ func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
 	require.NotEmpty(t, modelText)
 	assert.Contains(t, modelText, "NARRATIVE EVIDENCE 1")
 	assert.Contains(t, modelText, "Ref: clip_1")
-	assert.Contains(t, modelText, "Description: Pacquiao controls the distance with his jab.")
+	// The grounding Description is the canonical EvidenceResolver winner:
+	// with a READY transcript present, the transcript tier wins over
+	// search_text / description (strict 5-source precedence).
+	assert.Contains(t, modelText, "Description: Pacquiao appears faster and lighter on his feet.")
 	assert.Contains(t, modelText, "Transcript: Pacquiao appears faster and lighter on his feet.")
 	assert.Contains(t, modelText, "DurationMs: 0")
 	assert.NotContains(t, modelText, "CLIP "+clipID+":")

@@ -31,12 +31,13 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 
 # ── Optional .env sourcing ───────────────────────────────────────────────
-if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . ./.env
-    set +a
-fi
+# Explicit environment wins: .env only fills variables that are unset or
+# empty, so a caller-provided VELOX_ADMIN_TOKEN is never silently overridden
+# (the `set -a; source .env` pattern would clobber a live token and turn
+# every request into a 401).
+# shellcheck source=scripts/lib/dotenv.sh
+source "$ROOT/scripts/lib/dotenv.sh"
+load_dotenv_missing .env
 
 # ── Configuration ────────────────────────────────────────────────────────
 VELOX_PORT="${VELOX_PORT:-8000}"

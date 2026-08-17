@@ -48,20 +48,24 @@ services:
       - artlist-scraper
       - searxng
     ports:
-      - "8081:8000"
+      - "8000:8000"
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
+      - /etc/pipelinegen/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_HOST: "0.0.0.0"
       VELOX_PORT: "8000"
       VELOX_LOG_LEVEL: "info"
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_VECTOR_SEARCH_COLLECTION: "media_assets"
+      VELOX_QDRANT_BASE_URL: "http://qdrant:6333"
+      VELOX_QDRANT_URL: "http://qdrant:6333"
+      VELOX_CLIP_INDEXER_SERVER_URL: "http://host.docker.internal:8001"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+      VELOX_DELIVERY_HMAC_SECRET: "${VELOX_DELIVERY_HMAC_SECRET}"
     env_file:
-      - ./secrets/pipelinegen.env
+      - /etc/pipelinegen/pipelinegen.env
     command: ["--mode", "server", "--config", "/etc/pipelinegen/config.yaml"]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
@@ -71,6 +75,8 @@ services:
       start_period: 30s
     networks:
       - backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   pipelinegen-worker:
     build:
@@ -113,19 +119,22 @@ services:
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
+      - /etc/pipelinegen/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_MASTER_URL: "http://pipelinegen-server:8000"
       VELOX_LOG_LEVEL: "info"
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
+      VELOX_QDRANT_BASE_URL: "http://qdrant:6333"
+      VELOX_CLIP_INDEXER_SERVER_URL: "http://host.docker.internal:8001"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+      VELOX_DELIVERY_HMAC_SECRET: "${VELOX_DELIVERY_HMAC_SECRET}"
       # `auto` uses CUDA when the optional GPU override exposes it and
       # otherwise falls back to CPU/int8.
       VELOX_WHISPER_DEVICE: "auto"
       VELOX_WHISPER_MODEL: "base"
       VELOX_WHISPER_CUDA_LIB_DIR: "/opt/whisper-venv/cublas-lib"
     env_file:
-      - ./secrets/pipelinegen.env
+      - /etc/pipelinegen/pipelinegen.env
     command: ["--config", "/etc/pipelinegen/config.yaml"]
     networks:
       - backend

@@ -33,9 +33,8 @@
 // media_assets schema (per migrations/sqlite/033_media_assets_*)
 // stores summary/topics/speakers/mentioned_people/quality_score/
 // sponsor_segment under the metadata_json TEXT column as JSON keys.
-// The existing pattern (e.g.
-// media_assets_discovery_repository.go::json_set on metadata_json)
-// uses the same projection. A future commit may promote these
+// The existing pattern (json_set on metadata_json) uses the same
+// projection. A future commit may promote these
 // fields to first-class columns for query performance; this
 // adapter's JSON projection is forward-compatible (the column
 // mapping is a single helper).
@@ -237,12 +236,14 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 			clipID, m.ClipID)
 	}
 
-	// 1) Compute combined content hash including text tracks.
-	// This ensures the source_version changes when translations
-	// are added, triggering Qdrant re-index via the outbox event.
+	// 1) Derive the index revision. content_hash stays BYTE identity
+	// (immutable across metadata/text-track changes); the index
+	// revision is a SEPARATE fingerprint that folds text-track
+	// content so the supersede gate + outbox event_key change when
+	// a translation is added/corrected — WITHOUT corrupting byte
+	// identity (godlike/06: content_sha256 vs index_revision).
 	if m.ContentHash != "" {
-		m.ContentHash = ComputeContentHashWithTextTracks(m.ContentHash, textTracks)
-		m.SourceVersion = m.ContentHash
+		m.SourceVersion = ComputeIndexRevision(m.ContentHash, textTracks)
 	}
 
 	// 2) Begin tx

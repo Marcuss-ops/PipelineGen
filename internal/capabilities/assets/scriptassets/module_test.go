@@ -6,8 +6,7 @@
 //   - Provider identity (Name, Capabilities invariants)
 //   - Provider.Search deterministic single-candidate projection
 //   - empty-query + nil-receiver error paths
-//   - Build returns a Descriptor that satisfies both api.Descriptor
-//     and api.DescriptorProviders
+//   - Build returns a Descriptor that satisfies api.DescriptorProviders
 //   - Build with nil Logger falls back to zap.NewNop (no panic)
 //   - RegisterProviders propagates registry errors (ErrAlreadyRegistered
 //     is the critical one a real composition root will hit if the
@@ -122,24 +121,6 @@ func TestScriptAssetsProvider_Search_NilReceiverRejected(t *testing.T) {
 
 // ── Build() returns a valid Descriptor ─────────────────────────
 
-func TestBuild_ReturnsDescriptor_WithExpectedNames(t *testing.T) {
-	desc, err := Build(Dependencies{})
-	if err != nil {
-		t.Fatalf("Build returned unexpected error: %v", err)
-	}
-	if desc == nil {
-		t.Fatal("Build returned nil descriptor")
-	}
-	// Name() must match the module's route slug ("script-assets")
-	// — operators correlate the route prefix with the catalog entry name.
-	if got, want := desc.Name(), "script-assets"; got != want {
-		t.Fatalf("Descriptor.Name() = %q, want %q", got, want)
-	}
-	if !desc.Enabled() {
-		t.Fatal("Descriptor.Enabled() = false, want true (capability is always on)")
-	}
-}
-
 func TestBuild_NilLogger_FallsBackToNoop(t *testing.T) {
 	// No panic, no nil-deref. The fallback uses zap.NewNop() so
 	// ScriptAssetsProvider's Info/Warn calls are safe no-ops.
@@ -158,16 +139,12 @@ func TestBuild_NilLogger_FallsBackToNoop(t *testing.T) {
 }
 
 func TestBuild_PopulatesAllDescriptorFields(t *testing.T) {
-	desc, err := Build(Dependencies{})
+	d, err := Build(Dependencies{})
 	if err != nil {
 		t.Fatalf("Build returned unexpected error: %v", err)
 	}
-	d, ok := desc.(*ScriptAssetsDescriptor)
-	if !ok {
-		t.Fatalf("Build returned %T, want *ScriptAssetsDescriptor", desc)
-	}
-	if d.Module == nil {
-		t.Fatal("desd.Module is nil")
+	if d == nil {
+		t.Fatal("Build returned nil descriptor")
 	}
 	if d.Service == nil {
 		t.Fatal("desd.Service is nil")
@@ -186,11 +163,10 @@ func TestBuild_PopulatesAllDescriptorFields(t *testing.T) {
 // ── DescriptorProviders slot: RegisterProviders behaviour ─────
 
 func TestRegisterProviders_CallsRegistrarWithDescriptorProvider(t *testing.T) {
-	desc, err := Build(Dependencies{})
+	d, err := Build(Dependencies{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	d := desc.(*ScriptAssetsDescriptor)
 	stub := &stubProviderRegistrar{}
 	if err := d.RegisterProviders(stub); err != nil {
 		t.Fatalf("RegisterProviders returned unexpected error: %v", err)
@@ -207,11 +183,10 @@ func TestRegisterProviders_CallsRegistrarWithDescriptorProvider(t *testing.T) {
 }
 
 func TestRegisterProviders_PropagatesRegistryErrors(t *testing.T) {
-	desc, err := Build(Dependencies{})
+	d, err := Build(Dependencies{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	d := desc.(*ScriptAssetsDescriptor)
 	stub := &stubProviderRegistrar{err: providers.ErrAlreadyRegistered}
 	if err := d.RegisterProviders(stub); !errors.Is(err, providers.ErrAlreadyRegistered) {
 		t.Fatalf("RegisterProviders err = %v, want chain including ErrAlreadyRegistered", err)
@@ -219,11 +194,10 @@ func TestRegisterProviders_PropagatesRegistryErrors(t *testing.T) {
 }
 
 func TestRegisterProviders_NilRegistrar_Rejected(t *testing.T) {
-	desc, err := Build(Dependencies{})
+	d, err := Build(Dependencies{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	d := desc.(*ScriptAssetsDescriptor)
 	if err := d.RegisterProviders(nil); err == nil {
 		t.Fatal("RegisterProviders with nil registrar returned nil error — must reject")
 	}

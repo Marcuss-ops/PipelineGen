@@ -94,6 +94,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -119,6 +120,14 @@ type ClipAtomicWriterAdapter struct {
 // wiring gap lands in a build-side output rather than a runtime panic
 // at first CommitClipAndIndexEvent call.
 func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *zap.Logger) *ClipAtomicWriterAdapter {
+	return NewClipAtomicWriterAdapterWithCommitter(db, box, NewSQLiteAssetCommitter(db, box, log), log)
+}
+
+// NewClipAtomicWriterAdapterWithCommitter wires the YouTube compatibility
+// surface to the caller-supplied canonical asset committer. Production uses
+// this constructor with SQLiteMediaCommitter; the legacy constructor remains
+// for isolated fixtures and migration tests.
+func NewClipAtomicWriterAdapterWithCommitter(db *sql.DB, box *outboxevents.Repository, committer persistence.AssetCommitter, log *zap.Logger) *ClipAtomicWriterAdapter {
 	if db == nil {
 		panic("assets.NewClipAtomicWriterAdapter: db is required (composition must pass root.DB.DB)")
 	}
@@ -128,8 +137,11 @@ func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 	if log == nil {
 		log = zap.NewNop()
 	}
+	if committer == nil {
+		panic("assets.NewClipAtomicWriterAdapterWithCommitter: committer is required")
+	}
 	return &ClipAtomicWriterAdapter{
-		committer: NewSQLiteAssetCommitter(db, box, log),
+		committer: committer,
 		db:        db,
 		box:       box,
 		log:       log,
@@ -182,7 +194,10 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	}()
 
 	// ── 2) Canonical asset commit via AssetCommitter.
-	req := w.buildCommitRequest(clipID, asset)
+	req, err := w.buildCommitRequest(clipID, asset)
+	if err != nil {
+		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: build commit request: %w", err)
+	}
 	res, err := w.committer.CommitTx(ctx, tx, req)
 	if err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: commit asset: %w", err)
@@ -227,8 +242,22 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 
 // buildCommitRequest translates a YouTube ClipAsset into the canonical
 // persistence.CommitRequest. This is the SOLE place where the YouTube
-// shape is mapped to the unified asset commit shape.
-func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtubetypes.ClipAsset) persistence.CommitRequest {
+// shape is mapped to the unified asset commit shape. It also resolves the
+// canonical media taxonomy (mediaregistry.ResolveTaxonomy) and maps the
+// analyzer-produced semantic enrichment (summary/topics/speakers/mentioned
+// people/hook/quality score/sponsor segment/description/tags) into the
+// TypedMetadata envelope so the single commit carries the COMPLETE semantic
+// snapshot — no second metadata-only write.
+func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtubetypes.ClipAsset) (persistence.CommitRequest, error) {
+	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
+		AssetID:   clipID,
+		Provider:  "youtube",
+		MediaType: mediaregistry.MediaVideo,
+	})
+	if err != nil {
+		return persistence.CommitRequest{}, fmt.Errorf("buildCommitRequest: resolve taxonomy: %w", err)
+	}
+
 	policyVersion := asset.PolicyVersion
 	if policyVersion == "" {
 		policyVersion = derivePolicyVersion(clipID)
@@ -259,20 +288,31 @@ func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtub
 		DurationMs:     int64(asset.Metadata.ClipDurationSec * 1000),
 		ContentHash:    asset.FileHash,
 		SearchText:     asset.SearchText,
+		Description:    asset.Metadata.Description,
 		LifecycleState: "ACTIVE",
 		LocalPath:      asset.LocalPath,
 		FolderID:       asset.Drive.FolderID,
 		FolderPath:     folderPath,
+		Taxonomy:       taxonomy,
 		Metadata: persistence.TypedMetadata{
-			SourceVersion:  sourceVersion,
-			Title:          asset.Metadata.Summary,
-			Category:       asset.Metadata.Category,
-			SourceProvider: asset.Metadata.SourceProvider,
-			SourceVideoID:  asset.Metadata.VideoID,
-			SourceTitle:    asset.Metadata.SourceTitle,
-			SourceChannel:  asset.Metadata.SourceChannel,
-			StartSec:       float64(asset.Metadata.ClipStartSec),
-			EndSec:         float64(asset.Metadata.ClipEndSec),
+			SourceVersion:   sourceVersion,
+			Title:           asset.Metadata.Summary,
+			Description:     asset.Metadata.Description,
+			Summary:         asset.Metadata.Summary,
+			Topics:          asset.Metadata.Topics,
+			Speakers:        asset.Metadata.Speakers,
+			MentionedPeople: asset.Metadata.MentionedPeople,
+			Hook:            asset.Metadata.Hook,
+			QualityScore:    asset.Metadata.QualityScore,
+			SponsorSegment:  asset.Metadata.SponsorSegment,
+			Tags:            asset.Metadata.Tags,
+			Category:        asset.Metadata.Category,
+			SourceProvider:  asset.Metadata.SourceProvider,
+			SourceVideoID:   asset.Metadata.VideoID,
+			SourceTitle:     asset.Metadata.SourceTitle,
+			SourceChannel:   asset.Metadata.SourceChannel,
+			StartSec:        float64(asset.Metadata.ClipStartSec),
+			EndSec:          float64(asset.Metadata.ClipEndSec),
 		},
 		SourceURL:      asset.Metadata.SourceURL,
 		SourceProvider: asset.Metadata.SourceProvider,
@@ -291,7 +331,7 @@ func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtub
 		},
 		EmitIndexEvent: true,
 		RequestedAt:    w.now(),
-	}
+	}, nil
 }
 
 // Compile-time assertions (AGENTS.md Pattern 0) ────────────────────

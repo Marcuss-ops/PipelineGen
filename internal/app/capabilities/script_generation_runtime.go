@@ -2,24 +2,23 @@ package capabilities
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	videojob "github.com/Marcuss-ops/PipelineGen/internal/domain/video"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/renderinggen"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"go.uber.org/zap"
 )
@@ -53,6 +52,16 @@ func (a *scriptGenerationTranslator) Translate(ctx context.Context, input script
 // provider; the capability sees only its typed port.
 type scriptGenerationDocumentPublisher struct {
 	client drive.DocClient
+}
+
+func (a *scriptGenerationDocumentPublisher) Preflight(_ context.Context, folderID string) error {
+	if a == nil || a.client == nil {
+		return scriptgen.ErrGoogleDocsUnavailable
+	}
+	if strings.TrimSpace(folderID) == "" {
+		return scriptgen.ErrGoogleDocsUnavailable
+	}
+	return nil
 }
 
 // scriptGenerationDocumentRenderer is the composition-root adapter from the
@@ -98,13 +107,16 @@ func (scriptGenerationDocumentRenderer) DocumentRendererID() string {
 
 func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) (string, error) {
 	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Title:           opts.Title,
-		Language:        string(opts.Language),
-		DefaultLanguage: string(opts.DefaultLanguage),
-		FullAudio:       opts.FullAudio,
-		FinalAudio:      finalAudioArtifactForDocument(opts.FinalAudio),
-		AudioTimeline:   opts.AudioTimeline,
-		Overlay:         opts.Overlay,
+		Title:              opts.Title,
+		Language:           string(opts.Language),
+		DefaultLanguage:    string(opts.DefaultLanguage),
+		FullAudio:          opts.FullAudio,
+		FinalAudio:         finalAudioArtifactForDocument(opts.FinalAudio),
+		AudioTimeline:      opts.AudioTimeline,
+		SceneSpeechTimings: opts.SceneSpeechTimings,
+		ClipMetadata:       opts.ClipMetadata,
+		AudioSummary:       opts.AudioSummary,
+		Overlay:            opts.Overlay,
 	}), nil
 }
 
@@ -126,7 +138,7 @@ func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, 
 // buildScriptGenerationRuntime creates the worker-owned durable runtime. The
 // HTTP starter only creates/correlates the run; this runtime is invoked by the
 // script.generate worker after the submission transaction has committed.
-func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, runRepo scriptgen.RunRepository, log *zap.Logger) (*scriptgen.Runner, error) {
+func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {
 	if cfg == nil || root == nil || runRepo == nil {
 		return nil, fmt.Errorf("script generation runtime requires config, composition root, and run repository")
 	}
@@ -143,45 +155,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	if err != nil {
 		return nil, fmt.Errorf("build combined audio renderer: %w", err)
 	}
-	stockRenderer := rustexec.NewStockRendererWithExecutor(executor, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	if root.Jobs == nil || root.Jobs.Service == nil {
-		return nil, fmt.Errorf("build script generation runtime requires jobs service")
-	}
-	renderHandler := appjobs.HandlerFunc(func(ctx context.Context, j *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
-		var plan caprender.RenderPlan
-		if err := json.Unmarshal(j.Payload, &plan); err != nil {
-			return nil, fmt.Errorf("decode render.video payload: %w", err)
-		}
-		validated, err := caprender.ValidateRenderPlan(plan, filesystem.NewOS())
-		if err != nil {
-			return nil, err
-		}
-		if err := stockRenderer.RenderCanonicalPlan(ctx, validated); err != nil {
-			return nil, err
-		}
-		return map[string]any{"render_job_id": j.ID, "output_path": plan.OutputPath}, nil
-	})
-	for _, jobType := range []string{videojob.TypeRender, videojob.TypeGenerate} {
-		if err := root.Jobs.Service.RegisterHandler(jobType, renderHandler); err != nil {
-			return nil, fmt.Errorf("register %s handler: %w", jobType, err)
-		}
-	}
-	var renderEnqueuer scriptgen.RenderEnqueuer
-	if strings.TrimSpace(cfg.External.RenderingGenQueueURL) != "" {
-		queueEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(renderinggen.New(cfg.External.RenderingGenQueueURL), filesystem.NewOS())
-		if err != nil {
-			return nil, fmt.Errorf("build renderinggen queue enqueuer: %w", err)
-		}
-		renderEnqueuer = queueEnqueuer
-		log.Info("script generation render enqueuer wired to central RenderingGen queue", zap.String("endpoint", cfg.External.RenderingGenQueueURL))
-	} else {
-		jobEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service, filesystem.NewOS())
-		if err != nil {
-			return nil, fmt.Errorf("build canonical render enqueuer: %w", err)
-		}
-		renderEnqueuer = jobEnqueuer
-	}
-
 	var docPublisher scriptgen.DocumentPublisher
 	if root.Drive != nil && root.Drive.DocClient != nil {
 		docPublisher = &scriptGenerationDocumentPublisher{client: root.Drive.DocClient}
@@ -192,19 +165,74 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		&scriptGenerationTranslator{port: root.AI.OllamaTranslator},
 		root.AI.ScriptVoiceoverGenerator,
 		docPublisher,
-		renderEnqueuer,
 		scriptGenerationDocumentRenderer{},
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
-	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, log))
+	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
+		runner.SetScriptPersistence(newScriptGenerationPersistence(
+			sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo), log,
+		))
+	} else {
+		log.Warn("script generation SQLite persistence is not wired")
+	}
+	runner.SetScriptDocsFolderID(cfg.Scripts.ScriptDocsFolderID)
 	if root.Jobs != nil && root.Jobs.JobLedger != nil {
 		runner.SetExecutionRecorder(scriptjobs.NewJobRegistryExecutionRecorder(root.Jobs.JobLedger))
 		log.Info("script generation execution recorder wired to Job Registry")
 	} else {
 		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
+
+	// ── Incremental VidRush ────────────────────────────────────────────
+	// Wire the run-scoped incremental coordinator so scene generation and
+	// VidRush enrichment (entities → queries → provider fan-out) overlap in the
+	// real flow instead of running as two sequential blocks. The Runner builds
+	// a fresh coordinator per run from these immutable dependencies.
+	var vidRushEntityExtractor documentadapters.EntityExtractor
+	if root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptGen.GetClient() != nil {
+		primary := ollamaadapters.NewOllamaEntityExtractorAdapter(root.AI.ScriptGen.GetClient())
+		// Keep the durable path source-grounded when the model returns an
+		// empty/placeholder scene: the deterministic CPU extractor is the
+		// fail-safe semantic fallback, never a fabricated success.
+		vidRushEntityExtractor = documentadapters.NewFallbackEntityExtractor(primary, localnlp.NewHybridExtractor())
+	} else {
+		vidRushEntityExtractor = localnlp.NewHybridExtractor()
+	}
+	vidRushMetrics := observability.NewVidRushMetricsAdapter()
+	vidRushEnricher := documentadapters.NewVidRushSegmentEnricher(vidRushEntityExtractor, vidRushCache, vidRushMetrics)
+	var vidRushFanout scriptgen.SegmentProviderResolver
+	if vidRushProviders != nil {
+		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithCache(
+			&documentadapters.VidRushRegistryClipSearcher{Registry: vidRushProviders},
+			&documentadapters.VidRushRegistryImageSearcher{Registry: vidRushProviders},
+			vidRushCache,
+			vidRushMetrics,
+		)
+	}
+	// The materialization stage (acquire → verify → finalize) is wired through
+	// the same processor the batch flow registers, so the incremental
+	// coordinator reuses it under its own bounded materialization limit.
+	var vidRushMaterializer scriptgen.SegmentMaterializer
+	if vidRushProviders != nil && vidRushFinalizer != nil {
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache, vidRushMetrics)
+	}
+	runner.SetVidRushPipeline(&scriptgen.VidRushPipeline{
+		Enricher:         vidRushEnricher,
+		ProviderResolver: vidRushFanout,
+		Materializer:     vidRushMaterializer,
+		Metrics:          vidRushMetrics,
+		PlanResolver: scriptgen.VidRushPlanResolverFunc(func(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
+			return root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
+		}),
+		Backpressure: scriptgen.DefaultVidRushBackpressure(),
+	})
+	runner.SetGenerationGate(scriptgen.NewGenerationGate())
+	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)")
+
 	return runner, nil
 }
 
 var _ scriptgen.Translator = (*scriptGenerationTranslator)(nil)
 var _ scriptgen.DocumentPublisher = (*scriptGenerationDocumentPublisher)(nil)
+var _ scriptgen.DocumentPublisherPreflight = (*scriptGenerationDocumentPublisher)(nil)

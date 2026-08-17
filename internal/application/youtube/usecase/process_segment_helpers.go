@@ -77,6 +77,16 @@ func buildClipAsset(
 	md.Topics = cmd.Segment.Topics
 	md.Speakers = cmd.Segment.Speakers
 	md.MentionedPeople = cmd.Segment.MentionedPeople
+	// Description + Tags are request-provided metadata: thread them into
+	// the canonical metadata bag so the indexer's SemanticDocument
+	// composition (description field) and the Qdrant payload tags key
+	// include them (the payload `texts[].description` would otherwise be
+	// persisted only as an asset_text_tracks row and never reach the
+	// embedding text).
+	md.Description = segmentDescription(cmd.Segment.Texts)
+	// Preserve the caller-supplied tags verbatim (media_assets.tags stores
+	// the JSON array as provided; tags_norm is derived at write time).
+	md.Tags = append([]string(nil), cmd.Segment.Tags...)
 	// Title: use the segment name if present, otherwise derive from Summary.
 	if cmd.Segment.Name != "" {
 		md.Title = cmd.Segment.Name
@@ -106,6 +116,30 @@ func buildClipAsset(
 		Metadata: md,
 		Texts:    cmd.Segment.Texts,
 	}
+}
+
+// segmentDescription returns the caller-supplied clip description from the
+// payload `texts` list: the original-language track's Description wins,
+// otherwise the first non-empty Description (language order preserved).
+// Empty when the caller supplied no description.
+func segmentDescription(texts []youtubetypes.LocalizedClipText) string {
+	if len(texts) == 0 {
+		return ""
+	}
+	var first string
+	for _, t := range texts {
+		d := strings.TrimSpace(t.Description)
+		if d == "" {
+			continue
+		}
+		if first == "" {
+			first = d
+		}
+		if t.IsOriginal {
+			return d
+		}
+	}
+	return first
 }
 
 // deriveNormalizedGroup returns the caller-supplied Group or an empty string.

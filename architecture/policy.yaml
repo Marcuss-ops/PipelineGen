@@ -74,7 +74,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, identity, errors, observability
+kernel_subzones: asset, job, script, event, identity, errors, observability, embedding, semanticdoc
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -461,3 +461,21 @@ hard_gates:
   - percheck_canonical_application_infrastructure_imports
   - percheck_canonical_application_infrastructure_imports_missing_area
   - percheck_canonical_application_infrastructure_imports_parse_error
+  # Final legacy cutover: the four media-pipeline SSOTs and the two
+  # sole-writer contracts are promoted from report-only to hard gates now
+  # that every legacy caller has been migrated (each rule has zero
+  # production-code violations).
+  #   Project derivation      → only internal/kernel/script.ArtifactRoutingContext
+  #   Duration probing        → only the canonical media probe capability
+  #   Evidence precedence     → only internal/kernel/asset.ResolveEvidence
+  #   TTS timing              → only BuildSpeechTimingArtifact
+  #   Direct Qdrant writes    → only the projection writer / indexing handler
+  #   Direct media_assets writes → only the MediaCommitter chain
+  - percheck_project_derivation_ssot
+  - percheck_duration_probe_ssot
+  - percheck_evidence_precedence_ssot
+  - percheck_speech_timing_ssot
+  - percheck_upsert_points_sole_owner
+  - percheck_frame_concept_projection_writer
+  - percheck_control_plane_sql_writes
+  - percheck_asset_committer_event_ssot

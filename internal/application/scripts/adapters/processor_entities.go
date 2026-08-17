@@ -550,7 +550,7 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 		outcome.err = ctx.Err()
 		return outcome
 	}
-	res, err := e.extractor.ExtractEntities(ctx, scriptpkg.EntityExtractionRequest{
+	request := scriptpkg.EntityExtractionRequest{
 		SegmentID:   canonicalSeg.ID,
 		Text:        canonicalSeg.Text,
 		Title:       plan.Title,
@@ -559,7 +559,20 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 		Model:       plan.Model,
 		EntityCount: limits.entities,
 		SpecScene:   segmentSpecSceneContext(specScene, canonicalSeg),
-	})
+	}
+	res, err := e.extractor.ExtractEntities(ctx, request)
+	// A malformed/too-short generated scene must not erase the semantic
+	// evidence already resolved by the research source. Retry the same typed
+	// extractor on the canonical plan source only when the scene produced no
+	// entity values; this keeps the fallback source-grounded and avoids a
+	// second extraction when the scene result is valid.
+	if err == nil && !entityResultHasValues(res) {
+		sourceText := strings.TrimSpace(plan.SourceText)
+		if sourceText != "" && sourceText != request.Text {
+			request.Text = sourceText
+			res, err = e.extractor.ExtractEntities(ctx, request)
+		}
+	}
 	<-e.extractionGate
 	if err != nil {
 		if errors.Is(err, ErrEntityExtractorUnavailable) {

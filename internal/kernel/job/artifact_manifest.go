@@ -146,10 +146,22 @@ type Artifact struct {
 	// are additive manifest fields used by capability-specific result
 	// projections; the worker-side upload contract continues to use
 	// Path + Required and ignores these fields.
-	RemoteFileID       string         `json:"remote_file_id,omitempty"`
-	RemoteWebViewLink  string         `json:"remote_web_view_link,omitempty"`
-	RemoteDownloadLink string         `json:"remote_download_link,omitempty"`
-	ArtifactMetadata   map[string]any `json:"artifact_metadata,omitempty"`
+	RemoteFileID       string `json:"remote_file_id,omitempty"`
+	RemoteWebViewLink  string `json:"remote_web_view_link,omitempty"`
+	RemoteDownloadLink string `json:"remote_download_link,omitempty"`
+
+	// DriveFileID and DriveLink are the canonical Drive-published
+	// identifiers, populated AFTER the Drive publisher runs (they mirror
+	// finalization.AssetLocation.FileID / WebViewLink). They are empty on
+	// the worker-emitted manifest (RenderingGen cannot know the Drive file
+	// ID before publication) and get enriched on the Sender side once the
+	// canonical publisher resolves the file under drive_subpath. They are
+	// additive manifest fields; the worker-side upload contract continues
+	// to use Path + Required and ignores these fields.
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
+
+	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
 }
 
 // Validate checks the manifest invariants. Returns nil if the manifest

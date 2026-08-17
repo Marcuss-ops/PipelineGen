@@ -13,8 +13,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -42,16 +44,66 @@ func generateBatchID() string {
 	return "imgbatch_" + hex.EncodeToString(b)
 }
 
+// resolveBatchItems normalizes the request into the flat item list that
+// GenerateBatch enqueues. mode "" | "items" consumes req.Items verbatim;
+// mode "sections" composes one item per section from the canonical
+// section→prompt composer (fullimages.BuildPrimaryPrompt) using the
+// section-image dimensions (1344×768).
+func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
+	switch req.Mode {
+	case "", "items":
+		if len(req.Items) == 0 {
+			return nil, fmt.Errorf("items is required when mode is empty or \"items\"")
+		}
+		return req.Items, nil
+	case "sections":
+		if len(req.Sections) == 0 {
+			return nil, fmt.Errorf("sections is required when mode is \"sections\"")
+		}
+		items := make([]GenerateBatchItem, 0, len(req.Sections))
+		for i, sec := range req.Sections {
+			prompt := fullimages.BuildPrimaryPrompt(sec, req.Topic)
+			if prompt == "" {
+				return nil, fmt.Errorf("section[%d] has no title, text, or topic — cannot build a prompt", i)
+			}
+			style := strings.TrimSpace(sec.Style)
+			subject := sec.Title
+			if subject == "" {
+				subject = fmt.Sprintf("section_%d", i)
+			}
+			items = append(items, GenerateBatchItem{
+				Prompt: prompt,
+				Style:  style,
+				Width:  fullimages.SectionImageWidth,
+				Height: fullimages.SectionImageHeight,
+				Tags:   []string{subject, "style:" + style},
+			})
+		}
+		return items, nil
+	default:
+		return nil, fmt.Errorf("unsupported mode %q (want \"items\" or \"sections\")", req.Mode)
+	}
+}
+
 // GenerateBatch handles POST /api/images/batch-generate — async
-// batch image generation. Accepts a list of prompts and enqueues
-// each as an independent image.generate.google job. Returns 202
-// Accepted with batch_id and per-job status entries.
+// batch image generation. Accepts a list of prompts (mode empty or
+// "items") or a list of text sections (mode "sections", the retired
+// fullimages shape) and enqueues each as an independent
+// image.generate.google job. Returns 202 Accepted with batch_id and
+// per-job status entries.
 //
 // Concurrency is controlled server-side by the worker pool, not
-// by the client. Default dimensions: 1920×1080.
+// by the client. Default dimensions: 1920×1080 (1344×768 for
+// mode="sections").
 func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 	var req GenerateBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	items, err := resolveBatchItems(req)
+	if err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
@@ -69,17 +121,17 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 	}
 
 	// Apply defaults
-	for i := range req.Items {
-		if req.Items[i].Width == 0 {
-			req.Items[i].Width = 1920
+	for i := range items {
+		if items[i].Width == 0 {
+			items[i].Width = 1920
 		}
-		if req.Items[i].Height == 0 {
-			req.Items[i].Height = 1080
+		if items[i].Height == 0 {
+			items[i].Height = 1080
 		}
 	}
 
-	jobs := make([]batchJobResponse, len(req.Items))
-	for i, item := range req.Items {
+	jobs := make([]batchJobResponse, len(items))
+	for i, item := range items {
 		position := i
 		correlationID := fmt.Sprintf("%s_%d", batchID, position)
 
@@ -100,7 +152,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 			MaxRetries:    2,
 		})
 		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job %d/%d: %w", i+1, len(req.Items), err))
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job %d/%d: %w", i+1, len(items), err))
 			return
 		}
 

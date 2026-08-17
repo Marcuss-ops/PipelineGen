@@ -25,6 +25,7 @@ import logging
 import os
 import time
 import asyncio
+import hashlib
 
 from fastapi import FastAPI
 
@@ -91,6 +92,19 @@ model = SentenceTransformer(
 TEXT_MODEL_DEVICE = assert_model_device(model, DEVICE_SELECTION, "text embedding")
 TEXT_MODEL_NAME = "intfloat/multilingual-e5-base"
 TEXT_MODEL_VERSION = "2026-06-26-v1"
+TEXT_CONTRACT_VERSION = "v1"
+TEXT_CONTRACT_DIMENSION = 768
+TEXT_CONTRACT_NORMALIZATION = "l2"
+TEXT_CONTRACT_DISTANCE = "Cosine"
+TEXT_QUERY_PREFIX = "query: "
+TEXT_DOCUMENT_PREFIX = "passage: "
+TEXT_SEMANTIC_DOCUMENT_VERSION = "v3"
+TEXT_CONTRACT_HASH = hashlib.sha256("|".join((
+    TEXT_CONTRACT_VERSION, TEXT_MODEL_NAME, TEXT_MODEL_VERSION,
+    str(TEXT_CONTRACT_DIMENSION), TEXT_CONTRACT_NORMALIZATION,
+    TEXT_CONTRACT_DISTANCE, TEXT_QUERY_PREFIX, TEXT_DOCUMENT_PREFIX,
+    TEXT_SEMANTIC_DOCUMENT_VERSION,
+)).encode()).hexdigest()
 siglip_model = None
 VISUAL_MODEL_NAME = "google/siglip-so400m-patch14-384"
 VISUAL_MODEL_VERSION = "2026-06-26-v1"

@@ -48,3 +48,25 @@ type ContentLinkBackfillReport struct {
 	// apply this must be zero.
 	BrokenCASLinks int `json:"broken_cas_links"`
 }
+
+// ContentSHA256BackfillReport describes the byte-identity reconstruction
+// outcome: media_assets rows whose content_sha256 is empty/UNKNOWN but whose
+// legacy file_hash is a valid 64-hex SHA-256 get the digest copied from
+// file_hash (plus its binary_sha256 projection).
+//
+// godlike/07 fail-closed: a file_hash that is NOT a 64-hex SHA-256 (e.g. a
+// 32-char MD5 from the clip_atomic_writer empty-file fallback, or any other
+// unknown legacy value) is skipped and left UNKNOWN — never fabricated.
+type ContentSHA256BackfillReport struct {
+	// CandidatesScanned is the number of rows with an empty/UNKNOWN
+	// content_sha256 and a non-empty file_hash.
+	CandidatesScanned int `json:"candidates_scanned"`
+
+	// Backfilled is the number of rows whose file_hash passed the 64-hex
+	// SHA-256 guard and was copied into content_sha256 (and binary_sha256).
+	Backfilled int `json:"backfilled"`
+
+	// SkippedNonSHA256 is the number of rows whose file_hash was NOT a
+	// 64-hex SHA-256 (MD5 or unknown) and was left UNKNOWN.
+	SkippedNonSHA256 int `json:"skipped_non_sha256"`
+}

@@ -118,6 +118,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	if summary == "" {
 		summary = assetpkg.MetadataString(asset.Metadata, "clip_summary")
 	}
+	semanticSummary := assetpkg.MetadataString(asset.Metadata, "semantic_summary")
 	sourceURL := asset.SourceURL
 	if sourceURL == "" {
 		sourceURL = assetpkg.MetadataString(asset.Metadata, "source_url")
@@ -267,6 +268,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		Metadata: IndexedMetadata{
 			DriveFileID:      asset.DriveFileID,
 			Summary:          summary,
+			SemanticSummary:  semanticSummary,
 			Name:             name,
 			Title:            title,
 			Description:      description,

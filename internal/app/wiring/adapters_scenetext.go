@@ -1,32 +1,9 @@
-// Package app — adapters_scenetext.go implements
-// scriptgeneration.TextGenerator by wrapping the canonical
-// script-generation Engine.
-//
-// Verdetto P1: the TextGenerator produces scene text (AI-generated,
-// scene-by-scene) SEPARATELY from the Translator. The current code
-// does NOT generate text — it only uses script_text already received
-// or a local fallback.
-//
-// This adapter bridges scripgeneration.GenerateRequest (the clean
-// domain type) with the existing usecase.Engine (which owns the
-// full production-grade prompt construction, ollama invocation,
-// output parsing, and sanitization).
-//
-// Architecture:
-//
-//	scriptgeneration.TextGenerator
-//	         ↑ implements
-//	app.SceneTextGenerator
-//	         ↑ wraps
-//	usecase.Engine → ollama.Generator.GenerateScript
 package wiring
 
 import (
 	"context"
 	"fmt"
 	"math"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -35,32 +12,48 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 )
 
-// SceneTextGenerator implements scriptgeneration.TextGenerator by
-// wrapping the canonical script-generation Engine. Every call to
-// GenerateSceneText builds a plan from the request, dispatches the
-// engine, and converts the engine's structured output into the
-// simple []Scene type expected by the runner.
-//
-// Panics on nil engine (fail-fast per godlike/07 NO-FAKE-AVAILABILITY).
+// SceneTextGenerator wraps the canonical script-generation Engine and
+// converts its structured output into the runner's []Scene contract.
 type ClipAssetResolver interface {
 	ResolveByMediaAssetID(context.Context, string) (*asset.Asset, error)
+}
+
+// ensureClipPlanningDuration keeps planning metadata useful without claiming
+// that a Drive-only asset is renderable. Binary identity and materialized
+// duration are certified later at the render boundary.
+func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64) {
+	if clip == nil {
+		return
+	}
+	if clip.SourceOutMS > clip.SourceInMS {
+		return
+	}
+	if clip.Duration <= 0 {
+		if fallbackMS <= 0 {
+			fallbackMS = 1000
+		}
+		clip.Duration = float64(fallbackMS) / 1000
+	}
+	clip.SourceInMS = 0
+	clip.SourceOutMS = int64(math.Round(clip.Duration * 1000))
+	clip.FrameCount = int64(math.Round(clip.Duration * 30))
 }
 
 type SceneTextGenerator struct {
 	Engine     *usecase.Engine
 	Registry   *adapters.SourceRegistry
 	ClipAssets ClipAssetResolver
+	Probe      ClipProber
+	Memory     *adapters.Service
 	Log        *zap.Logger
 }
 
-// NewSceneTextGenerator constructs the SceneTextGenerator.
-// engine is required; nil panics at construction time.
+// NewSceneTextGenerator constructs the generator; nil engine panics.
 func NewSceneTextGenerator(engine *usecase.Engine, log *zap.Logger) *SceneTextGenerator {
 	if engine == nil {
 		panic("app: SceneTextGenerator requires a non-nil engine")
@@ -71,16 +64,8 @@ func NewSceneTextGenerator(engine *usecase.Engine, log *zap.Logger) *SceneTextGe
 	}
 }
 
-// GenerateSceneText implements scriptgeneration.TextGenerator.
-// It converts the GenerateRequest to a plan, calls the engine,
-// and converts the engine's SpecScene output to []Scene.
-//
-// Each returned Scene contains:
-//   - ID and Index from the engine's structured output
-//   - Text[sourceLanguage] populated with the scene's narrative prose
-//   - Clip populated when the engine returned binding data
-//
-// Returns an error when the engine fails or returns zero scenes.
+// GenerateSceneText converts the request to a plan, invokes the engine, and
+// converts its SpecScene output to []Scene.
 func (g *SceneTextGenerator) GenerateSceneText(
 	ctx context.Context,
 	req scriptgen.GenerateRequest,
@@ -103,7 +88,28 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		return nil, fmt.Errorf("scenetext: engine generate failed: %w", err)
 	}
 
-	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio, req.RenderVideo)
+	// Persist the fresh output to the canonical script memory gate so an
+	// identical replay (same source, same plan) is served from cache and the
+	// downstream per-segment caches (keyed on the deterministic scene text
+	// hash) hit exactly. Exact hits are never re-persisted.
+	if g.Memory != nil && plan.UseMemory && engineResult.CacheStatus == "generated" && engineResult.Output.Text != "" {
+		if _, saveErr := g.Memory.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+			ChannelID: "default",
+			Mode:      plan.Mode,
+			Language:  plan.Language,
+			Title:     plan.Title,
+			Prompt:    plan.RenderedPrompt,
+			Model:     engineResult.Model,
+			WordCount: engineResult.WordCount,
+			CacheKey:  plan.CacheKey,
+		}, engineResult.Output.Text); saveErr != nil && g.Log != nil {
+			g.Log.Warn("scenetext: failed to save script cache",
+				zap.String("title", plan.Title),
+				zap.Error(saveErr))
+		}
+	}
+
+	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio, false)
 	if err != nil {
 		return nil, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
 	}
@@ -115,6 +121,14 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		// Keep this envelope deliberately provisional: it is replaced by
 		// the planner before timeline/audio compilation.
 		prose := strings.TrimSpace(engineResult.Output.Text)
+		if req.Source.Type == scriptgen.SourceClips && len(strings.Fields(prose)) < 35*req.Source.NumClips {
+			if grounded := explicitClipBriefProse(plan.SourceText, req.Source.NumClips); grounded != "" {
+				prose = grounded
+				if g.Log != nil {
+					g.Log.Warn("scenetext: model prose below clip contract; using explicit grounded clip briefs")
+				}
+			}
+		}
 		if prose == "" {
 			return nil, fmt.Errorf("scenetext: engine returned zero scenes and empty prose")
 		}
@@ -139,6 +153,34 @@ func (g *SceneTextGenerator) GenerateSceneText(
 	}
 
 	return scenes, nil
+}
+
+// explicitClipBriefProse extracts caller-provided CLIP N briefs. This is a
+// deterministic, source-grounded recovery for a transient/empty model reply;
+// it never fabricates scene text or invents a placeholder.
+func explicitClipBriefProse(source string, count int) string {
+	if strings.TrimSpace(source) == "" || count <= 0 {
+		return ""
+	}
+	briefs := make([]string, 0, count)
+	for _, line := range strings.Split(source, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "CLIP ") {
+			continue
+		}
+		colon := strings.Index(line, ":")
+		if colon < 0 || strings.TrimSpace(line[colon+1:]) == "" {
+			continue
+		}
+		briefs = append(briefs, strings.TrimSpace(line[colon+1:]))
+		if len(briefs) == count {
+			break
+		}
+	}
+	if len(briefs) != count {
+		return ""
+	}
+	return strings.Join(briefs, "\n\n")
 }
 
 // convertClipProseScenes is the canonical bridge for the plain-text clip
@@ -228,10 +270,15 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 			out.DurationUS = 0
 		}
 		for _, clipID := range ownedIDs {
-			clip, err := g.resolveEvidenceClip(ctx, plan, clipID, !req.RenderVideo)
+			clip, err := g.resolveEvidenceClip(ctx, plan, clipID, true)
 			if err != nil {
 				return nil, err
 			}
+			// A Drive-only clip without recorded start/end metadata carries no
+			// usable source range yet. Fall back to the narration estimate so
+			// the canonical timeline can still be planned; the real duration
+			// is certified at render time from the materialized binary.
+			ensureClipPlanningDuration(clip, durationMS)
 			clipDurationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
 			out.Clips = append(out.Clips, clip)
 			if out.Clip == nil {
@@ -267,6 +314,31 @@ func (g *SceneTextGenerator) SetClipAssetResolver(resolver ClipAssetResolver) {
 	g.ClipAssets = resolver
 }
 
+// SetClipProber supplies the canonical media probe port used to measure
+// asset durations when the catalog duration is absent.
+func (g *SceneTextGenerator) SetClipProber(prober ClipProber) {
+	g.Probe = prober
+}
+
+// SetMemoryService wires the canonical gemmamemory service used to cache
+// successfully generated scene text. The durable runner path calls the
+// engine directly (not through the legacy finalizer), so the save must
+// happen here to make COLD→WARM replay deterministic. Optional: when nil,
+// caching is a no-op.
+func (g *SceneTextGenerator) SetMemoryService(svc *adapters.Service) {
+	if g != nil {
+		g.Memory = svc
+	}
+}
+
+// ResolveVidRushPlan resolves the per-run generation plan used by the
+// incremental VidRush coordinator. It is the same plan buildPlan produces for
+// text generation, so the coordinator enriches with the caller's language,
+// title, segments and media policy.
+func (g *SceneTextGenerator) ResolveVidRushPlan(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
+	return g.buildPlan(ctx, req)
+}
+
 // buildPlan converts a scriptgeneration.GenerateRequest into a
 // ResolvedGenerationPlan consumable by the engine. For text sources
 // it assembles the topic/source_text directly. For non-text sources
@@ -288,27 +360,38 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 	renderedPrompt := buildEditorialPromptFromGenReq(req)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:                req.IdempotencyKey,
-		Title:             title,
-		Topic:             topic,
-		Language:          string(req.SourceLanguage),
-		SourceText:        req.Source.SourceText,
-		RenderedPrompt:    renderedPrompt,
-		Mode:              scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
-		SourceKind:        string(req.Source.Type),
-		TargetWords:       req.ScriptParams.TargetWords,
-		SingleScene:       req.ScriptParams.SingleScene,
-		Duration:          req.ScriptParams.Duration,
-		MinWords:          req.ScriptParams.MinWords,
-		SegmentWords:      req.ScriptParams.SegmentWords,
-		SegmentTopics:     append([]string(nil), req.ScriptParams.SegmentTopics...),
-		Segments:          append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
-		SentencesPerImage: req.ScriptParams.SentencesPerImage,
-		ImagesPerScene:    req.ScriptParams.ImagesPerScene,
-		Style:             req.ScriptParams.Style,
-		Guidelines:        req.ScriptParams.Guidelines,
-		IntroClipIDs:      append([]string(nil), req.Source.IntroClipIDs...),
-		NumClips:          req.Source.NumClips,
+		ID:                  req.IdempotencyKey,
+		Title:               title,
+		Project:             req.Project,
+		Topic:               topic,
+		Language:            string(req.SourceLanguage),
+		SourceText:          req.Source.SourceText,
+		RenderedPrompt:      renderedPrompt,
+		Mode:                scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
+		SaveToDB:            req.SaveToDB,
+		SourceKind:          string(req.Source.Type),
+		TargetWords:         req.ScriptParams.TargetWords,
+		SingleScene:         req.ScriptParams.SingleScene,
+		Duration:            req.ScriptParams.Duration,
+		MinWords:            req.ScriptParams.MinWords,
+		SegmentWords:        req.ScriptParams.SegmentWords,
+		SegmentTopics:       append([]string(nil), req.ScriptParams.SegmentTopics...),
+		Segments:            append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
+		SentencesPerImage:   req.ScriptParams.SentencesPerImage,
+		ImagesPerScene:      req.ScriptParams.ImagesPerScene,
+		Style:               req.ScriptParams.Style,
+		Guidelines:          req.ScriptParams.Guidelines,
+		IntroClipIDs:        append([]string(nil), req.Source.IntroClipIDs...),
+		NumClips:            req.Source.NumClips,
+		MediaPlan:           req.MediaPlan.Clone(),
+		GroundingPolicy:     req.Source.GroundingPolicy,
+		FallbackPolicy:      req.Source.FallbackPolicy,
+		PromptVersion:       req.ScriptParams.PromptVersion,
+		EditorPromptVersion: req.ScriptParams.EditorPromptVersion,
+		QAPromptVersion:     req.ScriptParams.QAPromptVersion,
+		UseMemory:           req.ScriptParams.UseMemory,
+		ForceRefresh:        req.ForceRefresh || req.ScriptParams.ForceRefresh,
+		PromptProfile:       "default-v1",
 		// Postprocessors left empty — the engine generates raw
 		// narrative prose. Downstream phases handle translation,
 		// voiceover, and docs.
@@ -330,7 +413,9 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		if resolved.Title != "" {
 			plan.Title = resolved.Title
 		}
-		if resolved.SourceText != "" {
+		// An explicit source_text is the caller's editorial brief for Gemma.
+		// Resolver evidence enriches the plan but must not replace that brief.
+		if plan.SourceText == "" && resolved.SourceText != "" {
 			plan.SourceText = resolved.SourceText
 		}
 		if resolved.Segments != nil {
@@ -347,8 +432,16 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		}
 		// Re-render the prompt from the resolved source text so the
 		// engine actually sees the clip evidence.
-		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, req.Title, req.Source.Query)
+		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, req.ScriptParams.Style, req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
 	}
+
+	// Text sources do not go through a resolver; derive the canonical
+	// source fingerprint directly so the memory-gate cache key is
+	// content-aware and deterministic across COLD/WARM replays.
+	if plan.SourceFingerprint == "" && req.Source.Type == scriptgen.SourceText {
+		plan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(req.Source), nil))
+	}
+	plan.CacheKey = scriptpkg.BuildCacheKey(plan)
 
 	return plan, nil
 }
@@ -397,6 +490,10 @@ func (g *SceneTextGenerator) convertScenes(
 				clip.Duration = float64(binding.DurationMs) / 1000
 				clip.FrameCount = int64(math.Round(clip.Duration * 30))
 			}
+			// Drive-only clips (render not requested) may carry no recorded
+			// source range or duration. Fall back to the narration estimate so
+			// the canonical timeline can still be planned.
+			ensureClipPlanningDuration(clip, int64(math.Max(1000, float64(len(strings.Fields(s.Text))*60000/150))))
 			durationUS := int64(math.Round(clip.Duration * 1_000_000))
 			sourceInUS := int64(0)
 			if clip.SourceOutMS > clip.SourceInMS {
@@ -459,133 +556,22 @@ func (g *SceneTextGenerator) resolveRenderClip(ctx context.Context, binding scri
 	if err != nil {
 		return nil, fmt.Errorf("resolve clip %s binary sha256: %w", binding.ClipID, err)
 	}
-	duration, err := renderAssetDurationSeconds(canonical)
+	duration, err := g.renderAssetDurationSeconds(ctx, canonical)
 	if err != nil {
 		return nil, fmt.Errorf("resolve clip %s duration: %w", binding.ClipID, err)
 	}
 	return &scriptgen.ClipReference{
 		ID: binding.ClipID, Title: binding.ClipTitle, DriveLink: canonical.DriveLink(),
 		Path: canonical.LocalPath(), AudioPath: canonical.LocalPath(), SHA256: sha256Hex,
-		Duration: duration, FrameCount: int64(math.Round(duration * 30)),
+		Duration:       duration,
+		DurationUS:     int64(math.Round(duration * 1_000_000)),
+		DurationSource: resolveClipDurationSource(canonical),
+		FrameCount:     int64(math.Round(duration * 30)),
+		// Subject identity threads the canonical asset metadata onto the clip
+		// reference so the scene↔clip identity gate can certify the clip
+		// actually features the subject its scene narrates.
+		Speakers:        canonical.Speakers(),
+		MentionedPeople: canonical.MentionedPeople(),
+		Subject:         canonical.GetMetadataString("subject"),
 	}, nil
-}
-
-// buildEditorialPromptFromGenReq builds the editorial prompt string
-// from a GenerateRequest — specifically the source text assembly that
-// tells the model what to write about.
-func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {
-	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, req.Title, req.Source.Query)
-}
-
-// buildEditorialPrompt builds the editorial prompt string from the
-// resolved source fields. It is used both for direct text sources
-// and for sources that have been resolved through the SourceRegistry.
-func buildEditorialPrompt(topic, sourceText, title, query string) string {
-	var parts []string
-	if topic != "" {
-		parts = append(parts, "Topic: "+topic)
-	}
-	if sourceText != "" {
-		parts = append(parts, "Source text:\n"+sourceText)
-	}
-	if title != "" {
-		parts = append(parts, "Title: "+title)
-	}
-	if query != "" {
-		parts = append(parts, "Search query: "+query)
-	}
-	// The engine prompt builder appends plainTextInstruction
-	// at generation time — we don't need to repeat it here.
-	parts = append(parts, "Do not include raw URLs, hyperlinks, or source citations in the prose output.")
-	return strings.Join(parts, "\n\n")
-}
-
-// genSourceToSourceSpec maps the scriptgeneration.Source (the
-// pipeline's small source value) to the domain SourceSpec consumed
-// by the source registry.
-func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
-	return scriptpkg.SourceSpec{
-		Type:         scriptpkg.SourceType(src.Type),
-		Topic:        src.Topic,
-		SourceText:   src.SourceText,
-		ClipIDs:      copyStrings(src.ClipIDs),
-		IntroClipIDs: copyStrings(src.IntroClipIDs),
-		NumClips:     src.NumClips,
-		Query:        src.Query,
-		MaxClips:     src.MaxClips,
-	}
-}
-
-// genRequestToResolutionContext maps the scriptgeneration request to
-// the domain SourceResolutionContext consumed by the source registry.
-func genRequestToResolutionContext(req scriptgen.GenerateRequest) scriptpkg.SourceResolutionContext {
-	return scriptpkg.SourceResolutionContext{
-		Title:             req.Title,
-		Language:          string(req.SourceLanguage),
-		TargetWords:       req.ScriptParams.TargetWords,
-		SegmentWords:      req.ScriptParams.SegmentWords,
-		SegmentTopics:     copyStrings(req.ScriptParams.SegmentTopics),
-		Segments:          scriptpkg.CloneScriptSegments(req.ScriptParams.Segments),
-		NumClips:          req.Source.NumClips,
-		RequireDriveLink:  true,
-		RequireLocalMedia: req.RenderVideo,
-	}
-}
-
-// copyStrings returns a copy of the string slice (nil-safe).
-func copyStrings(src []string) []string {
-	if src == nil {
-		return nil
-	}
-	dst := make([]string, len(src))
-	copy(dst, src)
-	return dst
-}
-
-// renderAssetSHA256 returns the binary identity required by RenderPlan. Older
-// imported clip rows may only contain a Drive MD5; that value is not accepted
-// as a render manifest identity, so derive the SHA-256 from the canonical local
-// bytes at the boundary.
-func renderAssetSHA256(a *asset.Asset) (string, error) {
-	if a == nil || strings.TrimSpace(a.LocalPath()) == "" {
-		return "", fmt.Errorf("asset has no local path")
-	}
-	if candidate := strings.TrimSpace(a.FileHash()); len(candidate) == 64 && !strings.Contains(candidate, ":") {
-		return candidate, nil
-	}
-	return fileutil.SHA256File(a.LocalPath())
-}
-
-// renderAssetDurationSeconds is the execution-boundary fallback for legacy
-// registry rows whose online Drive asset is valid but whose duration column
-// was never backfilled. The media bytes remain the source of truth; this does
-// not invent a timeline duration or persist a second timing representation.
-func renderAssetDurationSeconds(a *asset.Asset) (float64, error) {
-	if a == nil {
-		return 0, fmt.Errorf("asset is nil")
-	}
-	if a.Duration > 0 {
-		return a.Duration.Seconds(), nil
-	}
-	path := strings.TrimSpace(a.LocalPath())
-	if path == "" {
-		return 0, fmt.Errorf("asset has no local execution source")
-	}
-	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
-	if err != nil {
-		return 0, fmt.Errorf("probe media duration: %w", err)
-	}
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil || seconds <= 0 {
-		return 0, fmt.Errorf("probe returned invalid duration %q", strings.TrimSpace(string(out)))
-	}
-	return seconds, nil
-}
-
-// firstLine returns the first line of a multi-line string.
-func firstLine(s string) string {
-	if idx := strings.Index(s, "\n"); idx >= 0 {
-		return s[:idx]
-	}
-	return s
 }

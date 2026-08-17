@@ -1,19 +1,24 @@
-// Package nonops hosts the 9 NonOps HTTP methods extracted from the
+// Package nonops hosts the 5 NonOps HTTP methods extracted from the
 // clips/ package per PR-CLIPS-NONOPS-EXTRACT (P0, deadline 2026-08-01).
 //
+// The former bulk-tag routes (BulkAddTags/BulkRemoveTags) were migrated
+// to the canonical /api/assets/operator/bulk surface, the former
+// single-clip reindex route was migrated to
+// /api/assets/operator/assets/:id/reindex, and the former batch-reindex
+// route (POST /api/media/clips/enrich/batch) was retired in favor of the
+// canonical media.reindex job (enqueueable via POST /api/jobs); all were
+// removed here.
+//
 // godlike/06 SSOT (one canonical owner per fact):
-//   - Handler interface (9 methods) lives ONLY here.
-//   - applyBulkTagsDefaults helper lives ONLY in handler_bulk_tags.go.
+//   - Handler interface (5 methods) lives ONLY here.
 //   - Each method lives in its capability-specific sister file
-//     (handler_reprocess / handler_index / handler_download / handler_jobs).
+//     (handler_reprocess / handler_download / handler_jobs).
 //
 // godlike/07 minimum-blast-radius: use case constructors
-// (NewBulkTagsUseCase, NewReprocessUseCase, NewEnrichUseCase) stay in
-// the parent clips.NewHandler per thinker verdict Q7 — the sub-handler
-// consumes pre-built use case instances, not raw repositories. The
-// sub-package dep footprint is bound to what the 9 methods
-// INHERENTLY invoke (use cases + a RepoForSource callback for the
-// ReindexClip source-resolution seam).
+// (NewReprocessUseCase, NewEnrichUseCase) stay in the parent
+// clips.NewHandler per thinker verdict Q7 — the sub-handler consumes
+// pre-built use case instances, not raw repositories. The sub-package
+// dep footprint is bound to what the 5 methods INHERENTLY invoke.
 package nonops
 
 import (
@@ -30,27 +35,19 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler is the canonical contract for the 9 NonOps methods that
+// Handler is the canonical contract for the 5 NonOps methods that
 // the orchestrator clips.Handler delegates to. Implemented by
 // *NonOpsHandler. Pattern 0 (godlike/06): single interface per
-// concrete struct, kept as a 9-method surface because all 9 share
+// concrete struct, kept as a 5-method surface because all 5 share
 // the same constructor and the same lifespan. Splitting into
 // sub-interfaces would be over-engineering.
 //
 // Compile-time pin at the bottom of this file locks the concrete to
-// the interface — future drift in any of the 9 method signatures
+// the interface — future drift in any of the 5 method signatures
 // surfaces as a build failure, not a runtime panic.
 type Handler interface {
-	// BulkTag routes (write+idem).
-	BulkAddTags(c *gin.Context)
-	BulkRemoveTags(c *gin.Context)
-
 	// Reprocess route (write+idem).
 	ReprocessClip(c *gin.Context)
-
-	// Reindex routes (write+idem).
-	ReindexClip(c *gin.Context)
-	BatchReindex(c *gin.Context)
 
 	// Enrich routes.
 	EnrichMedia(c *gin.Context)
@@ -61,66 +58,50 @@ type Handler interface {
 	HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobTools) (map[string]any, error)
 }
 
-// Deps is the constructor bag for NonOpsHandler. The 8 fields below
-// are exactly what the 9 methods touch — no more, no less. Per
+// Deps is the constructor bag for NonOpsHandler. The 5 fields below
+// are exactly what the 5 methods touch — no more, no less. Per
 // thinker verdict Q7: use case instances are pre-built by the parent
 // (clips.NewHandler) and passed in already-constructed. The
 // sub-handler does NOT take repository / service / config
 // dependencies for use case construction.
 type Deps struct {
-	// BulkTagsUC powers BulkAddTags + BulkRemoveTags.
-	BulkTagsUC *appclips.BulkTagsUseCase
 	// ReprocessUC powers ReprocessClip.
 	ReprocessUC *appclips.ReprocessUseCase
-	// EnrichUC powers EnrichMedia + EnrichAndIndexClip + ReindexClip (enrichNeeded branch).
+	// EnrichUC powers EnrichMedia + EnrichAndIndexClip.
 	EnrichUC *appclips.EnrichUseCase
-	// ClipIndexer powers ReindexClip (clipIndexer.IsEnabled() gate) + BatchReindex.
-	ClipIndexer appclips.ClipIndexerPort
-	// JobsSvc powers EnrichMedia + ReindexClip (enqueue) + BatchReindex (enqueue) +
-	// RegisterJobHandlers (job handler registration).
+	// JobsSvc powers EnrichMedia (enqueue) + RegisterJobHandlers
+	// (job handler registration).
 	JobsSvc kerneljob.Service
 	// BulkUploadWorker powers HandleBulkUploadYouTubeClipsJob.
 	BulkUploadWorker *appclips.BulkUploadWorker
-	// RepoForSource is the callback that resolves a clip source to its
-	// canonical repository. Wired by the parent as `h.repoForSource`
-	// (a Go method-value bound to the orchestrator *Handler so the
-	// lookup chains into the Search sub-handler without coupling
-	// nonops to it directly). Required by ReindexClip.
-	RepoForSource func(string) appclips.ClipRepositoryPort
 	// Log is the structured logger. nil-tolerated via zap.NewNop().
 	Log *zap.Logger
 }
 
-// NonOpsHandler owns the 9 NonOps methods extracted from clips/Handler.
+// NonOpsHandler owns the 5 NonOps methods extracted from clips/Handler.
 // Receiver-on-pattern-B: constructed in nonops.NewNonOpsHandler from a
 // Deps shape extracted from the orchestrator Deps.
 type NonOpsHandler struct {
-	bulkTagsUC       *appclips.BulkTagsUseCase
 	reprocessUC      *appclips.ReprocessUseCase
 	enrichUC         *appclips.EnrichUseCase
-	clipIndexer      appclips.ClipIndexerPort
 	jobsSvc          kerneljob.Service
 	bulkUploadWorker *appclips.BulkUploadWorker
-	repoForSource    func(string) appclips.ClipRepositoryPort
 	log              *zap.Logger
 }
 
 // NewNonOpsHandler constructs a NonOpsHandler from the supplied Deps.
 // Nil fields are tolerated for test fixtures (each method does its own
-// nil-check); production wiring supplies all 8 via the orchestrator
+// nil-check); production wiring supplies all 5 via the orchestrator
 // Deps shape.
 func NewNonOpsHandler(d Deps) *NonOpsHandler {
 	if d.Log == nil {
 		d.Log = zap.NewNop()
 	}
 	return &NonOpsHandler{
-		bulkTagsUC:       d.BulkTagsUC,
 		reprocessUC:      d.ReprocessUC,
 		enrichUC:         d.EnrichUC,
-		clipIndexer:      d.ClipIndexer,
 		jobsSvc:          d.JobsSvc,
 		bulkUploadWorker: d.BulkUploadWorker,
-		repoForSource:    d.RepoForSource,
 		log:              d.Log,
 	}
 }
@@ -177,6 +158,6 @@ func NewNonOpsHandlerStrict(d Deps) (*NonOpsHandler, error) {
 }
 
 // Compile-time pin: *NonOpsHandler must implement Handler. Future
-// drift in any of the 9 method signatures surfaces as a build
+// drift in any of the 5 method signatures surfaces as a build
 // failure, not a runtime panic (Pattern 0 + godlike/06 SSOT).
 var _ Handler = (*NonOpsHandler)(nil)

@@ -106,18 +106,20 @@ func TestWorker_RunJob_ProducesRunReport(t *testing.T) {
 
 	createdAt := time.Now().Add(-10 * time.Second)
 	startedAt := time.Now().Add(-5 * time.Second)
+	leaseExpiry := startedAt.Add(5 * time.Minute)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		worker.runJob(context.Background(), &job.Job{
-			ID:         "obs-job-1",
-			Type:       TypeScriptGenerate,
-			Status:     job.StatusRunning,
-			LeaseID:    "lease-obs-1",
-			RetryCount: 2,
-			MaxRetries: 5,
-			CreatedAt:  createdAt,
-			StartedAt:  &startedAt,
+			ID:          "obs-job-1",
+			Type:        TypeScriptGenerate,
+			Status:      job.StatusRunning,
+			LeaseID:     "lease-obs-1",
+			LeaseExpiry: &leaseExpiry,
+			RetryCount:  2,
+			MaxRetries:  5,
+			CreatedAt:   createdAt,
+			StartedAt:   &startedAt,
 		})
 	}()
 	select {
@@ -150,6 +152,15 @@ func TestWorker_RunJob_ProducesRunReport(t *testing.T) {
 	}
 	if rep.RunID == "" {
 		t.Fatal("run_id must be populated")
+	}
+	if rep.LeaseID != "lease-obs-1" {
+		t.Fatalf("lease_id = %q, want %q (the worker fence must be surfaced on the run)", rep.LeaseID, "lease-obs-1")
+	}
+	if rep.WorkerID != "observability-test-worker" {
+		t.Fatalf("worker_id = %q, want %q", rep.WorkerID, "observability-test-worker")
+	}
+	if rep.LeaseExpiresAt.IsZero() || !rep.LeaseExpiresAt.Equal(leaseExpiry) {
+		t.Fatalf("lease_expires_at = %v, want %v (RecoverAbandoned depends on a non-NULL lease_expires_at)", rep.LeaseExpiresAt, leaseExpiry)
 	}
 }
 

@@ -320,6 +320,9 @@ func TestDeletionService_DeleteClip_PermanentlyFlagPropagated(t *testing.T) {
 	}
 }
 
+// TestDeletionService_DeleteClip_PropagatesDispatcherError: DeleteClip is
+// now a legacy wrapper that delegates to DeleteAsset, so the dispatcher's
+// error propagates UNCHANGED (no source-branch re-wrapping).
 func TestDeletionService_DeleteClip_PropagatesDispatcherError(t *testing.T) {
 	db := memoryDB(t)
 	minimalMediaAssetsFixture(t, db)
@@ -331,11 +334,8 @@ func TestDeletionService_DeleteClip_PropagatesDispatcherError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from dispatcher; got nil")
 	}
-	if !strings.Contains(err.Error(), "failed to delete from database") {
-		t.Errorf("error must carry the 'failed to delete from database' marker; got: %q", err.Error())
-	}
 	if !strings.Contains(err.Error(), "simulate fail") {
-		t.Errorf("error must wrap the dispatcher's underlying cause; got: %q", err.Error())
+		t.Errorf("error must propagate the dispatcher's underlying cause; got: %q", err.Error())
 	}
 }
 
@@ -665,13 +665,11 @@ func TestCompleteAsset_EmptyAssetIDIsTerminal(t *testing.T) {
 	}
 }
 
-// TestDeleteClip_AssetTreeCleanupErrorPropagates is documented as a
-// deferred unit test (forward-pointer, see CHANGELOG honest-limitation).
-// The production-side error path is verified by build success of the
-// deletion.go file (the propagation code is in tree, the call sites
-// instance the assetTreeSvc port); an in-memory test would require
-// building a real *assettree.Service with a backing asset_nodes
-// schema rigged to error, which is out of scope for commit 3/3. The
-// user-spec fix-surface (line ~197 of deletion.go replaces the silent
-// `_ = ...` with explicit `if err := ...; err != nil { return ... }`
-// propagation) is verifiable via static grep + diff.
+// NOTE: the deferred TestDeleteClip_AssetTreeCleanupErrorPropagates
+// (forward-pointer from Blocco 3.1 commit 3/3) is now implemented as
+// TestCompleteAsset_AssetTreeCleanupRunsInTerminalPath +
+// TestCompleteAsset_AssetTreeCleanupFailurePropagates in
+// delete_asset_test.go — the asset-tree cleanup moved from the
+// synchronous DeleteClip post-dispatch path into the terminal
+// CompleteAsset close-out, where it is exercised against a real
+// *assettree.Service backed by an in-memory asset_tree_nodes table.

@@ -102,201 +102,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	}
 
 	processed, err := concurrent.Map(ctx, input.VidRushSegments, 2, func(ctx context.Context, _ int, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
-		updated := cloneVidRushSegmentResult(segment)
-		var warnings []string
-		materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) []scriptpkg.SegmentAssetCandidate {
-			materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-			attempts := make(map[string]int, 3)
-			readyImages := 0
-			for _, candidate := range candidates {
-				isImage := candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration
-				if isImage && targetImages > 0 && readyImages >= targetImages {
-					// Keep the remaining remote hits for diagnostics/candidate-set
-					// hashing, but do not download or persist surplus images. This
-					// prevents Qdrant/Drive fan-out from exceeding the scene plan.
-					materialized = append(materialized, candidate)
-					continue
-				}
-				legacyPersisted := candidate.IsLegacyCandidate() && strings.TrimSpace(candidate.DriveLink) != ""
-				if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
-					materialized = append(materialized, candidate)
-					if isImage {
-						readyImages++
-					}
-					continue
-				}
-				if key := vidRushCandidateIdentity(candidate); key != "" {
-					if cached, ok := vidrushMaterializedCache.Load(key); ok {
-						if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok && readyVidRushCandidate(persisted) {
-							materialized = append(materialized, persisted)
-							if isImage {
-								readyImages++
-							}
-							continue
-						}
-					}
-					var persisted scriptpkg.SegmentAssetCandidate
-					if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "materialized", key, &persisted); cacheErr != nil {
-						warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache read %s: %v", key, cacheErr))
-					} else if hit && readyVidRushCandidate(persisted) {
-						materialized = append(materialized, persisted)
-						vidrushMaterializedCache.Store(key, persisted)
-						if isImage {
-							readyImages++
-						}
-						continue
-					}
-				}
-				providerName := strings.ToLower(strings.TrimSpace(candidate.Provider))
-				if providerName != scriptpkg.VidRushProviderArtlist && providerName != scriptpkg.VidRushProviderInternetImages && providerName != scriptpkg.VidRushProviderImageGeneration {
-					materialized = append(materialized, candidate)
-					continue
-				}
-				if attempts[providerName] >= vidRushAcquireBudget(plan, providerName) {
-					// Preserve the discovered candidate for diagnostics and a future
-					// retry, but do not turn every remote search hit into a download.
-					materialized = append(materialized, candidate)
-					continue
-				}
-				attempts[providerName]++
-
-				provider, err := p.providers.Provider(providerName)
-				if err != nil {
-					candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
-					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: %s provider unavailable for %s: %v", providerName, segment.SegmentID, err))
-					materialized = append(materialized, candidate)
-					continue
-				}
-				acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
-				var local scriptports.LocalArtifact
-				err = measureVidRushProvider(acquireCtx, p.metrics, kernobs.OperationInfo{
-					Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "acquire", Provider: providerName,
-				}, func(callCtx context.Context) error {
-					var acquireErr error
-					local, acquireErr = provider.Acquire(callCtx, candidate)
-					return acquireErr
-				})
-				cancelAcquire()
-				if err != nil {
-					candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
-					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: acquire %s for %s: %v", providerName, segment.SegmentID, err))
-					materialized = append(materialized, candidate)
-					continue
-				}
-				verifyCtx, cancelVerify := context.WithTimeout(ctx, vidRushVerifyTimeout)
-				var verified scriptports.VerifiedArtifact
-				err = measureVidRushProvider(verifyCtx, p.metrics, kernobs.OperationInfo{
-					Stage: kernobs.StageVerify, Component: "vidrush", Operation: "verify", Provider: providerName,
-				}, func(callCtx context.Context) error {
-					var verifyErr error
-					verified, verifyErr = provider.Verify(callCtx, local)
-					return verifyErr
-				})
-				cancelVerify()
-				if err != nil {
-					candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-					candidate.VerificationStatus = scriptpkg.VidRushStatusFailed
-					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: verify %s for %s: %v", providerName, segment.SegmentID, err))
-					materialized = append(materialized, candidate)
-					continue
-				}
-				cacheKey := vidRushCandidateIdentity(candidate)
-				var persisted scriptpkg.SegmentAssetCandidate
-				err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
-					Stage: kernobs.StagePersist, Component: "vidrush", Operation: "finalize", Provider: providerName,
-				}, func(callCtx context.Context) error {
-					var finalizeErr error
-					persisted, finalizeErr = p.finalizer.Finalize(callCtx, verified)
-					return finalizeErr
-				})
-				if err != nil {
-					verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
-					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))
-					materialized = append(materialized, verified.Candidate)
-					continue
-				}
-				materialized = append(materialized, persisted)
-				if isImage && readyVidRushCandidate(persisted) {
-					readyImages++
-				}
-				if key := vidRushCandidateIdentity(persisted); key != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-					vidrushMaterializedCache.Store(key, persisted)
-					if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", key, persisted); cacheErr != nil {
-						warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", key, cacheErr))
-					}
-				}
-				if cacheKey != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-					vidrushMaterializedCache.Store(cacheKey, persisted)
-					if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", cacheKey, persisted); cacheErr != nil {
-						warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", cacheKey, cacheErr))
-					}
-				}
-			}
-			return materialized
-		}
-
-		// Search candidates must be acquired and verified before deciding how
-		// many generated images are actually missing. This keeps generation a
-		// true fallback instead of a parallel source that duplicates valid web
-		// assets.
-		imageTarget := vidRushImageTarget(plan)
-		discoveredCandidates := append([]scriptpkg.SegmentAssetCandidate(nil), updated.Assets.Candidates...)
-		updated.Assets.Candidates = materialize(discoveredCandidates, imageTarget)
-		generationCandidates, generationState := p.planGenerationFallback(plan, updated)
-		updated.Cache.ImageGeneration = generationState
-		if len(generationCandidates) > 0 {
-			// Only the newly planned fallback candidates need a second
-			// acquisition pass. Replaying the already attempted web candidates
-			// here would duplicate downloads after a generation fallback.
-			generated := materialize(generationCandidates, len(generationCandidates))
-			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, generated)
-		}
-		materialized := updated.Assets.Candidates
-		updated.Assets.SecondaryImages = durableVidRushImages(materialized)
-		updated.Assets.GeneratedImages = filterVidRushGeneratedImages(materialized)
-		if imageTarget > 0 && len(updated.Assets.SecondaryImages) < imageTarget {
-			warnings = append(warnings, fmt.Sprintf(
-				"FAILED_REQUIRED_IMAGE_COUNT: required=%d verified=%d segment=%s",
-				imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
-			))
-		}
-		updated.Assets.PrimaryVideo = nil
-		for i := range materialized {
-			candidate := materialized[i]
-			if candidate.Provider != scriptpkg.VidRushProviderArtlist || !readyVidRushCandidate(candidate) {
-				continue
-			}
-			if updated.Assets.PrimaryVideo == nil || ScoreVidRushCandidate(candidate, false) > ScoreVidRushCandidate(*updated.Assets.PrimaryVideo, false) {
-				selected := candidate
-				selected.SelectionReason = "highest ranked verified and persisted video"
-				updated.Assets.PrimaryVideo = &selected
-			}
-		}
-		if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
-			diagnostics := make([]string, 0, minInt(len(materialized), 3))
-			for _, candidate := range materialized {
-				if candidate.Provider != scriptpkg.VidRushProviderArtlist {
-					continue
-				}
-				diagnostics = append(diagnostics, fmt.Sprintf("asset=%s acquire=%s verify=%s persist=%s source=%t page=%t drive=%t", candidate.AssetID, candidate.AcquisitionStatus, candidate.VerificationStatus, candidate.PersistenceStatus, strings.TrimSpace(candidate.SourceURL) != "", strings.TrimSpace(candidate.SourcePageURL) != "", strings.TrimSpace(candidate.DriveLink) != ""))
-				if len(diagnostics) == 3 {
-					break
-				}
-			}
-			if len(diagnostics) == 0 {
-				providers := make(map[string]int)
-				for _, candidate := range discoveredCandidates {
-					providers[candidate.Provider]++
-				}
-				diagnostics = append(diagnostics, fmt.Sprintf("discovered=%d providers=%v; no Artlist candidates reached materialization", len(discoveredCandidates), providers))
-			}
-			return vidRushMaterializedSegment{}, fmt.Errorf(
-				"vidrush materialization: required persisted Artlist primary unavailable for segment %s (%s)",
-				segment.SegmentID, strings.Join(diagnostics, "; "),
-			)
-		}
-		updated.Assets.CandidateSetHash = candidateSetHash(materialized)
-		return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
+		return p.materializeOne(ctx, plan, segment)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vidrush materialization: bounded segment workers: %w", err)
@@ -324,6 +130,236 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		Warnings:         warnings,
 		Changed:          true,
 	}, nil
+}
+
+// Materialize implements the single-segment materialization boundary consumed
+// by the incremental VidRush coordinator. It reuses materializeOne so the
+// acquire → verify → finalize stage is implemented exactly once, and it
+// returns an immutable result without mutating shared scene state.
+func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if p == nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush materialization: processor not configured")
+	}
+	if plan != nil && plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
+		return cloneVidRushSegmentResult(segment), nil
+	}
+	if p.providers == nil || p.finalizer == nil {
+		if vidRushMaterializationRequested(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}) {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush materialization: provider registry and common finalizer are required")
+		}
+		return cloneVidRushSegmentResult(segment), nil
+	}
+	if err := requireVidRushEnabledProviders(plan, p.providers); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	out, err := p.materializeOne(ctx, plan, segment)
+	if err != nil {
+		return scriptpkg.VidRushSegmentResult{}, err
+	}
+	return out.result, nil
+}
+
+// materializeOne materializes one enriched segment: it acquires, verifies and
+// finalizes every candidate through the shared provider registry and common
+// finalizer, applies the generation fallback, and selects the primary video.
+// It is shared by the batch Process path and the single-segment Materialize
+// port so the materialization stage is implemented exactly once.
+func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
+	updated := cloneVidRushSegmentResult(segment)
+	var warnings []string
+	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) []scriptpkg.SegmentAssetCandidate {
+		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+		attempts := make(map[string]int, 3)
+		readyImages := 0
+		for _, candidate := range candidates {
+			isImage := candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration
+			if isImage && targetImages > 0 && readyImages >= targetImages {
+				// Keep the remaining remote hits for diagnostics/candidate-set
+				// hashing, but do not download or persist surplus images. This
+				// prevents Qdrant/Drive fan-out from exceeding the scene plan.
+				materialized = append(materialized, candidate)
+				continue
+			}
+			legacyPersisted := candidate.IsLegacyCandidate() && strings.TrimSpace(candidate.DriveLink) != ""
+			if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
+				materialized = append(materialized, candidate)
+				if isImage {
+					readyImages++
+				}
+				continue
+			}
+			if key := vidRushCandidateIdentity(candidate); key != "" {
+				if cached, ok := vidrushMaterializedCache.Load(key); ok {
+					if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok && readyVidRushCandidate(persisted) {
+						materialized = append(materialized, persisted)
+						if isImage {
+							readyImages++
+						}
+						continue
+					}
+				}
+				var persisted scriptpkg.SegmentAssetCandidate
+				if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "materialized", key, &persisted); cacheErr != nil {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache read %s: %v", key, cacheErr))
+				} else if hit && readyVidRushCandidate(persisted) {
+					materialized = append(materialized, persisted)
+					vidrushMaterializedCache.Store(key, persisted)
+					if isImage {
+						readyImages++
+					}
+					continue
+				}
+			}
+			providerName := strings.ToLower(strings.TrimSpace(candidate.Provider))
+			if providerName != scriptpkg.VidRushProviderArtlist && providerName != scriptpkg.VidRushProviderInternetImages && providerName != scriptpkg.VidRushProviderImageGeneration {
+				materialized = append(materialized, candidate)
+				continue
+			}
+			if attempts[providerName] >= vidRushAcquireBudget(plan, providerName) {
+				// Preserve the discovered candidate for diagnostics and a future
+				// retry, but do not turn every remote search hit into a download.
+				materialized = append(materialized, candidate)
+				continue
+			}
+			attempts[providerName]++
+
+			provider, err := p.providers.Provider(providerName)
+			if err != nil {
+				candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: %s provider unavailable for %s: %v", providerName, segment.SegmentID, err))
+				materialized = append(materialized, candidate)
+				continue
+			}
+			acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
+			var local scriptports.LocalArtifact
+			err = measureVidRushProvider(acquireCtx, p.metrics, kernobs.OperationInfo{
+				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "acquire", Provider: providerName,
+			}, func(callCtx context.Context) error {
+				var acquireErr error
+				local, acquireErr = provider.Acquire(callCtx, candidate)
+				return acquireErr
+			})
+			cancelAcquire()
+			if err != nil {
+				candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: acquire %s for %s: %v", providerName, segment.SegmentID, err))
+				materialized = append(materialized, candidate)
+				continue
+			}
+			verifyCtx, cancelVerify := context.WithTimeout(ctx, vidRushVerifyTimeout)
+			var verified scriptports.VerifiedArtifact
+			err = measureVidRushProvider(verifyCtx, p.metrics, kernobs.OperationInfo{
+				Stage: kernobs.StageVerify, Component: "vidrush", Operation: "verify", Provider: providerName,
+			}, func(callCtx context.Context) error {
+				var verifyErr error
+				verified, verifyErr = provider.Verify(callCtx, local)
+				return verifyErr
+			})
+			cancelVerify()
+			if err != nil {
+				candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+				candidate.VerificationStatus = scriptpkg.VidRushStatusFailed
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: verify %s for %s: %v", providerName, segment.SegmentID, err))
+				materialized = append(materialized, candidate)
+				continue
+			}
+			cacheKey := vidRushCandidateIdentity(candidate)
+			var persisted scriptpkg.SegmentAssetCandidate
+			err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
+				Stage: kernobs.StagePersist, Component: "vidrush", Operation: "finalize", Provider: providerName,
+			}, func(callCtx context.Context) error {
+				var finalizeErr error
+				persisted, finalizeErr = p.finalizer.Finalize(callCtx, verified)
+				return finalizeErr
+			})
+			if err != nil {
+				verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))
+				materialized = append(materialized, verified.Candidate)
+				continue
+			}
+			materialized = append(materialized, persisted)
+			if isImage && readyVidRushCandidate(persisted) {
+				readyImages++
+			}
+			if key := vidRushCandidateIdentity(persisted); key != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
+				vidrushMaterializedCache.Store(key, persisted)
+				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", key, persisted); cacheErr != nil {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", key, cacheErr))
+				}
+			}
+			if cacheKey != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
+				vidrushMaterializedCache.Store(cacheKey, persisted)
+				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "materialized", cacheKey, persisted); cacheErr != nil {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", cacheKey, cacheErr))
+				}
+			}
+		}
+		return materialized
+	}
+
+	// Search candidates must be acquired and verified before deciding how
+	// many generated images are actually missing. This keeps generation a
+	// true fallback instead of a parallel source that duplicates valid web
+	// assets.
+	imageTarget := vidRushImageTarget(plan)
+	discoveredCandidates := append([]scriptpkg.SegmentAssetCandidate(nil), updated.Assets.Candidates...)
+	updated.Assets.Candidates = materialize(discoveredCandidates, imageTarget)
+	generationCandidates, generationState := p.planGenerationFallback(plan, updated)
+	updated.Cache.ImageGeneration = generationState
+	if len(generationCandidates) > 0 {
+		// Only the newly planned fallback candidates need a second
+		// acquisition pass. Replaying the already attempted web candidates
+		// here would duplicate downloads after a generation fallback.
+		generated := materialize(generationCandidates, len(generationCandidates))
+		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, generated)
+	}
+	materialized := updated.Assets.Candidates
+	updated.Assets.SecondaryImages = durableVidRushImages(materialized)
+	updated.Assets.GeneratedImages = filterVidRushGeneratedImages(materialized)
+	if imageTarget > 0 && len(updated.Assets.SecondaryImages) < imageTarget {
+		warnings = append(warnings, fmt.Sprintf(
+			"FAILED_REQUIRED_IMAGE_COUNT: required=%d verified=%d segment=%s",
+			imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
+		))
+	}
+	updated.Assets.PrimaryVideo = nil
+	for i := range materialized {
+		candidate := materialized[i]
+		if candidate.Provider != scriptpkg.VidRushProviderArtlist || !readyVidRushCandidate(candidate) {
+			continue
+		}
+		if updated.Assets.PrimaryVideo == nil || ScoreVidRushCandidate(candidate, false) > ScoreVidRushCandidate(*updated.Assets.PrimaryVideo, false) {
+			selected := candidate
+			selected.SelectionReason = "highest ranked verified and persisted video"
+			updated.Assets.PrimaryVideo = &selected
+		}
+	}
+	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
+		diagnostics := make([]string, 0, minInt(len(materialized), 3))
+		for _, candidate := range materialized {
+			if candidate.Provider != scriptpkg.VidRushProviderArtlist {
+				continue
+			}
+			diagnostics = append(diagnostics, fmt.Sprintf("asset=%s acquire=%s verify=%s persist=%s source=%t page=%t drive=%t", candidate.AssetID, candidate.AcquisitionStatus, candidate.VerificationStatus, candidate.PersistenceStatus, strings.TrimSpace(candidate.SourceURL) != "", strings.TrimSpace(candidate.SourcePageURL) != "", strings.TrimSpace(candidate.DriveLink) != ""))
+			if len(diagnostics) == 3 {
+				break
+			}
+		}
+		if len(diagnostics) == 0 {
+			providers := make(map[string]int)
+			for _, candidate := range discoveredCandidates {
+				providers[candidate.Provider]++
+			}
+			diagnostics = append(diagnostics, fmt.Sprintf("discovered=%d providers=%v; no Artlist candidates reached materialization", len(discoveredCandidates), providers))
+		}
+		return vidRushMaterializedSegment{}, fmt.Errorf(
+			"vidrush materialization: required persisted Artlist primary unavailable for segment %s (%s)",
+			segment.SegmentID, strings.Join(diagnostics, "; "),
+		)
+	}
+	updated.Assets.CandidateSetHash = candidateSetHash(materialized)
+	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
 }
 
 func vidRushProviderTimeout(provider string) time.Duration {

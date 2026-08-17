@@ -102,7 +102,6 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 		"artlist_enabled:",
 		"youtube_enabled:",
 		"drive_enabled:",
-		"script_docs_enabled:",
 		"script_clips_enabled:",
 		"voiceover_enabled:",
 		"images_enabled:",

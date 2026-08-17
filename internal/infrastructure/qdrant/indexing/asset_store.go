@@ -68,14 +68,20 @@ import (
 )
 
 // indexableAssetWhereClause is the canonical SQLite predicate for rows that
-// can be reconstructed into Qdrant points.
+// can be reconstructed into Qdrant points. Eligibility is taxonomy-derived:
+// registered audio/document/text assets are not semantic-searchable, and
+// legacy media_type=clip rows are excluded until the registry backfill
+// normalizes them to media_type=video, asset_kind=clip.
 //
 // ReindexAll and verifier_counts must stay aligned on the same eligibility
-// boundary, so this clause excludes folders, soft-deleted rows, and rows
-// without a populated text embedding. Legacy rows with embedding_json = '[]'
-// or '{}' are treated the same as empty.
+// boundary, so this clause also excludes soft-deleted rows and rows without
+// a populated text embedding. Legacy rows with embedding_json = '[]' or '{}'
+// are treated the same as empty.
 const indexableAssetWhereClause = `
-	media_type != 'folder'
+	((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
+	 OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
+	AND COALESCE(namespace, '') != ''
+	AND COALESCE(source_type, '') != ''
 	AND (deleted_at IS NULL OR deleted_at = '')
 	AND COALESCE(embedding_json, '') NOT IN ('', '[]', '{}')
 `

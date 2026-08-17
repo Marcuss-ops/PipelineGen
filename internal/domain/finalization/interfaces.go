@@ -127,6 +127,23 @@ type ArtifactPreparationService interface {
 	) (PublishedArtifact, error)
 }
 
+// ── ArtifactFolderResolver ─────────────────────────────────────────
+
+// ArtifactFolderResolver resolves the already-resolved Drive folder ID for a
+// sidecar artifact's parent video. RenderingGen overlays publish BELOW the
+// parent video's Drive folder (via the artifact's DriveSubpath), so the
+// broker resolves the video's folder and pins it as the overlay's
+// DestinationFolderID before publication.
+//
+// Nil-safe by design: when a broker is not wired with a resolver, sidecar
+// artifacts fall back to the destination path builder (legacy behaviour).
+type ArtifactFolderResolver interface {
+	// ResolveArtifactFolder returns the Drive folder ID for the parent
+	// video identified by parentVideoID (a media_assets.id). An empty
+	// return means "not resolved" and the caller keeps the legacy path.
+	ResolveArtifactFolder(ctx context.Context, parentVideoID string) (string, error)
+}
+
 // ── AssetFinalizerTx ────────────────────────────────────────────────
 
 // AssetFinalizerTx writes the canonical asset, version, and location

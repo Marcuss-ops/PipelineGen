@@ -104,26 +104,27 @@ func newAlwaysFailingMetadataService(t *testing.T) *ytmetadata.MetadataService {
 	return svc
 }
 
-// TestProcessSegment_Step10Failure_InvokesMetricsRecorder is the
-// canonical hermetic probe for the godlike/07 NO-FAKE-AVAILABILITY
-// contract: a Step 10 failure MUST increment the counter exactly
-// once, with the typed failure_code label.
-func TestProcessSegment_Step10Failure_InvokesMetricsRecorder(t *testing.T) {
+// TestProcessSegment_MetadataAnalysisFailure_FailsBeforeCommit_NoMetric is the
+// canonical hermetic probe for the PR-ASSET-COMMITTER-ENRICHMENT contract:
+// a metadata-analysis failure now happens INSIDE step6to9 BEFORE the canonical
+// commit, so (a) the run fails closed with FailureCodeMetadataFailed and (b)
+// the obsolete Step 10 "fail-after-clip" metrics recorder is NOT invoked —
+// that partial-state class no longer exists.
+func TestProcessSegment_MetadataAnalysisFailure_FailsBeforeCommit_NoMetric(t *testing.T) {
 	t.Parallel()
 
 	mockMetrics := &step10MetricsMock{}
 
-	// Reuse the validProcessSegmentDeps helper (in-package) for
-	// the canonical 9-step happy-path stubs (Steps 1..9). Override
-	// the Step-10-relevant deps + the file-path requirement for
-	// Step 5's os.Stat check:
+	// Reuse the validProcessSegmentDeps helper (in-package) for the
+	// canonical 9-step happy-path stubs (Steps 1..9). Override the
+	// metadata + file-path requirements:
 	//   - VideoPipeline:  stubVideoPipelineWithPath returns a real
-	//     file so os.Stat passes (Execute MUST reach Step 10)
+	//     file so os.Stat passes (Execute MUST reach step6to9)
 	//   - Hash:           testStubHash returns non-empty (Step 5's
 	//     fail-closed gate)
 	//   - MetadataService: real service that ALWAYS errors on
-	//     EnrichClip (forces the partial-state failure path)
-	//   - Step10Metrics:  the mock recorder under test
+	//     AnalyzeClip (forces the pre-commit analysis failure path)
+	//   - Step10Metrics:  the mock recorder (asserted NOT called)
 	realPath := mustWriteFakeFile(t, "step10-metrics-probe.mp4")
 	core, media, metadata, observability := validProcessSegmentDeps()
 	core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
@@ -144,18 +145,16 @@ func TestProcessSegment_Step10Failure_InvokesMetricsRecorder(t *testing.T) {
 	}
 
 	// Execute must return the typed *ExtractionError with
-	// FailureCodeMetadataFailed (the canonical contract from
-	// PR-PY-STEP10-FAIL-LOG).
+	// FailureCodeMetadataFailed (the canonical job outcome).
 	_, execErr := uc.Execute(context.Background(), cmd)
 	require.Error(t, execErr, "Execute succeeded; expected typed ExtractionError(FailureCodeMetadataFailed)")
 	ee, ok := execErr.(*ExtractionError)
 	require.True(t, ok, "Execute error is not *ExtractionError: %T %v", execErr, execErr)
-	require.Equal(t, FailureCodeMetadataFailed, ee.Code, "FailureCode mismatch (PR-PY-STEP10-FAIL-LOG canonical contract)")
+	require.Equal(t, FailureCodeMetadataFailed, ee.Code, "FailureCode mismatch (metadata analysis failure must fail closed)")
 
-	// godlike/07 contract: the recorder was called EXACTLY ONCE
-	// with the stringified FailureCode constant.
-	require.Equal(t, 1, len(mockMetrics.calls), "Step10Metrics.IncStep10FailAfterClip call count = want 1 (godlike/07 exactly-once contract)")
-	require.Equal(t, string(FailureCodeMetadataFailed), mockMetrics.calls[0], "Step10Metrics.IncStep10FailAfterClip failureCode mismatch (typed-error parity)")
+	// godlike/07 contract: the obsolete "Step 10 fail AFTER clip write"
+	// recorder is NOT invoked — the partial-state class is eliminated.
+	require.Equal(t, 0, len(mockMetrics.calls), "Step10Metrics.IncStep10FailAfterClip call count = want 0 (the 'fail after clip' class no longer exists)")
 }
 
 // TestProcessSegment_Step10Success_DoesNotInvokeMetricsRecorder

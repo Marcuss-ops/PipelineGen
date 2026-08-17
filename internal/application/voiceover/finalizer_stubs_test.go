@@ -160,7 +160,7 @@ var _ persistence.Repository = (*finalizerTestRepo)(nil)
 // (ProcessSegmentDeps.Finalizer)`. Uses require.PanicsWithValue so a
 // regression in the panic MESSAGE (e.g. a future refactor that rewords
 
-func (s *stubOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _ string) error {
+func (s *stubOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _, _ string) error {
 	return nil
 }
 func (s *stubOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, _ *sql.Tx, _, _, _ string, _ []string) error {
@@ -251,7 +251,7 @@ type outboxCleanupCall struct {
 	oldLocalPaths  []string
 }
 
-func (o *payloadRecordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, assetID, contentHash string) error {
+func (o *payloadRecordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, assetID, _, contentHash string) error {
 	o.indexCalls = append(o.indexCalls, outboxIndexCall{assetID: assetID, contentHash: contentHash})
 	return nil
 }

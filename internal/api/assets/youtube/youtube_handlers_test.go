@@ -92,13 +92,12 @@ func TestNormalizeExtractionDestination_DefaultsVideoSubfolder(t *testing.T) {
 	require.True(t, createSubfolder)
 }
 
-func TestYouTubeClipHandler_SearchByTopic_PostDelegatesKeywordAndOptions(t *testing.T) {
+func TestYouTubeClipHandler_SearchByTopic_GetDelegatesKeywordAndOptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &recordingYouTubeClipService{}
 	handler := NewYouTubeClipHandler(svc, zap.NewNop(), nil, nil, nil, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/clips/search", bytes.NewBufferString(`{"q":"Muhammad Ali boxing","limit":12,"sort":"views"}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodGet, "/api/clips/search?q=Muhammad%20Ali%20boxing&limit=12&sort=views", nil)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	ctx.Request = req
@@ -127,15 +126,15 @@ func TestYouTubeClipHandler_SearchByTopic_RejectsMissingQuery(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "q is required")
 }
 
-func TestNormalizeExtractionDestination_DefaultsVideoSubfolderWithoutGroup(t *testing.T) {
+func TestNormalizeExtractionDestination_FolderIDWithoutGroupStaysFlat(t *testing.T) {
 	group, subfolder, folderPath, createSubfolder := normalizeExtractionDestination(&yttypes.DestinationRequest{
 		FolderID: "root-folder-id",
 	}, "yt_vdC5GXxS-qU")
 
 	require.Empty(t, group)
-	require.Equal(t, "vdC5GXxS-qU", subfolder)
-	require.Equal(t, "vdC5GXxS-qU", folderPath)
-	require.True(t, createSubfolder)
+	require.Empty(t, subfolder)
+	require.Empty(t, folderPath)
+	require.False(t, createSubfolder)
 }
 
 func TestNormalizeExtractionDestination_HonorsExplicitFlatFolder(t *testing.T) {
@@ -149,6 +148,17 @@ func TestNormalizeExtractionDestination_HonorsExplicitFlatFolder(t *testing.T) {
 	require.Empty(t, subfolder)
 	require.Equal(t, "Mike Tyson", folderPath)
 	require.False(t, createSubfolder)
+}
+
+func TestNormalizeExtractionDestination_FolderIDAloneStaysFlat(t *testing.T) {
+	group, subfolder, folderPath, createSubfolder := normalizeExtractionDestination(&yttypes.DestinationRequest{
+		FolderID: "explicit-drive-folder-id",
+	}, "yt_video-one")
+
+	require.Empty(t, group)
+	require.Empty(t, subfolder)
+	require.Empty(t, folderPath)
+	require.False(t, createSubfolder, "a supplied folder ID is already the complete destination")
 }
 
 func TestYouTubeClipHandler_Extract_RejectsLegacyTopLevelDestinationFields(t *testing.T) {

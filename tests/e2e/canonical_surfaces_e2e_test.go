@@ -139,8 +139,6 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 			"ClipIdentity YouTube: AssetID must contain videoID")
 		require.Contains(t, ytID.IndexEventKey, ytID.AssetID,
 			"ClipIdentity YouTube: IndexEventKey must contain AssetID")
-		require.Equal(t, "youtube", asset.DetectSourceFromAssetID(ytID.AssetID),
-			"ClipIdentity YouTube: source detection must return 'youtube'")
 
 		// Stock identity.
 		stockID, err := asset.NewStockClipIdentity(
@@ -156,8 +154,6 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 			"ClipIdentity Stock: AssetID must start with 'planner:'")
 		require.Contains(t, stockID.IndexEventKey, stockID.AssetID,
 			"ClipIdentity Stock: IndexEventKey must contain AssetID")
-		require.Equal(t, "stock", asset.DetectSourceFromAssetID(stockID.AssetID),
-			"ClipIdentity Stock: source detection must return 'stock'")
 
 		// Cross-pipeline: both produce valid triples.
 		require.NotEqual(t, ytID.AssetID, stockID.AssetID,
@@ -193,9 +189,9 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 		require.Equal(t, float64(9), ytMeta.ComputeDurationSec(),
 			"ClipSemanticMetadata YouTube: ComputeDurationSec must return EndSec-StartSec")
 
-		ytSearch := ytMeta.AsSearchTextInput("")
+		ytSearch := ytMeta.AsSearchTextInput("youtube")
 		require.Equal(t, "youtube", ytSearch.Source,
-			"AsSearchTextInput YouTube: source must be auto-detected from AssetID")
+			"AsSearchTextInput YouTube: source must be supplied by canonical provenance")
 		require.Equal(t, ytMeta.Title, ytSearch.Title)
 		require.Equal(t, ytMeta.Hook, ytSearch.Hook)
 		require.Len(t, ytSearch.Topics, 2,

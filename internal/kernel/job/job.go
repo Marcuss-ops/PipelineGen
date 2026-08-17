@@ -129,6 +129,15 @@ type Job struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	CancelledAt    *time.Time      `json:"cancelled_at,omitempty"`
+	// ParentJobID is the canonical job-broker ID of the parent that fanned
+	// this job out. Empty for root jobs. Persisted in the jobs table and
+	// carried in the payload for remote claimers.
+	ParentJobID string `json:"parent_job_id,omitempty"`
+	// RootJobID is the top-level ancestor job ID (the fan-out root). For a
+	// root job it equals ID; for a child it is inherited from the parent at
+	// enqueue time. It is the canonical correlation key for derived
+	// projections (performance_runs.root_job_id).
+	RootJobID string `json:"root_job_id,omitempty"`
 	// ParentStateTyped is the AUTHORITATIVE source for parent_job's
 	// application-level state (godlike/06 SSOT — one canonical column per
 	// fact). Added by migration 129 (P1.2 typed-state column migration).

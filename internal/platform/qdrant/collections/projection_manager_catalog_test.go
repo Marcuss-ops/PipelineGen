@@ -3,7 +3,7 @@ package collections
 import (
 	"testing"
 
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 func TestNewProjectionManagerFor_BindsContractSchema(t *testing.T) {

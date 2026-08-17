@@ -59,11 +59,11 @@ func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, 
 // per-clip loop calls resolveTranscript exactly once and
 // threads the result through). This method does NOT call
 // resolveTranscript itself.
-func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position int, clip *asset.Asset, transcript, metadataText string) {
+func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position int, clip *asset.Asset, transcript string) {
 	if w == nil || clip == nil {
 		return
 	}
-	view := buildModelClipView(position, clip, transcript, metadataText)
+	view := buildModelClipView(position, clip, transcript)
 	w.WriteString(fmt.Sprintf("NARRATIVE EVIDENCE %d\n", position+1))
 	w.WriteString(fmt.Sprintf("Ref: %s\n", view.Ref))
 	if title := strings.TrimSpace(view.VisualSummary); title != "" {
@@ -79,7 +79,27 @@ func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position
 	w.WriteString("\n")
 }
 
-func buildModelClipView(position int, clip *asset.Asset, transcript, metadataText string) scriptpkg.ModelClipView {
+// resolveClipEvidence resolves the canonical evidence document for a clip
+// through asset.ResolveEvidence (the single evidence-precedence SSOT). The
+// transcript is the pre-resolved TextTrack string threaded by the caller;
+// the four metadata tiers are read straight from the asset row. search_text
+// and the caller-supplied metadataText fallback are intentionally NOT part
+// of the precedence (strict 5-source contract).
+func resolveClipEvidence(clip *asset.Asset, transcript string) asset.EvidenceDocument {
+	if clip == nil {
+		return asset.EvidenceDocument{}
+	}
+	return asset.ResolveEvidence(asset.EvidenceInput{
+		AssetID:         clip.ID,
+		Transcript:      transcript,
+		SemanticSummary: clip.GetMetadataString("semantic_summary"),
+		VisualSummary:   clip.GetMetadataString("visual_summary"),
+		Summary:         clip.GetMetadataString("summary"),
+		Description:     clip.GetMetadataString("description"),
+	})
+}
+
+func buildModelClipView(position int, clip *asset.Asset, transcript string) scriptpkg.ModelClipView {
 	view := scriptpkg.ModelClipView{
 		Ref:        fmt.Sprintf("clip_%d", position+1),
 		Transcript: truncateExcerpt(strings.TrimSpace(transcript), excerptMaxRunes),
@@ -92,13 +112,10 @@ func buildModelClipView(position int, clip *asset.Asset, transcript, metadataTex
 			view.DurationMs = endMs - startMs
 		}
 	}
-	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
-		view.Description = searchText
-	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
-		view.Description = desc
-	} else {
-		view.Description = strings.TrimSpace(metadataText)
-	}
+	// The model-facing grounding text is resolved exactly once through
+	// the canonical EvidenceResolver (single precedence SSOT) — no
+	// per-consumer search_text / metadataText fallback chain.
+	view.Description = resolveClipEvidence(clip, transcript).Text
 	if title := strings.TrimSpace(clipDisplayName(clip, "")); title != "" {
 		view.VisualSummary = title
 	} else {
@@ -112,17 +129,13 @@ func buildModelClipView(position int, clip *asset.Asset, transcript, metadataTex
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
 // transcript string is PRE-RESOLVED by the caller.
-func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset, transcript, metadataText string) {
+func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset, transcript string) {
 	if details == nil || clip == nil || c == nil {
 		return
 	}
-	desc := strings.TrimSpace(clip.SearchText)
-	if desc == "" {
-		desc = strings.TrimSpace(clip.GetMetadataString("description"))
-	}
-	if desc == "" {
-		desc = strings.TrimSpace(metadataText)
-	}
+	// Primary evidence for clip-native scene construction is resolved
+	// exactly once through the canonical EvidenceResolver.
+	desc := resolveClipEvidence(clip, transcript).Text
 	startMs, endMs := clipTimeline(clip)
 	if startMs < 0 {
 		startMs = parseMetadataMs(clip.GetMetadataString("start_ms"))
@@ -131,14 +144,15 @@ func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDe
 		endMs = parseMetadataMs(clip.GetMetadataString("end_ms"))
 	}
 	details[id] = scriptpkg.ClipDetail{
-		Name:        clipDisplayName(clip, id),
-		Description: desc,
-		Transcript:  transcript,
-		Tags:        append([]string(nil), clip.Tags...),
-		StartMs:     startMs,
-		EndMs:       endMs,
-		DriveLink:   canonicalClipDriveLink(clip),
-		LocalPath:   strings.TrimSpace(clip.LocalPath()),
+		Name:            clipDisplayName(clip, id),
+		Description:     desc,
+		Transcript:      transcript,
+		Tags:            append([]string(nil), clip.Tags...),
+		StartMs:         startMs,
+		EndMs:           endMs,
+		TotalDurationMs: clip.Duration.Milliseconds(),
+		DriveLink:       canonicalClipDriveLink(clip),
+		LocalPath:       strings.TrimSpace(clip.LocalPath()),
 	}
 }
 

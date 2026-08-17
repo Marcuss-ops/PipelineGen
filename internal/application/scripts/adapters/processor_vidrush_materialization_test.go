@@ -3,10 +3,12 @@ package adapters
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -418,5 +420,131 @@ func TestVidRushProviderTimeoutsBoundRemoteOperations(t *testing.T) {
 				t.Fatalf("provider timeout remaining = %s, want a positive duration no greater than %s", remaining, test.want)
 			}
 		})
+	}
+}
+
+func TestVidRushMaterializationMaterializeReusesSingleSegmentBoundary(t *testing.T) {
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(materializationProviderStub{}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "single-materialize",
+		Text:      "a mountain at sunrise",
+		TextHash:  "single-materialize-hash",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID:      "single-artlist",
+			Provider:     scriptpkg.VidRushProviderArtlist,
+			SourceURL:    "https://cdn.example/single.mp4",
+			RightsStatus: "unknown",
+		}}},
+	}
+
+	result, err := processor.Materialize(context.Background(), nil, segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Assets.PrimaryVideo == nil {
+		t.Fatal("single-segment Materialize must persist and bind the primary video through the shared boundary")
+	}
+	if result.Assets.PrimaryVideo.DriveLink == "" {
+		t.Fatalf("primary video DriveLink = %q, want a persisted link", result.Assets.PrimaryVideo.DriveLink)
+	}
+}
+
+func TestVidRushMaterializationMaterializeFailsClosedWhenDependenciesMissing(t *testing.T) {
+	processor := NewVidRushMaterializationProcessor(nil, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	_, err := processor.Materialize(context.Background(), plan, scriptpkg.VidRushSegmentResult{
+		SegmentID: "missing-single-materialize",
+	})
+	if err == nil {
+		t.Fatal("expected single-segment Materialize to fail closed when provider registry and finalizer are unavailable")
+	}
+}
+
+// TestVidRushMaterializationEntityImageFullLifecycleChain certifies the full
+// acquisition boundary from the certification spec: a search-discovered
+// candidate (candidate_found, remote provenance only) must move through
+// acquire → verify → persist → Drive, and only then bind as the entity image.
+func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
+	vidrushMaterializedCache = sync.Map{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(internetImageMaterializationProviderStub{}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language: "en",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			Extraction: mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{
+				Enabled: true, EntityTypes: []string{"PERSON"},
+			}},
+		},
+	}
+
+	// The search step produced a discovered candidate: remote URL and query,
+	// but no lifecycle state and no Drive link yet.
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-dwayne", SegmentID: "scene-dwayne", Index: 0,
+			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+				CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
+			}}},
+		}}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+			SegmentID: "scene-dwayne", SceneID: "scene-dwayne", Position: 0,
+			Text:     "Dwayne Johnson trained in Los Angeles.",
+			TextHash: "cert-dwayne-hash",
+			Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+				AssetID:      "asset-dwayne-cert",
+				Provider:     scriptpkg.VidRushProviderInternetImages,
+				Query:        "Dwayne Johnson",
+				SourceURL:    "https://images.example/dwayne.jpg",
+				RightsStatus: "unknown",
+			}}},
+		}},
+	}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := result.VidRushSegments[0].Assets.Candidates
+	if len(candidates) != 1 {
+		t.Fatalf("materialized candidates = %+v, want exactly one", candidates)
+	}
+	c := candidates[0]
+	if c.Provider != scriptpkg.VidRushProviderInternetImages {
+		t.Fatalf("provider = %q, want internet_images", c.Provider)
+	}
+	if c.SourceURL == "" {
+		t.Fatal("source_url must be preserved through materialization")
+	}
+	if c.AcquisitionStatus != scriptpkg.VidRushStatusAcquired {
+		t.Fatalf("acquisition_status = %q, want acquired", c.AcquisitionStatus)
+	}
+	if c.VerificationStatus != scriptpkg.VidRushStatusVerified {
+		t.Fatalf("verification_status = %q, want verified", c.VerificationStatus)
+	}
+	if c.PersistenceStatus != scriptpkg.VidRushStatusPersisted {
+		t.Fatalf("persistence_status = %q, want persisted", c.PersistenceStatus)
+	}
+	if c.DriveLink == "" {
+		t.Fatal("drive_link must be populated by the finalizer")
+	}
+
+	// Only a fully materialized candidate reaches the entity-image binding.
+	img := result.UpdatedSpecScene.Scenes[0].Annotations.PrimaryEntities[0].Image
+	if img == nil || img.Status != "resolved" || img.AssetID != "asset-dwayne-cert" || img.DriveLink == "" {
+		t.Fatalf("entity image binding = %+v, want resolved durable image", img)
 	}
 }

@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -62,7 +63,7 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	}
 	// PR-CATALOG-MULTILINGUA step 6 + item 7: the canonical SEARCH DOCUMENT
 	// is ALWAYS composed by the SemanticDocumentComposer (the single owner,
-	// internal/application/indexing/semanticdoc). No caller can evade the
+	// internal/kernel/semanticdoc). No caller can evade the
 	// forward-prevention check by sneaking link/locator text into
 	// doc.Metadata.EmbeddingText: the composer reads ONLY the 8 sanctioned
 	// fields and emits an empty string when none are populated.
@@ -94,6 +95,10 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	// record exactly which document text was embedded.
 	payload["semantic_document_version"] = semanticDoc.Version
 	payload["semantic_document_hash"] = semanticDoc.Hash
+	// The text vector and query embedder share this exact contract. Stamp the
+	// contract identity alongside the observed model/version so a projection
+	// cannot look compatible merely because its dimension is 768.
+	payload["embedding_contract_hash"] = coreembedding.CanonicalText.Hash()
 	fillIdentityPayload(payload, doc, name, destination, origin, sourceProvider, sourceURL, semanticTitle, embeddingText)
 	fillContentPayload(payload, doc)
 	fillSemanticPayload(payload, doc, entities)

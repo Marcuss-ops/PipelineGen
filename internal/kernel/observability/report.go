@@ -38,6 +38,11 @@ type RunReport struct {
 	WallTimeMs             int64             `json:"wall_time_ms"`
 	BlockedMs              int64             `json:"blocked_ms,omitempty"`
 	AccumulatedOperationMs int64             `json:"accumulated_operation_ms,omitempty"`
+	AttributedStageMs      int64             `json:"attributed_stage_ms"`
+	UnattributedMs         int64             `json:"unattributed_ms"`
+	UnattributedPercent    float64           `json:"unattributed_percent"`
+	BottleneckStage        string            `json:"bottleneck_stage,omitempty"`
+	BottleneckOperation    string            `json:"bottleneck_operation,omitempty"`
 	Stages                 []StageReport     `json:"stages,omitempty"`
 	Operations             []OperationReport `json:"operations,omitempty"`
 	Artifacts              []ArtifactReport  `json:"artifacts,omitempty"`

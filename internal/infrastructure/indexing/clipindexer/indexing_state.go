@@ -3,13 +3,13 @@ package clipindexer
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
 // ErrIndexSuperseded is returned by setIndexedAt when the CAS fence
@@ -83,7 +83,7 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 		return fmt.Errorf("setIndexState: refusing unknown state %q for %s", state, clipID)
 	}
 
-	source := sourceFromClipID(clipID)
+	source := s.sourceLabel(ctx, clipID)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	// Single atomic UPDATE — index_state column + index_state_updated_at column + sidecar last_index_error in metadata_json.
@@ -149,21 +149,23 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 	return nil
 }
 
-// sourceFromClipID returns the canonical source label used by Prometheus
-// counters, derived from the asset ID prefix convention.
-func sourceFromClipID(clipID string) string {
-	switch {
-	case strings.HasPrefix(clipID, "yt_"):
-		return "youtube"
-	case strings.HasPrefix(clipID, "artlist_"):
-		return "artlist"
-	case strings.HasPrefix(clipID, "stock_"):
-		return "stock"
-	case strings.HasPrefix(clipID, "img_"):
-		return "image"
-	default:
+// sourceLabel reads provenance from the canonical SQLite asset row. Asset IDs
+// are opaque identifiers and must never be parsed to infer source provenance.
+// Metrics remain available for legacy rows whose source is not populated by
+// using the explicit unknown bucket.
+func (s *Service) sourceLabel(ctx context.Context, assetID string) string {
+	if s == nil || s.db == nil || assetID == "" {
 		return "other"
 	}
+	var source string
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT source FROM media_assets WHERE id = ?", assetID).Scan(&source); err != nil {
+		return "other"
+	}
+	if source == "" {
+		return "other"
+	}
+	return source
 }
 
 // setIndexedAt persists the canonical INDEXED state (column flip)
@@ -202,10 +204,10 @@ func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceV
 		`UPDATE media_assets SET
 			index_state = ?,
 			index_state_updated_at = ?,
-			metadata_json = json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?)
+			metadata_json = json_set(json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?), '$.embedding_contract_hash', ?)
 		 WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`,
 		string(asset.StateIndexed), now,
-		now, contentHash, embeddingModel, embeddingModelVersion,
+		now, contentHash, embeddingModel, embeddingModelVersion, coreembedding.CanonicalText.Hash(),
 		clipID, sourceVersion)
 	if err != nil {
 		return fmt.Errorf("set indexed_at for %s: %w", clipID, err)
@@ -217,6 +219,6 @@ func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash, sourceV
 			SourceVersion: sourceVersion,
 		}
 	}
-	metrics.MediaIndexSuccessTotal.WithLabelValues(sourceFromClipID(clipID)).Inc()
+	metrics.MediaIndexSuccessTotal.WithLabelValues(s.sourceLabel(ctx, clipID)).Inc()
 	return nil
 }

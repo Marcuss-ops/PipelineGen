@@ -93,10 +93,14 @@ var upsertPointsSoleOwnerSkipPathPrefixes = []string{
 // are legitimate. The IndexingHandler routes asset index events
 // through `internal/infrastructure/qdrant/indexing/`; the
 // qdrantmm package (mediamemory concept/frame indexers) is the
-// SOLE additional owner for concept/frame vector writes.
+// SOLE additional owner for concept/frame vector writes. The
+// generic ProjectionWriter adapter (TransportProjectionWriter)
+// moved to `internal/platform/qdrant/indexing/` and remains the
+// canonical translation layer for those calls.
 var upsertPointsSoleOwnerCanonicalCallers = []string{
 	"internal/infrastructure/qdrant/indexing/",
 	"internal/infrastructure/qdrant/qdrantmm/",
+	"internal/platform/qdrant/indexing/",
 }
 
 // upsertPointsSoleOwnerScanScope is the prefix the gate

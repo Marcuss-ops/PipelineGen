@@ -20,6 +20,7 @@ package mediaregistry
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -138,6 +139,80 @@ func (r *CanonicalIdentityResolver) BackfillContentLinks(ctx context.Context, ap
 
 	if err := tx.Commit(); err != nil {
 		return report, fmt.Errorf("content link backfill: commit transaction: %w", err)
+	}
+	return report, nil
+}
+
+// BackfillContentSHA256 reconstructs the byte-identity half of the CAS
+// registry: media_assets rows whose content_sha256 is empty/UNKNOWN but whose
+// legacy file_hash is a valid 64-hex SHA-256 get content_sha256 (and its
+// binary_sha256 projection) copied from file_hash.
+//
+// godlike/07 fail-closed: the guard is capregistry.IsSHA256Hex (64 hex
+// chars), so a 32-char MD5 (clip_atomic_writer's empty-file fallback) or any
+// other non-SHA-256 legacy value is skipped and left UNKNOWN — the digest is
+// never fabricated from a Drive file ID, URL, or provider ID.
+func (r *CanonicalIdentityResolver) BackfillContentSHA256(ctx context.Context, apply bool) (capregistry.ContentSHA256BackfillReport, error) {
+	report := capregistry.ContentSHA256BackfillReport{}
+	if r == nil || r.db == nil {
+		return report, ErrNotWired
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, COALESCE(file_hash, '') FROM media_assets
+		WHERE (content_sha256 = '' OR content_sha256 IS NULL OR content_sha256 = ?)
+		  AND COALESCE(file_hash, '') != ''`, capregistry.ContentSHA256Unknown)
+	if err != nil {
+		return report, fmt.Errorf("content sha256 backfill: scan candidates: %w", err)
+	}
+	defer rows.Close()
+
+	type candidate struct{ id, fileHash string }
+	var items []candidate
+	for rows.Next() {
+		var it candidate
+		if err := rows.Scan(&it.id, &it.fileHash); err != nil {
+			return report, fmt.Errorf("content sha256 backfill: scan row: %w", err)
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return report, fmt.Errorf("content sha256 backfill: iterate candidates: %w", err)
+	}
+	report.CandidatesScanned = len(items)
+
+	var tx *sql.Tx
+	if apply {
+		tx, err = r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return report, fmt.Errorf("content sha256 backfill: begin transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+	}
+	var writer execer = r.db
+	if tx != nil {
+		writer = tx
+	}
+
+	for _, it := range items {
+		if !capregistry.IsSHA256Hex(it.fileHash) {
+			report.SkippedNonSHA256++
+			continue
+		}
+		if apply {
+			if _, err := writer.ExecContext(ctx,
+				`UPDATE media_assets SET content_sha256 = ?, binary_sha256 = ? WHERE id = ?`,
+				it.fileHash, it.fileHash, it.id); err != nil {
+				return report, fmt.Errorf("content sha256 backfill: update %q: %w", it.id, err)
+			}
+		}
+		report.Backfilled++
+	}
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return report, fmt.Errorf("content sha256 backfill: commit: %w", err)
+		}
 	}
 	return report, nil
 }

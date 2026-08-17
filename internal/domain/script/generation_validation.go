@@ -117,9 +117,10 @@ func validateAudioMode(item GenerationItemV2, ref string) []string {
 	case "NONE", "CHUNKED_VOICEOVER":
 		return nil
 	case "COMBINED_TIMELINE":
-		if !item.Output.GenerateTimeline {
-			return []string{ref + ": audio.mode COMBINED_TIMELINE requires output.generate_timeline=true"}
-		}
+		// COMBINED_TIMELINE compiles one certified final_audio.m4a from the
+		// canonical timeline + compiled audio plan. It requires only
+		// audio/timeline prerequisites (narration, canonical timeline, audio
+		// plan); it does NOT require the binary video render path.
 		return nil
 	default:
 		return []string{ref + ": unsupported audio.mode " + mode}

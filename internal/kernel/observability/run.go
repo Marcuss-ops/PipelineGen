@@ -7,7 +7,17 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 )
+
+// runReportSaveTimeout bounds the detached persistence flush in Run.emit.
+// SaveReport / Collect run against a context detached from the run's
+// lifecycle (see emit) so a worker shutdown that cancels the parent cannot
+// strand a run in RUNNING forever, but the detached context is still
+// bounded so a hung observability database cannot stall shutdown
+// indefinitely.
+const runReportSaveTimeout = 30 * time.Second
 
 type RunInfo struct {
 	RunID       string
@@ -174,6 +184,14 @@ func (r *Run) finish(status string, finalErr error) *RunReport {
 	}
 	r.report.WallTimeMs = nonNegative(r.report.FinishedAt.Sub(r.started).Milliseconds())
 	r.report.AccumulatedOperationMs = r.operationMs
+	// Derive the canonical timing breakdown from the top-level stage wall
+	// times recorded on the SAME clock (never a second timer).
+	bd := r.report.Breakdown()
+	r.report.AttributedStageMs = bd.AttributedStageMs
+	r.report.UnattributedMs = bd.UnattributedMs
+	r.report.UnattributedPercent = bd.UnattributedPercent
+	r.report.BottleneckStage = bd.BottleneckStage
+	r.report.BottleneckOperation = bd.BottleneckOperation
 	if status != "" {
 		r.report.Status = status
 	} else if finalErr != nil {
@@ -197,11 +215,21 @@ func (r *Run) emit(report *RunReport) {
 	if r == nil || report == nil {
 		return
 	}
+	// Detach the final persistence from the run's lifecycle context. The
+	// run is bound to the worker's parent context (see
+	// worker_execution.go::runJob), so when the worker shuts down the parent
+	// is cancelled and SaveReport(r.ctx, ...) would fail with "context
+	// canceled" — the terminal UPDATE run_observability never lands and the
+	// run stays RUNNING forever (orphaned). background.DetachWithTimeout
+	// preserves correlation values while removing parent cancellation, and
+	// bounds the flush so a hung DB cannot stall shutdown.
+	ctx, cancel := background.DetachWithTimeout(r.ctx, "run-report-save", runReportSaveTimeout)
+	defer cancel()
 	if r.collector != nil {
-		_ = r.collector.Collect(r.ctx, cloneReport(report))
+		_ = r.collector.Collect(ctx, cloneReport(report))
 	}
 	if r.rec != nil {
-		if err := r.rec.SaveReport(r.ctx, cloneReport(report)); err != nil {
+		if err := r.rec.SaveReport(ctx, cloneReport(report)); err != nil {
 			r.markRecorderFailure("save_report", err)
 		}
 	}
@@ -213,6 +241,18 @@ func (r *Run) Report() *RunReport {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return cloneReport(&r.report)
+}
+
+// ElapsedMs returns the wall time elapsed since the run started, measured on
+// the run's own canonical clock (never a second timer). It is the canonical
+// source for compatibility projections (e.g. GenerationTimings.TotalMs) that
+// must not start an ad-hoc clock. started and now are write-once after
+// StartRun, so they are read without the report mutex.
+func (r *Run) ElapsedMs() int64 {
+	if r == nil {
+		return 0
+	}
+	return nonNegative(r.now().Sub(r.started).Milliseconds())
 }
 func cloneReport(in *RunReport) *RunReport {
 	if in == nil {
@@ -264,6 +304,16 @@ func (r *Run) RecordWait(info WaitInfo) {
 	}
 	r.report.BlockedMs = blockedIntervalUnion(blockedWaits)
 }
+
+// RecordWait is the context-bound form of Run.RecordWait: it records the
+// typed blocked interval on the run bound to ctx, or is a no-op when no run
+// is bound (instrumentation must never change behaviour).
+func RecordWait(ctx context.Context, info WaitInfo) {
+	if run := FromContext(ctx); run != nil {
+		run.RecordWait(info)
+	}
+}
+
 func (r *Run) SetRetries(n int64) {
 	if r == nil {
 		return

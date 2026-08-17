@@ -9,14 +9,15 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtractionResult, limit int) *asset.EntityExtractionResult {
+func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtractionResult, limit int, language string) *asset.EntityExtractionResult {
 	if result == nil {
 		return nil
 	}
 
-	// Load the fallback lexicon profile once per sanitization pass so
-	// every sub-filter uses the same centralized stopwords, function
-	// words and verb suffixes instead of hardcoded maps.
+	// Load the requested language's lexicon profile once per sanitization
+	// pass so every sub-filter uses the same centralized stopwords, function
+	// words and verb suffixes instead of hardcoded maps. Unknown or empty
+	// languages fall back to the cross-linguistic fallback profile.
 	registry := linguistics.DefaultLexiconOrNil()
 	if registry == nil {
 		// Low-level client tests and lightweight callers may exercise the
@@ -26,6 +27,9 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 		return result
 	}
 	profile := registry.Resolve("fallback")
+	if language != "" && registry.HasProfile(language) {
+		profile = registry.Resolve(language)
+	}
 
 	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti, profile)
 	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali, profile)
@@ -35,13 +39,13 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
 
 	if len(result.FrasiImportanti) == 0 {
-		result.FrasiImportanti = fallbackImportantPhrases(segment, limit)
+		result.FrasiImportanti = fallbackImportantPhrases(segment, limit, profile)
 	}
 	if len(result.NomiSpeciali) == 0 {
-		result.NomiSpeciali = fallbackSpecialNames(segment, limit)
+		result.NomiSpeciali = fallbackSpecialNames(segment, limit, language)
 	}
 	if len(result.ParoleImportanti) == 0 {
-		result.ParoleImportanti = fallbackImportantWords(segment, limit)
+		result.ParoleImportanti = fallbackImportantWords(segment, limit, language)
 	}
 	if len(result.ArtlistPhrases) == 0 {
 		result.ArtlistPhrases = fallbackArtlistPhrases(segment, limit)
@@ -56,7 +60,25 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 }
 
 func filterExactPhrases(segment string, items []string, profile *linguistics.LexiconProfile) []string {
-	return filterExactStrings(segment, items, false, profile)
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || isNoisyExtractionCandidate(item) {
+			continue
+		}
+		// Reject single-word fragments and whole-sentence/paragraph echoes: an
+		// important phrase must be a short salient span, never the full input.
+		if n := len(strings.Fields(item)); n < minImportantPhraseWords || n > maxImportantPhraseWords {
+			continue
+		}
+		if textutil.ContainsCI(segment, item) {
+			out = append(out, item)
+		}
+	}
+	return uniqueLocalStrings(out)
 }
 
 func filterExactNames(segment string, items []string, profile *linguistics.LexiconProfile) []string {

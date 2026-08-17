@@ -14,12 +14,21 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// runBackfillMediaDurations measures existing Drive-backed video assets with
-// ffprobe and republishes each changed asset through the canonical outbox.
-// It intentionally does not leave a local copy behind: the catalog remains
-// Drive-backed while duration and measured dimensions become durable metadata.
+// runBackfillMediaDurations measures existing video assets and republishes
+// each changed asset through the canonical outbox. Duration resolution
+// follows the canonical precedence (internal/kernel/asset.ResolveAssetDuration):
+//
+//  1. local binary present on disk  → probe (authoritative);
+//  2. trusted provider metadata     → provider_metadata (already declared);
+//  3. Drive binary materializable   → temporary probe;
+//  4. otherwise                     → unknown (never a fabricated zero).
+//
+// It intentionally does not leave a local copy behind for the Drive-probe
+// path: the catalog remains Drive-backed while duration and measured
+// dimensions become durable metadata.
 func runBackfillMediaDurations(args []string) error {
 	fs := flag.NewFlagSet("backfill-media-durations", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -66,7 +75,7 @@ func runBackfillMediaDurations(args []string) error {
 		return err
 	}
 	if len(rows) == 0 {
-		fmt.Println("No ACTIVE/INDEXED Drive-backed video assets require duration backfill")
+		fmt.Println("No ACTIVE/INDEXED video assets require duration backfill")
 		return nil
 	}
 
@@ -78,31 +87,34 @@ func runBackfillMediaDurations(args []string) error {
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 
 	probe := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+	report := durationBackfillReport{AssetsTotal: len(rows)}
 	var failed int
 	for _, row := range rows {
-		if err := backfillOneMediaDuration(ctx, root, probe, &row, *retainDir); err != nil {
+		outcome, err := backfillOneMediaDuration(ctx, root, probe, row, *retainDir)
+		if err != nil {
 			failed++
 			fmt.Printf("FAILED id=%s: %v\n", row.ID, err)
 			continue
 		}
-		fmt.Printf("MEASURED id=%s duration_ms=%d width=%d height=%d\n", row.ID, row.DurationMS, row.Width, row.Height)
+		report.Count(outcome)
+		fmt.Printf("%-22s id=%s duration_ms=%d width=%d height=%d\n",
+			outcome.Kind, row.ID, outcome.DurationMS, outcome.Width, outcome.Height)
 	}
 	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
+	fmt.Println(report.String())
 	if failed > 0 {
 		return fmt.Errorf("duration backfill failed for %d of %d assets", failed, len(rows))
 	}
-	fmt.Printf("PASS: duration backfill completed assets=%d\n", len(rows))
 	return nil
 }
 
+// durationBackfillRow identifies one eligible asset. Duration, provenance and
+// the local path are read from the canonical clip (via ClipsRepo) rather than
+// from the row, so classification always sees the post-load asset state.
 type durationBackfillRow struct {
-	ID          string
-	DriveFileID string
-	DurationMS  int64
-	Width       int
-	Height      int
+	ID string
 }
 
 type queryer interface {
@@ -114,7 +126,7 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 		"media_type IN ('video', 'clip')",
 		"UPPER(COALESCE(lifecycle_state, '')) = 'ACTIVE'",
 		"UPPER(COALESCE(index_state, '')) = 'INDEXED'",
-		"TRIM(COALESCE(drive_file_id, '')) <> ''",
+		"(TRIM(COALESCE(drive_file_id, '')) <> '' OR TRIM(COALESCE(local_path, '')) <> '')",
 	}
 	if !force {
 		where = append(where, "COALESCE(duration_ms, 0) <= 0")
@@ -131,7 +143,7 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 		where = append(where, "(parent_folder_id = ? OR drive_folder_id = ? OR folder_id = ?)")
 		args = append(args, folderID, folderID, folderID)
 	}
-	query := "SELECT id, drive_file_id, COALESCE(duration_ms, 0), COALESCE(width, 0), COALESCE(height, 0) FROM media_assets WHERE " + strings.Join(where, " AND ") + " ORDER BY id"
+	query := "SELECT id FROM media_assets WHERE " + strings.Join(where, " AND ") + " ORDER BY id"
 	if limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, limit)
@@ -144,7 +156,7 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 	var result []durationBackfillRow
 	for rows.Next() {
 		var row durationBackfillRow
-		if err := rows.Scan(&row.ID, &row.DriveFileID, &row.DurationMS, &row.Width, &row.Height); err != nil {
+		if err := rows.Scan(&row.ID); err != nil {
 			return nil, fmt.Errorf("scan duration backfill asset: %w", err)
 		}
 		result = append(result, row)
@@ -155,19 +167,139 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 	return result, nil
 }
 
-func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, probe *rustexec.VideoProcessor, row *durationBackfillRow, retainDir string) error {
-	reader, _, err := root.Drive.Reader.DownloadFile(ctx, row.DriveFileID)
+// durationBackfillState classifies an asset's existing duration so the
+// backfill can distinguish "already known" from "missing" from "corrupt
+// (zero/negative that must never be fabricated away)".
+type durationBackfillState int
+
+const (
+	durationStateMissing durationBackfillState = iota
+	durationStateKnownProbe
+	durationStateKnownProvider
+	durationStateInvalidZero
+	durationStateNegative
+)
+
+// classifyDurationAsset maps an asset's current duration + provenance onto the
+// backfill decision state. A positive duration is known (probe vs provider
+// provenance via DurationProvenance); a negative duration is corrupt; a zero
+// duration carrying a known provenance tag is corrupt; a zero duration with no
+// known tag is genuinely missing.
+func classifyDurationAsset(clip *asset.Asset) durationBackfillState {
+	if clip == nil {
+		return durationStateMissing
+	}
+	if clip.Duration < 0 {
+		return durationStateNegative
+	}
+	if clip.Duration > 0 {
+		if clip.DurationProvenance() == asset.DurationProbe {
+			return durationStateKnownProbe
+		}
+		return durationStateKnownProvider
+	}
+	if raw := strings.TrimSpace(clip.GetMetadataString("duration_source")); raw != "" {
+		if asset.NormalizeDurationSource(raw) != asset.DurationUnknown {
+			return durationStateInvalidZero
+		}
+	}
+	return durationStateMissing
+}
+
+// durationBackfillOutcome reports what the backfill did for one asset. Kind is
+// one of: already_known, provider_metadata, probed_local, probed_drive,
+// still_unknown, invalid_zero_duration, negative_duration.
+type durationBackfillOutcome struct {
+	Kind       string
+	DurationMS int64
+	Width      int
+	Height     int
+}
+
+// backfillOneMediaDuration resolves a single asset's total video duration with
+// the canonical precedence and persists a probe measurement. "Unknown" is an
+// explicit outcome (fail-closed), never a fabricated zero. A non-nil error is
+// reserved for hard failures (asset load/persist), not for "no source".
+func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, probe *rustexec.VideoProcessor, row durationBackfillRow, retainDir string) (durationBackfillOutcome, error) {
+	clip, err := root.Repos.ClipsRepo.GetClip(ctx, row.ID)
 	if err != nil {
-		return fmt.Errorf("download Drive file: %w", err)
+		return durationBackfillOutcome{}, fmt.Errorf("load asset: %w", err)
+	}
+	if clip == nil {
+		return durationBackfillOutcome{}, fmt.Errorf("asset disappeared from repository")
+	}
+
+	switch classifyDurationAsset(clip) {
+	case durationStateKnownProbe:
+		return durationBackfillOutcome{Kind: "already_known", DurationMS: clip.Duration.Milliseconds()}, nil
+	case durationStateKnownProvider:
+		return durationBackfillOutcome{Kind: "provider_metadata", DurationMS: clip.Duration.Milliseconds()}, nil
+	case durationStateNegative:
+		return durationBackfillOutcome{Kind: "negative_duration"}, nil
+	case durationStateInvalidZero:
+		return durationBackfillOutcome{Kind: "invalid_zero_duration"}, nil
+	case durationStateMissing:
+	}
+
+	// Precedence 1: probe an existing local binary — authoritative, no download.
+	if localPath := strings.TrimSpace(clip.LocalPath()); localPath != "" {
+		if st, statErr := os.Stat(localPath); statErr == nil && st.Mode().IsRegular() {
+			info, probeErr := probe.Probe(ctx, localPath)
+			if probeErr == nil && info != nil && info.HasVideo && info.Duration > 0 && info.Width > 0 && info.Height > 0 {
+				if err := persistMeasuredDuration(ctx, root, clip, info.Duration, info.Width, info.Height); err != nil {
+					return durationBackfillOutcome{}, err
+				}
+				return durationBackfillOutcome{Kind: "probed_local", DurationMS: info.Duration.Milliseconds(), Width: info.Width, Height: info.Height}, nil
+			}
+		}
+	}
+
+	// Precedence 2: materialize the Drive binary and probe it.
+	if driveFileID := strings.TrimSpace(clip.DriveFileID()); driveFileID != "" {
+		duration, width, height, retainedPath, probeErr := probeDriveDuration(ctx, root, probe, driveFileID, clip.ID, retainDir)
+		if probeErr == nil {
+			if strings.TrimSpace(retainedPath) != "" {
+				clip.SetLocalPath(retainedPath)
+			}
+			if err := persistMeasuredDuration(ctx, root, clip, duration, width, height); err != nil {
+				return durationBackfillOutcome{}, err
+			}
+			return durationBackfillOutcome{Kind: "probed_drive", DurationMS: duration.Milliseconds(), Width: width, Height: height}, nil
+		}
+	}
+
+	return durationBackfillOutcome{Kind: "still_unknown"}, nil
+}
+
+// persistMeasuredDuration writes a probe-derived duration + dimensions through
+// the canonical outbox with the canonical provenance tag.
+func persistMeasuredDuration(ctx context.Context, root *wiring.ComposeRoot, clip *asset.Asset, duration time.Duration, width, height int) error {
+	clip.Duration = duration
+	clip.SetMetadataString("duration_source", string(asset.DurationProbe))
+	clip.SetMetadataInt("width", width)
+	clip.SetMetadataInt("height", height)
+	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		return fmt.Errorf("persist and index measured asset: %w", err)
+	}
+	return nil
+}
+
+// probeDriveDuration downloads a Drive binary to a temp file (or the retain
+// directory) and probes it. It returns the retained local path when retainDir
+// is set, otherwise the empty string.
+func probeDriveDuration(ctx context.Context, root *wiring.ComposeRoot, probe *rustexec.VideoProcessor, driveFileID, assetID, retainDir string) (time.Duration, int, int, string, error) {
+	reader, _, err := root.Drive.Reader.DownloadFile(ctx, driveFileID)
+	if err != nil {
+		return 0, 0, 0, "", fmt.Errorf("download Drive file: %w", err)
 	}
 	defer reader.Close()
 	tmpPath := ""
 	if strings.TrimSpace(retainDir) != "" {
-		tmpPath = filepath.Join(retainDir, row.ID+".mp4")
+		tmpPath = filepath.Join(retainDir, assetID+".mp4")
 	} else {
 		tmp, createErr := os.CreateTemp("", "pipelinegen-duration-*.media")
 		if createErr != nil {
-			return fmt.Errorf("create probe temp file: %w", createErr)
+			return 0, 0, 0, "", fmt.Errorf("create probe temp file: %w", createErr)
 		}
 		tmpPath = tmp.Name()
 		_ = tmp.Close()
@@ -175,44 +307,74 @@ func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, pro
 	}
 	tmp, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
-		return fmt.Errorf("open probe file: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("open probe file: %w", err)
 	}
 	if _, err := io.Copy(tmp, reader); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("download Drive file bytes: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("download Drive file bytes: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close probe temp file: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("close probe temp file: %w", err)
 	}
 	info, err := probe.Probe(ctx, tmpPath)
 	if err != nil {
-		return fmt.Errorf("ffprobe: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("ffprobe: %w", err)
 	}
 	if info == nil || !info.HasVideo || info.Duration <= 0 || info.Width <= 0 || info.Height <= 0 {
-		return fmt.Errorf("invalid video probe result duration=%s width=%d height=%d has_video=%t", info.Duration, info.Width, info.Height, info.HasVideo)
+		return 0, 0, 0, "", fmt.Errorf("invalid video probe result duration=%s width=%d height=%d has_video=%t", info.Duration, info.Width, info.Height, info.HasVideo)
 	}
-
-	clip, err := root.Repos.ClipsRepo.GetClip(ctx, row.ID)
-	if err != nil {
-		return fmt.Errorf("load asset: %w", err)
-	}
-	if clip == nil {
-		return fmt.Errorf("asset disappeared from repository")
-	}
-	clip.Duration = info.Duration
+	retained := ""
 	if strings.TrimSpace(retainDir) != "" {
-		clip.SetLocalPath(tmpPath)
+		retained = tmpPath
 	}
-	clip.SetMetadataString("duration_source", "ffprobe_backfill")
-	clip.SetMetadataInt("width", info.Width)
-	clip.SetMetadataInt("height", info.Height)
-	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
-		return fmt.Errorf("persist and index measured asset: %w", err)
+	return info.Duration, info.Width, info.Height, retained, nil
+}
+
+// durationBackfillReport tallies the outcome of a duration backfill run.
+type durationBackfillReport struct {
+	AssetsTotal         int
+	AlreadyKnown        int // positive duration, probe provenance
+	ProviderMetadata    int // positive duration, provider provenance
+	ProbedLocal         int // missing -> probed local binary
+	ProbedDrive         int // missing -> probed materialized Drive binary
+	StillUnknown        int // missing -> no reliable source (fail-closed)
+	InvalidZeroDuration int // duration_ms == 0 with a known provenance tag
+	NegativeDuration    int // duration_ms < 0
+}
+
+// Count folds one outcome into the report.
+func (r *durationBackfillReport) Count(o durationBackfillOutcome) {
+	switch o.Kind {
+	case "already_known":
+		r.AlreadyKnown++
+	case "provider_metadata":
+		r.ProviderMetadata++
+	case "probed_local":
+		r.ProbedLocal++
+	case "probed_drive":
+		r.ProbedDrive++
+	case "still_unknown":
+		r.StillUnknown++
+	case "invalid_zero_duration":
+		r.InvalidZeroDuration++
+	case "negative_duration":
+		r.NegativeDuration++
 	}
-	row.DurationMS = info.Duration.Milliseconds()
-	row.Width = info.Width
-	row.Height = info.Height
-	return nil
+}
+
+func (r durationBackfillReport) String() string {
+	return fmt.Sprintf(`VIDEO DURATION BACKFILL
+
+assets_total             = %d
+already_known            = %d
+probed_local             = %d
+probed_drive             = %d
+provider_metadata        = %d
+still_unknown            = %d
+invalid_zero_duration    = %d
+negative_duration        = %d`,
+		r.AssetsTotal, r.AlreadyKnown, r.ProbedLocal, r.ProbedDrive,
+		r.ProviderMetadata, r.StillUnknown, r.InvalidZeroDuration, r.NegativeDuration)
 }
 
 func splitBackfillCSV(raw string) []string {

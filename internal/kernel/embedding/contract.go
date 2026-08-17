@@ -24,8 +24,7 @@ import (
 // These are the values the Python sidecar (scripts/services/embedding_server)
 // actually loads and reports. The document vectors in production were
 // produced by this model (audit: "canonical temporaneo = multilingual-e5-base"),
-// so these — not the legacy nomic-embed-text literals scattered across the
-// indexing/search layers — are the truth.
+// so these — not adapter-local model literals — are the truth.
 const (
 	// ModelIDMultilingualE5 is the canonical text model id.
 	ModelIDMultilingualE5 = "intfloat/multilingual-e5-base"

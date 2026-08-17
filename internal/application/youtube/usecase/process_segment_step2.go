@@ -27,16 +27,27 @@ import (
 
 // step2_CacheLookup is the canonical owner of Step 2. Returns:
 //
-//   - cacheHit=true: pipeline should early-return with current `out`
-//     (out.Status + out.Item.Status are set to "skipped" by this method)
+//   - cacheHit=true: the orchestrator must SKIP acquisition/cut
+//     (Steps 3-5) + ffprobe (Step 5a) and continue to the
+//     enrichment/finalization gate (Steps 6-9). This method surfaces
+//     the cached binary coordinates on `out` (Item.LocalPath +
+//     Item.FileHash + Item.DriveFileID + Item.DriveLink +
+//     Item.DownloadLink) so Execute can finalize without re-acquiring
+//     the binary. The status is NOT set here — Execute stamps
+//     "processed" after the finalization gate runs.
 //   - cacheHit=false + err=nil: pipeline should proceed to step 3+
 //   - cacheHit=false + err=typed: pipeline should propagate the error
 //     (the orchestrator returns out, err immediately)
 //
-// godlike/06 SSOT: the "on cache hit" mutation of `out` (5 fields)
-// is byte-equivalent to the pre-split inline block. StrategyReplace
-// short-circuit semantics preserved EXACTLY (no log spam on the
-// forced-re-extract path). Warn-log on cacheErr is preserved EXACTLY.
+// godlike/06 SSOT: StrategyReplace short-circuit semantics preserved
+// EXACTLY (no log spam on the forced-re-extract path). Warn-log on
+// cacheErr is preserved EXACTLY.
+//
+// PR-CACHE-HIT-FINALIZATION: the "skipped" early-return on cache hit
+// is RETIRED. A cache hit no longer short-circuits the whole pipeline
+// — it only skips binary acquisition, so a cached clip whose metadata
+// or text tracks are missing/stale still passes through the canonical
+// enrichment gate and gets repaired.
 func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 	ctx context.Context,
 	cmd youtubetypes.ProcessSegmentCommand,
@@ -55,12 +66,11 @@ func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 		cacheComplete := existingItem != nil && existingItem.Duration > 0 &&
 			existingItem.FileHash != "" && existingItem.DriveFileID != ""
 		if cacheErr == nil && exists && cacheComplete {
-			out.Item.Status = "skipped"
 			out.Item.LocalPath = existingItem.LocalPath
+			out.Item.FileHash = existingItem.FileHash
 			out.Item.DriveFileID = existingItem.DriveFileID
 			out.Item.DriveLink = existingItem.DriveLink
 			out.Item.DownloadLink = existingItem.DownloadLink
-			out.Status = "skipped"
 			return true, nil
 		}
 		if cacheErr != nil {

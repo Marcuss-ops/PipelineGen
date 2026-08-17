@@ -109,7 +109,7 @@ type EventDTO struct {
 // — direct field assignment, no runtime type assertion: the
 // compile-time `var _` above guarantees QdrantRuntime.Writer fits.
 type VectorPointDeleter interface {
-	DeletePoints(ctx context.Context, assetIDs []string) error
+	DeleteAssetPoints(ctx context.Context, assetIDs []string) error
 }
 
 // DriveDeleter is the canonical Blocco 3.1 (June 2026)

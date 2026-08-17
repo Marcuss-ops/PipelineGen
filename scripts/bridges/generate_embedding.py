@@ -8,11 +8,13 @@ model identity + version provenance at write time.
 Envelope shape:
   {"embedding": [...], "dimensions": 768,
    "model": "intfloat/multilingual-e5-base",
-   "model_version": "<hf_revision>|<project_semver>", "error": ""}
+   "model_version": "<hf_revision>|<project_semver>",
+   "contract_hash": "<sha256>", "error": ""}
 """
 import argparse
 import json
 import sys
+import hashlib
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -24,6 +26,16 @@ except ImportError:
 parser = argparse.ArgumentParser()
 parser.add_argument("--text", required=True)
 args = parser.parse_args()
+
+# Keep the wire producer honest: this is the canonical serialization used by
+# internal/kernel/embedding.Contract.Hash(). The model/revision values are
+# runtime provenance, while the hash covers the complete vector-space
+# contract.
+CONTRACT_FIELDS = (
+    "v1", "intfloat/multilingual-e5-base", "2026-06-26-v1", "768",
+    "l2", "Cosine", "query: ", "passage: ", "v3",
+)
+CONTRACT_HASH = hashlib.sha256("|".join(CONTRACT_FIELDS).encode()).hexdigest()
 
 try:
     model = SentenceTransformer("intfloat/multilingual-e5-base")
@@ -37,7 +49,8 @@ try:
         "embedding": embedding,
         "dimensions": len(embedding),
         "model": "intfloat/multilingual-e5-base",
-        "model_version": "2026-06-16-v1",
+        "model_version": "2026-06-26-v1",
+        "contract_hash": CONTRACT_HASH,
         "error": "",
     }))
 except Exception as e:
@@ -46,6 +59,7 @@ except Exception as e:
         "dimensions": 0,
         "model": "",
         "model_version": "",
+        "contract_hash": "",
         "error": str(e),
     }))
     sys.exit(1)

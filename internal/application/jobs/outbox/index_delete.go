@@ -396,7 +396,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	// pre-flight — a second delete is a free no-op at the API.
 	log.Info("asset.index.delete_requested: deleting Qdrant point", reqLog...)
 	if h.qdrantDeleter != nil {
-		if err := h.qdrantDeleter.DeletePoints(ctx, []string{req.AssetID}); err != nil {
+		if err := h.qdrantDeleter.DeleteAssetPoints(ctx, []string{req.AssetID}); err != nil {
 			log.Warn("asset.index.delete_requested: Qdrant delete failed (retryable)",
 				append(reqLog, zap.Error(err))...,
 			)

@@ -86,6 +86,16 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 						}
 					}
 				}
+				// RenderingGen overlays publish BELOW the parent video's
+				// already-resolved Drive folder (/video/.../overlay/): resolve
+				// the video's folder and pin it as the overlay's destination.
+				// Nil resolver / no video_id → legacy path-builder behaviour.
+				if folderID, ok, err := resolveOverlayParentFolder(ctx, ref.ArtifactMetadata, b.folderResolver); err != nil {
+					return nil, fmt.Errorf("broker: resolve overlay parent folder: %w", err)
+				} else if ok {
+					verified.ResolvedFolderID = folderID
+					verified.RootFolderResolved = true
+				}
 				// Script/document destinations require a logical project path;
 				// worker manifests do not need to duplicate it for every file.
 				// Use the job identity as the stable fallback, while preserving
@@ -177,6 +187,29 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	}
 
 	return assetIDs, nil
+}
+
+// resolveOverlayParentFolder resolves the parent video's already-resolved
+// Drive folder for a sidecar artifact (RenderingGen overlay). It is a no-op
+// (returns ok=false) when the resolver is not wired or the metadata carries no
+// parent video_id. A resolver returning an empty folder is treated as
+// "not resolved" (ok=false) so the caller keeps the legacy path-builder route.
+func resolveOverlayParentFolder(ctx context.Context, meta map[string]any, resolver finalization.ArtifactFolderResolver) (folderID string, resolved bool, err error) {
+	if resolver == nil || meta == nil {
+		return "", false, nil
+	}
+	videoID, _ := meta["video_id"].(string)
+	if strings.TrimSpace(videoID) == "" {
+		return "", false, nil
+	}
+	folderID, err = resolver.ResolveArtifactFolder(ctx, videoID)
+	if err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(folderID) == "" {
+		return "", false, nil
+	}
+	return folderID, true, nil
 }
 
 func publishedKind(destination string) (finalization.ArtifactKind, error) {

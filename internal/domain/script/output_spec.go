@@ -32,7 +32,11 @@ type OutputSpec struct {
 	StockBindings []StockBindingInput `json:"stock_bindings,omitempty"`
 
 	// ── Persistence (bool — out of PR-3 scope per action plan) ──
-	SaveToDB         bool `json:"save_to_db,omitempty"`
+	SaveToDB bool `json:"save_to_db,omitempty"`
+	// GenerateTimeline requests the canonical timeline metadata artifact
+	// (scene durations, video segments) WITHOUT binary render
+	// materialization. It only needs transcripts and Drive references;
+	// no local media is staged and no render job is enqueued.
 	GenerateTimeline bool `json:"generate_timeline,omitempty"`
 
 	// ── Voiceover options ────────────────────────────────────────────

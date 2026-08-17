@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -50,6 +52,7 @@ type Processor struct {
 	httpClient *http.Client
 	started    bool
 	media      mediaexec.AudioProcessor
+	loudness   loudnessProber
 }
 
 // processorShape mirrors the GENERATE-side surface of
@@ -105,6 +108,17 @@ func (p *Processor) SetMediaExecutor(media mediaexec.AudioProcessor) {
 	p.media = media
 }
 
+// SetLoudnessProber registers the minimum-loudness gate. When set, Generate
+// measures the synthesized VO's peak level and fails closed with
+// ErrSilentAudio (retried like empty audio) when it is inaudible. When unset
+// (default), the gate is skipped — the capability is simply not registered.
+func (p *Processor) SetLoudnessProber(l loudnessProber) {
+	if p == nil {
+		return
+	}
+	p.loudness = l
+}
+
 func (p *Processor) mediaExecutor() (mediaexec.AudioProcessor, error) {
 	if p == nil || p.media == nil {
 		return nil, fmt.Errorf("audio media executor unavailable")
@@ -136,6 +150,75 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		safeName += ".mp3"
 	}
 
+	// The bridge occasionally returns an unusable audio file: empty
+	// (edge-tts rate-limit / transient network glitch) or silent
+	// (non-empty but inaudible). Retry the synthesis a few times before
+	// surfacing the failure, so a one-off bad response never fails the
+	// whole run immediately.
+	const maxRetryableAttempts = 3
+	const retryableBackoff = 300 * time.Millisecond
+	var lastErr error
+	for attempt := 0; attempt < maxRetryableAttempts; attempt++ {
+		res, err := p.synthesizeOnce(ctx, input, safeName)
+		if err != nil {
+			if !errors.Is(err, ErrEmptyAudio) && !errors.Is(err, ErrSilentAudio) {
+				return nil, err
+			}
+			lastErr = err
+		} else if err := p.gateLoudness(ctx, res); err != nil {
+			if !errors.Is(err, ErrSilentAudio) {
+				return nil, err
+			}
+			lastErr = err
+		} else {
+			return res, nil
+		}
+		p.log.Warn("TTS bridge returned unusable audio — retrying synthesis",
+			zap.Int("attempt", attempt+1),
+			zap.Int("max_attempts", maxRetryableAttempts),
+			zap.Error(lastErr))
+		// Give edge-tts a moment to recover from rate limiting before the
+		// next attempt; honour ctx cancellation so the worker shutdown path
+		// is never delayed.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retryableBackoff):
+		}
+	}
+	return nil, fmt.Errorf("TTS generation failed after %d attempts: %w", maxRetryableAttempts, lastErr)
+}
+
+// gateLoudness enforces the minimum-loudness floor on a synthesized VO. It
+// returns ErrSilentAudio when the audio is definitively inaudible so Generate
+// can retry it. A measurement-tool failure is logged and skipped (mirrors the
+// duration-probe fail-open behaviour): the empty-file check and the downstream
+// timing/certification gates still catch gross corruption, so a transient
+// ffmpeg error must not hard-fail an otherwise-valid synthesis.
+func (p *Processor) gateLoudness(ctx context.Context, res *AudioResult) error {
+	if p == nil || p.loudness == nil || res == nil || res.LocalPath == "" {
+		return nil
+	}
+	l, err := p.loudness.MeasureLoudness(ctx, res.LocalPath)
+	if err != nil {
+		p.log.Warn("voiceover loudness gate: measurement unavailable, skipping",
+			zap.String("path", res.LocalPath),
+			zap.Error(err))
+		return nil
+	}
+	if l.IsSilent() {
+		return fmt.Errorf("TTS bridge produced silent audio (max_volume=%.2f dB): %w", l.MaxDB, ErrSilentAudio)
+	}
+	return nil
+}
+
+// synthesizeOnce runs a single synthesis attempt (persistent worker when
+// available, legacy spawn-per-call otherwise). Kept separate from Generate
+// so the empty-audio retry loop re-runs the WHOLE synthesis, not just the
+// response parsing. Mutex scope mirrors the pre-split Generate contract:
+// ensureStarted + sendSynthesizeRequest run under p.mu; the legacy fallback
+// releases it first (each legacy call spawns its own subprocess).
+func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeName string) (*AudioResult, error) {
 	// Try persistent worker first.
 	// BUG-FIX (2026-07-10): 3 interacting bugs caused the voiceover
 	// pipeline hang:
@@ -226,6 +309,11 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 		Voice string `json:"voice"`
 		Error string `json:"error"`
 		Path  string `json:"path"`
+		// MetadataPath is <out>.metadata.jsonl when the bridge captured
+		// word boundaries in the same synthesis stream (empty otherwise).
+		MetadataPath string `json:"metadata_path"`
+		// BoundaryCount is the number of WordBoundary chunks captured.
+		BoundaryCount int `json:"boundary_count"`
 	}
 	var ttsOut ttsResponse
 	if jsonErr := json.Unmarshal(bytes.TrimSpace(output), &ttsOut); jsonErr != nil {
@@ -234,7 +322,12 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 			zap.Error(jsonErr))
 	} else {
 		result.Voice = ttsOut.Voice
+		result.MetadataPath = ttsOut.MetadataPath
+		result.BoundaryCount = ttsOut.BoundaryCount
 		if !ttsOut.OK {
+			if isBridgeEmptyAudioError(ttsOut.Error) {
+				return nil, fmt.Errorf("TTS generation failed: %s: %w", ttsOut.Error, ErrEmptyAudio)
+			}
 			return nil, fmt.Errorf("TTS generation failed: %s", ttsOut.Error)
 		}
 	}

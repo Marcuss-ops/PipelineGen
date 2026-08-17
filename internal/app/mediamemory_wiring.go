@@ -43,6 +43,7 @@ import (
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // MediaMemoryQdrantWiring is the bag of dependencies.
@@ -70,7 +71,7 @@ func EnsureConceptCollection(ctx context.Context, transportClient *transport.Cli
 		return fmt.Errorf("mediamemory: EnsureConceptCollection transport is nil: %w",
 			mediamemory.ErrSemanticNotConfigured)
 	}
-	mgr, err := collections.NewProjectionManagerFor(qdrantschema.MediaConceptsProjection(), transportClient, log)
+	mgr, err := collections.NewProjectionManagerFor(platformschema.MediaConceptsProjection(), transportClient, log)
 	if err != nil {
 		return fmt.Errorf("mediamemory: EnsureConceptCollection: %w", err)
 	}

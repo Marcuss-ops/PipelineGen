@@ -6,7 +6,7 @@
 // After the runner is launched it executes the pipeline asynchronously:
 //
 //	Normalize → GenerateText → Translate → Voiceover →
-//	UpsertDocs → BuildPayload → EnqueueRender → Complete
+//	CompileAudio → UpsertDocs → Complete
 //
 // Verdetto § "La POST deve creare il run prima di qualsiasi I/O":
 //

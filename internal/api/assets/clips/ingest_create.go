@@ -110,7 +110,7 @@ func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	// with the same 3-minute hard cap. The clip row is already saved
 	// before this point so a failed enqueue does NOT roll back the HTTP
 	// write — we log a WARN and let the operator re-trigger via
-	// `POST /:source/clips/:id/reindex`.
+	// `POST /api/assets/operator/assets/:id/reindex`.
 	indexed := true
 	if ih.enrichUC != nil && ih.jobsSvc != nil {
 		_, err := ih.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{

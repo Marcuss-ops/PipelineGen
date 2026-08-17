@@ -17,6 +17,7 @@
 package imagesrepo
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -28,12 +29,24 @@ import (
 
 // ImagesRepository is the canonical SQLite-backed repository for image assets.
 type ImagesRepository struct {
-	db *sql.DB
+	db              *sql.DB
+	canonicalCommit ImageCommitFunc
 }
+
+// ImageCommitFunc is the composition-root supplied canonical write path.
+// ImagesRepository keeps this narrow callback to avoid importing application
+// contracts into the infrastructure package.
+type ImageCommitFunc func(context.Context, *asset.ImageAsset) (int64, error)
 
 // NewImagesRepository constructs the canonical repository.
 func NewImagesRepository(db *sql.DB) *ImagesRepository {
 	return &ImagesRepository{db: db}
+}
+
+func (r *ImagesRepository) SetCanonicalCommitter(commit ImageCommitFunc) {
+	if r != nil {
+		r.canonicalCommit = commit
+	}
 }
 
 // DB returns the underlying database connection.

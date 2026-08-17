@@ -120,9 +120,13 @@ type useCaseDestResolverAdapter struct {
 }
 
 func newUseCaseDestResolverAdapter(r asset.Resolver) *useCaseDestResolverAdapter {
-	if r == nil {
-		panic("app.adapters_voiceover_use_case: newUseCaseDestResolverAdapter: resolver is required (asset.Resolver)")
-	}
+	// Nil resolver is tolerated: ResolveVoiceoverDestination handles
+	// KindExplicit (and KindAuto + FolderID) via the direct() path without
+	// consulting the asset.Resolver, so a caller-explicit destination
+	// resolves even when the deployment lacks a configured voiceover root.
+	// Group resolution (KindGroup / KindAuto + Group) fails with a typed
+	// error when resolver is nil, which is the correct fail-closed
+	// behaviour for an unwired asset tree.
 	return &useCaseDestResolverAdapter{resolver: r}
 }
 

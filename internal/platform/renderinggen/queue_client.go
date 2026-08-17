@@ -28,9 +28,9 @@ func New(baseURL string) *Client {
 // scriptgen.ErrJobExists so the enqueuer treats replays as idempotent.
 func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error {
 	err := c.q.Submit(ctx, queueclient.Job{
-		ID:          job.ID,
-		OverlaySpec: job.OverlaySpec,
-		Assets:      toQueueAssets(job.Assets),
+		ID:         job.ID,
+		RenderPlan: job.OverlaySpec,
+		Assets:     toQueueAssets(job.Assets),
 	})
 	if errors.Is(err, queueclient.ErrJobExists) {
 		return fmt.Errorf("%w: job %s", scriptgen.ErrJobExists, job.ID)
@@ -49,7 +49,7 @@ func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, 
 	}
 	return scriptgen.RenderQueueJob{
 		ID:          job.ID,
-		OverlaySpec: job.OverlaySpec,
+		OverlaySpec: job.RenderPlan,
 		Assets:      fromQueueAssets(job.Assets),
 		State:       string(job.State),
 		FailReason:  job.FailReason,
@@ -63,7 +63,7 @@ func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
 	}
 	out := make([]queueclient.AssetRef, len(in))
 	for i, a := range in {
-		out[i] = queueclient.AssetRef{Hash: a.Hash, URL: a.URL}
+		out[i] = queueclient.AssetRef{Hash: a.Hash, LogicalPath: a.URL}
 	}
 	return out
 }
@@ -74,7 +74,7 @@ func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	}
 	out := make([]scriptgen.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.URL}
+		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath}
 	}
 	return out
 }
@@ -87,9 +87,9 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		ID:                 in.ID,
 		Kind:               in.Kind,
 		StorageKey:         in.StorageKey,
-		URL:                in.URL,
-		SHA256:             in.SHA256,
-		MimeType:           in.MimeType,
+		URL:                in.ArtifactURL,
+		SHA256:             in.ArtifactHash,
+		MimeType:           in.ContentType,
 		SizeBytes:          in.SizeBytes,
 		Width:              in.Width,
 		Height:             in.Height,
@@ -103,7 +103,20 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		CodecProfile:       in.CodecProfile,
 		ClosedGOP:          in.ClosedGOP,
 		FirstFrameKeyframe: in.FirstFrameKeyframe,
+		RenderMS:           metricMillis(in.Metrics, "render_ms"),
+		EncodeMS:           metricMillis(in.Metrics, "encode_ms"),
+		DriveFileID:        in.DriveFileID,
+		DriveLink:          in.DriveLink,
 	}
+}
+
+// metricMillis reads a millisecond metric from the worker's metrics map,
+// rounding down to whole milliseconds. Absent keys yield 0 (unreported).
+func metricMillis(m map[string]float64, key string) int64 {
+	if m == nil {
+		return 0
+	}
+	return int64(m[key])
 }
 
 var _ scriptgen.RenderQueueClient = (*Client)(nil)

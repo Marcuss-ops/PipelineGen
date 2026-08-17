@@ -199,7 +199,7 @@ func TestArtifactPublisherAdapter_Publish_OverlayUsesExistingArtifactFolder(t *t
 		SHA256:             sha,
 		SourceVersion:      4,
 		Requirement:        finalization.ArtifactRequirementRequired,
-		Source:             "overlay",
+		Source:             "chronon",
 		ResolvedFolderID:   "artifact-folder-847",
 		RootFolderResolved: true,
 	})
@@ -233,7 +233,7 @@ func TestArtifactPublisherAdapter_Publish_OverlayExplicitSubpathWins(t *testing.
 		LocalPath:          localPath,
 		SHA256:             sha,
 		Requirement:        finalization.ArtifactRequirementRequired,
-		Source:             "overlay",
+		Source:             "chronon",
 		DriveSubpath:       []string{"overlay", "v4"},
 		ResolvedFolderID:   "artifact-folder-847",
 		RootFolderResolved: true,
@@ -243,6 +243,64 @@ func TestArtifactPublisherAdapter_Publish_OverlayExplicitSubpathWins(t *testing.
 	}
 	if got := stub.lastReq.DestinationSubpath; len(got) != 2 || got[0] != "overlay" || got[1] != "v4" {
 		t.Fatalf("explicit overlay subpath = %#v, want [overlay v4]", got)
+	}
+}
+
+// TestArtifactPublisherAdapter_Publish_OverlayManifestFlow pins the last half
+// of the probe→SHA256→manifest→publisher flow: a VerifiedArtifact projected
+// from an overlay.render manifest (source=chronon + drive_subpath=[overlay] +
+// probe sha256/size_bytes) publishes to Drive and returns the Drive identity
+// (FileID → drive_file_id, WebViewLink → drive_link) with the overlay subpath
+// preserved and the probe hash threaded as the publish ContentHash.
+func TestArtifactPublisherAdapter_Publish_OverlayManifestFlow(t *testing.T) {
+	content := "chronon overlay bytes"
+	localPath, sha := writeTempFile(t, content)
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	loc, err := adapter.Publish(context.Background(), finalization.VerifiedArtifact{
+		ArtifactID:         "job_overlay:overlay:001",
+		Kind:               finalization.KindVideo,
+		Filename:           "overlay_001.mov",
+		LocalPath:          localPath,
+		MIMEType:           "video/quicktime",
+		SizeBytes:          int64(len(content)),
+		SHA256:             sha,
+		SourceVersion:      1,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		IdempotencyKey:     "job_overlay:overlay:001",
+		Source:             "chronon",
+		DriveSubpath:       []string{"overlay"},
+		ResolvedFolderID:   "artifact-folder-847",
+		RootFolderResolved: true,
+	})
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+
+	// Drive identity comes back as the Location (drive_file_id / drive_link).
+	if loc.Provider != "drive" {
+		t.Fatalf("Provider = %q, want drive", loc.Provider)
+	}
+	if loc.FileID == "" {
+		t.Fatal("Location.FileID (→ drive_file_id) is empty")
+	}
+	if loc.WebViewLink == "" {
+		t.Fatal("Location.WebViewLink (→ drive_link) is empty")
+	}
+	if loc.FolderID == "" || loc.FolderPath == "" {
+		t.Fatalf("Location folder identity incomplete: %+v", loc)
+	}
+	if loc.Action != finalization.PublishCreated {
+		t.Fatalf("Action = %q, want PublishCreated", loc.Action)
+	}
+
+	// The overlay subpath + probe hash must survive to the Drive publisher.
+	if got := stub.lastReq.DestinationSubpath; len(got) != 1 || got[0] != "overlay" {
+		t.Fatalf("DestinationSubpath = %#v, want [overlay]", got)
+	}
+	if stub.lastReq.ContentHash != sha {
+		t.Fatalf("ContentHash = %q, want probe sha256 %q", stub.lastReq.ContentHash, sha)
 	}
 }
 

@@ -3,7 +3,7 @@
 // PR4 mechanical split (June 2026): relocated from registry.go without
 // signature or behaviour changes. Each function in this file registers
 // a thin route module that exposes an /api/* surface. Bundle-driven
-// modules (Artlist, YouTubeClip, MediaIngest, Scraper, FullImages,
+// modules (Artlist, YouTubeClip, MediaIngest, Scraper,
 // StockPipeline) live in registry_internal_modules.go instead —
 // those have cross-step wiring dependencies that need a different
 // ordering surface.
@@ -17,17 +17,14 @@ package app
 import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"path/filepath"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
-	adminui "github.com/Marcuss-ops/PipelineGen/internal/api/admin/ui"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	scriptdocsapi "github.com/Marcuss-ops/PipelineGen/internal/api/script-docs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
@@ -38,9 +35,7 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	scriptdocsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/scriptdocs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/web"
 
 	"go.uber.org/zap"
 )
@@ -196,71 +191,6 @@ func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger,
 	return nil
 }
 
-// registerScriptDocs wires the /api/script-docs/* capability via
-// scriptdocs.Build. Closes PR-SCRIPT-DOCS-DRIFT-2026-07-08: the
-// canonical /api/script-docs/generate route is now mounted (returns
-// 503 with ErrReActNotWired diagnostic when the typed ReActPort is
-// not wired at the composition root — the canonical pre-fail-closed
-// posture for optional modules).
-//
-// The route module is gated on cfg.Features.ScriptDocsEnabled
-// (canonical ScriptDocsEnabled feature flag from
-// internal/platform/config/types_misc.go). The ReAct typed port
-// itself is nil-tolerant — composition root passes nil today (the
-// Python ReAct bridge is a forward-pointer CUTOVER); a future
-// CUTOVER injects a concrete adapter.
-//
-// Step 3 placement: script-docs routes are mounted alongside the
-// script-flow routes (both are script-domain surfaces). Mirrors
-// the registerScripts placement at Step 3.
-func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.Config) error {
-	// Wire the concrete ReActPort adapter when Ollama URL is configured.
-	// If adapter construction fails (misconfigured), fall back to nil port
-	// (handler returns 503 ErrReActNotWired per godlike/07 fail-closed).
-	var reactPort scriptdocsapi.ReActPort
-	if cfg.External.OllamaURL != "" {
-		// Resolve the project root to an absolute path so the Python bridge
-		// script is found regardless of the server's working directory
-		// (systemd, Docker, nohup may set CWD to /).
-		scriptDir, scriptDirErr := filepath.Abs(".")
-		if scriptDirErr != nil {
-			log.Warn("script-docs: failed to resolve project root, falling back to nil port",
-				zap.Error(scriptDirErr))
-		} else {
-			adapter, adapterErr := scriptdocsinfra.NewAdapter(scriptdocsinfra.AdapterConfig{
-				OllamaURL:   cfg.External.OllamaURL,
-				OllamaModel: cfg.External.OllamaModel,
-				ScriptDir:   scriptDir,
-			})
-			if adapterErr != nil {
-				log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
-					zap.Error(adapterErr))
-			} else {
-				reactPort = adapter
-				log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
-					zap.String("ollama_url", cfg.External.OllamaURL),
-					zap.String("ollama_model", cfg.External.OllamaModel))
-			}
-		}
-	}
-
-	scriptDocsDesc, err := scriptdocsapi.Build(scriptdocsapi.Dependencies{
-		Port:        reactPort,
-		EnabledFunc: func() bool { return cfg.Features.ScriptDocsEnabled },
-		ModuleOpts:  nil, // no per-feature middleware (matches the script pattern)
-		Logger:      log,
-	})
-	if err != nil {
-		return fmt.Errorf("wire registry: script-docs: %w", err)
-	}
-	sdd, ok := scriptDocsDesc.(*scriptdocsapi.ScriptDocsDescriptor)
-	if !ok || sdd == nil {
-		return fmt.Errorf("wire registry: script-docs: scriptdocs.Build returned unexpected descriptor type %T (want *scriptdocsapi.ScriptDocsDescriptor)", scriptDocsDesc)
-	}
-	log.Info("created ScriptDocs module (ReAct typed port wired at composition time; nil-port pre-CUTOVER returns 503 ErrReActNotWired)")
-	return tryRegisterModuleStrict(registry, log, sdd, WithRegistrationPoint("register.ScriptDocs"))
-}
-
 // registerAdminModule wires the admin Drive canary capability via admin.Build.
 //
 // The admin module hosts operational readiness endpoints (Drive canary).
@@ -298,26 +228,5 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 
 	log.Info("admin module registered (drive canary: /api/drive/canary-upload)")
-	return nil
-}
-
-// registerAdminUIModule wires the /api/admin/ui/* capability via adminui.Build.
-// The static React app is embedded via web.DistFS and served from /admin by routes.go.
-func registerAdminUIModule(registry *module.Registry, log *zap.Logger, cfg *config.Config) error {
-	adminUIDesc, err := adminui.Build(adminui.Dependencies{
-		StaticFS:    web.DistFS(),
-		EnabledFunc: func() bool { return true },
-		ModuleOpts: []module.RouteModuleOption{
-			module.WithMiddleware(middleware.RequireAdminToken(cfg, log)),
-		},
-		Logger: log,
-	})
-	if err != nil {
-		return fmt.Errorf("wire registry: admin-ui: %w", err)
-	}
-	if err := tryRegisterModuleStrict(registry, log, adminUIDesc, WithRegistrationPoint("register.AdminUI")); err != nil {
-		return fmt.Errorf("wire registry: admin-ui: %w", err)
-	}
-	log.Info("admin-ui module registered (/api/admin/ui/*)")
 	return nil
 }

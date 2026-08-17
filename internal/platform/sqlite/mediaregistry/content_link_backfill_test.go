@@ -3,6 +3,7 @@ package mediaregistry
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 )
 
@@ -151,6 +152,119 @@ func TestBackfillContentLinks_Idempotent(t *testing.T) {
 	}
 	if report.BrokenCASLinks != 0 {
 		t.Fatalf("BrokenCASLinks = %d, want 0", report.BrokenCASLinks)
+	}
+}
+
+const contentSHA256BackfillSchema = `
+CREATE TABLE media_assets (
+    id TEXT PRIMARY KEY,
+    file_hash TEXT NOT NULL DEFAULT '',
+    binary_sha256 TEXT NOT NULL DEFAULT '',
+    content_sha256 TEXT NOT NULL DEFAULT ''
+);
+`
+
+// TestBackfillContentSHA256_64HexGuard pins the byte-identity reconstruction
+// contract: content_sha256 is copied from file_hash ONLY when file_hash is a
+// valid 64-hex SHA-256. A 32-char MD5 (clip_atomic_writer's empty-file
+// fallback) and a 64-char non-hex value are skipped and left UNKNOWN, and an
+// already-populated content_sha256 is never overwritten.
+func TestBackfillContentSHA256_64HexGuard(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(contentSHA256BackfillSchema); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	resolver, err := NewCanonicalIdentityResolver(db)
+	if err != nil {
+		t.Fatalf("new resolver: %v", err)
+	}
+	ctx := context.Background()
+
+	sha256hex := strings.Repeat("a", 64) // valid 64-hex SHA-256 shape
+	md5hex := strings.Repeat("b", 32)    // MD5 length, must NOT pass the guard
+	nonhex := strings.Repeat("z", 64)    // 64 chars but not hex
+
+	if _, err := db.Exec(`
+		INSERT INTO media_assets (id, file_hash, binary_sha256, content_sha256) VALUES
+			('asset-sha',      ?, '', ''),
+			('asset-md5',      ?, '', ''),
+			('asset-nonhex',   ?, '', ''),
+			('asset-existing', ?, '', 'already-set'),
+			('asset-unknown',  ?, '', 'UNKNOWN')`,
+		sha256hex, md5hex, nonhex, sha256hex, sha256hex); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Preview reports the guard outcome without mutating any row.
+	report, err := resolver.BackfillContentSHA256(ctx, false)
+	if err != nil {
+		t.Fatalf("BackfillContentSHA256(preview): %v", err)
+	}
+	if report.CandidatesScanned != 4 {
+		t.Fatalf("preview CandidatesScanned = %d, want 4 (asset-existing is not a candidate)", report.CandidatesScanned)
+	}
+	if report.Backfilled != 2 || report.SkippedNonSHA256 != 2 {
+		t.Fatalf("preview backfilled/skipped = %d/%d, want 2/2", report.Backfilled, report.SkippedNonSHA256)
+	}
+	var previewSHA string
+	if err := db.QueryRow(`SELECT content_sha256 FROM media_assets WHERE id = 'asset-sha'`).Scan(&previewSHA); err != nil {
+		t.Fatalf("read asset-sha (preview): %v", err)
+	}
+	if previewSHA != "" {
+		t.Fatalf("preview must not mutate: asset-sha content_sha256 = %q, want empty", previewSHA)
+	}
+
+	// Apply copies only the valid 64-hex digests.
+	report, err = resolver.BackfillContentSHA256(ctx, true)
+	if err != nil {
+		t.Fatalf("BackfillContentSHA256(apply): %v", err)
+	}
+	if report.Backfilled != 2 || report.SkippedNonSHA256 != 2 {
+		t.Fatalf("apply backfilled/skipped = %d/%d, want 2/2", report.Backfilled, report.SkippedNonSHA256)
+	}
+	for _, id := range []string{"asset-sha", "asset-unknown"} {
+		var csha, bsha string
+		if err := db.QueryRow(`SELECT content_sha256, binary_sha256 FROM media_assets WHERE id = ?`, id).Scan(&csha, &bsha); err != nil {
+			t.Fatalf("read %s: %v", id, err)
+		}
+		if csha != sha256hex || bsha != sha256hex {
+			t.Fatalf("%s content_sha256/binary_sha256 = %q/%q, want %q", id, csha, bsha, sha256hex)
+		}
+	}
+
+	// Guarded rows stay empty (never fabricated).
+	for _, id := range []string{"asset-md5", "asset-nonhex"} {
+		var csha string
+		if err := db.QueryRow(`SELECT content_sha256 FROM media_assets WHERE id = ?`, id).Scan(&csha); err != nil {
+			t.Fatalf("read %s: %v", id, err)
+		}
+		if csha != "" {
+			t.Fatalf("%s content_sha256 = %q, want empty (guarded)", id, csha)
+		}
+	}
+
+	// A pre-existing digest is never overwritten.
+	var existing string
+	if err := db.QueryRow(`SELECT content_sha256 FROM media_assets WHERE id = 'asset-existing'`).Scan(&existing); err != nil {
+		t.Fatalf("read asset-existing: %v", err)
+	}
+	if existing != "already-set" {
+		t.Fatalf("asset-existing content_sha256 = %q, want already-set", existing)
+	}
+
+	// Re-running is idempotent.
+	report, err = resolver.BackfillContentSHA256(ctx, true)
+	if err != nil {
+		t.Fatalf("BackfillContentSHA256(idempotent): %v", err)
+	}
+	if report.Backfilled != 0 {
+		t.Fatalf("second apply backfilled = %d, want 0 (idempotent)", report.Backfilled)
 	}
 }
 

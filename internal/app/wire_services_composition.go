@@ -46,7 +46,6 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
@@ -150,7 +149,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// finalization spine. root.Outbox.EventsRepo is available because
 	// NewComposition already ran BuildProcessBundle which populated it.
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil && root.DB != nil && root.DB.DB != nil {
-		assetCommitter := sqassets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+		assetCommitter := newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
 		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
@@ -164,6 +163,9 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		} else {
 			log.Warn("canonical ArtifactPreparation NOT wired: Drive publisher unavailable; staged artifact jobs will fail closed")
 		}
+		// RenderingGen overlays resolve their parent video's Drive folder
+		// below the already-resolved video folder (/video/.../overlay/).
+		broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
 		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 	} else {
 		log.Warn("JobFinalizer NOT wired into local broker (one or more deps nil — root.Outbox, root.Outbox.EventsRepo, or root.DB). Path B artifact-producing jobs will fail at CompleteWithArtifacts with ErrFinalizerNotConfigured.",

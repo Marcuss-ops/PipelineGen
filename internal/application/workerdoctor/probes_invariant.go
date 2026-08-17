@@ -45,7 +45,7 @@ func probeEngine(cfg DoctorConfig, dp DefaultProbes) ProbeReceipt {
 		if cfg.ArtlistEnabled() {
 			required = append(required, "node")
 		}
-		if cfg.ScriptDocsEnabled() || cfg.ScriptClipsEnabled() {
+		if cfg.ScriptClipsEnabled() {
 			required = append(required, "python3")
 		}
 	}

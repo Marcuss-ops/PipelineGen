@@ -55,6 +55,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		VideoMetadata: scriptpkg.CloneVideoMetadata(item.VideoMetadata),
 	}
 	plan.AudioMode = item.Audio.Mode
+	plan.Timing = item.Audio.Timing
 	// Legacy callers may declare clip ownership at source level while using
 	// explicit editorial segments. Materialize that one-to-one ownership on
 	// the canonical segment plan so downstream binding never loses the
@@ -68,6 +69,9 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	}
 	if plan.AudioMode == "" {
 		plan.AudioMode = item.Output.Audio.Mode
+	}
+	if plan.Timing == nil {
+		plan.Timing = item.Output.Audio.Timing
 	}
 	if plan.VideoMetadata != nil {
 		if strings.TrimSpace(plan.VideoMetadata.Language) == "" {

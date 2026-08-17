@@ -23,7 +23,6 @@
 //   - StockBundle          (PR4d-chunk2, June 2026) — 9 typed fields
 //   - StockPipelineWiring  (Blocco C1-Step 6, June 2026 — Handler removed)
 //   - YouTubeClipWiring    (Blocco C1-Step 4, June 2026 — Handler removed)
-//   - FullImagesWiring     (PR3 Wave 14, June 2026)
 //
 // The Wire* functions that CONSUME these bundles live in module_sources.go.
 // Same-package consumption means the types remain referenceable across both
@@ -36,7 +35,6 @@ package wiring
 
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
@@ -177,20 +175,4 @@ type StockPipelineWiring struct {
 type YouTubeClipWiring struct {
 	Module  api.Module
 	Service *ytService.Service
-}
-
-// FullImagesWiring holds the FullImages module wiring.
-//
-// PR3 (June 2026): Wave 14 close. The handler was moved from
-// `internal/api/fullimages/` to `internal/api/images/` as a sibling
-// of ImagesHandler. The route prefix stays `/fullimages` (NOT
-// `/images`) so the public REST URL stays unchanged — zero-change-
-// contract per PR3 spec. The sub-path `/video/generate` is unchanged
-// (no collision with `ImagesHandler.Generate` which mounts at
-// `/generate` under the `/images` prefix).
-// FullImagesWiring holds the FullImages module wiring.
-// Handler field removed (June 2026): FullImagesHandler was retired during the
-// LONG-FILES-SPLIT-2026-07-06; zero callers accessed the field.
-type FullImagesWiring struct {
-	Module module.Module
 }

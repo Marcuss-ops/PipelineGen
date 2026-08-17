@@ -1,11 +1,54 @@
+// Package fullimages owns the section→image-prompt composition consumed by
+// the /api/images/batch-generate mode=sections flow.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10) + IMAGES-LEGACY-CLEANUP:
+// the former synchronous FullImages service (one image per section via
+// GenerateSmartImage, Ken Burns pipeline, Drive publish) was retired when
+// POST /api/fullimages/image/generate was merged into the async
+// /api/images/batch-generate surface (mode=sections). This package now
+// holds ONLY the deterministic section→prompt composition: Section,
+// BuildPrimaryPrompt, buildSectionPrompts, and the canonical section-image
+// output dimensions. Zero publishing, zero orchestration.
 package fullimages
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
+
+// Section describes a single text part for which an image should be generated.
+type Section struct {
+	Title string `json:"title" binding:"required" example:"Castello Medievale"`
+	Text  string `json:"text"  example:"Descrizione della scena..."`
+	Style string `json:"style" example:"medievale"`
+}
+
+// SectionImageWidth / SectionImageHeight are the canonical output
+// dimensions for section-mode batch generation. They preserve the
+// retired fullimages sync pipeline's imageGenWidth / imageGenHeight
+// contract (1344×768) so mode=sections produces the same aspect ratio.
+const (
+	SectionImageWidth  = 1344
+	SectionImageHeight = 768
+)
+
+// BuildPrimaryPrompt returns the primary candidate prompt for a section:
+// the first non-empty candidate produced by buildSectionPrompts. It is the
+// single prompt the async image.generate.google job consumes in the
+// /api/images/batch-generate mode=sections flow (the async job takes one
+// prompt, so the sync fallback-prompt list collapses to its primary).
+//
+// It returns "" only when the section has no title, no text, and the
+// topic is empty — callers treat that as a validation error (godlike/07
+// fail-closed, never a silent empty prompt).
+func BuildPrimaryPrompt(sec Section, topic string) string {
+	for _, p := range buildSectionPrompts(sec, topic) {
+		if strings.TrimSpace(p) != "" {
+			return p
+		}
+	}
+	return ""
+}
 
 // buildSectionPrompts creates candidate image prompts from section content.
 // The first non-empty prompt is the primary; remaining are fallbacks.
@@ -42,41 +85,4 @@ func buildSectionPrompts(sec Section, topic string) []string {
 	}
 
 	return prompts
-}
-
-// resolveImagePath searches the images directory for a file whose name starts
-// with the given hash. This is needed because the ingest pipeline may not
-// reliably populate PathRel on the returned asset.
-func resolveImagePath(imagesDir, hash string) string {
-	if imagesDir == "" || hash == "" {
-		return ""
-	}
-	entries, err := os.ReadDir(imagesDir)
-	if err != nil {
-		return ""
-	}
-	// Walk one level deep — images are stored in {imagesDir}/{slug}/{hash}.ext
-	for _, dir := range entries {
-		if !dir.IsDir() {
-			continue
-		}
-		subEntries, err := os.ReadDir(filepath.Join(imagesDir, dir.Name()))
-		if err != nil {
-			continue
-		}
-		for _, f := range subEntries {
-			if f.IsDir() {
-				continue
-			}
-			name := f.Name()
-			// Strip extension and compare
-			if ext := filepath.Ext(name); ext != "" {
-				name = name[:len(name)-len(ext)]
-			}
-			if name == hash {
-				return filepath.Join(imagesDir, dir.Name(), f.Name())
-			}
-		}
-	}
-	return ""
 }

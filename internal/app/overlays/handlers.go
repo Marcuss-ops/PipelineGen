@@ -132,11 +132,36 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		return nil, err
 	}
 	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(item.ID) + ".mov", LocalPath: output, SHA256: sha, SizeBytes: info.Size(), MIMEType: "video/quicktime", Width: req.Plan.Width, Height: req.Plan.Height, FPS: req.Plan.FPS, DurationMs: item.EndMs - item.StartMs, HasAlpha: true, RendererVersion: h.RendererVersion}
-	return artifactResult(j.ID, result)
+	return artifactResult(j.ID, req.Plan.VideoID, req.Plan.ProjectID, result)
 }
 
-func artifactResult(jobID string, result capoverlay.RenderResult) (map[string]any, error) {
-	manifest := job.ArtifactManifest{SchemaVersion: job.SchemaVersionArtifactManifestV1, JobID: jobID, Artifacts: []job.Artifact{{ID: result.ArtifactID, Kind: job.ArtifactKindOverlay, Path: result.LocalPath, Filename: result.Filename, MIMEType: result.MIMEType, SizeBytes: result.SizeBytes, SHA256: result.SHA256, Required: true, ArtifactMetadata: map[string]any{"source": "overlay", "drive_subpath": []string{"overlay"}, "plan_fingerprint": result.PlanFingerprint, "render_key": result.RenderKey, "overlay_id": result.OverlayID}}}}
+func artifactResult(jobID, videoID, projectID string, result capoverlay.RenderResult) (map[string]any, error) {
+	manifest := job.ArtifactManifest{SchemaVersion: job.SchemaVersionArtifactManifestV1, JobID: jobID, Artifacts: []job.Artifact{{
+		ID:        result.ArtifactID,
+		Kind:      job.ArtifactKindOverlay,
+		Path:      result.LocalPath,
+		Filename:  result.Filename,
+		MIMEType:  result.MIMEType,
+		SizeBytes: result.SizeBytes,
+		SHA256:    result.SHA256,
+		Required:  true,
+		// SHA256 and Drive routing live ON the ArtifactManifest, never in a
+		// parallel pipeline: the probe (SHA-256 + size) is folded into the
+		// manifest so the Sender-side ArtifactPreparation + Drive publisher
+		// consume a single source of truth and persist location + sha256.
+		ArtifactMetadata: map[string]any{
+			"source":           "chronon",
+			"drive_subpath":    []string{"overlay"},
+			"video_id":         videoID,
+			"project_id":       projectID,
+			"renderer_version": result.RendererVersion,
+			"duration_us":      result.DurationMs * 1000,
+			"duration_ms":      result.DurationMs,
+			"plan_fingerprint": result.PlanFingerprint,
+			"render_key":       result.RenderKey,
+			"overlay_id":       result.OverlayID,
+		},
+	}}}
 	return map[string]any{"schema_version": capoverlay.SchemaVersionResult, "overlay_result": result, job.ManifestKey: manifest}, nil
 }
 

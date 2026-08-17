@@ -18,9 +18,11 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/stretchr/testify/require"
@@ -35,7 +37,7 @@ import (
 func TestSplit_TTSAdapter_PanicInvariants(t *testing.T) {
 	t.Run("TTS_NilProc_Panics", func(t *testing.T) {
 		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: newUseCaseTTSAdapter: proc is required (*audioasset.Processor)",
+			"app.adapters_voiceover_use_case: newUseCaseTTSAdapter: proc is required (ttsGenerator)",
 			func() { _ = newUseCaseTTSAdapter(nil) },
 			"newUseCaseTTSAdapter must panic with the canonical message when proc is nil")
 	})
@@ -112,11 +114,21 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 		adapter := newUseCaseRepoAdapter(repo, &sql.DB{})
 		require.NotNil(t, adapter, "Repo adapter must be non-nil with valid (repo, db) input")
 	})
-	t.Run("DestResolver_NilResolver_Panics", func(t *testing.T) {
-		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: newUseCaseDestResolverAdapter: resolver is required (asset.Resolver)",
-			func() { _ = newUseCaseDestResolverAdapter(nil) },
-			"newUseCaseDestResolverAdapter must panic with the canonical message when resolver is nil")
+	t.Run("DestResolver_NilResolver_Constructs", func(t *testing.T) {
+		// The adapter is now nil-tolerant: a caller-explicit destination
+		// (KindExplicit / KindAuto + FolderID) resolves via
+		// ResolveVoiceoverDestination's direct() path WITHOUT consulting
+		// the asset.Resolver, so a nil resolver must still construct
+		// (group-based routing fails with a typed error at resolve time).
+		adapter := newUseCaseDestResolverAdapter(nil)
+		require.NotNil(t, adapter, "DestResolver adapter must be non-nil even with nil resolver (explicit destination path works without it)")
+		resolved, err := adapter.Resolve(context.Background(), &voiceover.DestinationRequest{
+			Kind:     string(voiceover.KindExplicit),
+			FolderID: "explicit-folder",
+		})
+		require.NoError(t, err, "explicit destination must resolve without the asset.Resolver")
+		require.NotNil(t, resolved)
+		require.Equal(t, "explicit-folder", resolved.FolderID)
 	})
 	t.Run("DefaultFolderResolver_EmptyFolderID_NilSafe", func(t *testing.T) {
 		// Empty driveFolderID is the production case when the

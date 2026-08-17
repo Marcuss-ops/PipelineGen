@@ -96,13 +96,6 @@ func (a *middlewareFeatureFlagsAdapter) ArtlistEnabled() bool {
 	return a.cfg.Features.ArtlistEnabled
 }
 
-func (a *middlewareFeatureFlagsAdapter) ScriptDocsEnabled() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Features.ScriptDocsEnabled
-}
-
 func (a *middlewareFeatureFlagsAdapter) ScriptClipsEnabled() bool {
 	if a.cfg == nil {
 		return false

@@ -26,7 +26,7 @@ type TxOutboxEnqueuer interface {
 	// EnqueueIndexEvent emits the canonical asset.index.requested
 	// envelope (schema_version="asset.index.requested.v1") inside
 	// the caller-owned transaction.
-	EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, contentHash string) error
+	EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, source, contentHash string) error
 
 	// EnqueueCleanupEvent emits the canonical
 	// voiceover.cleanup.requested envelope inside the caller-owned

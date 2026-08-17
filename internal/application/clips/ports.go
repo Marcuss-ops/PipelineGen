@@ -111,23 +111,10 @@ type ClipVoiceoverRecordDTO struct {
 	UpdatedAtRFC    string
 }
 
-// ClipIndexBatchResultDTO mirrors clipindexer.BatchReindexResult.
-// PG-005 (June 2026): inlined to keep ports.go zero-infra. The adapter
-// converts clipindexer.BatchReindexResult → ClipIndexBatchResultDTO at
-// the seam so use cases + handlers never import infrastructure/
-// indexing/clipindexer. AssetIDs is consumed by clip_enrich.go::BatchReindex.
-type ClipIndexBatchResultDTO struct {
-	Total    int
-	Indexed  int
-	Skipped  int
-	Failed   int
-	AssetIDs []string
-}
-
 // ── Structural ports (signature-bearing, minimal per Pattern 0) ────────
 
 // ClipRepositoryPort is the canonical clips-side narrowed surface of
-// *assets.ClipsRepository. The 13 methods listed below are exactly
+// *assets.ClipsRepository. The 11 methods listed below are exactly
 // the ones handlers + helpers + worker + clip_ops + clip_action call
 // on the concrete repo. Adapter struct machinery lives in
 // internal/app/clips_adapters.go.
@@ -150,8 +137,6 @@ type ClipRepositoryPort interface {
 	ListByFolderID(ctx context.Context, folderID string) ([]*asset.Asset, error)
 	ListByFolderPath(ctx context.Context, folderPath string) ([]*asset.Asset, error)
 	DeleteFolder(ctx context.Context, id string) error
-	BulkAddTags(ctx context.Context, ids, tags []string) error
-	BulkRemoveTags(ctx context.Context, ids, tags []string) error
 	ListClipsPaged(ctx context.Context, source string, limit, offset int, query string) ([]*asset.Asset, error)
 	FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error)
 }
@@ -203,18 +188,6 @@ type ClipDriveUploaderPort interface {
 // drift.
 type ClipMetaWriterPort interface {
 	GeneratePayload(ctx context.Context, req ClipMetaWriteRequest) (*ClipMetaPayload, string, error)
-}
-
-// ClipIndexerPort is the canonical narrow surface of
-// *clipindexer.Service. Both IsEnabled + IndexClip are exercised by
-// the clips bulk-upload worker + EnrichUseCase. BatchReindex returns
-// a DTO so the api layer never imports
-// internal/infrastructure/indexing/clipindexer directly (the adapter
-// project clipindexer.BatchReindexResult → *ClipIndexBatchResultDTO).
-type ClipIndexerPort interface {
-	IsEnabled() bool
-	IndexClip(ctx context.Context, id string) error
-	BatchReindex(ctx context.Context, source, mediaType string, limit int) (*ClipIndexBatchResultDTO, error)
 }
 
 // ClipConfigPort is the canonical clips-side narrow surface of

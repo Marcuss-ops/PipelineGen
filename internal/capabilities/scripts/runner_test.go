@@ -10,10 +10,10 @@
 // Per-scenario test files (each same-package `scriptgeneration`):
 //
 //   - runner_happy_path_test.go    ← TestRunner_HappyPath_AllStagesComplete
-//   - runner_retry_test.go         ← 3 retry-from-checkpoint scenarios
-//     (TextGenerator fails, Translator fails at scene N, Enqueue fails)
+//   - runner_retry_test.go         ← 2 retry-from-checkpoint scenarios
+//     (TextGenerator fails, Translator fails at scene N)
 //   - runner_stage_skip_test.go    ← 3 stage-skip scenarios
-//     (VoiceoverGenerator nil, Docs disabled, RenderVideo=false)
+//     (VoiceoverGenerator nil, Docs disabled, Docs enabled)
 //   - runner_unit_test.go          ← TestDeriveErrorCode +
 //     TestBuildDocumentContent + TestContainsAny
 //   - runner_lifecycle_test.go     ← IsRunCompletable + ResumeFrom +
@@ -26,7 +26,7 @@
 // Shared test fixture (stubs + in-memory repo + factory helpers):
 //
 //   - runner_helpers_test.go       ← stub{TextGenerator,Translator,
-//     VoiceoverGenerator,DocumentPublisher,RenderEnqueuer} +
+//     VoiceoverGenerator,DocumentPublisher} +
 //     inMemRunRepository + newStub...() factories +
 //     defaultTestRequest + defaultTestScenes + newTestRunner +
 //     awaitCompletion
@@ -64,7 +64,7 @@ package scriptgeneration
 
 // Intentionally empty. All 21 prior test bodies now live across:
 //   - runner_happy_path_test.go   (1 test)
-//   - runner_retry_test.go        (3 tests)
+//   - runner_retry_test.go        (2 tests)
 //   - runner_stage_skip_test.go   (3 tests)
 //   - runner_unit_test.go         (3 tests)
 //   - runner_lifecycle_test.go    (7 tests)

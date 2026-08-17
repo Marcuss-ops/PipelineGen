@@ -149,7 +149,7 @@ func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFing
 		}
 		input.ClipIDs = append([]string(nil), ev.AcceptedClipIDs...)
 		input.ClipTranscriptHashes = append([]string(nil), ev.ClipTranscriptHashes...)
-	} else if src.Type == SourceText {
+	} else if src.IsText() {
 		input.SourceTextHash = sha256Hex(assembleSourceText(src))
 	} else {
 		input.SourceTextHash = sha256Hex(sourceTextOrQuery(src))
@@ -232,7 +232,7 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 		input.ClipIDs = append([]string(nil), item.Source.ClipIDs...)
 	}
 
-	if item.Source.Type == SourceText {
+	if item.Source.IsText() {
 		input.SourceTextHash = sha256Hex(assembleSourceText(item.Source))
 	} else {
 		input.SourceTextHash = sha256Hex(sourceTextOrQuery(item.Source))
@@ -246,8 +246,8 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 // will be resolved (e.g. catalog/search query), so it participates
 // in the identity.
 func sourceTextOrQuery(src SourceSpec) string {
-	if src.SourceText != "" {
-		return src.SourceText
+	if sourceText := src.SourceText; sourceText != "" {
+		return sourceText
 	}
 	return src.Query
 }

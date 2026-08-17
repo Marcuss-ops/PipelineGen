@@ -93,3 +93,39 @@ func (r FrameResolver) FrameCountForDuration(durationUS int64) (int64, error) {
 	}
 	return count, nil
 }
+
+// FrameAlignedDurationUS returns the smallest duration in microseconds that is
+// a whole number of frames and at least durationUS. The video renderer emits
+// FrameAt(durationUS) frames, which rounds the canonical (microsecond)
+// timeline up or down to a frame boundary; the audio master pads to this value
+// so final_audio always covers the frame-aligned video (audio_duration >=
+// video_duration). A 17.52s narration at 30fps rounds to 526 frames = 17.533s,
+// which is the scene-8 freeze-tail case this guarantees against.
+func (r FrameResolver) FrameAlignedDurationUS(durationUS int64) (int64, error) {
+	if err := r.rate.Validate(); err != nil {
+		return 0, err
+	}
+	if durationUS < 0 {
+		return 0, fmt.Errorf("duration must be non-negative: %d", durationUS)
+	}
+	if durationUS == 0 {
+		return 0, nil
+	}
+	frames, err := r.FrameAt(durationUS)
+	if err != nil {
+		return 0, err
+	}
+	if frames <= 0 {
+		return 0, fmt.Errorf("duration rounds to zero frames: %d", durationUS)
+	}
+	// frames * frame_duration_us, floored. For integer rates this is exact;
+	// rational rates (e.g. 30000/1001) floor to the nearest microsecond.
+	if frames > math.MaxInt64/(1_000_000*r.rate.Denominator) {
+		return 0, fmt.Errorf("duration %d overflows frame-aligned microseconds", durationUS)
+	}
+	aligned := frames * 1_000_000 * r.rate.Denominator / r.rate.Numerator
+	if aligned < durationUS {
+		aligned = durationUS
+	}
+	return aligned, nil
+}

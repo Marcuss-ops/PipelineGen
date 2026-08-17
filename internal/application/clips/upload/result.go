@@ -60,5 +60,6 @@ var ErrDispatcherUnavailable = errors.New("upload: AssetMutationDispatcher not w
 // nil (S1a, June 2026 — "truthful signal not misleading fallback"
 // contract from clip_create.go). The use case mirrors this: a nil
 // JobsSvc emits a WARN log and sets Indexed=false on the result,
-// never an error. Reactive re-index via POST /:source/clips/:id/reindex
-// is the operator-facing recovery path.
+// never an error. Reactive re-index via
+// POST /api/assets/operator/assets/:id/reindex is the operator-facing
+// recovery path.

@@ -38,7 +38,6 @@ type registryCrossStepState struct {
 	SearchFanOut       search.SearchFanOut
 	SearchBackends     *search.BackendRegistry
 	SearchAggregator   *search.Aggregator
-	ScriptAssetsModule api.Module
 	IdempotencyHandler gin.HandlerFunc
 }
 

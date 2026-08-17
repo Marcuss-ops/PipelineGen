@@ -14,12 +14,9 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// TestFinalAudioDocumentAndRenderPlanShareSameAsset certifies the two
-// consumer surfaces of the master audio agree on a single audio_asset_id:
-// the Google Doc's "Final Audio JSON" block and RenderPlan.FinalAudio are
-// both projections of the same certified FinalAudioReference, so the video
-// renderer muxes exactly the file the document advertises.
-func TestFinalAudioDocumentAndRenderPlanShareSameAsset(t *testing.T) {
+// TestFinalAudioDocumentSharesSameAsset certifies the document's "Final
+// Audio JSON" block projects the certified master's audio_asset_id verbatim.
+func TestFinalAudioDocumentSharesSameAsset(t *testing.T) {
 	ref := scriptgen.FinalAudioReference{
 		AssetID: "final-audio-abc", Path: "/tmp/final_audio_abc.m4a", Container: "m4a",
 		AudioContractVersion: capabilityaudio.AudioContractVersion,
@@ -43,25 +40,8 @@ func TestFinalAudioDocumentAndRenderPlanShareSameAsset(t *testing.T) {
 	})
 	docAssetID := finalAudioAssetIDFromHTML(t, docHTML)
 
-	// Render surface: RenderPlan.FinalAudio must carry the same ID.
-	result := scriptgen.GenerateResult{
-		Scenes: []scriptgen.Scene{{
-			ID: "scene-0", Index: 0, DurationUS: 5_000_000,
-			Audio:     capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
-			Voiceover: map[scriptgen.Language]scriptgen.AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 4.0}},
-		}},
-		FinalAudio: &ref,
-	}
-	timeline, _, _, err := scriptgen.CompileCanonicalAudioPlan(result, "it", capabilityaudio.DefaultAudioProfile())
-	require.NoError(t, err)
-	renderPlan, err := scriptgen.CompileCanonicalRenderPlan(result, timeline, "job-1", "rev-1", 30)
-	require.NoError(t, err)
-	require.NotNil(t, renderPlan.FinalAudio)
-
-	// The document and the render plan must agree on the single master asset.
+	// The document must carry the certified master asset ID.
 	require.Equal(t, ref.AssetID, docAssetID)
-	require.Equal(t, ref.AssetID, renderPlan.FinalAudio.AssetID)
-	require.Equal(t, docAssetID, renderPlan.FinalAudio.AssetID)
 }
 
 func finalAudioAssetIDFromHTML(t *testing.T, out string) string {

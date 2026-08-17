@@ -843,4 +843,135 @@ The N=351 bench emitted ffmeg via `/tmp/ffmpeg-static/ffmpeg` (7.0.2-static, joh
 - **Subprocess log (canonical):** `/tmp/stock-bench/subprocess.log` (per-run; one line per ffmpeg/ffprobe invocation)
 - **Wave-tracker**: `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` — §12 (this section) DOES NOT add a new wave entry; the bench is the receipt that locks the §1-§9 ship gate, not a new ship gate itself.
 
+---
+
+## §13 — StockRust three-level certification boundary (coverage matrix)
+
+**Wave anchor**: [`architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05`](../architecture/current.yaml) (no new wave entry — §13 documents the certification surface of the StockRust render boundary; the §2 14-point battery remains the canonical ship-gate)
+**Status**: shipped (documentation lockstep with `youtube_stock_live_e2e.sh` + `stockrust_live_e2e.sh` + the `rustexec` Go test battery on `origin/main`)
+**Audience**: SRE + on-call operators + maintainers verifying that the full StockRust render boundary (discovery → Go adapter → Rust binary) is certified end-to-end
+**Owner surfaces**: `tests/operational/youtube_stock_live_e2e.sh` (L1), `internal/infrastructure/media/rustexec/*_test.go` (L2), `tests/operational/stockrust_live_e2e.sh` (L3)
+
+### §13.1 — The three boundary layers
+
+The StockRust certification is a **three-layer** boundary. No single script covers all three; `STOCKRUST=CERTIFIED` requires all three layers to be green.
+
+```text
+L1  HTTP upstream        youtube_stock_live_e2e.sh         discovery → transcript selection → cut → persist → download
+L2  Go adapter → Rust    internal/.../rustexec/*_test.go   canonical render_plan validate/transport, tamper fail-closed, final audio copy
+L3  Rust binary          stockrust_live_e2e.sh             health, render_stock protocol, concat, fail-closed, concurrency, RTF
+```
+
+Layer responsibilities (godlike/06 SSOT, one canonical owner per boundary):
+
+| Layer | Canonical owner | What it certifies |
+|---|---|---|
+| **L1** HTTP upstream | `tests/operational/youtube_stock_live_e2e.sh` | `POST /api/clips/stock` enqueue, transcript-based selection contract (`selection_basis=="transcript"`, `duration_ms==7000`, `visual_verified==false`, `cache_key`), asset persistence, download + ffprobe contract, strict no-caption failure (`TRANSCRIPT_UNAVAILABLE`) |
+| **L2** Go adapter → Rust | `internal/infrastructure/media/rustexec/` (Go tests) | `render.ValidateRenderPlan` + `ValidateManifestFiles` + `request.Validate()` transport re-validation, manifest/plan/asset hash-drift rejection, `render_stock → mux_audio_copy` final-audio sequence, encoder policy |
+| **L3** Rust binary | `tests/operational/stockrust_live_e2e.sh` (+ Go e2e tests) | `health`, `render_stock` protocol fail-closed (missing inputs / unsupported op / legacy selection hints), 10-clip concat + ffprobe + full decode, 4-job concurrency, unknown transition/missing effect rejection, RTF |
+
+### §13.2 — Coverage matrix against the certification plan
+
+The certification plan has 13 surfaces (§1 Rust suite → §13 RTF). This matrix maps each to its owning layer(s).
+
+| # | Surface | L1 script | L2 Go tests | L3 script | Status |
+|---|---|---|---|---|---|
+| 1 | Rust suite + build | — | — | — | `cargo test` + `make build-muscles` (dedicated) |
+| 2 | Go→Rust contract | — | ✅ `canonical_render_test.go` | — | L2 |
+| 3 | 3 synthetic clips → concat + decode | — | ✅ `stockrust_render_e2e_test.go` | ✅ (10 clips) | L2+L3 |
+| 4 | Clip order (R/G/B) | — | ✅ `stockrust_order_ranges_e2e_test.go` | ⚠ frame-count only, no visual check | L2 |
+| 5 | Exact source ranges | — | ✅ `stockrust_order_ranges_e2e_test.go` | — | L2 |
+| 6 | Frame-accurate (30 + 29.97) | — | ✅ `stockrust_frame_accurate_e2e_test.go` | ⚠ `≈ ±2` frames | L2 |
+| 7 | Transitions resolved (no selection) | — | ✅ `stockrust_transitions_effects_e2e_test.go` | ✅ fadeblack + reject | L2+L3 |
+| 8 | Effects resolved (no selection) | — | ✅ `stockrust_transitions_effects_e2e_test.go` | ✅ reject | L2+L3 |
+| 9 | Final audio copy (no re-encode) | — | ✅ `stockrust_final_audio_copy_e2e_test.go` + `mux_audio_copy_e2e_test.go` | — | L2 |
+| 10 | Tampering fail-closed (4 attacks) | — | ✅ `stock_renderer_rejection_test.go` | ⚠ transition/effect/selection only, no hash drift | L2 |
+| 11 | 10 clips realistic | — | ✅ `stockrust_ten_clip_e2e_test.go` | ✅ | L2+L3 |
+| 12 | Concurrency (4 jobs) | — | — | ✅ | L3 |
+| 13 | Performance / RTF | — | ✅ `stockrust_performance_e2e_test.go` | ✅ | L2+L3 |
+
+### §13.3 — Honest-limitation disclosure (godlike/07)
+
+The two shell scripts alone do **NOT** cover the entire boundary. Three surfaces are certified **only** by the L2 Go tests:
+
+1. **Canonical `render_plan` path** — `stockrust_live_e2e.sh` drives the legacy `render_stock` envelope (transitions + `no_effects`, no `render_plan` field); the canonical `render_plan → decode_and_validate → frame ranges → duration_frames` path is exercised only by the Go e2e tests.
+2. **Final audio copy** — neither script invokes `mux_audio_copy` nor compares the AAC bitstream hash; covered only by `stockrust_final_audio_copy_e2e_test.go` + `mux_audio_copy_e2e_test.go`.
+3. **Tamper hash-drift** — `stockrust_live_e2e.sh` rejects unknown transition/effect/selection but does NOT exercise manifest/plan/asset SHA256 drift; covered only by `stock_renderer_rejection_test.go` (double layer: Go `ValidateRenderPlan` + the physical re-check in `RenderCanonicalPlan` + `request.Validate()`, and Rust `decode_and_validate` re-hashing via `sha256sum`).
+
+Two L3-script checks are also approximate relative to the exact certification: frame count `±2` (vs `== duration_frames`) and no visual clip-order check. The exact assertions live in the L2 Go e2e tests.
+
+### §13.4 — Native ffmpeg wall timing (render_stock stage timing)
+
+Per the certification plan §13, `render_stock` reports its ffmpeg encode wall time natively in the response metadata (`metadata.ffmpeg_ms`), matching the `render_audio_plan` stage-timing pattern. The three-wall breakdown is measured by `stockrust_performance_e2e_test.go`:
+
+| Wall | Owner | Source |
+|---|---|---|
+| `stock.render` | Go `RenderCanonicalPlan` | `time.Since` around the call |
+| `rust process` | `timingRunner` wrapping `persistentRustProcessRunner` | per-request round-trip |
+| `ffmpeg` | Rust binary | `metadata.ffmpeg_ms` (native, no external shim) |
+
+Invariant asserted by the test: `ffmpeg ≤ rust ≤ stock.render`. Canonical owner of the `ffmpeg_ms` wire field: `rust/pipelinegen-muscles/src/protocol.rs::MediaMetadata` + `internal/infrastructure/media/rustexec/protocol.go::mediaMetadata.FFmpegMS`.
+
+### §13.5 — Persistence flow (performance_runs)
+
+The measured breakdown is persisted into the canonical `performance_runs` registry for historical comparison. `wall_ms` (the stock.render wall) lands in its dedicated column; `rtf`, `ffmpeg_ms`, and the full breakdown land in `metadata_json`.
+
+**metadata_json shape** (canonical: `stockrustRunMetadata` in `internal/infrastructure/media/rustexec/stockrust_performance_persistence_test.go`):
+
+```json
+{
+  "rtf": 0.149,
+  "stock_render_ms": 10408,
+  "rust_process_ms": 10378,
+  "ffmpeg_ms": 10338,
+  "go_overhead_ms": 30,
+  "rust_internal_ms": 40,
+  "media_duration_ms": 70000,
+  "input_bytes": 1011610,
+  "output_bytes": 1216857
+}
+```
+
+**Column mapping**:
+
+| Metric | Column |
+|---|---|
+| `stock.render` wall | `performance_runs.wall_ms` |
+| `rtf` | `metadata_json.rtf` |
+| `ffmpeg_ms` | `metadata_json.ffmpeg_ms` |
+| breakdown (`rust_process_ms`, `go_overhead_ms`, …) | `metadata_json.*` |
+
+**Flow**:
+
+```text
+TestStockRustPerformanceRTF
+  → buildStockrustRun(run_id, wall, metadata, started, completed)
+  → capperformance.Run { WallMS, MetadataJSON, workload_id="stockrust_render", status="SUCCEEDED" }
+  → persistStockrustRun (env-gated)
+      STOCKRUST_PERF_DB_PATH set → perfstore.Registry.RecordRun → performance_runs (idempotent upsert on run_id)
+      unset                        → record-only (logged, no write; keeps the benchmark hermetic)
+```
+
+**Historical comparison query**:
+
+```sql
+SELECT started_at, wall_ms,
+       json_extract(metadata_json,'$.rtf')       AS rtf,
+       json_extract(metadata_json,'$.ffmpeg_ms') AS ffmpeg_ms
+FROM performance_runs
+WHERE workload_id='stockrust_render'
+ORDER BY started_at;
+```
+
+**Idempotency**: `run_id` is the primary key with `ON CONFLICT DO UPDATE`; re-recording the same run converges. The round-trip is proven by `TestStockRustPerformancePersistenceRoundTrip` (in-memory SQLite; `wall_ms` + `rtf`/`ffmpeg_ms` read back unchanged).
+
+### §13.6 — Lockstep referenti (godlike/06 SSOT)
+
+- **L1 script**: `tests/operational/youtube_stock_live_e2e.sh`
+- **L3 script**: `tests/operational/stockrust_live_e2e.sh`
+- **L2 Go test battery**: `internal/infrastructure/media/rustexec/*_test.go` (canonical files listed in §13.2)
+- **Rust binary**: `rust/pipelinegen-muscles/` → `bin/pipelinegen-muscles` (built via `make build-muscles`)
+- **Stage timing wire field**: `ffmpeg_ms` (`rust/pipelinegen-muscles/src/protocol.rs` + `internal/infrastructure/media/rustexec/protocol.go`)
+- **Wave-tracker**: `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` — §13 does NOT add a new wave entry; it documents the existing render-boundary certification surface. The §2 14-point battery remains the canonical ship-gate.
+
 

@@ -171,6 +171,23 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		j.Payload = json.RawMessage("{}")
 	}
 
+	// Canonical correlation (godlike/06 SSOT): parent_job_id and
+	// root_job_id are resolved ONCE at enqueue and persisted on the jobs
+	// row, so derived projections (performance_runs.root_job_id, the
+	// control-plane verifier) never have to re-derive or guess the lineage.
+	// A root job (no parent linkage in the payload) is its own root; a child
+	// inherits its parent's already-resolved root. Resolution failures fail
+	// open to the immediate parent id — the lineage hint must never block the
+	// enqueue itself.
+	j.ParentJobID = job.ParentLinkFromPayload(j.Payload).ParentJobID
+	j.RootJobID = j.ID
+	if j.ParentJobID != "" {
+		j.RootJobID = j.ParentJobID
+		if parent, err := s.repo.Get(ctx, j.ParentJobID); err == nil && parent != nil && parent.RootJobID != "" {
+			j.RootJobID = parent.RootJobID
+		}
+	}
+
 	if err := s.repo.Create(ctx, j); err != nil {
 		// PR-jobs-retry-contract (July 2026): typed sqlite3 probe replaces
 		// the pre-PR strings.Contains(err.Error(), "UNIQUE constraint")

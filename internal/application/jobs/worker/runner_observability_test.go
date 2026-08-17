@@ -120,17 +120,21 @@ func newObservedRunLeaseRunner(t *testing.T, rec *obsCaptureRecorder, handler Ha
 func obsTestLease(createdAt time.Time, startedAt time.Time, retryCount int) *appjobs.Lease {
 	return &appjobs.Lease{
 		Job: &job.Job{
-			ID:         "obs-remote-job",
-			Type:       "obs.test",
-			Revision:   1,
-			LeaseID:    "lease-obs-remote",
-			RetryCount: retryCount,
-			CreatedAt:  createdAt,
-			StartedAt:  &startedAt,
+			ID:          "obs-remote-job",
+			Type:        "obs.test",
+			Revision:    1,
+			LeaseID:     "lease-obs-remote",
+			LeaseExpiry: timePtr(startedAt.Add(5 * time.Minute)),
+			RetryCount:  retryCount,
+			CreatedAt:   createdAt,
+			StartedAt:   &startedAt,
 		},
-		LeaseID: "lease-obs-remote",
+		LeaseID:   "lease-obs-remote",
+		ExpiresAt: startedAt.Add(5 * time.Minute),
 	}
 }
+
+func timePtr(t time.Time) *time.Time { return &t }
 
 // TestRunLease_ProducesRunReport — success path: runLease closes the
 // run as SUCCEEDED with queue_wait_ms (created_at → started_at),
@@ -170,6 +174,15 @@ func TestRunLease_ProducesRunReport(t *testing.T) {
 	}
 	if rep.Counters.Retries != 2 {
 		t.Fatalf("counters.retries = %d, want 2", rep.Counters.Retries)
+	}
+	if rep.LeaseID != "lease-obs-remote" {
+		t.Fatalf("lease_id = %q, want %q (the worker fence must be surfaced on the run)", rep.LeaseID, "lease-obs-remote")
+	}
+	if rep.WorkerID != "worker-1" {
+		t.Fatalf("worker_id = %q, want %q", rep.WorkerID, "worker-1")
+	}
+	if rep.LeaseExpiresAt.IsZero() || !rep.LeaseExpiresAt.Equal(startedAt.Add(5*time.Minute)) {
+		t.Fatalf("lease_expires_at = %v, want %v (RecoverAbandoned depends on a non-NULL lease_expires_at)", rep.LeaseExpiresAt, startedAt.Add(5*time.Minute))
 	}
 }
 

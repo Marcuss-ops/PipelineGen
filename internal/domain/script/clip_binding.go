@@ -40,4 +40,9 @@ type ClipBinding struct {
 	// clip duration is upstream binder's responsibility
 	// (godlike/06 SSOT decomposition).
 	DurationMs int64 `json:"duration_ms,omitempty"`
+
+	// TotalDurationMs is the measured duration of the complete source asset.
+	// It is separate from DurationMs, which is the selected binding segment.
+	// Zero means unknown; callers must never substitute the scene duration.
+	TotalDurationMs int64 `json:"total_duration_ms,omitempty"`
 }

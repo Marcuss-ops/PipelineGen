@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	sqlitecontrol "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/controlplane"
@@ -148,7 +149,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 	if c.uow != nil {
 		return c.commitTxWithUnitOfWork(ctx, tx, req)
 	}
-	return c.commitTxRaw(ctx, tx, req)
+	return c.CommitTxRaw(ctx, tx, req)
 }
 
 func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
@@ -171,7 +172,7 @@ func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx pe
 		if !ok || uowSQLTx == nil {
 			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
 		}
-		committed, mutationErr := c.commitTxRaw(ctx, uowSQLTx, req)
+		committed, mutationErr := c.CommitTxRaw(ctx, uowSQLTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
@@ -207,7 +208,7 @@ func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req per
 		if !ok || sqlTx == nil {
 			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
 		}
-		committed, mutationErr := c.commitTxRaw(ctx, sqlTx, req)
+		committed, mutationErr := c.CommitTxRaw(ctx, sqlTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
@@ -282,7 +283,7 @@ func buildAssetMutationOutboxEvent(req persistence.CommitRequest) (capcontrol.Ou
 	return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: payload, EventKey: eventKey}, nil
 }
 
-func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
 	}
@@ -315,11 +316,25 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 		endMs = int64(req.Metadata.EndSec * 1000)
 	}
 
+	// Resolve the supersede fingerprint once. Metadata.SourceVersion carries
+	// the caller-computed indexable-snapshot revision (index_revision); when
+	// it is absent the snapshot collapses to byte identity (content_sha256).
+	sourceVersion := req.Metadata.SourceVersion
+	if sourceVersion == "" {
+		sourceVersion = req.ContentHash
+	}
+
 	// 1. Build metadata_json from typed metadata.
 	metadataMap := req.Metadata.ToMap()
-	// Canonical keys that the committer always stamps, regardless of
-	// what the caller put in Extra.
+	// content_hash is BYTE identity (content_sha256) and must NEVER fold
+	// text-track/taxonomy/metadata changes. index_revision is the SEPARATE
+	// indexable-snapshot fingerprint the supersede gate compares
+	// (godlike/06: content_sha256 vs index_revision vs semantic_document_hash
+	// are distinct and MUST NOT be conflated).
 	metadataMap["content_hash"] = req.ContentHash
+	if sourceVersion != "" {
+		metadataMap[mediaregistry.IndexRevisionField] = sourceVersion
+	}
 	if req.Metadata.SourceVersion == "" {
 		metadataMap["source_version"] = req.ContentHash
 	}
@@ -343,15 +358,11 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 	if name == "" {
 		name = req.Filename
 	}
-	sourceVersion := req.Metadata.SourceVersion
-	if sourceVersion == "" {
-		sourceVersion = req.ContentHash
-	}
 
 	res, err := sqlTx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
-			category, duration_ms,
+			category, duration_ms, tags, tags_norm,
 			file_hash, drive_file_id, drive_link, download_link,
 			local_path, folder_id, folder_path,
 			lifecycle_state, index_state, metadata_json,
@@ -359,7 +370,9 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 			created_at, updated_at, thumbnail_url, url,
 			asset_version, asset_location, rendition,
 			source_provider, source_video_id, source_url,
-			start_ms, end_ms, title			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			start_ms, end_ms, title,
+			namespace, asset_kind, source_type, semantic_role
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -367,6 +380,8 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 				media_type = excluded.media_type,
 				category = excluded.category,
 				duration_ms = excluded.duration_ms,
+			tags = excluded.tags,
+			tags_norm = excluded.tags_norm,
 			file_hash = excluded.file_hash,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
@@ -389,9 +404,14 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 			source_url = excluded.source_url,
 			start_ms = excluded.start_ms,
 			end_ms = excluded.end_ms,
-			title = excluded.title
+			title = excluded.title,
+			namespace = COALESCE(NULLIF(excluded.namespace, ''), namespace),
+			asset_kind = COALESCE(NULLIF(excluded.asset_kind, ''), asset_kind),
+			source_type = COALESCE(NULLIF(excluded.source_type, ''), source_type),
+			semantic_role = COALESCE(NULLIF(excluded.semantic_role, ''), semantic_role)
 	`,
 		req.AssetID, req.Source, name, req.Filename, req.MediaType, req.Category, req.DurationMs,
+		clipTagsJSON(req.Metadata.Tags), clipTagsNorm(req.Metadata.Tags),
 		req.ContentHash, primaryDriveFileID(req.Locations), primaryWebViewLink(req.Locations), primaryDownloadURL(req.Locations),
 		req.LocalPath, req.FolderID, req.FolderPath,
 		req.LifecycleState, indexState, string(metadataJSON),
@@ -400,6 +420,7 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 		req.AssetVersion, req.AssetLocation, req.Rendition,
 		sourceProvider, sourceVideoID, req.SourceURL,
 		startMs, endMs, title,
+		req.Taxonomy.Namespace, string(req.Taxonomy.AssetKind), req.Taxonomy.SourceType, req.Taxonomy.SemanticRole,
 	)
 	if err != nil {
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: upsert media_assets: %w", err)

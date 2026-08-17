@@ -58,21 +58,20 @@ import (
 //
 // Sources of canonical job types:
 //
-//	internal/domain/job/job.go (Wave pre-Wave19 SSOT):
-//	  - TypeMediaExtract, TypeMediaStock, TypeVoiceoverBatch,
-//	    TypeSubtitleGenerate, TypeRenderVideo, TypeYouTubeUpload,
-//	    TypeYouTubeClipExtract, TypeCatalogSync, TypeArtlistRun,
-//	    TypeSystemCleanup, TypeMediaGenerate, TypeVideoGenerate,
-//	    TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
-//	    TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
-//	    TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
-//	    TypeMediaCurate, TypeVoiceoverPromo.
+//		internal/domain/job/job.go (Wave pre-Wave19 SSOT):	//  - TypeMediaExtract, TypeMediaStock, TypeVoiceoverBatch,
+//	   TypeSubtitleGenerate, TypeYouTubeUpload,
+//	   TypeYouTubeClipExtract, TypeCatalogSync, TypeArtlistRun,
+//	   TypeSystemCleanup, TypeMediaGenerate,
+//		    TypeBooksProcess, TypeLessonsProcess, TypeMediaReindex,
+//		    TypeMediaEnrich, TypeYouTubeRebuildST, TypeScriptGenerate,
+//		    TypeBulkUploadYouTubeClips, TypeDriveFolderSync,
+//		    TypeMediaCurate, TypeVoiceoverPromo.
 //
-//	internal/application/jobs/registry.go (Wave 19 / P1-9 adder):
-//	  - TypeImageGenerateGoogle — FASE 2 (June 2026) Chrome/Playwright
-//	    AI image generation. The handler is NOT wired yet (pending
-//	    FASE 6); the registry entry declares the operational
-//	    parameters so the broker can accept jobs of this type.
+//		internal/application/jobs/registry.go (Wave 19 / P1-9 adder):
+//		  - TypeImageGenerateGoogle — FASE 2 (June 2026) Chrome/Playwright
+//		    AI image generation. The handler is NOT wired yet (pending
+//		    FASE 6); the registry entry declares the operational
+//		    parameters so the broker can accept jobs of this type.
 //
 // Adding a new Type* to either file means adding the string below
 // with a comment pointing to the new declaration site. The test
@@ -89,7 +88,6 @@ var canonicalJobTypes = []string{
 	TypeMediaStock,             // domain/job/job.go
 	TypeVoiceoverBatch,         // domain/job/job.go
 	TypeSubtitleGenerate,       // domain/job/job.go
-	TypeRenderVideo,            // domain/job/job.go
 	TypeYouTubeUpload,          // domain/job/job.go
 	TypeYouTubeClipExtract,     // domain/job/job.go
 	TypeCatalogSync,            // domain/job/job.go
@@ -97,7 +95,6 @@ var canonicalJobTypes = []string{
 	TypeArtlistCacheRefresh,    // domain/media/job_types.go (durable stale-cache refresh)
 	TypeSystemCleanup,          // domain/job/job.go
 	TypeMediaGenerate,          // domain/job/job.go
-	TypeVideoGenerate,          // domain/job/job.go
 	TypeBooksProcess,           // domain/job/job.go
 	TypeLessonsProcess,         // domain/job/job.go
 	TypeMediaReindex,           // domain/job/job.go
@@ -114,20 +111,19 @@ var canonicalJobTypes = []string{
 	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT
 	// downstream job types registered in registry_script.go, registry_stock.go,
 	// registry_media.go, and registry_extraction.go.
-	TypeAssetsResolve,               // domain/job/job.go
-	TypeDocumentGenerate,            // domain/job/job.go
-	TypeImagesGenerate,              // domain/job/job.go
-	TypeClipRegister,                // domain/job/job.go
-	TypeMediaStockRLMEnrich,         // domain/job/job.go
-	TypeScriptGenerateItem,          // domain/job/job.go
-	TypeScriptImageSibling,          // domain/job/job.go
-	TypeScriptVoiceoverSibling,      // domain/job/job.go
-	TypeYouTubeClipExtractImportant, // domain/job/job.go
-	TypeYouTubeStock,                // domain/youtube/job_types.go (YouTube stock vertical slice)
-	TypeAssetTextMaterialize,        // application/jobs/registry_types.go (FASE texttracks / July 2026)
-	TypeYouTubeExtract,              // application/jobs/registry_types.go (July 2026)
-	TypeIntegrityVerify,             // application/jobs/registry_integrity.go
-	TypeAssetCleanup,                // application/jobs/registry_integrity.go
+	TypeAssetsResolve,          // domain/job/job.go
+	TypeDocumentGenerate,       // domain/job/job.go
+	TypeImagesGenerate,         // domain/job/job.go
+	TypeClipRegister,           // domain/job/job.go
+	TypeMediaStockRLMEnrich,    // domain/job/job.go
+	TypeScriptGenerateItem,     // domain/job/job.go
+	TypeScriptImageSibling,     // domain/job/job.go
+	TypeScriptVoiceoverSibling, // domain/job/job.go
+	TypeYouTubeStock,           // domain/youtube/job_types.go (YouTube stock vertical slice)
+	TypeAssetTextMaterialize,   // application/jobs/registry_types.go (FASE texttracks / July 2026)
+	TypeYouTubeExtract,         // application/jobs/registry_types.go (July 2026)
+	TypeIntegrityVerify,        // application/jobs/registry_integrity.go
+	TypeAssetCleanup,           // application/jobs/registry_integrity.go
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending

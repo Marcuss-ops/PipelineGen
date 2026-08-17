@@ -88,6 +88,45 @@ func TestArtifactManifest_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+// ── Drive-published identity fields (drive_file_id / drive_link) ─────
+
+func TestArtifact_DriveFields_JSONRoundTrip(t *testing.T) {
+	original := Artifact{
+		ID:          "job_1:overlay",
+		Kind:        ArtifactKindOverlay,
+		Filename:    "overlay.mov",
+		MIMEType:    "video/quicktime",
+		SizeBytes:   1234567,
+		SHA256:      "deadbeef",
+		DriveFileID: "1a2b3c4d5e6f",
+		DriveLink:   "https://drive.google.com/file/d/1a2b3c4d5e6f/view",
+		Required:    true,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var decoded Artifact
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if decoded.DriveFileID != original.DriveFileID {
+		t.Errorf("DriveFileID = %q, want %q", decoded.DriveFileID, original.DriveFileID)
+	}
+	if decoded.DriveLink != original.DriveLink {
+		t.Errorf("DriveLink = %q, want %q", decoded.DriveLink, original.DriveLink)
+	}
+	if decoded.SizeBytes != original.SizeBytes {
+		t.Errorf("SizeBytes = %d, want %d", decoded.SizeBytes, original.SizeBytes)
+	}
+	if decoded.SHA256 != original.SHA256 {
+		t.Errorf("SHA256 = %q, want %q", decoded.SHA256, original.SHA256)
+	}
+}
+
 // ── UploadedManifest JSON round-trip ─────────────────────────────────
 
 func TestUploadedManifest_JSONRoundTrip(t *testing.T) {

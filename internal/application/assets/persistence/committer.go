@@ -25,7 +25,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // TypedMetadata carries the canonical semantic fields that must be
@@ -58,7 +61,23 @@ type TypedMetadata struct {
 	StartSec       float64
 	EndSec         float64
 	Slug           string
-	Extra          map[string]any
+
+	// Summary/Topics/Speakers/MentionedPeople/Hook/QualityScore/
+	// SponsorSegment are the canonical semantic-enrichment fields
+	// produced by the metadata analyzer (PR-ASSET-COMMITTER-
+	// ENRICHMENT, August 2026). They were formerly hand-marshalled
+	// into Extra by the YouTube metadata writer as a SECOND post-commit
+	// write; promoting them here makes the single canonical commit
+	// carry the complete semantic snapshot atomically.
+	Summary         string
+	Topics          []string
+	Speakers        []string
+	MentionedPeople []string
+	Hook            string
+	QualityScore    float64
+	SponsorSegment  bool
+
+	Extra map[string]any
 }
 
 // ToMap serialises the typed metadata into the canonical map shape
@@ -87,6 +106,23 @@ func (m TypedMetadata) ToMap() map[string]any {
 	setIfNotEmpty("drive_path", m.DrivePath)
 	setIfNotEmpty("indexing_status", m.IndexingStatus)
 	setIfNotEmpty("slug", m.Slug)
+	setIfNotEmpty("summary", m.Summary)
+	setIfNotEmpty("hook", m.Hook)
+	if len(m.Topics) > 0 {
+		out["topics"] = m.Topics
+	}
+	if len(m.Speakers) > 0 {
+		out["speakers"] = m.Speakers
+	}
+	if len(m.MentionedPeople) > 0 {
+		out["mentioned_people"] = m.MentionedPeople
+	}
+	if m.QualityScore != 0 {
+		out["quality_score"] = m.QualityScore
+	}
+	if m.SponsorSegment {
+		out["sponsor_segment"] = true
+	}
 	if m.SizeBytes != 0 {
 		out["size_bytes"] = m.SizeBytes
 	}
@@ -129,8 +165,10 @@ type LocationCommit struct {
 
 // CommitRequest is the canonical input for committing an asset.
 //
-// Required fields: AssetID, Source, Filename, MediaType, ContentHash,
-// LifecycleState. Locations may be empty for callers that do not yet
+// Required fields: AssetID, Source, Filename, MediaType, LifecycleState.
+// ContentHash is required only when an index outbox event is requested;
+// discovery-only assets may legitimately have unknown content bytes.
+// Locations may be empty for callers that do not yet
 // have a concrete storage location (e.g. discovery-only staging rows).
 // OutboxEvent is an additional event emitted atomically with the asset commit.
 // It is intentionally transport-neutral so application producers can request
@@ -182,6 +220,13 @@ type CommitRequest struct {
 
 	// Metadata is the typed metadata envelope.
 	Metadata TypedMetadata
+
+	// Taxonomy is the canonical media taxonomy (namespace, media_type,
+	// asset_kind, source_type, semantic_role). When non-zero it is
+	// validated and persisted to the media_assets taxonomy columns in the
+	// SAME upsert as the asset row. Zero is accepted so legacy producers
+	// can converge incrementally without regressing existing writes.
+	Taxonomy mediaregistry.AssetTaxonomy
 
 	// Locations are the storage locations to upsert.
 	Locations []LocationCommit
@@ -317,11 +362,23 @@ func (r CommitRequest) Validate() error {
 	if r.MediaType == "" {
 		return ErrAssetCommitMediaTypeRequired
 	}
-	if r.ContentHash == "" {
+	if r.EmitIndexEvent && r.ContentHash == "" {
 		return ErrAssetCommitContentHashRequired
 	}
 	if r.LifecycleState == "" {
 		return ErrAssetCommitLifecycleRequired
+	}
+	if !r.Taxonomy.IsZero() {
+		taxonomy := r.Taxonomy
+		if taxonomy.AssetID == "" {
+			taxonomy.AssetID = r.AssetID
+		}
+		if taxonomy.AssetID != r.AssetID {
+			return fmt.Errorf("asset commit: Taxonomy.AssetID must be empty or match AssetID")
+		}
+		if err := taxonomy.Validate(); err != nil {
+			return fmt.Errorf("asset commit: %w", err)
+		}
 	}
 	return nil
 }

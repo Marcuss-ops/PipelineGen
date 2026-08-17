@@ -26,14 +26,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// ComputeContentHashWithTextTracks computes a deterministic content
-// hash that includes text track hashes (canonical implementation
-// lives in assets/crypto/clip_metadata_writer_hashes.go).
-//
-// Formula: SHA256(file_hash + "|" + sorted(text_track_hashes))
-// where sorted means ascending by (language_code, text_kind).
-// When no text tracks exist, the hash is just SHA256(file_hash)
-// which matches the existing content_hash behavior.
+// ComputeIndexRevision derives the canonical index revision — the
+// fingerprint the supersede gate compares (canonical implementation
+// lives in assets/crypto/clip_metadata_writer_hashes.go). It folds
+// byte identity + text-track content WITHOUT mutating content_sha256.
+func ComputeIndexRevision(contentHash string, textTracks []asset.TextTrack) string {
+	return sqcrypto.ComputeIndexRevision(contentHash, textTracks)
+}
+
+// ComputeContentHashWithTextTracks is the legacy alias for
+// ComputeIndexRevision (canonical implementation lives in
+// assets/crypto/clip_metadata_writer_hashes.go). Deprecated: use
+// ComputeIndexRevision so byte identity is never conflated with the
+// index revision.
 func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTrack) string {
 	return sqcrypto.ComputeContentHashWithTextTracks(fileHash, textTracks)
 }

@@ -53,7 +53,7 @@ func checkLegacyAudit(ctx context.Context, deps readinessDeps) checkStatus {
 	var nonMedia int
 	if err := deps.DB.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM media_assets
-		WHERE COALESCE(media_type, '') NOT IN ('video', 'image', 'audio')`).Scan(&nonMedia); err != nil {
+		WHERE COALESCE(media_type, '') NOT IN ('video', 'image', 'audio', 'document', 'folder', 'text')`).Scan(&nonMedia); err != nil {
 		return checkStatus{Err: "non-media count query failed: " + err.Error()}
 	}
 	if nonMedia > 0 {
@@ -79,11 +79,8 @@ func checkLegacyAudit(ctx context.Context, deps readinessDeps) checkStatus {
 		query := fmt.Sprintf(`
 			SELECT COUNT(*) FROM media_assets
 			WHERE COALESCE(media_type, '') IN (%s)
-			AND (
-				COALESCE(%s, '') = ''
-				OR COALESCE(%s, '') = '[]'
-				OR json_array_length(%s) != %d
-			)`, mediaFilter, spec.col, spec.col, spec.col, spec.dim)
+			AND COALESCE(%s, '') NOT IN ('', '[]', '{}')
+			AND json_array_length(%s) != %d`, mediaFilter, spec.col, spec.col, spec.dim)
 		var n int
 		if err := deps.DB.QueryRowContext(ctx, query).Scan(&n); err != nil {
 			return checkStatus{Err: fmt.Sprintf("%s invalid-vector count query failed: %s", ch, err.Error())}

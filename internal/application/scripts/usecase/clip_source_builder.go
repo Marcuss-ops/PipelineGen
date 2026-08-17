@@ -254,8 +254,8 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		clipToCanonical[record.clip.ID] = record.id
 		clipNames = append(clipNames, clipDisplayName(record.clip, record.id))
 		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript, record.metadataText)
-		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript, record.metadataText)
-		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript, record.metadataText)
+		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript)
+		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript)
 		c.enrichClipSubtitle(ctx, clipDetails, record.id)
 		if record.track != nil {
 			resolvedTracks[record.id] = record.track

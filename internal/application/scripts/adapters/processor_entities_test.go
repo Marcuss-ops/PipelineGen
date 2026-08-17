@@ -20,6 +20,50 @@ func (e *boundaryEntityExtractor) ExtractEntities(_ context.Context, req scriptp
 	return &scriptpkg.EntityResult{Concepts: []scriptpkg.Entity{{Value: strings.Fields(req.Text)[0], Type: "CONCEPT"}}}, nil
 }
 
+type sourceFallbackEntityExtractor struct {
+	calls []string
+}
+
+func (e *sourceFallbackEntityExtractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	e.calls = append(e.calls, req.Text)
+	if req.Text == "The" {
+		return &scriptpkg.EntityResult{}, nil
+	}
+	return &scriptpkg.EntityResult{Concepts: []scriptpkg.Entity{
+		{Value: "Maya", Type: "CONCEPT"},
+		{Value: "Tikal", Type: "LOCATION"},
+		{Value: "Palenque", Type: "LOCATION"},
+		{Value: "Chichen Itza", Type: "LOCATION"},
+		{Value: "Yucatan", Type: "LOCATION"},
+	}}, nil
+}
+
+func TestVidRushSegmentEnricherFallsBackToResearchSourceForEmptyScene(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	extractor := &sourceFallbackEntityExtractor{}
+	enricher := NewVidRushSegmentEnricher(extractor, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language:   "it",
+		Title:      "Maya",
+		SourceText: "La civiltà Maya: Tikal, Palenque, Chichen Itza e Yucatan.",
+		Model:      "fake",
+		MediaPlan:  mediadomain.MediaPlanSpec{ForceRefreshExtraction: true},
+	}
+
+	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
+		ID: "scene-0", Index: 0, Text: "The",
+	})
+	if err != nil {
+		t.Fatalf("Enrich returned error: %v", err)
+	}
+	if got := len(result.Insights.Entities); got != 5 {
+		t.Fatalf("entity count = %d, want 5", got)
+	}
+	if len(extractor.calls) != 2 || extractor.calls[1] != plan.SourceText {
+		t.Fatalf("extraction calls = %q, want scene then research source", extractor.calls)
+	}
+}
+
 func TestEntitiesProcessorMaterializesSceneTextWhenTopLevelTextIsEmpty(t *testing.T) {
 	extractor := &boundaryEntityExtractor{}
 	processor := NewEntitiesProcessor(extractor)

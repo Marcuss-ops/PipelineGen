@@ -51,6 +51,9 @@ type VideoSegment struct {
 	Source   RenderSource `json:"source"`
 	Timeline FrameRange   `json:"timeline"`
 	ZIndex   int          `json:"z_index"`
+	// Freeze marks a synthetic tail: Source holds one frame (the clip's final
+	// frame) stretched across Timeline.FrameCount destination frames.
+	Freeze bool `json:"freeze,omitempty"`
 }
 
 type VideoTrack struct {
@@ -160,22 +163,43 @@ func Compile(input CompileInput) (RenderPlan, error) {
 			if strings.TrimSpace(video.AssetID) == "" {
 				continue
 			}
-			if video.SourceDurationUS <= 0 || video.TimelineDurationUS <= 0 {
+			if video.TimelineDurationUS <= 0 {
 				return RenderPlan{}, fmt.Errorf("%w: segment %s source duration is invalid", ErrInvalidPlan, segment.ID)
 			}
 			start, destinationCount, err := resolver.FrameRange(segment.TimelineStartUS+video.TimelineOffsetUS, video.TimelineDurationUS)
 			if err != nil {
 				return RenderPlan{}, fmt.Errorf("%w: segment %s timeline frames: %v", ErrInvalidPlan, segment.ID, err)
 			}
-			sourceStart, err := resolver.FrameAt(video.SourceInUS)
-			if err != nil {
-				return RenderPlan{}, fmt.Errorf("%w: segment %s source frame: %v", ErrInvalidPlan, segment.ID, err)
+			var sourceStart, sourceCount int64
+			if video.Freeze {
+				// A freeze tail holds the clip's final frame. SourceInUS is the
+				// exclusive source end of the preceding real segment, so the
+				// frozen frame is FrameAt(SourceInUS)-1, stretched across the
+				// destination frames.
+				endFrame, err := resolver.FrameAt(video.SourceInUS)
+				if err != nil {
+					return RenderPlan{}, fmt.Errorf("%w: segment %s freeze source frame: %v", ErrInvalidPlan, segment.ID, err)
+				}
+				if endFrame <= 0 {
+					return RenderPlan{}, fmt.Errorf("%w: segment %s freeze requires a preceding source frame", ErrInvalidPlan, segment.ID)
+				}
+				sourceStart, sourceCount = endFrame-1, 1
+			} else {
+				if video.SourceDurationUS <= 0 {
+					return RenderPlan{}, fmt.Errorf("%w: segment %s source duration is invalid", ErrInvalidPlan, segment.ID)
+				}
+				sourceStart, err = resolver.FrameAt(video.SourceInUS)
+				if err != nil {
+					return RenderPlan{}, fmt.Errorf("%w: segment %s source frame: %v", ErrInvalidPlan, segment.ID, err)
+				}
+				sourceCount = destinationCount
 			}
 			plan.VideoTracks[0].Segments = append(plan.VideoTracks[0].Segments, VideoSegment{
 				AssetID:  video.AssetID,
-				Source:   RenderSource{InFrame: sourceStart, FrameCount: destinationCount},
+				Source:   RenderSource{InFrame: sourceStart, FrameCount: sourceCount},
 				Timeline: FrameRange{StartFrame: start, FrameCount: destinationCount},
 				ZIndex:   i,
+				Freeze:   video.Freeze,
 			})
 		}
 	}
@@ -364,7 +388,13 @@ func (p RenderPlan) Validate() error {
 			if expectedStart < 0 {
 				expectedStart = segment.Timeline.StartFrame
 			}
-			if segment.Source.InFrame < 0 || segment.Source.FrameCount <= 0 || segment.Timeline.StartFrame != expectedStart || segment.Timeline.StartFrame < 0 || segment.Timeline.FrameCount <= 0 || segment.Source.FrameCount != segment.Timeline.FrameCount || segment.Timeline.StartFrame > math.MaxInt64-segment.Timeline.FrameCount || segment.Timeline.StartFrame+segment.Timeline.FrameCount > p.DurationFrames || expectedStart > math.MaxInt64-segment.Timeline.FrameCount {
+			// A freeze tail stretches one source frame across many timeline
+			// frames; every other segment keeps the 1:1 source↔timeline map.
+			sourceMatchesTimeline := segment.Source.FrameCount == segment.Timeline.FrameCount
+			if segment.Freeze {
+				sourceMatchesTimeline = segment.Source.FrameCount == 1
+			}
+			if segment.Source.InFrame < 0 || segment.Source.FrameCount <= 0 || segment.Timeline.StartFrame != expectedStart || segment.Timeline.StartFrame < 0 || segment.Timeline.FrameCount <= 0 || !sourceMatchesTimeline || segment.Timeline.StartFrame > math.MaxInt64-segment.Timeline.FrameCount || segment.Timeline.StartFrame+segment.Timeline.FrameCount > p.DurationFrames || expectedStart > math.MaxInt64-segment.Timeline.FrameCount {
 				return fmt.Errorf("%w: invalid or non-contiguous integer frame segment", ErrInvalidPlan)
 			}
 			expectedStart += segment.Timeline.FrameCount

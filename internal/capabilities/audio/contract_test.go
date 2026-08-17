@@ -287,19 +287,19 @@ func TestResolveStrategyFailsClosedForInvalidFinalAudio(t *testing.T) {
 
 func TestResolveAudioModeIsExplicitAndFailClosed(t *testing.T) {
 	cases := []struct {
-		requested         AudioMode
-		voiceover, render bool
-		want              AudioMode
-		wantErr           bool
+		requested AudioMode
+		voiceover bool
+		want      AudioMode
+		wantErr   bool
 	}{
-		{requested: "", voiceover: false, render: false, want: AudioModeNone},
-		{requested: "", voiceover: true, render: true, wantErr: true},
-		{requested: "combined_timeline", voiceover: true, render: true, want: AudioModeCombinedTimeline},
-		{requested: "bogus", render: true, wantErr: true},
-		{requested: AudioModeCombinedTimeline, render: false, wantErr: true},
+		{requested: "", voiceover: false, want: AudioModeNone},
+		{requested: "", voiceover: true, wantErr: true},
+		{requested: "combined_timeline", voiceover: true, want: AudioModeCombinedTimeline},
+		{requested: "bogus", wantErr: true},
+		{requested: AudioModeCombinedTimeline, want: AudioModeCombinedTimeline},
 	}
 	for _, tc := range cases {
-		got, err := ResolveAudioMode(tc.requested, tc.voiceover, tc.render)
+		got, err := ResolveAudioMode(tc.requested, tc.voiceover)
 		if tc.wantErr {
 			if err == nil {
 				t.Fatalf("ResolveAudioMode(%q) expected error", tc.requested)
@@ -309,5 +309,20 @@ func TestResolveAudioModeIsExplicitAndFailClosed(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Fatalf("ResolveAudioMode(%q) = %q, %v; want %q", tc.requested, got, err, tc.want)
 		}
+	}
+}
+
+// TestResolveAudioMode_CombinedTimelineAllowedWithoutVideo certifies the
+// semantic separation: COMBINED_TIMELINE compiles a certified
+// final_audio.m4a and requires only audio/timeline prerequisites. It must
+// be a valid mode even when RenderVideo=false — video rendering is an
+// independent flag that never gates the audio master.
+func TestResolveAudioMode_CombinedTimelineAllowedWithoutVideo(t *testing.T) {
+	got, err := ResolveAudioMode(AudioModeCombinedTimeline, true)
+	if err != nil {
+		t.Fatalf("COMBINED_TIMELINE must be valid with renderVideo=false: %v", err)
+	}
+	if got != AudioModeCombinedTimeline {
+		t.Fatalf("mode = %q, want %q", got, AudioModeCombinedTimeline)
 	}
 }

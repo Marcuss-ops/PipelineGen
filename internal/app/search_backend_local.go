@@ -125,6 +125,11 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 		Category: strings.TrimSpace(q.Filters.Category),
 		Language: strings.TrimSpace(q.Filters.Language),
 		Tags:     append([]string(nil), q.Filters.Tags...),
+		// PR-PLANNER-LEAKAGE-CLEANUP: catalog search must never surface
+		// unclassified (empty asset_kind) rows — the StockRust test-artifact
+		// class. Mirrors the semantic backend's must_not:is_empty(asset_kind)
+		// Qdrant clause so both catalog backends agree on the boundary.
+		ExcludeUnclassified: true,
 	}
 	res, err := b.repo.SearchClipsAdvanced(ctx, req)
 	if err != nil {

@@ -5,21 +5,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Repository handles database operations for clip metadata
 type Repository struct {
-	db     *sql.DB
-	logger *zap.Logger
-	source string
+	db       *sql.DB
+	logger   *zap.Logger
+	source   string
+	markUsed func(context.Context, string, string) error
 }
 
 // NewRepository creates a new clip catalog repository
@@ -30,6 +29,15 @@ func NewRepository(db *sql.DB, logger *zap.Logger) *Repository {
 // SetSource sets the repository's source filter (e.g. 'stock', 'youtube', 'artlist')
 func (r *Repository) SetSource(source string) {
 	r.source = source
+}
+
+// SetUsageRecorder injects the canonical media registry usage mutation. This
+// compatibility repository is read-oriented and must not write media_assets
+// directly.
+func (r *Repository) SetUsageRecorder(recorder func(context.Context, string, string) error) {
+	if r != nil {
+		r.markUsed = recorder
+	}
 }
 
 // FindCandidatesFTS searches for clip candidates using FTS5 for better ranking
@@ -201,29 +209,10 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 
 // MarkUsed marks a clip as used and updates reuse count
 func (r *Repository) MarkUsed(ctx context.Context, clipID string, topic string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+	if r == nil || r.markUsed == nil {
+		return fmt.Errorf("clip catalog: canonical usage recorder is unavailable")
 	}
-	defer tx.Rollback()
-
-	// Increment reuse count on the canonical column (migration 059).
-	_, err = tx.ExecContext(ctx, `
-		UPDATE media_assets
-		SET reuse_count = COALESCE(reuse_count, 0) + 1
-		WHERE id = ?`, clipID)
-	if err != nil {
-		return fmt.Errorf("failed to increment reuse count: %w", err)
-	}
-
-	// Update last_used_at on the canonical column (migration 059).
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err = tx.ExecContext(ctx, "UPDATE media_assets SET last_used_at = ? WHERE id = ?", now, clipID)
-	if err != nil {
-		return fmt.Errorf("failed to update last_used_at: %w", err)
-	}
-
-	return tx.Commit()
+	return r.markUsed(ctx, clipID, topic)
 }
 
 // GetEmbedding retrieves the embedding for a clip

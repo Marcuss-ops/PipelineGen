@@ -49,6 +49,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
@@ -62,6 +63,9 @@ import (
 // callers can start the JobRunner AFTER WireRegistry has registered all
 // handlers.
 func InitComposition(cfg *config.Config, log *zap.Logger) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
+	if err := initLinguistics(cfg, log); err != nil {
+		return nil, nil, func() {}, fmt.Errorf("init composition linguistics: %w", err)
+	}
 	return initCompositionMinimal(cfg, log, "")
 }
 

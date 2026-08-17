@@ -106,6 +106,62 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 	}
 }
 
+// TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting pins the
+// manifest→bridge step of the probe→SHA256→manifest→publisher flow: an
+// overlay.render manifest must project to the youtube_clip destination AND
+// carry source=chronon + drive_subpath=[overlay] + probe sha256/size_bytes
+// through to the staged reference the Sender-side publisher consumes.
+func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.T) {
+	manifest := &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		WorkflowID:    "wf-overlay",
+		JobID:         "job_overlay:overlay:001",
+		Artifacts: []job.Artifact{
+			{
+				ID:        "job_overlay:overlay:001",
+				Kind:      job.ArtifactKindOverlay,
+				Path:      "/tmp/pipelinegen/jobs/job_overlay/overlay_001.mov",
+				Filename:  "overlay_001.mov",
+				MIMEType:  "video/quicktime",
+				SizeBytes: 1234567,
+				SHA256:    "deadbeef",
+				Required:  true,
+				ArtifactMetadata: map[string]any{
+					"source":        "chronon",
+					"drive_subpath": []string{"overlay"},
+				},
+			},
+		},
+	}
+
+	raw, err := extractStagedArtifacts(map[string]any{job.ManifestKey: manifestToRawJSON(t, manifest)}, "overlay.render")
+	if err != nil {
+		t.Fatalf("extractStagedArtifacts: %v", err)
+	}
+
+	var artifacts remote.StagedArtifacts
+	if err := json.Unmarshal(raw, &artifacts); err != nil {
+		t.Fatalf("unmarshal staged artifacts: %v", err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("expected 1 artifact, got %d", len(artifacts))
+	}
+	a := artifacts[0]
+	if a.Destination != "youtube_clip" {
+		t.Fatalf("Destination = %q, want youtube_clip", a.Destination)
+	}
+	if a.SHA256 != "deadbeef" || a.SizeBytes != 1234567 {
+		t.Fatalf("probe fields lost: sha256=%q size=%d", a.SHA256, a.SizeBytes)
+	}
+	if a.ArtifactMetadata["source"] != "chronon" {
+		t.Fatalf("source = %v, want chronon", a.ArtifactMetadata["source"])
+	}
+	sub, ok := a.ArtifactMetadata["drive_subpath"].([]any)
+	if !ok || len(sub) != 1 || sub[0] != "overlay" {
+		t.Fatalf("drive_subpath = %#v, want [overlay]", a.ArtifactMetadata["drive_subpath"])
+	}
+}
+
 func TestExtractStagedArtifacts_NilResult(t *testing.T) {
 	// FASE 1 close-out typed-error contract: a nil handler result
 	// surfaces job.ErrArtifactManifestMissing — the spec mandates
@@ -358,5 +414,78 @@ func TestJobRegistryRecorder_PreservesPayloadAndRuntimeLineage(t *testing.T) {
 	}
 	if len(fake.events) != 2 || fake.events[0].EventType != "JOB_CLAIMED" || fake.events[1].EventType != "JOB_COMPLETED" {
 		t.Fatalf("events = %+v", fake.events)
+	}
+}
+
+// TestJobRegistryRecorder_FinishAnchorsStartedAtToRunStart pins the
+// telemetry anchoring fix: jobs.started_at and worker.execution.started_at
+// must be the run's start (RunReport.StartedAt), not the claim (job.StartedAt),
+// so completed_at − started_at reconciles with duration_ms (RunReport.WallTimeMs).
+func TestJobRegistryRecorder_FinishAnchorsStartedAtToRunStart(t *testing.T) {
+	fake := &jobRegistryRecorderFake{}
+	recorder := NewJobRegistryRecorder(fake, nil)
+
+	claim := time.Now().UTC().Add(-5 * time.Second)
+	runStart := time.Now().UTC().Add(-4 * time.Second)
+	j := &job.Job{ID: "job-anchor-finish", Type: "script.generate", Status: job.StatusRunning, Revision: 1, CreatedAt: claim.Add(-time.Second), StartedAt: &claim}
+
+	report := &kernobs.RunReport{
+		RunID:      "run-anchor-finish",
+		JobID:      j.ID,
+		AttemptID:  "attempt-anchor-finish",
+		Status:     kernobs.StatusSucceeded,
+		StartedAt:  runStart,
+		FinishedAt: runStart.Add(3 * time.Second),
+		WallTimeMs: 3000,
+	}
+	stepID := recorder.Start(context.Background(), j, "worker-1", "attempt-anchor-finish")
+	recorder.Finish(context.Background(), j, stepID, "worker-1", "attempt-anchor-finish", "SUCCEEDED", nil, nil, report)
+
+	wantStarted := runStart.UTC().Format(time.RFC3339Nano)
+	if len(fake.jobs) != 2 {
+		t.Fatalf("jobs writes = %d, want 2", len(fake.jobs))
+	}
+	if got := fake.jobs[1].StartedAt; got != wantStarted {
+		t.Fatalf("jobs.started_at = %q, want run start %q (not claim)", got, wantStarted)
+	}
+	if got := fake.jobs[1].DurationMS; got != 3000 {
+		t.Fatalf("jobs.duration_ms = %d, want 3000 (wall time)", got)
+	}
+
+	lastStep := fake.steps[len(fake.steps)-1]
+	if lastStep.StepName != "worker.execution" {
+		t.Fatalf("last step = %q, want worker.execution", lastStep.StepName)
+	}
+	if got := lastStep.StartedAt; got != wantStarted {
+		t.Fatalf("worker.execution.started_at = %q, want run start %q (not claim)", got, wantStarted)
+	}
+	if got := lastStep.DurationMS; got != 3000 {
+		t.Fatalf("worker.execution.duration_ms = %d, want 3000 (wall time)", got)
+	}
+}
+
+// TestJobRegistryRecorder_StartAnchorsToRunFromContext pins the RUNNING-state
+// anchoring: when a run is bound to the context, Start writes worker.execution
+// and the job row with the run's start, not the claim — so the terminal upsert
+// (which never overwrites started_at) preserves the correct anchor.
+func TestJobRegistryRecorder_StartAnchorsToRunFromContext(t *testing.T) {
+	fake := &jobRegistryRecorderFake{}
+	recorder := NewJobRegistryRecorder(fake, nil)
+
+	claim := time.Now().UTC().Add(-5 * time.Second)
+	j := &job.Job{ID: "job-anchor-start", Type: "script.generate", Status: job.StatusRunning, Revision: 1, CreatedAt: claim.Add(-time.Second), StartedAt: &claim}
+
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: j.ID, JobType: j.Type, AttemptID: "attempt-anchor-start"})
+	runStart := run.Report().StartedAt.UTC().Format(time.RFC3339Nano)
+
+	recorder.Start(kernobs.WithRun(context.Background(), run), j, "worker-1", "attempt-anchor-start")
+
+	if got := fake.jobs[len(fake.jobs)-1].StartedAt; got != runStart {
+		t.Fatalf("jobs.started_at = %q, want run start %q (not claim)", got, runStart)
+	}
+	step := fake.steps[len(fake.steps)-1]
+	if got := step.StartedAt; got != runStart {
+		t.Fatalf("worker.execution.started_at = %q, want run start %q (not claim)", got, runStart)
 	}
 }

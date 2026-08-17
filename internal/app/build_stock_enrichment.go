@@ -85,6 +85,7 @@ func wireStockEnrichment(deps StockBundleDeps) error {
 			if repoErr != nil {
 				return fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
 			}
+			assetRepo.SetMetadataUpdater(deps.Enrichment.AssetMetadataUpdater)
 
 			// PR-011C follow-up (July 2026): wire the production
 			// outbox-dispatcher-backed emitter. The emitter opens

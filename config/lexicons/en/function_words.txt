@@ -203,3 +203,28 @@ nations
 peoples
 world
 history
+
+# Temporal units and generic fillers — never meaningful visual keywords.
+# "months" (Test 17) and its family leak into ImportantWords without this.
+time
+times
+moment
+moments
+month
+months
+year
+years
+day
+days
+week
+weeks
+hour
+hours
+minute
+minutes
+second
+seconds
+decade
+decades
+century
+centuries

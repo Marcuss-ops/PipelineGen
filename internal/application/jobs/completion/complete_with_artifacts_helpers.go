@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -130,10 +131,12 @@ func (s *WithArtifactsService) emitArtifactOutboxEvents(
 	req *remote.CompleteWithArtifactsRequest,
 	published []*finalization.PublishedArtifact,
 ) error {
-	jcKey := remote.CompleteJobIdempotencyKey(req.JobID, req.Attempt, "JOB_COMPLETED")
+	// The job.completed event_key is the canonical `job.completed:<jobID>`
+	// shared with SQLiteStore.Complete/Fail and the JobFinalizer so a
+	// cross-path re-completion dedups to one outbox row.
 	if err := tx.InsertOutboxEnvelope(ctx, OutboxEnvelope{
-		IdempotencyKey: jcKey,
-		EventKind:      "job.completed",
+		IdempotencyKey: outboxevents.JobCompletedEventKey(req.JobID),
+		EventKind:      outboxevents.EventJobCompleted,
 		Payload:        req.Result,
 	}); err != nil {
 		return fmt.Errorf("insert job.completed envelope: %w", err)

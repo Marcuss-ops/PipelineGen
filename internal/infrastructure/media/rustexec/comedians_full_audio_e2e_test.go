@@ -2,6 +2,8 @@ package rustexec
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -112,6 +114,9 @@ func TestComediansFullAudioE2ECertification(t *testing.T) {
 	}
 	if metrics.AudioEncodePasses != 1 {
 		t.Fatalf("audio compilation must encode exactly once, got %d passes", metrics.AudioEncodePasses)
+	}
+	if metrics.MixMS != 4120 || metrics.AACEncodeMS != 7130 || metrics.ProbeMS != 281 || metrics.HashMS != 144 {
+		t.Fatalf("rust sub-timings not mapped to canonical metrics: %+v", metrics)
 	}
 	if err := audio.ValidateFinalAudio(audio.FinalAudioAsset{
 		AssetID:              finalAudio.AssetID,
@@ -336,7 +341,8 @@ func (r *comediansAudioRunner) Run(_ context.Context, _ string, input []byte) ([
 		if err := os.WriteFile(req.OutputPath, r.audioBytes, 0o600); err != nil {
 			return nil, nil, err
 		}
-		return []byte(`{"ok":true,"operation":"render_audio_plan","metadata":{"duration_sec":22.1,"bitrate":128000,"audio_codec":"aac","audio_profile":"LC","sample_rate":48000,"channels":2,"start_pts":0,"has_audio":true}}`), nil, nil
+		sum := sha256.Sum256(r.audioBytes)
+		return []byte(fmt.Sprintf(`{"ok":true,"operation":"render_audio_plan","metadata":{"duration_sec":22.1,"bitrate":128000,"audio_codec":"aac","audio_profile":"LC","sample_rate":48000,"channels":2,"start_pts":0,"has_audio":true,"mix_ms":4120,"aac_encode_ms":7130,"probe_ms":281,"hash_ms":144,"final_audio_sha256":"%s"}}`, hex.EncodeToString(sum[:]))), nil, nil
 	case OperationMuxAudioCopy:
 		return []byte(`{"ok":true,"operation":"mux_audio_copy"}`), nil, nil
 	default:

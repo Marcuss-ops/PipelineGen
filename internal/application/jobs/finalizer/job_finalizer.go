@@ -229,7 +229,16 @@ func (f *Finalizer) CompleteWithArtifacts(
 	// hint stable across future capabilities that emit variable counts
 	// (the slice still grows correctly via append). This matches the
 	// pre-split monolithic surface byte-for-byte.
-	allEvents := make([]finalization.OutboxEvent, 0, len(req.Events)+len(req.Artifacts))
+	allEvents := make([]finalization.OutboxEvent, 0, 1+len(req.Events)+len(req.Artifacts))
+	// Emit the canonical job.completed outbox event atomically with the
+	// SUCCEEDED flip so the outbox pool's performance-projection handler
+	// rebuilds performance_runs / performance_steps for every new job.
+	allEvents = append(allEvents, finalization.OutboxEvent{
+		EventType:   outboxevents.EventJobCompleted,
+		AggregateID: req.Result.JobID,
+		EventKey:    outboxevents.JobCompletedEventKey(req.Result.JobID),
+		Payload:     []byte(`{"job_id":"` + req.Result.JobID + `"}`),
+	})
 	allEvents = append(allEvents, req.Events...)
 	allEvents = append(allEvents, artifactEvents...)
 	if err := f.writeOutboxEvents(ctx, tx, allEvents); err != nil {

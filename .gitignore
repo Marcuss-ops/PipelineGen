@@ -46,13 +46,14 @@ config.yaml
 # exclude `cmd/worker/`, `cmd/server/`, etc., and all source files under
 # them, including new *_test.go (the W1 batch surfaced this regression).
 # Anchor it so only the root-level build artifact is ignored.
-pipelinegen
+/pipelinegen
 /operator-console
 /regen-current-yaml
 /server
 /admin
 /worker
 /seed_fixture
+/gen-api-docs
 *.exe
 *.dll
 *.so
@@ -239,6 +240,14 @@ local.env
 
 # Docker secrets (never commit tokens)
 secrets/
+
+# Whisper worker Python venv (faster-whisper + CTranslate2 + CUDA 12 wheels).
+# Host-side venv used by `make whisper-preflight` and the systemd
+# ExecStartPre gate. Recreate it on demand with the curated lockfile:
+#   python3 -m venv .venv-whisper
+#   .venv-whisper/bin/python -m pip install --no-cache-dir \
+#       -r requirements/whisper.lock.txt
+# Then verify with: make whisper-preflight [VELOX_WHISPER_DEVICE=cuda]
 .venv-whisper/
 
 # PR1 (Repository truth, June 2026):

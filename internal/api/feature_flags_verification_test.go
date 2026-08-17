@@ -1,11 +1,9 @@
 // §10 Feature Flags verification (PR-FEATURE-FLAGS-VERIFY-2026-07-09).
 //
 // Hermetic TDD tests that pin the wired-vs-unwired behavior contract for
-// the three feature flags:
+// the feature flags:
 //
 //   - ArtlistEnabled:  route-level gate (module not registered when disabled)
-//   - ScriptDocsEnabled: route-level gate + nil-port 503 when enabled but
-//     ReActPort not wired
 //   - QdrantEnabled:   composition-time compatibility gate (not per-request)
 //
 // Each test function exercises ONE behavioral invariant. The test names
@@ -20,13 +18,11 @@
 package api_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -35,7 +31,6 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	scriptdocs "github.com/Marcuss-ops/PipelineGen/internal/api/script-docs"
 	"go.uber.org/zap"
 )
 
@@ -120,185 +115,6 @@ func TestFeatureFlag_Artlist_Middleware_Blocked_NilFlags(t *testing.T) {
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
 		"ArtlistEnabled middleware must return 503 when flags port is nil")
-}
-
-// ─── ScriptDocsEnabled: module-level gate ──────────────────────────
-
-// TestFeatureFlag_ScriptDocs_ModuleEnabled_WhenFlagTrue asserts that
-// a RouteModule with ScriptDocsEnabled returning true reports Enabled().
-func TestFeatureFlag_ScriptDocs_ModuleEnabled_WhenFlagTrue(t *testing.T) {
-	mod := module.NewRouteModule(
-		"script-docs",
-		func() bool { return true },
-		"/script-docs",
-		&noopHandler{},
-		zap.NewNop(),
-	)
-	assert.True(t, mod.Enabled(),
-		"script-docs module must report Enabled()=true when flag is true")
-}
-
-// TestFeatureFlag_ScriptDocs_ModuleDisabled_WhenFlagFalse asserts that
-// a RouteModule with ScriptDocsEnabled returning false reports !Enabled().
-func TestFeatureFlag_ScriptDocs_ModuleDisabled_WhenFlagFalse(t *testing.T) {
-	mod := module.NewRouteModule(
-		"script-docs",
-		func() bool { return false },
-		"/script-docs",
-		&noopHandler{},
-		zap.NewNop(),
-	)
-	assert.False(t, mod.Enabled(),
-		"script-docs module must report Enabled()=false when flag is false")
-}
-
-// ─── ScriptDocsEnabled: per-request handler behavior ──────────────
-
-// TestFeatureFlag_ScriptDocs_Returns503_WhenNilPort asserts that the
-// ScriptDocs Generate handler returns 503 with ErrReActNotWired diagnostic
-// when the ReActPort is nil (composition root hasn't wired it yet).
-func TestFeatureFlag_ScriptDocs_Returns503_WhenNilPort(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	handler := scriptdocs.NewHandler(nil, zap.NewNop())
-	r := gin.New()
-	r.POST("/api/script-docs/generate", handler.Generate)
-
-	body := `{"topic":"test topic"}`
-	req, _ := http.NewRequest("POST", "/api/script-docs/generate", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
-		"ScriptDocs handler must return 503 when ReActPort is nil")
-	assert.Contains(t, w.Body.String(), "service_unavailable",
-		"503 body must contain 'service_unavailable' error class")
-	assert.Contains(t, w.Body.String(), "ReAct port is not wired",
-		"503 body must contain ErrReActNotWired diagnostic message")
-}
-
-// TestFeatureFlag_ScriptDocs_Returns400_WhenEmptyTopic asserts that the
-// ScriptDocs Generate handler returns 400 when topic is empty, even when
-// the port is nil (validation fires before port check).
-func TestFeatureFlag_ScriptDocs_Returns400_WhenEmptyTopic(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	handler := scriptdocs.NewHandler(nil, zap.NewNop())
-	r := gin.New()
-	r.POST("/api/script-docs/generate", handler.Generate)
-
-	body := `{"topic":""}`
-	req, _ := http.NewRequest("POST", "/api/script-docs/generate", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code,
-		"ScriptDocs handler must return 400 when topic is empty (validation before port check)")
-	assert.Contains(t, w.Body.String(), "topic is required",
-		"400 body must name the missing field")
-}
-
-// TestFeatureFlag_ScriptDocs_Returns400_WhenMalformedBody asserts that the
-// ScriptDocs Generate handler returns 400 when the JSON body is malformed.
-func TestFeatureFlag_ScriptDocs_Returns400_WhenMalformedBody(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	handler := scriptdocs.NewHandler(nil, zap.NewNop())
-	r := gin.New()
-	r.POST("/api/script-docs/generate", handler.Generate)
-
-	body := `{not json}`
-	req, _ := http.NewRequest("POST", "/api/script-docs/generate", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code,
-		"ScriptDocs handler must return 400 when body is malformed JSON")
-}
-
-// TestFeatureFlag_ScriptDocs_Returns200_WhenPortWired asserts that the
-// ScriptDocs Generate handler returns 200 when the ReActPort is wired
-// and the call succeeds.
-func TestFeatureFlag_ScriptDocs_Returns200_WhenPortWired(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	port := &stubReActPort{
-		response: scriptdocs.ReActResponse{
-			Result:     "test result",
-			Status:     "ok",
-			StepsTaken: 3,
-		},
-	}
-	handler := scriptdocs.NewHandler(port, zap.NewNop())
-	r := gin.New()
-	r.POST("/api/script-docs/generate", handler.Generate)
-
-	body := `{"topic":"test topic"}`
-	req, _ := http.NewRequest("POST", "/api/script-docs/generate", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code,
-		"ScriptDocs handler must return 200 when ReActPort is wired and succeeds")
-	assert.Contains(t, w.Body.String(), "test result",
-		"200 body must contain the ReActResponse result")
-	assert.Contains(t, w.Body.String(), `"steps_taken":3`,
-		"200 body must contain steps_taken field")
-}
-
-// TestFeatureFlag_ScriptDocs_Returns500_WhenPortReturnsError asserts that
-// the ScriptDocs Generate handler returns 500 (NOT 503) when the ReActPort
-// is wired but returns an error. The distinction is critical: 503 = "not
-// wired", 500 = "wired but broken".
-func TestFeatureFlag_ScriptDocs_Returns500_WhenPortReturnsError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	port := &stubReActPort{
-		err: assert.AnError,
-	}
-	handler := scriptdocs.NewHandler(port, zap.NewNop())
-	r := gin.New()
-	r.POST("/api/script-docs/generate", handler.Generate)
-
-	body := `{"topic":"test topic"}`
-	req, _ := http.NewRequest("POST", "/api/script-docs/generate", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code,
-		"ScriptDocs handler must return 500 when port is wired but returns error (NOT 503)")
-	assert.Contains(t, w.Body.String(), "internal_error",
-		"500 body must contain 'internal_error' error class")
-}
-
-// ─── ScriptDocsEnabled: middleware gate (nil-flags only) ───────────
-//
-// NOTE: the enabled/disabled ScriptDocsEnabled middleware tests are already
-// canonically pinned in internal/api/middleware/middleware_feature_flags_test.go.
-// The nil-flags case is the UNIQUE gap.
-
-// TestFeatureFlag_ScriptDocs_Middleware_Blocked_NilFlags asserts that
-// the ScriptDocsEnabled middleware returns 503 when flags port is nil.
-func TestFeatureFlag_ScriptDocs_Middleware_Blocked_NilFlags(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	r := gin.New()
-	r.Use(middleware.ScriptDocsEnabled(nil))
-	r.GET("/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
-	req, _ := http.NewRequest("GET", "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
-		"ScriptDocsEnabled middleware must return 503 when flags port is nil")
 }
 
 // ─── QdrantEnabled: composition-time gate ──────────────────────────
@@ -469,18 +285,4 @@ func (h *noopHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-}
-
-// stubReActPort implements scriptdocs.ReActPort for tests.
-type stubReActPort struct {
-	response scriptdocs.ReActResponse
-	err      error
-}
-
-// Compile-time pin: stubReActPort must satisfy scriptdocs.ReActPort.
-// Catches future port signature drift at build time (Pattern 0 discipline).
-var _ scriptdocs.ReActPort = (*stubReActPort)(nil)
-
-func (p *stubReActPort) Generate(_ context.Context, _ scriptdocs.ReActRequest) (scriptdocs.ReActResponse, error) {
-	return p.response, p.err
 }

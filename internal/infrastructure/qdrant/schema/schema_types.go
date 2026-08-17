@@ -122,7 +122,8 @@ type IndexSchema struct {
 	// Version is the schema version string (e.g. "v3").
 	Version string `json:"version"`
 
-	// PhysicalName is the deterministic collection name (e.g. "media_assets_v3_nomic_768_siglip_768").
+	// PhysicalName is the deterministic collection name for a projection
+	// generation and its embedding contract.
 	PhysicalName string `json:"physical_name"`
 
 	// RuntimeAlias is the alias used by all read/write operations (e.g. "media_assets_current").

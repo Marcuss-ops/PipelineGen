@@ -115,7 +115,7 @@ def has_audio_stream(media_path: str) -> bool:
     return bool(proc.stdout.strip())
 
 
-def detect_language(audio_path: str, model_size: str = "tiny") -> dict:
+def detect_language(audio_path: str, model_size: str = "tiny", language: Optional[str] = None) -> dict:
     """Quick language detection only (fast, no full transcript).
     
     For Go integration: returns {"language": "en", "probability": 0.99}.
@@ -124,7 +124,7 @@ def detect_language(audio_path: str, model_size: str = "tiny") -> dict:
         return {"error": f"File not found: {audio_path}"}
 
     model = _get_model(model_size)
-    segments, info = model.transcribe(audio_path, beam_size=1)
+    segments, info = model.transcribe(audio_path, beam_size=1, language=language)
     # Materialize just the first segment to trigger detection
     for _ in segments:
         break
@@ -136,7 +136,7 @@ def detect_language(audio_path: str, model_size: str = "tiny") -> dict:
     }
 
 
-def transcribe(audio_path: str, model_size: str = "base") -> dict:
+def transcribe(audio_path: str, model_size: str = "base", language: Optional[str] = None) -> dict:
     """Full transcription with language detection.
     
     For Go integration: returns JSON with language, transcript, segments.
@@ -146,7 +146,7 @@ def transcribe(audio_path: str, model_size: str = "base") -> dict:
 
     model = _get_model(model_size)
     start = time.time()
-    segments, info = model.transcribe(audio_path, beam_size=5)
+    segments, info = model.transcribe(audio_path, beam_size=5, language=language)
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
 
@@ -195,6 +195,8 @@ if __name__ == "__main__":
     parser.add_argument("--json-only", action="store_true",
                         help="Output ONLY the result JSON to stdout. "
                              "Log messages go to stderr. Use this for Go integration.")
+    parser.add_argument("--language", default=None,
+                        help="Force Whisper language, e.g. en; omit to auto-detect")
 
     args = parser.parse_args()
 
@@ -229,10 +231,10 @@ if __name__ == "__main__":
     try:
         if args.transcribe:
             _log(f"Transcribing with model '{args.model}'...", args.json_only)
-            result = transcribe(audio_path, args.model)
+            result = transcribe(audio_path, args.model, args.language)
         else:
             _log(f"Detecting language with model '{args.model}'...", args.json_only)
-            result = detect_language(audio_path, args.model)
+            result = detect_language(audio_path, args.model, args.language)
     finally:
         if cleanup_path and os.path.exists(cleanup_path):
             os.unlink(cleanup_path)

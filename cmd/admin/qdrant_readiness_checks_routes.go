@@ -108,12 +108,6 @@ func (p *cfgFeaturesPort) ArtlistEnabled() bool {
 	}
 	return p.Cfg.Features.ArtlistEnabled
 }
-func (p *cfgFeaturesPort) ScriptDocsEnabled() bool {
-	if p.Cfg == nil {
-		return false
-	}
-	return p.Cfg.Features.ScriptDocsEnabled
-}
 func (p *cfgFeaturesPort) ScriptClipsEnabled() bool {
 	if p.Cfg == nil {
 		return false

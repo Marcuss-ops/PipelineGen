@@ -63,6 +63,11 @@ func minimalConfig(dataDir string) *config.Config {
 			OllamaURL:            "http://localhost:11434",
 			OllamaModel:          "llama3.2",
 			OllamaTimeoutSeconds: 30,
+			// Qdrant contract gate (PR-QDRANT-CONFIG-MISMATCH-GATE)
+			// demands runtime_model == schema dense model when Qdrant is
+			// enabled; keep the fixture in the canonical default so
+			// Qdrant-enabled composition tests are not pre-broken.
+			OllamaEmbedModel: "intfloat/multilingual-e5-base",
 		},
 		Paths:   config.PathsConfig{},
 		Storage: config.StorageConfig{DataDir: dataDir},

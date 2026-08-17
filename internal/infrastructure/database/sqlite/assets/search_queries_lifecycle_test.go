@@ -186,6 +186,80 @@ func TestSearchClipsAdvanced_ExcludesAllNonSearchableStates(t *testing.T) {
 	}
 }
 
+// TestSearchClipsAdvanced_ExcludesUnclassified pins the
+// PR-PLANNER-LEAKAGE-CLEANUP contract: when ExcludeUnclassified is set,
+// rows with empty asset_kind (StockRust/one-off test artifacts) must not
+// surface; classified rows (asset_kind != ”) must. The control query
+// (gate off) proves the artifact is present in the seed so the gate is
+// the discriminator, not an incidental filter.
+func TestSearchClipsAdvanced_ExcludesUnclassified(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE media_assets (
+			id TEXT PRIMARY KEY,
+			source TEXT, name TEXT, tags TEXT, tags_norm TEXT,
+			embedding_json TEXT, duration_ms INTEGER, url TEXT,
+			media_type TEXT, status TEXT, local_path TEXT,
+			relative_path TEXT,
+			drive_file_id TEXT, drive_folder_id TEXT,
+			drive_link TEXT, download_link TEXT, file_hash TEXT,
+			metadata_json TEXT,
+			visual_embedding TEXT, transcript_embedding TEXT,
+			created_at TEXT, updated_at TEXT,
+			width INTEGER, height INTEGER,
+			lifecycle_state TEXT, deleted_at TEXT,
+			folder_id TEXT, parent_folder_id TEXT, folder_path TEXT,
+			category TEXT, group_name TEXT,
+			filename TEXT, error TEXT,
+			thumb_url TEXT, phash TEXT,
+			search_text TEXT, scene_type TEXT,
+			quality_score REAL, reuse_count INTEGER, last_used_at TEXT,
+			asset_kind TEXT NOT NULL DEFAULT ''
+		)
+	`)
+	require.NoError(t, err)
+
+	// Classified clip (must surface) + unclassified test artifact (must not).
+	_, err = db.ExecContext(context.Background(),
+		`INSERT INTO media_assets (id, source, name, lifecycle_state, media_type, search_text, asset_kind)
+		 VALUES ('yt_clip', 'youtube', 'Jenna Dewan backstage', 'ACTIVE', 'video', 'Jenna Dewan Channing Tatum backstage', 'clip')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(context.Background(),
+		`INSERT INTO media_assets (id, source, name, lifecycle_state, media_type, search_text, asset_kind)
+		 VALUES ('planner:deadbeef:0', 'stock', 'clip_001.mp4', 'PUBLISHED', 'video', '', '')`)
+	require.NoError(t, err)
+
+	s := NewAssetStoreSQLite(db, zap.NewNop())
+
+	res, err := s.SearchClipsAdvanced(context.Background(), asset.AdvancedSearchRequest{
+		Limit:               50,
+		ExcludeUnclassified: true,
+	})
+	require.NoError(t, err)
+
+	found := make(map[string]bool)
+	for _, c := range res.Clips {
+		found[c.ID] = true
+	}
+	assert.True(t, found["yt_clip"], "classified clip must surface")
+	assert.False(t, found["planner:deadbeef:0"],
+		"unclassified test artifact must NOT surface when ExcludeUnclassified=true")
+
+	// Control: with the gate off, the artifact IS present (the gate is the
+	// discriminator, not the lifecycle/search_text incidental filters).
+	resAll, err := s.SearchClipsAdvanced(context.Background(), asset.AdvancedSearchRequest{Limit: 50})
+	require.NoError(t, err)
+	foundAll := make(map[string]bool)
+	for _, c := range resAll.Clips {
+		foundAll[c.ID] = true
+	}
+	assert.True(t, foundAll["planner:deadbeef:0"],
+		"control: artifact present without the gate (proves the gate discriminates)")
+}
+
 // TestSearchClipsByKeywords_ExcludesDeleteRequested proves that
 // the SearchClipsByKeywords path also uses the stricter filter.
 func TestSearchClipsByKeywords_ExcludesDeleteRequested(t *testing.T) {

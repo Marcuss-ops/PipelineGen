@@ -61,8 +61,7 @@ func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLi
 			COALESCE(lifecycle_state, 'ACTIVE'),
 			COALESCE(json_extract(metadata_json, '$.content_hash'), '')
 		FROM media_assets
-		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')
+		WHERE ` + indexableAssetWhereClause + `
 	`
 
 	var args []any

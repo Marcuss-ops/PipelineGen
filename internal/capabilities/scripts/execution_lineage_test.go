@@ -72,17 +72,23 @@ func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(clipBytes)
+	// The combined-timeline resolver makes a clip-bound scene span
+	// max(visual, voiceover). The stub narration is 12.5s, so the clip must
+	// cover its scene (12.5s @ 30fps = 375 frames) for the canonical timeline
+	// to validate — a shorter clip would legitimately demand a freeze tail.
 	for i := range runner.textGen.(*stubTextGenerator).scenes {
 		runner.textGen.(*stubTextGenerator).scenes[i].Clip = &ClipReference{
-			ID: "clip-lineage", Path: clipPath, SHA256: hex.EncodeToString(sum[:]), FrameCount: 30, SourceInMS: 0, SourceOutMS: 1000,
+			ID: "clip-lineage", Path: clipPath, SHA256: hex.EncodeToString(sum[:]), FrameCount: 375, SourceInMS: 0, SourceOutMS: 12500,
 		}
 	}
 
 	recorder := &recordingExecutionRecorder{}
 	runner.SetExecutionRecorder(recorder)
 	runner.SetCombinedAudioRenderer(lineageAudioRenderer{})
+	runner.SetScriptPersistence(&recordingScriptPersistence{})
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.SaveToDB = true
 	runID := "run-lineage-001"
 	if err := repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}); err != nil {
 		t.Fatal(err)
@@ -100,7 +106,7 @@ func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
 		}
 	}
 	if err := CertifyExecutionLineage(recorder.steps, recorder.inputs, recorder.outputs, []string{
-		"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "DOCUMENT", "AUDIO_COMPILE", "RENDER_PLAN", "VELOX_ENQUEUE",
+		"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "AUDIO_COMPILE", "PERSISTENCE", "DOCUMENT",
 	}); err != nil {
 		t.Fatal(err)
 	}

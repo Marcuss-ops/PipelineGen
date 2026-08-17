@@ -8,12 +8,11 @@
 //
 //   - VoiceoverGenerator nil → StageGeneratingVoiceovers is
 //     skipped (no AudioReference on scenes), translation and
-//     render still complete.
+//     audio compile still complete.
 //   - Docs disabled → StagePublishingDocuments is skipped (no
-//     document upserts), render still completes.
-//   - RenderVideo=false → Stages BuildingRenderPayload +
-//     EnqueuingRender are skipped (no RenderJob), docs still
-//     complete (when explicitly enabled).
+//     document upserts), the run still completes.
+//   - Docs enabled → StagePublishingDocuments runs and publishes
+//     the configured documents, the run still completes.
 package scriptgeneration
 
 import (
@@ -24,24 +23,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // TestRunner_VoiceoverGeneratorNil_StageSkipped: when voiceoverGen
 // is nil, the runner MUST NOT panic and MUST skip the
-// StageGeneratingVoiceovers stage. Translation + Docs + Render
-// still complete normally.
+// StageGeneratingVoiceovers stage. Translation + Docs + audio
+// compile still complete normally.
 func TestRunner_VoiceoverGeneratorNil_StageSkipped(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	docPub := newStubDocumentPublisher()
-	renderEnq := newStubRenderEnqueuer()
 
 	// No voiceover generator — should be nil-safe.
-	runner := NewRunner(repo, textGen, translator, nil, docPub, renderEnq, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, nil, docPub, canonicalTestDocumentRenderer{})
 	runner.SetLogger(zap.NewNop())
+	runner.SetScriptDocsFolderID("test-docs-folder")
 
 	req := defaultTestRequest()
+	// Audio NONE: no voiceover requested, so a nil generator is skipped
+	// safely and the NONE audio branch needs no voiceover assets. A
+	// CHUNKED_VOICEOVER request without a generator would fail closed at
+	// audio compile (ValidateChunkedVoiceovers) by design.
+	req.Audio = capabilityaudio.AudioModeNone
 
 	runID := "run-novo-001"
 	err := repo.Create(context.Background(), &GenerationRun{
@@ -66,12 +72,11 @@ func TestRunner_VoiceoverGeneratorNil_StageSkipped(t *testing.T) {
 
 	// Other stages should complete normally.
 	assert.NotEmpty(t, final.Result.Scenes[0].Text["es"], "translation should still work")
-	assert.NotNil(t, final.Result.RenderJob, "render should still be enqueued")
 }
 
 // TestRunner_DocsDisabled_StageSkipped: when Docs.Enabled is
 // false, StagePublishingDocuments is skipped AND no document
-// upserts happen — render still completes if RenderVideo=true.
+// upserts happen — the run still completes.
 func TestRunner_DocsDisabled_StageSkipped(t *testing.T) {
 	runner, repo, _, _, _, docPub, _ := newTestRunner()
 	req := defaultTestRequest()
@@ -96,18 +101,15 @@ func TestRunner_DocsDisabled_StageSkipped(t *testing.T) {
 	// No docs published.
 	assert.Equal(t, 0, len(docPub.records), "no docs should be created when disabled")
 
-	// Render still works.
-	require.NotNil(t, final.Result.RenderJob)
+	// The run still completes.
 }
 
-// TestRunner_RenderVideoFalse_Skipped: when RenderVideo is false,
-// Stages BuildingRenderPayload + EnqueuingRender are skipped and
-// no RenderJob is set. Docs (when explicitly enabled) still
-// complete normally.
-func TestRunner_RenderVideoFalse_Skipped(t *testing.T) {
-	runner, repo, _, _, _, docPub, renderEnq := newTestRunner()
+// TestRunner_DocsEnabled_PublishesDocuments: when docs are explicitly
+// enabled, StagePublishingDocuments runs and publishes the configured
+// document set; the run completes normally.
+func TestRunner_DocsEnabled_PublishesDocuments(t *testing.T) {
+	runner, repo, _, _, _, docPub, _ := newTestRunner()
 	req := defaultTestRequest()
-	req.RenderVideo = false
 	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-norender-001"
@@ -127,8 +129,4 @@ func TestRunner_RenderVideoFalse_Skipped(t *testing.T) {
 
 	// Docs published (explicitly enabled).
 	assert.Equal(t, 1, len(docPub.records), "one doc should be created")
-
-	// Render NOT enqueued.
-	assert.Nil(t, final.Result.RenderJob, "render job should be nil when render_video is false")
-	assert.Equal(t, 0, renderEnq.callCount, "renderEnq should not be called")
 }

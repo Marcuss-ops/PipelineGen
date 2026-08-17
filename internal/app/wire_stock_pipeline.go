@@ -30,12 +30,12 @@ import (
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stocksourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -192,7 +192,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// Finalizer: single-TX spine for SUCCEEDED state + artifact writes.
 	var stockFinalizer finalization.JobFinalizer
 	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		assetCommitter := sqassets.NewSQLiteAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
+		assetCommitter := newCanonicalAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
 		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
@@ -245,6 +245,11 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	if stockDB != nil {
 		stockBatchRepo = stockbatches.NewRepository(stockDB)
 		log.Info("WireStockPipeline: batch repository wired")
+	}
+
+	var stockMetadataUpdater stockenrich.AssetMetadataUpdater
+	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		stockMetadataUpdater = newCanonicalAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
 	}
 
 	// PublisherPort: construct the canonical drive.NewArtifactPublisherAdapter
@@ -304,6 +309,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		},
 		Feature: StockFeatureGate{
 			StockPipelineEnabled: func() bool { return cfg.Features.StockPipelineEnabled },
+		},
+		Enrichment: StockEnrichmentDeps{
+			AssetMetadataUpdater: stockMetadataUpdater,
 		},
 		SourceCache: StockSourceCacheDeps{
 			Reader:  stockCacheReader,

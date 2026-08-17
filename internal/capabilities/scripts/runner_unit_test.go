@@ -86,12 +86,6 @@ func TestDeriveErrorCode(t *testing.T) {
 			wantCode: "DOCUMENT_FAILED",
 		},
 		{
-			name:     "enqueue failed",
-			err:      errors.New("enqueue render failed: worker queue full"),
-			stage:    StageEnqueuingRender,
-			wantCode: "ENQUEUE_FAILED",
-		},
-		{
 			name:     "generic fallback",
 			err:      errors.New("something unexpected happened"),
 			stage:    StagePublishingDocuments,

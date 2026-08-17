@@ -74,6 +74,12 @@ type VoiceoverSceneInput struct {
 	// value) to anchor onto the canonical word timing. The model provides
 	// only text; timestamps are derived deterministically via PhraseLocator.
 	Moments []audio.MomentQuery
+
+	// Timing is the canonical voiceover timing policy for this scene.
+	// nil means the canonical defaults apply (best_effort / word / [json]);
+	// required makes the per-item pipeline fail closed on missing/invalid
+	// timing or silence-trim without an edit map.
+	Timing *audio.TimingRequest
 }
 
 // SceneOutcome is the canonical per-scene fanout return shape. Status
@@ -158,6 +164,14 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		// shape from the voiceover.generate_item child job path.
 		textHash := voiceover.ComputeTextHash(item.Text)
 
+		// Project is read verbatim from the canonical destination routing
+		// context. It never invents a "scene" fallback: an empty project
+		// fails closed at the publisher (ErrVoiceoverPublishProjectRequired).
+		project := ""
+		if item.Destination != nil {
+			project = item.Destination.Project
+		}
+
 		// Build the canonical per-item command. The SAME shape the
 		// voiceover.generate_item job handler and the
 		// promoVoiceoverAdapter build (per voiceover/command.go).
@@ -170,10 +184,11 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			Filename:      item.Filename,
 			TextHash:      textHash,
 			Destination:   item.Destination, // nil-safe at the use case boundary
-			Project:       sceneProject(item.Destination),
+			Project:       project,
 			Strategy:      "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
 			RemoveSilence: false,     // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
 			Moments:       item.Moments,
+			Timing:        item.Timing,
 		}
 
 		// Execute the per-item pipeline (TTS → publish → finalize).
@@ -216,13 +231,6 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		}
 		return out
 	})
-}
-
-func sceneProject(dest *voiceover.DestinationRequest) string {
-	if dest == nil {
-		return ""
-	}
-	return dest.Project
 }
 
 // resolveSceneFanoutRequestID derives a stable per-batch RequestID

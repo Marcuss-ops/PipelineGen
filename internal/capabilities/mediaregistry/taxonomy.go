@@ -41,6 +41,97 @@ type AssetTaxonomy struct {
 	SemanticRole string
 }
 
+// TaxonomyInput is the producer-side input for resolving the canonical
+// asset taxonomy. Producers supply what they know (asset identity, source
+// provider, media type); the resolver owns every derivation (asset_kind,
+// source_type, namespace, semantic_role) so those decisions are not
+// scattered as string literals across producers.
+type TaxonomyInput struct {
+	AssetID      string
+	Provider     string    // youtube | artlist | stock | drive | image | voiceover | ...
+	MediaType    MediaType // optional; defaults to MediaVideo
+	AssetKind    AssetKind // optional override; derived when empty
+	SourceType   string    // optional override; defaults to Provider
+	Namespace    string    // optional override; defaults to Provider ("image" → "images")
+	SemanticRole string    // optional override; defaults per provider ("image" → "visual", else "discovery")
+}
+
+// ResolveTaxonomy builds and validates the canonical taxonomy from the
+// producer input. It is the SINGLE owner of the provider → (namespace,
+// asset_kind, semantic_role) derivation; producers must not hand-build
+// AssetTaxonomy struct literals with scattered string constants.
+func ResolveTaxonomy(in TaxonomyInput) (AssetTaxonomy, error) {
+	mediaType := in.MediaType
+	if mediaType == "" {
+		mediaType = MediaVideo
+	}
+	kind := in.AssetKind
+	if kind == "" {
+		kind = defaultAssetKind(in.Provider, mediaType)
+	}
+	sourceType := in.SourceType
+	if sourceType == "" {
+		sourceType = in.Provider
+	}
+	namespace := in.Namespace
+	if namespace == "" {
+		namespace = defaultNamespace(in.Provider)
+	}
+	role := in.SemanticRole
+	if role == "" {
+		role = defaultSemanticRole(in.Provider)
+	}
+	t := AssetTaxonomy{
+		AssetID:      in.AssetID,
+		Namespace:    namespace,
+		MediaType:    mediaType,
+		AssetKind:    kind,
+		SourceType:   sourceType,
+		SemanticRole: role,
+	}
+	if err := t.Validate(); err != nil {
+		return AssetTaxonomy{}, fmt.Errorf("resolve media taxonomy: %w", err)
+	}
+	return t, nil
+}
+
+// defaultNamespace is the canonical namespace derivation. Until an SSOT
+// namespace policy is defined, the provider name is the namespace, with the
+// image provider converging on the historical "images" namespace.
+func defaultNamespace(provider string) string {
+	if provider == "image" {
+		return "images"
+	}
+	return provider
+}
+
+// defaultSemanticRole is the canonical semantic-role derivation. Image assets
+// are visual surfaces; every other provider defaults to discovery.
+func defaultSemanticRole(provider string) string {
+	if provider == "image" {
+		return "visual"
+	}
+	return "discovery"
+}
+
+// defaultAssetKind derives the canonical asset_kind from the provider and
+// media type when the producer does not supply an explicit kind.
+func defaultAssetKind(provider string, mediaType MediaType) AssetKind {
+	switch mediaType {
+	case MediaImage:
+		return AssetWebImage
+	case MediaAudio:
+		return AssetClipAudio
+	default:
+		switch provider {
+		case "artlist", "stock":
+			return AssetStockVideo
+		default:
+			return AssetClip
+		}
+	}
+}
+
 // IsZero reports whether the taxonomy carries none of its canonical
 // dimensions. The MediaCommitter skips the taxonomy upsert for a zero
 // taxonomy so legacy producers can converge incrementally.

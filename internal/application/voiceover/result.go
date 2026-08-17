@@ -242,4 +242,14 @@ type VoiceoverTimingResult struct {
 	// moment exists only when its value occurs verbatim in the speech.
 	// Empty when no annotation queries were supplied or none matched.
 	Moments []audio.Moment `json:"moments,omitempty"`
+
+	// Artifact is the full canonical SpeechTimingArtifact (version, provider,
+	// boundary mode, hashes, duration, and the per-word timing array) from
+	// which the summary fields above are projected. It is carried in-memory
+	// only (json:"-") so downstream consumers that need the word-level
+	// timing (e.g. the script runner's phrase→timestamp projection) receive
+	// the SSOT verbatim without the wire result ballooning with a per-word
+	// array. nil when no artifact was built (timing disabled / unavailable
+	// / failed, or the zero-boundary best-effort degradation).
+	Artifact *audio.SpeechTimingArtifact `json:"-"`
 }

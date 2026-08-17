@@ -49,6 +49,19 @@ CREATE TABLE job_events (
 	data_json   TEXT NOT NULL DEFAULT '',
 	created_at  TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE outbox_events (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	event_type     TEXT NOT NULL,
+	aggregate_id   TEXT NOT NULL,
+	aggregate_type TEXT NOT NULL DEFAULT '',
+	payload_json   TEXT NOT NULL DEFAULT '{}',
+	event_key      TEXT NOT NULL,
+	created_at     TEXT NOT NULL,
+	updated_at     TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX ux_outbox_events_event_key ON outbox_events(event_key);
 `
 
 func openTestDB(t *testing.T) *sql.DB {

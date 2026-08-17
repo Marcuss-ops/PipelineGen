@@ -30,6 +30,14 @@ verify-images-live: auth-check
 verify-script-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/generate/run.sh basic.json
 
+# verify-nlp-online-images-docs-live — scripts/verify_nlp_online_images_docs_certification.sh —
+# live certification of the NLP → online entity image → Google Docs chain:
+# 10 controlled text segments, internet_images entity search + materialization
+# + identity-scoped binding + Google Doc, zero video render. Requires
+# DOC_FOLDER_ID (or CERT_DOCS_FOLDER_ID / VELOX_DRIVE_SCRIPTS_GENERATE).
+verify-nlp-online-images-docs-live: auth-check
+	@scripts/with-velox-auth bash scripts/verify_nlp_online_images_docs_certification.sh
+
 # test-intro-hook-stock-live — the intro-hook stock binding diagnostic battery
 # (boxers-generate). Runs the practical suite (intro_hook_suite.py): Tests
 # 1..9 prove the intro-hook rides the canonical stock_bindings contract as a

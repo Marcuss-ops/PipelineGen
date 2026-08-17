@@ -48,7 +48,8 @@ import (
 // for the explicit rationale.
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn
+	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn + `,
+	parent_job_id, root_job_id`
 
 // scanner is the minimum surface of *sql.Row and *sql.Rows that scanJobColumns
 // needs. Defined here so we can share the same code between single-row and
@@ -70,6 +71,7 @@ func scanJobColumns(s scanner, j *job.Job) error {
 		&j.WorkerID, &j.LeaseID, &leaseExpiry, &createdAt, &updatedAt,
 		&startedAt, &completedAt, &cancelledAt, &j.Revision,
 		&j.ParentStateTyped,
+		&j.ParentJobID, &j.RootJobID,
 	); err != nil {
 		return err
 	}
@@ -108,8 +110,8 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -133,7 +135,7 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
-		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision)
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID)
 	if err != nil {
 		return fmt.Errorf("jobs.CreateInTx: %w", err)
 	}
@@ -155,8 +157,8 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -182,7 +184,7 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
-		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision)
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}

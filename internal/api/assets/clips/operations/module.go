@@ -1,22 +1,19 @@
 // Package operations is the clips sub-descriptor that owns
-// operational routes: integrity (verify/fix-hash), maintenance
-// (trash/delete/reconcile/cleanup/regenerate-manifest), and bulk-tag
-// mutations (add/remove tags en masse).
+// operational routes: integrity (verify/fix-hash) and maintenance
+// (trash/delete/reconcile/cleanup/regenerate-manifest).
 //
 // PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE (July 2026): the upper
-// ClipsModule narrows Dependencies. Operations gets 6 fields: 2
-// typed-narrow cluster interfaces (OpsRoutes + BulkTagRoutes) + 4
-// standard infra — this is the only sub-module with 2 cluster
-// interfaces because the 9 operations split cleanly into ops-only
-// + nonops bulk-tags by ownership.
+// ClipsModule narrows Dependencies. Operations gets 5 fields: 1
+// typed-narrow cluster interface (OpsRoutes) + 4 standard infra.
+// The former bulk-tag routes (add/remove) were migrated to the
+// canonical /api/assets/operator/bulk surface (add_tags/remove_tags)
+// and the legacy source-specific transports were removed.
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): the OpsRoutes
 // interface is the canonical contract for the 7 ops-only routes —
-// not the concrete *clips.OpsHandler. The BulkTagRoutes interface
-// is the canonical contract for the 2 nonops bulk-tag routes — not
-// the concrete *nonops.NonOpsHandler. The composition root wires
-// each via the parent's existing per-cluster handler pointers:
-// opts.Ops = (*clips.Handler).ops ; opts.BulkTags = (*clips.Handler).nonops.
+// not the concrete *clips.OpsHandler. The composition root wires
+// it via the parent's per-cluster handler pointer:
+// opts.Ops = (*clips.Handler).ops.
 package operations
 
 import (
@@ -50,25 +47,13 @@ type OpsRoutes interface {
 	TrashFolder(c *gin.Context)
 }
 
-// BulkTagRoutes is the narrow surface the operations cluster needs
-// from the nonops sub-handler for the 2 bulk-tag routes. Keeps the
-// 7 ops-only routes (in OpsRoutes) cleanly separated from the 2
-// nonops backup-tag routes — the Ops cluster owns the URI surface,
-// the NonOps cluster owns the underlying use case (BulkTagsUC).
-type BulkTagRoutes interface {
-	BulkAddTags(c *gin.Context)
-	BulkRemoveTags(c *gin.Context)
-}
-
-// Dependencies is the typed narrow input to Build. The 6 fields
-// below are exactly what the 9 mounted routes consume — no more, no
+// Dependencies is the typed narrow input to Build. The 5 fields
+// below are exactly what the 7 mounted routes consume — no more, no
 // less (godlike/06 SSOT).
 type Dependencies struct {
 	// Ops cluster routes (VerifyClip, HandleFixHash, TrashClip,
 	// Reconcile, Cleanup, RegenerateManifest, TrashFolder).
 	Ops OpsRoutes
-	// BulkTag cluster routes (BulkAddTags, BulkRemoveTags).
-	BulkTags BulkTagRoutes
 	// Standard module infrastructure.
 	EnabledFunc func() bool
 	Idempotency gin.HandlerFunc
@@ -78,14 +63,11 @@ type Dependencies struct {
 }
 
 // Build composes the operations sub-descriptor from the narrow
-// deps. godlike/07 NO-FAKE-AVAILABILITY: Ops, BulkTags, and
-// EnabledFunc are REQUIRED.
+// deps. godlike/07 NO-FAKE-AVAILABILITY: Ops and EnabledFunc are
+// REQUIRED.
 func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Ops == nil {
 		return nil, missingDepError("Ops")
-	}
-	if deps.BulkTags == nil {
-		return nil, missingDepError("BulkTags")
 	}
 	if deps.EnabledFunc == nil {
 		return nil, missingDepError("EnabledFunc")
@@ -95,18 +77,15 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 		idem = func(c *gin.Context) { c.Next() }
 	}
 
-	// All 9 operations routes are mounted by LAMBDA inside this
+	// All 7 operations routes are mounted by LAMBDA inside this
 	// sub-descriptor (godlike/06 SSOT one-canonical-owner:
 	// operations owns its slice-route table). The Ops field
-	// supplies 7 method values for the ops-only routes; the
-	// BulkTags field supplies 2 method values for the nonops
-	// bulk-tag routes.
+	// supplies 7 method values for the ops-only routes.
 	return submodule.Build(submodule.Deps{
 		Name: "clips-operations",
 		Handler: &operationsRoutesRegistrar{
-			ops:      deps.Ops,
-			bulkTags: deps.BulkTags,
-			idem:     idem,
+			ops:  deps.Ops,
+			idem: idem,
 		},
 		EnabledFunc: deps.EnabledFunc,
 		Idempotency: idem,
@@ -118,12 +97,11 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 // operationsRoutesRegistrar is the typed-narrow RoutesRegistrar the
 // operations sub-descriptor implements.
 type operationsRoutesRegistrar struct {
-	ops      OpsRoutes
-	bulkTags BulkTagRoutes
-	idem     gin.HandlerFunc
+	ops  OpsRoutes
+	idem gin.HandlerFunc
 }
 
-// RegisterRoutes mounts the 9 operations routes on the supplied
+// RegisterRoutes mounts the 7 operations routes on the supplied
 // gin router group. All routes are writes (idem-protected per
 // AGENTS.md Pattern 8).
 //
@@ -136,8 +114,6 @@ type operationsRoutesRegistrar struct {
 //	POST   /:source/cleanup                       -> Cleanup
 //	POST   /:source/folders/:id/manifest          -> RegenerateManifest
 //	DELETE /:source/folders/:id                   -> TrashFolder
-//	POST   /:source/bulk/tags/add                 -> BulkAddTags
-//	POST   /:source/bulk/tags/remove              -> BulkRemoveTags
 func (r *operationsRoutesRegistrar) RegisterRoutes(g *gin.RouterGroup) {
 	// Integrity routes (ops cluster).
 	g.POST("/:source/clips/:id/verify", r.idem, r.ops.VerifyClip)
@@ -149,10 +125,6 @@ func (r *operationsRoutesRegistrar) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/:source/cleanup", r.idem, r.ops.Cleanup)
 	g.POST("/:source/folders/:id/manifest", r.idem, r.ops.RegenerateManifest)
 	g.DELETE("/:source/folders/:id", r.idem, r.ops.TrashFolder)
-
-	// Bulk tag routes (nonops cluster).
-	g.POST("/:source/bulk/tags/add", r.idem, r.bulkTags.BulkAddTags)
-	g.POST("/:source/bulk/tags/remove", r.idem, r.bulkTags.BulkRemoveTags)
 }
 
 // missingDepError is the canonical typed-narrow error path for

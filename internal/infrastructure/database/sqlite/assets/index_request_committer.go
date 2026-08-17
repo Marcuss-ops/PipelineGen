@@ -118,11 +118,14 @@ func CommitIndexRequestTx(
 		}
 
 		payloadMap := map[string]any{
-			"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
-			"event_id":             eventID,
-			"asset_id":             req.AssetID,
-			"operation":            indexRequestOperationUpsert,
-			"source_version":       req.SourceVersion,
+			"schema_version": outboxevents.ReindexEnvelopeV1Schema,
+			"event_id":       eventID,
+			"asset_id":       req.AssetID,
+			"operation":      indexRequestOperationUpsert,
+			"source_version": req.SourceVersion,
+			// index_revision is the canonical supersede fingerprint the
+			// worker compares against the current asset index_revision.
+			"index_revision":       req.SourceVersion,
 			"target_index_version": clipindexer.CollectionVersion(),
 			"requested_vectors":    []string{"text", "transcript"},
 			"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),

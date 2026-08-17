@@ -38,6 +38,26 @@ func SearchableLifecycleFilter() string {
 	return "lifecycle_state IN ('ACTIVE', 'PUBLISHED')"
 }
 
+// ClassifiedAssetFilter returns the canonical SQL fragment that excludes
+// unclassified assets (empty asset_kind) from the search surface.
+//
+// PR-PLANNER-LEAKAGE-CLEANUP (August 2026): StockRust/one-off test clips
+// were committed to media_assets with source=stock + PUBLISHED but empty
+// asset_kind (they bypassed the canonical MediaCommitter taxonomy). Those
+// rows are NOT semantic-searchable — they carry a test-marker embedding and
+// empty search_text — and leaked into catalog search ahead of real clips at
+// the 0.1 RRF score tie. The canonical taxonomy gate (asset_kind != ”) is
+// the single exclusion signal shared with the Qdrant filter compiler's
+// must_not:is_empty(asset_kind) clause.
+//
+// godlike/06 SSOT: this fragment is the local (SQLite) owner of the
+// classified-asset boundary; the Qdrant owner is
+// internal/infrastructure/qdrant/search/filter_compiler.go. Both MUST
+// exclude empty asset_kind so the two catalog-search backends agree.
+func ClassifiedAssetFilter() string {
+	return "COALESCE(asset_kind, '') != ''"
+}
+
 // buildSearchableMediaAssetQuery mirrors buildMediaAssetQuery but uses
 // SearchableLifecycleFilter (the stricter ACTIVE-only+PUBLISHED filter)
 // instead of SoftDeleteFilter. Used exclusively by the 3 search functions
@@ -250,6 +270,10 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 	// results never include DELETED/DELETE_REQUESTED/DRIVE_* states.
 	conditions := []string{SearchableLifecycleFilter()}
 	args := []any{}
+
+	if req.ExcludeUnclassified {
+		conditions = append(conditions, ClassifiedAssetFilter())
+	}
 
 	if req.Source != "" && req.Source != "all" {
 		conditions = append(conditions, "source = ?")

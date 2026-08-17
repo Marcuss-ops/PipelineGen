@@ -225,6 +225,9 @@ jobs:
   maintenance_interval: "24h"
   backup_interval: "6h"
   indexing_interval: "15m"
+  # YouTube clip extraction policy: max per-clip duration in seconds.
+  # Canonical default is 60; raise it (e.g. 120) for longer clips.
+  youtube_max_segment_duration_seconds: 60
 
 scripts:
   # ScriptFlow capability gate. In production a missing required
@@ -238,6 +241,11 @@ scripts:
   # Concurrency caps for /api/script/legacy-batch phases
   batch_web_search_concurrency: 4     # Parallel SearXNG searches (1-16)
   batch_chapter_concurrency: 3        # Parallel Ollama chapter generations (1-10)
+  # Canonical default Google Drive folder for script documents.
+  # Canonical config: env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID (this yaml value
+  # is overridden by the env var). Leave empty unless a docs.enabled=true
+  # request must fail closed when docs.folder_id is omitted.
+  script_docs_folder_id: ""
 
 concurrency:
   max_concurrent_video_extracts: 2
@@ -254,7 +262,6 @@ features:
   youtube_enabled: false
   drive_enabled: true
   # Experimental modules - default to false
-  script_docs_enabled: false
   script_clips_enabled: false
   # Keep the unified script endpoint mounted in local/dev bootstraps.
   # Script generation uses the images capability for /api/script/generate,

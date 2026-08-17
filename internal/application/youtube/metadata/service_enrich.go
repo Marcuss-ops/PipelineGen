@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // GenerateClipMetadata is the canonical application-layer entry
@@ -52,8 +53,32 @@ func (s *MetadataService) GenerateClipMetadata(
 	out.PolicyVersion = in.PolicyVersion
 	out.DrivePath = in.DrivePath
 	out.ContentHash = in.ContentHash
-	if out.Title == "" {
+	// Request-provided semantic fields must survive every enrichment
+	// implementation. Caller-supplied values WIN when non-empty; the LLM
+	// (or deterministic fallback) only fills gaps. The builder is
+	// transcript-only, so it must never overwrite the caller's summary /
+	// tags / topics / speakers / mentioned-people with derived values
+	// (godlike/06 request-provided-survives contract).
+	if in.Description != "" {
+		out.Description = in.Description
+	}
+	if in.Title != "" {
 		out.Title = in.Title
+	}
+	if in.Summary != "" {
+		out.Summary = in.Summary
+	}
+	if len(in.Tags) > 0 {
+		out.Tags = in.Tags
+	}
+	if len(in.Topics) > 0 {
+		out.Topics = in.Topics
+	}
+	if len(in.Speakers) > 0 {
+		out.Speakers = in.Speakers
+	}
+	if len(in.MentionedPeople) > 0 {
+		out.MentionedPeople = in.MentionedPeople
 	}
 	return out, nil
 }
@@ -66,7 +91,10 @@ func (s *MetadataService) GenerateClipMetadata(
 // duplicate the formula body — the spec's verdict is "ONE
 // canonical algorithm, two callers".
 func FallbackMetadata(in youtubetypes.ClipMetadataInput) youtubetypes.CanonicalClipMetadata {
-	summary := in.Title
+	summary := in.Summary
+	if summary == "" {
+		summary = in.Title
+	}
 	if len(summary) > 240 {
 		summary = summary[:240]
 	}
@@ -87,9 +115,11 @@ func FallbackMetadata(in youtubetypes.ClipMetadataInput) youtubetypes.CanonicalC
 		ClipID:           in.ClipID,
 		AssetID:          in.ClipID,
 		Summary:          summary,
-		Topics:           nil,
-		Speakers:         nil,
-		MentionedPeople:  nil,
+		Description:      in.Description,
+		Topics:           append([]string(nil), in.Topics...),
+		Speakers:         append([]string(nil), in.Speakers...),
+		MentionedPeople:  append([]string(nil), in.MentionedPeople...),
+		Tags:             append([]string(nil), in.Tags...),
 		QualityScore:     score,
 		SponsorSegment:   sponsor,
 		TranscriptPath:   transcriptPath,
@@ -124,6 +154,12 @@ func (s *MetadataService) fallbackMetadata(in youtubetypes.ClipMetadataInput) yo
 	}
 	if in.Group == "" && s.group != "" {
 		out.NormalizedGroup = s.group
+	}
+	if in.Summary != "" {
+		out.Summary = in.Summary
+	}
+	if len(in.Tags) > 0 {
+		out.Tags = in.Tags
 	}
 	if len(in.Topics) > 0 {
 		out.Topics = in.Topics
@@ -166,12 +202,94 @@ func DeriveFallbackSourceVersion(clipID, transcript string, score float64) strin
 	return Sha256Short(payload)
 }
 
-// EnrichClip is the application-layer orchestration the
-// pre-Commit-4 usecase.MetadataService stubbed. It calls
-// the builder + persists via the writer. Returns the
-// typed envelope on success, an error on persistence
-// failure (the caller's job classifier inspects via
-// errors.Is / errors.As).
+// CanonicalClipEnrichment is the PURE output of the metadata analyzer.
+// It is the semantic snapshot a caller converts into a
+// persistence.CommitRequest / mediacommit.CommitMediaAssetRequest. The
+// analyzer itself never writes media_assets — persistence is the caller's
+// (or the canonical asset committer's) responsibility.
+type CanonicalClipEnrichment struct {
+	AssetID         string
+	Description     string
+	Summary         string
+	Topics          []string
+	Speakers        []string
+	MentionedPeople []string
+	Hook            string
+	QualityScore    float64
+	Tags            []string
+	SearchText      string
+	TextTracks      []asset.TextTrack
+}
+
+// Compile-time assertion: MetadataService is a pure MetadataAnalyzer.
+var _ MetadataAnalyzer = (*MetadataService)(nil)
+
+// AnalyzeClip is the PURE metadata-analysis step. It builds the canonical
+// metadata (builder + deterministic fallback) and projects it into a
+// CanonicalClipEnrichment WITHOUT writing media_assets or emitting an
+// outbox event. This is the analyzer half of the former EnrichClip; the
+// write is deliberately separate so callers can converge it into the
+// single canonical asset commit.
+func (s *MetadataService) AnalyzeClip(
+	ctx context.Context,
+	in youtubetypes.ClipMetadataInput,
+) (CanonicalClipEnrichment, error) {
+	if in.ClipID == "" {
+		return CanonicalClipEnrichment{}, fmt.Errorf("metadata.AnalyzeClip: ClipID is required")
+	}
+	md, err := s.GenerateClipMetadata(ctx, in)
+	if err != nil {
+		return CanonicalClipEnrichment{}, fmt.Errorf("metadata.AnalyzeClip: build: %w", err)
+	}
+	return ComposeCanonicalClipEnrichment(md), nil
+}
+
+// ComposeCanonicalClipEnrichment projects a CanonicalClipMetadata into the
+// analyzer's CanonicalClipEnrichment. It owns the composition of the
+// semantic snapshot (tags, search text, and the transcript text track) so
+// callers never hand-assemble those fields from the raw metadata envelope.
+func ComposeCanonicalClipEnrichment(md youtubetypes.CanonicalClipMetadata) CanonicalClipEnrichment {
+	assetID := md.AssetID
+	if assetID == "" {
+		assetID = md.ClipID
+	}
+	searchText := md.EmbeddingText
+	if searchText == "" {
+		searchText = BuildFallbackSearchText(md.CleanTitle, md.Summary, md.Topics, md.CleanTranscript)
+	}
+	enrichment := CanonicalClipEnrichment{
+		AssetID:         assetID,
+		Description:     md.Description,
+		Summary:         md.Summary,
+		Topics:          md.Topics,
+		Speakers:        md.Speakers,
+		MentionedPeople: md.MentionedPeople,
+		Hook:            md.Hook,
+		QualityScore:    md.QualityScore,
+		Tags:            md.Tags,
+		SearchText:      searchText,
+	}
+	if md.CleanTranscript != "" {
+		enrichment.TextTracks = []asset.TextTrack{
+			{
+				AssetID:      assetID,
+				LanguageCode: md.OriginalLanguage,
+				TextKind:     asset.TextTrackTranscript,
+				TextContent:  md.CleanTranscript,
+				SourceType:   asset.TextSourceProvided,
+				IsOriginal:   true,
+				Status:       asset.TextTrackReady,
+			},
+		}
+	}
+	return enrichment
+}
+
+// EnrichClip is the legacy orchestration that analyzes the clip AND
+// persists via the ClipMetadataWriter in one call. It remains for
+// backward compatibility with the pre-analyzer Step 10 path; new callers
+// should use AnalyzeClip and converge the enrichment into the canonical
+// asset commit instead of performing a second metadata-only write.
 func (s *MetadataService) EnrichClip(
 	ctx context.Context,
 	in youtubetypes.ClipMetadataInput,
@@ -182,6 +300,9 @@ func (s *MetadataService) EnrichClip(
 	md, err := s.GenerateClipMetadata(ctx, in)
 	if err != nil {
 		return youtubetypes.CanonicalClipMetadata{}, fmt.Errorf("metadata.EnrichClip: build: %w", err)
+	}
+	if s.writer == nil {
+		return md, fmt.Errorf("metadata.EnrichClip: ClipMetadataWriter is not wired (use AnalyzeClip for pure analysis)")
 	}
 	if err := s.writer.UpdateClipMetadataAndRequestIndex(ctx, md.ClipID, md); err != nil {
 		s.log.Warn("metadata.EnrichClip: writer failed",

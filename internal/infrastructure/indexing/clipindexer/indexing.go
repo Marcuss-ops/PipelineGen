@@ -2,11 +2,14 @@ package clipindexer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -17,9 +20,12 @@ const (
 	// CurrentEmbeddingVersion / CurrentSearchTextVersion because those
 	// track the *content schema* version, whereas these track the
 	// *model identity* (which model produced the vector).
-	// Bump these when switching models to force re-indexing of all assets.
-	embeddingModel        = "nomic-embed-text"
-	embeddingModelVersion = "2026-07-06-v1"
+	//
+	// SSOT (godlike/06): the canonical embedding identity lives in
+	// internal/kernel/embedding (CanonicalText). These now anchor to the
+	// canonical constants so the airlock stamps the real model identity.
+	embeddingModel        = coreembedding.ModelIDMultilingualE5
+	embeddingModelVersion = coreembedding.ModelRevisionMultilingualE5
 
 	// collectionVersion tracks the Qdrant collection schema/alias binding.
 	// When the collection schema changes (e.g. new named vector, payload
@@ -39,7 +45,43 @@ func EmbeddingModelVersion() string { return embeddingModelVersion }
 // CollectionVersion returns the current collection version.
 func CollectionVersion() string { return collectionVersion }
 
-// IndexClip generates embeddings for a clip and upserts it into Qdrant.
+// IndexAsset is the canonical entry point of MediaIndexer. It resolves the
+// searchability decision via the single IndexEligibilityResolver and indexes
+// the asset only when it is SEARCHABLE. Registered-but-not-searchable assets
+// (voiceover, final_audio, bgm, sfx, …) are skipped without any embedding work.
+func (s *Service) IndexAsset(ctx context.Context, assetID string) error {
+	eligibility, err := s.Eligibility(ctx, assetID)
+	if err != nil {
+		if errors.Is(err, errTaxonomySchemaUnavailable) {
+			// Compatibility window for databases predating the taxonomy
+			// migration. Once the columns exist, every lookup error is
+			// fail-closed below.
+			s.log.Debug("taxonomy columns unavailable; using legacy indexing path",
+				zap.String("asset_id", assetID))
+			return s.indexAsset(ctx, assetID)
+		}
+		// Taxonomy is the canonical searchability gate. If it cannot be
+		// read, fail closed: do not guess that a registered row is
+		// searchable and do not start embedding work. The caller/outbox can
+		// retry after the registry becomes readable.
+		return fmt.Errorf("resolve index eligibility for %q: %w", assetID, err)
+	}
+	if eligibility == capregistry.IndexEligibilityRegistered {
+		s.log.Debug("asset registered but not semantic-searchable, skipping indexing",
+			zap.String("asset_id", assetID),
+			zap.String("eligibility", string(eligibility)))
+		return nil
+	}
+	return s.indexAsset(ctx, assetID)
+}
+
+// IndexClip is the legacy compatible wrapper. It delegates to the canonical
+// IndexAsset so existing clip-vocabulary callers converge without a rename.
+func (s *Service) IndexClip(ctx context.Context, clipID string) error {
+	return s.IndexAsset(ctx, clipID)
+}
+
+// indexAsset generates embeddings for an asset and upserts it into Qdrant.
 // Uses the canonical state machine in media_assets.index_state (column,
 // QDRANT-002 PR6 / migration 094) — see internal/kernel/asset/index_state.go
 // for the IndexState enum:
@@ -61,7 +103,7 @@ func CollectionVersion() string { return collectionVersion }
 // Writers to media_assets.index_state:
 //   - setIndexState (all transient + failure states; refuses to write INDEXED).
 //   - setIndexedAt (terminal INDEXED + sidecar metadata in single atomic UPDATE).
-func (s *Service) IndexClip(ctx context.Context, clipID string) error {
+func (s *Service) indexAsset(ctx context.Context, clipID string) error {
 	if !s.cfg.Enabled {
 		// godlike/07 no-fake-availability (PR-QDRANT-INDEXCLIP-GUARD,
 		// July 2026): when cfg.Enabled=false but an

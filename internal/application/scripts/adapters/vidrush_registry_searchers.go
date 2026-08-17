@@ -133,15 +133,20 @@ func (s *VidRushRegistryImageSearcher) SearchImages(ctx context.Context, req Int
 type VidRushProviderFanout struct {
 	artlist ArtlistClipSearcher
 	images  InternetImageSearcher
+	cache   scriptports.VidRushCachePort
 	metrics VidRushMetrics
 }
 
 func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	return NewVidRushProviderFanoutWithCache(artlist, images, nil, metrics...)
+}
+
+func NewVidRushProviderFanoutWithCache(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &VidRushProviderFanout{artlist: artlist, images: images, metrics: m}
+	return &VidRushProviderFanout{artlist: artlist, images: images, cache: cache, metrics: m}
 }
 
 // ResolveProviders runs Artlist and internet-image discovery concurrently for
@@ -163,10 +168,11 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	}
 
 	type providerOutcome struct {
-		provider   string
-		candidates []scriptpkg.SegmentAssetCandidate
-		primary    *scriptpkg.SegmentAssetCandidate
-		err        error
+		provider     string
+		candidates   []scriptpkg.SegmentAssetCandidate
+		primary      *scriptpkg.SegmentAssetCandidate
+		allCacheHits bool
+		err          error
 	}
 
 	artlistEnabled := plan.MediaPlan.ProviderPolicy.Artlist.AsBool() && f.artlist != nil && len(updated.Insights.ArtlistQueries) > 0
@@ -217,23 +223,99 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
-			seen := make(map[string]struct{})
-			for _, query := range imageQueries {
-				if f.metrics != nil {
-					f.metrics.IncProviderRequest("internet_images")
-				}
-				results, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
-					SegmentID: segmentID, Query: query, Entity: firstEntity,
-					TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
-					Provider: "internet_images",
-				})
-				if err != nil {
-					if f.metrics != nil {
-						f.metrics.IncProviderFailure("internet_images")
+			// Segment-level cache is keyed on segment identity (SegmentID +
+			// TextHash + prompt/model/limit), mirroring InternetImagesProcessor.
+			// On the text path the TextHash is deterministic across a warm
+			// replay (memory gate), so this cache produces HIT_EXACT without
+			// re-calling the provider.
+			segmentCacheKeyStr := segmentCacheKey(
+				"internet-images-assets-v3",
+				segmentID,
+				textHash,
+				plan.Language,
+				plan.Model,
+				plan.PromptVersion,
+				fmt.Sprintf("%d", perQueryLimit),
+			)
+			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+				if cached, ok := cacheLoad(&vidrushImageCache, segmentCacheKeyStr); ok {
+					if payload, ok := cached.(internetImageCachePayload); ok {
+						outcomes <- providerOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...), allCacheHits: true}
+						return
 					}
+				}
+				var persisted internetImageCachePayload
+				if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, &persisted); err != nil {
 					outcomes <- providerOutcome{provider: "internet_images", err: err}
 					return
+				} else if hit {
+					if len(persisted.Candidates) > 0 {
+						cacheStore(&vidrushImageCache, segmentCacheKeyStr, persisted)
+					}
+					outcomes <- providerOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...), allCacheHits: true}
+					return
+				}
+			}
+
+			candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
+			seen := make(map[string]struct{})
+			allCacheHits := len(imageQueries) > 0
+			for _, query := range imageQueries {
+				// Per-query cache keyed on (topic, query, language), stable on
+				// the research path where the generated scene text (and thus
+				// TextHash) is non-deterministic across runs.
+				entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
+				var results []scriptpkg.SegmentAssetCandidate
+				fromCache := false
+				if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+					if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
+						if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+							results = append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...)
+							fromCache = true
+						}
+					}
+					if !fromCache {
+						var persisted []scriptpkg.SegmentAssetCandidate
+						if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, &persisted); err != nil {
+							outcomes <- providerOutcome{provider: "internet_images", err: err}
+							return
+						} else if hit {
+							if len(persisted) > 0 {
+								cacheStore(&entityImageCache, entityCacheKey, persisted)
+							}
+							results = persisted
+							fromCache = true
+						}
+					}
+				}
+				if !fromCache {
+					allCacheHits = false
+					if f.metrics != nil {
+						f.metrics.IncProviderRequest("internet_images")
+					}
+					searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
+						SegmentID: segmentID, Query: query, Entity: firstEntity,
+						TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
+						Provider: "internet_images",
+					})
+					if err != nil {
+						if f.metrics != nil {
+							f.metrics.IncProviderFailure("internet_images")
+						}
+						outcomes <- providerOutcome{provider: "internet_images", err: err}
+						return
+					}
+					results = searched
+					if len(results) > 0 {
+						cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
+					}
+					if results == nil {
+						results = []scriptpkg.SegmentAssetCandidate{}
+					}
+					if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+						outcomes <- providerOutcome{provider: "internet_images", err: cacheErr}
+						return
+					}
 				}
 				for _, cand := range results {
 					if strings.TrimSpace(cand.Provider) == "" {
@@ -256,7 +338,18 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					candidates = append(candidates, cand)
 				}
 			}
-			outcomes <- providerOutcome{provider: "internet_images", candidates: candidates}
+
+			// Durable-cache the segment result (including an empty result set)
+			// so a warm replay of this exact segment is deterministic.
+			payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
+			if len(payload.Candidates) > 0 {
+				cacheStore(&vidrushImageCache, segmentCacheKeyStr, payload)
+			}
+			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
+				outcomes <- providerOutcome{provider: "internet_images", err: cacheErr}
+				return
+			}
+			outcomes <- providerOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
 		}()
 	}
 	go func() { wg.Wait(); close(outcomes) }()
@@ -276,6 +369,11 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		case scriptpkg.VidRushProviderInternetImages:
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
 			updated.Cache.InternetImages = "MISS"
+			if plan.MediaPlan.ForceRefreshAssets {
+				updated.Cache.InternetImages = "REFRESHED"
+			} else if outcome.allCacheHits {
+				updated.Cache.InternetImages = "HIT_EXACT"
+			}
 		}
 	}
 	return updated, nil

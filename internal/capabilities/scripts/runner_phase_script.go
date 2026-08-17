@@ -3,10 +3,85 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+const minimumClipSceneWords = 20
+
+// outputFromScenes builds the single durable narration projection from the
+// ordered scene list. The requested source language wins; a first available
+// language is only a compatibility fallback for older test generators.
+func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
+	parts := make([]string, 0, len(scenes))
+	for _, scene := range scenes {
+		text := strings.TrimSpace(scene.Text[language])
+		if text == "" {
+			for _, candidate := range scene.Text {
+				if strings.TrimSpace(candidate) != "" {
+					text = strings.TrimSpace(candidate)
+					break
+				}
+			}
+		}
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	text := strings.Join(parts, "\n\n")
+	return GenerateOutput{Text: text, WordCount: len(strings.Fields(text))}
+}
+
+func minimumGeneratedWords(req GenerateRequest) int {
+	if req.ScriptParams.MinWords > 0 {
+		return req.ScriptParams.MinWords
+	}
+	return 1
+}
+
+// bindExplicitClipSceneText preserves the caller's one-clip/one-scene
+// contract. When a clips source supplies explicit SCENE N lines, the model
+// may embellish each line but it must not collapse all narration into scene 1
+// or leave later clip scenes empty. The binding is intentionally limited to
+// the explicit marker format so free-form source text keeps its existing
+// generation behavior.
+func bindExplicitClipSceneText(req GenerateRequest, scenes []Scene) {
+	if req.Source.Type != SourceClips || len(req.Source.ClipIDs) == 0 || len(scenes) != len(req.Source.ClipIDs) {
+		return
+	}
+	lines := make([]string, 0, len(scenes))
+	for _, line := range strings.Split(req.Source.SourceText, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) < 8 || !strings.EqualFold(line[:5], "scene") {
+			continue
+		}
+		colon := strings.Index(line, ":")
+		if colon < 0 || strings.TrimSpace(line[colon+1:]) == "" {
+			return
+		}
+		lines = append(lines, strings.TrimSpace(line[colon+1:]))
+	}
+	if len(lines) != len(scenes) {
+		return
+	}
+	for i := range scenes {
+		if scenes[i].Text == nil {
+			scenes[i].Text = make(map[Language]string)
+		}
+		scenes[i].Text[req.SourceLanguage] = lines[i]
+	}
+}
+
+func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) error {
+	actual := len(strings.Fields(strings.TrimSpace(output.Text)))
+	minimum := minimumGeneratedWords(req)
+	if actual == 0 || actual < minimum {
+		return fmt.Errorf("%w: actual_words=%d minimum_words=%d", ErrMinimumTextGate, actual, minimum)
+	}
+	return nil
+}
 
 func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
@@ -30,7 +105,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				return result, false
 			}
 		}
-		r.markGenerationStart(time.Now())
+		r.markGenerationStart(runID, time.Now())
 		scenes, err := r.textGen.GenerateSceneText(ctx, req)
 		if r.generationGate != nil {
 			r.generationGate.Release()
@@ -47,7 +122,36 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
-		result = &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
+		bindExplicitClipSceneText(req, scenes)
+		if req.Source.Type == SourceClips {
+			for i, scene := range scenes {
+				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+				words := len(strings.Fields(text))
+				lower := strings.ToLower(text)
+				placeholder := text == "" || words < minimumClipSceneWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
+				if placeholder {
+					cause := fmt.Errorf("SCRIPT_SCENE_TEXT_INVALID: scene=%d words=%d minimum=%d placeholder=%t", i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
+					r.failExecutionStep(ctx, exec, scriptStep, cause)
+					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+					return result, false
+				}
+			}
+		}
+		output := outputFromScenes(scenes, req.SourceLanguage)
+		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
+			cause := fmt.Errorf("minimum generated text gate: %w", gateErr)
+			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+			return nil, false
+		}
+		result = &GenerateResult{
+			Output:         output,
+			WordCount:      output.WordCount,
+			Scenes:         scenes,
+			Title:          req.Title,
+			OutputName:     req.OutputName,
+			VoiceoverGroup: req.ScriptParams.VoiceoverGroup,
+		}
 		r.checkpoint(ctx, runID, result)
 		if err := r.emitSceneCommits(ctx, runID, req, exec, scenes); err != nil {
 			cause := fmt.Errorf("emit scene commits: %w", err)
@@ -55,7 +159,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
-		r.markGenerationComplete(time.Now())
+		r.markGenerationComplete(runID, time.Now())
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
 	} else {
 		r.log.Info("skipping completed stage", zap.String("stage", string(StageGeneratingSceneText)))
@@ -103,12 +207,13 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 // Emission happens only on the fresh-generation path (not on resume), so a
 // committed scene is reported exactly once per generation attempt.
 func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
-	if r.sceneCommitObserver == nil {
+	observer := r.sceneCommitObserverFor(runID)
+	if observer == nil {
 		return nil
 	}
 	for _, scene := range scenes {
 		event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
-		if err := r.sceneCommitObserver.OnSceneCommitted(ctx, event); err != nil {
+		if err := observer.OnSceneCommitted(ctx, event); err != nil {
 			return fmt.Errorf("scene %q commit: %w", scene.ID, err)
 		}
 	}

@@ -6,7 +6,14 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
+
+// stageDocumentPublish is the canonical STAGE name for the Google Docs
+// publish boundary owned by the documents processor. It nests under the
+// processor stage recorded by the composite runner ("document") and is
+// measured on the same canonical clock — never with a second ad-hoc timer.
+const stageDocumentPublish kernobs.StageName = "document.publish"
 
 // DocumentsProcessor publishes the canonical SpecScene representation to
 // Google Docs when the request explicitly enables document output.
@@ -61,9 +68,21 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		if strings.TrimSpace(content) == "" {
 			return nil, fmt.Errorf("document content is empty for language %s", language)
 		}
-		link, id, createErr := p.service.CreateDoc(ctx, documentTitle+"_"+language, content, nil, plan.DocsFolderID, plan.ID+"-"+language, refreshDocument)
-		if createErr != nil {
-			return nil, fmt.Errorf("publish document for language %s: %w", language, createErr)
+		// google_docs.publish is the external Google Docs boundary; it nests
+		// under the document.publish STAGE and shares the canonical Run clock.
+		var link, id string
+		if _, stageErr := kernobs.MeasureStageReport(ctx, stageDocumentPublish, func(stageCtx context.Context) error {
+			return kernobs.MeasureOperation(stageCtx, kernobs.OperationInfo{
+				Stage:     stageDocumentPublish,
+				Component: kernobs.ComponentGoogleDocs,
+				Operation: kernobs.OperationPublish,
+			}, func(opCtx context.Context) error {
+				var createErr error
+				link, id, createErr = p.service.CreateDoc(opCtx, documentTitle+"_"+language, content, nil, plan.DocsFolderID, plan.ID+"-"+language, refreshDocument)
+				return createErr
+			})
+		}); stageErr != nil {
+			return nil, fmt.Errorf("publish document for language %s: %w", language, stageErr)
 		}
 		if strings.TrimSpace(link) == "" || strings.TrimSpace(id) == "" {
 			return nil, fmt.Errorf("document publisher returned an empty reference for language %s", language)

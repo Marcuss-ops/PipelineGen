@@ -102,9 +102,9 @@ func TestEligibleFiltersByUniverse(t *testing.T) {
 	reg.Freeze()
 
 	cases := []struct {
-		name     string
-		q        Query
-		want     []string
+		name string
+		q    Query
+		want []string
 	}{
 		{"empty_defaults_to_catalog", Query{}, []string{"local", "semantic"}},
 		{"catalog", Query{Universe: SearchCatalog}, []string{"local", "semantic"}},

@@ -48,7 +48,7 @@ func (e *sourceTextEnricher) Enrich(ctx context.Context, item *scriptpkg.Generat
 	if e.cache == nil || item == nil {
 		return scriptports.EnrichBypass, nil
 	}
-	if item.Source.Type == scriptpkg.SourceClips {
+	if item.Source.IsClips() {
 		// Clip-based generation depends on ClipEvidence, not just a cached
 		// source-text blob. Bypassing here preserves the resolved clip
 		// fingerprint and keeps output-cache replay stable.
@@ -100,7 +100,7 @@ func (e *sourceTextEnricher) Save(ctx context.Context, item scriptpkg.Generation
 	if e.cache == nil || text == "" {
 		return nil
 	}
-	if item.Source.Type == scriptpkg.SourceClips {
+	if item.Source.IsClips() {
 		return nil
 	}
 	if item.Source.Type == scriptpkg.SourceResearch {

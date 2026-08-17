@@ -275,7 +275,9 @@ type ClipSemanticMetadata struct {
 // construct SearchTextInput from ClipSemanticMetadata fields.
 func (m *ClipSemanticMetadata) AsSearchTextInput(source string) SearchTextInput {
 	if source == "" {
-		source = DetectSourceFromAssetID(m.AssetID)
+		// Provenance is supplied by the registry-backed caller. An opaque
+		// AssetID is never parsed as a source discriminator.
+		source = ""
 	}
 
 	sti := SearchTextInput{

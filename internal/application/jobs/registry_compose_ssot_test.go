@@ -104,10 +104,6 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 		{"TypeMediaEnrich", TypeMediaEnrich},
 		{"TypeBulkUploadYouTubeClips", TypeBulkUploadYouTubeClips}, // HC-1 anchor
 
-		// ── Video ──
-		{"TypeVideoGenerate", TypeVideoGenerate},
-		{"TypeRenderVideo", TypeRenderVideo},
-
 		// ── YouTube ──
 		{"TypeYouTubeUpload", TypeYouTubeUpload},
 		{"TypeYouTubeClipExtract", TypeYouTubeClipExtract},

@@ -7,7 +7,7 @@
 // is a typed sentinel that callers can match via errors.Is. The
 // job handler in jobs.go classifies these sentinels into TERMINAL
 // (no retry benefit) vs RETRYABLE (broker default policy) per the
-// canonical pattern in extract_important_clips_job_handler.go.
+// canonical broker job-handler pattern.
 package texttracks
 
 import (

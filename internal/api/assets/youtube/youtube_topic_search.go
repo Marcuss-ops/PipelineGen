@@ -12,12 +12,14 @@ import (
 
 // topicSearchRequest is the transport shape for live YouTube discovery.
 // The application service owns validation, ranking, metadata enrichment, and
-// yt-dlp execution; this type only describes the HTTP input.
+// yt-dlp execution; this type only describes the HTTP input. GET-only: the
+// former POST variant was retired (no internal consumers; GET is the canonical
+// discovery surface).
 type topicSearchRequest struct {
-	Q              string `form:"q" json:"q"`
-	Limit          int    `form:"limit" json:"limit"`
-	Sort           string `form:"sort" json:"sort"`
-	PublishedAfter string `form:"published_after" json:"published_after"`
+	Q              string `form:"q"`
+	Limit          int    `form:"limit"`
+	Sort           string `form:"sort"`
+	PublishedAfter string `form:"published_after"`
 }
 
 // SearchByTopic discovers and ranks public YouTube videos for a keyword.
@@ -26,14 +28,10 @@ type topicSearchRequest struct {
 // discovery and returns candidate URLs for a later extraction job.
 func (h *YouTubeClipHandler) SearchByTopic(c *gin.Context) {
 	var req topicSearchRequest
-	if c.Request.Method == http.MethodGet {
-		req.Q = c.Query("q")
-		req.Limit, _ = strconv.Atoi(c.Query("limit"))
-		req.Sort = c.Query("sort")
-		req.PublishedAfter = c.Query("published_after")
-	} else if !apiutil.BindJSONInto(c, &req) {
-		return
-	}
+	req.Q = c.Query("q")
+	req.Limit, _ = strconv.Atoi(c.Query("limit"))
+	req.Sort = c.Query("sort")
+	req.PublishedAfter = c.Query("published_after")
 
 	if strings.TrimSpace(req.Q) == "" {
 		apiutil.BadRequest(c, "q is required")

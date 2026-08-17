@@ -718,7 +718,7 @@ func TestIndexSchema_GetDense(t *testing.T) {
 	require.NotNil(t, spec)
 	assert.Equal(t, "text", spec.Channel)
 	assert.Equal(t, 768, spec.Dimensions)
-	assert.Equal(t, "nomic-embed-text", spec.Model)
+	assert.Equal(t, "intfloat/multilingual-e5-base", spec.Model)
 
 	spec = s.GetDense("visual")
 	require.NotNil(t, spec)
@@ -733,7 +733,7 @@ func TestIndexSchema_PhysicalName(t *testing.T) {
 	t.Parallel()
 
 	s := qdrantSchema.DefaultV3Schema()
-	assert.Equal(t, "media_assets_v3_nomic_768_siglip_768", s.CanonicalName())
+	assert.Equal(t, "media_assets_v3_e5_768_siglip_768", s.CanonicalName())
 
 	// When PhysicalName is empty, derive from version.
 	s2 := &qdrantSchema.IndexSchema{Version: "v4"}

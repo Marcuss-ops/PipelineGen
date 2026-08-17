@@ -57,6 +57,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
@@ -209,7 +210,7 @@ func RunReindexQdrant(args []string) error {
 	// disagree on the contract never collide. Dry-run still uses the
 	// canonical physical name (side-effect-free enumeration).
 	if deps.Apply && targetCollection == "" {
-		sig := qdrantschema.CanonicalV4Signature()
+		sig := platformschema.CanonicalV4Signature()
 		name, sigErr := sig.PhysicalName()
 		if sigErr != nil {
 			return fmt.Errorf("canonical v4 signature: %w", sigErr)

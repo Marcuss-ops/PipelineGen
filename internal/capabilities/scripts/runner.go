@@ -10,9 +10,8 @@
 //	  ├─ GenerateSceneText
 //	  ├─ TranslateScenes
 //	  ├─ GenerateVoiceovers
-//	  ├─ BuildRenderPayload
-//	  ├─ UpsertDocuments
-//	  └─ EnqueueRender
+//	  ├─ CompileAudio
+//	  └─ UpsertDocuments
 //
 // Phase implementations live in runner_phase_*.go; this file retains the
 // public Runner contract and linear orchestration.
@@ -22,9 +21,13 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -63,15 +66,53 @@ type Runner struct {
 	voiceoverGen          VoiceoverGenerator
 	docPublisher          DocumentPublisher
 	documentRenderer      DocumentRenderer
-	renderEnqueuer        RenderEnqueuer
 	combinedAudioRenderer CombinedAudioRenderer
 	finalAudioPublisher   FinalAudioPublisher
+	scriptPersistence     ScriptPersistence
 	recorder              ExecutionRecorder
 	sceneCommitObserver   SceneCommitObserver
 	vidRushBarrier        VidRushBarrier
 	vidRushTiming         VidRushTimingRecorder
 	generationGate        *GenerationGate
-	log                   *zap.Logger
+	vidRushPipeline       *VidRushPipeline
+
+	// vidRushRuns is the per-run VidRush wiring registry. beginVidRush
+	// registers the fresh coordinator for its run so concurrent runs on this
+	// shared Runner never observe each other's coordinator (the pre-registry
+	// design stored the coordinator in the single observer/barrier/timing
+	// fields, so run B overwrote run A's wiring and A's scene commits landed
+	// in B's coordinator, failing closed with a run mismatch). The single
+	// fields below remain as the injection seam for tests and as the fallback
+	// when a run has no registered wiring.
+	vidRushMu   sync.Mutex
+	vidRushRuns map[string]vidRushWiring
+
+	// scriptDocsFolderID is the configured default script documents
+	// destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). It is resolved ONCE
+	// against the caller's docs.folder_id by resolveArtifactRoutingContext
+	// at run start; no document phase re-derives it. Empty means "not
+	// configured" — a docs.enabled=true run fails closed.
+	scriptDocsFolderID string
+
+	// overlayCanvas is the target render canvas for the derived OverlayPlan.
+	// Zero means the golden canary default (1280×720 @ 30 FPS) applies.
+	overlayCanvas OverlayCanvasSpec
+
+	// overlayRegistry is the canonical entity type→template registry used
+	// by the EntityOverlayPlanner. Nil means overlay intent planning is
+	// skipped (no overlay intents created).
+	overlayRegistry *capabilityoverlay.ChrononOverlayRegistry
+
+	log *zap.Logger
+}
+
+// vidRushWiring bundles the run-scoped VidRush coordinator behind all three
+// runner seams (observer, barrier, timing recorder) so a single registry entry
+// wires the same coordinator for the run.
+type vidRushWiring struct {
+	observer SceneCommitObserver
+	barrier  VidRushBarrier
+	timing   VidRushTimingRecorder
 }
 
 // NewRunner constructs the Runner with all required ports.
@@ -81,7 +122,6 @@ func NewRunner(
 	translator Translator,
 	voiceoverGen VoiceoverGenerator,
 	docPublisher DocumentPublisher,
-	renderEnqueuer RenderEnqueuer,
 	documentRenderers ...DocumentRenderer,
 ) *Runner {
 	if repo == nil {
@@ -92,13 +132,15 @@ func NewRunner(
 		documentRenderer = documentRenderers[0]
 	}
 	return &Runner{
-		repo:         repo,
-		textGen:      textGen,
-		translator:   translator,
-		voiceoverGen: voiceoverGen,
-		docPublisher: docPublisher, documentRenderer: documentRenderer, renderEnqueuer: renderEnqueuer,
-		recorder: noopExecutionRecorder{},
-		log:      zap.NewNop(),
+		repo:             repo,
+		textGen:          textGen,
+		translator:       translator,
+		voiceoverGen:     voiceoverGen,
+		docPublisher:     docPublisher,
+		documentRenderer: documentRenderer,
+		recorder:         noopExecutionRecorder{},
+		vidRushRuns:      make(map[string]vidRushWiring),
+		log:              zap.NewNop(),
 	}
 }
 
@@ -118,6 +160,33 @@ func (r *Runner) SetLogger(log *zap.Logger) {
 	}
 }
 
+// SetScriptDocsFolderID wires the configured default script documents
+// destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Nil-safe. When empty,
+// a docs.enabled=true generation fails closed at run start.
+func (r *Runner) SetScriptDocsFolderID(folderID string) {
+	if r != nil {
+		r.scriptDocsFolderID = folderID
+	}
+}
+
+// SetOverlayCanvas wires the target render canvas for the derived
+// OverlayPlan. Nil-safe; a zero spec falls back to the golden canary
+// default (1280×720 @ 30 FPS).
+func (r *Runner) SetOverlayCanvas(canvas OverlayCanvasSpec) {
+	if r != nil {
+		r.overlayCanvas = canvas
+	}
+}
+
+// SetOverlayRegistry wires the canonical entity type→template registry used
+// by the EntityOverlayPlanner. Nil-safe; nil means overlay intent planning
+// is skipped.
+func (r *Runner) SetOverlayRegistry(registry *capabilityoverlay.ChrononOverlayRegistry) {
+	if r != nil {
+		r.overlayRegistry = registry
+	}
+}
+
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 	r.combinedAudioRenderer = renderer
 }
@@ -127,6 +196,14 @@ func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 	if r != nil {
 		r.finalAudioPublisher = publisher
+	}
+}
+
+// SetScriptPersistence wires the canonical SQLite script-row writer. The
+// runner invokes it only when GenerateRequest.SaveToDB is true.
+func (r *Runner) SetScriptPersistence(persistence ScriptPersistence) {
+	if r != nil {
+		r.scriptPersistence = persistence
 	}
 }
 
@@ -140,7 +217,9 @@ func (r *Runner) SetExecutionRecorder(recorder ExecutionRecorder) {
 
 // SetSceneCommitObserver wires the observer notified of every SceneCommitted
 // event. A nil observer is safe and disables emission; a non-nil observer is
-// fail-closed (a commit error fails the scene-text stage).
+// fail-closed (a commit error fails the scene-text stage). This is the
+// injection seam used by tests; per-run wiring registered by beginVidRush
+// takes precedence, so concurrent runs never share a coordinator.
 func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
 	if r != nil {
 		r.sceneCommitObserver = observer
@@ -150,7 +229,9 @@ func (r *Runner) SetSceneCommitObserver(observer SceneCommitObserver) {
 // SetVidRushBarrier wires the final barrier awaited after scene generation
 // completes. A nil barrier is safe and skips the wait; a non-nil barrier is
 // fail-closed (a barrier error fails the run) and blocks only for enrichments
-// still running, never re-running the whole-document EntitiesProcessor.
+// still running, never re-running the whole-document EntitiesProcessor. This
+// is the injection seam used by tests; per-run wiring registered by
+// beginVidRush takes precedence.
 func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	if r != nil {
 		r.vidRushBarrier = barrier
@@ -169,38 +250,142 @@ func (r *Runner) SetGenerationGate(gate *GenerationGate) {
 
 // SetVidRushTimingRecorder wires the recorder that receives the scene-
 // generation wall-clock window, enabling the generation↔VidRush overlap
-// metric. A nil recorder is safe and disables timing.
+// metric. A nil recorder is safe and disables timing. This is the injection
+// seam used by tests; per-run wiring registered by beginVidRush takes
+// precedence.
 func (r *Runner) SetVidRushTimingRecorder(recorder VidRushTimingRecorder) {
 	if r != nil {
 		r.vidRushTiming = recorder
 	}
 }
 
-// markGenerationStart reports the start of scene-text generation to the
+// SetVidRushPipeline wires the composition-time incremental VidRush
+// dependencies. A nil pipeline disables incremental VidRush (batch workflows
+// keep enriching the whole document later). The Runner builds a fresh,
+// run-scoped coordinator from these dependencies for each run.
+func (r *Runner) SetVidRushPipeline(pipeline *VidRushPipeline) {
+	if r != nil {
+		r.vidRushPipeline = pipeline
+	}
+}
+
+// beginVidRush builds and registers a fresh, run-scoped
+// VidRushIncrementalCoordinator when a VidRushPipeline is configured. It
+// resolves the per-run plan, constructs the coordinator, and registers it in
+// the per-run registry as the scene-commit observer, final barrier, and timing
+// recorder. It returns a nil coordinator when VidRush is disabled. Registration
+// under the run ID is what isolates concurrent runs: each run resolves its own
+// wiring and never observes another run's coordinator.
+func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateRequest) (*VidRushIncrementalCoordinator, error) {
+	p := r.vidRushPipeline
+	if p == nil || p.Enricher == nil {
+		return nil, nil
+	}
+	if p.PlanResolver == nil {
+		return nil, fmt.Errorf("scriptgeneration: vidrush pipeline requires a plan resolver")
+	}
+	plan, err := p.PlanResolver.ResolveVidRushPlan(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("resolve vidrush plan: %w", err)
+	}
+	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(p.Enricher, plan, p.Backpressure)
+	coordinator.SetSegmentProviderResolver(p.ProviderResolver)
+	coordinator.SetSegmentMaterializer(p.Materializer)
+	coordinator.SetMetrics(p.Metrics)
+	coordinator.SetGenerationGate(r.generationGate)
+
+	r.registerVidRush(runID, vidRushWiring{
+		observer: coordinator,
+		barrier:  coordinator,
+		timing:   coordinator,
+	})
+	return coordinator, nil
+}
+
+// endVidRush unregisters only this run's VidRush wiring so the run's
+// coordinator is released without touching any other concurrent run's wiring.
+func (r *Runner) endVidRush(runID string) {
+	r.unregisterVidRush(runID)
+}
+
+// registerVidRush records the per-run wiring under its run ID.
+func (r *Runner) registerVidRush(runID string, w vidRushWiring) {
+	r.vidRushMu.Lock()
+	defer r.vidRushMu.Unlock()
+	if r.vidRushRuns == nil {
+		r.vidRushRuns = make(map[string]vidRushWiring)
+	}
+	r.vidRushRuns[runID] = w
+}
+
+// unregisterVidRush removes the per-run wiring for runID.
+func (r *Runner) unregisterVidRush(runID string) {
+	r.vidRushMu.Lock()
+	defer r.vidRushMu.Unlock()
+	delete(r.vidRushRuns, runID)
+}
+
+// sceneCommitObserverFor resolves the observer for runID: the per-run wiring
+// wins when registered; otherwise the single injected seam (tests) is used.
+func (r *Runner) sceneCommitObserverFor(runID string) SceneCommitObserver {
+	r.vidRushMu.Lock()
+	defer r.vidRushMu.Unlock()
+	if w, ok := r.vidRushRuns[runID]; ok {
+		return w.observer
+	}
+	return r.sceneCommitObserver
+}
+
+// vidRushBarrierFor resolves the barrier for runID: the per-run wiring wins
+// when registered; otherwise the single injected seam (tests) is used.
+func (r *Runner) vidRushBarrierFor(runID string) VidRushBarrier {
+	r.vidRushMu.Lock()
+	defer r.vidRushMu.Unlock()
+	if w, ok := r.vidRushRuns[runID]; ok {
+		return w.barrier
+	}
+	return r.vidRushBarrier
+}
+
+// vidRushTimingFor resolves the timing recorder for runID: the per-run wiring
+// wins when registered; otherwise the single injected seam (tests) is used.
+func (r *Runner) vidRushTimingFor(runID string) VidRushTimingRecorder {
+	r.vidRushMu.Lock()
+	defer r.vidRushMu.Unlock()
+	if w, ok := r.vidRushRuns[runID]; ok {
+		return w.timing
+	}
+	return r.vidRushTiming
+}
+
+// markGenerationStart reports the start of scene-text generation to the run's
 // timing recorder, when one is wired.
-func (r *Runner) markGenerationStart(t time.Time) {
-	if r.vidRushTiming != nil {
-		r.vidRushTiming.MarkGenerationStart(t)
+func (r *Runner) markGenerationStart(runID string, t time.Time) {
+	if rec := r.vidRushTimingFor(runID); rec != nil {
+		rec.MarkGenerationStart(t)
 	}
 }
 
 // markGenerationComplete reports that generation finished emitting stable
-// scenes to the timing recorder, when one is wired.
-func (r *Runner) markGenerationComplete(t time.Time) {
-	if r.vidRushTiming != nil {
-		r.vidRushTiming.MarkGenerationComplete(t)
+// scenes to the run's timing recorder, when one is wired.
+func (r *Runner) markGenerationComplete(runID string, t time.Time) {
+	if rec := r.vidRushTimingFor(runID); rec != nil {
+		rec.MarkGenerationComplete(t)
 	}
 }
 
-// waitForVidRush awaits the final incremental-VidRush barrier when one is
-// wired. A nil barrier is a safe no-op (batch workflows may enrich the whole
-// document later); when present, a barrier error fails the run fail-closed.
-func (r *Runner) waitForVidRush(ctx context.Context, runID string) error {
-	if r.vidRushBarrier == nil {
-		return nil
+// waitForVidRush awaits the final incremental-VidRush barrier for this run
+// when one is wired. A nil barrier is a safe no-op (batch workflows may
+// enrich the whole document later); when present, a barrier error fails the
+// run fail-closed and no results are returned. On success it returns the
+// fenced, canonically ordered per-scene enrichment results so the caller can
+// project the durable entity aggregate onto the result surface.
+func (r *Runner) waitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
+	barrier := r.vidRushBarrierFor(runID)
+	if barrier == nil {
+		return nil, nil
 	}
-	_, err := r.vidRushBarrier.WaitForVidRush(ctx, runID)
-	return err
+	return barrier.WaitForVidRush(ctx, runID)
 }
 
 // Execute runs the complete generation workflow for the given run.
@@ -246,6 +431,17 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		zap.String("source_type", string(req.Source.Type)),
 	)
 
+	// Resolve the canonical artifact routing context ONCE at generation
+	// start. Downstream phases consume this resolved value and never re-derive
+	// Project, Language, or folder routing (godlike/06 SSOT — one owner per
+	// routing fact). A docs.enabled=true run with no resolvable folder fails
+	// closed here, before any LLM or Google Docs I/O.
+	routing, resolveErr := req.resolveArtifactRoutingContext(r.scriptDocsFolderID)
+	if resolveErr != nil {
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, resolveErr)
+		return
+	}
+
 	// Determine resume stage from existing run (if any).
 	run, err := r.repo.Get(ctx, runID)
 	resumeIdx := -1 // -1 means start from beginning
@@ -275,42 +471,89 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		}
 	}
 
-	if !r.runNormalizePhase(ctx, runID, exec, resumeIdx) {
+	if !r.measurePhase(ctx, kernobs.StageName(stageNormalize), func(c context.Context) bool {
+		return r.runNormalizePhase(c, runID, exec, resumeIdx)
+	}) {
 		return
 	}
-	result, ok := r.runSceneTextPhase(ctx, runID, req, exec, run, resumeIdx)
-	if !ok {
+	coordinator, err := r.beginVidRush(ctx, runID, req)
+	if err != nil {
+		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+		return
+	}
+	if coordinator != nil {
+		defer r.endVidRush(runID)
+	}
+	var result *GenerateResult
+	if !r.measurePhase(ctx, kernobs.StageGenerate, func(c context.Context) bool {
+		var ok bool
+		result, ok = r.runSceneTextPhase(c, runID, req, exec, run, resumeIdx)
+		return ok
+	}) {
 		return
 	}
 	if result == nil {
 		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 	}
 	// Final VidRush barrier: wait only for enrichments still running, never
-	// re-running the whole-document EntitiesProcessor.
-	if err := r.waitForVidRush(ctx, runID); err != nil {
+	// re-running the whole-document EntitiesProcessor. The fenced per-scene
+	// results are then projected onto the durable result so a SUCCEEDED run
+	// exposes its typed entity aggregate (persons/places/concepts) on the
+	// surface — never a silent no-op for a backend that did run.
+	segments, err := r.waitForVidRush(ctx, runID)
+	if err != nil {
 		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 		return
 	}
+	if len(segments) > 0 {
+		result.Entities = aggregateEntityResult(segments)
+		// Project each segment's entities onto its scene's annotations so the
+		// document SpecScene and the /full surface carry the same grounded
+		// per-scene entity proof (primary/secondary), never just the flat
+		// aggregate.
+		applySegmentEntityAnnotations(result, req.SourceLanguage, segments)
+		// Project each segment's typed entities onto its scene's canonical
+		// per-scene EntityResult (the same model as the document aggregate —
+		// no second entity model), and derive entity_overlay_required. A
+		// scene with no entities keeps entities=[] + entity_overlay_required=
+		// false; no entity is invented.
+		applySegmentEntityResults(result, segments)
+	}
+	projectEntityCompatibility(result, segments)
+	// ── OVERLAY INTENT PLANNING ──────────────────────────────────────
+	// Create OverlayIntents from per-scene entity annotations immediately
+	// after extraction. This runs BEFORE TTS so overlay.prepare can start
+	// template resolution and asset prefetch in parallel with audio synthesis.
+	if r.overlayRegistry != nil {
+		result.OverlayIntents = planOverlayIntents(result.Scenes, r.overlayRegistry)
+	}
 	result.SourceTrace = sourceTraceFromResult(result)
-	if !r.runTranslationPhase(ctx, runID, req, exec, resumeIdx, result) {
+	if !r.measurePhase(ctx, kernobs.StageName(stageTranslation), func(c context.Context) bool {
+		return r.runTranslationPhase(c, runID, req, exec, resumeIdx, result)
+	}) {
 		return
 	}
-	if !r.runVoiceoverPhase(ctx, runID, req, exec, resumeIdx, result) {
+	if !r.measurePhase(ctx, kernobs.StageName(voiceoverStage), func(c context.Context) bool {
+		return r.runVoiceoverPhase(c, runID, req, routing, exec, resumeIdx, result)
+	}) {
 		return
 	}
-	if !r.runRenderPayloadPhase(ctx, runID, req, exec, resumeIdx, result) {
+	if !r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {
+		if !r.runAudioCompilePhase(c, runID, req, exec, resumeIdx, result) {
+			return false
+		}
+		return r.publishFinalAudio(c, runID, req, routing, result)
+	}) {
 		return
 	}
-	if !r.publishFinalAudio(ctx, runID, req, result) {
+	if !r.measurePhase(ctx, kernobs.StageName(stagePersistence), func(c context.Context) bool {
+		return r.persistScript(c, runID, req, exec, resumeIdx, result)
+	}) {
 		return
 	}
-	// Render is enqueued (and, for the central queue, awaited) BEFORE the
-	// document phase so the document can project the certified overlay
-	// reference. When RenderVideo is false the enqueue phase is skipped.
-	if !r.runEnqueuePhase(ctx, runID, req, exec, resumeIdx, result) {
-		return
-	}
-	if !r.runDocumentPhase(ctx, runID, req, exec, resumeIdx, result) {
+	if !r.measurePhase(ctx, kernobs.StageName(stageDocument), func(c context.Context) bool {
+		return r.runDocumentPhase(c, runID, req, routing, exec, resumeIdx, result)
+	}) {
 		return
 	}
 	r.completeRun(ctx, runID, result)

@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
     media_type TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT '',
+    tags_norm TEXT NOT NULL DEFAULT '',
     file_hash TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT NOT NULL DEFAULT '',
     drive_link TEXT NOT NULL DEFAULT '',
@@ -71,7 +73,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
     source_url TEXT NOT NULL DEFAULT '',
     start_ms INTEGER NOT NULL DEFAULT 0,
     end_ms INTEGER NOT NULL DEFAULT 0,
-    title TEXT NOT NULL DEFAULT ''
+    title TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT ''
 );`); err != nil {
 		t.Fatalf("CREATE TABLE media_assets: %v", err)
 	}

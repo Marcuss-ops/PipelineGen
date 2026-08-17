@@ -27,8 +27,5 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
 		})
 	}
-	if crossStep.ScriptAssetsModule != nil {
-		prepared.HTTPModules = append(prepared.HTTPModules, TrackedHTTPModule{Module: crossStep.ScriptAssetsModule, Point: "register.ScriptAssets"})
-	}
 	return prepared, nil
 }

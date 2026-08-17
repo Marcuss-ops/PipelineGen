@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {
@@ -171,6 +172,34 @@ func TestBuildSpecSceneDocumentHTML_RendersEntityDriveLinks(t *testing.T) {
 	require.Contains(t, specJSON, "Describe John Cena")
 }
 
+func TestDocument_EntityImageRenderedInline(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+		ID:   "scene-0",
+		Text: "Dwayne Johnson enters the arena.",
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Dwayne Johnson",
+			Text:          "Dwayne Johnson",
+			Image: &scriptpkg.EntityImageBinding{
+				Status:     "resolved",
+				DriveLink:  "https://drive.google.com/file/d/dwayne/view",
+				PreviewURL: "https://images.example/dwayne.jpg",
+			},
+		}}},
+	}}}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "People"})
+
+	human := humanDocumentHTML(t, out)
+	// IDEAL PASS: the entity photograph is rendered inline, not only linked.
+	require.Contains(t, human, `<img src="https://images.example/dwayne.jpg"`)
+	require.Contains(t, human, `alt="Dwayne Johnson"`)
+	// The canonical Drive link is still present.
+	require.Contains(t, human, `<strong>Entity image:</strong>`)
+	require.Contains(t, human, "https://drive.google.com/file/d/dwayne/view")
+}
+
 func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
 	t.Parallel()
 
@@ -212,6 +241,145 @@ func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
 	require.NotContains(t, extractSpecSceneJSON(t, out), "end_us")
 }
 
+func TestDocument_ProjectsClipAndVoiceoverDurationsSeparately(t *testing.T) {
+	t.Parallel()
+
+	timeline := &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 30_000_000,
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 30_000_000,
+			Video: capabilityaudio.VideoSegment{
+				AssetID: "clip-123", SourceInUS: 5_000_000,
+				SourceDurationUS: 12_000_000, TimelineDurationUS: 12_000_000,
+			},
+			AudioIntents: []capabilityaudio.AudioIntent{{
+				Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: "vo-123",
+				SourceDurationUS: 30_000_000, TimelineDurationUS: 30_000_000,
+			}},
+		}},
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Clip and voiceover.", Bindings: scriptpkg.SceneBindings{
+			Clip: &scriptpkg.ClipBinding{ClipID: "clip-123", TotalDurationMs: 18_420},
+		}}},
+	}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		AudioTimeline: timeline,
+		ClipMetadata:  []capabilityaudio.ClipAssetMetadata{{AssetID: "clip-123", Duration: kernelasset.ProbedDuration(18_420_000)}},
+		AudioSummary: capabilityaudio.DocumentAudioSummary{
+			ClipCount: 1, ClipTotalUS: 18_420_000, ClipTotalKnown: true,
+			VoiceoverCount: 1, VoiceoverTotalUS: 30_000_000,
+		},
+	})
+	human := humanDocumentHTML(t, out)
+	for _, want := range []string{
+		"<strong>Duration:</strong> 00:30.000",
+		"<h3>Video Clip</h3>",
+		"<strong>Asset:</strong> clip-123",
+		"<strong>Source In:</strong> 00:05.000",
+		"<strong>Source Duration:</strong> 00:12.000",
+		"<strong>Timeline Duration:</strong> 00:12.000",
+		"<strong>Total Duration:</strong> 00:18.420",
+		"<h3>Voiceover</h3>",
+		"<strong>Asset:</strong> vo-123",
+		"<strong>Source Duration:</strong> 00:30.000",
+		"<strong>Timeline Duration:</strong> 00:30.000",
+		"<h2>Summary</h2>",
+		"<strong>Total Source Clip Duration:</strong> 00:18.420",
+		"<strong>Total Edge TTS Duration:</strong> 00:30.000",
+		"<strong>Canonical Timeline:</strong> 00:30.000",
+	} {
+		require.Contains(t, human, want)
+	}
+}
+
+func TestDocument_AudioOnlySceneShowsNoVideoClip(t *testing.T) {
+	t.Parallel()
+
+	timeline := &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 134_832_000,
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 134_832_000,
+			Audio: capabilityaudio.AudioIntent{
+				Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: "vo-only",
+				SourceDurationUS: 134_832_000, TimelineDurationUS: 134_832_000,
+			},
+		}},
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Audio only."}},
+	}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		AudioTimeline: timeline,
+		AudioSummary: capabilityaudio.DocumentAudioSummary{
+			ClipCount: 0, ClipTotalUS: 0, ClipTotalKnown: true,
+			VoiceoverCount: 1, VoiceoverTotalUS: 134_832_000,
+		},
+	})
+	human := humanDocumentHTML(t, out)
+	require.Contains(t, human, "<h3>Video Clip</h3><p>None</p>")
+	require.Contains(t, human, "<strong>Duration:</strong> 02:14.832")
+	require.Contains(t, human, "<strong>Source Duration:</strong> 02:14.832")
+	require.Contains(t, human, "<strong>Asset:</strong> vo-only")
+	require.Contains(t, human, "<strong>Total Source Clip Duration:</strong> Unknown")
+}
+
+func TestDocument_FullAudioDurationIncludesMilliseconds(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title:    "Precision",
+		Language: "en",
+		FullAudio: &scriptpkg.DocumentAudioRef{
+			AssetID: "final-audio-en", Language: "en",
+			DriveLink:  "https://drive.google.com/file/d/final-audio-en/view",
+			DurationMS: 134_832,
+		},
+	})
+
+	human := humanDocumentHTML(t, out)
+	require.Contains(t, human, "<strong>Duration:</strong> 02:14.832")
+	require.NotContains(t, human, "<strong>Duration:</strong> 02:14</p>")
+}
+
+func TestDocument_FinalAudioDriveLinkIsPureURL(t *testing.T) {
+	t.Parallel()
+
+	const pure = "https://drive.google.com/file/d/final-audio-it/view?usp=drivesdk"
+	finalAudio := &scriptpkg.FinalAudioArtifact{
+		AssetID:      "final-audio-it",
+		Path:         "/tmp/final_audio_it.m4a",
+		DriveLink:    "[" + pure + "](" + pure + ")",
+		DurationMS:   134_832,
+		FinalMix:     true,
+		CopyEligible: true,
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title: "Final audio", Language: "it", FinalAudio: finalAudio,
+	})
+
+	const marker = "<h2>Final Audio JSON</h2><pre><code>"
+	pos := strings.Index(out, marker)
+	require.NotEqual(t, -1, pos)
+	pos += len(marker)
+	end := strings.Index(out[pos:], "</code></pre>")
+	require.NotEqual(t, -1, end)
+
+	var block map[string]any
+	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(out[pos:pos+end])), &block))
+	require.Equal(t, pure, block["drive_link"])
+	require.NotContains(t, block["drive_link"].(string), "](https")
+}
+
 func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 	t.Parallel()
 
@@ -219,6 +387,7 @@ func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 		AssetID:          "final-audio-it",
 		Path:             "/tmp/final_audio_it.m4a",
 		DriveLink:        "https://drive.google.com/file/d/final-audio-it/view",
+		Container:        "m4a",
 		AudioPlanSHA256:  "plan-sha",
 		FinalAudioSHA256: "final-sha",
 		Codec:            "aac",
@@ -226,6 +395,7 @@ func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 		SampleRate:       48000,
 		Channels:         2,
 		ChannelLayout:    "stereo",
+		DurationUS:       45_000_000,
 		DurationMS:       45000,
 		FinalMix:         true,
 		CopyEligible:     true,

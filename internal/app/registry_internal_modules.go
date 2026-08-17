@@ -20,7 +20,6 @@ import (
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
@@ -45,15 +44,12 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	}
 
 	var embeddingReg search.EmbeddingChannelRegistry
-	if root.AI != nil {
-		embedClient := root.AI.OllamaEmbedClient
-		if embedClient == nil {
-			embedClient = root.AI.OllamaClient
-		}
-		if embedClient != nil {
-			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(embedClient)
-			embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(ollamaEmb), nil)
-		}
+	if cfg != nil && cfg.ClipIndexer.ServerURL != "" {
+		// Catalog query vectors must come from the same E5 sidecar contract
+		// as indexed document vectors. Ollama is a chat/legacy embedder and
+		// must not silently create a second vector space.
+		textEmb := embeddings.NewHTTPTextEmbedder(cfg.ClipIndexer.ServerURL)
+		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(textEmb), nil)
 	}
 
 	var mediaRepo search.MediaReadRepository
@@ -133,11 +129,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if err != nil {
 		return registryCrossStepState{}, err
 	}
-	providerDescriptor, ok := scriptAssetsDescriptor.(module.DescriptorProviders)
-	if !ok {
-		return registryCrossStepState{}, fmt.Errorf("script-assets descriptor does not implement api.DescriptorProviders")
-	}
-	if err := bootstrapProviderRegistry(providerReg, providerEntries, []module.DescriptorProviders{providerDescriptor}); err != nil {
+	if err := bootstrapProviderRegistry(providerReg, providerEntries, []module.DescriptorProviders{scriptAssetsDescriptor}); err != nil {
 		return registryCrossStepState{}, err
 	}
 	// PR-SEARCH-UNIVERSE (August 2026): the provider backend resolves
@@ -170,7 +162,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		SearchFanOut:       searchFanOut,
 		SearchBackends:     searchBackends,
 		SearchAggregator:   searchAgg,
-		ScriptAssetsModule: scriptAssetsDescriptor,
 		IdempotencyHandler: idemHandler,
 	}
 
@@ -215,27 +206,10 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		return registryCrossStepState{}, fmt.Errorf("wire registry: scraper: %w", err)
 	}
 
-	var imagesDir string
-	if cfg != nil {
-		imagesDir = cfg.Storage.ImagesPath()
-	}
-	fullImgBundle := &FullImagesBundle{
-		ImageService: root.Domains.ImageService,
-		ImagesDir:    imagesDir,
-	}
-	fullW, fullErr := WireFullImages(fullImgBundle, cfg, log)
-	if fullErr != nil {
-		log.Warn("registerInternalModules Step 7 WireFullImages failed (godlike/07 fail-closed)", zap.Error(fullErr))
-		regWiring.FullImages = nil
-	} else if fullW != nil && fullW.Module != nil {
-		regWiring.FullImages = fullW
-		if err := tryRegisterModuleStrict(registry, log, fullW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
-			return registryCrossStepState{}, fmt.Errorf("wire registry: full-images: %w", err)
-		}
-		log.Info("registerInternalModules Step 7 FullImages pipeline mounted")
-	} else {
-		regWiring.FullImages = nil
-	}
+	// Step 7 (FullImages) retired (IMAGES-LEGACY-CLEANUP, August 2026):
+	// POST /api/fullimages/image/generate was merged into
+	// POST /api/images/batch-generate mode=sections; the dedicated
+	// fullimages module + wiring were removed.
 
 	return crossStep, nil
 }
@@ -253,7 +227,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		cfg,
 		&wiring.ArtlistBundle{
 			MediaExec:          root.MediaExec,
-			Committer:          sqassets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
+			Committer:          newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
 			DB:                 root.DB,
 			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,

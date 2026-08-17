@@ -281,23 +281,22 @@ type DomainBundle struct {
 	// in BuildTextTrackBundle is a no-op at runtime.
 	SubtitleFetcher youtubeports.SubtitleFetcherPort
 
-	ExtractImportantClipsJobHandler *youtube.ExtractImportantClipsJobHandler // PR-GEMMA-EXTRACT-IMPORTANT Step 7: canonical broker handler registered with jobs.Service via wireYoutubeCatalogJobBindings (godlike/06 SSOT — the use case + adapters remain private construction-time deps, not exposed on DomainBundle)
-	VoiceoverSync                   *voiceoverreconcile.Service
-	ImageService                    *imgservice.Service
-	IngestService                   *ingest.Service
-	BooksService                    *books.Service
-	LessonsService                  *lessonsSvc.Service
-	MetaWriter                      semantic.MetadataWriterPort
-	RealtimeMatcher                 assetsapi.RealtimeMatcher
-	RealtimeSearch                  scriptcore.RealtimeSearchService
-	AutotagService                  *autotag.Service
-	AssocService                    scriptcore.AssocSearchService
-	VoiceoverGenerateHandler        *voiceoverjobs.GenerateJobHandler
-	VoiceoverProcessItem            voiceover.VoiceoverItemExecutor
-	VoiceoverGenerateItemHandler    *voiceoverjobs.GenerateItemJobHandler
-	ArtifactService                 *artifacts.Service
-	ImageSearchResolver             routing.ImageSearchResolver
-	AudioProcessor                  *audioasset.Processor
+	VoiceoverSync                *voiceoverreconcile.Service
+	ImageService                 *imgservice.Service
+	IngestService                *ingest.Service
+	BooksService                 *books.Service
+	LessonsService               *lessonsSvc.Service
+	MetaWriter                   semantic.MetadataWriterPort
+	RealtimeMatcher              assetsapi.RealtimeMatcher
+	RealtimeSearch               scriptcore.RealtimeSearchService
+	AutotagService               *autotag.Service
+	AssocService                 scriptcore.AssocSearchService
+	VoiceoverGenerateHandler     *voiceoverjobs.GenerateJobHandler
+	VoiceoverProcessItem         voiceover.VoiceoverItemExecutor
+	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
+	ArtifactService              *artifacts.Service
+	ImageSearchResolver          routing.ImageSearchResolver
+	AudioProcessor               *audioasset.Processor
 }
 
 // OutboxBundle aggregates the canonical outbox dispatcher and events pool.

@@ -12,8 +12,8 @@
       "AGENTS.md###Recent-cross-cutting-closures->PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED"
     ],
     "embeddings": {
-      "text": "multilingual-e5-base",
-      "transcript": "multilingual-e5-base",
+      "text": "intfloat/multilingual-e5-base",
+      "transcript": "intfloat/multilingual-e5-base",
       "visual": "siglip-so400m-patch14-384",
       "audio": "clap-htsat-fused"
     },

@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -123,6 +124,25 @@ func (r *Reader) ListHistory(ctx context.Context, f appjobs.HistoryFilter) ([]ap
 		}
 	}
 	return items, nil
+}
+
+// GetRunReport returns the canonical run report JSON for the most recent run
+// of a job, or nil when no report exists. The report_json column already
+// carries the full RunReport (stages, operations, and the derived timing
+// breakdown), so diagnostics consumers parse it directly.
+func (r *Reader) GetRunReport(ctx context.Context, jobID string) (json.RawMessage, error) {
+	if jobID == "" {
+		return nil, fmt.Errorf("get run report: job id is required")
+	}
+	var report string
+	err := r.obs.QueryRowContext(ctx, `SELECT report_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&report)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read run report %s: %w", jobID, err)
+	}
+	return json.RawMessage(report), nil
 }
 
 var _ appjobs.HistoryReader = (*Reader)(nil)

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -286,7 +288,36 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// continues to expose `job.error` (unchanged), so callers using the
 	// nested path keep working. The new top-level `error` is the canonical
 	// surface for /full parity with /api/jobs LIST.
-	apiutil.OK(c, h.buildJobResponse(j, events))
+	resp := h.buildJobResponse(j, events)
+
+	// PR-SCRIPT-TIMING: expose the canonical timing breakdown for the most
+	// recent run. It is derived from run_observability.report_json (the
+	// persisted RunReport — stages, operations, and the derived
+	// attributed/unattributed/bottleneck fields), never from job timestamps
+	// or a second clock. Best-effort: an absent reader/report yields a null
+	// `timing` field without changing the /full status response.
+	resp["timing"] = h.readTimingBreakdown(c.Request.Context(), id)
+
+	apiutil.OK(c, resp)
+}
+
+// readTimingBreakdown returns the canonical timing summary for a job's most
+// recent run, or nil when the history reader is absent, no report exists, or
+// the report cannot be parsed. It is deliberately best-effort: timing
+// diagnostics must never fail or alter the /full status surface.
+func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string) any {
+	if h.history == nil {
+		return nil
+	}
+	raw, err := h.history.GetRunReport(ctx, id)
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	var report kernobs.RunReport
+	if err := json.Unmarshal(raw, &report); err != nil {
+		return nil
+	}
+	return report.TimingSummary()
 }
 
 // buildJobResponse assembles the canonical enriched job status shape

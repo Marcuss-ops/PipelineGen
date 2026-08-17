@@ -62,7 +62,7 @@ const (
 
 	// SourcingIndexStatusFailed — terminal error state. Any of the 3
 	// indexing sub-steps returned an unretriable error. The chunk is
-	// still on Drive; operator backfill via POST /api/media/clips/:id/reindex.
+	// still on Drive; operator backfill via POST /api/assets/operator/assets/:id/reindex.
 	SourcingIndexStatusFailed SourcingIndexStatus = "failed"
 )
 

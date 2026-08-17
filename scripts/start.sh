@@ -111,9 +111,15 @@ trap 'rm -rf "$WORK_DIR"' EXIT INT TERM
 # ── load .env if present (do not require it) ─────────────────────────────────
 section "0. Environment"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/dotenv.sh
+source "$SCRIPT_DIR/lib/dotenv.sh"
+
 if [ -f .env ]; then
-  set -a; . ./.env; set +a
-  log_ready ".env sourced (mode 0600 expected)"
+  # Explicit environment wins: .env only fills variables that are unset or
+  # empty, so a caller-provided token is never silently overridden.
+  load_dotenv_missing .env
+  log_ready ".env sourced for missing defaults (existing environment preserved; mode 0600 expected)"
 elif [ -f .env.example ]; then
   log_warn ".env not present — copy .env.example to .env to set tokens; server may refuse boot without VELOX_ADMIN_TOKEN"
 else

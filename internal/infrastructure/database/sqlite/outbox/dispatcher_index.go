@@ -161,6 +161,12 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	clip.SetMetadataString("job_key", jobKey)
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		if d.discoveryCommitter != nil {
+			if err := d.discoveryCommitter.CommitDiscoveredAsset(ctx, tx, clip, lifecycle, idx); err != nil {
+				return fmt.Errorf("dispatcher canonical discovery commit %s: %w", clip.ID, err)
+			}
+			return nil
+		}
 		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
 			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
 		}
@@ -178,7 +184,7 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 // EnqueueIndexEvent delegates a tx-bound indexing request to the canonical
 // AssetCommitter emitter. The caller must already have persisted the matching
 // media_assets state in tx before invoking this method.
-func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, contentHash string) error {
+func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, source, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
@@ -192,14 +198,13 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 		return errors.New("outbox.Dispatcher.EnqueueIndexEvent: contentHash is required (supersede gate cannot function without a content fingerprint)")
 	}
 
-	provider := asset.DetectSourceFromAssetID(assetID)
 	commitResult, err := sqliteassets.CommitIndexRequestTx(
 		ctx,
 		tx,
 		d.outboxEventsRepo,
 		sqliteassets.IndexRequest{
 			AssetID:                  assetID,
-			Source:                   provider,
+			Source:                   source,
 			SourceVersion:            contentHash,
 			RequestedAt:              time.Now(),
 			UseProviderEventKey:      true,

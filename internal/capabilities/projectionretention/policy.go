@@ -16,7 +16,7 @@
 //     by the keep-last-N tail: a failed build must not crowd out a
 //     known-good rollback target.
 //   - Rollback candidates are scoped to the active target's schema
-//     generation: a collection from a different generation (e.g. a nomic
+//     generation: a collection from a different embedding generation (e.g. an older
 //     collection when the active target is e5) is dropped, never kept as a
 //     rollback — its vectors are incompatible with the active embedder.
 //   - The protected rollback target is always pinned (never dropped).
@@ -218,7 +218,7 @@ func IsStalePartial(status mediaregistry.ProjectionStatus) bool {
 
 // activeSchemaPrefix resolves the schema-generation prefix of the active
 // alias target so rollback candidates are scoped to the same generation.
-// A collection from a different schema generation (e.g. a nomic collection
+// A collection from a different schema generation (e.g. an older collection
 // when the active target is e5) is never a valid rollback: its document
 // vectors live in a different vector space, so keeping it as a rollback
 // would re-introduce the query/documents drift on rollback. When the active

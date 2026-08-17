@@ -64,6 +64,64 @@ func (r *Registry) UpdateJob(ctx context.Context, j capregistry.Job) error {
 	return nil
 }
 
+// BackfillPayloadHashes recomputes and persists the canonical payload hash
+// for jobs whose payload_hash column is empty. It is the one-time repair for
+// rows written before the hash was computed at record time. It reuses the
+// same canonical hashPayload used by RecordJob/UpdateJob, so backfilled
+// values are byte-identical to what a fresh RecordJob would have written.
+// Returns the number of rows updated. The UPDATE is guarded by
+// payload_hash = ” so re-running converges (idempotent).
+func (r *Registry) BackfillPayloadHashes(ctx context.Context, limit int) (int, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("job registry: nil database")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	query := `SELECT id, payload_json FROM jobs WHERE payload_hash = '' ORDER BY created_at ASC`
+	var rows *sql.Rows
+	var err error
+	if limit > 0 {
+		query += ` LIMIT ?`
+		rows, err = r.db.QueryContext(ctx, query, limit)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("job registry: scan empty payload_hash jobs: %w", err)
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		id      string
+		payload sql.NullString
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var c candidate
+		if err := rows.Scan(&c.id, &c.payload); err != nil {
+			return 0, fmt.Errorf("job registry: scan candidate: %w", err)
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("job registry: iterate candidates: %w", err)
+	}
+
+	updated := 0
+	for _, c := range candidates {
+		hash := hashPayload(c.payload.String)
+		res, err := r.db.ExecContext(ctx, `UPDATE jobs SET payload_hash = ? WHERE id = ? AND payload_hash = ''`, hash, c.id)
+		if err != nil {
+			return updated, fmt.Errorf("job registry: update payload_hash for %q: %w", c.id, err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			updated++
+		}
+	}
+	return updated, nil
+}
+
 func (r *Registry) RecordStep(ctx context.Context, s capregistry.Step) error {
 	if s.StepID == "" || s.JobID == "" || s.StepName == "" {
 		return errors.New("job registry: step identity is required")
@@ -137,7 +195,10 @@ func (r *Registry) Stats(ctx context.Context, from, to string) (capregistry.Stat
 			return stats, fmt.Errorf("job stats relation %s: %w", q.relation, err)
 		}
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT step_name, COUNT(*), AVG(duration_ms) FROM job_steps WHERE UPPER(status)='SUCCEEDED' AND started_at >= ? AND started_at < ? GROUP BY step_name ORDER BY AVG(duration_ms) DESC`, from, to)
+	// Steps are persisted as COMPLETED (never SUCCEEDED) by the worker's
+	// statusForStep projection, so the slowest-step aggregate must accept
+	// both spellings or it silently under-reports every script runner step.
+	rows, err := r.db.QueryContext(ctx, `SELECT step_name, COUNT(*), AVG(duration_ms) FROM job_steps WHERE UPPER(status) IN ('SUCCEEDED','COMPLETED') AND started_at >= ? AND started_at < ? GROUP BY step_name ORDER BY AVG(duration_ms) DESC`, from, to)
 	if err != nil {
 		return stats, fmt.Errorf("job stats steps: %w", err)
 	}

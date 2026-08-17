@@ -210,7 +210,7 @@ type txRecordingOutbox struct {
 	cleanupEventCalls int
 }
 
-func (s *txRecordingOutbox) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, _ string, _ string) error {
+func (s *txRecordingOutbox) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, _ string, _, _ string) error {
 	s.lastTx = tx
 	s.indexEventCalls++
 	return nil

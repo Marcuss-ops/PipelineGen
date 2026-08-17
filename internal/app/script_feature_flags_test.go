@@ -17,7 +17,6 @@ func TestAnyScriptFeatureEnabled(t *testing.T) {
 		{name: "nil cfg", cfg: nil, want: false},
 		{name: "images only", cfg: &config.Config{Features: config.FeaturesConfig{ImagesEnabled: true}}, want: true},
 		{name: "clips only", cfg: &config.Config{Features: config.FeaturesConfig{ScriptClipsEnabled: true}}, want: true},
-		{name: "docs only", cfg: &config.Config{Features: config.FeaturesConfig{ScriptDocsEnabled: true}}, want: true},
 		{name: "none", cfg: &config.Config{Features: config.FeaturesConfig{}}, want: false},
 	}
 

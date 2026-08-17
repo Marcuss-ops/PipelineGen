@@ -24,10 +24,13 @@
 //     used by WriteClipMetadataFile to recover the
 //     (startSec, endSec) tuple from a canonical yt_<vid>_<s>_<e>_*
 //     clipID. Replaces the legacy underscore-split heuristic.
-//   - EnrichClip — application-layer orchestration that
+//   - AnalyzeClip — PURE analysis that returns a
+//     CanonicalClipEnrichment without writing media_assets.
+//   - EnrichClip — legacy orchestration that
 //     calls the builder + writes via ClipMetadataWriter
 //     (NOT direct assetRepo.Upsert — the verdict's P1 #15
-//     fail-closed posture on raw repo writes).
+//     fail-closed posture on raw repo writes). New callers
+//     prefer AnalyzeClip + the canonical asset commit.
 //
 // // PR-YOUTUBE-METADATA-SPLIT (July 2026): decomposed the original
 // 837-LoC monolithic service.go into single-purpose files per
@@ -81,16 +84,13 @@ type MetadataService struct {
 	group   string
 }
 
-// NewMetadataService constructs the canonical service. The
-// Writer is required (P1 #15 fail-closed); the Builder is
-// required (the service has nothing to do without it).
-// Logger may be nil — service falls back to zap.NewNop.
-func NewMetadataService(deps MetadataDeps) (*MetadataService, error) {
+// NewMetadataAnalyzer constructs the PURE metadata analyzer. Only the
+// Builder is required; the Writer may be nil because AnalyzeClip never
+// writes media_assets. Logger may be nil — the analyzer falls back to
+// zap.NewNop.
+func NewMetadataAnalyzer(deps MetadataDeps) (*MetadataService, error) {
 	if deps.Builder == nil {
-		return nil, fmt.Errorf("metadata.NewMetadataService: ClipMetadataBuilder is required (P1 #15 fail-closed — the previous direct-assetRepo path is removed)")
-	}
-	if deps.Writer == nil {
-		return nil, fmt.Errorf("metadata.NewMetadataService: ClipMetadataWriter is required (P1 #15 fail-closed — direct assetRepo.Upsert is removed)")
+		return nil, fmt.Errorf("metadata.NewMetadataAnalyzer: ClipMetadataBuilder is required (P1 #15 fail-closed — the previous direct-assetRepo path is removed)")
 	}
 	log := deps.Logger
 	if log == nil {
@@ -103,4 +103,20 @@ func NewMetadataService(deps MetadataDeps) (*MetadataService, error) {
 		jobID:   deps.JobID,
 		group:   deps.JobGroup,
 	}, nil
+}
+
+// NewMetadataService constructs the legacy service that analyzes AND
+// persists via the ClipMetadataWriter. The Writer is required (P1 #15
+// fail-closed); the Builder is required (the service has nothing to do
+// without it). Prefer NewMetadataAnalyzer for callers that only need the
+// pure enrichment.
+func NewMetadataService(deps MetadataDeps) (*MetadataService, error) {
+	svc, err := NewMetadataAnalyzer(deps)
+	if err != nil {
+		return nil, err
+	}
+	if deps.Writer == nil {
+		return nil, fmt.Errorf("metadata.NewMetadataService: ClipMetadataWriter is required (P1 #15 fail-closed — direct assetRepo.Upsert is removed)")
+	}
+	return svc, nil
 }

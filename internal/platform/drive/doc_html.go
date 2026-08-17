@@ -10,6 +10,7 @@ package drive
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf16"
 
@@ -27,11 +28,13 @@ const (
 	blockCode
 )
 
-// docRun is one inline text run with optional bold and/or link styling.
+// docRun is one inline text run with optional bold and/or link styling, or an
+// inline image (when image is set, the run contributes no text).
 type docRun struct {
-	text string
-	bold bool
-	link string
+	text  string
+	bold  bool
+	link  string
+	image string // inline image source URL; when set the run is an <img>
 }
 
 // docBlock is one structural block (title / heading / paragraph / code line)
@@ -47,6 +50,21 @@ func (b docBlock) text() string {
 		sb.WriteString(r.text)
 	}
 	return sb.String()
+}
+
+// hasContent reports whether the block contributes visible content: text runs
+// or inline images. It keeps an image-only paragraph (the entity-image <img>)
+// from being dropped as an empty block.
+func (b docBlock) hasContent() bool {
+	if b.text() != "" {
+		return true
+	}
+	for _, r := range b.runs {
+		if r.image != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (b docBlock) namedStyleType() string {
@@ -119,6 +137,10 @@ func collectInlineRuns(n *html.Node) []docRun {
 					walk(c, true)
 				case "a":
 					collectLinkRuns(c, &runs, bold)
+				case "img":
+					if src := nodeAttr(c, "src"); src != "" {
+						runs = append(runs, docRun{image: src})
+					}
 				default:
 					walk(c, bold)
 				}
@@ -183,11 +205,11 @@ func utf16Len(s string) int {
 // UTF-16 code units, matching the Docs API.
 func buildDocumentInsertRequests(blocks []docBlock) []*docs.Request {
 	// Drop empty blocks up front so the joined text and the per-block offset
-	// walk stay in lockstep (an empty block would otherwise add a stray "\n"
-	// that the offset loop never accounts for).
+	// walk stay in lockstep. Image-only blocks are retained (hasContent) so
+	// the entity-image <img> is never silently dropped.
 	var nonEmpty []docBlock
 	for _, b := range blocks {
-		if b.text() != "" {
+		if b.hasContent() {
 			nonEmpty = append(nonEmpty, b)
 		}
 	}
@@ -210,20 +232,30 @@ func buildDocumentInsertRequests(blocks []docBlock) []*docs.Request {
 		},
 	}
 
+	type imageInsert struct {
+		index int64
+		uri   string
+	}
+	var images []imageInsert
+
 	offset := int64(1)
 	for _, b := range nonEmpty {
 		text := b.text()
 		end := offset + int64(utf16Len(text))
 
-		reqs = append(reqs, &docs.Request{
-			UpdateParagraphStyle: &docs.UpdateParagraphStyleRequest{
-				Range:          &docs.Range{StartIndex: offset, EndIndex: end},
-				ParagraphStyle: &docs.ParagraphStyle{NamedStyleType: b.namedStyleType()},
-				Fields:         "namedStyleType",
-			},
-		})
+		// A paragraph style over an empty range is meaningless (image-only
+		// block), so it is only emitted when the block carries text.
+		if text != "" {
+			reqs = append(reqs, &docs.Request{
+				UpdateParagraphStyle: &docs.UpdateParagraphStyleRequest{
+					Range:          &docs.Range{StartIndex: offset, EndIndex: end},
+					ParagraphStyle: &docs.ParagraphStyle{NamedStyleType: b.namedStyleType()},
+					Fields:         "namedStyleType",
+				},
+			})
+		}
 
-		if b.style == blockCode {
+		if b.style == blockCode && text != "" {
 			reqs = append(reqs, &docs.Request{
 				UpdateTextStyle: &docs.UpdateTextStyleRequest{
 					Range:     &docs.Range{StartIndex: offset, EndIndex: end},
@@ -234,6 +266,13 @@ func buildDocumentInsertRequests(blocks []docBlock) []*docs.Request {
 		} else {
 			runOffset := int64(0)
 			for _, run := range b.runs {
+				if run.image != "" {
+					// Inline images occupy a position but contribute no text.
+					// Record the absolute index so the image can be inserted
+					// after the text and styling requests are emitted.
+					images = append(images, imageInsert{index: offset + runOffset, uri: run.image})
+					continue
+				}
 				if run.text == "" {
 					continue
 				}
@@ -263,5 +302,19 @@ func buildDocumentInsertRequests(blocks []docBlock) []*docs.Request {
 		}
 		offset = end + 1
 	}
+
+	// Inline images are inserted in descending index order after the text and
+	// styling requests so an earlier insertion never shifts the position of a
+	// later (left) image.
+	sort.Slice(images, func(i, j int) bool { return images[i].index > images[j].index })
+	for _, img := range images {
+		reqs = append(reqs, &docs.Request{
+			InsertInlineImage: &docs.InsertInlineImageRequest{
+				Location: &docs.Location{Index: img.index},
+				Uri:      img.uri,
+			},
+		})
+	}
+
 	return reqs
 }

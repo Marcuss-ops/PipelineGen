@@ -1,8 +1,9 @@
-// ── GET /api/clips/diagnostics + POST /api/clips/search-advanced + GET /api/clips/stats ─
+// ── GET /api/clips/diagnostics + POST /api/clips/search-advanced ─
 //
-// Diagnostics returns YouTube clip module health and dependency status.
+// Diagnostics returns YouTube clip module health, dependency status,
+// and the canonical search fan-out telemetry (the former
+// GET /api/clips/stats payload was merged here).
 // SearchCatalog searches the local catalog with structured filters.
-// Stats returns clip statistics across all sources.
 
 package youtube
 
@@ -73,7 +74,9 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 			"js_runtime_path":        cfg.YouTubeJSRuntimePath,
 		}
 		// Keep configuration details separate from the typed dependency checks.
-		apiutil.OK(c, gin.H{"ok": requiredChecksOK(checks), "checks": checks, "config": configDetails})
+		// Search fan-out telemetry (formerly GET /api/clips/stats) is merged
+		// into this diagnostics payload.
+		apiutil.OK(c, gin.H{"ok": requiredChecksOK(checks), "checks": checks, "config": configDetails, "search": searchStatsPayload(h.searchFanOut)})
 		return
 	}
 
@@ -86,6 +89,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"ok":     ok,
 		"checks": checks,
+		"search": searchStatsPayload(h.searchFanOut),
 	})
 }
 
@@ -180,13 +184,14 @@ func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 	})
 }
 
-// Stats returns clip statistics across all sources.
-func (h *YouTubeClipHandler) Stats(c *gin.Context) {
-	if h.searchFanOut == nil {
-		apiutil.InternalError(c, fmt.Errorf("search fan-out not wired"))
-		return
+// searchStatsPayload renders the canonical SearchFanOut per-backend
+// telemetry (the retired GET /api/clips/stats payload, now merged into
+// Diagnostics). fanOut nil → {"available": false} (honest, no fake data).
+func searchStatsPayload(fanOut search.SearchFanOut) gin.H {
+	if fanOut == nil {
+		return gin.H{"available": false}
 	}
-	stats := h.searchFanOut.Stats()
+	stats := fanOut.Stats()
 	providers := make(map[string]gin.H, len(stats))
 	for name, s := range stats {
 		providers[name] = gin.H{
@@ -196,9 +201,8 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 			"avg_latency_ms": s.AverageLatency().Milliseconds(),
 		}
 	}
-
-	apiutil.OK(c, gin.H{
-		"ok":        true,
+	return gin.H{
+		"available": true,
 		"providers": providers,
-	})
+	}
 }

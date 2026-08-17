@@ -36,9 +36,27 @@ type ResolvedVoiceover struct {
 // SceneDurationResolver is the single policy point for scene timeline
 // duration. The explicit editorial duration wins; legacy milliseconds and
 // clip duration are accepted only while resolving the boundary input.
+// For COMBINED_TIMELINE scenes whose clip video is materialized, the scene
+// duration is max(visual, voiceover) so a short clip freezes under a longer
+// narration instead of clamping the voiceover to the clip window.
 type SceneDurationResolver struct{}
 
-func (SceneDurationResolver) Resolve(scene Scene, voiceoverDurationUS int64) (int64, error) {
+func (SceneDurationResolver) Resolve(scene Scene, mode audio.AudioMode, clipBound bool, intents []audio.AudioIntent, voiceoverDurationUS int64) (int64, error) {
+	// COMBINED_TIMELINE materializes both the clip video and the narration
+	// into one master. When the clip is part of that materialized timeline,
+	// a clip shorter than its narration freezes on its last frame until the
+	// voiceover completes, so the canonical duration is the larger of the two
+	// spans — never the clip duration alone. This resolver is the single
+	// owner of that policy: nothing else may rewrite DurationUS to force one
+	// side of the max().
+	if mode == audio.AudioModeCombinedTimeline && clipBound {
+		if visual := sceneVisualDurationUS(scene, intents); visual > 0 {
+			if voiceoverDurationUS > visual {
+				return voiceoverDurationUS, nil
+			}
+			return visual, nil
+		}
+	}
 	if scene.DurationUS > 0 {
 		return scene.DurationUS, nil
 	}
@@ -68,7 +86,7 @@ func (SceneDurationResolver) Resolve(scene Scene, voiceoverDurationUS int64) (in
 // ResolveScenes seals the asset/timing projection. It is deliberately pure:
 // asset acquisition belongs to the adapter/Media Registry boundary, while
 // this function only accepts already-resolved references.
-func ResolveScenes(scenes []Scene, language Language) ([]ResolvedScene, error) {
+func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clipBound bool) ([]ResolvedScene, error) {
 	resolved := make([]ResolvedScene, 0, len(scenes))
 	durationResolver := SceneDurationResolver{}
 	var startUS int64
@@ -83,15 +101,6 @@ func ResolveScenes(scenes []Scene, language Language) ([]ResolvedScene, error) {
 				vo = &ResolvedVoiceover{AssetID: ref.ID, Path: ref.FilePath, DurationUS: durationUS}
 			}
 		}
-		durationUS, err := durationResolver.Resolve(scene, func() int64 {
-			if vo != nil {
-				return vo.DurationUS
-			}
-			return 0
-		}())
-		if err != nil {
-			return nil, err
-		}
 		intents := append([]audio.AudioIntent(nil), scene.AudioIntents...)
 		if len(intents) == 0 {
 			intent := scene.Audio
@@ -99,6 +108,15 @@ func ResolveScenes(scenes []Scene, language Language) ([]ResolvedScene, error) {
 				intent.Mode = audio.AudioSilence
 			}
 			intents = []audio.AudioIntent{intent}
+		}
+		durationUS, err := durationResolver.Resolve(scene, mode, clipBound, intents, func() int64 {
+			if vo != nil {
+				return vo.DurationUS
+			}
+			return 0
+		}())
+		if err != nil {
+			return nil, err
 		}
 		videos, err := resolvedVideos(scene, intents)
 		if err != nil {
@@ -155,16 +173,7 @@ func resolvedVideos(scene Scene, intents []audio.AudioIntent) ([]audio.VideoSegm
 		if clip.SourceInMS < 0 || clip.SourceOutMS < 0 || clip.SourceOutMS < clip.SourceInMS {
 			return nil, fmt.Errorf("scene %s has invalid clip source range", scene.ID)
 		}
-		inUS := clip.SourceInMS * 1000
-		durationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
-		if durationUS <= 0 {
-			for _, intent := range intents {
-				if intent.Mode == audio.AudioClip && intent.ClipAssetID == clip.ID {
-					inUS, durationUS = intent.SourceInUS, intent.SourceDurationUS
-					break
-				}
-			}
-		}
+		inUS, durationUS := clipVisualWindowUS(clip, intents)
 		if durationUS <= 0 {
 			return nil, fmt.Errorf("scene %s clip %s has no usable duration", scene.ID, clip.ID)
 		}
@@ -172,4 +181,44 @@ func resolvedVideos(scene Scene, intents []audio.AudioIntent) ([]audio.VideoSegm
 		offset += durationUS
 	}
 	return videos, nil
+}
+
+// clipVisualWindowUS returns the materialized visual window of one clip in
+// microseconds: the source range when present, else the matching clip-audio
+// intent's source window. It is the single derivation shared by the scene
+// duration resolver and the sealed video segments, so the visual span and the
+// scene duration can never diverge.
+func clipVisualWindowUS(clip *ClipReference, intents []audio.AudioIntent) (inUS, durationUS int64) {
+	if clip == nil {
+		return 0, 0
+	}
+	if clip.SourceInMS >= 0 && clip.SourceOutMS > clip.SourceInMS {
+		return clip.SourceInMS * 1000, (clip.SourceOutMS - clip.SourceInMS) * 1000
+	}
+	for _, intent := range intents {
+		if intent.Mode == audio.AudioClip && intent.ClipAssetID == clip.ID {
+			return intent.SourceInUS, intent.SourceDurationUS
+		}
+	}
+	return 0, 0
+}
+
+// sceneVisualDurationUS totals the materialized visual span of every clip in
+// the scene (the same windows sealed into VideoSegments), or 0 when no clip
+// carries a usable window.
+func sceneVisualDurationUS(scene Scene, intents []audio.AudioIntent) int64 {
+	clips := scene.Clips
+	if len(clips) == 0 && scene.Clip != nil {
+		clips = []*ClipReference{scene.Clip}
+	}
+	var total int64
+	for _, clip := range clips {
+		if clip == nil {
+			continue
+		}
+		if _, durationUS := clipVisualWindowUS(clip, intents); durationUS > 0 {
+			total += durationUS
+		}
+	}
+	return total
 }

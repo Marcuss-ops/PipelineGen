@@ -447,6 +447,76 @@ func TestIndexingHandler_IndexClipErrorPropagatesAsRetryable(t *testing.T) {
 	}
 }
 
+// TestIndexingHandler_IndexRevisionOnlyEventSupersedes pins the canonical
+// supersede field: an event carrying index_revision (and NO legacy
+// source_version) is compared against the current canonical index_revision
+// — never the byte hash. A mismatch supersedes without running IndexClip.
+func TestIndexingHandler_IndexRevisionOnlyEventSupersedes(t *testing.T) {
+	indexer := &mockIndexClipper{}
+	src := &mockSourceVersionQuerier{getResult: "rev-CURRENT"}
+	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+
+	body, err := json.Marshal(map[string]any{
+		"schema_version":       outboxhandlers.IndexRequestSchemaVersion,
+		"event_id":             "evt-index-rev",
+		"asset_id":             "clip-ir",
+		"operation":            "UPSERT",
+		"index_revision":       "rev-OLD",
+		"target_index_version": "v1",
+		"requested_vectors":    []string{"text", "transcript"},
+		"requested_at":         "2026-06-25T12:00:00Z",
+		"idempotency_key":      "idem-ir",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	err = h.Handle(context.Background(), indexEvt(t, string(body)))
+	if err == nil {
+		t.Fatal("expected supersede on index_revision mismatch; got nil")
+	}
+	if !outboxevents.IsSupersede(err) {
+		t.Fatalf("index_revision mismatch must supersede; got: %v", err)
+	}
+	if indexer.invoked != 0 {
+		t.Errorf("IndexClip must not run on supersede; got %d calls", indexer.invoked)
+	}
+}
+
+// TestIndexingHandler_IndexRevisionPreferredOverLegacySourceVersion pins
+// that when BOTH index_revision and source_version are present, the gate
+// compares the CANONICAL index_revision — a stale legacy source_version
+// must not force a supersede when the index revision is current.
+func TestIndexingHandler_IndexRevisionPreferredOverLegacySourceVersion(t *testing.T) {
+	indexer := &mockIndexClipper{}
+	src := &mockSourceVersionQuerier{getResult: "rev-CURRENT"}
+	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+
+	body, err := json.Marshal(map[string]any{
+		"schema_version":       outboxhandlers.IndexRequestSchemaVersion,
+		"event_id":             "evt-both",
+		"asset_id":             "clip-both",
+		"operation":            "UPSERT",
+		"source_version":       "legacy-stale",
+		"index_revision":       "rev-CURRENT",
+		"target_index_version": "v1",
+		"requested_vectors":    []string{"text", "transcript"},
+		"requested_at":         "2026-06-25T12:00:00Z",
+		"idempotency_key":      "idem-both",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	err = h.Handle(context.Background(), indexEvt(t, string(body)))
+	if err != nil {
+		t.Fatalf("index_revision matching current must NOT supersede; got: %v", err)
+	}
+	if indexer.invoked != 1 {
+		t.Errorf("IndexClip must run when index_revision matches; got %d calls", indexer.invoked)
+	}
+}
+
 // TestIndexingHandler_MetricsEmitted is a smoke-level
 // confirmation that MediaIndexAttemptsTotal bumps on every
 // Handle entry. We can't easily read the global counter

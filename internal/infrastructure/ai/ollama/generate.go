@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"
 )
@@ -184,6 +185,14 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	} else if _, ok := options["num_predict"]; !ok {
 		options["num_predict"] = types.DefaultNumPredict
 	}
+	// num_ctx must fit the prompt plus the generation budget. Ollama's
+	// default window is 4096 tokens; the research path's editorial prompt
+	// embeds the full resolved source text and reaches ~5k tokens, so at the
+	// default the model is left with a single output token and fails
+	// min_words. Callers may override via req.Options["num_ctx"].
+	if _, ok := options["num_ctx"]; !ok {
+		options["num_ctx"] = types.DefaultNumCtx
+	}
 	if _, ok := options["temperature"]; !ok {
 		options["temperature"] = types.DefaultTemperature
 	}
@@ -213,7 +222,21 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	// See generate_format.go for the canonical 4-case decision tree.
 	req.Format = resolveGenerationFormat(req)
 
-	result, err := g.client.Chat(ctx, messages, options, req.Format)
+	// The Ollama client is the owner of the inference boundary, so it emits
+	// the canonical ollama/generate operation itself (MeasureOperation). The
+	// legacy Prometheus histogram above remains the migration projection;
+	// no caller re-times the same request independently.
+	var result string
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageGenerate,
+		Component: kernobs.ComponentOllama,
+		Operation: kernobs.OperationGenerate,
+		Items:     1,
+	}, func(ctx context.Context) error {
+		out, chatErr := g.client.Chat(ctx, messages, options, req.Format)
+		result = out
+		return chatErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
 	}

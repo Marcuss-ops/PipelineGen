@@ -49,6 +49,25 @@ type ClipMetadataInput struct {
 	// a degraded envelope.
 	Title string
 
+	// Description is the caller-supplied clip description (e.g. the
+	// payload `texts[].description` of the original-language track). It
+	// is carried into the metadata_json `description` key so the
+	// indexer's canonical SemanticDocument composition includes it in
+	// the embedding text. Request-provided; survives enrichment.
+	Description string
+
+	// Summary is the caller-supplied clip summary (Segment.Summary).
+	// Request-provided and MUST survive enrichment: when non-empty it
+	// wins over the LLM-derived clip_summary (godlike/06 request-
+	// provided-survives contract).
+	Summary string
+
+	// Tags are the caller-supplied clip tags (Segment.Tags).
+	// Request-provided and MUST survive enrichment: when non-empty they
+	// are persisted to media_assets.tags and the Qdrant `tags` payload
+	// key verbatim.
+	Tags []string
+
 	// Transcript is the Whisper or yt-dlp subtitle text for the clip.
 	// Used by the quality-score formula (transcript_word_count) and the
 	// sponsor-segment regex.
@@ -165,8 +184,14 @@ type CanonicalClipMetadata struct {
 	// input didn't carry a group.
 	NormalizedGroup string `json:"normalized_group,omitempty"`
 
-	// SourceVersion is the deterministic content fingerprint used as
-	// the outbox event_key suffix.
+	// SourceVersion carries the indexable-snapshot revision
+	// (index_revision) — the SEPARATE supersede fingerprint that folds
+	// byte identity + text tracks + metadata. It is NOT byte identity:
+	// content_sha256 (ContentHash) stays pure and must never be folded
+	// with text-track/metadata changes (godlike/06: content_sha256 vs
+	// index_revision vs semantic_document_hash are distinct). The legacy
+	// outbox payload key remains `source_version`; the canonical
+	// metadata_json key is `index_revision` (mediaregistry.IndexRevisionField).
 	SourceVersion string `json:"source_version,omitempty"`
 
 	// JobID is the optional job identifier stamped into the outbox
@@ -240,6 +265,12 @@ type CanonicalClipMetadata struct {
 	// narrative description.
 	Title string `json:"title,omitempty"`
 
+	// Description is the caller-supplied clip description. Persisted in
+	// metadata_json `description` and consumed by the indexer's
+	// SemanticDocument composition (document-text field 2) and the
+	// Qdrant payload `description` key.
+	Description string `json:"description,omitempty"`
+
 	// SourceTitle and SourceChannel preserve the original YouTube metadata
 	// separately from the generated clip display title.
 	SourceTitle   string `json:"source_title,omitempty"`
@@ -258,8 +289,12 @@ type CanonicalClipMetadata struct {
 	// the API.
 	DrivePath string `json:"drive_path,omitempty"`
 
-	// ContentHash is the file content hash (FileHash / MD5 of the
-	// local clip). The canonical ingest-time fingerprint.
+	// ContentHash is the BYTE identity (content_sha256) of the
+	// materialized clip. It must never fold transcript/tags/metadata
+	// changes — those belong to SourceVersion (index_revision) and the
+	// semantic_document_hash (embedder text). The canonical digest is a
+	// 64-hex SHA-256 (mediaregistry.ValidateContentSHA256); legacy rows
+	// may still carry an MD5 file_hash until the cutover backfill.
 	ContentHash string `json:"content_hash,omitempty"`
 
 	// ── Text track projection (lightweight, no full transcripts) ────

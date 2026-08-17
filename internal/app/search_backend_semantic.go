@@ -53,12 +53,19 @@ const (
 	semanticDenseVectorName  = "text"
 	semanticSparseVectorName = "bm25_text"
 
-	// semanticMinScore is the floor below which Qdrant hits are
-	// dropped pre-hydration. Set to 0.01 to allow low-confidence
-	// results through — the production embedding model
-	// The sampler owns acceptance after hydration; this backend must not
+	// semanticMinScore is the ANN (cosine-similarity) floor below which
+	// Qdrant hits are dropped pre-hydration. Kept deliberately low: the
+	// sampler owns acceptance after hydration, and this backend must not
 	// compensate for incompatible embedding spaces with a score hack.
 	semanticMinScore = 0.01
+
+	// semanticHybridMinScore is the hybrid (RRF) floor. Qdrant's RRF
+	// fusion (rank constant k=1) scores a point that appears in a single
+	// prefetch list as 1/(1+rank): rank 9 → 0.1. Raising the floor above
+	// 0.1 rejects the rank-9+ single-list tail so irrelevant points (the
+	// multi-term "0.1 collapse" noise) never surface pre-hydration.
+	// PR-MINSCORE-HYBRID (August 2026).
+	semanticHybridMinScore = 0.11
 )
 
 // semanticSearchBackend is the Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY
@@ -160,12 +167,14 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 
 	// ── 3. Resolve score floor ───────────────────────────────
 	// PR-MINSCORE-QUERY (July 2026): q.MinScore > 0 overrides the
-	// backend default (semanticMinScore 0.50). This lets callers
-	// tune precision/recall per-request without changing the
-	// package-level constant.
-	minScore := semanticMinScore
+	// backend defaults. ANN (cosine) and hybrid (RRF) use different
+	// score scales, so each path resolves its own floor; a caller-set
+	// q.MinScore overrides BOTH so per-request tuning stays uniform.
+	annMinScore := semanticMinScore
+	hybridMinScore := semanticHybridMinScore
 	if q.MinScore > 0 {
-		minScore = q.MinScore
+		annMinScore = q.MinScore
+		hybridMinScore = q.MinScore
 	}
 
 	// ── 4. Clamp limit ─────────────────────────────────────────
@@ -193,7 +202,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			SparseText:       q.Text,
 			SparseVectorName: semanticSparseVectorName,
 			Limit:            limit,
-			MinScore:         minScore,
+			MinScore:         hybridMinScore,
 			Source:           filter.Source,
 			Category:         filter.Category,
 			MediaType:        filter.MediaType,
@@ -207,7 +216,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			QueryVector:    vec,
 			VectorName:     semanticDenseVectorName,
 			Limit:          limit,
-			MinScore:       minScore,
+			MinScore:       annMinScore,
 			Source:         filter.Source,
 			Category:       filter.Category,
 			MediaType:      filter.MediaType,

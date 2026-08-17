@@ -115,6 +115,7 @@ SMOKE_HTTP_TIMEOUT_SECONDS="${SMOKE_HTTP_TIMEOUT_SECONDS:-8}"
 SMOKE_LAST_HTTP=""
 SMOKE_LAST_BODY=""
 SMOKE_LAST_STATUS=""
+SMOKE_LAST_RETRY_AFTER=""
 
 # Keep the per-run capture directory available even if an inherited EXIT/TERM
 # trap cleaned it up while a helper was executing in a subshell. The caller
@@ -276,12 +277,14 @@ smoke_curl() {
     local url_path="$1"; shift
     local out_file="$WORK_DIR/last.body"
     local code_file="$WORK_DIR/last.code"
+    local headers_file="$WORK_DIR/last.headers"
     local code
     local idem_headers=()
     if [[ "$method" != "GET" ]]; then
         idem_headers=(-H "Idempotency-Key: ${SMOKE_IDEMPOTENCY_KEY:-$(smoke_gen_uuid)}")
     fi
     code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
+        -D "$headers_file" \
         -X "$method" \
         -o "$out_file" -w '%{http_code}' \
         -H "Authorization: Bearer $SMOKE_TOKEN" \
@@ -291,12 +294,49 @@ smoke_curl() {
         "http://${SMOKE_API_BASE}${url_path}")
     export SMOKE_LAST_HTTP="$code"
     export SMOKE_LAST_BODY="$out_file"
+    # Honest Retry-After from the rate limiter (RFC 7231 delta-seconds).
+    # Polling reads this to back off instead of saturating the token bucket.
+    local retry_after=""
+    if [[ -f "$headers_file" ]]; then
+        # `|| true` keeps the no-match case (normal 2xx responses) from
+        # tripping `set -e` + `pipefail` — grep exits 1 when the header is
+        # absent, which would otherwise abort the whole smoke script.
+        retry_after=$(grep -i '^Retry-After:' "$headers_file" 2>/dev/null | head -1 | tr -d '\r' | awk '{print $2}' || true)
+    fi
+    export SMOKE_LAST_RETRY_AFTER="${retry_after:-}"
     # Also write the HTTP code to a file so callers in $(…) subshells can
     # read it after the subshell exits. SMOKE_LAST_HTTP/SIDE effects of
     # smoke_curl are lost when called inside $(…) because exports die with
     # the child process. The .code file persists in $WORK_DIR.
     printf '%s' "$code" > "$code_file"
     printf '%s' "$code"
+}
+
+# ── Rate-limit backoff ─────────────────────────────────────────────────
+# The server runs a per-IP token bucket (default 100 req/min) and answers
+# 429 with an honest RFC 7231 Retry-After delta-seconds header. Polling
+# loops MUST back off on 429 instead of hammering the limiter (which, per
+# the limiter's integer-window refill, would keep returning 429 for a full
+# refill window). smoke_curl stores the header value in
+# SMOKE_LAST_RETRY_AFTER on every call.
+#
+# smoke_rate_limit_backoff — when the most recent smoke_curl returned 429,
+# sleep the honest Retry-After (clamped to [1s, 60s]) and return 0 so the
+# caller can `continue`; otherwise return 1 (no-op).
+smoke_rate_limit_backoff() {
+    if [[ "$SMOKE_LAST_HTTP" != "429" ]]; then
+        return 1
+    fi
+    local wait="${SMOKE_LAST_RETRY_AFTER:-${SMOKE_RATE_LIMIT_RETRY_SECONDS:-5}}"
+    # Guard against a malformed/missing value: only accept a positive
+    # integer delta-seconds; fall back to the env-configurable default.
+    if [[ ! "$wait" =~ ^[0-9]+$ ]]; then
+        wait="${SMOKE_RATE_LIMIT_RETRY_SECONDS:-5}"
+    fi
+    if (( wait < 1 )); then wait=1; fi
+    if (( wait > 60 )); then wait=60; fi
+    sleep "$wait"
+    return 0
 }
 
 # Poll /api/jobs/{id} until the job reaches a terminal status.
@@ -316,6 +356,9 @@ smoke_poll_terminal() {
         # those exports are lost and subsequent jq reads fail with
         # "No such file or directory".
         smoke_curl GET "/api/jobs/${job_id}" >/dev/null
+        if smoke_rate_limit_backoff; then
+            continue
+        fi
         if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
             return 1
         fi
@@ -330,9 +373,19 @@ smoke_poll_terminal() {
 				# aggregator to replace parent_state=waiting_children.
 				local terminal_body="$SMOKE_LAST_BODY"
 				local full_body=""
-				if smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null && [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
-					full_body="$SMOKE_LAST_BODY"
-				fi
+				local full_attempts=0
+				while (( full_attempts < 3 )); do
+					smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
+					if smoke_rate_limit_backoff; then
+						full_attempts=$((full_attempts + 1))
+						smoke_wallclock_check
+						continue
+					fi
+					if [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
+						full_body="$SMOKE_LAST_BODY"
+					fi
+					break
+				done
 				if [[ -n "$full_body" ]] && jq -e '.result.data.parent_state == "waiting_children" or .result.parent_state == "waiting_children"' "$full_body" >/dev/null 2>&1; then
 					SMOKE_LAST_BODY="$terminal_body"
 					sleep "$SMOKE_POLL_INTERVAL_SECONDS"

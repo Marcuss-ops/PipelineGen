@@ -22,6 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
@@ -137,8 +138,18 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	if searchLimit < 20 {
 		searchLimit = 20
 	}
-	results, err := r.search.SearchByText(ctx, query, searchLimit, resCtx.Language)
-	if err != nil {
+	// qdrant.search is the semantic-index boundary. The canonical Run clock
+	// records it as an OperationReport under source.resolve; no ad-hoc timer.
+	var results []SemanticSearchResult
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     stageSourceResolve,
+		Component: kernobs.ComponentQdrant,
+		Operation: kernobs.OperationSearch,
+	}, func(opCtx context.Context) error {
+		var searchErr error
+		results, searchErr = r.search.SearchByText(opCtx, query, searchLimit, resCtx.Language)
+		return searchErr
+	}); err != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceSearch,
 			Query:       query,
@@ -183,8 +194,19 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 				break
 			}
 		}
-		evidence, _, _, hydrateErr := r.clipBuilder.BuildClipContext(ctx, []string{id}, &hydrateOpts)
-		if hydrateErr != nil || evidence == nil || evidence.ClipDetails == nil {
+		// sqlite.hydrate is the canonical evidence-hydration boundary: Qdrant
+		// selects candidates, SQLite supplies ClipEvidence. One operation per
+		// hydrated clip so the accumulated work never masquerades as wall time.
+		var evidence *scriptpkg.ClipEvidence
+		if hydrateErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage:     stageSourceResolve,
+			Component: kernobs.ComponentSQLite,
+			Operation: kernobs.OperationName("hydrate"),
+		}, func(opCtx context.Context) error {
+			var buildErr error
+			evidence, _, _, buildErr = r.clipBuilder.BuildClipContext(opCtx, []string{id}, &hydrateOpts)
+			return buildErr
+		}); hydrateErr != nil || evidence == nil || evidence.ClipDetails == nil {
 			// A semantic hit without a ready transcript/evidence row is
 			// not an accepted clip. Keep searching the Qdrant result set;
 			// do not let one stale asset abort otherwise valid evidence.

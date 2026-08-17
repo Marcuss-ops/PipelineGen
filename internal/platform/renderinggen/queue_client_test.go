@@ -48,9 +48,9 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 		ID:                 "art-1",
 		Kind:               "video",
 		StorageKey:         "overlay/2026/08/job-1/overlay.mp4",
-		URL:                "https://store/overlay.mp4",
-		SHA256:             "abc",
-		MimeType:           "video/mp4",
+		ArtifactURL:        "https://store/overlay.mp4",
+		ArtifactHash:       "abc",
+		ContentType:        "video/mp4",
 		SizeBytes:          28382193,
 		Width:              1920,
 		Height:             1080,
@@ -69,7 +69,7 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 	if got == nil {
 		t.Fatal("nil artifact")
 	}
-	if got.ID != in.ID || got.SHA256 != in.SHA256 || got.ProfileID != in.ProfileID ||
+	if got.ID != in.ID || got.SHA256 != in.ArtifactHash || got.ProfileID != in.ProfileID ||
 		got.CopyEligible != in.CopyEligible || got.ClosedGOP != in.ClosedGOP ||
 		got.FirstFrameKeyframe != in.FirstFrameKeyframe || got.Codec != in.Codec ||
 		got.CodecProfile != in.CodecProfile || got.Width != in.Width ||
@@ -77,6 +77,30 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 		got.StorageKey != in.StorageKey || got.DurationUS != in.DurationUS ||
 		got.FrameCount != in.FrameCount || got.SizeBytes != in.SizeBytes {
 		t.Fatalf("artifact mapping lost fields: %+v", got)
+	}
+}
+
+func TestToScriptArtifactMapsAnalyticsFields(t *testing.T) {
+	in := &queueclient.Artifact{
+		ArtifactHash: "abc",
+		Metrics:      map[string]float64{"render_ms": 900.9, "encode_ms": 300.1, "publish_ms": 12},
+		DriveFileID:  "drive-file-1",
+		DriveLink:    "https://drive.google.com/file/d/drive-file-1/view",
+	}
+	got := toScriptArtifact(in)
+	if got == nil {
+		t.Fatal("nil artifact")
+	}
+	if got.RenderMS != 900 || got.EncodeMS != 300 {
+		t.Fatalf("render/encode = %d/%d, want 900/300 (ms, rounded down)", got.RenderMS, got.EncodeMS)
+	}
+	if got.DriveFileID != "drive-file-1" || got.DriveLink != "https://drive.google.com/file/d/drive-file-1/view" {
+		t.Fatalf("drive identity lost: %+v", got)
+	}
+
+	// Absent metrics map → zeros, never a panic.
+	if none := toScriptArtifact(&queueclient.Artifact{}); none.RenderMS != 0 || none.EncodeMS != 0 || none.DriveFileID != "" {
+		t.Fatalf("empty artifact must map to zero analytics: %+v", none)
 	}
 }
 

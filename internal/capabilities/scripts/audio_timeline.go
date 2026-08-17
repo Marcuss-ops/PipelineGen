@@ -3,24 +3,127 @@ package scriptgeneration
 import (
 	"fmt"
 	"math"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
+
+// FinalAudioDurationToleranceUS is the single canonical master/final-audio
+// duration tolerance. The AAC encoder may pad the final m4a by up to a frame
+// or two (~40ms) beyond the canonical timeline without violating the contract.
+// Both ValidateFinalAudioReference (the final-audio reference check) and
+// ValidateMasterAudioInvariants (the master invariant) derive from this
+// constant, matching the Rust render_audio_probe tolerance (0.040s). The
+// copy-only mux keeps its own wider window because it compares the
+// frame-aligned video container against the audio master.
+const FinalAudioDurationToleranceUS int64 = 40_000
 
 func ValidateFinalAudioReference(ref FinalAudioReference, plan audio.CompiledAudioPlan) error {
 	if err := plan.Validate(); err != nil {
 		return err
 	}
-	if ref.AudioContractVersion != audio.AudioContractVersion || ref.AudioPlanVersion != plan.Version || ref.PlanSHA256 != plan.PlanSHA256 || ref.FinalAudioSHA256 == "" || ref.Path == "" || !ref.FinalMix || !ref.CopyEligible || ref.Bitrate <= 0 || ref.SizeBytes <= 0 || ref.StartPTS < 0 || ref.DurationMS <= 0 || math.Abs(float64(ref.DurationMS-(plan.DurationUS/1000))) > 40 {
+	if ref.AudioContractVersion != audio.AudioContractVersion || ref.AudioPlanVersion != plan.Version || ref.PlanSHA256 != plan.PlanSHA256 || ref.FinalAudioSHA256 == "" || ref.Path == "" || !ref.FinalMix || !ref.CopyEligible || ref.Bitrate <= 0 || ref.SizeBytes <= 0 || ref.StartPTS < 0 || ref.DurationMS <= 0 || math.Abs(float64(ref.DurationMS-(plan.DurationUS/1000))) > float64(FinalAudioDurationToleranceUS)/1000 {
 		return fmt.Errorf("final audio reference does not satisfy canonical contract")
 	}
 	output := plan.Output
 	if ref.Codec != output.Codec || ref.Profile != output.Profile || ref.SampleRate != output.SampleRate || ref.Channels != output.Channels || ref.ChannelLayout != output.ChannelLayout {
 		return fmt.Errorf("final audio reference profile is incompatible")
+	}
+	return nil
+}
+
+// ValidateMasterAudioInvariants turns the audio-only master invariants into
+// automatic cert-time assertions (never manual checks):
+//
+//  1. scene contiguity + SUM(scene durations) == CanonicalTimeline.duration_us
+//     (scene[0] starts at 0 and scene[i+1] starts where scene[i] ends —
+//     enforced by CanonicalTimeline.Validate and re-asserted here);
+//
+//  2. the compiled plan shares one duration with the canonical timeline;
+//
+//  3. SUM(voiceover timeline durations) == CanonicalTimeline.duration_us for a
+//     narration-driven master: when the plan carries no clip-audio track, the
+//     voiceover track (VO + explicit silence) must tile the timeline exactly —
+//     contiguous events starting at the origin and ending at the timeline
+//     duration, with no gaps;
+//
+//  4. abs(final_audio.duration_us - CanonicalTimeline.duration_us) <=
+//     FinalAudioDurationToleranceUS.
+func ValidateMasterAudioInvariants(timeline audio.CanonicalTimeline, plan audio.CompiledAudioPlan, finalAudio FinalAudioReference) error {
+	if err := timeline.Validate(); err != nil {
+		return fmt.Errorf("master audio invariant: %w", err)
+	}
+	if err := plan.Validate(); err != nil {
+		return fmt.Errorf("master audio invariant: %w", err)
+	}
+	if plan.DurationUS != timeline.DurationUS {
+		return fmt.Errorf("master audio invariant: plan duration %dus != canonical timeline %dus", plan.DurationUS, timeline.DurationUS)
+	}
+	if err := validateNarrationTimelineTiling(plan, timeline.DurationUS); err != nil {
+		return err
+	}
+	finalUS := finalAudio.DurationUS
+	if finalUS <= 0 {
+		finalUS = finalAudio.DurationMS * 1000
+	}
+	delta := finalUS - timeline.DurationUS
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta > FinalAudioDurationToleranceUS {
+		return fmt.Errorf("master audio invariant: final_audio=%dus diverges from CanonicalTimeline=%dus by %dus (tolerance %dus)", finalUS, timeline.DurationUS, delta, FinalAudioDurationToleranceUS)
+	}
+	return nil
+}
+
+// validateNarrationTimelineTiling enforces, for a narration-driven master
+// (a plan with no clip-audio track), that the voiceover track tiles the
+// canonical timeline: contiguous VO/silence events from the origin to the
+// timeline end. For a pure narration master (no silence either) this is
+// exactly SUM(voiceover timeline durations) == CanonicalTimeline.duration_us.
+// Clip-driven masters are exempt: the clip track owns part of the coverage.
+func validateNarrationTimelineTiling(plan audio.CompiledAudioPlan, durationUS int64) error {
+	for _, track := range plan.Tracks {
+		if track.Role == audio.TrackClipAudio && len(track.Events) > 0 {
+			return nil
+		}
+	}
+	var firstStartUS int64 = -1
+	var prevEndUS int64 = -1
+	var voEvents, silenceEvents int
+	contiguous := true
+	for _, track := range plan.Tracks {
+		if track.Role != audio.TrackVoiceover {
+			continue
+		}
+		for _, event := range track.Events {
+			switch event.Type {
+			case audio.EventVoiceover:
+				voEvents++
+			case audio.EventSilence:
+				silenceEvents++
+			}
+			if firstStartUS < 0 {
+				firstStartUS = event.TimelineStartUS
+			}
+			if prevEndUS >= 0 && event.TimelineStartUS != prevEndUS {
+				contiguous = false
+			}
+			prevEndUS = event.TimelineStartUS + event.DurationUS
+		}
+	}
+	if voEvents+silenceEvents == 0 {
+		return fmt.Errorf("master audio invariant: narration-driven master has no voiceover track")
+	}
+	if firstStartUS != 0 {
+		return fmt.Errorf("master audio invariant: voiceover track starts at %dus, want 0", firstStartUS)
+	}
+	if !contiguous {
+		return fmt.Errorf("master audio invariant: voiceover track has gaps")
+	}
+	if prevEndUS != durationUS {
+		return fmt.Errorf("master audio invariant: voiceover track ends at %dus != CanonicalTimeline %dus", prevEndUS, durationUS)
 	}
 	return nil
 }
@@ -74,36 +177,6 @@ func ValidateVoiceoverSourceDurations(result GenerateResult, language Language, 
 				return fmt.Errorf("voiceover source-duration certification: asset %s records source_duration_us=%d but the certified probe is %d within a %d window", event.AssetID, event.SourceDurationUS, probe, window)
 			}
 		}
-	}
-	return nil
-}
-
-// ValidateFinalAudioMirror enforces the cert-time invariant
-// "final_audio.m4a == CanonicalTimeline == RenderPlan.FinalAudio": the
-// RenderPlan.FinalAudio projection must faithfully mirror every certified
-// field of the FinalAudioReference. A silent drop or retype in the projection
-// would let the renderer consume data that diverges from the certified asset.
-// AssetKind and Strategy are pinned to the canonical copy contract.
-func ValidateFinalAudioMirror(ref FinalAudioReference, asset render.FinalAudioAsset) error {
-	if asset.AssetID != ref.AssetID ||
-		asset.AssetKind != "final_audio" ||
-		asset.Strategy != string(audio.FinalAudioCopy) ||
-		asset.Path != ref.Path ||
-		asset.SHA256 != ref.FinalAudioSHA256 ||
-		asset.PlanSHA256 != ref.PlanSHA256 ||
-		asset.AudioContractVersion != ref.AudioContractVersion ||
-		asset.AudioPlanVersion != ref.AudioPlanVersion ||
-		asset.Codec != ref.Codec ||
-		asset.Profile != ref.Profile ||
-		asset.SampleRate != ref.SampleRate ||
-		asset.Channels != ref.Channels ||
-		asset.ChannelLayout != ref.ChannelLayout ||
-		asset.DurationMS != ref.DurationMS ||
-		asset.StartPTS != ref.StartPTS ||
-		asset.SizeBytes != ref.SizeBytes ||
-		asset.FinalMix != ref.FinalMix ||
-		asset.CopyEligible != ref.CopyEligible {
-		return fmt.Errorf("render plan final audio %q does not mirror the certified reference", ref.AssetID)
 	}
 	return nil
 }
@@ -170,13 +243,55 @@ func CompileCanonicalAudioPlan(result GenerateResult, language Language, profile
 // durable generation workflow. It returns the same artifacts as
 // CompileCanonicalAudioPlan plus per-stage timings for the runner.
 func CompileCanonicalAudioPlanWithTimings(result GenerateResult, language Language, profile audio.CanonicalAudioProfile) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+	return compileCanonicalAudioPlanWithTimings(result, language, profile, true)
+}
+
+// CompileCanonicalAudioPlanAudioOnly builds the VO-governed canonical scene
+// timeline for runs without a video render. The original clip audio is NOT
+// dropped: it is clamped to the VO-governed scene window and mixed underneath
+// the narration (VOICEOVER_DUCKED_CLIP), so the audio-only master carries the
+// same audible clip + ducking contract as the video-bound master. Only the
+// video/source windows are excluded, so a long evidence clip never stretches
+// a VO-governed scene.
+func CompileCanonicalAudioPlanAudioOnly(result GenerateResult, language Language, profile audio.CanonicalAudioProfile) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+	return compileCanonicalAudioPlanWithTimings(result, language, profile, false)
+}
+
+func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Language, profile audio.CanonicalAudioProfile, includeClipAudio bool) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
 	var timings AudioCompileTimings
 	if len(result.Scenes) == 0 {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, fmt.Errorf("canonical timeline requires scenes")
 	}
-	resolved, err := resolvedScenesFor(result, language)
+	resolved, err := resolvedScenesFor(result, language, includeClipAudio)
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	if !includeClipAudio {
+		// Audio-only keeps clip bindings as evidence metadata but removes
+		// their video/source windows from the audio timeline, so a long
+		// evidence clip never stretches a VO-governed scene. The original
+		// clip audio is retained and clamped to the VO-governed scene window:
+		// the audio-only master mixes it underneath the narration with the
+		// same ducked-clip policy as the video-bound master.
+		for i := range resolved {
+			resolved[i].Video = audio.VideoSegment{}
+			resolved[i].VideoSegments = nil
+			for j := range resolved[i].AudioIntents {
+				intent := &resolved[i].AudioIntents[j]
+				if intent.Mode != audio.AudioClip {
+					continue
+				}
+				// Scene duration is VO-governed in audio-only: never place
+				// more clip audio than the scene window and never read more
+				// source than we place.
+				if intent.TimelineDurationUS == 0 || intent.TimelineDurationUS > resolved[i].DurationUS {
+					intent.TimelineDurationUS = resolved[i].DurationUS
+				}
+				if intent.SourceDurationUS > intent.TimelineDurationUS {
+					intent.SourceDurationUS = intent.TimelineDurationUS
+				}
+			}
+		}
 	}
 	timelineStarted := time.Now()
 	timeline, err := compileResolvedSceneTimeline(resolved)
@@ -279,7 +394,12 @@ func CompileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 	// and the original clip audio is ducked underneath it. The decision is
 	// recorded on the plan (mix_policy) so the mixer and renderer agree.
 	planStarted := time.Now()
-	plan, err := audio.CompileWithMixPolicy(timeline, profile, audio.MixVoiceoverWithDuckedClip)
+	// The combined timeline is narration-first: the voiceover sits at unity
+	// and the original clip audio is ducked underneath it — for the audio-only
+	// master just as for the video-bound master. The decision is recorded on
+	// the plan (mix_policy) so the mixer and renderer agree.
+	policy := audio.MixVoiceoverWithDuckedClip
+	plan, err := audio.CompileWithMixPolicy(timeline, profile, policy)
 	timings.AudioPlanCompileMS = time.Since(planStarted).Milliseconds()
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
@@ -294,7 +414,7 @@ func CompileCanonicalTimeline(result GenerateResult) (audio.CanonicalTimeline, e
 	if len(result.Scenes) == 0 {
 		return audio.CanonicalTimeline{}, fmt.Errorf("canonical timeline requires scenes")
 	}
-	resolved, err := resolvedScenesFor(result, "it")
+	resolved, err := resolvedScenesFor(result, "it", false)
 	if err != nil {
 		return audio.CanonicalTimeline{}, err
 	}
@@ -302,18 +422,18 @@ func CompileCanonicalTimeline(result GenerateResult) (audio.CanonicalTimeline, e
 }
 
 func compileSceneTimeline(result GenerateResult) (audio.CanonicalTimeline, error) {
-	resolved, err := resolvedScenesFor(result, "it")
+	resolved, err := resolvedScenesFor(result, "it", false)
 	if err != nil {
 		return audio.CanonicalTimeline{}, err
 	}
 	return compileResolvedSceneTimeline(resolved)
 }
 
-func resolvedScenesFor(result GenerateResult, language Language) ([]ResolvedScene, error) {
+func resolvedScenesFor(result GenerateResult, language Language, clipBound bool) ([]ResolvedScene, error) {
 	if len(result.ResolvedScenes) > 0 {
 		return append([]ResolvedScene(nil), result.ResolvedScenes...), nil
 	}
-	return ResolveScenes(result.Scenes, language)
+	return ResolveScenes(result.Scenes, language, result.AudioMode, clipBound)
 }
 
 func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeline, error) {
@@ -328,13 +448,14 @@ func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeli
 			return audio.CanonicalTimeline{}, fmt.Errorf("scene %s has no canonical duration", scene.ID)
 		}
 		intents := scene.AudioIntents
+		videos := freezeTailedVideoSegments(scene, durationUS)
 		timeline.Segments = append(timeline.Segments, audio.TimelineSegment{
 			ID:              scene.ID,
 			Index:           i,
 			TimelineStartUS: startUS,
 			DurationUS:      durationUS,
 			Video:           scene.Video,
-			VideoSegments:   scene.VideoSegments,
+			VideoSegments:   videos,
 			Audio:           intents[0],
 			AudioIntents:    intents,
 		})
@@ -351,117 +472,33 @@ func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeli
 	return timeline, nil
 }
 
-// CompileCanonicalRenderPlan turns the canonical timeline into the immutable
-// integer-frame plan carried by GenerateResult and the render enqueue payload.
-// Asset hashes are mandatory for every visual clip.
-func CompileCanonicalRenderPlan(result GenerateResult, timeline audio.CanonicalTimeline, jobID, revision string, fps int) (*render.RenderPlan, error) {
-	return CompileCanonicalRenderPlanWithFrameRate(result, timeline, jobID, revision, audio.IntegerFrameRate(fps))
-}
-
-// CompileCanonicalRenderPlanWithFrameRate is the rational-frame-rate entry
-// point. The integer-FPS wrapper above remains only for legacy callers.
-func CompileCanonicalRenderPlanWithFrameRate(result GenerateResult, timeline audio.CanonicalTimeline, jobID, revision string, frameRate audio.FrameRate) (*render.RenderPlan, error) {
-	manifest := make([]render.AssetManifestEntry, 0)
-	seen := make(map[string]struct{})
-	for _, scene := range result.Scenes {
-		clips := scene.Clips
-		if len(clips) == 0 && scene.Clip != nil {
-			clips = []*ClipReference{scene.Clip}
-		}
-		for _, clip := range clips {
-			if clip == nil {
-				continue
-			}
-			if strings.TrimSpace(clip.ID) == "" || strings.TrimSpace(clip.Path) == "" || strings.TrimSpace(clip.SHA256) == "" {
-				return nil, fmt.Errorf("render plan clip %s requires path and SHA256", scene.ID)
-			}
-			if _, ok := seen[clip.ID]; ok {
-				continue
-			}
-			seen[clip.ID] = struct{}{}
-			frameCount := clip.FrameCount
-			if clip.Duration > 0 {
-				durationUS, err := microseconds(int64(math.Round(clip.Duration * 1000)))
-				if err != nil {
-					return nil, fmt.Errorf("render plan clip %s duration: %w", scene.ID, err)
-				}
-				resolver, err := audio.NewFrameResolver(frameRate)
-				if err != nil {
-					return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
-				}
-				frameCount, err = resolver.FrameCountForDuration(durationUS)
-				if err != nil {
-					return nil, fmt.Errorf("render plan clip %s frame count: %w", scene.ID, err)
-				}
-			}
-			if frameCount <= 0 {
-				resolver, err := audio.NewFrameResolver(frameRate)
-				if err != nil {
-					return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
-				}
-				for _, segment := range timeline.Segments {
-					for _, video := range segment.EffectiveVideoSegments() {
-						if video.AssetID != clip.ID || video.SourceDurationUS <= 0 {
-							continue
-						}
-						endUS := video.SourceInUS + video.SourceDurationUS
-						if endUS < video.SourceInUS {
-							return nil, fmt.Errorf("render plan clip %s source range overflows", scene.ID)
-						}
-						endFrame, frameErr := resolver.FrameAt(endUS)
-						if frameErr != nil {
-							return nil, fmt.Errorf("render plan clip %s source frame count: %w", scene.ID, frameErr)
-						}
-						if endFrame > frameCount {
-							frameCount = endFrame
-						}
-					}
-				}
-			}
-			if frameCount <= 0 {
-				return nil, fmt.Errorf("render plan clip %s requires positive frame_count", scene.ID)
-			}
-			manifest = append(manifest, render.AssetManifestEntry{AssetID: clip.ID, Path: clip.Path, SHA256: clip.SHA256, FrameCount: frameCount})
-		}
+// freezeTailedVideoSegments returns the scene's visual segments, appending a
+// synthetic freeze tail when the canonical scene duration outlasts the real
+// clips (a narration longer than its clip). The tail holds the last clip's
+// final frame for the remaining window, so the canonical timeline's video
+// always covers the scene. This is the single owner of the freeze policy —
+// never an implicit black gap guessed by the renderer.
+func freezeTailedVideoSegments(scene ResolvedScene, durationUS int64) []audio.VideoSegment {
+	videos := scene.VideoSegments
+	if len(videos) == 0 && scene.Video.AssetID != "" {
+		videos = []audio.VideoSegment{scene.Video}
 	}
-	var finalAudio *render.FinalAudioAsset
-	if result.FinalAudio != nil {
-		finalAudio = &render.FinalAudioAsset{
-			AssetID:              result.FinalAudio.AssetID,
-			AssetKind:            "final_audio",
-			Strategy:             string(audio.FinalAudioCopy),
-			Path:                 result.FinalAudio.Path,
-			SHA256:               result.FinalAudio.FinalAudioSHA256,
-			PlanSHA256:           result.FinalAudio.PlanSHA256,
-			AudioContractVersion: result.FinalAudio.AudioContractVersion,
-			AudioPlanVersion:     result.FinalAudio.AudioPlanVersion,
-			Codec:                result.FinalAudio.Codec,
-			Profile:              result.FinalAudio.Profile,
-			SampleRate:           result.FinalAudio.SampleRate,
-			Channels:             result.FinalAudio.Channels,
-			ChannelLayout:        result.FinalAudio.ChannelLayout,
-			DurationMS:           result.FinalAudio.DurationMS,
-			StartPTS:             result.FinalAudio.StartPTS,
-			SizeBytes:            result.FinalAudio.SizeBytes,
-			FinalMix:             result.FinalAudio.FinalMix,
-			CopyEligible:         result.FinalAudio.CopyEligible,
-		}
-		if err := ValidateFinalAudioMirror(*result.FinalAudio, *finalAudio); err != nil {
-			return nil, err
-		}
+	if len(videos) == 0 {
+		return nil
 	}
-	outputPath := strings.TrimSpace(result.OutputName)
-	if outputPath == "" {
-		outputPath = "final.mp4"
-	} else if filepath.Ext(outputPath) == "" {
-		// Titles are valid logical names but not valid media output paths.
-		// The executor needs an extension to select the MP4 muxer, while the
-		// caller still gets the human-readable title as the basename.
-		outputPath += ".mp4"
+	var visualEnd int64
+	for _, v := range videos {
+		visualEnd += v.TimelineDurationUS
 	}
-	plan, err := render.Compile(render.CompileInput{JobID: jobID, Revision: revision, OutputPath: outputPath, FrameRate: frameRate, Timeline: timeline, FinalAudio: finalAudio, Manifest: manifest})
-	if err != nil {
-		return nil, err
+	if visualEnd >= durationUS {
+		return videos
 	}
-	return &plan, nil
+	last := videos[len(videos)-1]
+	return append(append([]audio.VideoSegment(nil), videos...), audio.VideoSegment{
+		AssetID:            last.AssetID,
+		SourceInUS:         last.SourceInUS + last.SourceDurationUS, // exclusive source end
+		TimelineOffsetUS:   visualEnd,
+		TimelineDurationUS: durationUS - visualEnd,
+		Freeze:             true,
+	})
 }

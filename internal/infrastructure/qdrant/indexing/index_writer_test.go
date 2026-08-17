@@ -154,7 +154,7 @@ func TestIndexWriter_DeletePoints_Success(t *testing.T) {
 	defer srv.Close()
 
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), nil, zap.NewNop())
-	err := w.DeletePoints(context.Background(), []string{"asset-1", "asset-2"})
+	err := w.DeleteAssetPoints(context.Background(), []string{"asset-1", "asset-2"})
 	require.NoError(t, err)
 
 	// Verify canonicalised IDs were sent.
@@ -174,8 +174,8 @@ func TestIndexWriter_DeletePoints_EmptyList(t *testing.T) {
 	defer srv.Close()
 
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), nil, zap.NewNop())
-	require.NoError(t, w.DeletePoints(context.Background(), nil))
-	require.NoError(t, w.DeletePoints(context.Background(), []string{}))
+	require.NoError(t, w.DeleteAssetPoints(context.Background(), nil))
+	require.NoError(t, w.DeleteAssetPoints(context.Background(), []string{}))
 }
 
 func TestIndexWriter_DeletePoints_ServerError(t *testing.T) {
@@ -191,7 +191,7 @@ func TestIndexWriter_DeletePoints_ServerError(t *testing.T) {
 	defer srv.Close()
 
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), nil, zap.NewNop())
-	err := w.DeletePoints(context.Background(), []string{"asset-1"})
+	err := w.DeleteAssetPoints(context.Background(), []string{"asset-1"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "delete points")
 }
@@ -217,7 +217,7 @@ func TestIndexWriter_DeletePoints_FiltersEmptyCanonicalIDs(t *testing.T) {
 	defer srv.Close()
 
 	w := NewIndexWriter(newTestClient(srv.URL), testSchema(), nil, zap.NewNop())
-	err := w.DeletePoints(context.Background(), []string{""})
+	err := w.DeleteAssetPoints(context.Background(), []string{""})
 	require.NoError(t, err)
 	assert.Equal(t, 0, callCount, "empty canonical ID should be filtered, no HTTP call made")
 }

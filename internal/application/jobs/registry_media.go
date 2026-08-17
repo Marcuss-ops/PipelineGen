@@ -9,13 +9,6 @@ import "time"
 // LONG-FILES-SPLIT-2026-07-06 Band A #7: extracted from registry.go's
 // Compose() function per AGENTS.md Pattern 5.
 func registerMediaEntries(r *Registry) {
-	// ── Video ──
-	// Video generation and rendering are bound by the script runtime to the
-	// canonical render executor; both types share the validated RenderPlan
-	// handler and therefore remain real worker capabilities.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeVideoGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeRenderVideo, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
-
 	// ── YouTube ──
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeYouTubeUpload, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 

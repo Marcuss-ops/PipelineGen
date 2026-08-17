@@ -301,14 +301,15 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 				detail = evidence.ClipDetails[clipID]
 			}
 			binding := scriptpkg.ClipBinding{
-				ClipID:         clipID,
-				ClipTitle:      detail.Name,
-				DriveLink:      detail.DriveLink,
-				SubtitleLink:   detail.SubtitleLink,
-				SubtitleFileID: detail.SubtitleFileID,
-				StartMs:        detail.StartMs,
-				EndMs:          detail.EndMs,
-				DurationMs:     scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
+				ClipID:          clipID,
+				ClipTitle:       detail.Name,
+				DriveLink:       detail.DriveLink,
+				SubtitleLink:    detail.SubtitleLink,
+				SubtitleFileID:  detail.SubtitleFileID,
+				StartMs:         detail.StartMs,
+				EndMs:           detail.EndMs,
+				DurationMs:      scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
+				TotalDurationMs: detail.TotalDurationMs,
 			}
 			if binding.ClipTitle == "" {
 				if evidence != nil {

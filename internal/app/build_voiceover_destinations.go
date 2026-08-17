@@ -48,17 +48,20 @@ func buildVoiceoverDestResolvers(
 	voDir string,
 	log *zap.Logger,
 ) (voiceover.DestinationResolver, voiceover.VoiceoverDefaultFolderResolver) {
-	var destResolverAdapter voiceover.DestinationResolver
-	var defaultFolderResolver voiceover.VoiceoverDefaultFolderResolver
-	if destResolver != nil {
-		destResolverAdapter = newUseCaseDestResolverAdapter(destResolver)
-		defaultFolderResolver = newUseCaseDefaultFolderResolverAdapter(
-			cfg.Drive.VoiceoverFolder(),
-			voDir,
-		)
-	} else {
-		destResolverAdapter = nopDestinationResolver{}
-		log.Warn("voiceover: using nopDestinationResolver (no asset.Resolver wired); processItemUseCase will fail-closed with missing_folder_id for requests without explicit Destination (typical of internal/app/*_test.go stub-bootstrap helpers)")
+	// Always wire the real adapter (now nil-tolerant): an explicit
+	// destination (KindExplicit / KindAuto + FolderID) resolves through
+	// ResolveVoiceoverDestination's direct() path WITHOUT consulting the
+	// asset.Resolver, so a caller-supplied output.voiceover_folder_id works
+	// even when the deployment lacks a configured voiceover_root_folder.
+	// Only group-based routing needs the asset tree, and it fails with a
+	// typed error when destResolver is nil.
+	destResolverAdapter := newUseCaseDestResolverAdapter(destResolver)
+	defaultFolderResolver := newUseCaseDefaultFolderResolverAdapter(
+		cfg.Drive.VoiceoverFolder(),
+		voDir,
+	)
+	if destResolver == nil {
+		log.Warn("voiceover: no asset.Resolver wired; explicit voiceover destinations resolve directly, but group-based routing will fail closed (typical of internal/app/*_test.go stub-bootstrap helpers)")
 	}
 	return destResolverAdapter, defaultFolderResolver
 }

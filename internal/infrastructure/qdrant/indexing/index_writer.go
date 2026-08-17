@@ -29,6 +29,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantwrite "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 )
 
 // IndexWriter handles point upsert and deletion for Qdrant collections.
@@ -49,10 +50,11 @@ import (
 // All writes go through the runtime alias so callers never need to know
 // the physical collection name.
 type IndexWriter struct {
-	client    *transport.Client
-	idxSchema *schema.IndexSchema
-	mapper    *PayloadMapper
-	log       *zap.Logger
+	client     *transport.Client
+	idxSchema  *schema.IndexSchema
+	mapper     *PayloadMapper
+	log        *zap.Logger
+	projection qdrantwrite.ProjectionWriter
 }
 
 // NewIndexWriter creates an IndexWriter.
@@ -80,10 +82,11 @@ var (
 // non-breaking at the call-site layer.
 func NewIndexWriter(client *transport.Client, idxSchema *schema.IndexSchema, mapper *PayloadMapper, log *zap.Logger) *IndexWriter {
 	return &IndexWriter{
-		client:    client,
-		idxSchema: idxSchema,
-		mapper:    mapper,
-		log:       log,
+		client:     client,
+		idxSchema:  idxSchema,
+		mapper:     mapper,
+		log:        log,
+		projection: qdrantwrite.NewTransportProjectionWriter(client),
 	}
 }
 

@@ -71,7 +71,6 @@ type DoctorConfig interface {
 	// Feature flags consumed by the engine-tools probe.
 	YouTubeEnabled() bool
 	ArtlistEnabled() bool
-	ScriptDocsEnabled() bool
 	ScriptClipsEnabled() bool
 
 	// External config primitives consumed by master-reachable +
@@ -149,9 +148,6 @@ func (a *configDoctorAdapter) YouTubeEnabled() bool {
 }
 func (a *configDoctorAdapter) ArtlistEnabled() bool {
 	return a.cfg.Features.ArtlistEnabled
-}
-func (a *configDoctorAdapter) ScriptDocsEnabled() bool {
-	return a.cfg.Features.ScriptDocsEnabled
 }
 func (a *configDoctorAdapter) ScriptClipsEnabled() bool {
 	return a.cfg.Features.ScriptClipsEnabled

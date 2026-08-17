@@ -52,6 +52,12 @@ const (
 	EventWorkflowStepFailed           = "workflow.step.failed"
 	EventScriptGenerateQueued         = "script.generate.queued"
 
+	// EventJobCompleted is emitted transactionally with the terminal job
+	// status flip (SUCCEEDED or FAILED) so derived projections that need
+	// the finalized run report (performance_runs / performance_steps) can
+	// be rebuilt without a manual backfill. aggregate_id is the job id.
+	EventJobCompleted = "job.completed"
+
 	// EventVoiceoverCleanupRequested (P0.7 Wave 21, Step 10/12, June 2026).
 	// Replaces the pre-fix fire-and-forget `cleanupOrphanVoiceover`
 	// goroutine (detached via context.Background) with a durable
@@ -125,6 +131,19 @@ const (
 	// SQLite state.
 	EventBindingIndexRequested = "binding.index.requested"
 )
+
+// JobCompletedEventKey returns the canonical outbox_events.event_key for
+// the job.completed event. It is the SINGLE dedup vector shared by every
+// producer of the event — SQLiteStore.Complete/Fail, the
+// JobFinalizer.CompleteWithArtifacts path, and the Sender-side completion
+// services (Service.emitOutboxEvents / WithArtifactsService.emitArtifactOutboxEvents).
+// A job reaches a terminal state at most once, so the key is the job id
+// alone (no attempt segment): a retry or a cross-path re-completion of the
+// same job collapses to one outbox row via ON CONFLICT(event_key) DO NOTHING
+// instead of enqueuing a duplicate job.completed event.
+func JobCompletedEventKey(jobID string) string {
+	return EventJobCompleted + ":" + jobID
+}
 
 // SchemaVersionAssetPublished is the canonical v1 schema string.
 // The consumer (AssetPublishedHandler) fails-fast with a typed

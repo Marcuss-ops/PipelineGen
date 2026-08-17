@@ -58,9 +58,9 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T)
 			"source": "youtube",
 			"embedding_version": "v3",
 			"embedding_version_text": "wrong-version",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -92,10 +92,10 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 			"name": "a1",
 			"source": "youtube",
 			"embedding_version": "v3",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
 			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
@@ -172,10 +172,10 @@ func TestReindexVerifier_NonUUIDPointBlocking(t *testing.T) {
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
-			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
+			"embedding_version_text": "2026-06-26-v1",
+			"embedding_version_transcript": "2026-06-26-v1",
+			"embedding_version_visual": "2026-06-26-v1",
+			"embedding_version_audio": "2026-06-26-v1"
 		}
 	}`
 	srv := mockQdrantForVerifier(t, []string{payload})

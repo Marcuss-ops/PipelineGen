@@ -9,6 +9,7 @@ package script
 import (
 	"slices"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
@@ -30,6 +31,7 @@ type ResolvedGenerationPlan struct {
 
 	// ── Identity ──────────────────────────────────────────────────────
 	Title     string    `json:"title"`
+	Project   string    `json:"project,omitempty"`
 	Topic     string    `json:"topic"`
 	Language  string    `json:"language"`
 	Tone      string    `json:"tone"`
@@ -37,6 +39,11 @@ type ResolvedGenerationPlan struct {
 	Mode      string    `json:"mode"` // "text", "clip_to_script", "batch"
 	MediaMode MediaMode `json:"media_mode,omitempty"`
 	AudioMode string    `json:"audio_mode,omitempty"`
+	// Timing is the canonical voiceover timing policy resolved for this
+	// item (copied from the caller's audio.timing). nil means the pipeline
+	// applies the canonical defaults (best_effort / word / [json]) —
+	// timing capture is never implicitly mandatory.
+	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
 
 	// ── Source text ───────────────────────────────────────────────────
 	// SourceText is the canonical resolved text fed to the engine.
@@ -256,6 +263,11 @@ func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan
 	p.Postprocessors = slices.Clone(p.Postprocessors)
 	if p.ClipEvidence != nil {
 		p.ClipEvidence = NewClipEvidence(*p.ClipEvidence)
+	}
+	if p.Timing != nil {
+		t := *p.Timing
+		t.Formats = slices.Clone(p.Timing.Formats)
+		p.Timing = &t
 	}
 	p.VideoMetadata = CloneVideoMetadata(p.VideoMetadata)
 	return &p

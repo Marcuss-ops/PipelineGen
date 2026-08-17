@@ -118,6 +118,70 @@ func TestExtractorRanksNarrativeSentenceAndConcreteKeywords(t *testing.T) {
 	}
 }
 
+// TestExtractorGolden02RejectsEnglishStopwords certifies the GOLDEN 02
+// stop-word/function-word rejection on the English boundary: the
+// deterministic CPU-only path must never surface a stop word or function
+// word as an important word, must classify person names with the canonical
+// PERSON type, and must keep concrete entity-adjacent words. Every surfaced
+// word must occur verbatim in the source text.
+//
+// Boundary note: the local extractor is deliberately conservative. Single-word
+// companies ("Tesla"), money amounts ("$10 billion") and generic-verb
+// rejection are the LLM/VidRush extraction path's responsibility, not this
+// CPU-only fallback. This test certifies the boundary this package DOES own:
+// stop-word and function-word rejection via the LexiconRegistry SSOT.
+func TestExtractorGolden02RejectsEnglishStopwords(t *testing.T) {
+	text := "Elon Musk announced that Tesla will invest ten billion dollars in artificial intelligence."
+	first, err := NewExtractor().ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
+		Text: text, Language: "en", EntityCount: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Determinism: same input, same output (byte-identical).
+	second, _ := NewExtractor().ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
+		Text: text, Language: "en", EntityCount: 8,
+	})
+	a, _ := json.Marshal(first)
+	b, _ := json.Marshal(second)
+	if string(a) != string(b) {
+		t.Fatal("extractor is not deterministic for English input")
+	}
+
+	// Person classified with the canonical type.
+	if len(first.Persons) == 0 || first.Persons[0].Value != "Elon Musk" || first.Persons[0].Type != "PERSON" {
+		t.Fatalf("persons = %+v, want Elon Musk (PERSON)", first.Persons)
+	}
+
+	// Stop words and function words must never surface as important words.
+	stop := map[string]bool{
+		"that": true, "will": true, "the": true, "in": true, "and": true, "a": true, "ten": true,
+	}
+	for _, word := range first.ImportantWords {
+		if stop[word] {
+			t.Fatalf("stop/function word surfaced as important word: %q (all=%v)", word, first.ImportantWords)
+		}
+		if !strings.Contains(strings.ToLower(text), word) {
+			t.Fatalf("important word %q not found verbatim in source", word)
+		}
+	}
+	if len(first.ImportantWords) == 0 {
+		t.Fatal("important words are empty")
+	}
+	// Concrete entity-adjacent words survive the stop-word filter.
+	for _, want := range []string{"artificial", "intelligence"} {
+		found := false
+		for _, word := range first.ImportantWords {
+			if word == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("concrete keyword %q missing from important words: %v", want, first.ImportantWords)
+		}
+	}
+}
+
 func TestHybridExtractorRoutesExplicitDevices(t *testing.T) {
 	cpu := &deviceTestExtractor{result: &scriptpkg.EntityResult{ImportantPhrases: []string{"cpu"}}}
 	gpu := &deviceTestExtractor{result: &scriptpkg.EntityResult{ImportantPhrases: []string{"gpu"}}}

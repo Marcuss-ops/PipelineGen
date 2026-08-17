@@ -9,13 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"go.uber.org/zap"
 )
 
@@ -346,6 +345,7 @@ func runApplyAdditionalSoundEffects(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
+	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	changed := 0
 	for _, item := range additionalSoundEffects() {
 		var id, currentName, driveID, localPath string
@@ -386,7 +386,7 @@ func runApplyAdditionalSoundEffects(args []string) error {
 				localPath = newLocalPath
 			}
 			clip.SetLocalPath(localPath)
-			if duration, err := probeSoundEffectDuration(ctx, localPath); err == nil && duration > 0 {
+			if duration, err := probeSoundEffectDuration(ctx, prober, localPath); err == nil && duration > 0 {
 				clip.Duration = duration
 			}
 		}
@@ -402,17 +402,19 @@ func runApplyAdditionalSoundEffects(args []string) error {
 	return nil
 }
 
-func probeSoundEffectDuration(ctx context.Context, path string) (time.Duration, error) {
+// probeSoundEffectDuration measures a local audio file through the canonical
+// Rust media probe port (never a raw ffprobe exec). An empty path is a
+// legitimate "no local source" signal and returns (0, nil).
+func probeSoundEffectDuration(ctx context.Context, prober *rustexec.VideoProcessor, path string) (time.Duration, error) {
 	if strings.TrimSpace(path) == "" {
 		return 0, nil
 	}
-	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+	info, err := prober.Probe(ctx, path)
 	if err != nil {
 		return 0, err
 	}
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil {
-		return 0, err
+	if info == nil || info.Duration <= 0 {
+		return 0, fmt.Errorf("probe returned invalid duration")
 	}
-	return time.Duration(seconds * float64(time.Second)), nil
+	return info.Duration, nil
 }

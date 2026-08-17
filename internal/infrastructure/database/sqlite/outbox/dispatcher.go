@@ -12,8 +12,15 @@
 package outbox
 
 import (
+	"context"
+	"database/sql"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
+
+type DiscoveryCommitter interface {
+	CommitDiscoveredAsset(context.Context, *sql.Tx, *asset.Asset, asset.LifecycleState, asset.IndexState) error
+}
 
 // ── Dispatcher — canonical ingestion entry point ───────────────────────
 
@@ -29,11 +36,12 @@ import (
 // By colocating the metadata write and the outbox_events insert in a
 // single transaction we either commit both or neither.
 type Dispatcher struct {
-	clips            ClipsUpserter
-	stateWriter      ClipsStateWriter
-	outboxEventsRepo outboxEnqueuer
-	txmgr            TxManager
-	log              *zap.Logger
+	clips              ClipsUpserter
+	stateWriter        ClipsStateWriter
+	outboxEventsRepo   outboxEnqueuer
+	txmgr              TxManager
+	log                *zap.Logger
+	discoveryCommitter DiscoveryCommitter
 }
 
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
@@ -48,12 +56,18 @@ func NewDispatcher(
 	outboxEventsRepo outboxEnqueuer,
 	txmgr TxManager,
 	log *zap.Logger,
+	discovery ...DiscoveryCommitter,
 ) *Dispatcher {
+	var discoveryCommitter DiscoveryCommitter
+	if len(discovery) > 0 {
+		discoveryCommitter = discovery[0]
+	}
 	return &Dispatcher{
-		clips:            clips,
-		stateWriter:      stateWriter,
-		outboxEventsRepo: outboxEventsRepo,
-		txmgr:            txmgr,
-		log:              log,
+		clips:              clips,
+		stateWriter:        stateWriter,
+		outboxEventsRepo:   outboxEventsRepo,
+		txmgr:              txmgr,
+		log:                log,
+		discoveryCommitter: discoveryCommitter,
 	}
 }

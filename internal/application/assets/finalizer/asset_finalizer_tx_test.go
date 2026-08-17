@@ -67,6 +67,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 		`ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN namespace TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_kind TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN semantic_role TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN tags_norm TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS asset_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
@@ -308,6 +314,104 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256 pins the final step
+// of the probe→SHA256→manifest→publisher→persist flow: a published overlay
+// artifact (source=chronon + drive_subpath=[overlay] + probe sha256/size +
+// real duration_ms) must persist location (drive_file_id/drive_link) and
+// sha256 (file_hash) on media_assets — and the REAL duration, not the
+// SizeBytes/250000 fallback.
+func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	artifact := finalization.PublishedArtifact{
+		ArtifactID:     "job_overlay:overlay:001",
+		Kind:           finalization.KindVideo, // overlay routes to youtube_clip → KindVideo
+		Filename:       "overlay_001.mov",
+		MIMEType:       "video/quicktime",
+		SizeBytes:      1234567, // fallback would be 1234567/250000 ≈ 4ms
+		SHA256:         "overlay-sha-001",
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "job_overlay:overlay:001",
+		Source:         "chronon",
+		ArtifactMetadata: map[string]any{
+			"source":           "chronon",
+			"drive_subpath":    []string{"overlay"},
+			"renderer_version": "chronon-1.0",
+			"duration_ms":      int64(1000),
+			"duration_us":      int64(1000000),
+		},
+		Location: finalization.AssetLocation{
+			Provider:     "drive",
+			FileID:       "overlay-drive-file-1",
+			WebViewLink:  "https://drive.google.com/file/d/overlay-drive-file-1/view",
+			DownloadLink: "https://drive.google.com/uc?id=overlay-drive-file-1",
+			FolderID:     "folder-overlay",
+			FolderPath:   "/video/847/overlay",
+			Action:       finalization.PublishCreated,
+		},
+	}
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), finalizer.WrapTx(tx), artifact); err != nil {
+		t.Fatalf("FinalizeAsset: %v", err)
+	}
+
+	// media_assets: location + sha256 + real duration persisted.
+	var source, fileHash, driveFileID, driveLink string
+	var durationMs int64
+	err = tx.QueryRowContext(context.Background(), `
+		SELECT source, file_hash, drive_file_id, drive_link, duration_ms
+		FROM media_assets WHERE id = ?`, "job_overlay:overlay:001").
+		Scan(&source, &fileHash, &driveFileID, &driveLink, &durationMs)
+	if err != nil {
+		t.Fatalf("verify overlay media_assets: %v", err)
+	}
+	if source != "chronon" {
+		t.Errorf("source = %q, want chronon", source)
+	}
+	if fileHash != "overlay-sha-001" {
+		t.Errorf("file_hash = %q, want overlay-sha-001", fileHash)
+	}
+	if driveFileID != "overlay-drive-file-1" {
+		t.Errorf("drive_file_id = %q, want overlay-drive-file-1", driveFileID)
+	}
+	if driveLink != "https://drive.google.com/file/d/overlay-drive-file-1/view" {
+		t.Errorf("drive_link = %q, want the Drive web-view link", driveLink)
+	}
+	if durationMs != 1000 {
+		t.Errorf("duration_ms = %d, want 1000 (real duration, not SizeBytes/250000 fallback)", durationMs)
+	}
+
+	// asset_locations: sha256 (file_hash) + drive identity (external_id/web_view_link).
+	var locKind, locExternalID, locWebView, locFileHash string
+	err = tx.QueryRowContext(context.Background(), `
+		SELECT location_kind, external_id, web_view_link, file_hash
+		FROM asset_locations WHERE asset_id = ?`, "job_overlay:overlay:001").
+		Scan(&locKind, &locExternalID, &locWebView, &locFileHash)
+	if err != nil {
+		t.Fatalf("verify overlay asset_locations: %v", err)
+	}
+	if locKind != "drive" {
+		t.Errorf("location_kind = %q, want drive", locKind)
+	}
+	if locExternalID != "overlay-drive-file-1" {
+		t.Errorf("external_id = %q, want overlay-drive-file-1", locExternalID)
+	}
+	if locWebView == "" {
+		t.Error("web_view_link is empty")
+	}
+	if locFileHash != "overlay-sha-001" {
+		t.Errorf("asset_locations.file_hash = %q, want overlay-sha-001", locFileHash)
 	}
 }
 

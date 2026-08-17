@@ -23,7 +23,7 @@ import (
 
 // newTestDB opens an in-memory SQLite + applies the canonical
 // media_assets schema (subset of the production migration sufficient
-// for the 4 priority slots). Returns the *sql.DB so callers can insert
+// for the 5 priority slots). Returns the *sql.DB so callers can insert
 // synthetic rows.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -34,7 +34,7 @@ func newTestDB(t *testing.T) *sql.DB {
 	// Minimal canonical schema — only the columns SourceVersionFor
 	// touches via COALESCE/index_path. file_hash is the legacy
 	// top-level column (tier 3). metadata_json is the JSON bag (tiers
-	// 1 + 2 via json_extract).
+	// 0 + 1 + 2 via json_extract).
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
@@ -76,13 +76,35 @@ func TestSourceVersionFor_AssetNotFoundReturnsErrNoRows(t *testing.T) {
 	assert.Equal(t, "", got, "missing-row value must be empty string")
 }
 
-// ── 2. Tier 1 — metadata_json.$.content_hash wins ────────────────────
+// ── 2. Tier 0 — metadata_json.$.index_revision wins ──────────────────
+
+// TestSourceVersionFor_Tier0IndexRevisionWins: when index_revision is
+// populated inside metadata_json, it MUST be the return value even if
+// content_hash (byte identity), file_hash, AND the top-level legacy
+// column are populated with different values. Pin: index_revision is
+// the indexable-snapshot fingerprint the supersede gate compares, and
+// it takes precedence over the byte-identity chain (godlike/06
+// content_sha256 vs index_revision separation, Aug 2026).
+func TestSourceVersionFor_Tier0IndexRevisionWins(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	insertRow(t, db, "asset-0",
+		`{"index_revision":"rev-T0","content_hash":"hash-T1","file_hash":"hash-T2-fallback"}`,
+		"hash-T3-legacy",
+	)
+	got, err := SourceVersionFor(context.Background(), db, "asset-0")
+	require.NoError(t, err)
+	assert.Equal(t, "rev-T0", got,
+		"tier 0 index_revision MUST win on disagreement (content_sha256 vs index_revision separation)")
+}
+
+// ── 3. Tier 1 — metadata_json.$.content_hash wins ────────────────────
 
 // TestSourceVersionFor_Tier1ContentHashWins: when content_hash is
-// populated inside metadata_json, it MUST be the return value even
-// if metadata_json.$.file_hash AND the top-level file_hash column
-// are populated with different values. Pin: content_hash wins on
-// disagreement (collapse rule from PR 11).
+// populated inside metadata_json (and index_revision is absent), it
+// MUST be the return value even if metadata_json.$.file_hash AND the
+// top-level file_hash column are populated with different values.
+// Pin: content_hash wins on disagreement (collapse rule from PR 11).
 func TestSourceVersionFor_Tier1ContentHashWins(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
@@ -96,7 +118,7 @@ func TestSourceVersionFor_Tier1ContentHashWins(t *testing.T) {
 		"tier 1 content_hash MUST win on disagreement (PR 11 lock-step rule)")
 }
 
-// ── 3. Tier 2 — metadata_json.$.file_hash fills the gap ──────────────
+// ── 4. Tier 2 — metadata_json.$.file_hash fills the gap ──────────────
 
 // TestSourceVersionFor_Tier2FileHashWins: when content_hash is absent
 // but metadata_json.$.file_hash is populated, tier 2 wins. The
@@ -115,7 +137,7 @@ func TestSourceVersionFor_Tier2FileHashWins(t *testing.T) {
 		"tier 2 JSON file_hash MUST win when tier 1 absent")
 }
 
-// ── 4. Tier 3 — top-level file_hash legacy column ────────────────────
+// ── 5. Tier 3 — top-level file_hash legacy column ────────────────────
 
 // TestSourceVersionFor_Tier3LegacyColumnWins: when both JSON tiers
 // are absent, the legacy top-level media_assets.file_hash column is
@@ -138,7 +160,7 @@ func TestSourceVersionFor_Tier3LegacyColumnWins(t *testing.T) {
 		"tier 3 legacy top-level file_hash MUST fill when JSON tiers absent")
 }
 
-// ── 5. All tiers empty ───────────────────────────────────────────────
+// ── 6. All tiers empty ───────────────────────────────────────────────
 
 // TestSourceVersionFor_AllTiersEmpty: when ALL three slots are
 // empty, the COALESCE falls through to the empty-string literal,
@@ -158,7 +180,7 @@ func TestSourceVersionFor_AllTiersEmpty(t *testing.T) {
 		"all tiers empty MUST return empty string with nil error (producer fail-closed; consumer fall-through)")
 }
 
-// ── 6. Caller-error guards ───────────────────────────────────────────
+// ── 7. Caller-error guards ───────────────────────────────────────────
 
 // TestSourceVersionFor_NilQuerierErrors: passing a nil querier
 // surfaces an explicit caller-error rather than a runtime nil
@@ -191,7 +213,7 @@ func TestSourceVersionFor_EmptyAssetIDErrors(t *testing.T) {
 		"diagnostic must name the misuse")
 }
 
-// ── 7. *sql.Tx acceptance (structural-interface contract) ────────────
+// ── 8. *sql.Tx acceptance (structural-interface contract) ────────────
 
 // TestSourceVersionFor_AcceptsSQLTx: the contract is that *sql.Tx
 // (used by cmd/admin producer) AND *sql.DB (used by outbox consumer)
@@ -222,7 +244,7 @@ func TestSourceVersionFor_AcceptsSQLTx(t *testing.T) {
 		"*sql.Tx MUST be accepted by QueryRowContexter — producer-side path")
 }
 
-// ── 8. JSON empty-string corner ──────────────────────────────────────
+// ── 9. JSON empty-string corner ──────────────────────────────────────
 
 // TestSourceVersionFor_JsonEmptyStringShortCircuits: COALESCE
 // treats JSON's empty-string value (`{"content_hash":""}`) as

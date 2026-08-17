@@ -5,9 +5,9 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 111,
+      "baseline_files": 115,
       "baseline": {
-        "files": 111,
+        "files": 115,
         "max_loc": 17092
       },
       "current": {
@@ -25,9 +25,9 @@
       "path": "cmd/archcheck/scan",
       "owner": "cmd/archcheck architecture enforcement",
       "deadline": "2026-09-30",
-      "baseline_files": 42,
+      "baseline_files": 70,
       "baseline": {
-        "files": 42,
+        "files": 70,
         "max_loc": 13718
       },
       "current": {
@@ -45,9 +45,9 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 138,
+      "baseline_files": 141,
       "baseline": {
-        "files": 138,
+        "files": 141,
         "max_loc": 26637
       },
       "current": {

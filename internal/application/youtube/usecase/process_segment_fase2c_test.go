@@ -6,7 +6,8 @@
 //
 //	Fase 1.c proved the negative side: Step 10 NEVER invokes a
 //	Transcriber via invocation counters (≤ 1 across the whole
-//	pipeline, 0 on cache hit, 0 on transcript-already-READY). The
+//	pipeline, 0 on cache hit when the cached item has no local path,
+//	0 on transcript-already-READY). The
 //	structural fix is in (process_segment_step10.go no longer
 //	references u.deps.Transcriber, and ProcessSegmentDeps has no
 //	Transcriber field to begin with).

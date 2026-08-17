@@ -114,20 +114,6 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 		return fmt.Errorf("validateQdrantIndexerCompatibility: cfg is nil (PR-QDRANT-CONFIG-MISMATCH-GATE fail-closed cannot evaluate Qdrant+ClipIndexer compatibility)")
 	}
 
-	// Dimension equality is not enough to prove that the runtime query
-	// embedder and the indexed vectors share a vector space. The schema is
-	// the single contract owner; reject a model drift before Qdrant is used.
-	if cfg.Qdrant.Enabled {
-		textSpec := qdrantschema.DefaultV3Schema().GetDense("text")
-		if textSpec == nil || cfg.External.OllamaEmbedModel != textSpec.Model {
-			want := "<missing>"
-			if textSpec != nil {
-				want = textSpec.Model
-			}
-			return fmt.Errorf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: collection_model=%s runtime_model=%s", want, cfg.External.OllamaEmbedModel)
-		}
-	}
-
 	// Direction B (the RED POINT): Qdrant enabled, ClipIndexer disabled.
 	// IndexClip short-circuits ("clipindexer disabled, skipping") and the
 	// outbox marks asset.index.requested as COMPLETED without writing to
@@ -162,6 +148,20 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 				"To fix: set VELOX_FEATURE_QDRANT_ENABLED=true (start the vector store), " +
 				"OR set VELOX_FEATURE_CLIP_INDEXER_ENABLED=false (disable the sidecar)",
 		)
+	}
+
+	// Dimension equality is not enough to prove that the runtime query
+	// embedder and the indexed vectors share a vector space. The schema is
+	// the single contract owner; reject a model drift before Qdrant is used.
+	if cfg.Qdrant.Enabled {
+		textSpec := qdrantschema.DefaultV3Schema().GetDense("text")
+		if textSpec == nil || cfg.External.OllamaEmbedModel != textSpec.Model {
+			want := "<missing>"
+			if textSpec != nil {
+				want = textSpec.Model
+			}
+			return fmt.Errorf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: collection_model=%s runtime_model=%s", want, cfg.External.OllamaEmbedModel)
+		}
 	}
 
 	return nil

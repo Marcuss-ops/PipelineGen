@@ -1,11 +1,60 @@
 package usecase
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+func docsItem() scriptpkg.GenerationItemV2 {
+	return scriptpkg.GenerationItemV2{
+		ID:     "docs-item",
+		Title:  "Docs Script",
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+	}
+}
+
+func TestValidateItemDocsFailClosedWithoutFolder(t *testing.T) {
+	item := docsItem()
+	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
+	err := ValidateItem(item)
+	if err == nil {
+		t.Fatal("docs.enabled=true with no resolvable folder must fail validation")
+	}
+	var planErr *scriptpkg.PlanInvalidError
+	if !errors.As(err, &planErr) {
+		t.Fatalf("expected *PlanInvalidError, got %T", err)
+	}
+	found := false
+	for _, d := range planErr.Details {
+		if strings.Contains(d, "docs enabled but no script docs folder configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected docs folder failure detail, got %v", planErr.Details)
+	}
+}
+
+func TestValidateItemDocsResolvedFolderPasses(t *testing.T) {
+	item := docsItem()
+	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}, FolderID: "RESOLVED_FOLDER"}
+	if err := ValidateItem(item); err != nil {
+		t.Fatalf("docs.enabled=true with a resolved folder must validate: %v", err)
+	}
+}
+
+func TestValidateDocsDisabledNeverFails(t *testing.T) {
+	item := docsItem()
+	item.Docs = scriptpkg.DocumentsSpec{Enabled: false}
+	if err := ValidateItem(item); err != nil {
+		t.Fatalf("docs disabled must not fail: %v", err)
+	}
+}
 
 func TestValidateSegmentIDsUniqueAndEmpty(t *testing.T) {
 	item := scriptpkg.GenerationItemV2{

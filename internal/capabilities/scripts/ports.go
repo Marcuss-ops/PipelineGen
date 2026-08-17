@@ -35,6 +35,22 @@ type TextGenerator interface {
 	GenerateSceneText(ctx context.Context, request GenerateRequest) ([]Scene, error)
 }
 
+// ScriptPersistenceInput is the typed handoff to the canonical SQLite
+// persistence adapter. The capability owns the decision to invoke it;
+// the adapter owns storage details and idempotency.
+type ScriptPersistenceInput struct {
+	RunID   string
+	Request GenerateRequest
+	Result  *GenerateResult
+}
+
+// ScriptPersistence writes one canonical script row and returns its durable
+// SQLite identifier. Implementations must be idempotent and must not silently
+// succeed without returning a positive ID.
+type ScriptPersistence interface {
+	Persist(context.Context, ScriptPersistenceInput) (int64, error)
+}
+
 // ── Translator ──────────────────────────────────────────────────────
 
 // TranslationInput carries the data needed to translate a single scene.
@@ -64,6 +80,27 @@ type VoiceoverInput struct {
 	SceneID  string
 	Language Language
 	Text     string
+	// Project is the semantic project namespace for the voiceover publish
+	// (PR-P12-VOICEOVER-SEMANTIC-FIELDS / PR-VOICEOVER-DRIVE-DRIFT). The
+	// publisher REQUIRES a non-empty Project. The runner forwards
+	// GenerateRequest.Project here — the value resolved ONCE by
+	// BuildGenerateRequest — and fails the run BEFORE the first TTS call
+	// when it is empty (ErrProjectRequired). No fallback namespace is
+	// invented downstream.
+	Project string
+	// VoiceoverFolderID is the caller-explicit Drive folder for voiceover
+	// artifacts (output.voiceover_folder_id), resolved ONCE by the routing
+	// context. Empty means "use the configured default". The generator
+	// forwards it verbatim into the per-item TTS command destination so a
+	// caller-explicit folder is never replaced by the configured default.
+	VoiceoverFolderID string
+	// Timing is the canonical voiceover timing policy for this scene.
+	// nil means the generator applies the canonical defaults
+	// (best_effort / word / [json]) — timing capture is never implicitly
+	// mandatory. When set, the generator forwards it to the per-item
+	// pipeline so the required/best-effort fail-closed semantics are
+	// honoured end-to-end.
+	Timing *audio.TimingRequest
 }
 
 // VoiceoverGenerator produces audio assets from text.
@@ -98,6 +135,14 @@ type DocumentPublisher interface {
 	UpsertDocument(ctx context.Context, input DocumentInput) (DocumentReference, error)
 }
 
+// DocumentPublisherPreflight is implemented only by real provider-backed
+// publishers. A requested Google Doc must be validated before generation;
+// test/no-op publishers intentionally do not satisfy this interface.
+type DocumentPublisherPreflight interface {
+	DocumentPublisher
+	Preflight(context.Context, string) error
+}
+
 // DocumentRenderOptions are the caller-facing inputs for the canonical
 // document renderer. The renderer owns presentation; the runner only supplies
 // the canonical model and the requested language.
@@ -116,6 +161,19 @@ type DocumentRenderOptions struct {
 	FinalAudio *FinalAudioReference
 	// AudioTimeline is the canonical timeline used to compile FullAudio.
 	AudioTimeline *audio.CanonicalTimeline
+	// SceneSpeechTimings is the deterministic scene-level speech timing
+	// projection (scene word boundaries + phrase spans in local and global
+	// coordinates). The renderer projects it into the human surface and the
+	// machine JSON section; it never derives or invents timestamps itself.
+	SceneSpeechTimings []audio.SceneSpeechTiming
+	// ClipMetadata is the canonical, pre-resolved clip-asset metadata
+	// (total source duration in integer microseconds). The renderer formats
+	// it verbatim; it never converts or derives clip durations.
+	ClipMetadata []audio.ClipAssetMetadata
+	// AudioSummary is the pre-computed aggregate of the audio facts (clip
+	// totals, voiceover totals, counts) resolved at the capability boundary.
+	// The renderer only formats it; it never sums durations across scenes.
+	AudioSummary audio.DocumentAudioSummary
 	// Overlay is the already-published reference to the completed render
 	// overlay. It carries only the public artifact URL and copy-only
 	// certification — never a local path — so the document and Velox copy
@@ -144,14 +202,10 @@ type IdentifiedDocumentRenderer interface {
 	DocumentRendererID() string
 }
 
-// ── RenderEnqueuer ──────────────────────────────────────────────────
-
-// RenderEnqueuer submits a render job to the worker queue.
-// It is the LAST step in the workflow.
-type RenderEnqueuer interface {
-	// Enqueue submits a render job and returns the job reference.
-	Enqueue(ctx context.Context, result GenerateResult) (RenderReference, error)
-}
+// ── RenderEnqueuer removed ───────────────────────────────────────
+// The video render enqueue port was removed with the video render path.
+// The future Chronon overlay path submits through
+// QueueRenderEnqueuer.EnqueueChrononPlan, which does not need this port.
 
 // CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
 // return a probed, certified final audio artifact; the runner never falls
@@ -160,11 +214,21 @@ type CombinedAudioRenderer interface {
 	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
 }
 
+// FinalAudioPublishResult is the canonical publication outcome: the canonical
+// MediaRegistry asset ID plus the public Drive link. It never carries a local
+// filesystem path.
+type FinalAudioPublishResult struct {
+	AssetID   string `json:"audio_asset_id"`
+	DriveLink string `json:"drive_link"`
+}
+
 // FinalAudioPublisher publishes the already-certified combined master before
-// document publication. It is deliberately narrower than the renderer: it
-// receives the immutable result and returns only the canonical public link.
+// document publication and registers it as a canonical MediaRegistry asset.
+// It returns the canonical asset ID (never a local path) plus the public
+// Drive link. voiceoverFolderID is the caller-explicit Drive folder
+// (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
-	PublishFinalAudio(context.Context, string, Language, FinalAudioReference) (string, error)
+	PublishFinalAudio(context.Context, string, Language, FinalAudioReference, string) (FinalAudioPublishResult, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through

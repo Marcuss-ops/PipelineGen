@@ -249,6 +249,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
 		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
 		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
+		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
 	sourceReg := adapters.NewSourceRegistry(log)
 	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)

@@ -244,7 +244,16 @@ CREATE TABLE IF NOT EXISTS media_assets (
     -- artlist/clip atomic writers. They mirror the columns used
     -- in internal/infrastructure/database/sqlite/assets/*.go.
     asset_location     TEXT    NOT NULL DEFAULT '',
-    rendition          TEXT    NOT NULL DEFAULT ''
+    rendition          TEXT    NOT NULL DEFAULT '',
+    -- Migration 195 (Aug 2026) — canonical media taxonomy columns.
+    -- Types and DEFAULTs match migrations/sqlite/195_media_registry_taxonomy.sql
+    -- so the canonical CREATE TABLE reproduces what the migration chain
+    -- produces on a fresh DB (namespace / asset_kind / source_type /
+    -- semantic_role; semantic_role carries no NOT-NULL policy beyond '').
+    namespace     TEXT    NOT NULL DEFAULT '',
+    asset_kind    TEXT    NOT NULL DEFAULT '',
+    source_type   TEXT    NOT NULL DEFAULT '',
+    semantic_role TEXT    NOT NULL DEFAULT ''
 );`
 
 // CanonicalAssetArtifactsTable is the single source of truth for the

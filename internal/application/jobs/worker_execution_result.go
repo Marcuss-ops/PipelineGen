@@ -36,7 +36,7 @@
 //
 // CRITICAL: this file's finalizeJob receives the AGENTS.md
 // allowlisted `context.WithTimeout(context.Background(),
-// 30*time.Second)` ctx from worker_execution.go::runJob's
+// finalizationTimeout)` ctx from worker_execution.go::runJob's
 // envelope. DO NOT replace it with the wrapped jobCtx — that
 // would lose outcome persistence when jobCtx is cancelled by
 // timeout or worker Stop.
@@ -59,10 +59,11 @@ import (
 // finalizeJob consolidates the 4 finalisation paths previously inlined
 // at the bottom of worker_execution.go::runJob. It receives the
 // AGENTS.md allowlisted finalizationCtx (the caller's
-// `context.WithTimeout(context.Background(), 30*time.Second)`) so the
-// DB writes that flip the job row to failed / completed / dead-lettered
-// state can complete even when the worker jobCtx has been cancelled by
-// timeout or worker Stop.
+// `context.WithTimeout(context.Background(), finalizationTimeout)`) so
+// the terminal writes — the DB flip AND the artifact-publication spine
+// (CompleteWithArtifacts, which publishes every staged artifact to
+// Drive) — can complete even when the worker jobCtx has been cancelled
+// by timeout or worker Stop.
 //
 // Transition table:
 //

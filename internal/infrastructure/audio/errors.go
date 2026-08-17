@@ -15,7 +15,10 @@
 //   - AGENTS.md Pattern 10 typed-port contract (godlike/06 SSOT)
 package audioasset
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // ErrWorkerUnavailable is the canonical typed sentinel for "the persistent
 // TTS worker (Python tts_edge_server.py) could not be brought up".
@@ -66,3 +69,31 @@ var ErrOutputMissing = errors.New("audioasset: synthesis output file missing")
 // e.g. "../etc/passwd" or just "////var/log". Hard fail-closed;
 // Processor rejects before any TTS work happens.
 var ErrInvalidFilename = errors.New("audioasset: invalid filename (path traversal detected)")
+
+// ErrEmptyAudio is the canonical typed sentinel for "the TTS bridge
+// produced an empty audio file" — the legacy CLI's "Empty file" error or
+// the persistent worker's "generated file is empty or missing" error. Both
+// are transient upstream conditions (edge-tts rate-limit / network glitch),
+// so Generate retries the synthesis before surfacing the failure instead of
+// failing the run immediately.
+var ErrEmptyAudio = errors.New("audioasset: TTS bridge produced empty audio")
+
+// ErrSilentAudio is the canonical typed sentinel for "the TTS bridge
+// produced a non-empty but inaudible audio file" — a synthesized VO whose
+// peak level never rises above the audible floor (edge-tts glitch producing
+// a near-silent MP3). Distinct from ErrEmptyAudio (zero bytes) so the
+// minimum-loudness gate can retry the synthesis on the same transient
+// condition instead of shipping a silent voiceover.
+var ErrSilentAudio = errors.New("audioasset: TTS bridge produced silent audio")
+
+// isBridgeEmptyAudioError reports whether a bridge ok=false error string is
+// the canonical empty-audio condition. Kept as a single classification site
+// so both bridge paths (legacy CLI + persistent worker) share one decision.
+func isBridgeEmptyAudioError(msg string) bool {
+	switch strings.TrimSpace(msg) {
+	case "Empty file", "generated file is empty or missing":
+		return true
+	default:
+		return false
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -59,6 +60,30 @@ func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *Pipel
 		a.VidRush.ObserveProcessorDuration(name, float64(stage.DurationMs)/1000)
 	}
 	return nil
+}
+
+// ProjectGenerationTimings projects a canonical stage observation into the
+// legacy GenerationTimings compatibility fields (no new fields, no second
+// clock). The name→field mapping is fixed and additive:
+//
+//	"source.resolve" → SourceResolveMs
+//	"script.plan"    → PlanBuildMs
+//	"script.engine"  → EngineMs
+//
+// TotalMs is the canonical run wall time (not a stage) and PostprocessMs is
+// projected per-processor via ProjectStage; both are handled by the caller.
+func (a *CanonicalTimingAdapter) ProjectGenerationTimings(timings *scriptpkg.GenerationTimings, name string, stage kernobs.StageReport) {
+	if timings == nil {
+		return
+	}
+	switch name {
+	case "source.resolve":
+		timings.SourceResolveMs = stage.DurationMs
+	case "script.plan":
+		timings.PlanBuildMs = stage.DurationMs
+	case "script.engine":
+		timings.EngineMs = stage.DurationMs
+	}
 }
 
 func LegacyStageDuration(start, end time.Time) int64 {

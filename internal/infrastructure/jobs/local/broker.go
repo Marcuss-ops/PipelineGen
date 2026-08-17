@@ -11,14 +11,15 @@ import (
 )
 
 type Broker struct {
-	jobs        job.Store
-	workers     *workernodes.WorkerNodesRepository
-	progress    ProgressSink
-	coalescer   *ProgressCoalescer
-	finalizer   finalization.JobFinalizer
-	preparation finalization.ArtifactPreparationService
-	log         *zap.Logger
-	coalesceOn  bool // true when coalescer is configured; gated via nil-check
+	jobs           job.Store
+	workers        *workernodes.WorkerNodesRepository
+	progress       ProgressSink
+	coalescer      *ProgressCoalescer
+	finalizer      finalization.JobFinalizer
+	preparation    finalization.ArtifactPreparationService
+	folderResolver finalization.ArtifactFolderResolver
+	log            *zap.Logger
+	coalesceOn     bool // true when coalescer is configured; gated via nil-check
 }
 
 // Deps is the constructor dependency injection container (mandatory for
@@ -73,5 +74,14 @@ func New(d Deps) (*Broker, error) {
 // service has resolved and delivered them through the configured publisher.
 func (b *Broker) WithArtifactPreparation(p finalization.ArtifactPreparationService) *Broker {
 	b.preparation = p
+	return b
+}
+
+// WithArtifactFolderResolver wires the parent-video folder resolver for
+// sidecar artifacts (RenderingGen overlays). Optional: when nil, overlays
+// fall back to the destination path builder instead of publishing below the
+// already-resolved video folder.
+func (b *Broker) WithArtifactFolderResolver(r finalization.ArtifactFolderResolver) *Broker {
+	b.folderResolver = r
 	return b
 }

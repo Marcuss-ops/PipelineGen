@@ -40,12 +40,28 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	details = append(details, validateScript(item.ScriptParams, ref)...)
 	details = append(details, validateSegmentIDs(item, ref)...)
 	details = append(details, validateMediaPlan(item.MediaPlan, item.ScriptParams.Segments, ref)...)
+	details = append(details, validateDocs(item.Docs, ref)...)
 
 	if len(details) > 0 {
 		return &scriptpkg.PlanInvalidError{
 			ItemID:  item.ID,
 			Details: details,
 		}
+	}
+	return nil
+}
+
+// validateDocs applies the canonical script docs fail-closed contract.
+// The normalizer resolves docs.folder_id once (caller override >
+// PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID); a docs.enabled=true item that still
+// has no folder is rejected here instead of letting the document publisher
+// invent a destination (godlike/07 NO-FAKE-AVAILABILITY).
+func validateDocs(docs scriptpkg.DocumentsSpec, ref string) []string {
+	if !docs.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(docs.FolderID) == "" {
+		return []string{ref + ": docs enabled but no script docs folder configured (set docs.folder_id or PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID)"}
 	}
 	return nil
 }
@@ -101,7 +117,7 @@ func validateSource(src scriptpkg.SourceSpec, ref string) []string {
 	var d []string
 	if handler, ok := validateSourceHandlers[src.Type]; ok {
 		d = append(d, handler(src, ref)...)
-	} else if src.Type != scriptpkg.SourceCurate {
+	} else if !src.IsCurate() {
 		d = append(d, ref+": unknown source type "+string(src.Type))
 	}
 	if len(src.Guidelines) > 10000 {

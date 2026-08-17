@@ -35,6 +35,11 @@ func TestRegistryRecordsJobStepsMetricsRelationsAndStats(t *testing.T) {
 	if err := r.RecordStep(ctx, capregistry.Step{StepID: "step-1", JobID: "job-1", StepName: "velox_render", Status: "SUCCEEDED", DurationMS: 2000, StartedAt: "2026-08-12T00:00:01Z", CreatedAt: "2026-08-12T00:00:01Z"}); err != nil {
 		t.Fatal(err)
 	}
+	// Script runner steps are persisted as COMPLETED (never SUCCEEDED); the
+	// slowest-step aggregate must count them or it silently under-reports.
+	if err := r.RecordStep(ctx, capregistry.Step{StepID: "step-2", JobID: "job-1", StepName: "SCRIPT", Status: "COMPLETED", DurationMS: 5000, StartedAt: "2026-08-12T00:00:01Z", CreatedAt: "2026-08-12T00:00:01Z"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.RelateAsset(ctx, capregistry.AssetRelation{JobID: "job-1", AssetID: "out-1", Relation: "RENDERED", StepID: "step-1", CreatedAt: "2026-08-12T00:00:03Z"}); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +50,65 @@ func TestRegistryRecordsJobStepsMetricsRelationsAndStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Jobs != 1 || stats.Successful != 1 || stats.VideosRendered != 1 || len(stats.SlowestSteps) != 1 {
+	if stats.Jobs != 1 || stats.Successful != 1 || stats.VideosRendered != 1 || len(stats.SlowestSteps) != 2 {
 		t.Fatalf("unexpected stats: %+v", stats)
+	}
+	if stats.SlowestSteps[0].StepName != "SCRIPT" || stats.SlowestSteps[0].AvgDurationMS != 5000 {
+		t.Fatalf("slowest step must be the COMPLETED SCRIPT step: %+v", stats.SlowestSteps)
+	}
+}
+
+func TestRegistryBackfillPayloadHashes(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT, payload_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO jobs (id,type,status,payload_json,created_at) VALUES ('job-a','render','SUCCEEDED','{"video_id":"v1","n":1}','2026-08-12T00:00:00Z')`,
+		`INSERT INTO jobs (id,type,status,payload_json,created_at) VALUES ('job-b','render','SUCCEEDED','','2026-08-12T00:00:01Z')`,
+		`INSERT INTO jobs (id,type,status,payload_json,created_at) VALUES ('job-c','render','SUCCEEDED',NULL,'2026-08-12T00:00:02Z')`,
+		`INSERT INTO jobs (id,type,status,payload_json,payload_hash,created_at) VALUES ('job-d','render','SUCCEEDED','{"x":1}','already-hashed','2026-08-12T00:00:03Z')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := r.BackfillPayloadHashes(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated != 3 {
+		t.Fatalf("updated = %d, want 3 (job-a, job-b, job-c; job-d already hashed)", updated)
+	}
+
+	var hashA, hashB, hashC, hashD string
+	for id, dst := range map[string]*string{"job-a": &hashA, "job-b": &hashB, "job-c": &hashC, "job-d": &hashD} {
+		if err := db.QueryRow(`SELECT payload_hash FROM jobs WHERE id=?`, id).Scan(dst); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hashA != hashPayload(`{"video_id":"v1","n":1}`) {
+		t.Fatalf("job-a hash = %q, want canonical sha256", hashA)
+	}
+	if hashB != hashPayload("") || hashC != hashPayload("") {
+		t.Fatalf("empty/NULL payload must hash as %q (canonical %q): got %q/%q", hashPayload(""), hashPayload("{}"), hashB, hashC)
+	}
+	if hashD != "already-hashed" {
+		t.Fatalf("job-d hash must be untouched, got %q", hashD)
+	}
+
+	// Idempotent: a second pass finds nothing left to fill.
+	if again, err := r.BackfillPayloadHashes(context.Background(), 0); err != nil || again != 0 {
+		t.Fatalf("second pass = (%d, %v), want (0, nil)", again, err)
 	}
 }

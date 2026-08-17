@@ -1,18 +1,23 @@
 // Package cyclicdeps is the canonical home for the
-// "no P0 import cycles in the application layer" regression-guard.
+// "no import cycles in the internal package graph" regression-guard.
 //
-// Per architecture/action-plans/2026-08-08-refactor-checklist-action-plan.md
-// (PR-REFACTOR-P0-CYCLIC-DEPS, deadline 2026-08-12): the application
-// layer (internal/application/...) must have ZERO import cycles. The
-// canonical test surface is the file cyclicdeps_test.go which executes
-// the official toolchain command
-// `go list -deps -e -json ./internal/application/...` to evaluate the
+// The canonical test surface is cyclicdeps_test.go which executes the
+// official toolchain command `go list -deps -e -json` to evaluate the
 // package graph metadata with the same accuracy as the compiler itself
 // (respecting //go:build tags, OS/Arch constraints, module-mode, etc.).
 //
-// The test is hermetic relative to the Go toolchain: no third-party
-// dependency (guru / goda) is required, and the test produces stable
-// sorted output so CI diffs are clean.
+// Two guards live here:
+//
+//   - TestNoImportCyclesInApplicationLayer — the application layer
+//     (internal/application/...) must have ZERO import cycles.
+//   - TestNoImportCyclesInInternalTree — the whole internal tree
+//     (internal/...) must have ZERO import cycles, so every package
+//     can be built and tested in isolation.
+//
+// This package ships as pure TDD test surface (no production symbols)
+// so it has zero composition-root wiring cost. The hermetic detector
+// requires only the Go toolchain (already required for the project) —
+// no guru / goda dependency.
 package cyclicdeps
 
 import (
@@ -61,8 +66,8 @@ func findModuleRoot(t *testing.T) string {
 }
 
 // modulePathFromGoMod reads the `module <path>` directive from go.mod.
-// The test uses this to scope cycle detection to the application layer
-// of THIS module only (not e.g. test fixtures, vendor trees, or any
+// The test uses this to scope cycle detection to the internal tree of
+// THIS module only (not e.g. test fixtures, vendor trees, or any
 // transitive dep that incidentally participates in a cycle).
 func modulePathFromGoMod(t *testing.T, modRoot string) string {
 	t.Helper()
@@ -90,40 +95,18 @@ type goPackageSubset struct {
 	ImportCycle []string `json:"ImportCycle"`
 }
 
-// TestNoImportCyclesInApplicationLayer is the canonical forward-prevention
-// regression-guard for the PR-REFACTOR-P0-CYCLIC-DEPS lockstep. It shells
-// out to `go list -deps -e -json ./internal/application/...` (the
-// compiler's own source of truth for the package graph) and fails if
-// any application-layer package reports a non-empty ImportCycle.
-//
-// Why shell out vs walk the graph in-process:
-//
-//  1. `go list` is the canonical, battle-tested implementation. Re-
-//     implementing Tarjan SCC in-process is reinventing the wheel and
-//     introduces a class of subtle bugs (alphabetical sort losing
-//     edge direction, self-loop handling, build-tag blind spots).
-//  2. `go list` understands //go:build tags, OS/Arch constraints,
-//     module-mode, and replace directives — `go/build` requires
-//     careful hand-configuration to match.
-//  3. The user's spec literal is `go list -deps -f '{{.ImportCycle}}'
-//     ./internal/application/...` — this test asserts the same
-//     invariant as that command, programmatically.
-//
-// Scope: only cycles whose `ImportPath` is inside THIS module's
-// `internal/application/...` tree are reported. Cycles elsewhere in
-// the dependency graph (e.g. internal/domain ↔ internal/infrastructure)
-// are out of scope for this P0 regression-guard and are tracked
-// separately (see architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES).
-//
-// To verify manually: from the repo root, run
-// `go list -deps -e -f '{{if .ImportCycle}}{{.ImportPath}}: {{join .ImportCycle " -> "}}{{end}}' ./internal/application/...`
-func TestNoImportCyclesInApplicationLayer(t *testing.T) {
+// collectImportCycles runs `go list -deps -e -json <pattern>` and returns
+// the sorted, deduplicated set of cycle descriptions for packages whose
+// ImportPath has the given prefix. See TestNoImportCyclesInApplicationLayer
+// for the rationale on why we shell out to `go list` (the compiler's own
+// source of truth for the package graph) instead of re-implementing
+// Tarjan SCC in-process.
+func collectImportCycles(t *testing.T, pattern, prefix string) []string {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultListTimeout)
 	defer cancel()
 
 	modRoot := findModuleRoot(t)
-	modPath := modulePathFromGoMod(t, modRoot)
-	appPrefix := modPath + "/internal/application/"
 
 	// -deps: include all recursive dependencies so the cycle detection
 	//        spans the full graph (a 3-way cycle A→B→C→A needs the
@@ -132,7 +115,7 @@ func TestNoImportCyclesInApplicationLayer(t *testing.T) {
 	//        want the JSON stream regardless. Cycles are NOT an error
 	//        for `go list`; they are reported in the ImportCycle field.
 	// -json:   streaming JSON, one object per line.
-	cmd := exec.CommandContext(ctx, "go", "list", "-deps", "-e", "-json", "./internal/application/...")
+	cmd := exec.CommandContext(ctx, "go", "list", "-deps", "-e", "-json", pattern)
 	cmd.Dir = modRoot
 
 	stdout, err := cmd.StdoutPipe()
@@ -155,11 +138,10 @@ func TestNoImportCyclesInApplicationLayer(t *testing.T) {
 		} else if err != nil {
 			t.Fatalf("failed to parse `go list` JSON: %v", err)
 		}
-		// Scope-filter: only report cycles whose ImportPath is an
-		// application-layer package of THIS module. Cycles in transitive
-		// deps (internal/domain, internal/infrastructure, third-party
-		// modules) are out of scope for this P0 regression-guard.
-		if !strings.HasPrefix(pkg.ImportPath, appPrefix) {
+		// Scope-filter: only report cycles whose ImportPath is inside
+		// THIS module's tree under `prefix`. Cycles in transitive
+		// third-party deps are out of scope.
+		if !strings.HasPrefix(pkg.ImportPath, prefix) {
 			continue
 		}
 		if len(pkg.ImportCycle) == 0 {
@@ -194,18 +176,75 @@ func TestNoImportCyclesInApplicationLayer(t *testing.T) {
 		t.Logf("`go list` emitted warnings to stderr (non-fatal):\n%s", stderrStr)
 	}
 
-	if len(cycles) == 0 {
-		return
-	}
-
 	// Stable, diff-friendly output: sort so the same set of cycles
 	// always produces the same test failure message across machines.
 	sort.Strings(cycles)
+	return cycles
+}
+
+// TestNoImportCyclesInApplicationLayer is the canonical forward-prevention
+// regression-guard for the PR-REFACTOR-P0-CYCLIC-DEPS lockstep. It shells
+// out to `go list -deps -e -json ./internal/application/...` (the
+// compiler's own source of truth for the package graph) and fails if
+// any application-layer package reports a non-empty ImportCycle.
+//
+// Why shell out vs walk the graph in-process:
+//
+//  1. `go list` is the canonical, battle-tested implementation. Re-
+//     implementing Tarjan SCC in-process is reinventing the wheel and
+//     introduces a class of subtle bugs (alphabetical sort losing
+//     edge direction, self-loop handling, build-tag blind spots).
+//  2. `go list` understands //go:build tags, OS/Arch constraints,
+//     module-mode, and replace directives — `go/build` requires
+//     careful hand-configuration to match.
+//  3. The user's spec literal is `go list -deps -f '{{.ImportCycle}}'
+//     ./internal/application/...` — this test asserts the same
+//     invariant as that command, programmatically.
+//
+// To verify manually: from the repo root, run
+// `go list -deps -e -f '{{if .ImportCycle}}{{.ImportPath}}: {{join .ImportCycle " -> "}}{{end}}' ./internal/application/...`
+func TestNoImportCyclesInApplicationLayer(t *testing.T) {
+	modPath := modulePathFromGoMod(t, findModuleRoot(t))
+	appPrefix := modPath + "/internal/application/"
+
+	cycles := collectImportCycles(t, "./internal/application/...", appPrefix)
+	if len(cycles) == 0 {
+		return
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "found %d application-layer package(s) in an import cycle; godlike/07 NO-FAKE-AVAILABILITY requires ZERO cycles (PR-REFACTOR-P0-CYCLIC-DEPS in architecture/action-plans/2026-08-08-refactor-checklist-action-plan.md).\n\n", len(cycles))
 	b.WriteString("Cycles (compiler source of truth, exact back-edges):\n")
 	b.WriteString(strings.Join(cycles, "\n"))
 	b.WriteString("\n\nTo reproduce manually:\n  go list -deps -e -f '{{if .ImportCycle}}{{.ImportPath}}: {{join .ImportCycle \" -> \"}}{{end}}' ./internal/application/...\n")
+	t.Fatal(b.String())
+}
+
+// TestNoImportCyclesInInternalTree is the whole-tree counterpart of
+// TestNoImportCyclesInApplicationLayer: it shells out to
+// `go list -deps -e -json ./internal/...` and fails if ANY package under
+// this module's internal tree reports a non-empty ImportCycle.
+//
+// Scope: every internal root (api, app, application, capabilities,
+// domain, infrastructure, kernel, platform) is covered, so each package
+// can be built and tested in isolation. Cycles in third-party transitive
+// deps are out of scope by design (prefix filter).
+//
+// To verify manually: from the repo root, run
+// `go list -deps -e -f '{{if .ImportCycle}}{{.ImportPath}}: {{join .ImportCycle " -> "}}{{end}}' ./internal/...`
+func TestNoImportCyclesInInternalTree(t *testing.T) {
+	modPath := modulePathFromGoMod(t, findModuleRoot(t))
+	internalPrefix := modPath + "/internal/"
+
+	cycles := collectImportCycles(t, "./internal/...", internalPrefix)
+	if len(cycles) == 0 {
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "found %d internal package(s) in an import cycle; every internal package must be buildable and testable in isolation.\n\n", len(cycles))
+	b.WriteString("Cycles (compiler source of truth, exact back-edges):\n")
+	b.WriteString(strings.Join(cycles, "\n"))
+	b.WriteString("\n\nTo reproduce manually:\n  go list -deps -e -f '{{if .ImportCycle}}{{.ImportPath}}: {{join .ImportCycle \" -> \"}}{{end}}' ./internal/...\n")
 	t.Fatal(b.String())
 }
