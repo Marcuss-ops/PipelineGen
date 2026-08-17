@@ -133,13 +133,6 @@ type clipMetaWriterAdapter struct {
 // Compile-time assertion: clipMetaWriterAdapter satisfies clips.ClipMetaWriterPort.
 var _ clips.ClipMetaWriterPort = (*clipMetaWriterAdapter)(nil)
 
-func newClipMetaWriterAdapter(w semantic.MetadataWriterPort) clips.ClipMetaWriterPort {
-	if w == nil {
-		return nil
-	}
-	return &clipMetaWriterAdapter{inner: w}
-}
-
 func (a *clipMetaWriterAdapter) GeneratePayload(ctx context.Context, req clips.ClipMetaWriteRequest) (*clips.ClipMetaPayload, string, error) {
 	concreteReq := semantic.WriteRequest{
 		AssetID:   req.AssetID,

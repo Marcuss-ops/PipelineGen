@@ -344,24 +344,6 @@ type rateLimitedTranslator struct {
 	log     *zap.Logger
 }
 
-func newRateLimitedTranslator(inner translation.TranslationPort, vcfg config.VoiceoverConcurrencyConfig, log *zap.Logger) *rateLimitedTranslator {
-	_ = log // reserved for future timeout/queue-wait observability
-	// Ollama concurrency: use 1 by default (single-GPU safety).
-	// The global ConcurrencyConfig.MaxConcurrentOllamaCalls is the
-	// system-wide cap; the voiceover pipeline mirrors that here.
-	cap := 1
-	timeout := time.Duration(vcfg.OllamaTimeoutSec) * time.Second
-	if timeout <= 0 {
-		timeout = 120 * time.Second
-	}
-	return &rateLimitedTranslator{
-		inner:   inner,
-		sem:     make(chan struct{}, cap),
-		timeout: timeout,
-		log:     log,
-	}
-}
-
 func (r *rateLimitedTranslator) Translate(ctx context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
 	select {
 	case r.sem <- struct{}{}:

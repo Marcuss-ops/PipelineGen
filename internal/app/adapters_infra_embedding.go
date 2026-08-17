@@ -30,13 +30,6 @@ func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32,
 	return a.embedder.Embed(ctx, text)
 }
 
-func newSearchEmbedAdapter(embedder search.TextEmbedder) searchpkg.QueryEmbedder {
-	if embedder == nil {
-		return nil
-	}
-	return &searchEmbedAdapter{embedder: embedder}
-}
-
 // ── Embedding channel registry adapter (PR-EMBEDDING-CHANNEL-REGISTRY, July 2026) ───
 //
 // Composition-only-seam concrete for search.EmbeddingChannelRegistry
