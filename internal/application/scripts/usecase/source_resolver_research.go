@@ -41,6 +41,7 @@ var (
 	ErrResearchPromptInjection       = errors.New("RESEARCH_PROMPT_INJECTION_DETECTED")
 	ErrResearchCacheMiss             = errors.New("RESEARCH_CACHE_MISS")
 	ErrResearchDisabledCacheMiss     = errors.New("RESEARCH_DISABLED_CACHE_MISS")
+	ErrResearchRankerNotConfigured   = errors.New("RESEARCH_RANKER_NOT_CONFIGURED")
 )
 
 // WebResearchResolver is the only script source resolver allowed to access
@@ -51,6 +52,8 @@ type WebResearchResolver struct {
 	fetcher  scriptports.WebPageFetcher
 	cache    scriptports.TopicSourceCache
 	lexicon  *linguistics.LexiconRegistry
+	ranker   scriptports.ResearchRanker
+	subject  string
 }
 
 // ResearchSubmissionPreflight is the cache-only submission gate used by the
@@ -77,6 +80,22 @@ func (p *ResearchSubmissionPreflight) Validate(ctx context.Context, item scriptp
 		return nil
 	}
 	src := item.Source
+	if len(src.Research.Candidates) > 0 {
+		if aggregateResearchCacheAvailable(ctx, p.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src), src.CachePolicy.Mode) {
+			return nil
+		}
+		for index, candidate := range src.Research.Candidates {
+			child := item
+			child.Source = src
+			child.Source.Research.Candidates = nil
+			child.Source.Topic = strings.TrimSpace(candidate) + " boxing career earnings business endorsements financial history"
+			child.Source.Query = ""
+			if err := p.Validate(ctx, child); err != nil {
+				return fmt.Errorf("research candidate %d: %w", index, err)
+			}
+		}
+		return nil
+	}
 	mode := normalizeCacheMode(src.CachePolicy.Mode)
 	if !src.Search && (mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh) {
 		return researchPreflightError(ErrResearchDisabledCacheMiss)
@@ -124,6 +143,14 @@ func (r *WebResearchResolver) SetLexicon(registry *linguistics.LexiconRegistry) 
 	return nil
 }
 
+func (r *WebResearchResolver) SetResearchRanker(ranker scriptports.ResearchRanker) error {
+	if ranker == nil {
+		return ErrResearchRankerNotConfigured
+	}
+	r.ranker = ranker
+	return nil
+}
+
 func (r *WebResearchResolver) SetCache(cache scriptports.TopicSourceCache) {
 	if r != nil {
 		r.cache = cache
@@ -138,6 +165,22 @@ func (r *WebResearchResolver) Validate(ctx context.Context, item scriptpkg.Gener
 		return nil
 	}
 	src := item.Source
+	if len(src.Research.Candidates) > 0 {
+		if aggregateResearchCacheAvailable(ctx, r.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src), src.CachePolicy.Mode) {
+			return nil
+		}
+		for index, candidate := range src.Research.Candidates {
+			child := item
+			child.Source = src
+			child.Source.Research.Candidates = nil
+			child.Source.Topic = strings.TrimSpace(candidate) + " boxing career earnings business endorsements financial history"
+			child.Source.Query = ""
+			if err := r.Validate(ctx, child); err != nil {
+				return fmt.Errorf("research candidate %d: %w", index, err)
+			}
+		}
+		return nil
+	}
 	mode := normalizeCacheMode(src.CachePolicy.Mode)
 	if !src.Search && (mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh) {
 		return researchPreflightError(ErrResearchDisabledCacheMiss)
@@ -179,6 +222,9 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if r == nil || r.searcher == nil || r.fetcher == nil {
 		return nil, ErrResearchProviderNotConfigured
 	}
+	if len(src.Research.Candidates) > 0 {
+		return r.resolveCandidates(ctx, src, resCtx)
+	}
 	topic := strings.TrimSpace(src.Topic)
 	if topic == "" {
 		topic = strings.TrimSpace(src.Query)
@@ -198,6 +244,15 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	}
 	if policy.MinSources <= 0 {
 		policy.MinSources = researchDefaultMinSources
+	}
+	if policy.MinEvidenceScore <= 0 {
+		// A full page is weighted 1.0 and a search snippet 0.55. This
+		// default means three snippets alone do not satisfy a three-source
+		// financial research gate, while one full page plus two snippets does.
+		policy.MinEvidenceScore = float64(policy.MinSources) * 0.7
+	}
+	if policy.MinFullPageSources <= 0 && policy.MinSources >= 3 {
+		policy.MinFullPageSources = 1
 	}
 	if policy.MaxRounds <= 0 {
 		policy.MaxRounds = 1
@@ -221,7 +276,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if version == "" {
 		version = researchVersion
 	}
-	fingerprint := researchFingerprint(queries, policy.FreshnessDays)
+	fingerprint := researchFingerprint(queries, policy)
 	key := scriptpkg.ComputeResearchCacheKey(hashResearch(topic), lang, version, fingerprint, policy.MaxPages)
 	searchEnabled := src.Search
 	forceRefresh := src.ForceRefresh || cacheMode == scriptpkg.SourceCacheModeForceRefresh
@@ -277,15 +332,32 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		query  string
 	}
 	var candidates []researchCandidate
+	// Search hits and page fetches have different failure modes: providers
+	// frequently return several URLs whose hosts answer 403. Do not stop
+	// collecting at MaxPages, or those blocked URLs consume the whole budget
+	// and make a well-known subject look undocumented. Keep a bounded retry
+	// pool and still cap accepted sources at MaxPages below.
+	candidateLimit := policy.MaxPages * 3
+	if candidateLimit < policy.MaxPages+policy.MinSources*2 {
+		candidateLimit = policy.MaxPages + policy.MinSources*2
+	}
+	if candidateLimit > 48 {
+		candidateLimit = 48
+	}
+	var lastSearchErr error
 	for _, query := range queries {
 		hits, err := r.searcher.Search(ctx, query, policy.ResultsPerQuery)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return nil, fmt.Errorf("%w: %v", ErrResearchTimeout, ctx.Err())
 			}
-			return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, err)
+			lastSearchErr = err
+			continue
 		}
 		for _, hit := range hits {
+			if r.subject != "" && !researchHitMatchesSubject(r.subject, hit.Title+" "+hit.Content) {
+				continue
+			}
 			raw := strings.TrimSpace(hit.URL)
 			u, err := url.Parse(raw)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
@@ -293,23 +365,51 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 			}
 			seen[raw] = true
 			candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(hit.Title), URL: raw, Excerpt: trimResearch(hit.Content, 600)}, query: query})
-			if len(candidates) >= policy.MaxPages {
+			if len(candidates) >= candidateLimit {
 				break
 			}
 		}
-		if len(candidates) >= policy.MaxPages {
+		if len(candidates) >= candidateLimit {
 			break
 		}
+	}
+	if len(candidates) == 0 && lastSearchErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, lastSearchErr)
 	}
 	var source strings.Builder
 	suspiciousPages := 0
 	var lastFetchErr error
 	for _, candidate := range candidates {
+		if len(report.Sources) >= policy.MaxPages {
+			break
+		}
 		report.PagesRequested++
 		page, err := r.fetcher.Fetch(ctx, candidate.source.URL, 2000)
 		if err != nil {
 			report.PagesFailed++
-			lastFetchErr = err
+			lastFetchErr = fmt.Errorf("%s: %w", candidate.source.URL, err)
+			// A search result already contains a provider-supplied title and
+			// excerpt. When the target page blocks automated fetching (403,
+			// HTTP/2 peer errors, robots), retain that bounded result only if
+			// it independently passes the same relevance and injection checks.
+			// This keeps the URL provenance while avoiding a false cache miss
+			// for subjects whose authoritative pages are temporarily blocked.
+			if strings.TrimSpace(candidate.source.Excerpt) != "" {
+				snippetPage := scriptports.WebPage{
+					Title: candidate.source.Title,
+					Text:  candidate.source.Excerpt,
+				}
+				if valid, _ := r.validateResearchSource(topic, candidate.query, lang, policy.FreshnessDays, snippetPage); valid {
+					s := candidate.source
+					s.ID = fmt.Sprintf("S%d", len(report.Sources)+1)
+					s.AccessMode = scriptpkg.EvidenceAccessSnippet
+					s.Confidence = 0.55
+					s.Excerpt = trimResearch(s.Excerpt, 2000)
+					report.Sources = append(report.Sources, s)
+					report.Claims = append(report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
+					source.WriteString(fmt.Sprintf("[%s] %s\n", s.ID, s.Excerpt))
+				}
+			}
 			continue
 		}
 		report.PagesFetched++
@@ -326,6 +426,8 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		}
 		s := candidate.source
 		s.ID = fmt.Sprintf("S%d", len(report.Sources)+1)
+		s.AccessMode = scriptpkg.EvidenceAccessFullPage
+		s.Confidence = 1.0
 		if page.Title != "" {
 			s.Title = page.Title
 		}
@@ -345,17 +447,28 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		report.Sources = append(report.Sources, s)
 	}
 	report.AcceptedSources = len(report.Sources)
-	if report.AcceptedSources < policy.MinSources {
+	for _, accepted := range report.Sources {
+		if accepted.AccessMode == scriptpkg.EvidenceAccessSnippet {
+			report.SnippetSources++
+			report.EvidenceScore += 0.55
+			continue
+		}
+		report.FullPageSources++
+		report.EvidenceScore += 1.0
+	}
+	if report.AcceptedSources < policy.MinSources ||
+		report.FullPageSources < policy.MinFullPageSources ||
+		report.EvidenceScore < policy.MinEvidenceScore {
 		if suspiciousPages > 0 {
 			return nil, fmt.Errorf("%w: %d suspicious pages", ErrResearchPromptInjection, suspiciousPages)
 		}
 		if lastFetchErr != nil {
-			return nil, fmt.Errorf("%w: accepted %d sources, need %d: %v", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources, lastFetchErr)
+			return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f: %v", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources, report.FullPageSources, policy.MinFullPageSources, report.EvidenceScore, policy.MinEvidenceScore, lastFetchErr)
 		}
-		return nil, fmt.Errorf("%w: accepted %d sources, need %d", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources)
+		return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources, report.FullPageSources, policy.MinFullPageSources, report.EvidenceScore, policy.MinEvidenceScore)
 	}
 	report.QualityGatePassed = true
-	if report.PagesFetched == 0 {
+	if report.PagesFetched == 0 && report.AcceptedSources == 0 {
 		return nil, ErrResearchFetchFailed
 	}
 	seed := strings.TrimSpace(src.SourceText)

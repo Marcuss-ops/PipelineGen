@@ -46,13 +46,12 @@ func researchCacheIdentity(src scriptpkg.SourceSpec, language string) (string, [
 	if version == "" {
 		version = researchVersion
 	}
-	fingerprint := researchFingerprint(queries, policy.FreshnessDays)
+	fingerprint := researchFingerprint(queries, policy)
 	key := scriptpkg.ComputeResearchCacheKey(hashResearch(topic), lang, version, fingerprint, policy.MaxPages)
 	return topic, queries, src.CachePolicy, version, key
 }
 
 func researchQueries(topic, explicit string, max int) []string {
-	_ = max
 	query := strings.TrimSpace(explicit)
 	if query == "" {
 		query = strings.TrimSpace(topic)
@@ -60,11 +59,29 @@ func researchQueries(topic, explicit string, max int) []string {
 	if query == "" {
 		return nil
 	}
-	return []string{query}
+	if max <= 1 {
+		return []string{query}
+	}
+
+	queries := []string{
+		query,
+		query + " boxing earnings",
+		query + " boxing career championships",
+		query + " biography",
+	}
+	if max < len(queries) {
+		queries = queries[:max]
+	}
+	return queries
 }
 
-func researchFingerprint(queries []string, freshnessDays int) string {
-	return hashResearch(fmt.Sprintf("%s\nfreshness_days:%d", strings.Join(queries, "\n"), freshnessDays))
+func researchFingerprint(queries []string, policy scriptpkg.ResearchPolicy) string {
+	return hashResearch(fmt.Sprintf(
+		"%s\nfreshness_days:%d\nresults_per_query:%d\nmax_pages:%d\nmin_sources:%d\nmin_full_page_sources:%d\nmin_evidence_score:%.4f\nrequire_citations:%t",
+		strings.Join(queries, "\n"), policy.FreshnessDays, policy.ResultsPerQuery,
+		policy.MaxPages, policy.MinSources, policy.MinFullPageSources,
+		policy.MinEvidenceScore, policy.RequireCitations,
+	))
 }
 
 func researchTitle(topic, title string) string {

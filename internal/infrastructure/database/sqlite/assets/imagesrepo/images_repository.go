@@ -106,6 +106,12 @@ func scanImageAssetFromRow(s interface {
 	var fileHash, localPath, driveFileID sql.NullString
 
 	err := s.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &driveLink, &origin, &provider)
+	// A lookup miss is a normal dedupe result. Row-based callers use this
+	// scanner for FindExisting; leaking sql.ErrNoRows turns a first-time
+	// image ingest into a spurious finalization failure.
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

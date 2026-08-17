@@ -68,14 +68,21 @@ type SourceCachePolicy struct {
 
 // ResearchPolicy bounds external navigation performed by SourceResearch.
 type ResearchPolicy struct {
-	MaxQueries       int  `json:"max_queries,omitempty"`
-	ResultsPerQuery  int  `json:"results_per_query,omitempty"`
-	MaxPages         int  `json:"max_pages,omitempty"`
-	MaxRounds        int  `json:"max_rounds,omitempty"`
-	MinSources       int  `json:"min_sources,omitempty"`
-	TimeoutSeconds   int  `json:"timeout_seconds,omitempty"`
-	FreshnessDays    int  `json:"freshness_days,omitempty"`
-	RequireCitations bool `json:"require_citations,omitempty"`
+	MaxQueries         int     `json:"max_queries,omitempty"`
+	ResultsPerQuery    int     `json:"results_per_query,omitempty"`
+	MaxPages           int     `json:"max_pages,omitempty"`
+	MaxRounds          int     `json:"max_rounds,omitempty"`
+	MinSources         int     `json:"min_sources,omitempty"`
+	MinFullPageSources int     `json:"min_full_page_sources,omitempty"`
+	MinEvidenceScore   float64 `json:"min_evidence_score,omitempty"`
+	TimeoutSeconds     int     `json:"timeout_seconds,omitempty"`
+	FreshnessDays      int     `json:"freshness_days,omitempty"`
+	RequireCitations   bool    `json:"require_citations,omitempty"`
+	// Candidates enables bounded, independent subject research. The resolver
+	// returns an aggregate only after every candidate completes successfully.
+	Candidates []string `json:"candidates,omitempty"`
+	// MaxParallel bounds candidate research; zero uses the resolver default.
+	MaxParallel int `json:"max_parallel,omitempty"`
 }
 
 // SourceSpec declares where script-generation input comes from.

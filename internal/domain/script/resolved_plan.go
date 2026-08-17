@@ -49,8 +49,9 @@ type ResolvedGenerationPlan struct {
 	// SourceText is the canonical resolved text fed to the engine.
 	// For text sources it's the topic+source_text+guidelines assembly.
 	// For clip/catalog/search sources it's the clip evidence text.
-	SourceText      string            `json:"source_text"`
-	ResearchSources []SourceReference `json:"research_sources,omitempty"`
+	SourceText       string                `json:"source_text"`
+	ResearchSources  []SourceReference     `json:"research_sources,omitempty"`
+	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`
 
 	// Guidelines are the writing style constraints.
 	Guidelines string `json:"guidelines,omitempty"`
@@ -264,6 +265,7 @@ func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan
 	if p.ClipEvidence != nil {
 		p.ClipEvidence = NewClipEvidence(*p.ClipEvidence)
 	}
+	p.ResearchEvidence = p.ResearchEvidence.Clone()
 	if p.Timing != nil {
 		t := *p.Timing
 		t.Formats = slices.Clone(p.Timing.Formats)

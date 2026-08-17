@@ -119,3 +119,47 @@ until
 upon
 within
 without
+
+# Sentence-initial temporal/transitional adverbs and connectives. The
+# capitalization heuristic cannot tell "During the dawn…" / "Shortly the
+# probe…" apart from a proper name, so these are blocked explicitly.
+shortly
+soon
+meanwhile
+eventually
+finally
+suddenly
+immediately
+currently
+previously
+recently
+formerly
+lately
+initially
+gradually
+subsequently
+consequently
+however
+moreover
+furthermore
+nevertheless
+nonetheless
+therefore
+thus
+hence
+indeed
+instead
+rather
+otherwise
+despite
+though
+while
+whereas
+whereby
+whenever
+wherever
+following
+besides
+unlike
+regarding
+concerning

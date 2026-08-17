@@ -6,11 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult, skeletons map[Language]string) bool {
 	// ── Publish Documents after the final audio/render payload ───
 	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
 	if startErr != nil {
@@ -60,7 +61,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		if _, prepareErr := kernobs.MeasureStageReport(ctx, StageDocumentPrepare, func(stageCtx context.Context) error {
 			for _, lang := range docsLangs {
 				model := modelScriptOutputForDocument(result, lang)
-				content, renderErr := r.documentRenderer.RenderDocument(model, DocumentRenderOptions{
+				opts := DocumentRenderOptions{
 					Title:              req.Title,
 					Language:           lang,
 					DefaultLanguage:    req.SourceLanguage,
@@ -70,7 +71,16 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					SceneSpeechTimings: result.SceneSpeechTimings,
 					ClipMetadata:       clipAssetMetadataForDocument(result),
 					AudioSummary:       documentAudioSummaryFor(result),
-				})
+				}
+				var content string
+				var renderErr error
+				if skeleton, ok := skeletons[lang]; ok {
+					// Late-bound injection into the SceneTextReady skeleton
+					// rendered by the parallel fan-out (early DocsPrepare).
+					content, renderErr = r.injectDocumentLateBound(skeleton, model, opts)
+				} else {
+					content, renderErr = r.documentRenderer.RenderDocument(model, opts)
+				}
 				if renderErr != nil {
 					return fmt.Errorf("render document for language %s: %w", lang, renderErr)
 				}
@@ -156,6 +166,40 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 	}
 
 	return true
+}
+
+// renderDocumentSkeletons renders the scene-text-only document skeleton for
+// each docs language. It is the early DocsPrepare pass, invoked at
+// SceneTextReady by the parallel fan-out so the CPU render overlaps TTS and
+// NLP instead of waiting for the audio join. It returns nil when the renderer
+// does not implement the early/late split or when docs are disabled, leaving
+// the one-shot render path intact.
+func (r *Runner) renderDocumentSkeletons(req GenerateRequest, result *GenerateResult) map[Language]string {
+	splittable, ok := r.documentRenderer.(SplittableDocumentRenderer)
+	if !ok || result == nil {
+		return nil
+	}
+	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
+	if !docsEnabled || len(docsLangs) == 0 {
+		return nil
+	}
+	inputs := documentSkeletonInputForScenes(req.Title, result.Scenes, docsLangs)
+	skeletons := make(map[Language]string, len(inputs))
+	for lang, in := range inputs {
+		skeletons[lang] = splittable.RenderDocumentSkeleton(in)
+	}
+	return skeletons
+}
+
+// injectDocumentLateBound fills a SceneTextReady skeleton with the late-bound
+// artifacts via the splittable renderer. It is only called when a skeleton was
+// rendered early, so the renderer is guaranteed to implement the split seam.
+func (r *Runner) injectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
+	splittable, ok := r.documentRenderer.(SplittableDocumentRenderer)
+	if !ok {
+		return "", fmt.Errorf("document renderer does not implement the early/late split")
+	}
+	return splittable.InjectDocumentLateBound(skeleton, model, opts), nil
 }
 
 func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioRef {

@@ -56,7 +56,7 @@ external:
   # if the service is absent.
   searxng_url: "http://127.0.0.1:8080"
   searxng_language: "en"
-  searxng_engines: "bing,mwmbl,wiby"
+  searxng_engines: "bing,mwmbl"
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
   rust_muscles_path: "bin/pipelinegen-muscles"
@@ -268,6 +268,7 @@ features:
   # so leaving this off would disable the route entirely.
   images_enabled: true
   stock_pipeline_enabled: true
+  clip_render_enabled: false
   voiceover_enabled: false
   catalog_script_vector_search: false
 

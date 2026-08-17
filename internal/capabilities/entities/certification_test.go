@@ -259,7 +259,7 @@ func certifyJob(t *testing.T, job certJob) {
 	require.Len(t, compiled.Plan.Layers, len(job.scenes), "job %s: chronon must carry one layer per entity card", job.id)
 	for _, layer := range compiled.Plan.Layers {
 		require.Equal(t, "text", layer.Type)
-		require.Equal(t, "entity_card", layer.Preset)
+		require.Equal(t, "lower_third_safe", layer.Preset)
 		require.NotEmpty(t, layer.Text)
 		require.Greater(t, layer.DurationFrames, int64(0))
 	}

@@ -122,7 +122,7 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	// duration = frame(48360) - frame(48240) = round(1450.8) - 1447 = 1451-1447 = 4.
 	tom := layerByID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "text", tom.Type)
-	require.Equal(t, "entity_card", tom.Preset)
+	require.Equal(t, "lower_third_safe", tom.Preset)
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.Equal(t, int64(1447), tom.StartFrame)
 	require.Equal(t, int64(4), tom.DurationFrames)

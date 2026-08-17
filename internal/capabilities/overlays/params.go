@@ -115,7 +115,35 @@ func paramAnimation(params map[string]any, key string) (*ChrononLayerAnimation, 
 	if duration, ok := paramInt64(raw, "duration_frames"); ok {
 		out.DurationFrames = duration
 	}
+	if unit, ok := paramString(raw, "unit"); ok {
+		out.Unit = unit
+	}
+	if enter, ok := paramWindow(raw, "enter"); ok {
+		out.Enter = enter
+	}
+	if exit, ok := paramWindow(raw, "exit"); ok {
+		out.Exit = exit
+	}
 	return out, true
+}
+
+// paramWindow reads a nested {"duration_frames": N} ramp window (enter/exit)
+// from an animation params map. A missing or non-positive duration yields
+// nil (fail-soft: the preset default window applies).
+func paramWindow(params map[string]any, key string) (*ChrononAnimWindow, bool) {
+	v, ok := params[key]
+	if !ok {
+		return nil, false
+	}
+	raw, ok := v.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	duration, ok := paramInt64(raw, "duration_frames")
+	if !ok || duration <= 0 {
+		return nil, false
+	}
+	return &ChrononAnimWindow{DurationFrames: duration}, true
 }
 
 // paramInt64 reads an int64 override from a nested params map (used by

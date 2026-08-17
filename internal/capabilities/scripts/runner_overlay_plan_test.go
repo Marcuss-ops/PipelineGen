@@ -235,22 +235,23 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 		require.Contains(t, []string{"text", "image", "video", "color"}, layer.Type, "layer %q must terminate in a canonical primitive", layer.ID)
 	}
 	require.Equal(t, "text", layerByID["scene-0-phrase-changed-everything"].Type)
-	require.Equal(t, "title_centered", layerByID["scene-0-phrase-changed-everything"].Preset)
+	require.Equal(t, "caption_card", layerByID["scene-0-phrase-changed-everything"].Preset)
 	require.Equal(t, "text", layerByID["scene-0-keyword-apple"].Type)
-	require.Equal(t, "kinetic_word", layerByID["scene-0-keyword-apple"].Preset)
+	require.Equal(t, "active_word_pop", layerByID["scene-0-keyword-apple"].Preset)
 	require.Equal(t, "image", layerByID["scene-0-image-tim-cook-photo"].Type)
 	require.Equal(t, "contain", layerByID["scene-0-image-tim-cook-photo"].Fit)
 	require.Equal(t, "text", layerByID["overlay-scene-0-tim-cook"].Type)
-	require.Equal(t, "entity_card", layerByID["overlay-scene-0-tim-cook"].Preset)
+	require.Equal(t, "lower_third_safe", layerByID["overlay-scene-0-tim-cook"].Preset)
 	require.Equal(t, "text", layerByID["overlay-scene-0-cupertino"].Type)
 	require.Equal(t, "text", layerByID["scene-0-number-ten-million"].Type)
-	require.Equal(t, "number", layerByID["scene-0-number-ten-million"].Preset)
+	require.Equal(t, "active_word_pop", layerByID["scene-0-number-ten-million"].Preset)
 	require.Equal(t, "text", layerByID["scene-0-quote-changed-everything"].Type)
-	require.Equal(t, "quote", layerByID["scene-0-quote-changed-everything"].Preset)
+	require.Equal(t, "caption_card", layerByID["scene-0-quote-changed-everything"].Preset)
 	require.Equal(t, "image", layerByID["scene-0-product-vision-pro"].Type)
 	require.Equal(t, "image", layerByID["scene-0-logo-apple-logo"].Type)
-	// The canonical font rides along with every text layer.
-	require.Equal(t, capabilityoverlay.CanonicalTextFontPath, layerByID["scene-0-phrase-changed-everything"].Font)
+	// The font is Chronon-owned (VisualPresetRegistry font_asset); PipelineGen
+	// text layers carry no font/font_size.
+	require.Equal(t, "", layerByID["scene-0-phrase-changed-everything"].Font)
 }
 
 // TestRunner_OverlayIntents_PersistedBeforePlanEnqueue certifies the

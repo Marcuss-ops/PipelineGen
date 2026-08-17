@@ -166,6 +166,9 @@ func buildScriptSourceResolvers(
 			ollamaWebSearcherAdapter{searcher: gen.GetClient().WebSearcher()},
 			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
 		)
+		if err := researchResolver.SetResearchRanker(&ollamaResearchRanker{client: gen.GetClient(), model: cfg.External.OllamaModel}); err != nil {
+			panic(fmt.Sprintf("script research ranker: %v", err))
+		}
 		if err := researchResolver.SetLexicon(linguistics.DefaultLexicon()); err != nil {
 			panic(fmt.Sprintf("script research resolver: %v", err))
 		}

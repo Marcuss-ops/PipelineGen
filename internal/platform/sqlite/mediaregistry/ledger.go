@@ -27,6 +27,7 @@ var _ capregistry.Ledger = (*Ledger)(nil)
 var _ capregistry.ProjectionReader = (*Ledger)(nil)
 var _ capregistry.CountsReader = (*Ledger)(nil)
 var _ capregistry.AssetContentRegistry = (*Ledger)(nil)
+var _ capregistry.ProjectionSequenceAdvancer = (*Ledger)(nil)
 
 func (l *Ledger) ReadCounts(ctx context.Context) (capregistry.Counts, error) {
 	if l == nil || l.db == nil {
@@ -280,6 +281,31 @@ func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	return seq.Int64, nil
+}
+
+// AdvanceActiveProjectionSequence bumps the ACTIVE projection's
+// source_registry_seq to the latest Qdrant-eligible registry sequence. It is
+// the incremental-indexing counterpart to the reindex-time checkpoint: a full
+// reindex records the build sequence via RegisterProjection, while this
+// advances the checkpoint after each incremental upsert so the startup gate
+// does not fail closed on a projection that has been kept current by the
+// outbox. The update is monotonic (never rewinds) and touches only ACTIVE
+// rows, so a retired/rolled-back projection is unaffected.
+func (l *Ledger) AdvanceActiveProjectionSequence(ctx context.Context) error {
+	if l == nil || l.db == nil {
+		return ErrNotWired
+	}
+	seq, err := l.LatestQdrantEventSequence(ctx)
+	if err != nil {
+		return fmt.Errorf("advance active projection sequence: %w", err)
+	}
+	if _, err := l.db.ExecContext(ctx, `
+		UPDATE projection_registry
+		SET source_registry_seq = ?
+		WHERE status = 'ACTIVE' AND source_registry_seq < ?`, seq, seq); err != nil {
+		return fmt.Errorf("advance active projection sequence: %w", err)
+	}
+	return nil
 }
 
 // LinkContent sets media_assets.content_sha256 for assetID. Idempotent

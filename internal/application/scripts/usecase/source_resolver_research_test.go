@@ -89,7 +89,7 @@ func TestWebResearchResolverStrictFetchAndReport(t *testing.T) {
 	s := &researchSearchFake{}
 	f := &researchFetchFake{}
 	r := NewWebResearchResolver(s, f)
-	got, err := r.Resolve(context.Background(), scriptpkg.SourceSpec{Type: scriptpkg.SourceResearch, Topic: "test boxer", Search: true, Research: scriptpkg.ResearchPolicy{MaxQueries: 2, MinSources: 1, MaxPages: 2, RequireCitations: true}}, scriptpkg.SourceResolutionContext{ItemID: "i", Language: "it"})
+	got, err := r.Resolve(context.Background(), scriptpkg.SourceSpec{Type: scriptpkg.SourceResearch, Topic: "test boxer", Search: true, Research: scriptpkg.ResearchPolicy{MaxQueries: 1, MinSources: 1, MaxPages: 2, RequireCitations: true}}, scriptpkg.SourceResolutionContext{ItemID: "i", Language: "it"})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -303,16 +303,19 @@ func TestWebResearchResolverUsesCache(t *testing.T) {
 
 func TestResearchQueriesKeepBaseQueryFirst(t *testing.T) {
 	queries := researchQueries("Mike Tyson", "Mike Tyson", 4)
-	if len(queries) != 1 {
-		t.Fatalf("query count = %d, want 1", len(queries))
+	if len(queries) != 4 {
+		t.Fatalf("query count = %d, want 4", len(queries))
 	}
 	if queries[0] != "Mike Tyson" {
 		t.Fatalf("first query = %q, want base query", queries[0])
 	}
+	if queries[1] != "Mike Tyson boxing earnings" || queries[2] != "Mike Tyson boxing career championships" || queries[3] != "Mike Tyson biography" {
+		t.Fatalf("unexpected query variants: %v", queries)
+	}
 }
 
 func TestResearchQueryBounds(t *testing.T) {
-	if got := researchQueries("topic", "", 4); len(got) != 1 || got[0] != "topic" {
+	if got := researchQueries("topic", "", 2); len(got) != 2 || got[0] != "topic" || got[1] != "topic boxing earnings" {
 		t.Fatal(got)
 	}
 }
@@ -407,6 +410,71 @@ func TestWebResearchResolverCountsOnlyAcceptedSources(t *testing.T) {
 	if len(fetch.calls) != 5 || cache.saves != 0 {
 		t.Fatalf("fetches=%d cache saves=%d", len(fetch.calls), cache.saves)
 	}
+}
+
+func TestWebResearchResolverWeightsSnippetFallbackAndRequiresFullPage(t *testing.T) {
+	urls := []string{"https://example.com/full", "https://example.com/snippet-a", "https://example.com/snippet-b"}
+	search := &researchSearchHitsFake{hits: []scriptports.WebSearchHit{
+		{Title: "Apollo Guidance Computer history", URL: urls[0], Content: "Apollo guidance computer was developed by NASA and MIT."},
+		{Title: "Apollo Guidance Computer NASA archive", URL: urls[1], Content: "Apollo guidance computer was developed by NASA and MIT."},
+		{Title: "Apollo Guidance Computer MIT archive", URL: urls[2], Content: "Apollo guidance computer was developed by NASA and MIT."},
+	}}
+	fetch := &researchAccessFake{pages: map[string]scriptports.WebPage{
+		urls[0]: {Title: "Apollo Guidance Computer history", Text: "The Apollo guidance computer was developed by NASA and MIT."},
+	}}
+	resolver := NewWebResearchResolver(search, fetch)
+	resolved, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
+		Type: scriptpkg.SourceResearch, Topic: "Apollo Guidance Computer", Search: true,
+		Query: "Apollo Guidance Computer NASA MIT", Research: scriptpkg.ResearchPolicy{
+			MaxQueries: 1, ResultsPerQuery: 3, MaxPages: 3, MinSources: 3,
+		},
+	}, scriptpkg.SourceResolutionContext{Language: "en"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	report := resolved.ResearchReport
+	if report.FullPageSources != 1 || report.SnippetSources != 2 {
+		t.Fatalf("access counts full=%d snippets=%d", report.FullPageSources, report.SnippetSources)
+	}
+	if report.EvidenceScore != 2.1 {
+		t.Fatalf("evidence score=%.2f want=2.10", report.EvidenceScore)
+	}
+	if got := resolved.ResearchReport.Sources[1].AccessMode; got != scriptpkg.EvidenceAccessSnippet {
+		t.Fatalf("fallback access mode=%q", got)
+	}
+}
+
+func TestWebResearchResolverRejectsSnippetOnlyFinancialEvidence(t *testing.T) {
+	urls := []string{"https://example.com/snippet-a", "https://example.com/snippet-b", "https://example.com/snippet-c"}
+	hits := make([]scriptports.WebSearchHit, 0, len(urls))
+	for _, rawURL := range urls {
+		hits = append(hits, scriptports.WebSearchHit{Title: "Apollo Guidance Computer archive", URL: rawURL, Content: "Apollo guidance computer was developed by NASA and MIT."})
+	}
+	resolver := NewWebResearchResolver(&researchSearchHitsFake{hits: hits}, &researchAccessFake{fail: true})
+	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
+		Type: scriptpkg.SourceResearch, Topic: "Apollo Guidance Computer", Search: true,
+		Query: "Apollo Guidance Computer NASA MIT", Research: scriptpkg.ResearchPolicy{
+			MaxQueries: 1, ResultsPerQuery: 3, MaxPages: 3, MinSources: 3,
+		},
+	}, scriptpkg.SourceResolutionContext{Language: "en"})
+	if !errors.Is(err, ErrResearchInsufficientSources) {
+		t.Fatalf("expected weighted quality failure, got %v", err)
+	}
+}
+
+type researchAccessFake struct {
+	pages map[string]scriptports.WebPage
+	fail  bool
+}
+
+func (f *researchAccessFake) Fetch(_ context.Context, rawURL string, _ int) (scriptports.WebPage, error) {
+	if f.fail {
+		return scriptports.WebPage{}, errors.New("blocked")
+	}
+	if page, ok := f.pages[rawURL]; ok {
+		return page, nil
+	}
+	return scriptports.WebPage{}, errors.New("blocked")
 }
 
 func TestResearchSourceFreshness(t *testing.T) {

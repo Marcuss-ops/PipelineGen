@@ -394,6 +394,16 @@ func (canonicalTestDocumentRenderer) RenderDocument(model *scriptpkg.ModelScript
 	return RenderDocument(model, opts)
 }
 
+// The canonical test renderer also implements the early/late split so runner
+// tests exercise the same SceneTextReady skeleton path as the app wiring.
+func (canonicalTestDocumentRenderer) RenderDocumentSkeleton(in DocumentSkeletonInput) string {
+	return RenderDocumentSkeleton(in)
+}
+
+func (canonicalTestDocumentRenderer) InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) string {
+	return InjectDocumentLateBound(skeleton, model, opts)
+}
+
 // awaitCompletion polls the repo until the run reaches a terminal state
 // or the timeout elapses. Returns the final run.
 func awaitCompletion(t *testing.T, repo *inMemRunRepository, runID string, timeout time.Duration) *GenerationRun {

@@ -27,7 +27,6 @@ package adapters
 
 import (
 	"context"
-	"errors"
 
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -45,12 +44,17 @@ import (
 // a successful (but empty) postprocessor result. The new typed-fail
 // adapter refuses to perform silent-success and propagates the
 // unwired condition to the caller as a typed error.
-var ErrEntityExtractorUnavailable = errors.New("adapters: EntityExtractor backend unavailable (fail-closed per godlike/07 — wire a real backend or remove the entities postprocessor)")
+// The sentinels are ALIASES of the canonical scriptpkg sentinels
+// (internal/domain/script/generation_errors.go) — godlike/06 SSOT:
+// one canonical owner per fact. The adapters package re-exports them
+// so processors and typed-fail adapters keep a single local name while
+// errors.Is walkers match the domain-level sentinel.
+var ErrEntityExtractorUnavailable = scriptpkg.ErrEntityExtractorUnavailable
 
 // ErrMetadataGeneratorUnavailable mirrors ErrEntityExtractorUnavailable
 // for the metadata generation typed-fail adapter. See the doc comment
 // above for rationale.
-var ErrMetadataGeneratorUnavailable = errors.New("adapters: MetadataGenerator backend unavailable (fail-closed per godlike/07 — wire a real backend or remove the metadata postprocessor)")
+var ErrMetadataGeneratorUnavailable = scriptpkg.ErrMetadataGeneratorUnavailable
 
 // ── ArtlistClipMatch: result type for clip-search postprocessor ──────────
 

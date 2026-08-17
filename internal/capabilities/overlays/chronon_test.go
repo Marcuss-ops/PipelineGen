@@ -52,8 +52,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "id": "important_phrase",
         "type": "text",
         "text": "QUESTO CAMBIA TUTTO",
-        "font": "assets/fonts/DejaVuSans.ttf",
-        "preset": "title_centered",
+        "preset": "caption_card",
         "start_frame": 20,
         "duration_frames": 41
       },
@@ -61,8 +60,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "id": "important_word",
         "type": "text",
         "text": "APPLE",
-        "font": "assets/fonts/DejaVuSans.ttf",
-        "preset": "kinetic_word",
+        "preset": "active_word_pop",
         "start_frame": 65,
         "duration_frames": 31
       },
@@ -70,6 +68,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "id": "image_overlay",
         "type": "image",
         "asset": "assets/apple.png",
+        "preset": "image_focus_in",
         "box_width": 260,
         "box_height": 260,
         "fit": "contain",

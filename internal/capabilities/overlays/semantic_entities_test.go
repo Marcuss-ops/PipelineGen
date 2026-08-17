@@ -25,13 +25,13 @@ func TestSemanticEntitiesTerminateInCanonicalPrimitives(t *testing.T) {
 		wantPreset string
 		withAsset  bool
 	}{
-		{"IMPORTANT_PHRASE", "text", "title_centered", false},
-		{"IMPORTANT_WORD", "text", "kinetic_word", false},
+		{"IMPORTANT_PHRASE", "text", "caption_card", false},
+		{"IMPORTANT_WORD", "text", "active_word_pop", false},
 		{"IMAGE_OVERLAY", "image", "", true},
-		{"PERSON", "text", "entity_card", false},
-		{"NUMBER", "text", "number", false},
-		{"QUOTE", "text", "quote", false},
-		{"LOCATION", "text", "entity_card", false},
+		{"PERSON", "text", "lower_third_safe", false},
+		{"NUMBER", "text", "active_word_pop", false},
+		{"QUOTE", "text", "caption_card", false},
+		{"LOCATION", "text", "location_card", false},
 		{"PRODUCT", "image", "", true},
 		{"LOGO", "image", "", true},
 	}
@@ -79,7 +79,11 @@ func TestSemanticEntityAliasesPinConcordance(t *testing.T) {
 		if !okS || !okC {
 			t.Fatalf("alias pair %s/%s not fully registered", semantic, concrete)
 		}
-		if s.LayerType != c.LayerType || s.Preset != c.Preset || s.Fit != c.Fit ||
+		// The preset is resolved through the single SemanticOverlayResolver;
+		// alias spellings must agree on the same Chronon preset.
+		sp, _ := DefaultSemanticOverlayResolver.PresetFor(semantic)
+		cp, _ := DefaultSemanticOverlayResolver.PresetFor(concrete)
+		if s.LayerType != c.LayerType || sp != cp || s.Fit != c.Fit ||
 			s.BoxWidth != c.BoxWidth || s.BoxHeight != c.BoxHeight ||
 			s.Primitive != c.Primitive {
 			t.Errorf("alias %s diverges from %s:\n got  %+v\n want %+v", semantic, concrete, s, c)
@@ -183,7 +187,7 @@ func TestCompileChrononPlanRejectsTemplateWithoutPrimitive(t *testing.T) {
 	})
 	// Drop the primitive from the registry entry (restore afterwards).
 	original := templateRegistry["IMPORTANT_PHRASE"]
-	templateRegistry["IMPORTANT_PHRASE"] = TemplateSpec{LayerType: "text", Preset: "title_centered"}
+	templateRegistry["IMPORTANT_PHRASE"] = TemplateSpec{LayerType: "text"}
 	defer func() { templateRegistry["IMPORTANT_PHRASE"] = original }()
 
 	if _, err := CompileChrononPlan(plan); err == nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -142,6 +143,9 @@ func parseTimeSeconds(s string) (float64, error) {
 		return 0, fmt.Errorf("empty timestamp")
 	}
 	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, fmt.Errorf("invalid timestamp %q", s)
+		}
 		return v, nil
 	}
 	// HH:MM:SS.mmm (or HH:MM:SS) — split on ':' so the seconds field keeps
@@ -149,10 +153,13 @@ func parseTimeSeconds(s string) (float64, error) {
 	parts := strings.Split(s, ":")
 	if len(parts) == 2 || len(parts) == 3 {
 		var secs float64
-		for _, part := range parts {
+		for i, part := range parts {
 			v, err := strconv.ParseFloat(part, 64)
 			if err != nil {
 				return 0, fmt.Errorf("invalid timestamp %q: %w", s, err)
+			}
+			if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) || (i > 0 && v >= 60) {
+				return 0, fmt.Errorf("invalid timestamp %q", s)
 			}
 			secs = secs*60 + v
 		}
@@ -161,15 +168,37 @@ func parseTimeSeconds(s string) (float64, error) {
 	return 0, fmt.Errorf("invalid timestamp %q", s)
 }
 
+func parseCutRange(start, end string, allowEmpty bool) (float64, float64, error) {
+	if allowEmpty && strings.TrimSpace(start) == "" && strings.TrimSpace(end) == "" {
+		return 0, 0, nil
+	}
+	startSec, err := parseTimeSeconds(start)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid start timestamp: %w", err)
+	}
+	endSec, err := parseTimeSeconds(end)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid end timestamp: %w", err)
+	}
+	if endSec <= startSec {
+		return 0, 0, fmt.Errorf("invalid timestamp range: end must be after start")
+	}
+	return startSec, endSec, nil
+}
+
 func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end string, noAudio bool) error {
-	startSec, _ := parseTimeSeconds(start)
-	endSec, _ := parseTimeSeconds(end)
+	startSec, endSec, err := parseCutRange(start, end, true)
+	if err != nil {
+		return err
+	}
 	return p.run(ctx, request{Operation: "cut_copy", SourcePath: input, OutputPath: output, StartSec: startSec, EndSec: endSec, NoAudio: noAudio})
 }
 
 func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts mediaexec.CutAndNormalizeOptions) error {
-	startSec, _ := parseTimeSeconds(start)
-	endSec, _ := parseTimeSeconds(end)
+	startSec, endSec, err := parseCutRange(start, end, false)
+	if err != nil {
+		return err
+	}
 	profile, err := p.resolvedProfile(cutProfile(opts))
 	if err != nil {
 		return err

@@ -55,6 +55,12 @@ type Service struct {
 	log         *zap.Logger
 	scriptPath  string
 	vectorStore VectorStoreIndexer
+
+	// projectionAdvancer is the optional checkpoint advancer called after a
+	// successful Qdrant upsert. It advances the ACTIVE projection's
+	// source_registry_seq so the startup sequence gate no longer sees a stale
+	// projection after incremental indexing. nil is safe (tests / Qdrant-off).
+	projectionAdvancer capregistry.ProjectionSequenceAdvancer
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.

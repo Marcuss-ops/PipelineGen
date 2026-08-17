@@ -1,13 +1,25 @@
 package script
 
+// EvidenceAccessMode records how a web source was obtained. Search snippets
+// are useful resilience fallbacks, but they are weaker than a fetched page
+// and must not be silently treated as equivalent evidence.
+type EvidenceAccessMode string
+
+const (
+	EvidenceAccessFullPage EvidenceAccessMode = "full_page"
+	EvidenceAccessSnippet  EvidenceAccessMode = "search_snippet"
+)
+
 // ResearchWebSource is a bounded, sanitized web source retained as provenance.
 type ResearchWebSource struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Publisher   string `json:"publisher,omitempty"`
-	PublishedAt string `json:"published_at,omitempty"`
-	Excerpt     string `json:"excerpt,omitempty"`
+	ID          string             `json:"id"`
+	Title       string             `json:"title"`
+	URL         string             `json:"url"`
+	Publisher   string             `json:"publisher,omitempty"`
+	PublishedAt string             `json:"published_at,omitempty"`
+	Excerpt     string             `json:"excerpt,omitempty"`
+	AccessMode  EvidenceAccessMode `json:"access_mode,omitempty"`
+	Confidence  float64            `json:"confidence,omitempty"`
 }
 
 type ResearchClaim struct {
@@ -17,21 +29,25 @@ type ResearchClaim struct {
 }
 
 type ResearchReport struct {
-	Status            string              `json:"status"`
-	Mode              string              `json:"mode,omitempty"`
-	SearchEnabled     bool                `json:"search_enabled"`
-	Searched          bool                `json:"searched"`
-	CacheSaved        bool                `json:"cache_saved"`
-	CacheKey          string              `json:"cache_key,omitempty"`
-	ResearchVersion   string              `json:"research_version,omitempty"`
-	Queries           []string            `json:"queries,omitempty"`
-	Sources           []ResearchWebSource `json:"sources,omitempty"`
-	Claims            []ResearchClaim     `json:"claims,omitempty"`
-	PagesRequested    int                 `json:"pages_requested"`
-	PagesFetched      int                 `json:"pages_fetched"`
-	PagesFailed       int                 `json:"pages_failed"`
-	AcceptedSources   int                 `json:"accepted_sources"`
-	RejectedSources   int                 `json:"rejected_sources"`
-	QualityGatePassed bool                `json:"quality_gate_passed"`
-	CacheHit          bool                `json:"cache_hit"`
+	Status            string                `json:"status"`
+	Mode              string                `json:"mode,omitempty"`
+	SearchEnabled     bool                  `json:"search_enabled"`
+	Searched          bool                  `json:"searched"`
+	CacheSaved        bool                  `json:"cache_saved"`
+	CacheKey          string                `json:"cache_key,omitempty"`
+	ResearchVersion   string                `json:"research_version,omitempty"`
+	Queries           []string              `json:"queries,omitempty"`
+	Sources           []ResearchWebSource   `json:"sources,omitempty"`
+	Claims            []ResearchClaim       `json:"claims,omitempty"`
+	PagesRequested    int                   `json:"pages_requested"`
+	PagesFetched      int                   `json:"pages_fetched"`
+	PagesFailed       int                   `json:"pages_failed"`
+	AcceptedSources   int                   `json:"accepted_sources"`
+	FullPageSources   int                   `json:"full_page_sources"`
+	SnippetSources    int                   `json:"snippet_sources"`
+	EvidenceScore     float64               `json:"evidence_score"`
+	RejectedSources   int                   `json:"rejected_sources"`
+	QualityGatePassed bool                  `json:"quality_gate_passed"`
+	CacheHit          bool                  `json:"cache_hit"`
+	Evidence          *ResearchEvidencePack `json:"evidence,omitempty"`
 }

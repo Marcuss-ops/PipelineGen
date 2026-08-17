@@ -214,6 +214,7 @@ features:
   script_clips_enabled: false
   images_enabled: true
   stock_pipeline_enabled: true
+  clip_render_enabled: false
   voiceover_enabled: false
   catalog_script_vector_search: false
 

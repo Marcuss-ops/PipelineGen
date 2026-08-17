@@ -13,6 +13,7 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
@@ -28,9 +29,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
@@ -413,6 +414,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
 	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer})
+	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
+		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
+	}
+	var committer assetspersistence.AssetCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+	worker.WithRenderPublisher(&clipRenderPublisher{drive: root.Drive.Publisher, committer: committer})
 	log.Info("registerClipRender: clip render boundary wired (render_clip single pass)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),
 		zap.String("ffmpeg", cfg.External.FfmpegPath),

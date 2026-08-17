@@ -1,6 +1,9 @@
 package observability
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // StageInfo describes one canonical pipeline stage execution.
 type StageInfo struct {
@@ -104,4 +107,53 @@ func MeasureStageReport(ctx context.Context, stage StageName, fn func(context.Co
 func MeasureStage(ctx context.Context, stage StageName, fn func(context.Context) error) error {
 	_, err := MeasureStageReport(ctx, stage, fn)
 	return err
+}
+
+// RecordStage appends a stage observation that was measured by the stage's
+// OWNER rather than by the kernel's functional timer — e.g. a parallel
+// fan-out whose wall window spans goroutines, so Stage/StageWith cannot wrap
+// it synchronously. The caller supplies the measured interval and outcome;
+// the kernel never re-times the stage. When both anchors are present the
+// duration is derived from them; a missing FinishedAt falls back to StartedAt;
+// a zero StartedAt leaves the stage unanchored with a zero duration.
+func (r *Run) RecordStage(info StageInfo, startedAt, finishedAt time.Time, err error) {
+	if r == nil || info.Stage == "" {
+		return
+	}
+	if !startedAt.IsZero() && finishedAt.IsZero() {
+		finishedAt = startedAt
+	}
+	if !startedAt.IsZero() && finishedAt.Before(startedAt) {
+		finishedAt = startedAt
+	}
+	st := StageReport{
+		ObservationID:  NewObservationID(),
+		Name:           string(info.Stage),
+		Status:         StageStatusCompleted,
+		StartedAt:      startedAt,
+		FinishedAt:     finishedAt,
+		Attempts:       1,
+		CacheStatus:    info.CacheStatus,
+		ItemsInput:     nonNegative(info.ItemsInput),
+		ItemsCompleted: nonNegative(info.ItemsCompleted),
+		ItemsFailed:    nonNegative(info.ItemsFailed),
+		BytesProcessed: nonNegative(info.BytesProcessed),
+	}
+	if !startedAt.IsZero() {
+		st.DurationMs = nonNegative(finishedAt.Sub(startedAt).Milliseconds())
+	}
+	if err != nil {
+		st.Status = StageStatusFailed
+		st.ErrorCode = errorCode(err)
+	}
+	r.recordStage(st)
+}
+
+// RecordStage is the context-bound form of Run.RecordStage: it appends the
+// owner-measured stage to the run bound to ctx, or is a no-op when no run is
+// bound (instrumentation must never change behaviour).
+func RecordStage(ctx context.Context, info StageInfo, startedAt, finishedAt time.Time, err error) {
+	if run := FromContext(ctx); run != nil {
+		run.RecordStage(info, startedAt, finishedAt, err)
+	}
 }

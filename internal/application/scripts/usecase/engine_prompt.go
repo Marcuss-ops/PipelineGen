@@ -210,7 +210,7 @@ Write ONLY the complete narrative script text. Follow these rules:
 
 1. DO NOT output JSON, JSON objects, or JSON arrays.
 2. DO NOT output markdown, code fences, or block formatting.
-3. DO NOT output scene IDs, scene indexes, kind labels, or bindings.
+3. DO NOT output machine scene IDs, scene indexes, kind labels, or bindings. Editorial section headings such as "Scene 1" are allowed only when the resolved narrative plan explicitly requires them.
 4. DO NOT output schema_version, specscene, or any structured envelope.
 5. DO NOT output metadata fields, clip_ids, drive links, or image URLs.
 6. DO NOT put technical markers such as URLs, speaker labels, tags, keywords, or clip IDs inside the prose.

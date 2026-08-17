@@ -243,7 +243,14 @@ func (e *Engine) generateSegments(
 		}
 		segmentReq := req
 		segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
-		segmentReq.SourceText = strings.TrimSpace(segment.SourceText)
+		// The global source (e.g. the research source text resolved for the
+		// whole topic) remains the grounding for a segment that declares no
+		// per-segment source_text. The prompt footer promises "use the topic
+		// and the global source", so only an explicit per-segment source_text
+		// may override it — never an empty value.
+		if segSource := strings.TrimSpace(segment.SourceText); segSource != "" {
+			segmentReq.SourceText = segSource
+		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
 		var result *ports.GenerationResult

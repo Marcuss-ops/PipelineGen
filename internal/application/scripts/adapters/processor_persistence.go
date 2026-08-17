@@ -209,6 +209,19 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}); stageErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, stageErr)
 	}
+	if len(input.ResearchSources) > 0 {
+		researchSources := make([]ports.ScriptResearchSource, 0, len(input.ResearchSources))
+		for _, source := range input.ResearchSources {
+			researchSources = append(researchSources, ports.ScriptResearchSource{
+				ScriptID: scriptID, Source: source.Type, Query: persistPlan.Topic,
+				URL: source.URL, Title: source.Title, Snippet: source.Title,
+				SourceType: "web_research",
+			})
+		}
+		if err := p.repo.SaveResearchSources(operationCtx, scriptID, researchSources); err != nil {
+			return nil, fmt.Errorf("%w: persistence processor: SaveResearchSources failed: %w", scriptpkg.ErrPostprocessFailed, err)
+		}
+	}
 
 	// PR 1 (SCRIPT-DOWNSTREAM-CUTOVER wave): persist the canonical
 	// ManifestV2 envelope after the script row is written. The

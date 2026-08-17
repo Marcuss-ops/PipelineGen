@@ -41,6 +41,7 @@ type GenerateRequest struct {
 	Context []int          `json:"context,omitempty"`
 	Stream  bool           `json:"stream"`
 	Images  []string       `json:"images,omitempty"` // Base64 encoded images
+	Format  any            `json:"format,omitempty"`
 	Options map[string]any `json:"options,omitempty"`
 }
 

@@ -1,7 +1,8 @@
 // Package overlays — layout.go owns the deterministic canvas layout of the
 // chronon.render-plan.v1 document: semantic position strings resolve to
-// concrete canvas slots, colliding image layers are separated by priority,
-// and oversized text is auto-fit so no preset ever clips ink.
+// concrete canvas slots and colliding image layers are separated by priority.
+// Text font and size are NOT laid out here — Chronon's VisualPresetRegistry
+// and StyleResolver own them (PipelineGen emits no font/font_size).
 //
 // The layout engine is a pure function of (canvas, item order, priority): it
 // never reads wall clocks, random state or external layout services. The same
@@ -9,16 +10,13 @@
 // invariant is preserved.
 //
 // Scope: only image layers WITHOUT an explicit numeric position participate
-// in slot layout (an explicit position is user intent and wins). Only text
-// layers whose display text exceeds the character budget receive a font_size
-// override. Everything else keeps the template shape — the golden workloads
-// (which carry explicit numeric positions and short phrases) compile
-// byte-identically.
+// in slot layout (an explicit position is user intent and wins). Everything
+// else keeps the template shape — the golden workloads (which carry explicit
+// numeric positions and short phrases) compile byte-identically.
 package overlays
 
 import (
 	"strings"
-	"unicode/utf8"
 )
 
 // SafeCanvasMargin is the deterministic gutter between an auto-laid-out
@@ -176,38 +174,4 @@ func lessImageCandidate(a, b imageLayoutCandidate) bool {
 		return a.priority > b.priority
 	}
 	return a.layerIndex < b.layerIndex
-}
-
-// ── Text auto-fit ─────────────────────────────────────────────────────────
-//
-// The character budget is the deterministic display budget before a text
-// preset risks clipping ink (the golden phrases — up to 18 runes — stay well
-// under it, so the golden documents are untouched). Longer text scales down
-// through fixed buckets; the runtime honors font_size on text layers
-// (render_plan_decoder.cpp reads layer.font_size).
-
-// fitTextBudget is the maximum rune count rendered at the preset's default
-// font size.
-const fitTextBudget = 22
-
-// fitFontSize returns the deterministic font_size override for a display
-// text of n runes, or (0, false) when the text fits the default size.
-func fitFontSize(n int) (float64, bool) {
-	switch {
-	case n <= fitTextBudget:
-		return 0, false
-	case n <= 32:
-		return 56, true
-	case n <= 44:
-		return 48, true
-	case n <= 56:
-		return 40, true
-	default:
-		return 32, true
-	}
-}
-
-// displayRunes counts the runes of a display text (whitespace collapsed).
-func displayRunes(text string) int {
-	return utf8.RuneCountInString(strings.Join(strings.Fields(text), " "))
 }

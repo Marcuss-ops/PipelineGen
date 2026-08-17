@@ -40,10 +40,88 @@ func TestParseTimeSeconds(t *testing.T) {
 }
 
 func TestParseTimeSeconds_RejectsGarbage(t *testing.T) {
-	for _, in := range []string{"", "abc", "15:00:00:00"} {
+	for _, in := range []string{"", "abc", "banana", "00:XX:12", "::", "-", "00:00:NaN", "15:00:00:00", "-1", "00:60:00"} {
 		if _, err := parseTimeSeconds(in); err == nil {
 			t.Fatalf("parseTimeSeconds(%q) expected error, got nil", in)
 		}
+	}
+}
+
+func TestCutCopyInvalidTimestampsFailBeforeRust(t *testing.T) {
+	for _, tc := range []struct {
+		name, start, end string
+	}{
+		{"invalid start", "banana", "5"},
+		{"invalid end", "2", "invalid"},
+		{"end before start", "5", "2"},
+		{"zero duration", "2", "2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &fakeRunner{stdout: []byte(`{"ok":true}`)}
+			client := NewClient("muscles", "ffmpeg", nil)
+			client.runner = runner
+			err := (&VideoProcessor{client: client}).CutCopy(context.Background(), "in.mp4", "out.mp4", tc.start, tc.end, false)
+			if err == nil {
+				t.Fatal("CutCopy() accepted invalid timestamp range")
+			}
+			if runner.input != nil {
+				t.Fatalf("Rust runner was invoked for invalid range: %s", runner.input)
+			}
+		})
+	}
+}
+
+func TestCutAndNormalizeInvalidTimestampsFailBeforeRust(t *testing.T) {
+	opts := mediaexec.CutAndNormalizeOptions{Policy: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}}
+	for _, tc := range []struct {
+		name, start, end string
+	}{
+		{"invalid start", "banana", "5"},
+		{"invalid end", "2", "invalid"},
+		{"end before start", "5", "2"},
+		{"zero duration", "2", "2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &fakeRunner{stdout: []byte(`{"ok":true}`)}
+			client := NewClient("muscles", "ffmpeg", nil)
+			client.runner = runner
+			processor := &VideoProcessor{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
+			err := processor.CutAndNormalize(context.Background(), "in.mp4", "out.mp4", tc.start, tc.end, opts)
+			if err == nil {
+				t.Fatal("CutAndNormalize() accepted invalid timestamp range")
+			}
+			if runner.input != nil {
+				t.Fatalf("Rust runner was invoked for invalid range: %s", runner.input)
+			}
+		})
+	}
+}
+
+func TestCutAndNormalizeParsesFloatAndHHMMSSMillis(t *testing.T) {
+	for _, tc := range []struct {
+		name, start, end   string
+		wantStart, wantEnd float64
+	}{
+		{"formatted", "00:00:15.500", "00:00:18.250", 15.5, 18.25},
+		{"float", "2", "5", 2, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_and_normalize"}`)}
+			client := NewClient("muscles", "ffmpeg", nil)
+			client.runner = runner
+			processor := &VideoProcessor{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
+			opts := mediaexec.CutAndNormalizeOptions{Policy: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}}
+			if err := processor.CutAndNormalize(context.Background(), "in.mp4", "out.mp4", tc.start, tc.end, opts); err != nil {
+				t.Fatalf("CutAndNormalize() error = %v", err)
+			}
+			var sent request
+			if err := json.Unmarshal(runner.input, &sent); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if math.Abs(sent.StartSec-tc.wantStart) > 1e-9 || math.Abs(sent.EndSec-tc.wantEnd) > 1e-9 {
+				t.Fatalf("StartSec/EndSec = %v/%v, want %v/%v", sent.StartSec, sent.EndSec, tc.wantStart, tc.wantEnd)
+			}
+		})
 	}
 }
 

@@ -76,3 +76,65 @@ type RenderOutcome struct {
 type RenderExecutor interface {
 	Render(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
 }
+
+// OutputProbe is the capability-owned projection of the rendered output's
+// media facts, collected by the OutputProber port AFTER render_clip. The
+// probe reads the actual bytes on disk — contract validation never trusts
+// what the render boundary claimed to encode.
+type OutputProbe struct {
+	HasVideo    bool
+	VideoCodec  string
+	PixelFormat string
+	Width       int
+	Height      int
+	FPS         float64
+	HasAudio    bool
+	AudioCodec  string
+	SampleRate  int
+	Channels    int
+}
+
+// OutputProber probes the rendered output file. The concrete adapter uses
+// the canonical Rust probe boundary; the capability owns the comparison
+// against the resolved contract (ValidateContract). Fail-closed: a missing
+// or unreadable output is a typed error, never a silent empty probe.
+type OutputProber interface {
+	ProbeOutput(ctx context.Context, path string) (*OutputProbe, error)
+}
+
+// RenderPublishInput is the fully-resolved input for the publish + commit
+// phase. Every value comes from the worker (sealed plan, render outcome,
+// resolved contract, transcript, sidecar artifact); the publisher never
+// resolves anything itself.
+type RenderPublishInput struct {
+	RunID         string
+	SourceAssetID string
+	OutputPath    string
+	Outcome       *RenderOutcome
+	Contract      *ResolvedContract
+	Transcript    *TranscriptResult
+	Subtitles     *SubtitleArtifact // sidecar mode: uploaded alongside the clip
+	DriveFolderID string
+}
+
+// RenderPublishResult is the typed outcome of publishing + committing the
+// derived asset. AssetID is the canonical media_assets.id; DriveLink is the
+// canonical Drive web link (never reconstructed by the worker).
+type RenderPublishResult struct {
+	AssetID       string
+	DriveFileID   string
+	DriveLink     string
+	SizeBytes     int64
+	SidecarFileID string
+	SidecarLink   string
+}
+
+// RenderPublisher publishes the validated output to Drive through the
+// canonical delivery publisher and commits it as a derived media asset
+// inside ONE SQLite transaction (mirror of the canonical final-audio
+// publisher). Fail-closed: an unwired publisher, a missing output, or a
+// failed commit is a typed error — the job never reports success without
+// the derived asset durably committed.
+type RenderPublisher interface {
+	Publish(ctx context.Context, in RenderPublishInput) (*RenderPublishResult, error)
+}

@@ -1,10 +1,17 @@
-// Package overlays — template_registry.go owns the canonical semantic→concrete
-// template table: the single place that knows every semantic entity's concrete
-// layer shape AND the canonical primitive it terminates in. Kept separate from
-// chronon.go so the compiler stays under the max-lines-per-file budget.
+// Package overlays — template_registry.go owns the canonical semantic→layer
+// transport table: the single place that knows every semantic entity's
+// concrete layer shape AND the canonical primitive it terminates in. Kept
+// separate from chronon.go so the compiler stays under the max-lines-per-file
+// budget.
+//
+// NOTE: this table carries ONLY the transport shape (primitive + the
+// fit/box/position Chronon still consumes while its LayoutResolver wiring
+// lands). The editorial semantic_role → Chronon visual-preset decision is
+// owned by SemanticOverlayResolver (semantic_resolver.go) and is deliberately
+// NOT duplicated here.
 package overlays
 
-// templateRegistry is the canonical semantic→concrete template table. It is
+// templateRegistry is the canonical semantic→concrete transport table. It is
 // the single place that knows every semantic entity's concrete layer shape
 // AND the canonical primitive it terminates in — the golden workload shapes
 // used by GoldenOverlayPlanV1 plus the extended semantic entity vocabulary.
@@ -21,12 +28,10 @@ var templateRegistry = map[string]TemplateSpec{
 	},
 	"IMPORTANT_PHRASE": {
 		LayerType: "text",
-		Preset:    "title_centered",
 		Primitive: PrimitiveText,
 	},
 	"IMPORTANT_WORD": {
 		LayerType: "text",
-		Preset:    "kinetic_word",
 		Primitive: PrimitiveText,
 	},
 	"IMAGE_OVERLAY": {
@@ -44,22 +49,18 @@ var templateRegistry = map[string]TemplateSpec{
 	// images (they fail closed when the item carries no asset).
 	"PERSON": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	"NUMBER": {
 		LayerType: "text",
-		Preset:    "number",
 		Primitive: PrimitiveText,
 	},
 	"QUOTE": {
 		LayerType: "text",
-		Preset:    "quote",
 		Primitive: PrimitiveText,
 	},
 	"LOCATION": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	"PRODUCT": {
@@ -105,27 +106,24 @@ var templateRegistry = map[string]TemplateSpec{
 	},
 	// ── Concrete templates referenced by the kind registry / renderers ──
 	// Entity cards (entity_card kind) compile to a text layer carrying the
-	// entity name with the entity_card preset; the preset decides the final
+	// entity name; the Chronon preset resolved by SemanticOverlayResolver
+	// (lower_third_safe / organization_card / location_card) decides the final
 	// portrait/name geometry. The optional image AssetRef becomes the card's
 	// portrait (layer.Asset) alongside the name (layer.Text).
 	"person_default": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	"org_default": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	"gpe_default": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	"concept_default": {
 		LayerType: "text",
-		Preset:    "entity_card",
 		Primitive: PrimitiveText,
 	},
 	// Non-entity visual capabilities (ChrononOverlayRegistry kinds): a lower
@@ -133,7 +131,6 @@ var templateRegistry = map[string]TemplateSpec{
 	// contained image on the right, and a quote is centered text.
 	"lower_third": {
 		LayerType: "text",
-		Preset:    "lower_third",
 		Primitive: PrimitiveText,
 	},
 	"image_popup": {
@@ -146,7 +143,6 @@ var templateRegistry = map[string]TemplateSpec{
 	},
 	"quote": {
 		LayerType: "text",
-		Preset:    "quote",
 		Primitive: PrimitiveText,
 	},
 }

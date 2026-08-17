@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -204,11 +203,56 @@ func TestHybridExtractorGPUFailsClosedWhenUnavailable(t *testing.T) {
 		available: func(context.Context) bool { return false },
 	}
 	_, err := hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "x", Device: DeviceGPU})
-	if !errors.Is(err, adapters.ErrEntityExtractorUnavailable) {
+	if !errors.Is(err, scriptpkg.ErrEntityExtractorUnavailable) {
 		t.Fatalf("error = %v, want ErrEntityExtractorUnavailable", err)
 	}
 	got, err := hybrid.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "Mike Tyson", Device: DeviceAuto})
 	if err != nil || got == nil {
 		t.Fatalf("auto fallback = %+v, err=%v", got, err)
 	}
+}
+
+// TestExtractorRejectsSentenceInitialConnectivesAsEntities certifies the
+// false-positive fix: a sentence-initial capitalized connective like
+// "During the" or "Shortly the" must never be emitted as a named entity. The
+// capitalization heuristic alone would classify them as PERSON; the canonical
+// entity blocklist (config/lexicons/en/entity_blocklist.txt) must reject them
+// while the real entities in the same text still survive.
+func TestExtractorRejectsSentenceInitialConnectivesAsEntities(t *testing.T) {
+	text := "During the dawn of civilization, the Genesis Mission began. Shortly the probe returned solar wind samples to NASA."
+	result, err := NewExtractor().ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
+		Text: text, Language: "en", EntityCount: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, group := range [][]scriptpkg.Entity{result.Persons, result.Places, result.Concepts} {
+		for _, entity := range group {
+			// KEYWORDs are important words (search terms), not named entities;
+			// only the named-entity classifications are in scope for this fix.
+			if entity.Type == "KEYWORD" {
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(entity.Value)) {
+			case "during the", "shortly the", "during", "shortly":
+				t.Fatalf("sentence-initial connective leaked as named entity: %+v (persons=%+v places=%+v concepts=%+v)",
+					entity, result.Persons, result.Places, result.Concepts)
+			}
+		}
+	}
+
+	requireEntity := func(value, kind string) {
+		t.Helper()
+		for _, group := range [][]scriptpkg.Entity{result.Persons, result.Places, result.Concepts} {
+			for _, entity := range group {
+				if strings.EqualFold(strings.TrimSpace(entity.Value), value) && entity.Type == kind {
+					return
+				}
+			}
+		}
+		t.Fatalf("missing %s %q: persons=%+v places=%+v concepts=%+v", kind, value, result.Persons, result.Places, result.Concepts)
+	}
+	requireEntity("Genesis Mission", "CONCEPT")
+	requireEntity("NASA", "ORG")
 }

@@ -7,10 +7,19 @@ import (
 	"sort"
 	"strings"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+// EntityExtractor is the structural port consumed by HybridExtractor. It
+// mirrors the canonical adapters.EntityExtractor signature; Go structural
+// typing keeps every implementation here assignable to the canonical port
+// at the wiring sites without importing the adapters package (which would
+// pull capabilities/scripts → capabilities/entities into this dependency
+// graph).
+type EntityExtractor interface {
+	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
+}
 
 // Extractor is deliberately conservative: it only emits text found in the
 // input and never calls a model or an external provider.
@@ -49,9 +58,11 @@ var titleCaseVerbs = map[string]struct{}{
 }
 
 // nonEntityLeadWords are the tokens that must never begin a candidate entity
-// (sentence-initial connectives/determiners that are not names). Kept as a
-// slice because these are entity-extraction lead blockers, not a stop-word
-// lexicon — the canonical stop-word SSOT lives in linguistics.
+// (sentence-initial connectives/determiners that are not names). This is the
+// narrow hard-coded supplement to the canonical entity blocklist in
+// linguistics; isNonEntityLead consults BOTH, so
+// config/lexicons/<lang>/entity_blocklist.txt remains the single source of
+// truth for "words that must never be a named entity".
 var nonEntityLeadWords = []string{
 	"among", "at", "central", "from", "furthermore", "in", "the", "this",
 }
@@ -62,11 +73,16 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 	if text == "" {
 		return result, nil
 	}
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "fallback"
+	}
+	profile := linguistics.DefaultLexicon().Resolve(language)
 	seen := map[string]struct{}{}
 	properSpans := entitySpans(text)
 	for _, span := range properSpans {
 		value := normalizeEntityValue(trimEntityPrefix(text[span[0]:span[1]]))
-		if isNonEntityLead(value) {
+		if isNonEntityLead(value, profile) {
 			continue
 		}
 		kind := classifyName(value)
@@ -134,13 +150,31 @@ func normalizeEntityValue(value string) string {
 	return strings.Trim(strings.TrimSpace(value), ".,;:!?\"'’”)]}>")
 }
 
-func isNonEntityLead(value string) bool {
+func isNonEntityLead(value string, profile *linguistics.LexiconProfile) bool {
 	parts := strings.Fields(strings.ToLower(normalizeEntityValue(value)))
 	if len(parts) == 0 {
 		return true
 	}
 	for _, blocked := range nonEntityLeadWords {
 		if blocked == parts[0] {
+			return true
+		}
+	}
+	// The canonical entity blocklist is the SSOT for "words that must never be
+	// a named entity". A candidate whose words are mostly blocklisted function
+	// words ("during the", "shortly the") is a sentence fragment, not a name,
+	// so reject it. A real multi-word proper name ("Will Smith") survives
+	// because at least half its words are NOT blocklisted — homographs like
+	// "will" / "may" can begin a name, so a lead-word-only check would drop
+	// "Will Smith" together with the false positives.
+	if profile != nil {
+		blocked := 0
+		for _, w := range parts {
+			if _, ok := profile.EntityBlocklist[w]; ok {
+				blocked++
+			}
+		}
+		if blocked*2 > len(parts) {
 			return true
 		}
 	}
@@ -402,4 +436,4 @@ func isNonNarrativeInstruction(sentence string) bool {
 	return false
 }
 
-var _ adapters.EntityExtractor = (*Extractor)(nil)
+var _ EntityExtractor = (*Extractor)(nil)

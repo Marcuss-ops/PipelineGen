@@ -231,6 +231,9 @@ func (p *GenerationPreparer) Prepare(
 			if resolved.ClipEvidence != nil {
 				plan.ClipEvidence = resolved.ClipEvidence
 			}
+			if resolved.ResearchEvidence != nil {
+				plan.ResearchEvidence = resolved.ResearchEvidence.Clone()
+			}
 			if len(resolved.SearchResults) > 0 {
 				plan.SearchResults = append([]scriptpkg.SearchResultItem(nil), resolved.SearchResults...)
 			}

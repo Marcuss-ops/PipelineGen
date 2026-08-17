@@ -183,7 +183,7 @@ func TestBuildPlanGolden01ImportantPhrase(t *testing.T) {
 //   - no repeated words: an identical keyword text is emitted exactly once;
 //   - in-scene timing only: empty text and negative timing are dropped,
 //     never given guessed timing;
-//   - kinetic words: every kept keyword compiles to the kinetic_word preset.
+//   - kinetic words: every kept keyword compiles to the active_word_pop preset.
 //
 // Entity/type selection (PERSON/COMPANY/MONEY/DATE/NUMBER/LOCATION) and
 // stop-word rejection are owned upstream of this planner — by the extraction
@@ -228,17 +228,17 @@ func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 	if teslaCount != 1 {
 		t.Fatalf("keyword %q emitted %d times, want exactly 1", "TESLA", teslaCount)
 	}
-	// Kinetic words: every kept keyword compiles to the kinetic_word preset.
+	// Kinetic words: every kept keyword compiles to the active_word_pop preset.
 	compiled, err := CompileChrononPlan(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, layer := range compiled.Plan.Layers {
-		if layer.Preset == "kinetic_word" {
+		if layer.Preset == "active_word_pop" {
 			continue
 		}
 		if layer.Type == "text" {
-			t.Fatalf("text layer %q preset = %q, want kinetic_word", layer.ID, layer.Preset)
+			t.Fatalf("text layer %q preset = %q, want active_word_pop", layer.ID, layer.Preset)
 		}
 	}
 }

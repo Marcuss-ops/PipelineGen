@@ -646,6 +646,12 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 
 	snapshot := snapshotSceneText(result.Scenes, req.SourceLanguage)
 
+	// skeletons carries the per-language document skeletons rendered at
+	// SceneTextReady by the parallel fan-out (the early DocsPrepare pass). It
+	// is nil in serial mode (the "before" baseline keeps the one-shot render)
+	// and when the renderer does not implement the early/late split.
+	var skeletons map[Language]string
+
 	if r.serialMode {
 		// Serial "before" chain: entities → voiceover. The VidRush join +
 		// overlay.prepare runs blocking first, its projections are applied,
@@ -678,8 +684,13 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		defer cancelPrepare()
 		prepareDone := make(chan vidRushPrepareOutcome, 1)
 		go func() {
+			// Early DocsPrepare: render the scene-text-only document skeleton
+			// for each docs language FIRST, before the VidRush join, so the
+			// CPU render overlaps both TTS (main goroutine) and NLP (VidRush
+			// enrichments) instead of waiting for the audio join.
+			skel := r.renderDocumentSkeletons(req, result)
 			res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
-			prepareDone <- vidRushPrepareOutcome{result: res, err: err}
+			prepareDone <- vidRushPrepareOutcome{result: res, skeletons: skel, err: err}
 		}()
 
 		// TTS runs in the main goroutine, in parallel with the prepare branch.
@@ -697,6 +708,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 			return
 		}
 		applyVidRushPrepareProjections(result, outcome.result)
+		skeletons = outcome.skeletons
 		r.checkpoint(ctx, runID, result)
 	}
 
@@ -715,7 +727,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		return
 	}
 	if !r.measurePhase(ctx, kernobs.StageName(stageDocument), func(c context.Context) bool {
-		return r.runDocumentPhase(c, runID, req, routing, exec, resumeIdx, result)
+		return r.runDocumentPhase(c, runID, req, routing, exec, resumeIdx, result, skeletons)
 	}) {
 		return
 	}
