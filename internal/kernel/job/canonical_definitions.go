@@ -72,6 +72,13 @@ const (
 	TypeAssetTextMaterialize = "asset.text.materialize"
 	TypeBooksProcess         = "books.process"
 	TypeLessonsProcess       = "lessons.process"
+
+	// TypeClipRender is the canonical job type for the clip.render
+	// capability (canonical VeloxEditing-compatible clip
+	// post-processing). The literal lives here (kernel owns shared
+	// job-type identities) and is re-exported by the owning capability
+	// (internal/capabilities/cliprender) + the application registry.
+	TypeClipRender = "clip.render"
 )
 
 // CanonicalScriptGenerate is the canonical JobDefinition for

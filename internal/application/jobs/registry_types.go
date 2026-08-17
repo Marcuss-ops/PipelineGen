@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Completion declaration ─────────────────────────────────────────────
@@ -292,4 +293,11 @@ const (
 	// PR-YOUTUBE-EXTRACT-REGISTRY (July 2026): youtube.extract is registered
 	// in registry_extraction.go via the domain/youtube package constant.
 	TypeYouTubeExtract = youtube.TypeExtract
+
+	// Clip render (canonical VeloxEditing-compatible clip
+	// post-processing capability). The canonical string lives in the
+	// kernel (internal/kernel/job/canonical_definitions.go) and is
+	// re-exported by the owning capability; this is a pure re-export
+	// alias so registry files reference one stable identifier.
+	TypeClipRender = job.TypeClipRender
 )

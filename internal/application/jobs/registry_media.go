@@ -18,6 +18,13 @@ func registerMediaEntries(r *Registry) {
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeArtlistCacheRefresh, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Refresh a stale Artlist live-search cache entry", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeDriveFolderSync, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Drive folder sync", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
+	// ── Clip render (canonical VeloxEditing-compatible clip post-processing) ──
+	// The worker commits its own derived media_assets row + provenance in a
+	// per-job tx (mirror of media.clip), so the broker's legacy Complete is
+	// the canonical mark-SUCCEEDED seam. ArtifactOwnershipApplication +
+	// FinalizationStrategyLegacyComplete.
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeClipRender, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Clip render (background/watermark/subtitles baked in one render pass -> VeloxEditing-compatible derived media asset + provenance)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+
 	// ── Content processing ──
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeBooksProcess, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Book processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeLessonsProcess, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Lesson processing", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
