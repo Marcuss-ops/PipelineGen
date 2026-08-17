@@ -106,12 +106,25 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			}
 		}
 		r.markGenerationStart(runID, time.Now())
-		scenes, err := r.textGen.GenerateSceneText(ctx, req)
+		var scenes []Scene
+		var genErr error
+		streamed := false
+		if streamer, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
+			// Scene-ready streaming: emit SceneTextReady(N) per scene as its
+			// text becomes final so downstream branches start while the LLM
+			// keeps generating later scenes. The explicit-clip marker rebind
+			// (bindExplicitClipSceneText) mutates scene text after generation,
+			// so clip sources keep the batch path to preserve that contract.
+			streamed = true
+			scenes, genErr = r.generateSceneTextStreaming(ctx, runID, req, exec, streamer)
+		} else {
+			scenes, genErr = r.textGen.GenerateSceneText(ctx, req)
+		}
 		if r.generationGate != nil {
 			r.generationGate.Release()
 		}
-		if err != nil {
-			cause := fmt.Errorf("generate scene text failed: %w", err)
+		if genErr != nil {
+			cause := fmt.Errorf("generate scene text failed: %w", genErr)
 			r.failExecutionStep(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
@@ -153,11 +166,13 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			VoiceoverGroup: req.ScriptParams.VoiceoverGroup,
 		}
 		r.checkpoint(ctx, runID, result)
-		if err := r.emitSceneCommits(ctx, runID, req, exec, scenes); err != nil {
-			cause := fmt.Errorf("emit scene commits: %w", err)
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-			return result, false
+		if !streamed {
+			if err := r.emitSceneCommits(ctx, runID, req, exec, scenes); err != nil {
+				cause := fmt.Errorf("emit scene commits: %w", err)
+				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+				return result, false
+			}
 		}
 		r.markGenerationComplete(runID, time.Now())
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
@@ -207,15 +222,44 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 // Emission happens only on the fresh-generation path (not on resume), so a
 // committed scene is reported exactly once per generation attempt.
 func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
+	for _, scene := range scenes {
+		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// emitSceneCommit publishes the SceneCommitted event for a single stable
+// scene. It is the per-scene emission behind emitSceneCommits and the
+// SceneTextReady(N) boundary used by the streaming path: the commit fires as
+// soon as one scene's text is final, never waiting for the whole script.
+func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scene Scene) error {
 	observer := r.sceneCommitObserverFor(runID)
 	if observer == nil {
 		return nil
 	}
-	for _, scene := range scenes {
-		event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
-		if err := observer.OnSceneCommitted(ctx, event); err != nil {
-			return fmt.Errorf("scene %q commit: %w", scene.ID, err)
-		}
+	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
+	if err := observer.OnSceneCommitted(ctx, event); err != nil {
+		return fmt.Errorf("scene %q commit: %w", scene.ID, err)
 	}
 	return nil
+}
+
+// generateSceneTextStreaming drives the streaming SceneTextStreamer, firing
+// one SceneCommitted (SceneTextReady) per scene as it is emitted and
+// accumulating the ordered scene list for the downstream stages. An emit
+// error (e.g. a failed SceneCommitObserver) aborts generation immediately.
+func (r *Runner) generateSceneTextStreaming(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer) ([]Scene, error) {
+	var scenes []Scene
+	if err := streamer.GenerateSceneTextStream(ctx, req, func(scene Scene) error {
+		scenes = append(scenes, scene)
+		return r.emitSceneCommit(ctx, runID, req, exec, scene)
+	}); err != nil {
+		return nil, err
+	}
+	if len(scenes) == 0 {
+		return nil, fmt.Errorf("generate scene text stream emitted zero scenes")
+	}
+	return scenes, nil
 }

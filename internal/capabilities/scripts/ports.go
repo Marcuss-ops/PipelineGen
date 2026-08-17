@@ -36,6 +36,22 @@ type TextGenerator interface {
 	GenerateSceneText(ctx context.Context, request GenerateRequest) ([]Scene, error)
 }
 
+// SceneTextStreamer is the optional streaming variant of TextGenerator. A
+// generator that also implements this interface emits each scene as soon as
+// its text becomes final, letting the runner fire SceneTextReady(N) (a
+// SceneCommitted event) and start that scene's downstream branches while the
+// LLM continues generating later scenes — instead of buffering the whole
+// script behind one all-or-nothing return.
+//
+// Contract: emit must be called exactly once per scene, in canonical order,
+// with immutable, already-final scene text (never partial tokens). A non-nil
+// error returned by emit aborts generation and fails the run. The runner
+// falls back to the batch TextGenerator.GenerateSceneText when the generator
+// does not implement this interface.
+type SceneTextStreamer interface {
+	GenerateSceneTextStream(ctx context.Context, request GenerateRequest, emit func(Scene) error) error
+}
+
 // ScriptPersistenceInput is the typed handoff to the canonical SQLite
 // persistence adapter. The capability owns the decision to invoke it;
 // the adapter owns storage details and idempotency.

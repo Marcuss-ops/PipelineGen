@@ -167,6 +167,29 @@ type ScriptsConfig struct {
 	// configured" — resolve via the canonical script docs resolver.
 	ScriptDocsFolderID string `yaml:"script_docs_folder_id" env:"PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID" default:""`
 
+	// NLPConcurrency bounds the concurrent SceneAnalysis (entity / important
+	// phrase / important word extraction) scenes in the incremental VidRush
+	// pipeline — it is the generation-gate capacity. Default 4 (certified).
+	// Lower it for a CPU-constrained Ollama host; raise it for a clustered
+	// extraction backend. Values <= 0 fall back to the certified default.
+	NLPConcurrency int `yaml:"nlp_concurrency" env:"VELOX_SCRIPTS_NLP_CONCURRENCY" default:"4"`
+
+	// TTSConcurrency bounds the concurrent voiceover synthesis calls in the
+	// script-generation voiceover phase (the TTS worker pool). When 0
+	// (unset) the runner falls back to the voiceover provider bound
+	// (VELOX_VOICEOVER_MAX_CONCURRENT_TTS) and then the certified default (4).
+	// Note: the low-level TTS provider semaphore (voiceover.max_concurrent_tts)
+	// is still the hard ceiling — raising this above that bound only
+	// over-schedules, it never oversubscribes the synthesizer.
+	TTSConcurrency int `yaml:"tts_concurrency" env:"VELOX_SCRIPTS_TTS_CONCURRENCY"`
+
+	// SerialMode reproduces the pre-parallel "before" chain for controlled
+	// benchmarking: the VidRush/NLP branch completes blocking BEFORE TTS
+	// (entities → voiceover, never overlapping), and the NLP extraction + TTS
+	// pools are forced to concurrency 1. Default false (the parallel
+	// SceneTextReady DAG).
+	SerialMode bool `yaml:"serial_mode" env:"PIPELINEGEN_SCRIPT_SERIAL_MODE" default:"false"`
+
 	// Capability gates ScriptFlow wiring.
 	Capability ScriptCapabilityConfig `yaml:"capability"`
 }
@@ -187,6 +210,12 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	if s.MaxInsightEntities <= 0 {
 		s.MaxInsightEntities = 12
 	}
+	if s.NLPConcurrency <= 0 {
+		s.NLPConcurrency = 4
+	}
+	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
+	// the voiceover provider bound", resolved at the capability wiring
+	// boundary (internal/app/capabilities/script_generation_runtime.go).
 	// Defaults for new centralised fields
 	if s.DefaultTone == "" {
 		s.DefaultTone = "documentary"

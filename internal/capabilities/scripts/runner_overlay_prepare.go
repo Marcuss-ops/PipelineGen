@@ -54,6 +54,25 @@ type vidRushPrepareOutcome struct {
 	err    error
 }
 
+// applyVidRushPrepareProjections projects the prepare branch's outputs onto
+// the durable result: the entity aggregate, per-scene annotations + typed
+// entity results, compatibility surfaces, and the pre-timing OverlayIntents.
+// It is shared by both the serial and parallel orchestration paths so the
+// projection contract has exactly one owner.
+func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrepareResult) {
+	if len(prepared.segments) > 0 {
+		result.Entities = aggregateEntityResult(prepared.segments)
+		for idx, ann := range prepared.annotations {
+			if idx >= 0 && idx < len(result.Scenes) {
+				result.Scenes[idx].Annotations = ann
+			}
+		}
+		applySegmentEntityResults(result, prepared.segments)
+	}
+	projectEntityCompatibility(result, prepared.segments)
+	result.OverlayIntents = prepared.intents
+}
+
 // computeSegmentEntityAnnotations builds the per-scene grounded annotations
 // from the read-only snapshot + the fenced segments, keyed by scene index. It
 // mirrors applySegmentEntityAnnotations matching (SceneID, then Position) but

@@ -131,6 +131,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Source:           source,
 		ScriptParams:     item.ScriptParams,
 		MediaPlan:        item.MediaPlan.Clone(),
+		ExtractEntities:  item.Output.ExtractEntities,
 		SourceLanguage:   sourceLang,
 		Languages:        languages,
 		GenerateTimeline: generateTimeline,

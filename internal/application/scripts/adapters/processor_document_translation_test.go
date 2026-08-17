@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -39,10 +40,13 @@ func canonicalTranslatedDocumentFixture() *scriptpkg.ModelScriptOutputV1 {
 func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 	t.Parallel()
 
-	html := BuildSpecSceneDocumentHTML(
+	html, err := scriptgen.RenderDocument(
 		canonicalTranslatedDocumentFixture(),
-		SpecSceneDocumentOptions{Title: "Translated Script"},
+		scriptgen.DocumentRenderOptions{Title: "Translated Script"},
 	)
+	if err != nil {
+		t.Fatalf("render document: %v", err)
+	}
 
 	marker := "<h2>SpecScene JSON</h2>"
 	markerIdx := strings.Index(html, marker)

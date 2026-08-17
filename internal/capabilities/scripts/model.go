@@ -358,6 +358,12 @@ type GenerateRequest struct {
 	// extraction with the caller's configured limits.
 	MediaPlan mediadomain.MediaPlanSpec `json:"media_plan,omitempty"`
 
+	// ExtractEntities carries the caller's entity-extraction intent
+	// (output.extract_entities). ToggleDisabled skips the incremental VidRush
+	// entity extraction (and its provider fan-out) for the run; ToggleDefault
+	// and ToggleEnabled preserve the canonical always-extract behavior.
+	ExtractEntities scriptpkg.Toggle `json:"extract_entities,omitempty"`
+
 	// SourceLanguage is the primary language of the input (e.g. "en").
 	// Scenes in this language are NOT translated.
 	SourceLanguage Language `json:"source_language"`
@@ -667,6 +673,15 @@ var ErrProjectRequired = errors.New("scriptgeneration: Project is required for v
 var ErrMinimumTextGate = errors.New("scriptgeneration: generated text failed the minimum word gate")
 
 // ── Document config helper ──────────────────────────────────────────
+
+// EntityExtractionDisabled reports whether the caller explicitly disabled
+// per-scene entity extraction via output.extract_entities=disabled. The
+// incremental VidRush pipeline (entity extraction → provider fan-out) is
+// skipped for such runs; ToggleDefault and ToggleEnabled preserve the
+// canonical always-extract behavior.
+func (req GenerateRequest) EntityExtractionDisabled() bool {
+	return req.ExtractEntities == scriptpkg.ToggleDisabled
+}
 
 // ResolveDocsConfig resolves the effective document publishing config
 // from a GenerateRequest, applying backward-compat fallback from the

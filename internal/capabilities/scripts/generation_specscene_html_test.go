@@ -1,4 +1,4 @@
-package adapters_test
+package scriptgeneration_test
 
 import (
 	"encoding/json"
@@ -7,13 +7,24 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
+
+// mustRender wraps the canonical renderer and fails the test on any render
+// error. The renderer is pure (it can only fail on malformed model input), so
+// the old single-string BuildSpecSceneDocumentHTML contract is preserved for
+// these migrated tests.
+func mustRender(t *testing.T, model *scriptpkg.ModelScriptOutputV1, opts scriptgeneration.DocumentRenderOptions) string {
+	t.Helper()
+	out, err := scriptgeneration.RenderDocument(model, opts)
+	require.NoError(t, err)
+	return out
+}
 
 func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {
 	t.Parallel()
@@ -29,7 +40,7 @@ func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {
 		Version: 1,
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Text: "AUDIO SCENE"}},
 	}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title: "Audio contract", Language: "en", DefaultLanguage: "en",
 		FullAudio: &scriptpkg.DocumentAudioRef{
 			AssetID: "final-audio-en", Language: "en",
@@ -58,7 +69,7 @@ func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {
 
 func TestDocument_FullAudioIsOmittedWithoutCanonicalDriveLink(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Language:  "en",
 		FullAudio: &scriptpkg.DocumentAudioRef{AssetID: "final-audio-en", Language: "en", DurationMS: 1000},
 	})
@@ -98,7 +109,7 @@ func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndDriveLinks(t *testing.T
 		},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:           "Canonical Script",
 		Language:        "it",
 		DefaultLanguage: "it",
@@ -158,7 +169,7 @@ func TestBuildSpecSceneDocumentHTML_RendersEntityDriveLinks(t *testing.T) {
 		}}},
 	}}}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Famous people"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Famous people"})
 
 	human := humanDocumentHTML(t, out)
 	require.Contains(t, human, "<strong>Entity image:</strong>")
@@ -189,7 +200,7 @@ func TestDocument_EntityImageRenderedInline(t *testing.T) {
 		}}},
 	}}}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "People"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "People"})
 
 	human := humanDocumentHTML(t, out)
 	// IDEAL PASS: the entity photograph is rendered inline, not only linked.
@@ -221,7 +232,7 @@ func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
 		},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title: "Timing", AudioTimeline: timeline,
 	})
 	human := humanDocumentHTML(t, out)
@@ -266,7 +277,7 @@ func TestDocument_ProjectsClipAndVoiceoverDurationsSeparately(t *testing.T) {
 		}}},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		AudioTimeline: timeline,
 		ClipMetadata:  []capabilityaudio.ClipAssetMetadata{{AssetID: "clip-123", Duration: kernelasset.ProbedDuration(18_420_000)}},
 		AudioSummary: capabilityaudio.DocumentAudioSummary{
@@ -315,7 +326,7 @@ func TestDocument_AudioOnlySceneShowsNoVideoClip(t *testing.T) {
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Audio only."}},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		AudioTimeline: timeline,
 		AudioSummary: capabilityaudio.DocumentAudioSummary{
 			ClipCount: 0, ClipTotalUS: 0, ClipTotalKnown: true,
@@ -334,7 +345,7 @@ func TestDocument_FullAudioDurationIncludesMilliseconds(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:    "Precision",
 		Language: "en",
 		FullAudio: &scriptpkg.DocumentAudioRef{
@@ -353,7 +364,7 @@ func TestDocument_FinalAudioDriveLinkIsPureURL(t *testing.T) {
 	t.Parallel()
 
 	const pure = "https://drive.google.com/file/d/final-audio-it/view?usp=drivesdk"
-	finalAudio := &scriptpkg.FinalAudioArtifact{
+	finalAudio := &scriptgeneration.FinalAudioReference{
 		AssetID:      "final-audio-it",
 		Path:         "/tmp/final_audio_it.m4a",
 		DriveLink:    "[" + pure + "](" + pure + ")",
@@ -363,7 +374,7 @@ func TestDocument_FinalAudioDriveLinkIsPureURL(t *testing.T) {
 	}
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title: "Final audio", Language: "it", FinalAudio: finalAudio,
 	})
 
@@ -383,12 +394,12 @@ func TestDocument_FinalAudioDriveLinkIsPureURL(t *testing.T) {
 func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 	t.Parallel()
 
-	finalAudio := &scriptpkg.FinalAudioArtifact{
+	finalAudio := &scriptgeneration.FinalAudioReference{
 		AssetID:          "final-audio-it",
 		Path:             "/tmp/final_audio_it.m4a",
 		DriveLink:        "https://drive.google.com/file/d/final-audio-it/view",
 		Container:        "m4a",
-		AudioPlanSHA256:  "plan-sha",
+		PlanSHA256:       "plan-sha",
 		FinalAudioSHA256: "final-sha",
 		Codec:            "aac",
 		Profile:          "LC",
@@ -402,7 +413,7 @@ func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
 	}
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title: "Final audio", Language: "it", FinalAudio: finalAudio,
 	})
 
@@ -449,7 +460,7 @@ func TestDocument_ProjectsRenderedOverlayPublishedRef(t *testing.T) {
 	}
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title: "Overlay doc", Overlay: overlay,
 	})
 
@@ -481,7 +492,7 @@ func TestDocument_OmitsOverlayWithoutReference(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No overlay"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "No overlay"})
 
 	require.NotContains(t, out, "Rendered Overlay")
 }
@@ -490,7 +501,7 @@ func TestDocument_OmitsFinalAudioJSONWithoutReference(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No final audio"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "No final audio"})
 
 	require.NotContains(t, out, "Final Audio JSON")
 }
@@ -502,7 +513,7 @@ func TestDocument_OmitsSceneTimingWithoutCanonicalTimeline(t *testing.T) {
 		Version: 1,
 		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Senza timing.", Kind: scriptpkg.SceneNarration}},
 	}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No timeline"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "No timeline"})
 	human := humanDocumentHTML(t, out)
 
 	require.NotContains(t, human, "<strong>Start:</strong>")
@@ -511,7 +522,7 @@ func TestDocument_OmitsSceneTimingWithoutCanonicalTimeline(t *testing.T) {
 
 func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	t.Parallel()
-	if got := adapters.BuildSpecSceneDocumentHTML(nil, adapters.SpecSceneDocumentOptions{Title: "ignored"}); got != "" {
+	if got := mustRender(t, nil, scriptgeneration.DocumentRenderOptions{Title: "ignored"}); got != "" {
 		t.Fatalf("expected empty output for nil model, got %q", got)
 	}
 }
@@ -567,7 +578,7 @@ func TestBuildSpecSceneDocumentHTML_RendersAvailableDriveLinks(t *testing.T) {
 		},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Stock HTML test"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Stock HTML test"})
 
 	human := humanDocumentHTML(t, out)
 	require.Contains(t, human, "<strong>Stock:</strong>")
@@ -607,7 +618,7 @@ func TestDocument_VoiceoverLinkIsHTMLEscaped(t *testing.T) {
 		}},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:           "XSS",
 		Language:        "it",
 		DefaultLanguage: "it",
@@ -631,9 +642,9 @@ func TestBuildSpecSceneDocumentHTML_UsesOptionsTitleOnly(t *testing.T) {
 		},
 	}
 
-	html := adapters.BuildSpecSceneDocumentHTML(
+	html := mustRender(t,
 		model,
-		adapters.SpecSceneDocumentOptions{Title: "Titolo & Tyson"},
+		scriptgeneration.DocumentRenderOptions{Title: "Titolo & Tyson"},
 	)
 
 	require.Contains(t, html, "<h1>Titolo &amp; Tyson</h1>")
@@ -643,9 +654,9 @@ func TestBuildSpecSceneDocumentHTML_UsesOptionsTitleOnly(t *testing.T) {
 }
 
 func TestBuildSpecSceneDocumentHTML_PrintsOneTitleOnly(t *testing.T) {
-	html := adapters.BuildSpecSceneDocumentHTML(
+	html := mustRender(t,
 		&scriptpkg.ModelScriptOutputV1{},
-		adapters.SpecSceneDocumentOptions{Title: "Titolo video"},
+		scriptgeneration.DocumentRenderOptions{Title: "Titolo video"},
 	)
 
 	require.Equal(t, 1, strings.Count(html, "<h1>"))
@@ -768,7 +779,7 @@ func TestBuildSpecSceneDocumentHTML_DoesNotMutateSpecScene(t *testing.T) {
 	before, err := json.Marshal(model.SpecScene)
 	require.NoError(t, err)
 
-	_ = adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No mutation"})
+	_ = mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "No mutation"})
 
 	after, err := json.Marshal(model.SpecScene)
 	require.NoError(t, err)
@@ -787,7 +798,7 @@ func TestDocument_HumanSceneLabelsAreOneBased(t *testing.T) {
 		},
 	}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Ordinal"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Ordinal"})
 	human := humanDocumentHTML(t, out)
 
 	require.Contains(t, human, "<h2>Scene 1</h2>")
@@ -809,7 +820,7 @@ func TestDocument_UsesCanonicalSceneText(t *testing.T) {
 		},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Testo"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Testo"})
 	human := humanDocumentHTML(t, out)
 
 	require.Contains(t, human, "TESTO SCENA CORRETTO")
@@ -822,7 +833,7 @@ func TestDocument_SpecSceneJSONIsComplete(t *testing.T) {
 	original := complexSpecSceneFixture()
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: original}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Completo"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Completo"})
 	raw := extractSpecSceneJSON(t, out)
 
 	var decoded scriptpkg.SpecSceneOutput
@@ -839,7 +850,7 @@ func TestDocument_SpecSceneJSONAppearsAfterAllHumanScenes(t *testing.T) {
 		scenes = append(scenes, scriptpkg.SpecScene{ID: "s" + string(rune('0'+i)), Index: i, Text: text, Kind: scriptpkg.SceneNarration})
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(&scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, adapters.SpecSceneDocumentOptions{Title: "Ordine"})
+	out := mustRender(t, &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, scriptgeneration.DocumentRenderOptions{Title: "Ordine"})
 
 	specPos := strings.Index(out, "<h2>SpecScene JSON</h2>")
 	require.GreaterOrEqual(t, specPos, 0)
@@ -855,7 +866,7 @@ func TestDocument_TitleIsFirstVisibleElement(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Testo", Kind: scriptpkg.SceneNarration}}}}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Titolo"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Titolo"})
 
 	bodyStart := strings.Index(out, "<body>")
 	titleStart := strings.Index(out, "<h1>")
@@ -875,7 +886,7 @@ func TestDocument_PreservesSpecSceneOrder(t *testing.T) {
 		{ID: "scene-C", Index: 2, Text: "CHARLIE", Kind: scriptpkg.SceneNarration},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(&scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, adapters.SpecSceneDocumentOptions{Title: "Ordine"})
+	out := mustRender(t, &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, scriptgeneration.DocumentRenderOptions{Title: "Ordine"})
 
 	posAlpha := strings.Index(out, "ALPHA")
 	posBravo := strings.Index(out, "BRAVO")
@@ -900,7 +911,7 @@ func TestDocument_EmptySceneTextDoesNotInventFallbackText(t *testing.T) {
 		},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Vuota"})
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{Title: "Vuota"})
 	human := humanDocumentHTML(t, out)
 
 	require.Contains(t, human, "<h2>Scene 1</h2>")
@@ -942,7 +953,7 @@ func TestDocument_Golden_HumanSurfacePlusCompleteSpecScene(t *testing.T) {
 	}
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: original}
-	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+	out := mustRender(t, model, scriptgeneration.DocumentRenderOptions{
 		Title:           "TITOLO TEST",
 		Language:        "it",
 		DefaultLanguage: "it",
@@ -1002,6 +1013,6 @@ func TestDocument_DoesNotRepeatLegacyClipAlias(t *testing.T) {
 		}},
 	}}
 
-	human := humanDocumentHTML(t, adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{}))
+	human := humanDocumentHTML(t, mustRender(t, model, scriptgeneration.DocumentRenderOptions{}))
 	require.Equal(t, 1, strings.Count(human, `href="`+link+`">`), "legacy Clip alias must not duplicate the same Drive link")
 }

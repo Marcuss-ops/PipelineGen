@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -30,14 +29,11 @@ func TestFinalAudioDocumentSharesSameAsset(t *testing.T) {
 
 	// Document surface: the final_audio block must carry the same ID as the
 	// certified master.
-	docArtifact := finalAudioArtifactForDocument(&ref)
-	require.NotNil(t, docArtifact)
-	require.Equal(t, ref.AssetID, docArtifact.AssetID)
-
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
-	docHTML := documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Language: "it", FinalAudio: docArtifact,
+	docHTML, err := scriptgen.RenderDocument(model, scriptgen.DocumentRenderOptions{
+		Language: "it", FinalAudio: &ref,
 	})
+	require.NoError(t, err)
 	docAssetID := finalAudioAssetIDFromHTML(t, docHTML)
 
 	// The document must carry the certified master asset ID.
@@ -79,8 +75,9 @@ func TestScriptGenerationDocumentRenderer_EqualsCanonicalRenderer(t *testing.T) 
 	opts := scriptgen.DocumentRenderOptions{Title: "Parity", Language: "it", DefaultLanguage: "it"}
 	wired, err := (scriptGenerationDocumentRenderer{}).RenderDocument(model, opts)
 	require.NoError(t, err)
-	direct := documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Title: opts.Title, Language: string(opts.Language), DefaultLanguage: string(opts.DefaultLanguage),
+	direct, err := scriptgen.RenderDocument(model, scriptgen.DocumentRenderOptions{
+		Title: opts.Title, Language: opts.Language, DefaultLanguage: opts.DefaultLanguage,
 	})
+	require.NoError(t, err)
 	require.Equal(t, direct, wired)
 }

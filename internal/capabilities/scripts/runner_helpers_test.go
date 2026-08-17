@@ -41,7 +41,6 @@ import (
 
 	"go.uber.org/zap"
 
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -386,25 +385,13 @@ func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTra
 type canonicalTestDocumentRenderer struct{}
 
 func (canonicalTestDocumentRenderer) DocumentRendererID() string {
-	return documentadapters.CanonicalDocumentRendererID
+	return CanonicalDocumentRendererID
 }
 
 func (canonicalTestDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
-	// Mirrors the production composition-root renderer
-	// (scriptGenerationDocumentRenderer.RenderDocument) so runner tests
-	// exercise the same HTML contract: full audio, canonical timeline,
+	// The canonical capability renderer: full audio, canonical timeline,
 	// phrase timings and overlay all project verbatim.
-	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
-		Title:              opts.Title,
-		Language:           string(opts.Language),
-		DefaultLanguage:    string(opts.DefaultLanguage),
-		FullAudio:          opts.FullAudio,
-		AudioTimeline:      opts.AudioTimeline,
-		SceneSpeechTimings: opts.SceneSpeechTimings,
-		ClipMetadata:       opts.ClipMetadata,
-		AudioSummary:       opts.AudioSummary,
-		Overlay:            opts.Overlay,
-	}), nil
+	return RenderDocument(model, opts)
 }
 
 // awaitCompletion polls the repo until the run reaches a terminal state
