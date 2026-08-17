@@ -21,7 +21,6 @@
 package scan
 
 import (
-	"bufio"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -180,35 +179,4 @@ func assignedInputName(e ast.Expr, params map[string]bool) (string, bool) {
 		return assignedInputName(x.X, params)
 	}
 	return "", false
-}
-
-func scanInputImmutabilityFile(root, path, relPath string, r *report.Report) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	lineNum := 0
-	for sc.Scan() {
-		lineNum++
-		line := sc.Text()
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-		for _, p := range inputImmutabilityPatterns {
-			if !p.re.MatchString(line) {
-				continue
-			}
-			r.Violations = append(r.Violations, report.Violation{
-				File:        relPath,
-				Line:        lineNum,
-				Rule:        "percheck_input_immutability",
-				Severity:    string(report.SeverityWarn),
-				MatchedRule: "input_struct_mutation",
-				Note:        "input parameter mutation detected: " + p.desc + " — treat input structs as read-only; return a new value or use a dedicated output type instead",
-			})
-		}
-	}
 }

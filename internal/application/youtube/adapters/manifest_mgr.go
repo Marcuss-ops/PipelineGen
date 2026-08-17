@@ -387,37 +387,7 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 	}
 }
 
-// ── Monitored source ─────────────────────────────────────────────────────
-
-func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.MonitoredSource, resp *youtubetypes.ExtractResponse) {
-	if s.monitors == nil {
-		return
-	}
-
-	if resp.Stats.Failed == resp.Stats.Requested {
-		ms.Status = "failed"
-	} else {
-		ms.Status = "processed"
-	}
-
-	if err := s.monitors.UpsertSource(ctx, ms); err != nil {
-		s.log.Error("Failed to update monitored source status", zap.Error(err))
-	}
-	if resp.Stats.Failed != resp.Stats.Requested {
-		if err := s.monitors.IncrementProcessed(ctx, ms.ID); err != nil {
-			s.log.Error("Failed to increment processed count", zap.Error(err))
-		}
-	}
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-func defaultConcurrency(reqConcurrency int) int {
-	if reqConcurrency > 0 {
-		return reqConcurrency
-	}
-	return 3
-}
 
 func getGroupFromDest(dest *youtubetypes.DestinationRequest) string {
 	if dest == nil {
