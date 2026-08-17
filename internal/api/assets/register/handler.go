@@ -382,13 +382,6 @@ func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClip
 	}
 }
 
-// Sentinel: when a /register-batch request with N clips expands to M
-// children (M > N because of seconds_per_segment fan-out), the response
-// should reflect the post-expansion count. Constant is reserved for
-// future use; today's response shape already returns per-clip echoes
-// via BatchClipResult so the cardinality flows naturally.
-const _reserved_expansionSentinel = ""
-
 // expandClipsBySegments takes a slice of RegisterFromYouTubeRequest
 // entries and expands any entry with `seconds_per_segment > 0` into
 // N children matching the [start, end] window partitioned into

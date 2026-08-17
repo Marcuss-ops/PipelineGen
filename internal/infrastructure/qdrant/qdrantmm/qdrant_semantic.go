@@ -28,10 +28,9 @@ import (
 )
 
 const (
-	conceptPayloadConceptID         = "concept_id"
-	conceptPayloadLanguage          = "language"
-	conceptPayloadPhraseFingerprint = "phrase_fingerprint"
-	conceptPayloadConceptType       = "concept_type"
+	conceptPayloadConceptID   = "concept_id"
+	conceptPayloadLanguage    = "language"
+	conceptPayloadConceptType = "concept_type"
 )
 
 // QdrantSemanticLookup is the canonical concrete for
