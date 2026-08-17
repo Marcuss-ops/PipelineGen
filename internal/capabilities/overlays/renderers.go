@@ -229,3 +229,39 @@ func (LogoRenderer) Compile(item OverlayItem, plan OverlayPlan) (ChrononLayer, e
 	}
 	return rendererForTemplate(item, plan, "LOGO", "LogoRenderer")
 }
+
+// ImportantPhraseRenderer renders a scene-local highlighted phrase.
+type ImportantPhraseRenderer struct{}
+
+func (ImportantPhraseRenderer) Name() string { return "ImportantPhraseRenderer" }
+
+func (ImportantPhraseRenderer) Compile(item OverlayItem, plan OverlayPlan) (ChrononLayer, error) {
+	if err := requireText(item, "ImportantPhraseRenderer"); err != nil {
+		return ChrononLayer{}, err
+	}
+	return rendererForTemplate(item, plan, "IMPORTANT_PHRASE", "ImportantPhraseRenderer")
+}
+
+// ImportantWordRenderer renders a scene-local kinetic keyword.
+type ImportantWordRenderer struct{}
+
+func (ImportantWordRenderer) Name() string { return "ImportantWordRenderer" }
+
+func (ImportantWordRenderer) Compile(item OverlayItem, plan OverlayPlan) (ChrononLayer, error) {
+	if err := requireText(item, "ImportantWordRenderer"); err != nil {
+		return ChrononLayer{}, err
+	}
+	return rendererForTemplate(item, plan, "IMPORTANT_WORD", "ImportantWordRenderer")
+}
+
+// EntityImageRenderer renders an image bound to a canonical entity.
+type EntityImageRenderer struct{}
+
+func (EntityImageRenderer) Name() string { return "EntityImageRenderer" }
+
+func (EntityImageRenderer) Compile(item OverlayItem, plan OverlayPlan) (ChrononLayer, error) {
+	if err := requireAsset(item, "EntityImageRenderer"); err != nil {
+		return ChrononLayer{}, err
+	}
+	return rendererForTemplate(item, plan, "IMAGE_OVERLAY", "EntityImageRenderer")
+}

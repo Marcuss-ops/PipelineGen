@@ -86,6 +86,35 @@ func TestEntityOverlayPlanner_DeterministicTemplateResolution(t *testing.T) {
 	}
 }
 
+func TestOverlayPlanner_ProjectsSceneInsightsWithoutEntityDuplication(t *testing.T) {
+	intents := PlanOverlayIntents([]SceneEntityInput{{
+		SceneID: "scene-01", SceneIndex: 0,
+		Entities: []EntityOverlayInput{{Name: "Tim Cook", Type: "PERSON"}},
+		Phrases:  []OverlayAnnotationInput{{ID: "phrase-1", Text: "presented Apple's plans"}},
+		Words: []OverlayAnnotationInput{
+			{ID: "word-1", Text: "Cook"}, // entity name fragment: retained as a distinct word
+			{ID: "word-2", Text: "California"},
+		},
+	}}, NewChrononOverlayRegistry())
+	if len(intents) != 4 {
+		t.Fatalf("intents = %d, want entity + phrase + 2 words", len(intents))
+	}
+	if intents[1].Source != IntentSourceImportantPhrase || intents[1].TemplateID != "IMPORTANT_PHRASE" {
+		t.Fatalf("phrase intent = %+v", intents[1])
+	}
+	if intents[2].Source != IntentSourceImportantWord || intents[2].TemplateID != "IMPORTANT_WORD" {
+		t.Fatalf("word intent = %+v", intents[2])
+	}
+	for _, intent := range intents {
+		if intent.TimingState != TimingStatePending {
+			t.Fatalf("intent %q was timed before canonical timing: %+v", intent.IntentID, intent)
+		}
+		if err := intent.Validate(); err != nil {
+			t.Fatalf("intent %q invalid: %v", intent.IntentID, err)
+		}
+	}
+}
+
 func TestOverlayIntent_PerSceneNotAggregated(t *testing.T) {
 	registry := NewChrononOverlayRegistry()
 	scenes := []SceneEntityInput{

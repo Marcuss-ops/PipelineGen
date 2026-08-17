@@ -303,13 +303,20 @@ func planOverlayIntents(scenes []Scene, registry *capabilityoverlay.ChrononOverl
 				Confidence: entity.Confidence,
 			})
 		}
-		if len(entities) == 0 {
-			continue
+		var phrases []capabilityoverlay.OverlayAnnotationInput
+		for _, phrase := range scene.Annotations.ImportantPhrases {
+			phrases = append(phrases, capabilityoverlay.OverlayAnnotationInput{ID: phrase.ID, Text: phrase.Text})
+		}
+		var words []capabilityoverlay.OverlayAnnotationInput
+		for _, word := range scene.Annotations.ImportantWords {
+			words = append(words, capabilityoverlay.OverlayAnnotationInput{ID: word.ID, Text: word.Text})
 		}
 		inputs = append(inputs, capabilityoverlay.SceneEntityInput{
 			SceneID:    scene.ID,
 			SceneIndex: i,
 			Entities:   entities,
+			Phrases:    phrases,
+			Words:      words,
 		})
 	}
 	return capabilityoverlay.PlanOverlayIntents(inputs, registry)

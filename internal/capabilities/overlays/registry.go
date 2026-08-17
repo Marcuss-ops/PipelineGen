@@ -51,6 +51,12 @@ const (
 	KindProduct OverlayKind = "product"
 	// KindLogo renders a corner logo overlay (asset-driven).
 	KindLogo OverlayKind = "logo"
+	// KindImportantPhrase renders a scene-local highlighted phrase.
+	KindImportantPhrase OverlayKind = "important_phrase"
+	// KindImportantWord renders a scene-local kinetic keyword.
+	KindImportantWord OverlayKind = "important_word"
+	// KindEntityImage renders an entity-bound image asset.
+	KindEntityImage OverlayKind = "entity_image"
 )
 
 // DurationPolicy declares how an overlay's on-screen duration is derived.
@@ -206,6 +212,33 @@ var canonicalOverlayEntries = []OverlayEntry{
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionCorner,
+		Version:           1,
+	},
+	{
+		Kind:              KindImportantPhrase,
+		Template:          "IMPORTANT_PHRASE",
+		Renderer:          ImportantPhraseRenderer{},
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCentered,
+		Version:           1,
+	},
+	{
+		Kind:              KindImportantWord,
+		Template:          "IMPORTANT_WORD",
+		Renderer:          ImportantWordRenderer{},
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCentered,
+		Version:           1,
+	},
+	{
+		Kind:              KindEntityImage,
+		Template:          "IMAGE_OVERLAY",
+		Renderer:          EntityImageRenderer{},
+		RequiredInputs:    []string{"asset_refs"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionPopup,
 		Version:           1,
 	},
 }
