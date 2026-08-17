@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
@@ -134,18 +135,10 @@ func ParseV4Signature(name string) (V4Signature, bool) {
 	}, true
 }
 
-// isSHA256Hex reports whether s is a 64-character lowercase hex digest. It is
-// kept local to this file to avoid a dependency on the media-registry package
-// (which is still converging on its taxonomy constants).
+// isSHA256Hex reports whether s is a 64-character lowercase hex digest.
+// Delegates to the canonical kernel/asset.ValidateSHA256 (godlike/06 SSOT)
+// instead of a local copy so the v4 signature keeps one canonical digest shape.
 func isSHA256Hex(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
+	_, err := asset.ValidateSHA256(s)
+	return err == nil
 }

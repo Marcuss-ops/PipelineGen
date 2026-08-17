@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Directory and file permissions for the CAS layout. 0700/0600 mirrors the
@@ -220,16 +221,12 @@ func shardPath(root, sha256 string) (string, error) {
 }
 
 // isValidSHA256 reports whether s is exactly 64 lowercase hex characters.
+// Delegates to the canonical kernel/asset.ValidateSHA256 (godlike/06 SSOT for
+// the 64-lowercase-hex SHA-256 shape) so the CAS shard layout cannot drift
+// from the canonical digest contract.
 func isValidSHA256(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
+	_, err := asset.ValidateSHA256(s)
+	return err == nil
 }
 
 // newStagingID generates a unique workspace staging ID in the canonical
