@@ -1,40 +1,54 @@
 package cliprender
 
-// ── Response contract for POST /api/clips/render ──────────────────────
+// contract.go owns the canonical VeloxEditing output contract resolution.
+// The precise codec/pixel/timebase values live HERE (single canonical owner,
+// per the feature spec §12 "VeloxEditing compatibility contract") — the
+// request only selects the contract ID + resolution/fps, and no other file
+// duplicates these settings.
+//
+// The contract is a pure function of the request: no I/O, no ports. It is
+// the one preparation phase that requires no adapter.
 
-// renderResponse is the JSON body returned by POST /api/clips/render.
-// godlike/06 SSOT: status strings describe the endpoint acknowledgement
-// (decoupled from the broker job.Status enum — clients poll
-// /api/jobs/{id}/full for broker-level state).
-type renderResponse struct {
-	// JobID is the canonical Master job id (non-empty on the async
-	// success path).
-	JobID string `json:"job_id,omitempty"`
-	// Status is the endpoint acknowledgement:
-	//   - "QUEUED" — request accepted, clip.render job scheduled via
-	//     the Master (HTTP 202).
-	//   - "error"  — validation/enqueue rejection (HTTP 4xx/5xx); the
-	//     error_code field carries the machine-readable subtype.
-	Status string `json:"status"`
-	// Error is the human-readable message on rejection.
-	Error string `json:"error,omitempty"`
-	// ErrorCode is the machine-readable rejection subtype.
-	ErrorCode string `json:"error_code,omitempty"`
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+// ErrUnsupportedContract is the typed sentinel for an output.contract ID the
+// capability does not know. Fail-closed: an unknown contract is never
+// silently mapped to a default.
+var ErrUnsupportedContract = errors.New("clip.render: unsupported output contract")
+
+// NewContractResolver returns the canonical ContractResolver. It supports
+// OutputContractVeloxEditingClipV1 today; a future contract adds a case here
+// (the single resolution owner) rather than duplicating codec settings.
+func NewContractResolver() ContractResolver {
+	return defaultContractResolver{}
 }
 
-// Endpoint acknowledgement + error-code literals (godlike/06 SSOT).
-const (
-	// StatusQueued = request accepted, work scheduled via the Master.
-	StatusQueued = "QUEUED"
-	// StatusError = validation/enqueue rejection.
-	StatusError = "error"
+type defaultContractResolver struct{}
 
-	// ErrCodeInvalidPayload = malformed JSON or failed request
-	// validation.
-	ErrCodeInvalidPayload = "INVALID_PAYLOAD"
-	// ErrCodeUnknownField = JSON body contained an undeclared field.
-	ErrCodeUnknownField = "UNKNOWN_FIELD"
-	// ErrCodeJobsUnavailable = the Master job service is not
-	// configured (503).
-	ErrCodeJobsUnavailable = "JOBS_UNAVAILABLE"
-)
+func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*ResolvedContract, error) {
+	if req == nil || req.Output == nil {
+		return nil, fmt.Errorf("%w: request output block is missing", ErrUnsupportedContract)
+	}
+	switch req.Output.Contract {
+	case OutputContractVeloxEditingClipV1:
+		return &ResolvedContract{
+			ContractID:   OutputContractVeloxEditingClipV1,
+			Container:    "mp4",
+			VideoCodec:   "h264",
+			VideoProfile: "high",
+			PixelFormat:  "yuv420p",
+			Width:        req.Output.Width,
+			Height:       req.Output.Height,
+			FPS:          req.Output.FPS,
+			AudioCodec:   "aac",
+			SampleRate:   48000,
+			Channels:     2,
+		}, nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedContract, req.Output.Contract)
+	}
+}
