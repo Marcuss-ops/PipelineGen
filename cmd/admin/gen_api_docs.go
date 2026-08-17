@@ -190,23 +190,14 @@ var routeDescriptions = map[string]string{
 
 	// ── Media — general ──────────────────────────────────────
 	"POST /api/media/search":                "Search media assets",
-	"GET /api/media/semantic-search":        "Semantic search across media assets",
 	"GET /api/media/diagnostics":            "Media diagnostics",
 	"GET /api/media/index-health":           "Media index health check",
-	"POST /api/media/search/advanced":       "Advanced media search",
-	"POST /api/media/sync-drive-folder":     "Sync a Drive folder into media index",
-	"POST /api/media/recommend":             "Get media recommendations",
+	"POST /api/media/sync":                  "Sync a Drive folder into media index",
 	"POST /api/media/clips/enrich":          "Enrich a media asset with AI metadata",
-	"POST /api/media/local-to-drive":        "Upload local media to Drive",
 	"POST /api/media/qdrant/cleanup":        "Clean up stale Qdrant points",
 	"POST /api/media/clips/upload-video":    "Upload video clip",
 	"POST /api/media/register-from-youtube": "Register asset from YouTube URL",
 	"POST /api/media/register-batch":        "Batch register assets",
-	"POST /api/media/manifest/export":       "Export media manifest",
-
-	// ── Media — Drive operations ─────────────────────────────
-	"POST /api/media/drive/move-files":     "Move files within Drive",
-	"POST /api/media/drive/create-folders": "Create Drive folders",
 
 	// ── Media — source-scoped (YouTube, stock, artlist) ──────
 	"GET /api/media/clips/:source/folders":               "List media folders by source",
