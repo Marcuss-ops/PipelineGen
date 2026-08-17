@@ -2,8 +2,12 @@ package cliprender
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,7 +22,13 @@ func newTestWorker(t *testing.T) (*Worker, *fakeMaterializer, *fakeTranscriptRes
 	})
 	mat := &fakeMaterializer{}
 	tr := &fakeTranscriptResolver{
-		existing:   &TranscriptResult{AssetID: "asset-source", Language: "en", Text: "existing", Reused: true},
+		existing: &TranscriptResult{
+			AssetID:  "asset-source",
+			Language: "en",
+			Text:     "existing",
+			Cues:     []Cue{{StartMs: 0, EndMs: 1000, Text: "existing"}},
+			Reused:   true,
+		},
 		existingOK: true,
 	}
 	preparer := newTestPreparer(resolver, mat, tr)
@@ -109,6 +119,96 @@ func TestWorker_ValidationFailure_Terminal(t *testing.T) {
 	if len(mat.calls) != 0 {
 		t.Errorf("preparation must not run on invalid request, got %v", mat.calls)
 	}
+}
+
+// fakeSubtitleCompiler records the compile input and returns a deterministic
+// artifact (path + content hash).
+type fakeSubtitleCompiler struct {
+	inputs []SubtitleCompileInput
+}
+
+func (f *fakeSubtitleCompiler) Compile(_ context.Context, in SubtitleCompileInput) (*SubtitleArtifact, error) {
+	f.inputs = append(f.inputs, in)
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", in.StyleID, in.Language, len(in.Cues))))
+	return &SubtitleArtifact{
+		LocalPath: filepath.Join(in.OutputDir, "subtitles.ass"),
+		SHA256:    hex.EncodeToString(sum[:]),
+		Mode:      in.Mode,
+		StyleID:   in.StyleID,
+	}, nil
+}
+
+// TestWorker_SubtitlesEnabled_CompilesFromTranscriptAndSeals verifies the
+// ASS artifact is compiled from the canonical transcript cues (never a
+// re-transcription) and referenced by the sealed plan with path + sha256.
+func TestWorker_SubtitlesEnabled_CompilesFromTranscriptAndSeals(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	compiler := &fakeSubtitleCompiler{}
+	w.WithSubtitleCompiler(compiler)
+
+	req := baseRenderRequest()
+	req.Subtitles = &SubtitlesSpec{Enabled: true, Mode: SubtitlesModeBurn, StyleID: "shorts-v1"}
+	payload := renderJobPayload(t, req)
+
+	var emitted []string
+	tools := &job.JobExecutionTools{
+		Progress: func(int, string) {},
+		Event: func(eventType, _ string, _ map[string]any) {
+			emitted = append(emitted, eventType)
+		},
+	}
+	result, err := w.Handle(context.Background(), &job.Job{ID: "job-sub", Payload: payload}, tools)
+	if !errors.Is(err, ErrRenderPhaseNotImplemented) {
+		t.Fatalf("expected ErrRenderPhaseNotImplemented, got %v", err)
+	}
+	if len(compiler.inputs) != 1 {
+		t.Fatalf("compile calls = %d, want 1", len(compiler.inputs))
+	}
+	in := compiler.inputs[0]
+	if in.AssetID != "asset-source" || in.Mode != SubtitlesModeBurn || in.StyleID != "shorts-v1" {
+		t.Errorf("compile input: got %+v", in)
+	}
+	// Cues come from the prepared transcript — the compiler never sees a
+	// "generate" request (speech recognition is never re-run for subtitles).
+	if len(in.Cues) != 1 || in.Cues[0].Text != "existing" {
+		t.Errorf("compile input must carry the canonical transcript cues, got %+v", in.Cues)
+	}
+	if !contains(emitted, "clip.render.subtitles.compiled") || !contains(emitted, "clip.render.plan.sealed") {
+		t.Errorf("expected compile+seal events, got %v", emitted)
+	}
+	plan := result["plan"].(map[string]any)
+	if plan["plan_sha256"] == "" {
+		t.Errorf("plan must be sealed, got %v", plan)
+	}
+	sub := result["subtitles"].(map[string]any)
+	if sub["mode"] != SubtitlesModeBurn || sub["sha256"] == "" {
+		t.Errorf("result subtitles block: got %v", sub)
+	}
+}
+
+// TestWorker_SubtitlesEnabled_NoCompilerFailsClosed verifies subtitles
+// enabled without a wired compiler is a typed failure — never a plan sealed
+// without its ASS artifact.
+func TestWorker_SubtitlesEnabled_NoCompilerFailsClosed(t *testing.T) {
+	w, _, _ := newTestWorker(t) // no WithSubtitleCompiler
+
+	req := baseRenderRequest()
+	req.Subtitles = &SubtitlesSpec{Enabled: true, Mode: SubtitlesModeSidecar}
+	payload := renderJobPayload(t, req)
+
+	_, err := w.Handle(context.Background(), &job.Job{ID: "job-sub-noc", Payload: payload}, nil)
+	if !errors.Is(err, ErrSubtitleCompileUnavailable) {
+		t.Fatalf("expected ErrSubtitleCompileUnavailable, got %v", err)
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestWorker_PrepareFailure_Wrapped verifies a preparation failure surfaces

@@ -110,7 +110,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	fileHash := hex.EncodeToString(fileHashBytes[:])
 
 	// 4. Validate ASS file
-	vErr := m.validateASSFile(localPath, in.ClipDurationMs)
+	vErr := validateASSFile(localPath, in.ClipDurationMs)
 	validationErrorStr := ""
 	status := asset.SubtitleStatusReady
 	if vErr != nil {
@@ -208,7 +208,17 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	return output, nil
 }
 
-func (m *SubtitleArtifactMaterializer) generateASSContent(cues []asset.TimedCue, styleID string) string {
+// CompileASSContent is the canonical, deterministic ASS content generator
+// (single owner of ASS content generation — clip.render's subtitle compiler
+// and the durable materializer both consume this). Identical cues + style
+// ALWAYS produce identical bytes: no timestamps, no random identifiers, no
+// absolute paths. Fail-closed: empty cues are a typed error, never an
+// empty/placeholder ASS (speech recognition is never regenerated just to
+// build subtitles).
+func CompileASSContent(cues []asset.TimedCue, styleID string) (string, error) {
+	if len(cues) == 0 {
+		return "", fmt.Errorf("ass_materializer: timed_cues is empty")
+	}
 	if styleID == "" {
 		styleID = "vidrush-default"
 	}
@@ -248,7 +258,17 @@ func (m *SubtitleArtifactMaterializer) generateASSContent(cues []asset.TimedCue,
 		lastEndMs = endMs
 	}
 
-	return sb.String()
+	return sb.String(), nil
+}
+
+// generateASSContent is the materializer's private convenience wrapper over
+// the canonical generator (kept for call-site symmetry with the old API).
+func (m *SubtitleArtifactMaterializer) generateASSContent(cues []asset.TimedCue, styleID string) string {
+	content, err := CompileASSContent(cues, styleID)
+	if err != nil {
+		return ""
+	}
+	return content
 }
 
 // normalizeASSWindow accounts for ASS's centisecond timestamp precision.
@@ -281,7 +301,14 @@ func formatASSTime(ms int64) string {
 	return fmt.Sprintf("%d:%02d:%02d.%02d", h, m, s, c)
 }
 
-func (m *SubtitleArtifactMaterializer) validateASSFile(path string, clipDurationMs int64) error {
+// ValidateASSFile is the canonical ASS structural validator (single owner).
+// clip.render's subtitle compiler validates its scratch artifact through
+// this before sealing the plan — the plan never references an invalid ASS.
+func ValidateASSFile(path string, clipDurationMs int64) error {
+	return validateASSFile(path, clipDurationMs)
+}
+
+func validateASSFile(path string, clipDurationMs int64) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err

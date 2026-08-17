@@ -393,6 +393,10 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build worker: %w", err)
 	}
+	// Deterministic ASS compiler (canonical texttracks content generator —
+	// single owner). Subtitles.enabled=true without a wired compiler fails
+	// closed in the worker; this wiring makes burn+sidecar always available.
+	worker.WithSubtitleCompiler(&clipRenderSubtitleCompiler{})
 	// The canonical ASS compiler (reuse of the existing
 	// texttracks.SubtitleArtifactMaterializer) is wired by the ASS-compiler
 	// step; until then subtitled jobs fail closed with the typed sentinel.
