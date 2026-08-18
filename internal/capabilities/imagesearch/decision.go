@@ -49,6 +49,11 @@ type ResolvedEntity struct {
 	// QueryName is the surface used inside a search query when it differs
 	// from Text (e.g. "Michael B Jordan" without the period).
 	QueryName string `json:"-"`
+	// Verbatim is the exact surface that matched in the source text (e.g.
+	// "mela" for the canonical "apple fruit", "giaguaro" for "jaguar",
+	// "Arabia Saudita" for "Saudi Arabia"). Used for language-aware query
+	// folding (adjective placement in Italian).
+	Verbatim string `json:"-"`
 	// Domain groups identities for the co-occurrence rules ("boxing",
 	// "basketball", "acting", …). Empty for non-persons.
 	Domain string `json:"-"`
