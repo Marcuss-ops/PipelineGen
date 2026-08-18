@@ -84,5 +84,3 @@ func runTranscriptCuesBackfill(args []string) error {
 	}
 	return nil
 }
-
-

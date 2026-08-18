@@ -374,13 +374,13 @@ func goldenCases() []goldenCase {
 			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
 			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
 			forbidQueries:  []string{"Mike Tyson", "fighter"},
-		},		{
+		}, {
 			// "The fighter" must NOT ground on a non-boxer prior: without a
 			// resolvable antecedent the alias never invents an identity.
 			id: "T33", text: "The fighter later invested part of his fortune in several businesses.",
-			prior:        []string{"Steve Jobs"},
-			wantRequired: false,
-			wantEntities: []wantEntity{},
+			prior:          []string{"Steve Jobs"},
+			wantRequired:   false,
+			wantEntities:   []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
 		},
 
@@ -395,8 +395,8 @@ func goldenCases() []goldenCase {
 		{
 			id: "T35", text: "Freddie Mercury was the lead singer of the rock band Queen.",
 			wantRequired: true, wantQueries: []string{"Freddie Mercury singer"},
-			wantEntities: []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
-			wantContexts: []wantEntity{{"CONTEXT", "singer", ""}},
+			wantEntities:   []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
+			wantContexts:   []wantEntity{{"CONTEXT", "singer", ""}},
 			forbidEntities: []wantEntity{{"OBJECT", "Mercury", ""}},
 			forbidQueries:  []string{"Mercury planet"},
 		},
@@ -413,8 +413,8 @@ func goldenCases() []goldenCase {
 			// country entry may only match under its country context gates.
 			id: "T37", text: "Michael Jordan is a basketball legend.",
 			wantRequired: true, wantQueries: []string{"Michael Jordan basketball"},
-			wantEntities: []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
-			wantContexts: []wantEntity{{"CONTEXT", "basketball", ""}},
+			wantEntities:   []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
+			wantContexts:   []wantEntity{{"CONTEXT", "basketball", ""}},
 			forbidEntities: []wantEntity{{"GPE", "Jordan", ""}},
 			forbidQueries:  []string{"country"},
 		},
@@ -715,13 +715,13 @@ func goldenCasesIT() []goldenCase {
 			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
 			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
 			forbidQueries:  []string{"Mike Tyson", "pugile"},
-		},		{
+		}, {
 			// "Il pugile" must NOT ground on a non-boxer prior: without a
 			// resolvable antecedent the alias never invents an identity.
 			id: "T33", text: "Il pugile in seguito ha investito parte della sua fortuna in diverse attività.",
-			prior:        []string{"Steve Jobs"},
-			wantRequired: false,
-			wantEntities: []wantEntity{},
+			prior:          []string{"Steve Jobs"},
+			wantRequired:   false,
+			wantEntities:   []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
 		},
 
@@ -736,8 +736,8 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T35", text: "Freddie Mercury era il cantante principale della rock band Queen.",
 			wantRequired: true, wantQueries: []string{"Freddie Mercury singer"},
-			wantEntities: []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
-			wantContexts: []wantEntity{{"CONTEXT", "singer", ""}},
+			wantEntities:   []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
+			wantContexts:   []wantEntity{{"CONTEXT", "singer", ""}},
 			forbidEntities: []wantEntity{{"OBJECT", "Mercury", ""}},
 			forbidQueries:  []string{"Mercury planet"},
 		},
@@ -754,8 +754,8 @@ func goldenCasesIT() []goldenCase {
 			// non è un substring, ma il gate di contesto deve comunque tenere.
 			id: "T37", text: "Michael Jordan è una leggenda del basket.",
 			wantRequired: true, wantQueries: []string{"Michael Jordan basketball"},
-			wantEntities: []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
-			wantContexts: []wantEntity{{"CONTEXT", "basketball", ""}},
+			wantEntities:   []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
+			wantContexts:   []wantEntity{{"CONTEXT", "basketball", ""}},
 			forbidEntities: []wantEntity{{"GPE", "Jordan", ""}},
 			forbidQueries:  []string{"Giordania"},
 		},

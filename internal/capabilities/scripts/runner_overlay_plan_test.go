@@ -557,7 +557,7 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 						Image: &scriptpkg.EntityImageBinding{
 							Status: "resolved", AssetID: "tim-cook-photo",
 							PreviewURL: "https://cdn.example.com/tim-cook.jpg",
-							SHA256:    "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+							SHA256:     "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
 						},
 					},
 					{
@@ -566,7 +566,7 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 						Image: &scriptpkg.EntityImageBinding{
 							Status: "resolved", AssetID: "tesla-logo",
 							PreviewURL: "https://cdn.example.com/tesla.png",
-							SHA256:    "bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbcc",
+							SHA256:     "bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbcc",
 						},
 					},
 				},
@@ -579,7 +579,7 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 				SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
 				Entities: []capabilityentities.EntityOccurrence{{
 					EntityID: capabilityentities.StableEntityID("PERSON", "Tim Cook"),
-					Name: "Tim Cook", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
+					Name:     "Tim Cook", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
 					TextStart: 0, TextEnd: 8, WordStart: 0, WordEnd: 1,
 					LocalStartUS: 0, LocalEndUS: 200_000,
 					TimelineStartUS: 0, AudioStartUS: 0, AudioEndUS: 200_000,
