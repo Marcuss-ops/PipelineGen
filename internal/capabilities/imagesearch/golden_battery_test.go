@@ -342,6 +342,48 @@ func goldenCases() []goldenCase {
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
 			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
 		},
+
+		// ── Gruppo 11 — negazione oltre "not X" ───────────────────────
+		{
+			id: "T29", text: "The fighter in this story is Tyson Fury, instead of Mike Tyson.",
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+		{
+			id: "T30", text: "Rather than Mike Tyson, the story follows Floyd Mayweather.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+		{
+			id: "T31", text: "Unlike Mike Tyson, Floyd Mayweather avoided the spotlight.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+
+		// ── Gruppo 12 — alias coreference (beyond pronouns) ────────────
+		{
+			id: "T32", text: "The fighter later invested part of his fortune in several businesses.",
+			prior:        []string{"Tyson Fury"},
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
+			forbidQueries:  []string{"Mike Tyson", "fighter"},
+		},
+		{
+			// "The fighter" must NOT ground on a non-boxer prior: without a
+			// resolvable antecedent the alias never invents an identity.
+			id: "T33", text: "The fighter later invested part of his fortune in several businesses.",
+			prior:        []string{"Steve Jobs"},
+			wantRequired: false,
+			wantEntities: []wantEntity{},
+			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
+		},
 	}
 }
 
@@ -592,6 +634,48 @@ func goldenCasesIT() []goldenCase {
 			},
 			wantVisual:  []wantEntity{{"MONEY", "enormi borse da combattimento", ""}},
 			wantPhrases: []string{"guadagnato enormi borse da combattimento"},
+		},
+
+		// ── Gruppo 11 — negazione oltre "non X" ────────────────────────
+		{
+			id: "T29", text: "Il combattente in questa storia è Tyson Fury, invece di Mike Tyson.",
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+		{
+			id: "T30", text: "Piuttosto che Mike Tyson, la storia segue Floyd Mayweather.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+		{
+			id: "T31", text: "A differenza di Mike Tyson, Floyd Mayweather ha evitato i riflettori.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+
+		// ── Gruppo 12 — alias coreference (oltre i pronomi) ────────────
+		{
+			id: "T32", text: "Il pugile in seguito ha investito parte della sua fortuna in diverse attività.",
+			prior:        []string{"Tyson Fury"},
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
+			forbidQueries:  []string{"Mike Tyson", "pugile"},
+		},
+		{
+			// "Il pugile" must NOT ground on a non-boxer prior: without a
+			// resolvable antecedent the alias never invents an identity.
+			id: "T33", text: "Il pugile in seguito ha investito parte della sua fortuna in diverse attività.",
+			prior:        []string{"Steve Jobs"},
+			wantRequired: false,
+			wantEntities: []wantEntity{},
+			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
 		},
 
 		// ── Coreference scene (Gruppo 8) — pro-drop italiano ────────────
