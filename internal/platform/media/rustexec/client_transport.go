@@ -9,6 +9,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
+// call is the single Go→Rust execution seam. Every operation (probe,
+// normalize, cut, render, mux, ...) flows through here; when an
+// ObservedExecutor is attached, the operation is measured exactly once at
+// this boundary.
 func (c *Client) call(ctx context.Context, req request) (response, error) {
 	if req.Version == "" {
 		req.Version = ProtocolVersion
@@ -20,6 +24,40 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 	if c.executor != nil {
 		req.FFmpegPath = c.executor.FFmpegPath()
 	}
+	var result response
+	var err error
+	if c.observed != nil {
+		result, err = c.observed.Execute(ctx, req)
+	} else {
+		result, err = c.execute(ctx, req)
+	}
+	if err != nil {
+		return response{}, err
+	}
+	// The request reached the Rust media plane. Account for the subprocess the
+	// operation spawns: probe is a single ffprobe invocation, health spawns no
+	// media subprocess, and every other operation is an ffmpeg invocation. The
+	// copy-only mux (mux_audio_copy) is one ffmpeg with -c:v copy -c:a copy, so
+	// frames_decoded/frames_encoded stay 0 on that path.
+	switch req.Operation {
+	case OperationProbe:
+		observability.FFprobeExecCount.Inc()
+	case OperationHealth:
+		// no media subprocess spawned
+	default:
+		observability.FFmpegExecCount.Inc()
+	}
+	if !result.OK {
+		cleanupPartFilesForRequest(req)
+		return result, fmt.Errorf("rust media %s: %s", req.Operation, result.Error)
+	}
+	return result, nil
+}
+
+// execute runs one marshaled request through the Rust process runner and
+// decodes the response. It is the raw execution step the ObservedExecutor
+// decorates.
+func (c *Client) execute(ctx context.Context, req request) (response, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return response{}, fmt.Errorf("marshal rust media request: %w", err)
@@ -37,27 +75,10 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 		cleanupPartFiles(payload)
 		return response{}, fmt.Errorf("rust media executor: %w: %s", err, stderr)
 	}
-	// The request reached the Rust media plane. Account for the subprocess the
-	// operation spawns: probe is a single ffprobe invocation, health spawns no
-	// media subprocess, and every other operation is an ffmpeg invocation. The
-	// copy-only mux (mux_audio_copy) is one ffmpeg with -c:v copy -c:a copy, so
-	// frames_decoded/frames_encoded stay 0 on that path.
-	switch req.Operation {
-	case OperationProbe:
-		observability.FFprobeExecCount.Inc()
-	case OperationHealth:
-		// no media subprocess spawned
-	default:
-		observability.FFmpegExecCount.Inc()
-	}
 	var result response
 	if err := json.Unmarshal(bytes.TrimSpace(stdout), &result); err != nil {
 		cleanupPartFiles(payload)
 		return response{}, fmt.Errorf("decode rust media response: %w", err)
-	}
-	if !result.OK {
-		cleanupPartFiles(payload)
-		return result, fmt.Errorf("rust media %s: %s", req.Operation, result.Error)
 	}
 	return result, nil
 }

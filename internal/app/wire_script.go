@@ -320,7 +320,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 				if root.DB == nil {
 					return nil
 				}
-				return usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.DB.DB))
+				preflight := usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.DB.DB))
+				// Same provider-policy token as the worker resolver
+				// (wire_script_resolvers.go) so preflight and worker derive
+				// identical research cache keys.
+				preflight.SetResearchPolicyVersion(researchPolicyVersion(cfg))
+				return preflight
 			}(),
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The

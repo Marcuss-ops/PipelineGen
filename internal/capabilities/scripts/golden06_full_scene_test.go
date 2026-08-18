@@ -46,7 +46,7 @@ func golden06Words() []capabilityaudio.SpeechWordTiming {
 func golden06Timeline() *capabilityentities.EntityTimeline {
 	occ := func(name, typ string, startUS, endUS int64, wordStart, wordEnd int) capabilityentities.EntityOccurrence {
 		return capabilityentities.EntityOccurrence{
-			EntityID:        capabilityentities.SafeEntityID(name),
+			EntityID:        capabilityentities.StableEntityID(typ, name),
 			Name:            name,
 			Type:            typ,
 			SceneID:         "scene-0",

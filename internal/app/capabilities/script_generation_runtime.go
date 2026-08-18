@@ -3,6 +3,7 @@ package capabilities
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
@@ -142,6 +143,25 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	// Wire the BGM/SFX asset resolver: asset_id → verified local path via
+	// the canonical asset registry (+ Drive materialization into scratch).
+	// The audio layer resolver consumes it when the run carries an audio
+	// intent block; absent intents never touch it. Fail-closed: a run with
+	// intents and no wired resolver fails in the audio-compile phase.
+	if root.Repos != nil && root.Repos.Assets != nil {
+		var driveReader drive.Reader
+		if root.Drive != nil {
+			driveReader = root.Drive.Reader
+		}
+		runner.SetAudioAssetSource(&audioAssetSourceAdapter{
+			assets:     root.Repos.Assets,
+			drive:      driveReader,
+			scratchDir: filepath.Join(cfg.Storage.TempPath(), "audioassets"),
+		})
+		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path)")
+	} else {
+		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
+	}
 	// Wire the canonical entity type→template registry so the
 	// EntityOverlayPlanner runs in production: OverlayIntents (with their
 	// resolved template_id) are created immediately after entity extraction

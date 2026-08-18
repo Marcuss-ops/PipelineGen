@@ -33,6 +33,7 @@ type JobsHandler struct {
 	service job.Service
 	stats   appjobs.JobStatsReader
 	history appjobs.HistoryReader
+	replay  *replayConfig
 	log     *zap.Logger
 }
 
@@ -60,6 +61,7 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:id/cancel", h.Cancel)
 	r.POST("/:id/retry", h.Retry)
 	r.GET("/:id/events", h.Events)
+	r.POST("/:id/replay", h.Replay)
 }
 
 func (h *JobsHandler) History(c *gin.Context) {

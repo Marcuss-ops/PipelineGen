@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 	"time"
@@ -92,7 +93,26 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			started := time.Now()
 			var audioAssets capabilityaudio.ResolvedAudioAssets
 			var compileTimings AudioCompileTimings
-			canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+			// The audio intent block (BGM/SFX) is layered onto the same
+			// VO-governed timeline: asset resolution → BGM windows → loop
+			// expansion → SFX placement → automation, all compiled into the
+			// sealed plan by CompileAudioWithIntents. Absent intents keep the
+			// legacy primary-only CompileWithMixPolicy path.
+			if len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 {
+				if r.audioAssetSource == nil {
+					cause := fmt.Errorf("audio intent block requires an audio asset resolver")
+					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+					return false
+				}
+				policy := req.MixPolicy
+				if policy == "" {
+					policy = capabilityaudio.MixVoiceoverWithDuckedClip
+				}
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, *result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), r.audioAssetSource, policy, req.BackgroundMusic, req.SoundEffects)
+			} else {
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+			}
 			if err != nil {
 				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
 				r.failExecutionStep(ctx, exec, audioStep, cause)
@@ -108,7 +128,31 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 			var finalAudio FinalAudioReference
 			var metrics AudioPipelineMetrics
-			if result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil {
+			resumeAudio := result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil
+			if resumeAudio && r.checkpoints != nil {
+				// Durable checkpoint gate on the idempotency boundary: the
+				// restored reference validates in memory, but reuse is allowed
+				// only when the durable checkpoint also certifies the unit's
+				// completion (input fingerprint + artifact existence + artifact
+				// SHA256 + processor version). A stale or unverifiable
+				// completion re-renders — never an unverified reuse.
+				decision, reason, decideErr := r.checkpoints.Decide(ctx, exec.JobID, capcheckpoint.StageAudio, capcheckpoint.UnitGlobal, capcheckpoint.ExpectedInput{
+					InputFingerprint: compiledAudioPlan.PlanSHA256,
+					ProcessorVersion: capabilityaudio.AudioContractVersion,
+				})
+				if decideErr != nil {
+					r.log.Warn("checkpoint decide failed; re-rendering audio",
+						zap.String("run_id", runID),
+						zap.Error(decideErr))
+					resumeAudio = false
+				} else if decision == capcheckpoint.DecisionExecute {
+					r.log.Info("audio checkpoint invalidated; re-rendering",
+						zap.String("run_id", runID),
+						zap.String("reason", reason))
+					resumeAudio = false
+				}
+			}
+			if resumeAudio {
 				// A checkpointed certified artifact is the idempotency boundary.
 				// Do not invoke TTS/mix/encode again on a retry.
 				finalAudio = *result.FinalAudio
@@ -164,6 +208,28 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failExecutionStep(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
+			}
+			if r.checkpoints != nil {
+				// Durable checkpoint AFTER the unit's work is certified: the
+				// completion record is the resume authority (crash → restart →
+				// SKIP). A write failure is logged, never a run failure: the
+				// consequence is only a re-render on crash, never incorrect
+				// behavior.
+				if err := r.checkpoints.Complete(ctx, capcheckpoint.Checkpoint{
+					JobID:            exec.JobID,
+					Stage:            capcheckpoint.StageAudio,
+					UnitID:           capcheckpoint.UnitGlobal,
+					InputFingerprint: compiledAudioPlan.PlanSHA256,
+					Status:           capcheckpoint.StatusCompleted,
+					ArtifactSHA256:   finalAudio.FinalAudioSHA256,
+					ArtifactURI:      finalAudio.DriveLink,
+					ProcessorVersion: capabilityaudio.AudioContractVersion,
+					CompletedAt:      time.Now().UTC(),
+				}); err != nil {
+					r.log.Warn("durable audio checkpoint write failed",
+						zap.String("run_id", runID),
+						zap.Error(err))
+				}
 			}
 			if result.AudioMetrics != nil {
 				metrics.TTSMS += result.AudioMetrics.TTSMS

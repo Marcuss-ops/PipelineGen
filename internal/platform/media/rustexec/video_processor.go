@@ -229,7 +229,14 @@ func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output strin
 	}
 	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
-		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
+		// Watermark scaling + green-screen chroma key (YouTube flow):
+		// ScalePercent is % of the main frame width; GreenScreen* drive the
+		// ffmpeg chromakey that removes the backdrop before the alpha pass.
+		ScalePercent:          uint32(opts.ScalePercent),
+		GreenScreenColor:      opts.GreenScreenColor,
+		GreenScreenSimilarity: opts.GreenScreenSimilarity,
+		GreenScreenBlend:      opts.GreenScreenBlend})
 }
 
 func (p *VideoProcessor) RemuxHLS(ctx context.Context, sourceURL, output string) error {
@@ -360,6 +367,15 @@ func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan au
 		return audio.FinalAudioAsset{}, metrics, fmt.Errorf("rendered audio certification failed: %w", err)
 	}
 	return asset, metrics, nil
+}
+
+// SetObservedExecutor attaches the single measurement point decorator to
+// this processor's client (every operation it runs is then measured once).
+// Nil-safe; nil disables per-operation measurement.
+func (p *VideoProcessor) SetObservedExecutor(observed *ObservedExecutor) {
+	if p != nil {
+		p.client.SetObservedExecutor(observed)
+	}
 }
 
 var _ mediaexec.AudioProcessor = (*VideoProcessor)(nil)

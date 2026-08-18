@@ -108,5 +108,9 @@ func clonePlan(plan RenderPlan) RenderPlan {
 		finalAudio := *plan.FinalAudio
 		copyPlan.FinalAudio = &finalAudio
 	}
+	if plan.ExecutionPolicy != nil {
+		policy := *plan.ExecutionPolicy
+		copyPlan.ExecutionPolicy = &policy
+	}
 	return copyPlan
 }

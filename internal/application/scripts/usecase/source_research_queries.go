@@ -25,7 +25,7 @@ import (
 // version, and the final cache key. Callers (preflight Validate and
 // Resolve) must use this single derivation so the cache key is identical
 // across the submission gate and the worker execution.
-func researchCacheIdentity(src scriptpkg.SourceSpec, language string) (string, []string, scriptpkg.SourceCachePolicy, string, string) {
+func researchCacheIdentity(src scriptpkg.SourceSpec, language, policyVersion string) (string, []string, scriptpkg.SourceCachePolicy, string, string) {
 	topic := strings.TrimSpace(src.Topic)
 	if topic == "" {
 		topic = strings.TrimSpace(src.Query)
@@ -46,7 +46,7 @@ func researchCacheIdentity(src scriptpkg.SourceSpec, language string) (string, [
 	if version == "" {
 		version = researchVersion
 	}
-	fingerprint := researchFingerprint(queries, policy)
+	fingerprint := researchFingerprint(queries, policy, policyVersion)
 	key := scriptpkg.ComputeResearchCacheKey(hashResearch(topic), lang, version, fingerprint, policy.MaxPages)
 	return topic, queries, src.CachePolicy, version, key
 }
@@ -63,21 +63,39 @@ func researchQueries(topic, explicit string, max int) []string {
 		return []string{query}
 	}
 
-	queries := []string{
-		query,
-		query + " boxing earnings",
-		query + " boxing career championships",
-		query + " biography",
+	// Delegate to the QueryPlanner for data-driven query escalation.
+	// The planner uses the SubjectIdentity registry for alias-aware
+	// query generation instead of hardcoded variants.
+	resolver := NewSubjectIdentityResolver()
+	identity := resolver.Resolve(query)
+	planner := &QueryPlanner{}
+	plan := planner.FullPlan(identity, max)
+	if len(plan) == 0 {
+		// Fallback: if the planner returns nothing (unknown identity),
+		// use the legacy hardcoded queries.
+		plan = []string{
+			query,
+			query + " boxing earnings",
+			query + " boxing career championships",
+			query + " biography",
+		}
 	}
-	if max < len(queries) {
-		queries = queries[:max]
+	if len(plan) > max {
+		plan = plan[:max]
 	}
-	return queries
+	return plan
 }
 
-func researchFingerprint(queries []string, policy scriptpkg.ResearchPolicy) string {
+// researchFingerprint is the cache-fingerprint material for the research
+// source. It folds in the semantic version tokens (research pipeline,
+// identity registry, query planner) plus the injected provider-policy
+// token (provider set + target pool): a SearXNG-only result and a
+// SearXNG+DDG fallback result may produce different evidence, so they
+// must never share a cache entry.
+func researchFingerprint(queries []string, policy scriptpkg.ResearchPolicy, policyVersion string) string {
 	return hashResearch(fmt.Sprintf(
-		"%s\nfreshness_days:%d\nresults_per_query:%d\nmax_pages:%d\nmin_sources:%d\nmin_full_page_sources:%d\nmin_evidence_score:%.4f\nrequire_citations:%t",
+		"research_version:%s\nidentity_version:%s\nquery_planner_version:%s\nprovider_policy:%s\n%s\nfreshness_days:%d\nresults_per_query:%d\nmax_pages:%d\nmin_sources:%d\nmin_full_page_sources:%d\nmin_evidence_score:%.4f\nrequire_citations:%t",
+		researchVersion, identityVersion, queryPlannerVersion, policyVersion,
 		strings.Join(queries, "\n"), policy.FreshnessDays, policy.ResultsPerQuery,
 		policy.MaxPages, policy.MinSources, policy.MinFullPageSources,
 		policy.MinEvidenceScore, policy.RequireCitations,

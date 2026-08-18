@@ -78,6 +78,8 @@ func newAuditDB(t *testing.T) *sql.DB {
 		id TEXT PRIMARY KEY,
 		source TEXT NOT NULL DEFAULT '',
 		drive_file_id TEXT NOT NULL DEFAULT '',
+		drive_link TEXT NOT NULL DEFAULT '',
+		download_link TEXT NOT NULL DEFAULT '',
 		folder_id TEXT NOT NULL DEFAULT '',
 		folder_path TEXT NOT NULL DEFAULT ''
 	)`); err != nil {
@@ -88,10 +90,15 @@ func newAuditDB(t *testing.T) *sql.DB {
 
 func insertAuditRow(t *testing.T, db *sql.DB, id, driveFileID, folderID, folderPath string) {
 	t.Helper()
+	insertAuditRowWithLinks(t, db, id, driveFileID, "", "", folderID, folderPath)
+}
+
+func insertAuditRowWithLinks(t *testing.T, db *sql.DB, id, driveFileID, driveLink, downloadLink, folderID, folderPath string) {
+	t.Helper()
 	if _, err := db.Exec(
-		`INSERT INTO media_assets (id, source, drive_file_id, folder_id, folder_path)
-		 VALUES (?, 'youtube', ?, ?, ?)`,
-		id, driveFileID, folderID, folderPath,
+		`INSERT INTO media_assets (id, source, drive_file_id, drive_link, download_link, folder_id, folder_path)
+		 VALUES (?, 'youtube', ?, ?, ?, ?, ?)`,
+		id, driveFileID, driveLink, downloadLink, folderID, folderPath,
 	); err != nil {
 		t.Fatalf("insert %s: %v", id, err)
 	}
@@ -264,5 +271,110 @@ func TestClipDriveAudit_WalkFailureSurfacedNotSilentlyAligned(t *testing.T) {
 	// silently aligned.
 	if report.Summary.FileMissingOnDrive != 1 {
 		t.Fatalf("file_missing = %d, want 1 (fail-closed on incomplete walk)", report.Summary.FileMissingOnDrive)
+	}
+}
+
+// newLinkTestTree builds the canonical nested folder tree with TWO files in
+// the leaf folder: the stale identity file (old-file) and the fresh
+// reprocess upload (new-file).
+func newLinkTestTree() *fakeDriveTree {
+	t := newFakeDriveTree()
+	t.folder(auditTomHolland, "Tom Holland", auditRootID)
+	t.folder(auditUncatID, "youtube_uncategorized", auditTomHolland)
+	t.folder(auditUvoFolderID, "uVoMqnwEdBQ", auditUncatID)
+	t.file("old-file", "yt_uVoMqnwEdBQ_1890_1950_v1_clip.mp4", auditUvoFolderID)
+	t.file("new-file", "Clip Name yt_uVoMqnwEdBQ_1890_1950_v1.mp4", auditUvoFolderID)
+	return t
+}
+
+func TestClipDriveAudit_LinkFileIDMismatchAndUntrackedUpload(t *testing.T) {
+	db := newAuditDB(t)
+	// Reprocess bug shape: identity pointer is stale (old-file) while the
+	// canonical links point at a fresh upload (new-file).
+	insertAuditRowWithLinks(t, db,
+		"yt_uVoMqnwEdBQ_1890_1950_v1",
+		"old-file",
+		"https://drive.google.com/file/d/new-file/view",
+		"https://drive.google.com/uc?id=new-file",
+		auditUvoFolderID,
+		"Tom Holland/youtube_uncategorized/uVoMqnwEdBQ",
+	)
+
+	report, err := clipDriveAudit(context.Background(), db, newLinkTestTree().list, auditRootID, 0)
+	if err != nil {
+		t.Fatalf("audit: %v", err)
+	}
+	if report.Summary.LinkFileIDMismatch != 1 {
+		t.Fatalf("link_file_id_mismatch = %d, want 1 (summary=%+v)", report.Summary.LinkFileIDMismatch, report.Summary)
+	}
+	if report.Summary.Divergences != 1 {
+		t.Fatalf("divergences = %d, want 1 (only the link mismatch)", report.Summary.Divergences)
+	}
+	d := report.Divergences[0]
+	if d.LinkFileID != "new-file" {
+		t.Fatalf("LinkFileID = %q, want new-file", d.LinkFileID)
+	}
+	found := false
+	for _, issue := range d.Issues {
+		if issue == "link_drive_file_id_mismatch" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("issues = %v, want link_drive_file_id_mismatch", d.Issues)
+	}
+	// The fresh upload is reachable only via link → untracked upload.
+	if report.Summary.UntrackedUploads != 1 || len(report.UntrackedUploads) != 1 {
+		t.Fatalf("untracked_uploads = %d (%+v), want 1", report.Summary.UntrackedUploads, report.UntrackedUploads)
+	}
+	if report.UntrackedUploads[0].FileID != "new-file" {
+		t.Fatalf("untracked upload file_id = %q, want new-file", report.UntrackedUploads[0].FileID)
+	}
+	// The new file must NOT be counted as an orphan (it IS referenced by the link).
+	if report.Summary.OrphanClipFiles != 0 {
+		t.Fatalf("orphans = %d, want 0 (link-referenced file is not an orphan)", report.Summary.OrphanClipFiles)
+	}
+}
+
+func TestClipDriveAudit_LinkFileMissingOnDrive(t *testing.T) {
+	db := newAuditDB(t)
+	// identity present in tree, but the link points at a file that is gone.
+	insertAuditRowWithLinks(t, db,
+		"yt_uVoMqnwEdBQ_1890_1950_v1",
+		"old-file",
+		"https://drive.google.com/file/d/ghost-file/view",
+		"",
+		auditUvoFolderID,
+		"Tom Holland/youtube_uncategorized/uVoMqnwEdBQ",
+	)
+
+	report, err := clipDriveAudit(context.Background(), db, newLinkTestTree().list, auditRootID, 0)
+	if err != nil {
+		t.Fatalf("audit: %v", err)
+	}
+	if report.Summary.LinkFileMissing != 1 {
+		t.Fatalf("link_file_missing_on_drive = %d, want 1 (summary=%+v)", report.Summary.LinkFileMissing, report.Summary)
+	}
+	// The ghost link file is not on Drive → cannot be listed as an untracked
+	// upload (that list is built from the live tree).
+	if report.Summary.UntrackedUploads != 0 {
+		t.Fatalf("untracked_uploads = %d, want 0 (ghost file is missing from Drive)", report.Summary.UntrackedUploads)
+	}
+}
+
+func TestExtractDriveFileID(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://drive.google.com/file/d/abc123/view?usp=drivesdk", "abc123"},
+		{"https://drive.google.com/file/d/abc123", "abc123"},
+		{"https://drive.google.com/uc?id=abc123", "abc123"},
+		{"https://drive.google.com/uc?id=abc123&export=download", "abc123"},
+		{"", ""},
+		{"not a drive url", ""},
+		{"https://drive.google.com/file/d//view", ""},
+	}
+	for _, c := range cases {
+		if got := extractDriveFileID(c.in); got != c.want {
+			t.Errorf("extractDriveFileID(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

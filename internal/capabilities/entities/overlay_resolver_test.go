@@ -73,7 +73,7 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 	// scene-0 Tom Hanks → overlay-scene-0-tom-hanks, 0–200ms.
 	first := byID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, "scene-0", first.SceneID)
-	require.Equal(t, "tom-hanks", first.EntityID)
+	require.Equal(t, StableEntityID("PERSON", "Tom Hanks"), first.EntityID)
 	require.Equal(t, string(capabilityoverlay.KindEntityCard), first.Kind)
 	require.Equal(t, "person_default", first.TemplateID)
 	require.Equal(t, "Tom Hanks", first.Text)

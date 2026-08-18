@@ -136,13 +136,13 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Equal(t, int64(0), scene0.TimelineStartUS)
 	require.Equal(t, int64(0), scene0.TimelineStartUS, "scene-0 must start the master")
 
-	tom0 := occurrenceByID(t, scene0, "tom-hanks")
+	tom0 := occurrenceByID(t, scene0, capabilityentities.StableEntityID("PERSON", "Tom Hanks"))
 	require.Equal(t, int64(0), tom0.LocalStartUS)
 	require.Equal(t, int64(200_000), tom0.LocalEndUS)
 	require.Equal(t, int64(0), tom0.AudioStartUS)
 	require.Equal(t, int64(200_000), tom0.AudioEndUS)
 
-	la0 := occurrenceByID(t, scene0, "los-angeles")
+	la0 := occurrenceByID(t, scene0, capabilityentities.StableEntityID("GPE", "Los Angeles"))
 	require.Equal(t, int64(300_000), la0.LocalStartUS, "Los Angeles starts at word 3")
 	require.Equal(t, int64(500_000), la0.LocalEndUS)
 	require.Equal(t, int64(300_000), la0.AudioStartUS)
@@ -151,10 +151,10 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	// scene-1: offset = scene-0 voiceover duration (7 words × 100ms).
 	scene1 := res.EntityTimeline.Scenes[1]
 	require.Equal(t, int64(700_000), scene1.TimelineStartUS, "scene-1 offset must equal the scene-0 voiceover duration")
-	tom1 := occurrenceByID(t, scene1, "tom-hanks")
+	tom1 := occurrenceByID(t, scene1, capabilityentities.StableEntityID("PERSON", "Tom Hanks"))
 	require.Equal(t, int64(700_000), tom1.AudioStartUS)
 	require.Equal(t, int64(900_000), tom1.AudioEndUS)
-	la1 := occurrenceByID(t, scene1, "los-angeles")
+	la1 := occurrenceByID(t, scene1, capabilityentities.StableEntityID("GPE", "Los Angeles"))
 	require.Equal(t, int64(1_000_000), la1.AudioStartUS)
 	require.Equal(t, int64(1_200_000), la1.AudioEndUS)
 

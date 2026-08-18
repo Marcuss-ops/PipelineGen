@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -131,13 +132,18 @@ type Runner struct {
 	documentRenderer      DocumentRenderer
 	combinedAudioRenderer CombinedAudioRenderer
 	finalAudioPublisher   FinalAudioPublisher
-	scriptPersistence     ScriptPersistence
-	recorder              ExecutionRecorder
-	sceneCommitObserver   SceneCommitObserver
-	vidRushBarrier        VidRushBarrier
-	vidRushTiming         VidRushTimingRecorder
-	generationGate        *GenerationGate
-	vidRushPipeline       *VidRushPipeline
+	// audioAssetSource turns the run's BGM/SFX asset_ids into verified
+	// local paths + certified durations before the audio plan is compiled.
+	// Nil means the audio intent block is not resolvable — a run that
+	// carries BGM/SFX intents fails closed in the audio-compile phase.
+	audioAssetSource    AudioAssetSource
+	scriptPersistence   ScriptPersistence
+	recorder            ExecutionRecorder
+	sceneCommitObserver SceneCommitObserver
+	vidRushBarrier      VidRushBarrier
+	vidRushTiming       VidRushTimingRecorder
+	generationGate      *GenerationGate
+	vidRushPipeline     *VidRushPipeline
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent
@@ -185,6 +191,13 @@ type Runner struct {
 	// non-nil is fail-closed (an enqueue error fails the run).
 	overlayPrepareEnqueuer OverlayPrepareEnqueuer
 	overlayRenderEnqueuer  OverlayRenderEnqueuer
+
+	// checkpoints is the optional durable per-unit checkpoint resolver. Nil
+	// keeps the legacy best-effort idempotency (restored partial result
+	// only); when wired, unit reuse (resume) is additionally gated by the
+	// durable checkpoint — input fingerprint + artifact verification +
+	// processor version — and completed units are recorded durably.
+	checkpoints *capcheckpoint.Resolver
 
 	log *zap.Logger
 }
@@ -302,6 +315,26 @@ func (r *Runner) SetOverlayRenderEnqueuer(enqueuer OverlayRenderEnqueuer) {
 
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 	r.combinedAudioRenderer = renderer
+}
+
+// SetCheckpointResolver wires the durable per-unit checkpoint resolver that
+// gates unit reuse (resume) and records unit completions. Nil-safe; nil
+// keeps the legacy best-effort idempotency path (restored partial result
+// only, no artifact verification).
+func (r *Runner) SetCheckpointResolver(resolver *capcheckpoint.Resolver) {
+	if r != nil {
+		r.checkpoints = resolver
+	}
+}
+
+// SetAudioAssetSource wires the BGM/SFX asset_id → local path + certified
+// duration resolver port. Nil-safe; nil means the audio intent block cannot
+// be resolved and a run carrying BGM/SFX intents fails closed in the
+// audio-compile phase.
+func (r *Runner) SetAudioAssetSource(source AudioAssetSource) {
+	if r != nil {
+		r.audioAssetSource = source
+	}
 }
 
 // SetFinalAudioPublisher wires the canonical delivery publisher used to make

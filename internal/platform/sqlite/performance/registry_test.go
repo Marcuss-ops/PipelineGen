@@ -54,3 +54,37 @@ func TestRegistryIsIdempotentAndCorrelatesRun(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWorkloadSamplesReturnsBaselineInOrder(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE performance_runs (run_id TEXT PRIMARY KEY, job_id TEXT, root_job_id TEXT, video_id TEXT, workload_id TEXT, workload_version TEXT, git_sha TEXT, worker_id TEXT, host_id TEXT, status TEXT, wall_ms INTEGER, cpu_user_ms INTEGER, cpu_system_ms INTEGER, peak_rss_bytes INTEGER, disk_read_bytes INTEGER, disk_write_bytes INTEGER, network_rx_bytes INTEGER, network_tx_bytes INTEGER, metadata_json TEXT, started_at TEXT, completed_at TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	r, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	runs := []capperformance.Run{
+		{RunID: "r1", WorkloadID: "benchmark_1080p_10s", Status: "SUCCEEDED", WallMS: 12000, StartedAt: "2026-08-18T12:00:00Z"},
+		{RunID: "r2", WorkloadID: "benchmark_1080p_10s", Status: "SUCCEEDED", WallMS: 14000, StartedAt: "2026-08-18T12:01:00Z"},
+		{RunID: "r3", WorkloadID: "benchmark_1080p_10s", Status: "FAILED", WallMS: 1, StartedAt: "2026-08-18T12:02:00Z"},
+		{RunID: "r4", WorkloadID: "benchmark_watermark", Status: "SUCCEEDED", WallMS: 9000, StartedAt: "2026-08-18T12:03:00Z"},
+	}
+	for _, run := range runs {
+		if err := r.RecordRun(ctx, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	samples, err := r.WorkloadSamples(ctx, "benchmark_1080p_10s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 2 || samples[0] != 12000 || samples[1] != 14000 {
+		t.Fatalf("samples = %v, want [12000 14000] (SUCCEEDED only, ordered)", samples)
+	}
+}

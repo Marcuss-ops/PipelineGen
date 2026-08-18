@@ -156,9 +156,59 @@ type AudioEvent struct {
 }
 
 type AudioLayer struct {
+	AssetID         string `json:"asset_id"`
+	TimelineStartUS int64  `json:"timeline_start_us"`
+	DurationUS      int64  `json:"duration_us"`
+	// SourceInUS trims the source inside the layer event (SFX with
+	// source_in_ms). Zero means the source plays from its start. BGM loop
+	// events always restart from 0.
+	SourceInUS int64   `json:"source_in_us,omitempty"`
+	GainDB     float64 `json:"gain_db,omitempty"`
+}
+
+// ResolvedBGM is one fully resolved background-music layer: an absolute
+// timeline window (start + duration, integer microseconds) that the layer
+// must cover. The window comes from the caller's start_ms/end intent
+// resolved against the canonical timeline; the loop expander turns it
+// into deterministic events. DurationUS == 0 means "no window" and is
+// rejected by the expander.
+type ResolvedBGM struct {
 	AssetID         string  `json:"asset_id"`
 	TimelineStartUS int64   `json:"timeline_start_us"`
 	DurationUS      int64   `json:"duration_us"`
+	Loop            bool    `json:"loop,omitempty"`
+	GainDB          float64 `json:"gain_db,omitempty"`
+	// FadeInUS ramps the layer from silence to GainDB at the window start;
+	// FadeOutUS ramps it back to silence at the window end. Zero means no
+	// fade. The automation compiler turns these into canonical
+	// AudioAutomation entries so the master never cuts the music brutally
+	// at the window/video end.
+	FadeInUS  int64 `json:"fade_in_us,omitempty"`
+	FadeOutUS int64 `json:"fade_out_us,omitempty"`
+	// DuckUnderVoiceover lowers the layer while the voiceover speaks:
+	// during each speech window overlapping this layer, the automation
+	// compiler emits one AudioAutomation entry on the "bgm" track
+	// (triggered by "voiceover") targeting DuckGainDB with the given ramps.
+	// Zero DuckGainDB / DuckAttackUS / DuckReleaseUS mean "use the plan
+	// defaults" (-30 dB, 120 ms, 350 ms) when ducking is enabled.
+	DuckUnderVoiceover bool    `json:"duck_under_voiceover,omitempty"`
+	DuckGainDB         float64 `json:"duck_gain_db,omitempty"`
+	DuckAttackUS       int64   `json:"duck_attack_us,omitempty"`
+	DuckReleaseUS      int64   `json:"duck_release_us,omitempty"`
+}
+
+// ResolvedSFX is one fully resolved sound-effect placement: an absolute
+// timeline start plus optional source trim, in integer microseconds. It is
+// the canonical fact the intent resolver produces — scene-relative
+// commands (scene_id + anchor + offset_ms) are already collapsed to
+// absolute offsets BEFORE the compiled plan — and the layer resolver
+// feeds into CompileWithLayers. DurationUS == 0 means "play the whole
+// source" (the asset probe supplies the real length at layer compile).
+type ResolvedSFX struct {
+	AssetID         string  `json:"asset_id"`
+	TimelineStartUS int64   `json:"timeline_start_us"`
+	SourceInUS      int64   `json:"source_in_us,omitempty"`
+	DurationUS      int64   `json:"duration_us,omitempty"`
 	GainDB          float64 `json:"gain_db,omitempty"`
 }
 
@@ -239,6 +289,10 @@ type CompiledAudioPlan struct {
 type ResolvedAudioAsset struct {
 	AssetID string `json:"asset_id"`
 	Path    string `json:"path"`
+	// DurationUS is the certified source duration in microseconds (from
+	// the asset registry probe). Zero means unknown — the loop expander
+	// fails closed on unknown BGM durations.
+	DurationUS int64 `json:"duration_us,omitempty"`
 }
 
 type ResolvedAudioAssets []ResolvedAudioAsset

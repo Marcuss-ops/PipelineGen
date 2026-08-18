@@ -243,7 +243,7 @@ func certifyJob(t *testing.T, job certJob) {
 	// certified microsecond span).
 	for _, scene := range job.scenes {
 		occurrence := findOccurrence(t, timeline, scene.id, scene.keyEntity)
-		item := findItem(t, plan, "overlay-"+scene.id+"-"+occurrence.EntityID)
+		item := findItem(t, plan, "overlay-"+scene.id+"-"+SafeEntityID(occurrence.Name))
 		require.Equal(t, string(capabilityoverlay.EntityTypeToKind(occurrence.Type)), item.Kind)
 		wantTemplate, err := capabilityoverlay.DefaultChrononOverlayRegistry.ResolveTemplate(string(capabilityoverlay.EntityTypeToKind(occurrence.Type)))
 		require.NoError(t, err)

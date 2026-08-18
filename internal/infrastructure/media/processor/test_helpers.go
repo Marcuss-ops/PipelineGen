@@ -36,6 +36,7 @@ type fakeFFmpeg struct {
 	proxyErr          error
 	normalizeCalled   bool
 	normalizeAsDir    bool
+	extractFrameCalls int
 	lastNormalizeOpts mediaexec.NormalizeOptions
 }
 
@@ -60,6 +61,7 @@ func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*mediaexec.MediaIn
 }
 
 func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
+	f.extractFrameCalls++
 	return os.WriteFile(output, []byte("fake-frame"), 0o644)
 }
 

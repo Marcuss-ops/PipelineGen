@@ -53,47 +53,56 @@ func (o Operation) valid() bool {
 }
 
 type request struct {
-	Version          string             `json:"version"`
-	Operation        Operation          `json:"operation"`
-	FFmpegPath       string             `json:"ffmpeg_path,omitempty"`
-	SourcePath       string             `json:"source_path,omitempty"`
-	OutputPath       string             `json:"output_path,omitempty"`
-	TimestampSec     float64            `json:"timestamp_sec,omitempty"`
-	StartSec         float64            `json:"start_sec,omitempty"`
-	EndSec           float64            `json:"end_sec,omitempty"`
-	IntervalFrames   uint32             `json:"interval_frames,omitempty"`
-	Columns          uint32             `json:"columns,omitempty"`
-	Rows             uint32             `json:"rows,omitempty"`
-	Codec            string             `json:"codec,omitempty"`
-	Preset           string             `json:"preset,omitempty"`
-	CRF              int                `json:"crf,omitempty"`
-	Width            uint32             `json:"width,omitempty"`
-	Height           uint32             `json:"height,omitempty"`
-	FPS              uint32             `json:"fps,omitempty"`
-	KeyframeInterval uint32             `json:"keyframe_interval,omitempty"`
-	AudioCodec       string             `json:"audio_codec,omitempty"`
-	AudioBitrate     string             `json:"audio_bitrate,omitempty"`
-	SampleRate       uint32             `json:"sample_rate,omitempty"`
-	Channels         uint32             `json:"channels,omitempty"`
-	DurationSec      float64            `json:"duration_sec,omitempty"`
-	KeepAudio        bool               `json:"keep_audio,omitempty"`
-	NoAudio          bool               `json:"no_audio,omitempty"`
-	OverlayPath      string             `json:"overlay_path,omitempty"`
-	Opacity          float64            `json:"opacity,omitempty"`
-	InputPaths       []string           `json:"input_paths,omitempty"`
-	Jobs             []cutRequestJob    `json:"jobs,omitempty"`
-	NoTransitions    bool               `json:"no_transitions,omitempty"`
-	ClipDurationSec  int                `json:"clip_duration_sec,omitempty"`
-	NoEffects        bool               `json:"no_effects,omitempty"`
-	Transitions      []renderTransition `json:"transitions,omitempty"`
-	EffectPaths      []renderEffectPath `json:"effect_paths,omitempty"`
-	OverlayOpacity   float64            `json:"overlay_opacity,omitempty"`
-	Font             string             `json:"font,omitempty"`
-	Effects          []renderEffect     `json:"effects,omitempty"`
-	Overlays         []renderOverlay    `json:"overlays,omitempty"`
-	MaxDurationSec   float64            `json:"max_duration_sec,omitempty"`
-	AudioPlan        json.RawMessage    `json:"audio_plan,omitempty"`
-	AudioAssets      []audioAsset       `json:"audio_assets,omitempty"`
+	Version          string    `json:"version"`
+	Operation        Operation `json:"operation"`
+	FFmpegPath       string    `json:"ffmpeg_path,omitempty"`
+	SourcePath       string    `json:"source_path,omitempty"`
+	OutputPath       string    `json:"output_path,omitempty"`
+	TimestampSec     float64   `json:"timestamp_sec,omitempty"`
+	StartSec         float64   `json:"start_sec,omitempty"`
+	EndSec           float64   `json:"end_sec,omitempty"`
+	IntervalFrames   uint32    `json:"interval_frames,omitempty"`
+	Columns          uint32    `json:"columns,omitempty"`
+	Rows             uint32    `json:"rows,omitempty"`
+	Codec            string    `json:"codec,omitempty"`
+	Preset           string    `json:"preset,omitempty"`
+	CRF              int       `json:"crf,omitempty"`
+	Width            uint32    `json:"width,omitempty"`
+	Height           uint32    `json:"height,omitempty"`
+	FPS              uint32    `json:"fps,omitempty"`
+	KeyframeInterval uint32    `json:"keyframe_interval,omitempty"`
+	AudioCodec       string    `json:"audio_codec,omitempty"`
+	AudioBitrate     string    `json:"audio_bitrate,omitempty"`
+	SampleRate       uint32    `json:"sample_rate,omitempty"`
+	Channels         uint32    `json:"channels,omitempty"`
+	DurationSec      float64   `json:"duration_sec,omitempty"`
+	KeepAudio        bool      `json:"keep_audio,omitempty"`
+	NoAudio          bool      `json:"no_audio,omitempty"`
+	OverlayPath      string    `json:"overlay_path,omitempty"`
+	Opacity          float64   `json:"opacity,omitempty"`
+	// Watermark scaling + green-screen chroma key (YouTube watermark flow).
+	// ScalePercent is the overlay size as a percentage of the MAIN frame
+	// width (0 = leave the overlay at its native size). GreenScreen* drive
+	// the ffmpeg chromakey filter that removes the backdrop before the
+	// alpha/opacity pass.
+	ScalePercent          uint32             `json:"scale_percent,omitempty"`
+	GreenScreenColor      string             `json:"green_screen_color,omitempty"`
+	GreenScreenSimilarity float64            `json:"green_screen_similarity,omitempty"`
+	GreenScreenBlend      float64            `json:"green_screen_blend,omitempty"`
+	InputPaths            []string           `json:"input_paths,omitempty"`
+	Jobs                  []cutRequestJob    `json:"jobs,omitempty"`
+	NoTransitions         bool               `json:"no_transitions,omitempty"`
+	ClipDurationSec       int                `json:"clip_duration_sec,omitempty"`
+	NoEffects             bool               `json:"no_effects,omitempty"`
+	Transitions           []renderTransition `json:"transitions,omitempty"`
+	EffectPaths           []renderEffectPath `json:"effect_paths,omitempty"`
+	OverlayOpacity        float64            `json:"overlay_opacity,omitempty"`
+	Font                  string             `json:"font,omitempty"`
+	Effects               []renderEffect     `json:"effects,omitempty"`
+	Overlays              []renderOverlay    `json:"overlays,omitempty"`
+	MaxDurationSec        float64            `json:"max_duration_sec,omitempty"`
+	AudioPlan             json.RawMessage    `json:"audio_plan,omitempty"`
+	AudioAssets           []audioAsset       `json:"audio_assets,omitempty"`
 	// RenderPlan is the sealed generation-time contract. The Go adapter
 	// validates its hashes and manifest files before this envelope is sent;
 	// keeping the exact JSON here lets the executor audit the same plan.
@@ -262,7 +271,29 @@ type response struct {
 	SourcePath string         `json:"source_path"`
 	Items      []cutItem      `json:"items"`
 	Metadata   *mediaMetadata `json:"metadata"`
-	Error      string         `json:"error"`
+	// Metrics carries the operation's real consumption, measured in the
+	// process that owns the work: the Rust media executor reports its child
+	// FFmpeg wall/CPU time, input/output bytes, cache outcome and frame
+	// counts. Nil (absent) means the executor did not report metrics; the
+	// Go boundary then falls back to its own measurements.
+	Metrics *OperationMetrics `json:"metrics,omitempty"`
+	Error   string            `json:"error"`
+}
+
+// OperationMetrics is the standard per-operation metrics block returned by
+// the Rust media executor. CPU time is the child FFmpeg consumption (not an
+// estimate from wall time × CPU %), so concurrent renders attribute cost to
+// the right operation. Fields are zero when not applicable (e.g. frames stay
+// 0 on copy-only mux paths).
+type OperationMetrics struct {
+	WallMS        int64 `json:"wall_ms"`
+	CPUUserMS     int64 `json:"cpu_user_ms"`
+	CPUSystemMS   int64 `json:"cpu_system_ms"`
+	InputBytes    int64 `json:"input_bytes"`
+	OutputBytes   int64 `json:"output_bytes"`
+	CacheHit      bool  `json:"cache_hit"`
+	FramesDecoded int64 `json:"frames_decoded"`
+	FramesEncoded int64 `json:"frames_encoded"`
 }
 
 type cutRequestJob struct {

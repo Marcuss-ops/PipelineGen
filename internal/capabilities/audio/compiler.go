@@ -29,6 +29,14 @@ func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, 
 	return compilePlan(t, profile, bgm, sfx, automation, "")
 }
 
+// CompileWithLayersAndPolicy extends CompileWithLayers with an explicit
+// editorial mix policy (VOICEOVER_ONLY / VOICEOVER_DUCKED_CLIP), recorded
+// on the plan so the mixer and renderer consume the same decision. An
+// empty policy preserves the legacy full-volume overlap behaviour.
+func CompileWithLayersAndPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy AudioMixPolicy) (CompiledAudioPlan, error) {
+	return compilePlan(t, profile, bgm, sfx, automation, policy)
+}
+
 func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy AudioMixPolicy) (CompiledAudioPlan, error) {
 	if err := t.Validate(); err != nil {
 		return CompiledAudioPlan{}, err
@@ -78,7 +86,7 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 	}
 	for i, layer := range sfx {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
 	}
 	applyMixPolicy(&p)
 	if err := p.Seal(); err != nil {

@@ -50,6 +50,81 @@ func TestClientProbeMapsRustMetadata(t *testing.T) {
 	}
 }
 
+func TestApplyWatermarkForwardsScaleAndGreenScreen(t *testing.T) {
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"watermark"}`)}
+	client := NewClient("muscles", "ffmpeg", nil)
+	client.runner = runner
+	processor := &VideoProcessor{
+		client:  client,
+		profile: mediaexec.VideoProfile{}.WithDefaults(),
+		policy:  mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
+	}
+
+	err := processor.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", mediaexec.WatermarkOptions{
+		ImagePath:             "wm.png",
+		Opacity:               0.25,
+		Position:              "center",
+		ScalePercent:          20,
+		GreenScreenColor:      "0x00FF00",
+		GreenScreenSimilarity: 0.3,
+		GreenScreenBlend:      0.1,
+	})
+	if err != nil {
+		t.Fatalf("ApplyWatermark() error = %v", err)
+	}
+	var sent request
+	if err := json.Unmarshal(runner.input, &sent); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if sent.Operation != OperationWatermark {
+		t.Fatalf("operation = %q, want watermark", sent.Operation)
+	}
+	if sent.OverlayPath != "wm.png" || sent.Opacity != 0.25 {
+		t.Fatalf("overlay fields = %q/%v, want wm.png/0.25", sent.OverlayPath, sent.Opacity)
+	}
+	if sent.ScalePercent != 20 {
+		t.Errorf("ScalePercent = %d, want 20", sent.ScalePercent)
+	}
+	if sent.GreenScreenColor != "0x00FF00" {
+		t.Errorf("GreenScreenColor = %q, want 0x00FF00", sent.GreenScreenColor)
+	}
+	if sent.GreenScreenSimilarity != 0.3 {
+		t.Errorf("GreenScreenSimilarity = %v, want 0.3", sent.GreenScreenSimilarity)
+	}
+	if sent.GreenScreenBlend != 0.1 {
+		t.Errorf("GreenScreenBlend = %v, want 0.1", sent.GreenScreenBlend)
+	}
+}
+
+func TestApplyWatermarkOmitsScaleAndGreenScreenWhenUnset(t *testing.T) {
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"watermark"}`)}
+	client := NewClient("muscles", "ffmpeg", nil)
+	client.runner = runner
+	processor := &VideoProcessor{
+		client:  client,
+		profile: mediaexec.VideoProfile{}.WithDefaults(),
+		policy:  mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
+	}
+
+	err := processor.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", mediaexec.WatermarkOptions{
+		ImagePath: "wm.png",
+		Opacity:   1.0,
+	})
+	if err != nil {
+		t.Fatalf("ApplyWatermark() error = %v", err)
+	}
+	var sent request
+	if err := json.Unmarshal(runner.input, &sent); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if sent.ScalePercent != 0 {
+		t.Errorf("ScalePercent = %d, want 0 when unset", sent.ScalePercent)
+	}
+	if sent.GreenScreenColor != "" {
+		t.Errorf("GreenScreenColor = %q, want empty when unset", sent.GreenScreenColor)
+	}
+}
+
 func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"normalize"}`)}
 	client := NewClient("muscles", "ffmpeg", nil)

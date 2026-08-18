@@ -89,6 +89,20 @@ type FinalAudioAsset struct {
 	CopyEligible         bool   `json:"copy_eligible,omitempty"`
 }
 
+// RenderExecutionPolicy pins the deterministic execution identity of a
+// render: whether stream copy is allowed and the canonical hashes of the
+// target output profile, the renderer and the encoder policy. Every field
+// contributes to PlanSHA256 (the policy is part of the sealed plan), so a
+// policy change — e.g. encoder preset medium → fast — can never reuse a
+// stale artifact. Nil policy on a plan means legacy execution: no cache
+// identity and no stream copy.
+type RenderExecutionPolicy struct {
+	AllowStreamCopy   bool   `json:"allow_stream_copy"`
+	TargetProfileHash string `json:"target_profile_hash"`
+	RendererVersion   string `json:"renderer_version"`
+	EncoderPolicyHash string `json:"encoder_policy_hash"`
+}
+
 type RenderPlan struct {
 	Version        string                  `json:"version"`
 	JobID          string                  `json:"job_id"`
@@ -104,7 +118,12 @@ type RenderPlan struct {
 	VideoTracks    []VideoTrack            `json:"video_tracks"`
 	Manifest       []AssetManifestEntry    `json:"manifest"`
 	ManifestSHA256 string                  `json:"manifest_sha256"`
-	PlanSHA256     string                  `json:"plan_sha256"`
+	// ExecutionPolicy is the sealed execution identity. It is a pointer with
+	// omitempty so legacy plans (nil policy) keep their exact PlanSHA256;
+	// when set, it participates in the plan hash and therefore in every
+	// cache key and checkpoint identity derived from it.
+	ExecutionPolicy *RenderExecutionPolicy `json:"execution_policy,omitempty"`
+	PlanSHA256      string                 `json:"plan_sha256"`
 }
 
 type CompileInput struct {
@@ -116,6 +135,9 @@ type CompileInput struct {
 	Timeline   audio.CanonicalTimeline
 	FinalAudio *FinalAudioAsset
 	Manifest   []AssetManifestEntry
+	// ExecutionPolicy is optional; nil keeps legacy behavior (no cache
+	// identity, no stream copy) and leaves PlanSHA256 unchanged.
+	ExecutionPolicy *RenderExecutionPolicy
 }
 
 func Compile(input CompileInput) (RenderPlan, error) {
@@ -152,8 +174,15 @@ func Compile(input CompileInput) (RenderPlan, error) {
 		Manifest:       append([]AssetManifestEntry(nil), input.Manifest...),
 		VideoTracks:    []VideoTrack{{Index: 0}},
 	}
+	if input.ExecutionPolicy != nil {
+		policy := *input.ExecutionPolicy
+		plan.ExecutionPolicy = &policy
+	}
 	if plan.JobID == "" || plan.Revision == "" || plan.OutputPath == "" || plan.DurationFrames <= 0 {
 		return RenderPlan{}, fmt.Errorf("%w: identity, output, or duration is missing", ErrInvalidPlan)
+	}
+	if err := validateExecutionPolicy(plan.ExecutionPolicy); err != nil {
+		return RenderPlan{}, err
 	}
 	if err := validateManifestEntries(plan.Manifest); err != nil {
 		return RenderPlan{}, err
@@ -355,6 +384,9 @@ func (p RenderPlan) Validate() error {
 	if p.PlanSHA256 != expectedPlan {
 		return fmt.Errorf("%w: got %q want %q", ErrPlanDrift, p.PlanSHA256, expectedPlan)
 	}
+	if err := validateExecutionPolicy(p.ExecutionPolicy); err != nil {
+		return err
+	}
 	resolver, err := audio.NewFrameResolver(rate)
 	if err != nil {
 		return fmt.Errorf("%w: invalid frame rate: %v", ErrInvalidPlan, err)
@@ -443,6 +475,23 @@ func (p RenderPlan) ValidateManifestFiles(fs FileSystem) error {
 		if copyErr != nil || closeErr != nil || hex.EncodeToString(hash.Sum(nil)) != p.FinalAudio.SHA256 {
 			return fmt.Errorf("%w: final audio %s", ErrAssetHashDrift, p.FinalAudio.AssetID)
 		}
+	}
+	return nil
+}
+
+// validateExecutionPolicy fails closed on a structurally incomplete policy:
+// a policy that cannot identify the execution (missing or malformed profile
+// / encoder hashes, missing renderer version) must never be sealed into a
+// plan. Nil policy is valid (legacy execution).
+func validateExecutionPolicy(policy *RenderExecutionPolicy) error {
+	if policy == nil {
+		return nil
+	}
+	if !isSHA256(policy.TargetProfileHash) || !isSHA256(policy.EncoderPolicyHash) {
+		return fmt.Errorf("%w: execution policy requires SHA256 target_profile_hash and encoder_policy_hash", ErrInvalidPlan)
+	}
+	if strings.TrimSpace(policy.RendererVersion) == "" {
+		return fmt.Errorf("%w: execution policy requires renderer_version", ErrInvalidPlan)
 	}
 	return nil
 }

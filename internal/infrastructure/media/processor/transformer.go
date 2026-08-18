@@ -40,7 +40,10 @@ func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) 
 	}
 
 	_, saveDir := p.setupDirectoriesFromTransform(input)
-	finalFilename := textutil.SafeName(input.Name) + " " + input.ID + ".mp4"
+	finalFilename := filepath.Base(input.Filename)
+	if finalFilename == "" || finalFilename == "." {
+		finalFilename = textutil.SafeName(input.Name) + " " + input.ID + ".mp4"
+	}
 	processedPath := OutputPath(saveDir, finalFilename)
 
 	if input.RenditionLayout {

@@ -78,7 +78,7 @@ func TestBuildEntityTimeline_TomHanksExample(t *testing.T) {
 
 	require.Len(t, timeline.Scenes, 1)
 	occurrence := timeline.Scenes[0].Entities[0]
-	require.Equal(t, "tom-hanks", occurrence.EntityID)
+	require.Equal(t, StableEntityID("PERSON", "Tom Hanks"), occurrence.EntityID)
 	require.Equal(t, "Tom Hanks", occurrence.Name)
 	require.Equal(t, "PERSON", occurrence.Type)
 	require.Equal(t, "scene-3", occurrence.SceneID)

@@ -74,6 +74,7 @@ var commandRegistry = map[string]commandHandler{
 	"benchmark":                      runBenchmark,
 	"check-drive-names":              runCheckDriveNames,
 	"clip-drive-audit":               runClipDriveAudit,
+	"clip-drive-orphan-cleanup":      runClipDriveOrphanCleanup,
 	"check-indexed-ids":              runCheckIndexedIds,
 	"classify-sound-effects":         runClassifySoundEffects,
 	"cleanup-all-orphans":            runCleanupAllOrphans,

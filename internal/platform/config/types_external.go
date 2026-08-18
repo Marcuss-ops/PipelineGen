@@ -83,6 +83,22 @@ type ExternalConfig struct {
 	SearxngEngines          string `yaml:"searxng_engines" env:"SEARXNG_ENGINES" default:"bing,mwmbl"`
 	WebSearchTimeoutSeconds int    `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
 
+	// ResearchFallbackProvider controls the fallback web search provider
+	// when SearXNG is unavailable. Canonical values:
+	//
+	//   "duckduckgo" — DuckDuckGo HTML text search (best-effort, no API key)
+	//   ""           — no fallback (research fails closed if SearXNG is down)
+	//
+	// Default: "duckduckgo" (multi-provider fallback).
+	ResearchFallbackProvider string `yaml:"research_fallback_provider" env:"RESEARCH_FALLBACK_PROVIDER" default:"duckduckgo"`
+
+	// ResearchTargetPoolSize is the minimum number of subject-valid
+	// search results required before the page-fetch phase begins.
+	// Higher values improve evidence diversity but increase latency.
+	//
+	// Default: 8 (tuned for boxing research pipelines).
+	ResearchTargetPoolSize int `yaml:"research_target_pool_size" env:"RESEARCH_TARGET_POOL_SIZE" default:"8"`
+
 	// Artlist scraper optimizations
 	// (PR-ARTLIST-CONFIG-PREFIX, July 2026): env var renamed from the
 	// bare ARTLIST_SCRAPER_SERVER_URL to VELOX_-prefixed form so it

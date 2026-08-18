@@ -43,6 +43,9 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		if details := validateAudioMode(item, ref); len(details) > 0 {
 			return &PlanInvalidError{ItemID: item.ID, Details: details}
 		}
+		if details := validateAudioIntentBlock(item, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
 		if details := validateIntroHookStock(item.ScriptParams.Segments, item.Output.StockBindings, ref); len(details) > 0 {
 			return &PlanInvalidError{
 				ItemID:  item.ID,

@@ -260,6 +260,17 @@ type CombinedAudioRenderer interface {
 	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
 }
 
+// AudioAssetSource resolves ONE background-music or sound-effect asset_id
+// to its canonical ResolvedAudioAsset (verified local path + certified
+// source duration). The concrete adapter (composition root) reads the
+// canonical asset registry and materializes Drive sources into scratch;
+// the capability never imports Drive, SQLite, or the filesystem mechanics.
+// Fail-closed: an unknown asset_id or an asset with no usable local copy is
+// a typed error, never a silent empty path.
+type AudioAssetSource interface {
+	ResolveAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
+}
+
 // FinalAudioPublishResult is the canonical publication outcome: the canonical
 // MediaRegistry asset ID plus the public Drive link. It never carries a local
 // filesystem path.

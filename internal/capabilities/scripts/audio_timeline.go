@@ -258,13 +258,40 @@ func CompileCanonicalAudioPlanAudioOnly(result GenerateResult, language Language
 }
 
 func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Language, profile audio.CanonicalAudioProfile, includeClipAudio bool) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+	timeline, assets, timings, err := buildCanonicalTimelineAndPrimaryAssets(result, language, includeClipAudio)
+	if err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	// The combined timeline is narration-first: the voiceover sits at unity
+	// and the original clip audio is ducked underneath it. The decision is
+	// recorded on the plan (mix_policy) so the mixer and renderer agree.
+	planStarted := time.Now()
+	// The combined timeline is narration-first: the voiceover sits at unity
+	// and the original clip audio is ducked underneath it — for the audio-only
+	// master just as for the video-bound master. The decision is recorded on
+	// the plan (mix_policy) so the mixer and renderer agree.
+	policy := audio.MixVoiceoverWithDuckedClip
+	plan, err := audio.CompileWithMixPolicy(timeline, profile, policy)
+	timings.AudioPlanCompileMS = time.Since(planStarted).Milliseconds()
+	if err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	return timeline, plan, assets, timings, nil
+}
+
+// buildCanonicalTimelineAndPrimaryAssets builds the VO-governed canonical
+// timeline and resolves the primary (voiceover + original clip) assets. It
+// is shared by the legacy CompileWithMixPolicy path and the audio-intent
+// path: the intent pipeline (BGM/SFX layers + automation) is layered onto
+// exactly this timeline, never a second, divergent one.
+func buildCanonicalTimelineAndPrimaryAssets(result GenerateResult, language Language, includeClipAudio bool) (audio.CanonicalTimeline, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
 	var timings AudioCompileTimings
 	if len(result.Scenes) == 0 {
-		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, fmt.Errorf("canonical timeline requires scenes")
+		return audio.CanonicalTimeline{}, nil, timings, fmt.Errorf("canonical timeline requires scenes")
 	}
 	resolved, err := resolvedScenesFor(result, language, includeClipAudio)
 	if err != nil {
-		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+		return audio.CanonicalTimeline{}, nil, timings, err
 	}
 	if !includeClipAudio {
 		// Audio-only keeps clip bindings as evidence metadata but removes
@@ -297,7 +324,7 @@ func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 	timeline, err := compileResolvedSceneTimeline(resolved)
 	timings.TimelineCompileMS = time.Since(timelineStarted).Milliseconds()
 	if err != nil {
-		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+		return audio.CanonicalTimeline{}, nil, timings, err
 	}
 	assets := make(audio.ResolvedAudioAssets, 0, len(result.Scenes)*2)
 	seen := make(map[string]struct{})
@@ -337,7 +364,7 @@ func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 			if intent.Mode == audio.AudioVoiceover {
 				ref, ok := scene.Voiceover[language]
 				if !ok || strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.FilePath) == "" {
-					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, fmt.Errorf("scene %s voiceover asset is missing", scene.ID)
+					return audio.CanonicalTimeline{}, nil, timings, fmt.Errorf("scene %s voiceover asset is missing", scene.ID)
 				}
 				intent.VoiceoverAssetID = ref.ID
 				// The scene duration is the canonical placement window, but
@@ -358,7 +385,7 @@ func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 				intent.TimelineOffsetUS = 0
 				intent.TimelineDurationUS = timeline.Segments[i].DurationUS
 				if err := addAsset(ref.ID, ref.FilePath); err != nil {
-					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+					return audio.CanonicalTimeline{}, nil, timings, err
 				}
 			}
 			if intent.Mode == audio.AudioClip {
@@ -374,10 +401,10 @@ func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 					}
 				}
 				if strings.TrimSpace(intent.ClipAssetID) == "" || strings.TrimSpace(clipPath) == "" {
-					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, fmt.Errorf("scene %s clip audio asset is missing", scene.ID)
+					return audio.CanonicalTimeline{}, nil, timings, fmt.Errorf("scene %s clip audio asset is missing", scene.ID)
 				}
 				if err := addAsset(intent.ClipAssetID, clipPath); err != nil {
-					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+					return audio.CanonicalTimeline{}, nil, timings, err
 				}
 			}
 		}
@@ -388,23 +415,9 @@ func compileCanonicalAudioPlanWithTimings(result GenerateResult, language Langua
 	}
 	timings.ClipAudioPrepareMS = time.Since(prepareStarted).Milliseconds()
 	if err := timeline.Validate(); err != nil {
-		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+		return audio.CanonicalTimeline{}, nil, timings, err
 	}
-	// The combined timeline is narration-first: the voiceover sits at unity
-	// and the original clip audio is ducked underneath it. The decision is
-	// recorded on the plan (mix_policy) so the mixer and renderer agree.
-	planStarted := time.Now()
-	// The combined timeline is narration-first: the voiceover sits at unity
-	// and the original clip audio is ducked underneath it — for the audio-only
-	// master just as for the video-bound master. The decision is recorded on
-	// the plan (mix_policy) so the mixer and renderer agree.
-	policy := audio.MixVoiceoverWithDuckedClip
-	plan, err := audio.CompileWithMixPolicy(timeline, profile, policy)
-	timings.AudioPlanCompileMS = time.Since(planStarted).Milliseconds()
-	if err != nil {
-		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
-	}
-	return timeline, plan, assets, timings, nil
+	return timeline, assets, timings, nil
 }
 
 // CompileCanonicalTimeline is the visual-side timing compiler. It calls the
