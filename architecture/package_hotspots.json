@@ -45,13 +45,13 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 153,
+      "baseline_files": 154,
       "baseline": {
-        "files": 153,
+        "files": 154,
         "max_loc": 26637
       },
       "current": {
-        "files": 153,
+        "files": 154,
         "max_loc": 23098
       },
       "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
