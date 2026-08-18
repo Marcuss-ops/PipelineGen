@@ -216,6 +216,14 @@ type AnnotatedEntity struct {
 	Confidence    float64             `json:"confidence,omitempty"`
 	Mentions      []AnnotationSpan    `json:"mentions,omitempty"`
 	Image         *EntityImageBinding `json:"image,omitempty"`
+	// CanonicalEntityID is the stable canonical identity of the entity in
+	// the entities-package spelling (e.g. "person:floyd-mayweather"). It is
+	// stamped from the Image Search Intent resolver's decision so the media
+	// index / overlay resolver join on the SAME identity the resolver
+	// chose, never a re-derivation from a possibly-different surface. Empty
+	// when the resolver was not wired or the entity was not part of its
+	// decision (the overlay compile then derives the id deterministically).
+	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 }
 
 type EntityImageBinding struct {
@@ -227,8 +235,14 @@ type EntityImageBinding struct {
 	// Google Doc (IDEAL PASS). It is the candidate's source image URL, never
 	// a Drive view-page link. Empty when no direct image is available.
 	PreviewURL string `json:"preview_url,omitempty"`
-	Source     string `json:"source,omitempty"`
-	License    string `json:"license,omitempty"`
+	// SHA256 is the content address of the materialized asset bytes (the
+	// provider candidate's FileHash after verification). It is what lets the
+	// binding be promoted into the content-addressed EntityMediaIndex — a
+	// binding without it stays a plain reference and can never become a
+	// verifiable card asset.
+	SHA256  string `json:"sha256,omitempty"`
+	Source  string `json:"source,omitempty"`
+	License string `json:"license,omitempty"`
 }
 
 // Validate checks structural invariants on a single scene.

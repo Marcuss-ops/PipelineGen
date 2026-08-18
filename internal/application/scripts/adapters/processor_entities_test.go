@@ -205,6 +205,39 @@ func TestVidRushSegmentEnricherResolverDrivesImageQueries(t *testing.T) {
 	require.Equal(t, []string{"Floyd Mayweather", "Manny Pacquiao", "Floyd Mayweather Manny Pacquiao fight"}, seg.Insights.ImageQueries,
 		"the resolver's ordered queries (primary first, event last) must drive the fan-out")
 	require.True(t, seg.Insights.ImageSearchRequired)
+	// The resolver's chosen canonical identities travel with the segment so
+	// the scene-annotation projection stamps the SAME id the media index
+	// joins on (battery T07: two distinct persons, two distinct canonical ids).
+	require.Equal(t, "person:floyd-mayweather", seg.Insights.ImagePrimaryCanonicalID,
+		"the resolver's primary entity canonical id must be carried")
+	require.Equal(t, "person:floyd-mayweather", seg.Insights.ImageEntityCanonicalIDs["floyd mayweather"])
+	require.Equal(t, "person:manny-pacquiao", seg.Insights.ImageEntityCanonicalIDs["manny pacquiao"])
+}
+
+// TestSceneAnnotationsStampResolverCanonicalIDs certifies the end-to-end
+// identity join: the canonical_entity_id the resolver chose for an entity
+// (battery T07: Floyd Mayweather + Manny Pacquiao) is stamped onto the
+// annotated entity by the scene-annotation projection, so the overlay media
+// index and the resolver card resolve under the SAME identity.
+func TestSceneAnnotationsStampResolverCanonicalIDs(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	resolver := capabilityimagesearch.NewResolver(localnlp.NewExtractor())
+	enricher := NewVidRushSegmentEnricher(localnlp.NewExtractor(), nil)
+	enricher.WithImageSearchResolver(resolver)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en"}
+	scene := scriptpkg.SpecScene{ID: "scene-1", Index: 0, Text: "Floyd Mayweather defeated Manny Pacquiao in one of boxing's biggest fights."}
+	seg, err := enricher.Enrich(context.Background(), plan, scene)
+	require.NoError(t, err)
+
+	merged := NewVidRushSceneMerger("en").Merge(scene, seg)
+	require.NotNil(t, merged.Annotations)
+	got := map[string]string{}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), merged.Annotations.PrimaryEntities...), merged.Annotations.SecondaryEntities...) {
+		got[entity.CanonicalName] = entity.CanonicalEntityID
+	}
+	require.Equal(t, "person:floyd-mayweather", got["Floyd Mayweather"], "the resolver's canonical id must be stamped on the annotated entity")
+	require.Equal(t, "person:manny-pacquiao", got["Manny Pacquiao"])
 }
 
 // TestVidRushSegmentEnricherResolverNoImageDecision certifies the no-image

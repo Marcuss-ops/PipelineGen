@@ -437,10 +437,16 @@ func buildVidRushSegmentResult(
 	if len(manualImageQueries) > 0 {
 		insights.ImageQueries = uniqueLimitedStrings(manualImageQueries, imageLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotSecondaryImage) {
-		queries, required, noImageReason := resolveImageQueries(ctx, resolver, plan, visualText, insights, imagePhrases, imageLimit)
-		insights.ImageQueries = queries
-		insights.ImageSearchRequired = required
-		insights.ImageSearchNoImageReason = noImageReason
+		outcome := resolveImageQueries(ctx, resolver, plan, visualText, insights, imagePhrases, imageLimit)
+		insights.ImageQueries = outcome.queries
+		insights.ImageSearchRequired = outcome.required
+		insights.ImageSearchNoImageReason = outcome.noImageReason
+		// The resolver's chosen canonical identities travel with the segment:
+		// the scene-annotation projection stamps them onto the annotated
+		// entities so the overlay media index joins on the SAME identity the
+		// resolver chose (never a re-derivation from a different surface).
+		insights.ImagePrimaryCanonicalID = outcome.primaryCanonicalID
+		insights.ImageEntityCanonicalIDs = outcome.canonicalIDs
 	}
 
 	return scriptpkg.VidRushSegmentResult{
@@ -453,6 +459,23 @@ func buildVidRushSegmentResult(
 		Assets:    scriptpkg.SegmentAssetSelection{},
 		Cache:     scriptpkg.SegmentCacheState{},
 	}
+}
+
+// imageSearchOutcome is the resolved image search decision for one segment:
+// the ordered queries plus the resolver's chosen canonical identities (the
+// primary entity's canonical id and the per-surface id map the annotation
+// projection stamps).
+type imageSearchOutcome struct {
+	queries       []string
+	required      bool
+	noImageReason string
+	// primaryCanonicalID is the resolver's chosen primary entity canonical
+	// id (e.g. "person:floyd-mayweather"); empty when the resolver is not
+	// wired or the decision is no-image.
+	primaryCanonicalID string
+	// canonicalIDs maps each decision entity's lowercased surface/canonical
+	// text to its canonical id. Never nil for a resolver-wired outcome.
+	canonicalIDs map[string]string
 }
 
 // resolveImageQueries produces the segment's image search queries. When the
@@ -474,19 +497,54 @@ func resolveImageQueries(
 	insights scriptpkg.SegmentInsights,
 	imagePhrases []string,
 	imageLimit int,
-) (queries []string, required bool, noImageReason string) {
+) imageSearchOutcome {
 	if resolver != nil {
 		decision := resolver.Resolve(ctx, capabilityimagesearch.Request{
 			Text: visualText, Language: plan.Language,
 		})
+		outcome := imageSearchOutcome{
+			required:      decision.Required,
+			noImageReason: decision.NoImageReason,
+			canonicalIDs:  map[string]string{},
+		}
+		for _, entity := range decision.Entities {
+			stampCanonicalID(outcome.canonicalIDs, entity)
+		}
+		if decision.Primary != nil {
+			outcome.primaryCanonicalID = decision.Primary.CanonicalID
+			stampCanonicalID(outcome.canonicalIDs, *decision.Primary)
+		}
 		if !decision.Required {
-			return nil, false, decision.NoImageReason
+			return outcome
 		}
 		if len(decision.Queries) > 0 {
-			return uniqueLimitedStrings(decision.Queries, imageLimit), true, ""
+			outcome.queries = uniqueLimitedStrings(decision.Queries, imageLimit)
+			return outcome
 		}
+		return outcome
 	}
-	return uniqueLimitedStrings(buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic), imageLimit), true, ""
+	return imageSearchOutcome{
+		queries:      uniqueLimitedStrings(buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic), imageLimit),
+		required:     true,
+		canonicalIDs: map[string]string{},
+	}
+}
+
+// stampCanonicalID registers every retrievable spelling of a decision entity
+// (canonical text, query surface, verbatim source surface) under its chosen
+// canonical id, so the annotation projection can join on whichever spelling
+// the extractor produced.
+func stampCanonicalID(dst map[string]string, entity capabilityimagesearch.ResolvedEntity) {
+	if entity.CanonicalID == "" {
+		return
+	}
+	for _, surface := range []string{entity.Text, entity.QueryName, entity.Verbatim} {
+		key := strings.ToLower(strings.TrimSpace(surface))
+		if key == "" {
+			continue
+		}
+		dst[key] = entity.CanonicalID
+	}
 }
 
 // segmentQueryContext keeps visual retrieval grounded in the source supplied

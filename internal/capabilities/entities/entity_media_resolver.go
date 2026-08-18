@@ -25,6 +25,7 @@ package entities
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrEntityHasNoAssets is returned when an entity has no indexed assets and a
@@ -77,6 +78,22 @@ func (ix *EntityMediaIndex) IndexAllForEntity(entityType, name string, assets ..
 	return nil
 }
 
+// IndexForCanonicalID upserts an asset under an ALREADY-derived canonical
+// entity id (e.g. the imagesearch resolver's CanonicalID, which may differ
+// from CanonicalEntityID(type, surfaceName) when the surface is not the
+// canonical name) WITHOUT re-deriving it. Fails closed on an empty id — an
+// asset is never minted for an unknown identity.
+func (ix *EntityMediaIndex) IndexForCanonicalID(canonicalID string, asset EntityAsset) error {
+	if ix == nil || ix.repo == nil {
+		return fmt.Errorf("%w: media index is not configured", ErrInvalidEntityAsset)
+	}
+	if strings.TrimSpace(canonicalID) == "" {
+		return fmt.Errorf("%w: empty canonical entity id", ErrInvalidEntityAsset)
+	}
+	asset.EntityID = canonicalID
+	return ix.repo.Upsert(asset)
+}
+
 // Assets returns every asset of a canonical entity, best quality first (ties
 // broken by asset id) — deterministic, never map order.
 func (ix *EntityMediaIndex) Assets(canonicalEntityID string) []EntityAsset {
@@ -104,6 +121,15 @@ type EntityMediaResolver struct {
 // index.
 func NewEntityMediaResolver() *EntityMediaResolver {
 	return &EntityMediaResolver{index: NewEntityMediaIndex()}
+}
+
+// SetIndex swaps the media index the resolver reads (e.g. a run-scoped index
+// populated from the run's own entity image bindings). Nil-safe: a nil index
+// keeps the current one.
+func (r *EntityMediaResolver) SetIndex(index *EntityMediaIndex) {
+	if r != nil && index != nil {
+		r.index = index
+	}
 }
 
 // ResolveBest returns the highest-quality content-addressed asset of the

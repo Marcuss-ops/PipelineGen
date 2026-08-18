@@ -124,7 +124,7 @@ func TestEntityImage_PersonQueryPreservesEntityIdentity(t *testing.T) {
 	}}}
 	seg := scriptpkg.VidRushSegmentResult{SegmentID: "scene-dwayne", SceneID: "scene-dwayne"}
 
-	queries := scenePrimaryEntityQueries(spec, seg)
+	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), seg)
 	if len(queries) != 1 || queries[0] != "Dwayne Johnson" {
 		t.Fatalf("primary entity queries = %v, want exactly [Dwayne Johnson]", queries)
 	}

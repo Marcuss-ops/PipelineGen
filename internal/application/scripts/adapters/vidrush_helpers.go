@@ -400,6 +400,12 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)
+	if in.Insights.ImageEntityCanonicalIDs != nil {
+		out.Insights.ImageEntityCanonicalIDs = make(map[string]string, len(in.Insights.ImageEntityCanonicalIDs))
+		for key, id := range in.Insights.ImageEntityCanonicalIDs {
+			out.Insights.ImageEntityCanonicalIDs[key] = id
+		}
+	}
 	out.Assets.SecondaryImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.SecondaryImages...)
 	out.Assets.GeneratedImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.GeneratedImages...)
 	out.Assets.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.Candidates...)

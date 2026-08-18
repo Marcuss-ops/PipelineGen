@@ -87,6 +87,14 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		perQueryLimit = 50
 	}
 
+	// Pre-index scenes by identity so each segment's entity-image query
+	// lookup is O(1) instead of a full O(scenes) scan per segment (the
+	// same index shape used by projectEntityImageBindings).
+	var sceneIdx sceneIdentityIndex
+	if entityImagesEnabled {
+		sceneIdx = buildSceneIdentityIndex(input.SpecScene)
+	}
+
 	updatedSegments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
@@ -98,7 +106,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		if len(manualImageQueries) > 0 {
 			imageQueries = manualImageQueries
 		} else if entityImagesEnabled {
-			if entityQueries := scenePrimaryEntityQueries(input.SpecScene, updated); len(entityQueries) > 0 {
+			if entityQueries := scenePrimaryEntityQueries(input.SpecScene, sceneIdx, updated); len(entityQueries) > 0 {
 				imageQueries = entityQueries
 			}
 		}
@@ -384,6 +392,11 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					DriveLink: candidate.DriveLink, Source: candidate.Provider,
 					License:    candidate.RightsBasis,
 					PreviewURL: entityImagePreviewURL(candidate),
+					// The verified content address is what lets the binding be
+					// promoted into the content-addressed EntityMediaIndex for
+					// the entity card asset (bindings without it stay plain
+					// references).
+					SHA256: candidate.FileHash,
 				}
 			}
 		}
@@ -391,38 +404,95 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 	return out
 }
 
-func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, segment scriptpkg.VidRushSegmentResult) []string {
-	for _, scene := range spec.Scenes {
-		if (scene.SegmentID != "" && scene.SegmentID != segment.SegmentID) ||
-			(scene.SegmentID == "" && scene.ID != "" && scene.ID != segment.SceneID) {
+// sceneIdentityIndex pre-indexes spec.Scenes by SegmentID and ID so the
+// per-segment scene lookup is O(1) instead of a full O(scenes) scan for
+// every segment. firstNoID records the first scene carrying neither
+// identity key (the "matches any segment" fallback).
+type sceneIdentityIndex struct {
+	bySegmentID map[string]int
+	bySceneID   map[string]int
+	firstNoID   int
+}
+
+// buildSceneIdentityIndex builds the scene identity index. First-occurrence
+// wins per key so min-index semantics match the old linear scan exactly.
+func buildSceneIdentityIndex(spec scriptpkg.SpecSceneOutput) sceneIdentityIndex {
+	idx := sceneIdentityIndex{
+		bySegmentID: make(map[string]int, len(spec.Scenes)),
+		bySceneID:   make(map[string]int, len(spec.Scenes)),
+		firstNoID:   -1,
+	}
+	for i := range spec.Scenes {
+		s := spec.Scenes[i]
+		switch {
+		case s.SegmentID != "":
+			if _, ok := idx.bySegmentID[s.SegmentID]; !ok {
+				idx.bySegmentID[s.SegmentID] = i
+			}
+		case s.ID != "":
+			if _, ok := idx.bySceneID[s.ID]; !ok {
+				idx.bySceneID[s.ID] = i
+			}
+		default:
+			if idx.firstNoID == -1 {
+				idx.firstNoID = i
+			}
+		}
+	}
+	return idx
+}
+
+// sceneFor returns the index of the first scene matching the segment,
+// mirroring the original linear-scan precedence: SegmentID match, then
+// ID match, then the first identity-less scene — whichever is earliest.
+func (idx sceneIdentityIndex) sceneFor(segment scriptpkg.VidRushSegmentResult) int {
+	best := -1
+	if segment.SegmentID != "" {
+		if i, ok := idx.bySegmentID[segment.SegmentID]; ok {
+			best = i
+		}
+	}
+	if segment.SceneID != "" {
+		if i, ok := idx.bySceneID[segment.SceneID]; ok && (best == -1 || i < best) {
+			best = i
+		}
+	}
+	if idx.firstNoID != -1 && (best == -1 || idx.firstNoID < best) {
+		best = idx.firstNoID
+	}
+	return best
+}
+
+func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, idx sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult) []string {
+	best := idx.sceneFor(segment)
+	if best == -1 {
+		return nil
+	}
+	scene := spec.Scenes[best]
+	if scene.Annotations == nil {
+		return nil
+	}
+	queries := make([]string, 0, len(scene.Annotations.PrimaryEntities))
+	seen := make(map[string]struct{}, len(queries))
+	for _, entity := range scene.Annotations.PrimaryEntities {
+		if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
 			continue
 		}
-		if scene.Annotations == nil {
-			return nil
+		query := strings.TrimSpace(entity.CanonicalName)
+		if query == "" {
+			query = strings.TrimSpace(entity.Text)
 		}
-		queries := make([]string, 0, len(scene.Annotations.PrimaryEntities))
-		seen := make(map[string]struct{}, len(queries))
-		for _, entity := range scene.Annotations.PrimaryEntities {
-			if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
-				continue
-			}
-			query := strings.TrimSpace(entity.CanonicalName)
-			if query == "" {
-				query = strings.TrimSpace(entity.Text)
-			}
-			key := strings.ToLower(query)
-			if query == "" {
-				continue
-			}
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			queries = append(queries, query)
+		key := strings.ToLower(query)
+		if query == "" {
+			continue
 		}
-		return queries
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		queries = append(queries, query)
 	}
-	return nil
+	return queries
 }
 
 func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRushSegmentResult, bySegmentID, bySceneID map[string]int) *scriptpkg.VidRushSegmentResult {

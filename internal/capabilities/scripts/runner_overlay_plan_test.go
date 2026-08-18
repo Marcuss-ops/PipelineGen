@@ -48,7 +48,13 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 		PrimaryEntities: []scriptpkg.AnnotatedEntity{
 			{
 				ID: "entity-tim-cook", CanonicalName: "Tim Cook", Type: "PERSON", Confidence: 0.98,
-				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "tim-cook-photo", PreviewURL: "https://cdn.example.com/tim-cook.jpg"},
+				Image: &scriptpkg.EntityImageBinding{
+					Status: "bound", AssetID: "tim-cook-photo",
+					PreviewURL: "https://cdn.example.com/tim-cook.jpg",
+					// The content address is what promotes the binding into the
+					// EntityMediaIndex, so the person card carries the asset.
+					SHA256: "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+				},
 			},
 			{
 				ID: "entity-apple", CanonicalName: "Apple", Type: "LOGO", Confidence: 0.97,
@@ -94,8 +100,7 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 //	    IMPORTANT_PHRASE "changed everything"  f(0.5–0.7s) → Text(title_centered)
 //	    IMPORTANT_WORD   "Apple"               f(0.4–0.5s) → Text(kinetic_word)
 //	    IMPORTANT_WORD   "Cupertino"           f(0.8–0.9s) → Text(kinetic_word)
-//	    IMAGE_OVERLAY    tim-cook-photo        f(0.0–0.2s) → Image(contain)
-//	    PERSON           "Tim Cook"            f(0.0–0.2s) → Text(entity_card)
+//	    PERSON + image   "Tim Cook"            f(0.0–0.2s) → Text(entity_card) with tim-cook-photo asset
 //	    LOCATION         "Cupertino"           f(0.8–0.9s) → Text(entity_card)
 //	    NUMBER           "ten million"         f(1.1–1.3s) → Text(number)
 //	    QUOTE            "changed everything"  f(0.5–0.7s) → Text(quote)
@@ -105,7 +110,7 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 //	scene-1 "Growth matters more than ever."
 //	    IMPORTANT_PHRASE "Growth matters"      f(1.6–1.8s) → Text(title_centered)
 //	    IMPORTANT_WORD   "Growth"              f(1.6–1.7s) → Text(kinetic_word)
-func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
+func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator([]Scene{
 		{
@@ -144,7 +149,7 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 	require.NotNil(t, res.OverlayPlan, "overlay plan must be projected on a real timed run")
 	require.NoError(t, res.OverlayPlan.Validate())
 
-	// ── The full nine-template vocabulary ───────────────────────────
+	// ── The full semantic vocabulary ────────────────────────────────
 	byID := map[string]capabilityoverlay.OverlayItem{}
 	templates := map[string]bool{}
 	for _, item := range res.OverlayPlan.Items {
@@ -152,7 +157,7 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 		templates[item.TemplateID] = true
 	}
 	for _, want := range []string{
-		"IMPORTANT_PHRASE", "IMPORTANT_WORD", "IMAGE_OVERLAY",
+		"IMPORTANT_PHRASE", "IMPORTANT_WORD",
 		"person_default", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
 	} {
 		require.True(t, templates[want], "plan must carry template %q (got %v)", want, templates)
@@ -168,19 +173,19 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 	require.Equal(t, "IMPORTANT_WORD", keyword.TemplateID)
 	require.Equal(t, int64(400), keyword.StartMs, "Apple is word 4")
 
-	image := byID["scene-0-image-tim-cook-photo"]
-	require.Equal(t, "IMAGE_OVERLAY", image.TemplateID)
-	require.Equal(t, int64(0), image.StartMs)
-	require.Equal(t, int64(200), image.EndMs)
-	require.Len(t, image.AssetRefs, 1)
-	require.Equal(t, "tim-cook-photo", image.AssetRefs[0].AssetID)
-	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", image.AssetRefs[0].URL)
-
+	// The chosen entity IS the card with its image asset: Tim Cook's photo
+	// renders on the person_default card (resolved via the canonical id →
+	// EntityMediaResolver path), never as a duplicate IMAGE_OVERLAY.
 	person := byID["overlay-scene-0-tim-cook"]
 	require.Equal(t, "person_default", person.TemplateID)
 	require.Equal(t, "Tim Cook", person.Text)
 	require.Equal(t, int64(0), person.StartMs)
 	require.Equal(t, int64(200), person.EndMs)
+	require.Len(t, person.AssetRefs, 1)
+	require.Equal(t, "tim-cook-photo", person.AssetRefs[0].AssetID)
+	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", person.AssetRefs[0].URL)
+	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
+	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
 
 	location := byID["overlay-scene-0-cupertino"]
 	require.Equal(t, "gpe_default", location.TemplateID)
@@ -243,11 +248,9 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 	require.Equal(t, "caption_card", layerByID["scene-0-phrase-changed-everything"].Preset)
 	require.Equal(t, "", layerByID["scene-0-keyword-apple"].Type)
 	require.Equal(t, "active_word_pop", layerByID["scene-0-keyword-apple"].Preset)
-	require.Equal(t, "", layerByID["scene-0-image-tim-cook-photo"].Type)
-	require.Equal(t, "image_focus_in", layerByID["scene-0-image-tim-cook-photo"].Preset)
-	require.Equal(t, "", layerByID["scene-0-image-tim-cook-photo"].Fit)
 	require.Equal(t, "", layerByID["overlay-scene-0-tim-cook"].Type)
 	require.Equal(t, "lower_third_safe", layerByID["overlay-scene-0-tim-cook"].Preset)
+	require.NotEmpty(t, layerByID["overlay-scene-0-tim-cook"].Asset, "the chosen entity card must carry its resolved image asset")
 	require.Equal(t, "", layerByID["overlay-scene-0-cupertino"].Type)
 	require.Equal(t, "", layerByID["scene-0-number-ten-million"].Type)
 	require.Equal(t, "active_word_pop", layerByID["scene-0-number-ten-million"].Preset)
@@ -518,35 +521,91 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	require.Equal(t, int64(200), plan.Items[0].EndMs)
 }
 
-// TestOverlaySceneInput_SelectsOnlySceneRelevantImages certifies GOLDEN 03's
-// semantic scene-entity selection: an entity image is projected as an
-// IMAGE_OVERLAY candidate only when the entity has a certified occurrence in
-// the scene. An off-scene entity with a bound image ("Tesla" when the scene
-// is about Tim Cook) is skipped — never selected, never rendered.
-func TestOverlaySceneInput_SelectsOnlySceneRelevantImages(t *testing.T) {
-	scene := Scene{
-		ID: "scene-0", Index: 0,
-		Annotations: &scriptpkg.SceneAnnotations{
-			Version: 1, Language: "en", Status: "completed",
-			PrimaryEntities: []scriptpkg.AnnotatedEntity{
-				{ID: "e-tim", CanonicalName: "Tim Cook", Type: "PERSON", Confidence: 0.98,
-					Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "tim-cook", PreviewURL: "https://cdn.example.com/tim-cook.jpg"}},
-				{ID: "e-tesla", CanonicalName: "Tesla", Type: "ORG", Confidence: 0.9,
-					Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "tesla", PreviewURL: "https://cdn.example.com/tesla.png"}},
+// TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset certifies the
+// canonical-id connection end-to-end: the chosen entity (the scene-relevant
+// one with a certified occurrence) BECOMES the entity card that carries its
+// image asset — resolved through the canonical_entity_id → EntityMediaResolver
+// path and attached as AssetRefs + EntityRef.CanonicalEntityID. An off-scene
+// entity with a bound image ("Tesla" when the scene is about Tim Cook) is
+// skipped — no card, no image — and no generic IMAGE_OVERLAY is ever emitted
+// for an entity-card kind (the card replaces it).
+func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
+	words := []capabilityaudio.SpeechWordTiming{
+		{Index: 0, Text: "Tim", StartUS: 0, EndUS: 100_000},
+		{Index: 1, Text: "Cook", StartUS: 100_000, EndUS: 200_000},
+		{Index: 2, Text: "speaks", StartUS: 200_000, EndUS: 300_000},
+	}
+	timing := capabilityaudio.SpeechTimingArtifact{
+		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
+		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
+		TextSHA256: "text-hash", AudioSHA256: "audio-hash",
+		DurationUS: 300_000, Words: words,
+	}
+	result := &GenerateResult{
+		Scenes: []Scene{{
+			ID: "scene-0", Index: 0,
+			Text: map[Language]string{"en": "Tim Cook speaks."},
+			Voiceover: map[Language]AudioReference{
+				"en": {ID: "vo-scene-0-en", Duration: 0.3, Timing: &timing},
 			},
+			Annotations: &scriptpkg.SceneAnnotations{
+				Version: 1, Language: "en", Status: "completed",
+				PrimaryEntities: []scriptpkg.AnnotatedEntity{
+					{
+						ID: "e-tim", CanonicalName: "Tim Cook", Type: "PERSON", Confidence: 0.98,
+						CanonicalEntityID: "person:tim-cook",
+						Image: &scriptpkg.EntityImageBinding{
+							Status: "resolved", AssetID: "tim-cook-photo",
+							PreviewURL: "https://cdn.example.com/tim-cook.jpg",
+							SHA256:    "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+						},
+					},
+					{
+						ID: "e-tesla", CanonicalName: "Tesla", Type: "ORG", Confidence: 0.9,
+						CanonicalEntityID: "org:tesla",
+						Image: &scriptpkg.EntityImageBinding{
+							Status: "resolved", AssetID: "tesla-logo",
+							PreviewURL: "https://cdn.example.com/tesla.png",
+							SHA256:    "bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbcc",
+						},
+					},
+				},
+			},
+		}},
+		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 300_000}},
+		EntityTimeline: &capabilityentities.EntityTimeline{
+			Version: capabilityentities.EntityTimelineVersion, Language: "en", DurationUS: 300_000,
+			Scenes: []capabilityentities.SceneEntityTimeline{{
+				SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
+				Entities: []capabilityentities.EntityOccurrence{{
+					EntityID: capabilityentities.StableEntityID("PERSON", "Tim Cook"),
+					Name: "Tim Cook", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
+					TextStart: 0, TextEnd: 8, WordStart: 0, WordEnd: 1,
+					LocalStartUS: 0, LocalEndUS: 200_000,
+					TimelineStartUS: 0, AudioStartUS: 0, AudioEndUS: 200_000,
+					Confidence: 0.98,
+				}},
+			}},
 		},
 	}
-	occurrences := []capabilityentities.EntityOccurrence{
-		{EntityID: capabilityentities.StableEntityID("PERSON", "Tim Cook"), AudioStartUS: 0, AudioEndUS: 200_000},
-	}
 
-	out, err := overlaySceneInput(scene, capabilityaudio.SpeechTimingArtifact{}, 0, occurrences)
+	plan, err := CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
-	require.NotNil(t, out)
-	require.Len(t, out.Images, 1, "only the scene-relevant entity image must be selected")
-	require.Equal(t, "tim-cook", out.Images[0].AssetID)
-	for _, img := range out.Images {
-		require.NotEqual(t, "tesla", img.AssetID, "off-scene entity image must never be selected")
+	require.NotNil(t, plan, "the spoken entity must still produce a plan")
+	byID := map[string]capabilityoverlay.OverlayItem{}
+	for _, item := range plan.Items {
+		byID[item.ID] = item
+		require.NotEqual(t, "IMAGE_OVERLAY", item.TemplateID, "entity-card kinds must never emit a generic IMAGE_OVERLAY")
+	}
+	card, ok := byID["overlay-scene-0-tim-cook"]
+	require.True(t, ok, "the chosen entity (Tim Cook) must become the entity card")
+	require.Equal(t, "person_default", card.TemplateID)
+	require.Len(t, card.AssetRefs, 1, "the chosen entity card must carry its resolved image asset")
+	require.Equal(t, "tim-cook-photo", card.AssetRefs[0].AssetID)
+	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", card.AssetRefs[0].URL)
+	require.Equal(t, "person:tim-cook", card.EntityRef.CanonicalEntityID, "the card must join on the resolver's canonical id")
+	for id := range byID {
+		require.NotContains(t, id, "tesla", "off-scene entity (Tesla) must never be selected, never rendered")
 	}
 }
 
