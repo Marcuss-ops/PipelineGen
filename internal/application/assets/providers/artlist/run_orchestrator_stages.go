@@ -72,14 +72,15 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		item := RunTagItem{
 			ClipID: clip.ID,
 			Name:   clip.Name,
-			// Search discovery persists the canonical download_link metadata
-			// key. Keep the underscored key as a compatibility fallback for
-			// older staged assets and test fixtures.
+			// Search discovery persists the canonical drive_*/file_hash/
+			// download_link metadata keys via the typed accessors. Keep the
+			// underscored keys as a compatibility fallback for older staged
+			// assets and test fixtures.
 			DownloadLink: defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
-			DriveLink:    clip.GetMetadataString("_drive_link"),
-			DriveFileID:  clip.GetMetadataString("_drive_file_id"),
-			LocalPath:    clip.GetMetadataString("_local_path"),
-			FileHash:     clip.GetMetadataString("_file_hash"),
+			DriveLink:    defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
+			DriveFileID:  defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
+			LocalPath:    defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
+			FileHash:     defaults.String(clip.FileHash(), clip.GetMetadataString("_file_hash")),
 			Metadata:     cloneMetadata(clip.Metadata),
 		}
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
@@ -87,7 +88,17 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		item.Name = defaults.String(item.Name, item.ClipID)
 
 		if req.DryRun {
+			decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
+				DriveFileID: item.DriveFileID,
+				DriveLink:   item.DriveLink,
+				FileHash:    item.FileHash,
+			})
 			item.Status = "dry_run"
+			if decision.Skip {
+				resp.WouldSkip++
+			} else {
+				resp.WouldProcess++
+			}
 			resp.Skipped++
 			resp.Items = append(resp.Items, item)
 			continue
