@@ -63,11 +63,39 @@ type OverlayItem struct {
 	DurationUS int64 `json:"duration_us,omitempty"`
 	// TemplateID is the semantic template (e.g. "person_default" for an
 	// entity card, "IMPORTANT_PHRASE" for a phrase).
-	TemplateID string            `json:"template_id"`
-	Text       string            `json:"text,omitempty"`
-	AssetRefs  []OverlayAssetRef `json:"asset_refs,omitempty"`
-	Params     map[string]any    `json:"params,omitempty"`
-	RenderKey  string            `json:"render_key,omitempty"`
+	TemplateID string `json:"template_id"`
+	// PresetID is the semantic visual preset selected by PipelineGen for
+	// this item (e.g. "phrase_focus_v1", "entity_card_v1"). It is the
+	// contract slot of the plan's preset resolver: the value space is owned
+	// by the preset registry, never invented here. Empty means "no preset
+	// selected" — the item compiles through the semantic_role → Chronon
+	// preset table as today. Because it is omitempty, plans authored without
+	// a preset keep their exact fingerprint/render key.
+	PresetID string `json:"preset_id,omitempty"`
+	// EntityRef carries the content-addressed entity identity this item
+	// renders (entity_id + type + canonical name + surface text). It is the
+	// plan's entity_ref: the resolver always emits it for entity-driven
+	// items so RenderingGen receives WHO the overlay is about — never a bare
+	// name or URL. Omitempty: non-entity items keep the legacy shape.
+	EntityRef *OverlayEntityRef `json:"entity_ref,omitempty"`
+	Text      string            `json:"text,omitempty"`
+	AssetRefs []OverlayAssetRef `json:"asset_refs,omitempty"`
+	Params    map[string]any    `json:"params,omitempty"`
+	RenderKey string            `json:"render_key,omitempty"`
+}
+
+// OverlayEntityRef is the content-addressed entity identity of an overlay
+// item (the plan's entity_ref): the stable entity id, the canonical type,
+// the canonical name and the surface text actually spoken. It is pure
+// identity metadata — the visual rendering is driven by TemplateID/PresetID/
+// Text/AssetRefs, never by this ref.
+type OverlayEntityRef struct {
+	EntityID string `json:"entity_id"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	// SurfaceText is the verbatim mention the voiceover actually spoke
+	// (may differ from the canonical name, e.g. "Cook" vs "Tim Cook").
+	SurfaceText string `json:"surface_text,omitempty"`
 }
 
 type OverlayAssetRef struct {
@@ -202,6 +230,17 @@ func (p *OverlayPlan) Validate() error {
 				return fmt.Errorf("overlay plan: item %q end_ms %d diverges from start_us+duration_us %d", item.ID, item.EndMs, item.StartUS+item.DurationUS)
 			}
 		}
+		// Preset contract: a preset_id is an opaque id resolved by the preset
+		// registry downstream — never validated against a local table here. It
+		// must only be non-empty when it carries a real value.
+		if strings.TrimSpace(item.PresetID) != item.PresetID {
+			return fmt.Errorf("overlay plan: item %q preset_id must not be blank-padded", item.ID)
+		}
+		if ref := item.EntityRef; ref != nil {
+			if strings.TrimSpace(ref.EntityID) == "" || strings.TrimSpace(ref.Type) == "" || strings.TrimSpace(ref.Name) == "" {
+				return fmt.Errorf("overlay plan: item %q entity_ref requires entity_id, type and name", item.ID)
+			}
+		}
 		for assetIndex, ref := range item.AssetRefs {
 			if strings.TrimSpace(ref.AssetID) == "" {
 				return fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
@@ -209,7 +248,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -249,8 +288,10 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		Width, Height, FPS               int
 		StartMs, EndMs                   int64
 		StartUS, DurationUS              int64
+		PresetID                         string `json:"preset_id,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPS, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
+		item.PresetID,
 	}
 	b, _ := json.Marshal(input)
 	h := sha256.Sum256(b)

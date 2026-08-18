@@ -241,6 +241,82 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	assert.True(t, ff.normalizeCalled)
 }
 
+// ── Reprocess contract fix (July 2026): normalize=false and upload_drive=false ──
+//
+// The HTTP contract exposes force/upload_drive/normalize; these tests pin
+// that the processor now honors them instead of silently ignoring them:
+//   - Normalize=false → ffmpeg.Normalize NOT called; raw source is promoted
+//     to the processed path (mux/copy only).
+//   - SkipPublish=true → delivery.Publisher NEVER invoked; Drive fields stay
+//     empty while the local rendition + hash still stand.
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestProcessor_NormalizeFalseSkipsFFmpeg(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	ff := &fakeFFmpeg{}
+	p := newProcessorForLocalPathTest(t, ff)
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-normfalse",
+		Name:      "test clip",
+		LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		FolderID:  "test-folder",
+		Normalize: boolPtr(false),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "processed", result.Status)
+	assert.False(t, ff.normalizeCalled,
+		"normalize=false must skip ffmpeg.Normalize (raw passthrough, mux/copy only)")
+
+	// The processed output must be the raw source promoted (not re-encoded).
+	data, readErr := os.ReadFile(result.LocalPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, "staged-bytes", string(data),
+		"normalize=false must promote the raw source unchanged to the processed path")
+}
+
+func TestProcessor_SkipPublishSkipsPublisher(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	pub := &fakePublisher{}
+	ff := &fakeFFmpeg{}
+	tmp := t.TempDir()
+	p := NewProcessor(
+		&fakeYTDLP{},
+		&fakeHTTPDownloader{},
+		ff,
+		zap.NewNop(),
+		ProcessorConfig{DataDir: tmp, TempDir: "tmp", VideoCfg: mediaexec.NormalizeOptions{}},
+		nil,
+		pub,
+	)
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:          "clip-nopub",
+		Name:        "test clip",
+		LocalPath:   localPath,
+		OutputDir:   filepath.Join(t.TempDir(), "out"),
+		FolderID:    "test-folder",
+		SkipPublish: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "processed", result.Status)
+	assert.True(t, ff.normalizeCalled, "upload_drive=false still normalizes locally")
+	assert.Equal(t, delivery.PublishRequest{}, pub.lastReq, "SkipPublish=true must never invoke the delivery.Publisher (request left at zero value)")
+	assert.Empty(t, result.DriveFileID, "SkipPublish=true must leave DriveFileID empty")
+	assert.Empty(t, result.DriveLink, "SkipPublish=true must leave DriveLink empty")
+	assert.Empty(t, result.DownloadLink, "SkipPublish=true must leave DownloadLink empty")
+	assert.NotEmpty(t, result.LocalPath, "SkipPublish=true keeps the local rendition")
+	assert.NotEmpty(t, result.FileHash, "SkipPublish=true keeps the computed file hash")
+}
+
 // ── E2E audit-pin (F2.8): happy-path Publisher + 5 field propagation ──
 //
 // User spec: "input valido → DB ha drive_file_id, drive_link, download_link,
@@ -326,6 +402,13 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 	// YouTube video ID) MUST be plumbed explicitly via F2.9.
 	assert.Equal(t, "", pub.lastReq.Subject, "F2.8: PublishRequest.Subject MUST default to empty string (no leaky UUID in Drive folder metadata; a meaningful Subject comes via F2.9)")
 	assert.Equal(t, "fake-folder-id-for-e2e", pub.lastReq.ParentFolderID, "F2.8: PublishRequest.ParentFolderID = input.FolderID (explicit-folder caller inheritance)")
+	// August 2026 (reprocess certification fix): regenerable processor
+	// outputs must always replace the previous rendition on Drive.
+	// Pinning the explicit policy so the registry ConflictSkip default
+	// (DestinationArtlist, P1.1) can never silently pin Drive to the
+	// first rendition again.
+	assert.Equal(t, delivery.ConflictOverwrite, pub.lastReq.ConflictPolicy,
+		"processor outputs are regenerable renditions: ConflictPolicy MUST be explicit ConflictOverwrite")
 }
 
 // ── E2E audit-pin (F2.8): Publish failure is best-effort + stamps Result.Error ──
@@ -552,4 +635,105 @@ func TestProcess_AtomicNormalize_ReplacesReadOnlyOutput(t *testing.T) {
 	data, readErr := os.ReadFile(finalPath)
 	require.NoError(t, readErr)
 	assert.Equal(t, "processed-video", string(data))
+}
+
+// TestProcessor_HonorsExplicitFilename pins the reprocess filename fix:
+// when the caller supplies the canonical clip filename
+// (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4), the processor MUST use
+// it for the Drive upload instead of recomputing SafeName(Name)+" "+ID+".mp4".
+// Matching the original upload name is what lets the publisher's
+// ConflictOverwrite lookup find the existing Drive file and update it in
+// place (no fresh orphan per reprocess).
+func TestProcessor_HonorsExplicitFilename(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	ff := &fakeFFmpeg{}
+	pub := &fakePublisher{}
+	p := NewProcessor(
+		&fakeYTDLP{}, &fakeHTTPDownloader{}, ff, zap.NewNop(),
+		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: mediaexec.NormalizeOptions{}},
+		nil, pub,
+	)
+
+	_, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-explicit-name",
+		Name:      "ignored human name",
+		Filename:  "yt_abc123_0_30_v1_slug.mp4",
+		LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		FolderID:  "test-folder",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, pub.lastReq)
+	assert.Equal(t, "yt_abc123_0_30_v1_slug.mp4", pub.lastReq.Filename,
+		"explicit canonical filename must reach the Drive upload so ConflictOverwrite matches the original file")
+}
+
+// TestProcessor_HonorsExplicitDestination pins the reprocess folder-
+// alignment fix: when the caller supplies an explicit Destination (e.g.
+// "youtube_clip"), the processor MUST (1) map it to the canonical
+// delivery.DestinationKey, (2) forward Group + Subject to the path builder,
+// and (3) drop ParentFolderID so the DestinationRegistry resolves the
+// clip's real folder instead of a stale FolderID drift.
+func TestProcessor_HonorsExplicitDestination(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	ff := &fakeFFmpeg{}
+	pub := &fakePublisher{}
+	p := NewProcessor(
+		&fakeYTDLP{}, &fakeHTTPDownloader{}, ff, zap.NewNop(),
+		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: mediaexec.NormalizeOptions{}},
+		nil, pub,
+	)
+
+	_, err := p.Process(ctx, &asset.ProcessInput{
+		ID:          "clip-explicit-dest",
+		Name:        "explicit dest clip",
+		Filename:    "yt_abc123_0_30_v1_slug.mp4",
+		LocalPath:   localPath,
+		OutputDir:   filepath.Join(t.TempDir(), "out"),
+		FolderID:    "stale-folder-id",
+		Destination: "youtube_clip",
+		Group:       "Love",
+		Subject:     "abc123",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, pub.lastReq)
+	assert.Equal(t, delivery.DestinationYouTubeClip, pub.lastReq.Destination,
+		"explicit Destination must map to the canonical registry key")
+	assert.Equal(t, "Love", pub.lastReq.Group,
+		"explicit Group must reach the YouTubeClipPath group segment")
+	assert.Equal(t, "abc123", pub.lastReq.Subject,
+		"explicit Subject must reach the YouTubeClipPath subject segment")
+	assert.Empty(t, pub.lastReq.ParentFolderID,
+		"explicit destination must drop ParentFolderID so the registry resolves the real folder (no stale FolderID drift)")
+}
+
+// TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID pins
+// the backward-compat path: an empty Destination keeps DestinationArtlist +
+// ParentFolderID=input.FolderID (the legacy artlist escape hatch), and Group
+// falls back to input.Term.
+func TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	pub := &fakePublisher{}
+	p := NewProcessor(
+		&fakeYTDLP{}, &fakeHTTPDownloader{}, &fakeFFmpeg{}, zap.NewNop(),
+		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: mediaexec.NormalizeOptions{}},
+		nil, pub,
+	)
+
+	_, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        "clip-legacy",
+		Name:      "legacy clip",
+		LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+		FolderID:  "legacy-folder",
+		Term:      "artlist-term",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, pub.lastReq)
+	assert.Equal(t, delivery.DestinationArtlist, pub.lastReq.Destination)
+	assert.Equal(t, "artlist-term", pub.lastReq.Group, "legacy Group must fall back to input.Term")
+	assert.Equal(t, "legacy-folder", pub.lastReq.ParentFolderID, "legacy path must preserve ParentFolderID=input.FolderID")
 }

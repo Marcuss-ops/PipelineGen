@@ -125,6 +125,26 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		timing = item.Output.Audio.Timing
 	}
 
+	// Editorial audio intent block: the canonical top-level audio config
+	// carries mix_policy / background_music / sound_effects; the nested
+	// output.audio shape is the compat fallback (same pattern as mode and
+	// timing). background_music was already normalized to a slice at the
+	// wire boundary (AudioOutputConfig.UnmarshalJSON accepts a single
+	// object), so the durable domain always works with
+	// []BackgroundMusicIntent — no second normalization here.
+	mixPolicy := item.Audio.MixPolicy
+	if mixPolicy == "" {
+		mixPolicy = item.Output.Audio.MixPolicy
+	}
+	backgroundMusic := item.Audio.BackgroundMusic
+	if backgroundMusic == nil {
+		backgroundMusic = item.Output.Audio.BackgroundMusic
+	}
+	soundEffects := item.Audio.SoundEffects
+	if soundEffects == nil {
+		soundEffects = item.Output.Audio.SoundEffects
+	}
+
 	return GenerateRequest{
 		IdempotencyKey:   idempotencyKey,
 		ForceRefresh:     env.ForceRefresh,
@@ -157,6 +177,9 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		// honors the caller-explicit folder instead of dropping it.
 		VoiceoverFolderID: item.Output.VoiceoverFolderID,
 		Audio:             audioMode,
+		MixPolicy:         mixPolicy,
+		BackgroundMusic:   backgroundMusic,
+		SoundEffects:      soundEffects,
 	}, nil
 }
 

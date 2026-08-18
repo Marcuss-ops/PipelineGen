@@ -84,6 +84,8 @@ type driveTree struct {
 type clipAssetAuditRow struct {
 	id           string
 	driveFileID  string
+	driveLink    string
+	downloadLink string
 	dbFolderID   string
 	dbFolderPath string
 }
@@ -92,6 +94,9 @@ type clipAssetAuditRow struct {
 type clipDriveDivergence struct {
 	ClipID          string   `json:"clip_id"`
 	DriveFileID     string   `json:"drive_file_id"`
+	DriveLink       string   `json:"drive_link,omitempty"`
+	DownloadLink    string   `json:"download_link,omitempty"`
+	LinkFileID      string   `json:"link_file_id,omitempty"`
 	DBFolderID      string   `json:"db_folder_id,omitempty"`
 	DBFolderPath    string   `json:"db_folder_path,omitempty"`
 	DriveFolderID   string   `json:"drive_folder_id,omitempty"`
@@ -107,16 +112,28 @@ type clipDriveOrphan struct {
 	FolderPath string `json:"folder_path,omitempty"`
 }
 
+// clipDriveUntrackedUpload is a Drive file that IS referenced by a clip's
+// drive_link/download_link but is NOT the clip's drive_file_id. This is the
+// signature of a reprocess that uploaded a fresh Drive file without updating
+// the identity pointer — the canonical link points at a file the identity
+// column does not track.
+type clipDriveUntrackedUpload struct {
+	FileID     string `json:"file_id"`
+	Name       string `json:"name"`
+	FolderPath string `json:"folder_path,omitempty"`
+}
+
 // clipDriveAuditReport is the JSON report emitted by the command.
 type clipDriveAuditReport struct {
-	SchemaVersion int                   `json:"schema_version"`
-	GeneratedAt   string                `json:"generated_at"`
-	Mode          string                `json:"mode"`
-	RootFolderID  string                `json:"root_folder_id"`
-	Summary       clipDriveAuditSummary `json:"summary"`
-	Divergences   []clipDriveDivergence `json:"divergences"`
-	OrphanFiles   []clipDriveOrphan     `json:"orphan_clip_files"`
-	WalkFailures  []string              `json:"walk_failures,omitempty"`
+	SchemaVersion    int                        `json:"schema_version"`
+	GeneratedAt      string                     `json:"generated_at"`
+	Mode             string                     `json:"mode"`
+	RootFolderID     string                     `json:"root_folder_id"`
+	Summary          clipDriveAuditSummary      `json:"summary"`
+	Divergences      []clipDriveDivergence      `json:"divergences"`
+	OrphanFiles      []clipDriveOrphan          `json:"orphan_clip_files"`
+	UntrackedUploads []clipDriveUntrackedUpload `json:"untracked_uploads,omitempty"`
+	WalkFailures     []string                   `json:"walk_failures,omitempty"`
 }
 
 // clipDriveAuditSummary aggregates the audit outcome.
@@ -128,6 +145,9 @@ type clipDriveAuditSummary struct {
 	FileMissingOnDrive int `json:"file_missing_on_drive"`
 	FolderIDMismatch   int `json:"folder_id_mismatch"`
 	FolderPathMismatch int `json:"folder_path_mismatch"`
+	LinkFileIDMismatch int `json:"link_file_id_mismatch"`
+	LinkFileMissing    int `json:"link_file_missing_on_drive"`
+	UntrackedUploads   int `json:"untracked_uploads"`
 	FoldersWalked      int `json:"folders_walked"`
 	FilesWalked        int `json:"files_walked"`
 	OrphanClipFiles    int `json:"orphan_clip_files"`
@@ -231,6 +251,8 @@ func clipDriveAudit(
 		d := clipDriveDivergence{
 			ClipID:       r.id,
 			DriveFileID:  r.driveFileID,
+			DriveLink:    r.driveLink,
+			DownloadLink: r.downloadLink,
 			DBFolderID:   r.dbFolderID,
 			DBFolderPath: r.dbFolderPath,
 		}
@@ -254,11 +276,32 @@ func clipDriveAudit(
 					d.Issues = append(d.Issues, "folder_path_mismatch")
 					report.Summary.FolderPathMismatch++
 				}
-				if len(d.Issues) == 0 {
-					report.Summary.Aligned++
-					continue
-				}
 			}
+		}
+
+		// Link identity: the canonical drive_link/download_link file ID must
+		// match the identity pointer (drive_file_id). A reprocess that
+		// published a fresh Drive file without updating drive_file_id leaves
+		// the links pointing at a different file than the identity column
+		// tracks. The link file is also fail-closed checked against the live
+		// tree.
+		linkID := extractDriveFileID(r.driveLink)
+		if linkID == "" {
+			linkID = extractDriveFileID(r.downloadLink)
+		}
+		if linkID != "" && linkID != r.driveFileID {
+			d.LinkFileID = linkID
+			d.Issues = append(d.Issues, "link_drive_file_id_mismatch")
+			report.Summary.LinkFileIDMismatch++
+			if _, ok := tree.files[linkID]; !ok {
+				d.Issues = append(d.Issues, "link_file_missing_on_drive")
+				report.Summary.LinkFileMissing++
+			}
+		}
+
+		if len(d.Issues) == 0 {
+			report.Summary.Aligned++
+			continue
 		}
 		report.Summary.Divergences++
 		report.Divergences = append(report.Divergences, d)
@@ -272,9 +315,16 @@ func clipDriveAudit(
 	// run the map is already in hand from the clip rows; only bounded runs
 	// need the separate query.
 	allFileIDs := make(map[string]struct{}, len(rows))
+	allLinkFileIDs := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
 		if r.driveFileID != "" {
 			allFileIDs[r.driveFileID] = struct{}{}
+		}
+		if id := extractDriveFileID(r.driveLink); id != "" {
+			allLinkFileIDs[id] = struct{}{}
+		}
+		if id := extractDriveFileID(r.downloadLink); id != "" {
+			allLinkFileIDs[id] = struct{}{}
 		}
 	}
 	if limit > 0 {
@@ -283,20 +333,44 @@ func clipDriveAudit(
 		if err != nil {
 			return nil, err
 		}
+		if allLinkFileIDs, err = loadAllClipLinkFileIDs(ctx, db); err != nil {
+			return nil, err
+		}
+	}
+
+	// A Drive file is "referenced" when either the identity pointer
+	// (drive_file_id) OR a canonical link (drive_link/download_link) points
+	// at it. Orphan = clip-like file with no reference at all. Untracked
+	// upload = referenced by a link but not by the identity pointer (the
+	// reprocess-without-drive_file_id-update signature).
+	referenced := make(map[string]struct{}, len(allFileIDs)+len(allLinkFileIDs))
+	for id := range allFileIDs {
+		referenced[id] = struct{}{}
+	}
+	for id := range allLinkFileIDs {
+		referenced[id] = struct{}{}
 	}
 	for id, f := range tree.files {
-		if !isClipLikeFilename(f.Name) {
-			continue
+		if isClipLikeFilename(f.Name) {
+			if _, known := referenced[id]; !known {
+				report.Summary.OrphanClipFiles++
+				report.OrphanFiles = append(report.OrphanFiles, clipDriveOrphan{
+					FileID:     id,
+					Name:       f.Name,
+					FolderPath: f.FolderPath,
+				})
+			}
 		}
-		if _, known := allFileIDs[id]; known {
-			continue
+		if _, inLinks := allLinkFileIDs[id]; inLinks {
+			if _, inIdentity := allFileIDs[id]; !inIdentity {
+				report.Summary.UntrackedUploads++
+				report.UntrackedUploads = append(report.UntrackedUploads, clipDriveUntrackedUpload{
+					FileID:     id,
+					Name:       f.Name,
+					FolderPath: f.FolderPath,
+				})
+			}
 		}
-		report.Summary.OrphanClipFiles++
-		report.OrphanFiles = append(report.OrphanFiles, clipDriveOrphan{
-			FileID:     id,
-			Name:       f.Name,
-			FolderPath: f.FolderPath,
-		})
 	}
 	sort.Slice(report.OrphanFiles, func(i, j int) bool { return report.OrphanFiles[i].Name < report.OrphanFiles[j].Name })
 	report.Summary.FoldersWalked = len(tree.folders)
@@ -307,7 +381,7 @@ func clipDriveAudit(
 // loadClipAuditRows selects the canonical youtube-clip rows
 // (source='youtube' AND id LIKE 'yt_%'), matching the backfill scope.
 func loadClipAuditRows(ctx context.Context, db *sql.DB, limit int) ([]clipAssetAuditRow, error) {
-	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
+	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(drive_link,''), COALESCE(download_link,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
 		FROM media_assets
 		WHERE source = 'youtube'
 		  AND id LIKE 'yt_%'
@@ -324,13 +398,45 @@ func loadClipAuditRows(ctx context.Context, db *sql.DB, limit int) ([]clipAssetA
 	var out []clipAssetAuditRow
 	for rows.Next() {
 		var r clipAssetAuditRow
-		if err := rows.Scan(&r.id, &r.driveFileID, &r.dbFolderID, &r.dbFolderPath); err != nil {
+		if err := rows.Scan(&r.id, &r.driveFileID, &r.driveLink, &r.downloadLink, &r.dbFolderID, &r.dbFolderPath); err != nil {
 			return nil, fmt.Errorf("clip-drive-audit: scan: %w", err)
 		}
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("clip-drive-audit: rows: %w", err)
+	}
+	return out, nil
+}
+
+// loadAllClipLinkFileIDs returns the complete set of Drive file IDs
+// referenced by drive_link/download_link for canonical youtube clips,
+// regardless of any --limit. Used for untracked-upload detection so a
+// bounded run never mislabels a link-referenced file.
+func loadAllClipLinkFileIDs(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, `SELECT COALESCE(drive_link,''), COALESCE(download_link,'') FROM media_assets
+		WHERE source = 'youtube'
+		  AND id LIKE 'yt_%'`)
+	if err != nil {
+		return nil, fmt.Errorf("clip-drive-audit: link id query: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]struct{}{}
+	for rows.Next() {
+		var driveLink, downloadLink string
+		if err := rows.Scan(&driveLink, &downloadLink); err != nil {
+			return nil, fmt.Errorf("clip-drive-audit: link id scan: %w", err)
+		}
+		if id := extractDriveFileID(driveLink); id != "" {
+			out[id] = struct{}{}
+		}
+		if id := extractDriveFileID(downloadLink); id != "" {
+			out[id] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("clip-drive-audit: link id rows: %w", err)
 	}
 	return out, nil
 }
@@ -416,4 +522,34 @@ func walkDriveTree(ctx context.Context, list driveLister, rootFolderID string) (
 // YouTube clip (BuildClipFilename output), used for orphan detection.
 func isClipLikeFilename(name string) bool {
 	return strings.HasPrefix(name, clipFilenamePrefix) && strings.HasSuffix(name, clipFilenameSuffix)
+}
+
+// extractDriveFileID returns the Google Drive file ID embedded in a
+// webViewLink (https://drive.google.com/file/d/{ID}/…) or a downloadLink
+// (https://drive.google.com/uc?id={ID}). Returns "" when the URL carries no
+// parseable Drive file ID.
+func extractDriveFileID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if idx := strings.Index(raw, "/file/d/"); idx >= 0 {
+		rest := raw[idx+len("/file/d/"):]
+		if cut := strings.IndexAny(rest, "/?#"); cut >= 0 {
+			rest = rest[:cut]
+		}
+		if rest != "" {
+			return rest
+		}
+	}
+	if idx := strings.Index(raw, "id="); idx >= 0 {
+		rest := raw[idx+len("id="):]
+		if cut := strings.IndexAny(rest, "&?#"); cut >= 0 {
+			rest = rest[:cut]
+		}
+		if rest != "" {
+			return rest
+		}
+	}
+	return ""
 }

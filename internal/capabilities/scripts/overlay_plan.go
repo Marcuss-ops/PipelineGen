@@ -294,7 +294,7 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 	return &out, nil
 }
 
-// plannerOwnedEntityIDs collects the SafeEntityID of every annotation entity
+// plannerOwnedEntityIDs collects the StableEntityID of every annotation entity
 // the planner renders (NUMBER / QUOTE / PRODUCT / LOGO — the kinds
 // EntityTypeToKind owns), so the resolver never emits a second overlay for
 // the same entity. Everything else is either an entity card (resolver) or an
@@ -309,7 +309,7 @@ func plannerOwnedEntityIDs(result *GenerateResult) map[string]bool {
 		for _, entity := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
 			switch capabilityoverlay.EntityTypeToKind(entity.Type) {
 			case capabilityoverlay.KindNumber, capabilityoverlay.KindQuote, capabilityoverlay.KindProduct, capabilityoverlay.KindLogo:
-				owned[capabilityentities.SafeEntityID(entity.CanonicalName)] = true
+				owned[capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)] = true
 			}
 		}
 	}
@@ -317,10 +317,10 @@ func plannerOwnedEntityIDs(result *GenerateResult) map[string]bool {
 }
 
 // occurrenceFor matches an annotation entity to its certified timeline
-// occurrence by the canonical SafeEntityID (both surfaces derive the same id
-// from the canonical name).
+// occurrence by the canonical StableEntityID (both surfaces derive the same
+// content-addressed id from the (type, canonical name) key).
 func occurrenceFor(occurrences []capabilityentities.EntityOccurrence, entity scriptpkg.AnnotatedEntity) *capabilityentities.EntityOccurrence {
-	want := capabilityentities.SafeEntityID(entity.CanonicalName)
+	want := capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
 	for i := range occurrences {
 		if occurrences[i].EntityID == want {
 			return &occurrences[i]

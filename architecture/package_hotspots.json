@@ -243,6 +243,11 @@
       "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
         "internal/capabilities"
+      ],
+      "note": "Correctness fixes for multi-provider research fallback (August 2026): identity_resolver.go, query_planner.go added to scripts/usecase as active-development zone for research pipeline.",
+      "new_files_approved": [
+        "internal/application/scripts/usecase/identity_resolver.go",
+        "internal/application/scripts/usecase/query_planner.go"
       ]
     },
     {
@@ -265,6 +270,12 @@
       "targets": [
         "internal/platform",
         "internal/capabilities"
+      ],
+      "note": "New adapters for multi-provider research fallback (August 2026): dedup.go, provider_duckduckgo.go, multi_provider.go added to webresearch as search-adapter zone.",
+      "new_files_approved": [
+        "internal/infrastructure/webresearch/dedup.go",
+        "internal/infrastructure/webresearch/provider_duckduckgo.go",
+        "internal/infrastructure/webresearch/multi_provider.go"
       ]
     }
   ]

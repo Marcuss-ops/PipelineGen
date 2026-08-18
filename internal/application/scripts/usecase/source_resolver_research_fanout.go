@@ -47,7 +47,7 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	if lang == "" {
 		lang = "it"
 	}
-	aggregateKey := researchAggregateCacheKey(topic, lang, src)
+	aggregateKey := researchAggregateCacheKey(topic, lang, src, r.policyVersion)
 	if cached := r.loadAggregateCache(ctx, aggregateKey, src, topic, lang, resCtx); cached != nil {
 		return cached, nil
 	}
@@ -212,12 +212,18 @@ func buildResearchEvidencePack(topic string, results []*candidateResearchResult,
 	return pack, aggregate, nil
 }
 
-func researchAggregateCacheKey(topic, language string, src scriptpkg.SourceSpec) string {
+func researchAggregateCacheKey(topic, language string, src scriptpkg.SourceSpec, policyVersion string) string {
 	version := strings.TrimSpace(src.CachePolicy.Version)
 	if version == "" {
 		version = researchVersion
 	}
 	version += "|" + scriptpkg.ResearchEvidenceVersion
+	if policyVersion != "" {
+		// The aggregate key must differ across provider policies: an
+		// aggregate produced with a DDG fallback may carry different
+		// evidence than a SearXNG-only one.
+		version += "|" + policyVersion
+	}
 	policy := fmt.Sprintf("%d|%d|%d|%d|%t|%s", src.Research.MaxPages, src.Research.MinSources, src.Research.FreshnessDays, src.Research.MaxParallel, src.Research.RequireCitations, strings.Join(src.Research.Candidates, "\n"))
 	return scriptpkg.ComputeResearchCacheKey(hashResearch(topic), language, version, hashResearch(policy), src.Research.MaxPages)
 }

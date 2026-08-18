@@ -93,6 +93,24 @@ type AudioOutputConfig struct {
 	// applies the canonical defaults (best_effort / word / [json]) —
 	// timing capture is never implicitly mandatory.
 	Timing *audio.TimingRequest `json:"timing,omitempty"`
+
+	// MixPolicy is the editorial mix decision applied when compiling the
+	// audio plan: "VOICEOVER_ONLY" or "VOICEOVER_DUCKED_CLIP" (the wire
+	// spelling "voiceover_with_ducked_clip" normalizes to the latter).
+	// Empty means no policy (legacy full-volume overlap).
+	MixPolicy audio.AudioMixPolicy `json:"mix_policy,omitempty"`
+
+	// BackgroundMusic is the ordered list of BGM layer intents. Each entry
+	// references an asset by asset_id only — filesystem paths are never
+	// accepted at the wire boundary. Entries may cover disjoint windows of
+	// the timeline (start_ms/end); the compiler resolves each window into
+	// fully determined timeline events.
+	BackgroundMusic []BackgroundMusicIntent `json:"background_music,omitempty"`
+
+	// SoundEffects is the list of SFX intents, placed either at absolute
+	// timeline offsets (at_ms) or relative to a scene (scene_id + anchor +
+	// offset_ms). Each entry references an asset by asset_id only.
+	SoundEffects []SoundEffectIntent `json:"sound_effects,omitempty"`
 }
 
 // HasAnyPostprocessor returns true when at least one active postprocessor

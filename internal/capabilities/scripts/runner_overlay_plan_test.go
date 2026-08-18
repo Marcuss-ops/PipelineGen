@@ -531,7 +531,7 @@ func TestOverlaySceneInput_SelectsOnlySceneRelevantImages(t *testing.T) {
 		},
 	}
 	occurrences := []capabilityentities.EntityOccurrence{
-		{EntityID: capabilityentities.SafeEntityID("Tim Cook"), AudioStartUS: 0, AudioEndUS: 200_000},
+		{EntityID: capabilityentities.StableEntityID("PERSON", "Tim Cook"), AudioStartUS: 0, AudioEndUS: 200_000},
 	}
 
 	out, err := overlaySceneInput(scene, capabilityaudio.SpeechTimingArtifact{}, 0, occurrences)

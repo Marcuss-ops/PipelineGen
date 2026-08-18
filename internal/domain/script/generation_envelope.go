@@ -90,8 +90,10 @@ type GenerationItemV2 struct {
 	// Every postprocessor is opt-in.
 	Output OutputSpec `json:"output,omitempty"`
 
-	// Audio explicitly selects the audio execution mode for this generate
-	// item. Batch items may choose independently.
+	// Audio configures the audio execution mode (audio.mode) plus the
+	// editorial audio intent block (mix_policy, background_music,
+	// sound_effects) for this generate item. Batch items may choose
+	// independently.
 	Audio AudioOutputConfig `json:"audio,omitempty"`
 
 	// Docs explicitly requests publication of one Google Doc per language.

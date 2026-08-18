@@ -111,24 +111,45 @@ type TransformSpec struct {
 	// is normally derived from the StagedSource parameter; callers
 	// should pass `staged.LocalPath` here. Kept as a separate field
 	// so tests can construct a TransformSpec without a StagedSource.
-	LocalPath        string
-	SourceURL        string
-	Term             string
-	OutputDir        string
-	Filename         string
-	FolderID         string // FORBIDDEN (Drive) — removed in step 2
+	LocalPath string
+	SourceURL string
+	Term      string
+	OutputDir string
+	Filename  string
+	FolderID  string // FORBIDDEN (Drive) — removed in step 2
+	// Destination (reprocess folder-alignment, August 2026) is the
+	// canonical delivery.DestinationKey string (e.g. "youtube_clip",
+	// "artlist"). Empty → the processor's legacy default
+	// (DestinationArtlist). When set, the processor lets the
+	// DestinationRegistry resolve the canonical root + path hierarchy
+	// (ParentFolderID override is dropped) so the upload lands in the
+	// clip's real folder instead of a possibly-stale FolderID.
+	Destination string
+	// Group is the logical group path segment (e.g. the YouTube
+	// channel / category name). Falls back to Term for backward
+	// compatibility with the artlist ingest pipeline.
+	Group string
+	// Subject is the logical subject path segment (e.g. the YouTube
+	// video ID). Empty is valid for destinations whose PathBuilder
+	// does not require a subject.
+	Subject          string
 	Duration         int
 	ForceKeyframes   bool
 	StreamCopy       bool
 	DownloadSections []string
 	Normalize        *bool
-	KeepAudio        bool
-	DisableDuration  bool
-	Width            int
-	Height           int
-	DriveFileID      string // FORBIDDEN (Drive) — removed in step 2
-	ClipPageURL      string // FORBIDDEN (Drive) — removed in step 2
-	Metadata         map[string]any
+	// SkipPublish (July 2026, reprocess contract fix): when true the
+	// processor skips the canonical Drive publish step entirely — no
+	// upload, no Drive links in the result. Used by reprocess
+	// upload_drive=false. Local processing/hash still run.
+	SkipPublish     bool
+	KeepAudio       bool
+	DisableDuration bool
+	Width           int
+	Height          int
+	DriveFileID     string // FORBIDDEN (Drive) — removed in step 2
+	ClipPageURL     string // FORBIDDEN (Drive) — removed in step 2
+	Metadata        map[string]any
 	// RenditionLayout (July 2026) signals that the transformer should
 	// store generated files under rendition-kind subdirectories
 	// (master, mezzanine, proxy, thumbnail, storyboard) inside

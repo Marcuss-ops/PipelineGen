@@ -3,10 +3,11 @@ package processor
 import (
 	"context"
 	"fmt"
-
-	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	"os"
 	"path/filepath"
+	"strings"
+
+	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 
 	"go.uber.org/zap"
 
@@ -175,7 +176,26 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 
 	// Setup paths.
 	tmpDir, saveDir := p.setupDirectories(input)
-	finalFilename := textutil.SafeName(input.Name) + " " + input.ID + ".mp4"
+	// Output filenames are built from the clip name; cap the name portion so
+	// the final filename (and its atomic temp sibling) stays under the
+	// 255-byte filesystem component limit. Long clip names otherwise make
+	// reprocess fail with ENAMETOOLONG at temp-file creation.
+	//
+	// Reprocess contract fix (August 2026): honor input.Filename when the
+	// caller supplies the canonical clip filename
+	// (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4). Matching the
+	// original Drive upload name lets the publisher's ConflictOverwrite
+	// lookup find the existing file and update it in place instead of
+	// creating a fresh (orphaned) Drive file on every reprocess.
+	finalFilename := filepath.Base(input.Filename)
+	if finalFilename == "" || finalFilename == "." {
+		namePart := textutil.SafeName(input.Name)
+		const maxNamePartLen = 150
+		if len(namePart) > maxNamePartLen {
+			namePart = namePart[:maxNamePartLen]
+		}
+		finalFilename = namePart + " " + input.ID + ".mp4"
+	}
 	processedPath := OutputPath(saveDir, finalFilename)
 
 	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly).
@@ -258,11 +278,16 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	} else {
 		// Step 2: Process/Normalize. The normalized output is a deterministic
 		// derived artifact keyed by source bytes + encoder policy/version.
+		// Normalize=false bypasses both the cache (a raw passthrough must
+		// never be served from or stored under the "normalize" key) and
+		// the ffmpeg normalize itself.
+		normalizeEnabled := input.Normalize == nil || *input.Normalize
 		sourceSHA := hashFileSHA256(actualRawPath)
-		normalizeKey := capcacheKey(sourceSHA, "normalize", p.videoCfg, "media-normalize/v1")
+		normalizeKey := capcache.Key{}
 		normalizeCached := false
 		normalizeLeaseID := ""
-		if sourceSHA != "" {
+		if normalizeEnabled && sourceSHA != "" {
+			normalizeKey = capcacheKey(sourceSHA, "normalize", p.videoCfg, "media-normalize/v1")
 			normalizeCached, normalizeLeaseID = p.materializeCachedFile(ctx, normalizeKey, processedPath)
 		}
 		if !normalizeCached {
@@ -275,7 +300,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 				result.Error = fmt.Sprintf("process failed: %v", err)
 				return result, err
 			}
-			if sourceSHA != "" {
+			if normalizeEnabled && sourceSHA != "" {
 				p.storeCachedFile(ctx, normalizeKey, normalizeLeaseID, processedPath, "video/mp4")
 			}
 		}
@@ -335,10 +360,21 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// domain layer — adding Destination is a follow-up wave when a
 	// non-artlist caller emerges). The processor's canonical caller
 	// is the artlist ingest pipeline, so DestinationArtlist is the
-	// correct default. ConflictPolicy is left zero-value
-	// (ConflictOverwrite = legacy behaviour). ParentFolderID is
-	// input.FolderID so callers that explicitly target a specific
-	// Drive folder (e.g. legacy pipeline scripts) keep working.
+	// correct default.
+	//
+	// ConflictPolicy (August 2026, reprocess certification fix):
+	// explicitly ConflictOverwrite. The processor's outputs are
+	// regenerable renditions — a reprocess MUST replace the previous
+	// rendition on Drive. Leaving the policy unset consults the
+	// registry, whose DestinationArtlist default is ConflictSkip
+	// (P1.1, July 2026: "immutable curated assets") — that silently
+	// kept Drive pinned to the FIRST rendition forever (every
+	// re-render logged publish_action=skipped with the stale md5).
+	// This processor is the upload seam for generated outputs, so
+	// overwrite is the correct explicit policy here.
+	// ParentFolderID is input.FolderID so callers that explicitly
+	// target a specific Drive folder (e.g. legacy pipeline scripts)
+	// keep working.
 	//
 	// Subject defaulting (reviewer-feedback Q1): Subject defaults to
 	// empty string, NOT input.ID. The pre-F2.7 implementation had no
@@ -377,16 +413,24 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// Status itself stays "processed" so the lifecycle layer's
 	// RequireDrive gate is the single canonical place that flips
 	// to a required Drive-upload error (per the lifecycle contract).
-	if input.FolderID != "" {
-		destKey := delivery.DestinationArtlist
+	if input.FolderID != "" && !input.SkipPublish {
+		destKey, parentFolderID := p.resolvePublishDestination(input)
+		group := strings.TrimSpace(input.Group)
+		if group == "" {
+			group = input.Term
+		}
 		pubReq := delivery.PublishRequest{
 			Destination:    destKey,
 			LocalPath:      processedPath,
 			Filename:       result.Filename,
 			Description:    fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
 			AssetID:        input.ID,
-			Group:          input.Term, // artlist search term (PathBuilder input)Subject: "", // empty by design — see doc above (F2.9: explicit Subject plumb)
-			ParentFolderID: input.FolderID,
+			Group:          group, // artlist search term (legacy) or explicit group path segment
+			Subject:        strings.TrimSpace(input.Subject),
+			ParentFolderID: parentFolderID,
+			// Regenerable output: the latest rendition always wins on
+			// Drive (see the ConflictPolicy doc above).
+			ConflictPolicy: delivery.ConflictOverwrite,
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
 		if pubErr != nil {
@@ -419,6 +463,10 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 				zap.String("md5", pubRes.MD5Checksum),
 			)
 		}
+	} else if input.FolderID != "" {
+		// SkipPublish (July 2026, reprocess contract fix): upload_drive=false
+		// skips the canonical publish; the local rendition + hash still stand.
+		p.log.Info("Drive publish skipped by caller (upload_drive=false)", zap.String("id", input.ID))
 	}
 
 	// Cleanup raw file after processing.
@@ -432,6 +480,28 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 
 	result.Status = "processed"
 	return result, nil
+}
+
+// resolvePublishDestination maps a TransformSpec.Destination into the
+// delivery.DestinationKey + ParentFolderID for the canonical publish.
+//
+// Legacy path (Destination empty): the artlist ingest pipeline is the
+// canonical caller, so DestinationArtlist is the default and
+// ParentFolderID = input.FolderID (the legacy explicit-folder escape
+// hatch) is preserved for backward compatibility.
+//
+// Explicit destination (Destination set, e.g. "youtube_clip"): the
+// DestinationRegistry is the sole authority for the canonical root +
+// path hierarchy, so ParentFolderID is dropped. This prevents a stale
+// FolderID from drifting a reprocess upload into the wrong Drive folder
+// (reprocess folder-alignment, August 2026) — the clip's real folder is
+// resolved from the registry PathBuilder instead.
+func (p *Processor) resolvePublishDestination(input *asset.ProcessInput) (delivery.DestinationKey, string) {
+	dest := strings.TrimSpace(input.Destination)
+	if dest == "" {
+		return delivery.DestinationArtlist, input.FolderID
+	}
+	return delivery.DestinationKey(dest), ""
 }
 
 // findRendition returns the first rendition with the given kind, or nil.

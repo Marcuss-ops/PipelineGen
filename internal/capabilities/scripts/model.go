@@ -337,6 +337,23 @@ type GenerateRequest struct {
 	// so the required/best-effort fail-closed semantics are honoured
 	// end-to-end by the per-item voiceover pipeline.
 	Timing *capabilityaudio.TimingRequest `json:"voiceover_timing,omitempty"`
+	// MixPolicy is the editorial mix decision requested by the caller
+	// (audio.mix_policy). Empty means no policy (legacy full-volume
+	// overlap). The wire alias "voiceover_with_ducked_clip" is normalized
+	// to the canonical VOICEOVER_DUCKED_CLIP by AudioMixPolicy.Normalize
+	// when the plan is compiled.
+	MixPolicy capabilityaudio.AudioMixPolicy `json:"mix_policy,omitempty"`
+	// BackgroundMusic is the normalized list of BGM layer intents. It is
+	// ALWAYS a slice in the domain, even when the wire carried a single
+	// object (AudioOutputConfig.UnmarshalJSON normalizes at the boundary)
+	// — supporting multiple segmented musics later needs no schema change.
+	// Entries reference assets by asset_id only; resolution to physical
+	// paths happens downstream.
+	BackgroundMusic []scriptpkg.BackgroundMusicIntent `json:"background_music,omitempty"`
+	// SoundEffects is the list of SFX intents, placed at absolute timeline
+	// offsets or relative to a scene (anchor + offset). Entries reference
+	// assets by asset_id only.
+	SoundEffects []scriptpkg.SoundEffectIntent `json:"sound_effects,omitempty"`
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 

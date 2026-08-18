@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -33,6 +34,9 @@ type ReprocessUseCase struct {
 // RemoteAssetReader is the minimal read port needed to stage a Drive-backed
 // clip for processing. A Drive URL is a valid canonical source; a local path
 // is only an execution-time staging detail and is not persisted as identity.
+// clip_drive reprocess ALWAYS re-stages from Drive (the persisted local_path
+// is the previous derived output, never the source), so this port is required
+// for every clip_drive reprocess.
 type RemoteAssetReader interface {
 	DownloadFile(context.Context, string) (io.ReadCloser, string, error)
 }
@@ -95,6 +99,24 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		return nil, fmt.Errorf("clip not found")
 	}
 
+	// force=false (reprocess contract fix, July 2026): reuse the
+	// existing derived rendition when the clip already has a valid
+	// one on disk — no download, no re-encode, no upload. This makes
+	// the flag actually control whether reprocess re-runs the
+	// pipeline instead of being silently ignored.
+	if !req.Force && uc.hasExistingRendition(clip) {
+		return &ReprocessResult{
+			ClipID:       req.ClipID,
+			Source:       req.Source,
+			Status:       "processed",
+			LocalPath:    clip.LocalPath(),
+			FileHash:     clip.FileHash(),
+			DriveLink:    clip.DriveLink(),
+			DownloadLink: clip.DownloadLink(),
+			ProcessedAt:  timeutil.FormatRFC3339(clip.UpdatedAt),
+		}, nil
+	}
+
 	// Build ProcessInput from clip data
 	sourceURL := reprocessSourceURL(clip, req.Source)
 	folderID := clip.FolderID()
@@ -102,19 +124,41 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		folderID = uc.clipsFolderID
 	}
 	processInput := &asset.ProcessInput{
-		ID:        clip.ID,
-		Name:      clip.Name,
+		ID:   clip.ID,
+		Name: clip.Name,
+		// Reprocess contract fix (August 2026): thread the clip's
+		// canonical filename (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4)
+		// so the processor uploads under the SAME Drive name as the
+		// original upload. ConflictOverwrite then finds the existing file
+		// and updates it in place instead of creating a fresh orphan on
+		// every reprocess. Empty (legacy rows) → processor falls back to
+		// the SafeName+ID default.
+		Filename:  clip.Filename,
 		SourceURL: sourceURL,
 		FolderID:  folderID,
 		Duration:  int(clip.Duration.Milliseconds()),
 		KeepAudio: true,
+		// Reprocess contract fix (July 2026): the normalize and
+		// upload_drive flags now actually control the pipeline.
+		// normalize=false skips the ffmpeg normalize (mux/copy only);
+		// upload_drive=false skips the canonical Drive publish.
+		Normalize:   req.Normalize,
+		SkipPublish: !req.UploadDrive,
+		// Folder alignment (August 2026): route YouTube clip uploads
+		// through the canonical DestinationYouTubeClip registry policy
+		// so the file lands in clips/{group}/{video_id} (the clip's real
+		// folder) instead of the Artlist destination + stale ParentFolderID
+		// that orphaned every folder-mismatch reprocess.
+		Destination: string(delivery.DestinationYouTubeClip),
+		Group:       reprocessGroup(clip),
+		Subject:     reprocessSubject(clip),
 		Metadata: map[string]any{
 			"source": req.Source,
 			"tags":   clip.Tags,
 		},
 	}
 	var stagedPath string
-	if req.Source == "clip_drive" && clip.LocalPath() == "" {
+	if req.Source == "clip_drive" {
 		if uc.remoteReader == nil {
 			return nil, fmt.Errorf("clip %s has no local rendition and remote reader is not configured", req.ClipID)
 		}
@@ -156,11 +200,31 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	// Update clip with result
 	clip.SetLocalPath(result.LocalPath)
 	clip.SetFileHash(result.FileHash)
+	if result.DriveFileID != "" {
+		// F2.8 parity (reprocess contract fix, August 2026): the canonical
+		// Drive identity pointer must track the newly published rendition.
+		// Pre-fix the use case updated drive_link/download_link but left
+		// drive_file_id pointing at the stale previous file — a DB↔Drive
+		// divergence that made the next clip_drive reprocess re-download
+		// the old source and orphaned every fresh upload.
+		clip.SetDriveFileID(result.DriveFileID)
+	}
 	if result.DriveLink != "" {
 		clip.SetDriveLink(result.DriveLink)
 	}
 	if result.DownloadLink != "" {
 		clip.SetDownloadLink(result.DownloadLink)
+	}
+	if result.MD5 != "" {
+		// Drive-returned md5Checksum, distinct from the local SHA carried
+		// by FileHash (the QDRANT-002 source_version/content_hash). Stored
+		// under its own metadata key so it never clobbers the local hash.
+		clip.SetMetadataString("md5", result.MD5)
+	}
+	if result.PublishAction != "" {
+		// Mirror reupload/upload: record the canonical Publisher action
+		// (created | updated | skipped | renamed) for post-publish audit.
+		clip.SetMetadataString("publish_action", result.PublishAction)
 	}
 	clip.UpdatedAt = time.Now()
 
@@ -191,6 +255,68 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		DownloadLink: result.DownloadLink,
 		ProcessedAt:  timeutil.FormatRFC3339(time.Now()),
 	}, nil
+}
+
+// hasExistingRendition reports whether the clip already carries a
+// valid derived rendition on disk (non-empty file hash + existing,
+// non-empty local file). Used by the force=false short-circuit.
+func (uc *ReprocessUseCase) hasExistingRendition(clip *asset.Asset) bool {
+	if clip == nil {
+		return false
+	}
+	if clip.FileHash() == "" {
+		return false
+	}
+	local := clip.LocalPath()
+	if local == "" {
+		return false
+	}
+	info, err := os.Stat(local)
+	return err == nil && info.Size() > 0
+}
+
+// reprocessGroup derives the canonical YouTubeClip group path segment
+// (the channel/folder name) for the reprocess upload. Order of preference:
+//
+//  1. folder_path — the real Drive folder name. media_assets.group
+//     historically defaulted to the literal "group" and category is empty
+//     on legacy YouTube rows, so folder_path is the only reliable channel
+//     name for those clips.
+//  2. group — the typed column, skipped when it holds the legacy "group"
+//     placeholder.
+//  3. category.
+func reprocessGroup(clip *asset.Asset) string {
+	if clip == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(clip.FolderPath()); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(clip.Group); v != "" && v != "group" {
+		return v
+	}
+	return strings.TrimSpace(clip.Category)
+}
+
+// reprocessSubject derives the canonical YouTubeClip subject path segment
+// (the YouTube video ID) for the reprocess upload. Prefers the persisted
+// source_video_id, then youtube_video_id, then the first segment of the
+// canonical clip ID (yt_<videoID>_<start>_<end>_<policy>[slug]).
+func reprocessSubject(clip *asset.Asset) string {
+	if clip == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(clip.MetadataSourceVideoID()); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(clip.YouTubeVideoID()); v != "" {
+		return v
+	}
+	id := strings.TrimPrefix(strings.TrimSpace(clip.ID), "yt_")
+	if cut := strings.IndexByte(id, '_'); cut > 0 {
+		return id[:cut]
+	}
+	return ""
 }
 
 // reprocessSourceURL prefers the canonical source URL, then derives the

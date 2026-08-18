@@ -256,7 +256,7 @@ func golden06Annotations() *scriptpkg.SceneAnnotations {
 func golden06Timeline() *capabilityentities.EntityTimeline {
 	occ := func(name, typ string, start, end int) capabilityentities.EntityOccurrence {
 		return capabilityentities.EntityOccurrence{
-			EntityID:        capabilityentities.SafeEntityID(name),
+			EntityID:        capabilityentities.StableEntityID(typ, name),
 			Name:            name,
 			Type:            typ,
 			SceneID:         "scene-0",

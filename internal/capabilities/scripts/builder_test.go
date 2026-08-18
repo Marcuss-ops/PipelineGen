@@ -169,6 +169,100 @@ func TestBuildGenerateRequest_CombinedTimelineIsTheOnlyAudioGate(t *testing.T) {
 	}
 }
 
+// TestBuildGenerateRequest_MapsAudioIntentBlock certifies that the
+// editorial audio intent block (mix_policy + background_music +
+// sound_effects) reaches the durable GenerateRequest. The wire
+// single-object background_music form is normalized to a slice at the
+// domain boundary, so the durable request always works with
+// []BackgroundMusicIntent.
+func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "audio-intents-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MixPolicy != capabilityaudio.AudioMixPolicy("voiceover_with_ducked_clip") {
+		t.Fatalf("mix policy = %q", got.MixPolicy)
+	}
+	if len(got.BackgroundMusic) != 1 {
+		t.Fatalf("BackgroundMusic = %+v, want exactly one entry (single-object wire form must normalize to a slice)", got.BackgroundMusic)
+	}
+	b := got.BackgroundMusic[0]
+	if b.AssetID != "music_123" || !b.Loop || b.GainDB != -24 || !b.End.IsVideoEnd() {
+		t.Fatalf("bgm = %+v (end=%+v)", b, b.End)
+	}
+	if len(got.SoundEffects) != 1 {
+		t.Fatalf("SoundEffects = %+v, want exactly one entry", got.SoundEffects)
+	}
+	s := got.SoundEffects[0]
+	if s.AssetID != "whoosh" || s.SceneID != "scene_2" || s.Anchor != scriptpkg.SFXAnchorEnd || s.OffsetMS != -300 || s.GainDB != -8 {
+		t.Fatalf("sfx = %+v", s)
+	}
+}
+
+// TestBuildGenerateRequest_MapsSegmentedBackgroundMusic certifies that
+// multiple segmented BGM layers (disjoint windows with end_ms / end)
+// survive the builder untouched.
+func TestBuildGenerateRequest_MapsSegmentedBackgroundMusic(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"segmented-bgm","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","background_music":[{"asset_id":"music_intro","start_ms":0,"end_ms":60000,"loop":true},{"asset_id":"music_dark","start_ms":60000,"end":"video_end","loop":true}]}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "segmented-bgm-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.BackgroundMusic) != 2 {
+		t.Fatalf("BackgroundMusic = %+v, want two segmented layers", got.BackgroundMusic)
+	}
+	if got.BackgroundMusic[0].AssetID != "music_intro" || got.BackgroundMusic[0].End == nil || got.BackgroundMusic[0].End.Ms != 60000 {
+		t.Fatalf("first layer = %+v (end=%+v)", got.BackgroundMusic[0], got.BackgroundMusic[0].End)
+	}
+	if got.BackgroundMusic[1].AssetID != "music_dark" || !got.BackgroundMusic[1].End.IsVideoEnd() {
+		t.Fatalf("second layer = %+v (end=%+v)", got.BackgroundMusic[1], got.BackgroundMusic[1].End)
+	}
+}
+
+// TestBuildGenerateRequest_AudioIntentFallsBackToOutputAudio certifies the
+// compat fallback: when the top-level audio intent block is absent, the
+// nested output.audio shape is used.
+func TestBuildGenerateRequest_AudioIntentFallsBackToOutputAudio(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"fallback","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"audio":{"mix_policy":"VOICEOVER_ONLY","background_music":[{"asset_id":"music_fb"}]}},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "audio-intent-fallback-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MixPolicy != capabilityaudio.AudioMixPolicy("VOICEOVER_ONLY") {
+		t.Fatalf("fallback mix policy = %q, want VOICEOVER_ONLY", got.MixPolicy)
+	}
+	if len(got.BackgroundMusic) != 1 || got.BackgroundMusic[0].AssetID != "music_fb" {
+		t.Fatalf("fallback background_music = %+v", got.BackgroundMusic)
+	}
+}
+
+// TestBuildGenerateRequest_NoAudioIntentsStayEmpty certifies that an absent
+// audio intent block stays empty on the durable request (legacy behavior
+// unchanged).
+func TestBuildGenerateRequest_NoAudioIntentsStayEmpty(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"plain","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "plain-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MixPolicy != "" || len(got.BackgroundMusic) != 0 || len(got.SoundEffects) != 0 {
+		t.Fatalf("absent audio intents must stay empty, got mix=%q bgm=%d sfx=%d", got.MixPolicy, len(got.BackgroundMusic), len(got.SoundEffects))
+	}
+}
+
 // TestBuildGenerateRequest_PropagatesVoiceoverTiming certifies that the
 // canonical top-level audio.timing policy (mode/boundary/formats) reaches
 // GenerateRequest.Timing so the durable runner can enforce the

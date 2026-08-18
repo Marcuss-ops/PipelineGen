@@ -72,6 +72,34 @@ func (a ollamaWebSearcherAdapter) Search(ctx context.Context, query string, limi
 	return out, nil
 }
 
+// searxngWebSearchProviderAdapter wraps the existing Ollama WebSearcher
+// (backed by SearXNG) as a WebSearchProvider for the multi-provider
+// registry. It satisfies scriptports.WebSearchProvider.
+type searxngWebSearchProviderAdapter struct{ searcher *ollamaclient.WebSearcher }
+
+func (a *searxngWebSearchProviderAdapter) Name() string { return "searxng" }
+
+func (a *searxngWebSearchProviderAdapter) Search(ctx context.Context, query string, limit int) ([]scriptports.WebSearchHit, error) {
+	if a == nil || a.searcher == nil {
+		return nil, nil
+	}
+	results, err := a.searcher.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+	out := make([]scriptports.WebSearchHit, 0, len(results))
+	for _, result := range results {
+		out = append(out, scriptports.WebSearchHit{Title: result.Title, URL: result.URL, Content: result.Content})
+	}
+	return out, nil
+}
+
+// Compile-time assertion.
+var _ scriptports.WebSearchProvider = (*searxngWebSearchProviderAdapter)(nil)
+
 // Package app — build_stage_drive_bundle.go
 //
 // Canonical typed sentinel for the Stage→Drive forward-pointer components.

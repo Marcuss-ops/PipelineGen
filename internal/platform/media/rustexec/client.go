@@ -14,6 +14,9 @@ type Client struct {
 	// runner is retained as a narrow test seam for protocol tests. Production
 	// calls always use the shared Executor below it.
 	runner commandRunner
+	// observed is the optional single measurement point decorator. When set,
+	// every operation flowing through call() is measured exactly once.
+	observed *ObservedExecutor
 }
 
 type commandRunner interface {
@@ -32,4 +35,13 @@ func NewClientWithExecutor(executor *Executor, log *zap.Logger) *Client {
 		log = zap.NewNop()
 	}
 	return &Client{executor: executor, log: log}
+}
+
+// SetObservedExecutor attaches the single measurement point decorator. The
+// decorator wraps THIS client (it records every operation flowing through
+// call). Nil-safe; nil disables per-operation measurement.
+func (c *Client) SetObservedExecutor(observed *ObservedExecutor) {
+	if c != nil {
+		c.observed = observed
+	}
 }

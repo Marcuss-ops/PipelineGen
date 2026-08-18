@@ -151,6 +151,15 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, validated rende
 	return nil
 }
 
+// SetObservedExecutor attaches the single measurement point decorator to
+// this renderer's client (every operation it runs is then measured once).
+// Nil-safe; nil disables per-operation measurement.
+func (r *StockRenderer) SetObservedExecutor(observed *ObservedExecutor) {
+	if r != nil {
+		r.client.SetObservedExecutor(observed)
+	}
+}
+
 var _ stockpipeline.StockRenderer = (*StockRenderer)(nil)
 
 func durationFromSeconds(seconds float64) time.Duration {

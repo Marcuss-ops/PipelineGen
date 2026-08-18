@@ -12,7 +12,9 @@ import (
 // Every entity occurrence becomes one entity_card item whose start/end are
 // the occurrence's certified global audio positions — the resolver never
 // guesses WHEN to show a person, an organization or a place; it shows them
-// exactly while they are being spoken.
+// exactly while they are being spoken. It is the unlimited variant: every
+// occurrence resolves (see ResolveRankedEntityOverlayPlan for the ranked,
+// per-scene-capped planner path).
 //
 // Times cross the microsecond→millisecond boundary deterministically: the
 // start is floor(us/1000) and the end is ceil(us/1000), so the millisecond
@@ -20,6 +22,20 @@ import (
 // (render keys + fingerprint) by its own Validate, so the caller can enqueue
 // it directly.
 func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fps int) (capabilityoverlay.OverlayPlan, error) {
+	return ResolveRankedEntityOverlayPlan(timeline, planID, videoID, projectID, width, height, fps, RankConfig{})
+}
+
+// ResolveRankedEntityOverlayPlan is the ranked OverlayResolver: it turns the
+// canonical EntityTimeline into the semantic OverlayPlan, ranking the entity
+// occurrences of every scene by the canonical importance score (see
+// ImportanceScore) and applying the per-scene caps of cfg. With a zero cfg
+// it is byte-identical to ResolveEntityOverlayPlan (no ranking, no caps).
+//
+// The plan's editorial rule: PipelineGen decides WHO is important — a scene
+// never renders every extracted entity. The top-N occurrences by importance
+// survive per scene (cfg.MaxEntityOverlaysPerScene); the survivors keep
+// their certified timeline positions exactly like the unlimited resolver.
+func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fps int, cfg RankConfig) (capabilityoverlay.OverlayPlan, error) {
 	if err := timeline.Validate(); err != nil {
 		return capabilityoverlay.OverlayPlan{}, err
 	}
@@ -30,9 +46,16 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and fps must be positive")
 	}
 
+	// Run-level context: frequency / novelty / asset quality are derived
+	// from the whole timeline, never per scene.
+	allOccurrences := allOccurrences(timeline)
+	ctx := NewRankContext(allOccurrences)
+
 	var items []capabilityoverlay.OverlayItem
 	for _, scene := range timeline.Scenes {
-		for _, occurrence := range scene.Entities {
+		ranked := RankScene(scene.Entities, ctx, cfg)
+		for _, rankedOccurrence := range ranked {
+			occurrence := rankedOccurrence.Occurrence
 			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)
 			entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(string(kind))
 			if err != nil {
@@ -49,6 +72,15 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 				DurationUS: occurrence.AudioEndUS - occurrence.AudioStartUS,
 				TemplateID: entry.Template,
 				Text:       occurrence.Name,
+				// The plan's entity_ref: RenderingGen receives WHO the overlay is
+				// about (stable content-addressed id + type + canonical name +
+				// surface text), never a bare name.
+				EntityRef: &capabilityoverlay.OverlayEntityRef{
+					EntityID:    occurrence.EntityID,
+					Type:        occurrence.Type,
+					Name:        occurrence.Name,
+					SurfaceText: occurrence.Name,
+				},
 			})
 		}
 	}
@@ -72,12 +104,25 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 	return plan, nil
 }
 
+// allOccurrences flattens every scene's occurrences into one slice, in scene
+// order, for the run-level ranking context.
+func allOccurrences(timeline EntityTimeline) []EntityOccurrence {
+	var out []EntityOccurrence
+	for _, scene := range timeline.Scenes {
+		out = append(out, scene.Entities...)
+	}
+	return out
+}
+
 // overlayItemID derives the deterministic, collision-free overlay id for one
-// occurrence: "overlay-" + scene id + "-" + entity id (e.g.
-// "overlay-scene-3-tom-hanks").
+// occurrence: "overlay-" + scene id + "-" + safe slug of the entity name
+// (e.g. "overlay-scene-3-tom-hanks"). The slug comes from the canonical
+// name (SafeEntityID), NOT the content-addressed StableEntityID, so overlay
+// ids stay human-readable and stable across runs while EntityID carries the
+// dedup/cache identity.
 func overlayItemID(o EntityOccurrence) string {
 	scene := strings.TrimSpace(o.SceneID)
-	entity := strings.TrimSpace(o.EntityID)
+	entity := SafeEntityID(o.Name)
 	if scene == "" {
 		return "overlay-" + entity
 	}

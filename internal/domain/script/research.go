@@ -1,5 +1,19 @@
 package script
 
+// SubjectIdentity is the canonical identity for a research subject. It
+// replaces the hardcoded diacritics switch in research_subject_filter.go
+// with a data-driven lookup that supports aliases, required context terms,
+// and excluded terms for disambiguation (e.g. Floyd Mayweather vs George
+// Floyd).
+type SubjectIdentity struct {
+	ID            string   `json:"id"`
+	CanonicalName string   `json:"canonical_name"`
+	Aliases       []string `json:"aliases,omitempty"`
+	RequiredTerms []string `json:"required_terms,omitempty"`
+	ExcludedTerms []string `json:"excluded_terms,omitempty"`
+	SubjectType   string   `json:"subject_type,omitempty"`
+}
+
 // EvidenceAccessMode records how a web source was obtained. Search snippets
 // are useful resilience fallbacks, but they are weaker than a fetched page
 // and must not be silently treated as equivalent evidence.

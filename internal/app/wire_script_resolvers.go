@@ -45,6 +45,7 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
@@ -162,8 +163,17 @@ func buildScriptSourceResolvers(
 	// public web. It is registered only when SearXNG is wired; absence is
 	// intentionally fail-closed for source.type=research.
 	if gen != nil && gen.GetClient() != nil && gen.GetClient().WebSearcher() != nil {
+		// Build the multi-provider searcher: SearXNG (primary) + optional DDG fallback.
+		searxngProvider := &searxngWebSearchProviderAdapter{searcher: gen.GetClient().WebSearcher()}
+		var providers []scriptports.WebSearchProvider
+		providers = append(providers, searxngProvider)
+		if cfg.External.ResearchFallbackProvider == "duckduckgo" {
+			providers = append(providers, webresearch.NewDuckDuckGoSearchProvider(log))
+		}
+		multiSearcher := webresearch.NewMultiWebSearcher(log, providers...)
+
 		researchResolver := usecase.NewWebResearchResolver(
-			ollamaWebSearcherAdapter{searcher: gen.GetClient().WebSearcher()},
+			multiSearcher,
 			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
 		)
 		if err := researchResolver.SetResearchRanker(&ollamaResearchRanker{client: gen.GetClient(), model: cfg.External.OllamaModel}); err != nil {
@@ -175,8 +185,34 @@ func buildScriptSourceResolvers(
 		if root.DB != nil {
 			researchResolver.SetCache(topicsourcecache.NewRepository(root.DB.DB))
 		}
+
+		// Wire the subject-aware search coordinator.
+		identityAdapter := &SubjectIdentityAdapter{
+			Resolve: func(subject string) scriptpkg.SubjectIdentity {
+				return usecase.NewSubjectIdentityResolver().Resolve(subject)
+			},
+		}
+		plannerAdapter := &QueryPlannerAdapter{
+			FullPlan: func(identity scriptpkg.SubjectIdentity, maxQueries int) []string {
+				return usecase.NewQueryPlanner().FullPlan(identity, maxQueries)
+			},
+		}
+		// The coordinator drives the provider registry directly (subject-aware
+		// escalation per provider); the MultiWebSearcher stays wired to the
+		// resolver as its dumb merge/dedup searcher for the fallback path.
+		coordinator := NewResearchSearchCoordinator(identityAdapter, plannerAdapter, providers, log)
+		coordinator.SetTargetPool(cfg.External.ResearchTargetPoolSize)
+		researchResolver.SetSearchCoordinator(&coordinatorAdapter{coordinator: coordinator})
+		// Fold the provider policy into the research cache fingerprint so
+		// SearXNG-only and SearXNG+DDG deployments never share cache entries.
+		researchResolver.SetResearchPolicyVersion(researchPolicyVersion(cfg))
+
 		sourceReg.Register(scriptpkg.SourceResearch, researchResolver)
-		log.Info("SourceResearch resolver wired", zap.String("research_version", "web-research-v1"))
+		log.Info("SourceResearch resolver wired",
+			zap.String("research_version", "web-research-v2"),
+			zap.Strings("providers", multiSearcher.ProviderNames()),
+			zap.Int("target_pool_size", cfg.External.ResearchTargetPoolSize),
+		)
 	}
 
 	// Clips resolver — gated on clipSourceBuilder (requires ollamaClient).
@@ -235,4 +271,25 @@ func buildScriptSourceResolvers(
 	}
 
 	return normCfg, sourceReg, clipSourceBuilder, clipSearchPort
+}
+
+// researchPolicyVersion derives the opaque provider-policy token folded
+// into the research cache fingerprint (per-topic and aggregate keys). It
+// must be identical for the submission preflight and the worker resolver
+// — both are wired from the same config — so SearXNG-only and
+// SearXNG+DDG deployments never share cache entries, and a target-pool
+// change invalidates previously cached research.
+func researchPolicyVersion(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	provider := strings.TrimSpace(cfg.External.ResearchFallbackProvider)
+	if provider == "" {
+		provider = "searxng"
+	}
+	targetPool := cfg.External.ResearchTargetPoolSize
+	if targetPool <= 0 {
+		targetPool = 8
+	}
+	return fmt.Sprintf("provider=%s,target_pool=%d", provider, targetPool)
 }

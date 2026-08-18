@@ -112,6 +112,32 @@ func TestCompileWithMixPolicy_DuckedClipWithoutVoiceoverLeavesClipAtUnity(t *tes
 	}
 }
 
+// TestNormalize_WireAliasVoiceoverWithDuckedClip certifies that the wire
+// spelling documented in the HTTP payload ("voiceover_with_ducked_clip")
+// normalizes to the canonical VOICEOVER_DUCKED_CLIP regardless of case.
+func TestNormalize_WireAliasVoiceoverWithDuckedClip(t *testing.T) {
+	tests := []struct {
+		name  string
+		input AudioMixPolicy
+		want  AudioMixPolicy
+	}{
+		{name: "canonical_ducked", input: MixVoiceoverWithDuckedClip, want: MixVoiceoverWithDuckedClip},
+		{name: "wire_alias_snake_case", input: "voiceover_with_ducked_clip", want: MixVoiceoverWithDuckedClip},
+		{name: "wire_alias_mixed_case", input: "Voiceover_With_Ducked_Clip", want: MixVoiceoverWithDuckedClip},
+		{name: "canonical_only", input: MixVoiceoverOnly, want: MixVoiceoverOnly},
+		{name: "wire_alias_only", input: "voiceover_only", want: MixVoiceoverOnly},
+		{name: "empty_stays_empty", input: "", want: ""},
+		{name: "unknown_fails_closed", input: "duck_everything", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.input.Normalize(); got != tt.want {
+				t.Fatalf("Normalize(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCompileWithMixPolicy_EmptyPolicyPreservesLegacyOverlap(t *testing.T) {
 	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), "")
 	if err != nil {

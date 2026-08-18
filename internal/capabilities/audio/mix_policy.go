@@ -37,11 +37,18 @@ const (
 // Normalize returns the canonical policy for the given value, or "" when the
 // value is unknown or empty. An empty policy means "no mix policy applied",
 // which preserves the legacy full-volume overlap behaviour.
+//
+// The wire spelling "VOICEOVER_WITH_DUCKED_CLIP" (documented in the HTTP
+// payload as "voiceover_with_ducked_clip") is accepted as an alias of the
+// canonical VOICEOVER_DUCKED_CLIP so the intent never depends on which side
+// of the API boundary spelled it.
 func (p AudioMixPolicy) Normalize() AudioMixPolicy {
 	p = AudioMixPolicy(strings.ToUpper(strings.TrimSpace(string(p))))
 	switch p {
 	case MixVoiceoverOnly, MixVoiceoverWithDuckedClip:
 		return p
+	case "VOICEOVER_WITH_DUCKED_CLIP":
+		return MixVoiceoverWithDuckedClip
 	default:
 		return ""
 	}

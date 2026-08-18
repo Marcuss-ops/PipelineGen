@@ -32,6 +32,15 @@ const (
 	researchDefaultCacheTTLHour = 168
 )
 
+// identityVersion and queryPlannerVersion are opaque version tokens folded
+// into the research cache fingerprint. Bump them when the SubjectIdentity
+// registry or the QueryPlanner logic changes: stale cache entries must not
+// survive a semantic change in identity resolution or query planning.
+const (
+	identityVersion     = "v1"
+	queryPlannerVersion = "v1"
+)
+
 var (
 	ErrResearchProviderNotConfigured = errors.New("RESEARCH_PROVIDER_NOT_CONFIGURED")
 	ErrResearchSearchFailed          = errors.New("RESEARCH_SEARCH_FAILED")
@@ -48,12 +57,30 @@ var (
 // external web content. It deliberately does not modify the generic LLM
 // client, so translations and metadata generation remain offline.
 type WebResearchResolver struct {
-	searcher scriptports.WebSearcher
-	fetcher  scriptports.WebPageFetcher
-	cache    scriptports.TopicSourceCache
-	lexicon  *linguistics.LexiconRegistry
-	ranker   scriptports.ResearchRanker
-	subject  string
+	searcher      scriptports.WebSearcher
+	fetcher       scriptports.WebPageFetcher
+	cache         scriptports.TopicSourceCache
+	lexicon       *linguistics.LexiconRegistry
+	ranker        scriptports.ResearchRanker
+	subject       string
+	coordinator   researchSearchCoordinatorPort
+	policyVersion string
+}
+
+// researchSearchCoordinatorPort is the port consumed by the resolver
+// for subject-aware multi-provider search. Defined as an interface to
+// keep the resolver free of infrastructure imports.
+type researchSearchCoordinatorPort interface {
+	SearchWithFallback(ctx context.Context, subject string, queries []string, targetPool int) []CoordinatorSearchResult
+}
+
+// CoordinatorSearchResult carries a subject-valid search hit with metadata.
+// Exported so the composition adapter (app package) can satisfy the port
+// without circular imports.
+type CoordinatorSearchResult struct {
+	Hit        scriptports.WebSearchHit
+	Provider   string
+	QueryLevel int
 }
 
 // ResearchSubmissionPreflight is the cache-only submission gate used by the
@@ -66,7 +93,21 @@ type ResearchPreflight interface {
 	Validate(ctx context.Context, item scriptpkg.GenerationItemV2) error
 }
 
-type ResearchSubmissionPreflight struct{ cache scriptports.TopicSourceCache }
+type ResearchSubmissionPreflight struct {
+	cache         scriptports.TopicSourceCache
+	policyVersion string
+}
+
+// SetResearchPolicyVersion injects the opaque provider-policy token that
+// the research cache fingerprint folds in. It MUST be identical between
+// the submission preflight and the worker resolver (both are wired from
+// the same composition config), so SearXNG-only and SearXNG+DDG
+// deployments produce distinct cache keys.
+func (p *ResearchSubmissionPreflight) SetResearchPolicyVersion(v string) {
+	if p != nil {
+		p.policyVersion = strings.TrimSpace(v)
+	}
+}
 
 func NewResearchSubmissionPreflight(cache scriptports.TopicSourceCache) *ResearchSubmissionPreflight {
 	return &ResearchSubmissionPreflight{cache: cache}
@@ -81,7 +122,7 @@ func (p *ResearchSubmissionPreflight) Validate(ctx context.Context, item scriptp
 	}
 	src := item.Source
 	if len(src.Research.Candidates) > 0 {
-		if aggregateResearchCacheAvailable(ctx, p.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src), src.CachePolicy.Mode) {
+		if aggregateResearchCacheAvailable(ctx, p.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src, p.policyVersion), src.CachePolicy.Mode) {
 			return nil
 		}
 		for index, candidate := range src.Research.Candidates {
@@ -112,7 +153,7 @@ func (p *ResearchSubmissionPreflight) Validate(ctx context.Context, item scriptp
 		}
 		return nil
 	}
-	_, _, _, _, key := researchCacheIdentity(src, item.Language)
+	_, _, _, _, key := researchCacheIdentity(src, item.Language, p.policyVersion)
 	text, err := p.cache.GetResearchCache(ctx, key)
 	if err != nil {
 		return researchPreflightError(ErrResearchCacheMiss)
@@ -157,6 +198,24 @@ func (r *WebResearchResolver) SetCache(cache scriptports.TopicSourceCache) {
 	}
 }
 
+// SetSearchCoordinator injects the subject-aware search coordinator.
+// When set, single-candidate Resolve() delegates search to the
+// coordinator instead of the raw searcher, enabling multi-provider
+// fallback with subject filtering.
+func (r *WebResearchResolver) SetSearchCoordinator(coordinator researchSearchCoordinatorPort) {
+	if r != nil {
+		r.coordinator = coordinator
+	}
+}
+
+// SetResearchPolicyVersion injects the opaque provider-policy token for
+// the research cache fingerprint. See ResearchSubmissionPreflight.
+func (r *WebResearchResolver) SetResearchPolicyVersion(v string) {
+	if r != nil {
+		r.policyVersion = strings.TrimSpace(v)
+	}
+}
+
 // Validate checks research cache policy synchronously at submission time.
 // Search-enabled cache misses are allowed to continue to the worker; all
 // offline misses fail before a script.generate job exists.
@@ -166,7 +225,7 @@ func (r *WebResearchResolver) Validate(ctx context.Context, item scriptpkg.Gener
 	}
 	src := item.Source
 	if len(src.Research.Candidates) > 0 {
-		if aggregateResearchCacheAvailable(ctx, r.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src), src.CachePolicy.Mode) {
+		if aggregateResearchCacheAvailable(ctx, r.cache, researchAggregateCacheKey(strings.TrimSpace(src.Topic), item.Language, src, r.policyVersion), src.CachePolicy.Mode) {
 			return nil
 		}
 		for index, candidate := range src.Research.Candidates {
@@ -197,7 +256,7 @@ func (r *WebResearchResolver) Validate(ctx context.Context, item scriptpkg.Gener
 		}
 		return nil
 	}
-	_, _, _, _, key := researchCacheIdentity(src, item.Language)
+	_, _, _, _, key := researchCacheIdentity(src, item.Language, r.policyVersion)
 	text, err := r.cache.GetResearchCache(ctx, key)
 	if err != nil {
 		return researchPreflightError(ErrResearchCacheMiss)
@@ -276,7 +335,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if version == "" {
 		version = researchVersion
 	}
-	fingerprint := researchFingerprint(queries, policy)
+	fingerprint := researchFingerprint(queries, policy, r.policyVersion)
 	key := scriptpkg.ComputeResearchCacheKey(hashResearch(topic), lang, version, fingerprint, policy.MaxPages)
 	searchEnabled := src.Search
 	forceRefresh := src.ForceRefresh || cacheMode == scriptpkg.SourceCacheModeForceRefresh
@@ -344,37 +403,62 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if candidateLimit > 48 {
 		candidateLimit = 48
 	}
-	var lastSearchErr error
-	for _, query := range queries {
-		hits, err := r.searcher.Search(ctx, query, policy.ResultsPerQuery)
-		if err != nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return nil, fmt.Errorf("%w: %v", ErrResearchTimeout, ctx.Err())
-			}
-			lastSearchErr = err
-			continue
-		}
-		for _, hit := range hits {
-			if r.subject != "" && !researchHitMatchesSubject(r.subject, hit.Title+" "+hit.Content) {
-				continue
-			}
-			raw := strings.TrimSpace(hit.URL)
+	// When the search coordinator is available, delegate the entire search
+	// phase to it. The coordinator handles identity resolution, query
+	// planning, multi-provider fallback, and subject filtering.
+	//
+	// targetPool 0 delegates to the coordinator's configured default
+	// (RESEARCH_TARGET_POOL_SIZE, default 8): the search stops as soon as
+	// the subject-valid pool is sufficient instead of burning every query ×
+	// provider. candidateLimit remains the fetch-phase budget for the
+	// non-coordinator fallback path below.
+	if r.coordinator != nil && r.subject != "" {
+		coordinatorResults := r.coordinator.SearchWithFallback(ctx, r.subject, queries, 0)
+		for _, cr := range coordinatorResults {
+			raw := strings.TrimSpace(cr.Hit.URL)
 			u, err := url.Parse(raw)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
 				continue
 			}
 			seen[raw] = true
-			candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(hit.Title), URL: raw, Excerpt: trimResearch(hit.Content, 600)}, query: query})
+			candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(cr.Hit.Title), URL: raw, Excerpt: trimResearch(cr.Hit.Content, 600)}, query: cr.Hit.Title})
 			if len(candidates) >= candidateLimit {
 				break
 			}
 		}
-		if len(candidates) >= candidateLimit {
-			break
+	} else {
+		var lastSearchErr error
+		for _, query := range queries {
+			hits, err := r.searcher.Search(ctx, query, policy.ResultsPerQuery)
+			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return nil, fmt.Errorf("%w: %v", ErrResearchTimeout, ctx.Err())
+				}
+				lastSearchErr = err
+				continue
+			}
+			for _, hit := range hits {
+				if r.subject != "" && !researchHitMatchesSubject(r.subject, hit.Title+" "+hit.Content) {
+					continue
+				}
+				raw := strings.TrimSpace(hit.URL)
+				u, err := url.Parse(raw)
+				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
+					continue
+				}
+				seen[raw] = true
+				candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(hit.Title), URL: raw, Excerpt: trimResearch(hit.Content, 600)}, query: query})
+				if len(candidates) >= candidateLimit {
+					break
+				}
+			}
+			if len(candidates) >= candidateLimit {
+				break
+			}
 		}
-	}
-	if len(candidates) == 0 && lastSearchErr != nil {
-		return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, lastSearchErr)
+		if len(candidates) == 0 && lastSearchErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, lastSearchErr)
+		}
 	}
 	var source strings.Builder
 	suspiciousPages := 0

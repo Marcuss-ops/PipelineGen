@@ -14,6 +14,21 @@ type WebSearcher interface {
 	Search(ctx context.Context, query string, limit int) ([]WebSearchHit, error)
 }
 
+// WebSearchProvider is a named search backend. Unlike WebSearcher (the
+// minimal contract consumed by the research resolver), WebSearchProvider
+// carries a provider name for logging and diagnostics. The
+// MultiWebSearcher and ResearchSearchCoordinator use this interface to
+// orchestrate fallback across SearXNG, DuckDuckGo, and future backends.
+//
+// The contract deliberately has no health-check method: a health probe
+// is a second provider-specific API that says nothing about whether a
+// real search will work. Fallback is driven by search errors or
+// insufficient results, which are observable through Search.
+type WebSearchProvider interface {
+	Name() string
+	Search(ctx context.Context, query string, limit int) ([]WebSearchHit, error)
+}
+
 type WebPage struct {
 	URL, Title, Publisher, PublishedAt, Text string
 }

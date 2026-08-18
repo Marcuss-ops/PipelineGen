@@ -98,6 +98,15 @@ type GenerationFingerprintInput struct {
 	// schedule changes.
 	Topic         string   `json:"topic"`
 	SegmentTopics []string `json:"segment_topics,omitempty"`
+
+	// AudioIntent is the editorial audio intent block (audio.mix_policy,
+	// background_music, sound_effects — plus the audio mode/timing that
+	// selects the pipeline). It participates in the generation identity:
+	// different audio intents compile to different audio plans, so the
+	// item identity / idempotency / cache key must change. Nil when no
+	// audio intent was requested (legacy identity preserved byte for
+	// byte).
+	AudioIntent *AudioOutputConfig `json:"audio_intent,omitempty"`
 }
 
 // BuildFingerprint returns the canonical 64-bit hex fingerprint for
@@ -236,6 +245,16 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 		input.SourceTextHash = sha256Hex(assembleSourceText(item.Source))
 	} else {
 		input.SourceTextHash = sha256Hex(sourceTextOrQuery(item.Source))
+	}
+
+	// The audio intent block participates in the identity: a change in
+	// mix_policy, BGM or SFX (or the mode/timing that selects the audio
+	// pipeline) changes the compiled audio plan and must invalidate the
+	// item identity / cache key. A zero config stays nil so items without
+	// an audio block keep their legacy identity byte for byte.
+	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 {
+		audioCfg := item.Audio
+		input.AudioIntent = &audioCfg
 	}
 
 	return input

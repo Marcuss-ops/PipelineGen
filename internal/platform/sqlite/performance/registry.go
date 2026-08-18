@@ -19,6 +19,7 @@ func New(db *sql.DB) (*Registry, error) {
 }
 
 var _ capperformance.Registry = (*Registry)(nil)
+var _ capperformance.BaselineSource = (*Registry)(nil)
 
 func (r *Registry) RecordRun(ctx context.Context, run capperformance.Run) error {
 	if run.RunID == "" || run.Status == "" || run.StartedAt == "" {
@@ -62,6 +63,31 @@ func (r *Registry) RegisterWorkload(ctx context.Context, w capperformance.Worklo
 		return fmt.Errorf("register workload %q/%q: %w", w.WorkloadID, w.Version, err)
 	}
 	return nil
+}
+
+// WorkloadSamples returns the recorded wall-time samples (one per past
+// SUCCEEDED run) for a workload, oldest first — the benchmark baseline.
+func (r *Registry) WorkloadSamples(ctx context.Context, workloadID string) ([]int64, error) {
+	if workloadID == "" {
+		return nil, errors.New("performance registry: workload id is required")
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT wall_ms FROM performance_runs WHERE workload_id = ? AND status = 'SUCCEEDED' ORDER BY started_at`, workloadID)
+	if err != nil {
+		return nil, fmt.Errorf("performance registry: workload samples %q: %w", workloadID, err)
+	}
+	defer rows.Close()
+	var samples []int64
+	for rows.Next() {
+		var wallMS int64
+		if err := rows.Scan(&wallMS); err != nil {
+			return nil, fmt.Errorf("performance registry: scan workload sample: %w", err)
+		}
+		samples = append(samples, wallMS)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("performance registry: iterate workload samples: %w", err)
+	}
+	return samples, nil
 }
 
 func nonEmpty(value, fallback string) string {

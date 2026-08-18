@@ -20,11 +20,16 @@ import (
 
 // processStep normalizes/processes the video if needed.
 func (p *Processor) processStep(ctx context.Context, input *asset.ProcessInput, rawPath, processedPath string) (string, error) {
-	// Materialized clips always use the canonical profile. The legacy
-	// Normalize=false flag is accepted for wire compatibility but cannot
-	// produce a non-canonical persisted clip anymore.
+	// Normalize=false (reprocess contract fix, July 2026): honor the
+	// flag — skip the ffmpeg normalize and promote the raw source to
+	// the processed path (mux/copy only). The caller bypasses the
+	// artifact cache when this flag is set, so a raw file is never
+	// cached under the "normalize" key. The rendition layout path
+	// forces the flag back on (the canonical master must always be
+	// normalized).
 	if input.Normalize != nil && !*input.Normalize {
-		p.log.Warn("normalization override ignored; canonical clip profile is mandatory", zap.String("id", input.ID))
+		p.log.Info("normalization disabled by caller — promoting raw source to processed path", zap.String("id", input.ID))
+		return p.moveRawToProcessed(rawPath, processedPath)
 	}
 
 	// Nil guard for ffmpeg.
@@ -310,6 +315,11 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	// Use processStep (which already zero-copy-skips when source
 	// matches target) — produces canonical codec without re-encoding
 	// when the source is already H.264/AAC/yuv420p/30fps/1920x1080.
+	// Normalize=false is NOT honored in the rendition layout: the
+	// canonical master must always be normalized (step-9 spec), so
+	// the flag is forced off for this call.
+	masterInput := *input
+	masterInput.Normalize = nil
 	rawSHA := hashFileSHA256(rawPath)
 	masterCached := false
 	masterLeaseID := ""
@@ -319,7 +329,7 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 		masterCached, masterLeaseID = p.materializeCachedFile(ctx, masterKey, masterPath)
 	}
 	if !masterCached {
-		masterPath, err := p.processStep(ctx, input, rawPath, masterPath)
+		masterPath, err := p.processStep(ctx, &masterInput, rawPath, masterPath)
 		if err != nil {
 			p.releaseCachedClaim(ctx, masterKey, masterLeaseID, err.Error())
 			return nil, fmt.Errorf("master normalization failed: %w", err)

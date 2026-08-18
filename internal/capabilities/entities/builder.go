@@ -142,7 +142,7 @@ func projectSceneOccurrences(scene SceneInput) ([]EntityOccurrence, error) {
 		}
 		first := located[0]
 		out = append(out, EntityOccurrence{
-			EntityID:         SafeEntityID(name),
+			EntityID:         StableEntityID(entityType, name),
 			Name:             name,
 			Type:             entityType,
 			SceneID:          scene.SceneID,

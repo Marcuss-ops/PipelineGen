@@ -83,7 +83,18 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo ass
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,
 		Width: profile.Width, Height: profile.Height, FPS: profile.FPS, Codec: policy.Codec, Preset: policy.Preset,
 		CRF: policy.CRF, KeyframeInterval: profile.KeyframeInterval}
-	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: videoCfg, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
+	proc := processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: videoCfg, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
+	// Derived-artifact cache: source bytes + normalize operation + encoder
+	// config + processor version identify the artifact. Without it every
+	// reprocess re-executes Rust/FFmpeg (warm runs would be cold).
+	// Fail-soft: a cache wiring failure degrades to uncached processing.
+	if cache, cacheErr := NewArtifactCache(cfg, db.DB, log); cacheErr == nil {
+		proc.SetArtifactCache(cache)
+		log.Info("media processor artifact cache wired")
+	} else {
+		log.Warn("media processor artifact cache unavailable; media runs uncached", zap.Error(cacheErr))
+	}
+	return proc
 }
 
 // ── Sync target building ────────────────────────────────────────────────────
