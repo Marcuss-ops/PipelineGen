@@ -302,7 +302,7 @@ func TestWebResearchResolverUsesCache(t *testing.T) {
 }
 
 func TestResearchQueriesKeepBaseQueryFirst(t *testing.T) {
-	queries := researchQueries("Mike Tyson", "Mike Tyson", 4)
+	queries := researchQueries("Mike Tyson", "Mike Tyson", 4, scriptpkg.RankingMetricGeneric)
 	if len(queries) != 4 {
 		t.Fatalf("query count = %d, want 4", len(queries))
 	}
@@ -317,7 +317,7 @@ func TestResearchQueriesKeepBaseQueryFirst(t *testing.T) {
 }
 
 func TestResearchQueryBounds(t *testing.T) {
-	got := researchQueries("topic", "", 2)
+	got := researchQueries("topic", "", 2, scriptpkg.RankingMetricGeneric)
 	if len(got) != 2 {
 		t.Fatalf("researchQueries returned %d queries, want 2: %v", len(got), got)
 	}

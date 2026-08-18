@@ -215,7 +215,9 @@ func (s *BackfillService) ProcessAsset(
 	}
 
 	// Step 5: generate ASS subtitle artifacts if this asset requires subtitles.
-	if asset.RequiresSubtitles(string(assetItem.Source)) && opts.TextKind == asset.TextTrackTranscript {
+	// Skip when the caller materializes subtitles itself (SkipSubtitleMaterialization)
+	// so the same ASS is never generated twice in one pipeline run.
+	if asset.RequiresSubtitles(string(assetItem.Source)) && opts.TextKind == asset.TextTrackTranscript && !opts.SkipSubtitleMaterialization {
 		languages := append([]string{opts.SourceLanguage}, opts.TargetLanguages...)
 		// Acquisition may resolve to a different language than the
 		// requested one (for example, the first available YouTube/Whisper

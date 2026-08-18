@@ -3,8 +3,8 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -33,18 +33,14 @@ type voiceoverResult struct {
 
 // buildVoiceoverWork flattens the scene×language grid into the ordered work
 // items that need a fresh voiceover (empty text and already-generated scenes
-// are skipped). Language keys are sorted so the fan-out order — and therefore
-// the output-asset lineage ordinals — is deterministic.
-func buildVoiceoverWork(scenes []Scene) []voiceoverWork {
+// are skipped). Languages are ordered by dispatch priority — (scene_index,
+// language_priority): source language first, then targets in caller order — so
+// the fan-out order and the output-asset lineage ordinals are deterministic.
+func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages []Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
 		scene := &scenes[i]
-		langs := make([]Language, 0, len(scene.Text))
-		for lang := range scene.Text {
-			langs = append(langs, lang)
-		}
-		sort.Slice(langs, func(a, b int) bool { return langs[a] < langs[b] })
-		for _, lang := range langs {
+		for _, lang := range orderedSceneLanguages(scene.Text, sourceLanguage, targetLanguages) {
 			text := scene.Text[lang]
 			if text == "" {
 				continue
@@ -105,15 +101,35 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		if result.AudioMetrics == nil {
 			result.AudioMetrics = &AudioPipelineMetrics{}
 		}
+		// A streaming SceneReady coordinator may have completed TTS before
+		// this stage opened. Register those already-materialized assets here;
+		// buildVoiceoverWork will correctly skip synthesis for them.
+		existingOrdinal := 0
+		for _, scene := range result.Scenes {
+			for _, ref := range scene.Voiceover {
+				if ref.ID == "" {
+					continue
+				}
+				if err := r.attachOutputAsset(ctx, exec, voiceoverStep.StepID, ref.ID, existingOrdinal); err != nil {
+					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
+					return false
+				}
+				existingOrdinal++
+			}
+		}
 		// ── TTS worker pool ───────────────────────────────────────────
 		// The voiceover branch fans out scene×language synthesis through a
 		// bounded worker pool (r.ttsConcurrency). TTS depends only on the
 		// final scene text — never on entities/phrases/words — so it runs in
 		// parallel with SceneAnalysis from the SceneTextReady boundary. Each
 		// item is independent; results are applied in canonical order below.
-		work := buildVoiceoverWork(result.Scenes)
+		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
 		if len(work) > 0 {
 			ttsStarted := time.Now()
+			// applyMu serializes per-unit result mutation + checkpoint so a
+			// crash mid-phase (kill -9) preserves already-completed scenes.
+			var applyMu sync.Mutex
 			results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
 				sceneTTSStarted := time.Now()
 				audioRef, err := r.voiceoverGen.Generate(opCtx, VoiceoverInput{
@@ -145,17 +161,47 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				if err != nil {
 					return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, err)
 				}
-				return voiceoverResult{
-					audioRef: audioRef,
-					metric: TTSSSceneMetric{
-						SceneID:          item.sceneID,
-						Language:         item.lang,
-						DurationMS:       time.Since(sceneTTSStarted).Milliseconds(),
-						Characters:       len([]rune(item.text)),
-						Words:            len(strings.Fields(item.text)),
-						OutputDurationMS: time.Duration(audioRef.Duration * float64(time.Second)).Milliseconds(),
-					},
-				}, nil
+				metric := TTSSSceneMetric{
+					SceneID:          item.sceneID,
+					Language:         item.lang,
+					DurationMS:       time.Since(sceneTTSStarted).Milliseconds(),
+					Characters:       len([]rune(item.text)),
+					Words:            len(strings.Fields(item.text)),
+					OutputDurationMS: time.Duration(audioRef.Duration * float64(time.Second)).Milliseconds(),
+				}
+				// Apply + checkpoint per unit (guarded): the completed voiceover
+				// is durable before the worker returns, so a crash mid-phase
+				// preserves it and the restart REUSEs it.
+				applyMu.Lock()
+				if item.scene.Voiceover == nil {
+					item.scene.Voiceover = make(map[Language]AudioReference)
+				}
+				item.scene.Voiceover[item.lang] = audioRef
+				if (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
+					item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
+					item.scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)
+				}
+				// Snapshot the render facts under the lock: the Voiceover map
+				// is shared across a scene's language workers, so its reads
+				// must be fenced by applyMu.
+				renderText := item.scene.Text[item.lang]
+				r.checkpoint(ctx, runID, result)
+				applyMu.Unlock()
+
+				// Localized render fan-out: enqueue the render for this
+				// (scene, language) the moment its TTS is final — outside the
+				// apply lock so the enqueue never blocks the other workers.
+				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+					RunID:      runID,
+					SceneID:    item.sceneID,
+					SceneIndex: item.scene.Index,
+					Language:   item.lang,
+					Text:       renderText,
+					Voiceover:  audioRef,
+				}); err != nil {
+					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)
+				}
+				return voiceoverResult{audioRef: audioRef, metric: metric}, nil
 			})
 			if err != nil {
 				cause := fmt.Errorf("voiceover generation failed: %w", err)
@@ -163,34 +209,33 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 				return false
 			}
-			// Apply results in canonical (work-item) order: voiceover
-			// references, metrics, output-asset lineage, and narration-driven
-			// durations. TTSMS records the fan-out wall clock; the per-scene
-			// DurationMS fields carry the accumulated per-call work.
-			for i, item := range work {
+			// Voiceover references and narration-driven durations were applied
+			// per unit inside the workers (durable per-unit checkpoint). This
+			// loop only projects the canonical-order observability: per-scene
+			// TTS metrics and output-asset lineage ordinals stay deterministic.
+			for i := range work {
 				res := results[i]
-				if item.scene.Voiceover == nil {
-					item.scene.Voiceover = make(map[Language]AudioReference)
-				}
-				item.scene.Voiceover[item.lang] = res.audioRef
 				result.AudioMetrics.TTSScenes = append(result.AudioMetrics.TTSScenes, res.metric)
 				if err := r.attachOutputAsset(ctx, exec, voiceoverStep.StepID, res.audioRef.ID, i); err != nil {
 					r.failExecutionStep(ctx, exec, voiceoverStep, err)
 					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 					return false
 				}
-				// Audio-only scenes are narration-driven even when a clip is
-				// attached as evidence. The clip total/used duration remains
-				// metadata; it must never stretch the audio master.
-				if (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && res.audioRef.Duration > 0 {
-					item.scene.DurationMS = int64(res.audioRef.Duration*1000 + 0.5)
-					item.scene.DurationUS = int64(res.audioRef.Duration*1_000_000 + 0.5)
+				// Per-(scene, language) TTS correlation: record the produced
+				// voiceover asset so translation → TTS → render → Drive is
+				// joinable on (scene_id, language, asset_id).
+				if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+					OperationID: artifactOperationID(exec.Attempt, OperationTTS, work[i].sceneID, string(work[i].lang)),
+					Kind:        OperationTTS,
+					SceneID:     work[i].sceneID,
+					Language:    work[i].lang,
+					AssetID:     res.audioRef.ID,
+					Status:      "COMPLETED",
+				}); err != nil {
+					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
+					return false
 				}
-				// No mid-flight checkpoint here: the voiceover phase runs
-				// concurrently with the VidRush join + overlay.prepare branch,
-				// which writes the entity/overlay surfaces of the same result.
-				// The caller checkpoints once after both branches join so the
-				// two writers never serialize a half-projected result.
 			}
 			result.AudioMetrics.TTSMS += time.Since(ttsStarted).Milliseconds()
 			result.AudioMetrics.TTSCalls += len(work)

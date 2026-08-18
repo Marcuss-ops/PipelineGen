@@ -54,6 +54,14 @@ type ResolverConfig struct {
 	PromptVersion     string
 	TranslationPolicy string
 	TranslationModel  string
+	// OllamaModel is the concrete Ollama model passed to the
+	// translation provider's ModelPolicy. Decoupled from
+	// TranslationModel so the request fingerprint
+	// (TranslationModel) can identify the active translation
+	// stack (e.g. "argos-translate") WITHOUT leaking a provider
+	// name into the Ollama fallback's model selection.
+	// Empty → the provider picks its server default.
+	OllamaModel string
 }
 
 // Validate checks the config for mandatory fields.

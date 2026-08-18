@@ -149,7 +149,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 		ClipDurationMs:   in.ClipDurationMs,
 		LastCueEndMs:     lastCueEndMs,
 		StyleVersion:     in.SubtitleStyleID,
-		GeneratorVersion: "vidrush-ass-v1",
+		GeneratorVersion: "vidrush-ass-v2",
 		Status:           status,
 		IsCurrent:        true,
 		ValidationError:  validationErrorStr,
@@ -232,7 +232,7 @@ func CompileASSContent(cues []asset.TimedCue, styleID string) (string, error) {
 
 	sb.WriteString("[V4+ Styles]\n")
 	sb.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-	sb.WriteString(fmt.Sprintf("Style: %s,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n", styleID))
+	sb.WriteString(fmt.Sprintf("Style: %s,Arial,56,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,2,2,10,10,24,1\n\n", styleID))
 
 	sb.WriteString("[Events]\n")
 	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")

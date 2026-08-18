@@ -39,7 +39,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -56,7 +55,6 @@ func microseconds(milliseconds int64) (int64, error) {
 }
 
 func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scriptpkg.GenerationItemV2, result *scriptpkg.GenerationResult, post *adapters.PipelineResult) error {
-	started := time.Now()
 	if uc == nil || uc.audioProcessor == nil {
 		return fmt.Errorf("COMBINED_TIMELINE requires a configured audio processor")
 	}
@@ -172,9 +170,6 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		return fmt.Errorf("final audio certification failed: %w", err)
 	}
 	result.AudioStrategy = "FINAL_AUDIO_COPY"
-	result.Timings.AudioPipelineTotalMs = time.Since(started).Milliseconds()
-	result.Timings.AudioEncodePasses = 1
-	result.Timings.FinalAudioDurationMS = asset.DurationMS
 	result.FinalAudio = &scriptpkg.FinalAudioArtifact{AssetID: asset.AssetID, Path: output, AudioContractVersion: asset.AudioContractVersion, AudioPlanVersion: asset.AudioPlanVersion, AudioPlanSHA256: asset.AudioPlanSHA256, FinalAudioSHA256: asset.FinalAudioSHA256, Codec: asset.Codec, Profile: asset.Profile, SampleRate: asset.SampleRate, Channels: asset.Channels, ChannelLayout: asset.ChannelLayout, Bitrate: asset.Bitrate, DurationMS: asset.DurationMS, StartPTS: asset.StartPTS, SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible}
 	return nil
 }
@@ -236,19 +231,11 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
 	}
 
-	startAll := time.Now()
-	timings := scriptpkg.GenerationTimings{}
-	// timingAdapter is the canonical projection seam: canonical StageReports
-	// are projected into the legacy GenerationTimings fields without a second
-	// clock and without adding new fields.
-	timingAdapter := &adapters.CanonicalTimingAdapter{}
-
 	// ── Phases 1-4: Prepare ─────────────────────────────────────────
 	var prepared *PreparedGeneration
-	var prepareReports PrepareStageReports
 	_, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptPrepare, func(stageCtx context.Context) error {
 		var prepareErr error
-		prepared, prepareReports, prepareErr = uc.preparer.Prepare(stageCtx, item, preset, tracker)
+		prepared, _, prepareErr = uc.preparer.Prepare(stageCtx, item, preset, tracker)
 		return prepareErr
 	})
 	if err != nil {
@@ -257,10 +244,6 @@ func (uc *GenerateOneUseCase) Execute(
 	item = prepared.Item
 	plan := prepared.Plan
 	resolved := prepared.ResolvedSource
-	// Legacy response fields are projections only, derived from the canonical
-	// substage reports via CanonicalTimingAdapter.
-	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageSourceResolve), prepareReports.Resolve)
-	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageScriptPlan), prepareReports.Plan)
 
 	// ── Phase 5: Generate script ────────────────────────────────────
 	draft, err := uc.engineRunner.Generate(ctx, item, plan, tracker)
@@ -268,7 +251,6 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, err, tracker)
 	}
 	engineResult := draft.EngineResult
-	timingAdapter.ProjectGenerationTimings(&timings, string(scriptgen.StageScriptEngine), draft.EngineReport)
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	// script.postprocess is the parent STAGE; the per-processor stages
@@ -283,15 +265,6 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, err, tracker)
 	}
 	postResult := processed.PostResult
-	timings.PostprocessMs = processed.PostprocessMs
-	vidrushTimings := VidRushTimingFields(processed.PostprocessMs)
-	timings.SegmentExtractionMs = vidrushTimings.SegmentExtractionMs
-	timings.QueryGenerationMs = vidrushTimings.QueryGenerationMs
-	timings.ArtlistSearchMs = vidrushTimings.ArtlistSearchMs
-	timings.InternetImageSearchMs = vidrushTimings.InternetImageSearchMs
-	timings.ImageGenerationMs = vidrushTimings.ImageGenerationMs
-	timings.SQLiteMs = vidrushTimings.SQLiteMs
-	timings.BindingMs = vidrushTimings.BindingMs
 	provenance := processed.Provenance
 
 	// ── Phase 7-9: Finalize ────────────────────────────────────────
@@ -301,7 +274,6 @@ func (uc *GenerateOneUseCase) Execute(
 		EngineResult: engineResult,
 		PostResult:   postResult,
 		Provenance:   provenance,
-		Timings:      timings,
 	}, tracker)
 	if err != nil {
 		var qErr *scriptpkg.QualityGateError
@@ -324,9 +296,6 @@ func (uc *GenerateOneUseCase) Execute(
 		}); audioErr != nil {
 			return nil, uc.logPhaseError(item, "combined_audio", scriptpkg.ErrGenerationFailed, audioErr, tracker)
 		}
-		timings.AudioPipelineTotalMs = result.Timings.AudioPipelineTotalMs
-		timings.AudioEncodePasses = result.Timings.AudioEncodePasses
-		timings.FinalAudioDurationMS = result.Timings.FinalAudioDurationMS
 	} else if plan.AudioMode == "CHUNKED_VOICEOVER" {
 		result.AudioStrategy = "TIMELINE_MIX"
 		if result.FinalAudio != nil {
@@ -334,28 +303,26 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 	}
 
-	// TotalMs ← canonical run wall clock (never a second timer). When no Run
-	// is bound (legacy/test callers) fall back to the in-process elapsed time.
-	if run := kernobs.FromContext(ctx); run != nil {
-		timings.TotalMs = run.ElapsedMs()
-	} else {
-		timings.TotalMs = time.Since(startAll).Milliseconds()
-	}
-	result.Timings = timings
-
 	if resolved != nil && len(resolved.SearchResults) > 0 {
 		result.Source.SearchResults = resolved.SearchResults
 	}
 
 	tracker.PhaseComplete()
+	if run := kernobs.FromContext(ctx); run != nil {
+		result.Timings = projectCanonicalTimings(run.Report())
+	}
 
 	if uc.log != nil {
+		totalMS := int64(0)
+		if run := kernobs.FromContext(ctx); run != nil {
+			totalMS = run.ElapsedMs()
+		}
 		uc.log.Info("generate-one: completed",
 			zap.String("item_id", item.ID),
 			zap.String("title", plan.Title),
 			zap.Int("word_count", result.Output.WordCount),
 			zap.String("cache_status", result.Cache.Status),
-			zap.Int64("total_ms", timings.TotalMs))
+			zap.Int64("total_ms", totalMS))
 	}
 
 	// Sprint 1.3 (godlike/08): emit the canonical per-item Status
@@ -365,11 +332,38 @@ func (uc *GenerateOneUseCase) Execute(
 	// string literals; using result.Status keeps the emit surface
 	// in lockstep with the classify phase.
 	tracker.TrackEvent("job.completed", "Script generation completed", map[string]any{
-		"item_id":    item.ID,
-		"status":     result.Status,
-		"total_ms":   timings.TotalMs,
+		"item_id": item.ID,
+		"status":  result.Status,
+		"total_ms": func() int64 {
+			if run := kernobs.FromContext(ctx); run != nil {
+				return run.ElapsedMs()
+			}
+			return 0
+		}(),
 		"word_count": result.Output.WordCount,
 	})
 
 	return result, nil
+}
+
+func projectCanonicalTimings(report *kernobs.RunReport) scriptpkg.GenerationTimings {
+	var out scriptpkg.GenerationTimings
+	if report == nil {
+		return out
+	}
+	out.PostprocessMs = make(map[string]int64)
+	for _, stage := range report.Stages {
+		switch stage.Name {
+		case "source.resolve":
+			out.SourceResolveMs = stage.DurationMs
+		case "script.plan":
+			out.PlanBuildMs = stage.DurationMs
+		case "script.engine":
+			out.EngineMs = stage.DurationMs
+		default:
+			out.PostprocessMs[stage.Name] = stage.DurationMs
+		}
+	}
+	out.TotalMs = report.WallTimeMs
+	return out
 }

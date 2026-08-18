@@ -92,7 +92,7 @@ func (b *coordinatorBridge) SearchWithFallback(ctx context.Context, subject stri
 // evidenceRanker is the deterministic live-test stand-in for the Ollama
 // ranker: order by evidence volume (sources, then verified claims), tie-break
 // by candidate id. It never invents numbers.
-func evidenceRanker(_ context.Context, _ string, inputs []scriptports.ResearchCandidateRankingInput) ([]scriptports.ResearchCandidateRanking, error) {
+func evidenceRanker(_ context.Context, _ string, _ scriptpkg.RankingMetric, inputs []scriptports.ResearchCandidateRankingInput) (scriptports.ResearchRankingResult, error) {
 	type item struct {
 		id      string
 		sources int
@@ -124,7 +124,7 @@ func evidenceRanker(_ context.Context, _ string, inputs []scriptports.ResearchCa
 			Rationale: "deterministic live-test ranker by evidence volume",
 		})
 	}
-	return out, nil
+	return scriptports.ResearchRankingResult{Ranking: out}, nil
 }
 
 func envOr(key, fallback string) string {

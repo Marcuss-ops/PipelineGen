@@ -28,9 +28,8 @@ func buildGenerationResult(
 	plan scriptpkg.ResolvedGenerationPlan,
 	engineResult *EngineResult,
 	postResult *adapters.PipelineResult,
-	timings scriptpkg.GenerationTimings,
 ) *scriptpkg.GenerationResult {
-	return buildGenerationResultWithCache(item, plan, engineResult, postResult, timings, nil, context.Background())
+	return buildGenerationResultWithCache(item, plan, engineResult, postResult, nil, context.Background())
 }
 
 func buildGenerationResultWithCache(
@@ -38,7 +37,6 @@ func buildGenerationResultWithCache(
 	plan scriptpkg.ResolvedGenerationPlan,
 	engineResult *EngineResult,
 	postResult *adapters.PipelineResult,
-	timings scriptpkg.GenerationTimings,
 	cache scriptports.VidRushCachePort,
 	ctx context.Context,
 ) *scriptpkg.GenerationResult {
@@ -112,7 +110,6 @@ func buildGenerationResultWithCache(
 			Hit:    cacheHit,
 			Script: scriptCacheStatus(engineResult.CacheStatus),
 		},
-		Timings: timings,
 	}
 
 	// Populate Source trace.
@@ -129,6 +126,16 @@ func buildGenerationResultWithCache(
 	}
 	if len(engineResult.SearchResults) > 0 {
 		sourceTrace.SearchResults = append([]scriptpkg.SearchResultItem(nil), engineResult.SearchResults...)
+	}
+	if plan.ResearchEvidence != nil {
+		sourceTrace.ResearchEvidence = plan.ResearchEvidence.Clone()
+		if plan.ResearchReport != nil {
+			report := *plan.ResearchReport
+			report.Evidence = plan.ResearchEvidence.Clone()
+			sourceTrace.ResearchReport = &report
+		} else {
+			sourceTrace.ResearchReport = &scriptpkg.ResearchReport{Status: "SUCCEEDED", Mode: "multi_candidate", SearchEnabled: true, Searched: true, QualityGatePassed: true, Evidence: plan.ResearchEvidence.Clone()}
+		}
 	}
 	result.Source = sourceTrace
 

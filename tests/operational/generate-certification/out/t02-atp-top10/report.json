@@ -1,0 +1,77 @@
+{
+  "test_id": "t02",
+  "title": "T02 The Current Top 10 Men's Tennis Players in the World (freshness)",
+  "result": "FAIL",
+  "job": {
+    "id": "job_1787057997903140209_a82e0abe",
+    "status": "FAILED",
+    "error": "generate job handler: durable run failed: generate scene text failed: scenetext: source resolution failed for type \"research\": RESEARCH_INSUFFICIENT_SOURCES: all 10 candidates failed the research quality gate: Jannik Sinner: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.britannica.com/biography/Jannik-Sinner: page fetch returned status 403; Carlos Alcaraz: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://in.reuters.com/: page fetch returned status 401; Novak Djokovic: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/novak-djokovic/d643/bio: page fetch returned status 403; Alexander Zverev: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.olympics.com/en/athletes/alexander-zverev: page fetch: Get \"https://www.olympics.com/en/athletes/alexander-zverev\": stream error: stream ID 1; INTERNAL_ERROR; received from peer; Taylor Fritz: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/taylor-fritz/fb98/overview: page fetch returned status 403; Casper Ruud: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/casper-ruud/rh16/overview: page fetch returned status 403; Daniil Medvedev: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40; Alex de Minaur: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.youtube.com/channel/UCPzFLpOblZEaIx2lpym1l1A: page fetch: response too large; Holger Rune: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.howtopronounce.com/holger-rune: page fetch returned status 404; Tommy Paul: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://usa.tommy.com/en/collection: page fetch returned status 403",
+    "word_count": 0,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 0,
+  "verified_claims": 0,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": null,
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": null,
+    "cache_hit": null,
+    "queries": 0,
+    "sources": 0,
+    "pages_fetched": 0,
+    "pages_failed": 0,
+    "rejected_sources": 0,
+    "requested_metric": "official_ranking_points",
+    "freshness_days": 7
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 0,
+    "present_in_script": 0,
+    "missing": [
+      "Jannik Sinner",
+      "Carlos Alcaraz",
+      "Novak Djokovic",
+      "Alexander Zverev",
+      "Taylor Fritz",
+      "Casper Ruud",
+      "Daniil Medvedev",
+      "Alex de Minaur",
+      "Holger Rune",
+      "Tommy Paul"
+    ]
+  },
+  "notes": [
+    "job terminal status 'FAILED' — generate job handler: durable run failed: generate scene text failed: scenetext: source resolution failed for type \"research\": RESEARCH_INSUFFICIENT_SOURCES: all 10 candidates failed the research quality gate: Jannik Sinner: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.britannica.com/biography/Jannik-Sinner: page fetch returned status 403; Carlos Alcaraz: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://in.reuters.com/: page fetch returned status 401; Novak Djokovic: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/novak-djokovic/d643/bio: page fetch returned status 403; Alexander Zverev: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.olympics.com/en/athletes/alexander-zverev: page fetch: Get \"https://www.olympics.com/en/athletes/alexander-zverev\": stream error: stream ID 1; INTERNAL_ERROR; received from peer; Taylor Fritz: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/taylor-fritz/fb98/overview: page fetch returned status 403; Casper Ruud: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.atptour.com/en/players/casper-ruud/rh16/overview: page fetch returned status 403; Daniil Medvedev: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40; Alex de Minaur: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.youtube.com/channel/UCPzFLpOblZEaIx2lpym1l1A: page fetch: response too large; Holger Rune: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://www.howtopronounce.com/holger-rune: page fetch returned status 404; Tommy Paul: RESEARCH_INSUFFICIENT_SOURCES: accepted 0/2 sources, full pages 0/0, evidence score 0.00/1.40: https://usa.tommy.com/en/collection: page fetch returned status 403",
+    "freshness_days=7 folded into research cache fingerprint (per-candidate page validation)"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

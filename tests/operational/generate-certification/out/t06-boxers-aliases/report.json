@@ -1,0 +1,75 @@
+{
+  "test_id": "t06",
+  "title": "T06 10 Boxing Superstars Who Conquered Different Eras",
+  "result": "PASS",
+  "job": {
+    "id": "job_1787058133354232046_3cd4e3c3",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 1369,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 10,
+  "verified_claims": 59,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "sports_achievement",
+    "resolved_metric": "sports_achievement",
+    "strategy": "llm_verified_evidence",
+    "fallback_used": false,
+    "candidates_with_evidence": 8
+  },
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 1,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 20,
+    "sources": 59,
+    "pages_fetched": 46,
+    "pages_failed": 17,
+    "rejected_sources": 2,
+    "requested_metric": null,
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 10,
+    "present_in_script": 10,
+    "missing": []
+  },
+  "notes": [],
+  "_details": {
+    "claim_contamination": [
+      [
+        "Joe Frazier",
+        "Muhammad Ali",
+        "boxing career of muhammad ali - wikipedia jump to content search search donate create account log in personal tools donate create account log in boxing career o"
+      ]
+    ],
+    "script_contamination": []
+  }
+}

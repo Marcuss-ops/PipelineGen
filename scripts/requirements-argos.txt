@@ -1,0 +1,6 @@
+# PipelineGen offline translation runtime (Argos Translate / OpenNMT).
+#
+# Argos Translate ships no language models in the PyPI wheel: operators
+# must install the per-language-pair .argosmodel packages via
+# scripts/tools/argos_install_models.py AFTER this requirement is installed.
+argostranslate==1.9.6

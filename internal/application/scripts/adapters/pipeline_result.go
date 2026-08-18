@@ -30,10 +30,7 @@ type PipelineResult struct {
 	Scenes                  []SceneImage
 	ScriptID                int64
 	AlreadyPersisted        bool
-	// StageDurations maps processor name → wall-clock milliseconds
-	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
-	StageDurations map[string]int64             `json:"stage_durations,omitempty"`
-	StageProgress  map[string]job.StageProgress `json:"stage_progress,omitempty"`
+	StageProgress           map[string]job.StageProgress `json:"stage_progress,omitempty"`
 	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
 	// after mergePostProcessResult — the canonical pipeline-level
 	// surface for processors that reconstructed scenes from prose.

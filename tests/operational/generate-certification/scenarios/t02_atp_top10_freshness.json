@@ -1,0 +1,64 @@
+{
+  "name": "T02 The Current Top 10 Men's Tennis Players in the World (freshness)",
+  "case_prefix": "t02-atp-top10",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "The Current Top 10 Men's Tennis Players in the World",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "The current official ATP rankings top 10 men's tennis players in the world, ordered by official ranking points",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 2,
+            "results_per_query": 8,
+            "max_pages": 6,
+            "min_sources": 2,
+            "timeout_seconds": 120,
+            "require_citations": true,
+            "max_parallel": 6,
+            "freshness_days": 7,
+            "ranking_metric": "official_ranking_points",
+            "candidates": [
+              "Jannik Sinner",
+              "Carlos Alcaraz",
+              "Novak Djokovic",
+              "Alexander Zverev",
+              "Taylor Fritz",
+              "Casper Ruud",
+              "Daniil Medvedev",
+              "Alex de Minaur",
+              "Holger Rune",
+              "Tommy Paul"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 900,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 600,
+    "max_words": 1300,
+    "keywords": ["Sinner", "Alcaraz", "Djokovic", "Zverev", "ranking"],
+    "language_regex": ["\\b(the|and|points|ranking)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

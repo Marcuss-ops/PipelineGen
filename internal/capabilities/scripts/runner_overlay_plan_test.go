@@ -229,23 +229,29 @@ func TestRunner_OverlayPlanAllNineSemanticEntities(t *testing.T) {
 	for _, layer := range compiled.Plan.Layers {
 		layerByID[layer.ID] = layer
 	}
-	// Every layer type is one of the four canonical primitives' Chronon
-	// spellings (text / image / video / color).
+	// Preset-driven layers carry NO type (Chronon derives it from
+	// supported_layer); preset-less primitives (PRODUCT / LOGO) still carry
+	// their image/video/color type.
 	for _, layer := range compiled.Plan.Layers {
-		require.Contains(t, []string{"text", "image", "video", "color"}, layer.Type, "layer %q must terminate in a canonical primitive", layer.ID)
+		if layer.Type == "" {
+			require.NotEmpty(t, layer.Preset, "layer %q must carry a preset when its type is Chronon-derived", layer.ID)
+			continue
+		}
+		require.Contains(t, []string{"image", "video", "color"}, layer.Type, "layer %q must terminate in a canonical primitive", layer.ID)
 	}
-	require.Equal(t, "text", layerByID["scene-0-phrase-changed-everything"].Type)
+	require.Equal(t, "", layerByID["scene-0-phrase-changed-everything"].Type)
 	require.Equal(t, "caption_card", layerByID["scene-0-phrase-changed-everything"].Preset)
-	require.Equal(t, "text", layerByID["scene-0-keyword-apple"].Type)
+	require.Equal(t, "", layerByID["scene-0-keyword-apple"].Type)
 	require.Equal(t, "active_word_pop", layerByID["scene-0-keyword-apple"].Preset)
-	require.Equal(t, "image", layerByID["scene-0-image-tim-cook-photo"].Type)
-	require.Equal(t, "contain", layerByID["scene-0-image-tim-cook-photo"].Fit)
-	require.Equal(t, "text", layerByID["overlay-scene-0-tim-cook"].Type)
+	require.Equal(t, "", layerByID["scene-0-image-tim-cook-photo"].Type)
+	require.Equal(t, "image_focus_in", layerByID["scene-0-image-tim-cook-photo"].Preset)
+	require.Equal(t, "", layerByID["scene-0-image-tim-cook-photo"].Fit)
+	require.Equal(t, "", layerByID["overlay-scene-0-tim-cook"].Type)
 	require.Equal(t, "lower_third_safe", layerByID["overlay-scene-0-tim-cook"].Preset)
-	require.Equal(t, "text", layerByID["overlay-scene-0-cupertino"].Type)
-	require.Equal(t, "text", layerByID["scene-0-number-ten-million"].Type)
+	require.Equal(t, "", layerByID["overlay-scene-0-cupertino"].Type)
+	require.Equal(t, "", layerByID["scene-0-number-ten-million"].Type)
 	require.Equal(t, "active_word_pop", layerByID["scene-0-number-ten-million"].Preset)
-	require.Equal(t, "text", layerByID["scene-0-quote-changed-everything"].Type)
+	require.Equal(t, "", layerByID["scene-0-quote-changed-everything"].Type)
 	require.Equal(t, "caption_card", layerByID["scene-0-quote-changed-everything"].Preset)
 	require.Equal(t, "image", layerByID["scene-0-product-vision-pro"].Type)
 	require.Equal(t, "image", layerByID["scene-0-logo-apple-logo"].Type)

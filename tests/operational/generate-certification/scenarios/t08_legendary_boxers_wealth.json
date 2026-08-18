@@ -1,0 +1,63 @@
+{
+  "name": "T08 The 10 Richest Legendary Boxers of the 20th Century (fail-closed check)",
+  "case_prefix": "t08-legendary-boxers-wealth",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "The 10 Richest Legendary Boxers of the 20th Century",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "The 10 richest legendary boxers of the 20th century ranked by estimated net worth. If reliable net worth evidence is missing for a boxer, do not invent a number; rank only those with documented wealth.",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 2,
+            "results_per_query": 8,
+            "max_pages": 6,
+            "min_sources": 3,
+            "timeout_seconds": 120,
+            "require_citations": true,
+            "max_parallel": 6,
+            "ranking_metric": "estimated_net_worth",
+            "candidates": [
+              "Muhammad Ali",
+              "Joe Frazier",
+              "Roberto Durán",
+              "Sugar Ray Leonard",
+              "Marvin Hagler",
+              "Thomas Hearns",
+              "Joe Louis",
+              "Rocky Marciano",
+              "Jack Dempsey",
+              "George Foreman"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 1000,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 600,
+    "max_words": 1400,
+    "keywords": ["Ali", "Frazier", "Leonard", "Marciano", "net worth"],
+    "language_regex": ["\\b(the|and|wealth|worth|million)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

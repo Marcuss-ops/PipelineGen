@@ -177,6 +177,12 @@ type BackfillOptions struct {
 	OnlyMissing     bool
 	Limit           int
 	AssetIDs        []string
+
+	// SkipSubtitleMaterialization skips the Step-5 ASS generation inside
+	// ProcessAsset when the caller materializes subtitles itself (e.g. the
+	// multilingual renderer, which generates ASS from its own per-cue cues).
+	// Default false preserves the standalone backfill CLI behaviour.
+	SkipSubtitleMaterialization bool
 }
 
 // Validate returns an error for any invalid input. Empty

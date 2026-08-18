@@ -29,7 +29,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
+
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
@@ -196,8 +199,47 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 		OutboxEvents:     nil,
 	}
 
-	canonicalAssetIDs, completionErr := w.broker.CompleteWithArtifacts(ctx, cmd)
+	// The finalization transaction (broker.CompleteWithArtifacts →
+	// JobFinalizer) runs under SQLite WAL single-writer semantics. A
+	// concurrent writer (Drive publication, outbox pool, maintenance WAL
+	// checkpoint) can make the finalizer's media_assets upsert fail with
+	// SQLITE_BUSY/SQLITE_LOCKED ("database is locked") — a transient
+	// contention that resolves once the other writer commits. Retry a
+	// bounded number of times instead of treating it as terminal: the
+	// pre-fix behaviour failed BOTH CompleteWithArtifacts AND the Fail
+	// fallback with the same lock, leaving the job orphaned in RUNNING
+	// until the 5-minute lease scanner requeued it (~9 min wall).
+	var canonicalAssetIDs []string
+	var completionErr error
+	completionErr = retry.Do(ctx, func() error {
+		ids, err := w.broker.CompleteWithArtifacts(ctx, cmd)
+		if err == nil {
+			canonicalAssetIDs = ids
+			return nil
+		}
+		if isSQLiteBusy(err) {
+			observability.WorkerFinalizationDBLockedTotal.WithLabelValues(j.Type, "retried").Inc()
+		}
+		return err
+	}, retry.Options{
+		MaxAttempts:    5,
+		InitialBackoff: 200 * time.Millisecond,
+		MaxBackoff:     2 * time.Second,
+		BackoffFactor:  2.0,
+		DisableJitter:  true,
+		IsRetryable:    isSQLiteBusy,
+		OnRetry: func(attempt int, err error) {
+			w.log.Warn("finalization: database is locked — retrying CompleteWithArtifacts",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type),
+				zap.Int("retry_attempt", attempt+1),
+				zap.Error(err))
+		},
+	})
 	if completionErr != nil {
+		if isSQLiteBusy(completionErr) {
+			observability.WorkerFinalizationDBLockedTotal.WithLabelValues(j.Type, "terminal").Inc()
+		}
 		diagnostic := fmt.Sprintf("CompletionPort.CompleteWithArtifacts failed for artifact-producing job %q: %v", j.Type, completionErr)
 		w.log.Error("failed to mark artifact-producing job as completed via CompletionPort — failing job",
 			zap.String("job_id", j.ID),
@@ -276,4 +318,26 @@ func (w *Worker) finalizeJobLegacyComplete(ctx context.Context, j *job.Job, work
 	} else {
 		w.log.Info("job completed", zap.String("job_id", j.ID))
 	}
+}
+
+// isSQLiteBusy reports whether err is (or wraps) a mattn/go-sqlite3
+// SQLITE_BUSY / SQLITE_LOCKED error — the canonical "database is locked"
+// transient shape. Typed probe (errors.As on the driver's Error value or
+// pointer), NOT substring matching, mirroring the typed-probe convention
+// already used by enqueue_service.go's UNIQUE-constraint rescue. The
+// finalizer wraps the driver error with %w, so errors.As walks the
+// full "...: upsert media_assets: database is locked" chain.
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	var value sqlite3.Error
+	if errors.As(err, &value) {
+		return value.Code == sqlite3.ErrBusy || value.Code == sqlite3.ErrLocked
+	}
+	var ptr *sqlite3.Error
+	if errors.As(err, &ptr) && ptr != nil {
+		return ptr.Code == sqlite3.ErrBusy || ptr.Code == sqlite3.ErrLocked
+	}
+	return false
 }

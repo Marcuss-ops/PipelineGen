@@ -51,6 +51,7 @@ type ResolvedGenerationPlan struct {
 	// For clip/catalog/search sources it's the clip evidence text.
 	SourceText       string                `json:"source_text"`
 	ResearchSources  []SourceReference     `json:"research_sources,omitempty"`
+	ResearchReport   *ResearchReport       `json:"research_report,omitempty"`
 	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`
 
 	// Guidelines are the writing style constraints.

@@ -1,0 +1,83 @@
+{
+  "test_id": "t03",
+  "title": "T03 The 10 Largest Economies in the World in 2026",
+  "result": "FAIL",
+  "job": {
+    "id": "job_1787058012981689349_ec1d18e8",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 1020,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 10,
+  "verified_claims": 59,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "generic",
+    "resolved_metric": "generic",
+    "strategy": "deterministic_verified_evidence",
+    "fallback_used": true,
+    "fallback_reason": "MODEL_OUTPUT_VALIDATION_FAILED",
+    "candidates_with_evidence": 6,
+    "ranking_confidence": {
+      "comparable_candidates": 6,
+      "total_candidates": 10,
+      "coverage": 0.6,
+      "low_confidence_candidates": [
+        "Canada",
+        "Germany",
+        "United Kingdom",
+        "United States"
+      ]
+    }
+  },
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 20,
+    "sources": 59,
+    "pages_fetched": 49,
+    "pages_failed": 21,
+    "rejected_sources": 8,
+    "requested_metric": "nominal_gdp_usd",
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 10,
+    "present_in_script": 10,
+    "missing": []
+  },
+  "notes": [
+    "requested ranking_metric 'nominal_gdp_usd' resolved to 'generic' (unsupported metric normalizes to generic)"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

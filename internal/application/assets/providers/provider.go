@@ -58,8 +58,9 @@ type Provider interface {
 // query. Adapters that only fetch (no live search) must NOT
 // implement this interface.
 //
-// Artlist and YouTube currently implement SearchProvider. Stock
-// will follow in a later wave.
+// Artlist, YouTube and Stock implement SearchProvider (Stock was
+// added August 2026 so it appears in the unified search discovery
+// universe).
 type SearchProvider interface {
 	Provider
 

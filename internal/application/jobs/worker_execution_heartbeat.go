@@ -73,6 +73,7 @@ package jobs
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -90,6 +91,11 @@ type renewLeaseLoopOpts struct {
 	// state is LeaseStateCancelRequested. Idempotent (calling
 	// jobCancel on an already-cancelled ctx is a no-op).
 	jobCancel context.CancelFunc
+
+	// renewCount, when non-nil, is incremented once per successful
+	// lease renewal (LeaseStateContinue) so the caller can emit
+	// lease_renew_count observability at finalization.
+	renewCount *atomic.Int64
 }
 
 // renewLeaseLoopWith drives the heartbeat ticker. The for-select
@@ -125,6 +131,10 @@ func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-ch
 			return
 		case <-ticker.C:
 			result, shouldExit := w.attemptLeaseRenewal(ctx, jobID)
+
+			if result.State == jobs.LeaseStateContinue && opts.renewCount != nil {
+				opts.renewCount.Add(1)
+			}
 
 			if shouldExit {
 				// Fase 4(b): Propagate context cancellation if the

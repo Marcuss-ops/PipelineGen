@@ -440,7 +440,7 @@ func (r *TextTrackResolver) AcquireSegmentText(ctx context.Context, req TextTrac
 				LanguageCode:       lang,
 				SourceLanguageCode: lang,
 				PlainText:          det.Text,
-				Cues:               nil,
+				Cues:               det.Cues,
 				SourceType:         asset.TextSourceWhisper,
 				IsOriginal:         true,
 				Provider:           "whisper",

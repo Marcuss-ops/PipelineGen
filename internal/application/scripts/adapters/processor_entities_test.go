@@ -7,8 +7,11 @@ import (
 	"sync"
 	"testing"
 
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	"github.com/stretchr/testify/require"
 )
 
 type boundaryEntityExtractor struct {
@@ -150,7 +153,7 @@ func TestBuildVidRushSegmentResultPrefersManualQueries(t *testing.T) {
 		{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Query: "ancient Maya temples jungle aerial cinematic", Providers: []string{"artlist"}, MediaTypes: []string{"video"}},
 		{SegmentID: "main", Slot: mediadomain.SlotSecondaryImage, Query: "Chichen Itza Maya pyramid Yucatan", Providers: []string{"internet_images"}, MediaTypes: []string{"image"}},
 	}}}
-	result := buildVidRushSegmentResult(plan, scriptpkg.CanonicalSegment{ID: "main", Text: "Maya temples"}, &scriptpkg.EntityResult{}, 8, 1, 5, 5, 5)
+	result := buildVidRushSegmentResult(context.Background(), nil, plan, scriptpkg.CanonicalSegment{ID: "main", Text: "Maya temples"}, &scriptpkg.EntityResult{}, 8, 1, 5, 5, 5)
 	if !strings.Contains(strings.Join(result.Insights.ArtlistQueries, " | "), "ancient Maya temples jungle aerial cinematic") {
 		t.Fatalf("Artlist queries = %v, want manual query", result.Insights.ArtlistQueries)
 	}
@@ -184,6 +187,59 @@ func TestSegmentSpecSceneContextIsolatesCurrentScene(t *testing.T) {
 	}
 }
 
+// TestVidRushSegmentEnricherResolverDrivesImageQueries certifies that the
+// deterministic Image Search Intent resolver (the same one the golden battery
+// runs) drives the segment's image fan-out: ordered queries, primary first,
+// negated entities excluded, value entities (MONEY/DATE) never surfacing as
+// image queries.
+func TestVidRushSegmentEnricherResolverDrivesImageQueries(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	resolver := capabilityimagesearch.NewResolver(localnlp.NewExtractor())
+	enricher := NewVidRushSegmentEnricher(localnlp.NewExtractor(), nil)
+	enricher.WithImageSearchResolver(resolver)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en"}
+	scene := scriptpkg.SpecScene{ID: "scene-1", Index: 0, Text: "Floyd Mayweather defeated Manny Pacquiao in one of boxing's biggest fights."}
+	seg, err := enricher.Enrich(context.Background(), plan, scene)
+	require.NoError(t, err)
+	require.Equal(t, []string{"Floyd Mayweather", "Manny Pacquiao", "Floyd Mayweather Manny Pacquiao fight"}, seg.Insights.ImageQueries,
+		"the resolver's ordered queries (primary first, event last) must drive the fan-out")
+	require.True(t, seg.Insights.ImageSearchRequired)
+}
+
+// TestVidRushSegmentEnricherResolverNoImageDecision certifies the no-image
+// gate flows to the segment AND disables the provider: an abstract sentence
+// carries Required=false with the reason and an EMPTY query set — the fan-out
+// gates internet-images on len(ImageQueries) > 0, so no forced search happens
+// (battery T24/T25/T26). The Artlist video path stays independent.
+func TestVidRushSegmentEnricherResolverNoImageDecision(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	resolver := capabilityimagesearch.NewResolver(localnlp.NewExtractor())
+	enricher := NewVidRushSegmentEnricher(localnlp.NewExtractor(), nil)
+	enricher.WithImageSearchResolver(resolver)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en"}
+	scene := scriptpkg.SpecScene{ID: "scene-1", Index: 0, Text: "Success often requires patience, discipline and consistency."}
+	seg, err := enricher.Enrich(context.Background(), plan, scene)
+	require.NoError(t, err)
+	require.False(t, seg.Insights.ImageSearchRequired, "abstract sentence must decide no image search")
+	require.Equal(t, "no_visual_entity", seg.Insights.ImageSearchNoImageReason)
+	require.Empty(t, seg.Insights.ImageQueries, "no-image decision must yield an empty query set so the provider fan-out is disabled")
+}
+
+// TestVidRushSegmentEnricherWithoutResolverKeepsLegacyPath certifies that an
+// unwired resolver leaves the legacy ad-hoc builder in charge (Required=true).
+func TestVidRushSegmentEnricherWithoutResolverKeepsLegacyPath(t *testing.T) {
+	vidrushExtractionCache = sync.Map{}
+	enricher := NewVidRushSegmentEnricher(localnlp.NewExtractor(), nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en"}
+	scene := scriptpkg.SpecScene{ID: "scene-1", Index: 0, Text: "Floyd Mayweather defeated Manny Pacquiao in one of boxing's biggest fights."}
+	seg, err := enricher.Enrich(context.Background(), plan, scene)
+	require.NoError(t, err)
+	require.True(t, seg.Insights.ImageSearchRequired)
+	require.Contains(t, strings.Join(seg.Insights.ImageQueries, " | "), "floyd mayweather")
+}
+
 func TestSegmentQueryContextPrefersSourceSegmentOverGeneratedProse(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		SourceText: "Aerial drone footage reveals a winding coastal road at golden hour.\n\nA barista crafts latte art in a coffee shop.",
@@ -192,7 +248,7 @@ func TestSegmentQueryContextPrefersSourceSegmentOverGeneratedProse(t *testing.T)
 	if got := segmentQueryContext(plan, segment); got != "Aerial drone footage reveals a winding coastal road at golden hour." {
 		t.Fatalf("query context = %q, want source paragraph", got)
 	}
-	result := buildVidRushSegmentResult(plan, segment, &scriptpkg.EntityResult{}, 5, 5, 5, 5, 5, segmentQueryContext(plan, segment))
+	result := buildVidRushSegmentResult(context.Background(), nil, plan, segment, &scriptpkg.EntityResult{}, 5, 5, 5, 5, 5, segmentQueryContext(plan, segment))
 	if !strings.Contains(strings.Join(result.Insights.ArtlistQueries, " | "), "coastal road") {
 		t.Fatalf("Artlist queries = %v, want source-grounded coastal road query", result.Insights.ArtlistQueries)
 	}
@@ -200,6 +256,8 @@ func TestSegmentQueryContextPrefersSourceSegmentOverGeneratedProse(t *testing.T)
 
 func TestBuildVidRushSegmentResultPreservesEntityType(t *testing.T) {
 	result := buildVidRushSegmentResult(
+		context.Background(),
+		nil,
 		&scriptpkg.ResolvedGenerationPlan{},
 		scriptpkg.CanonicalSegment{ID: "segment-001", Text: "OpenAI research", TextHash: "hash"},
 		&scriptpkg.EntityResult{Concepts: []scriptpkg.Entity{{Value: "OpenAI", Type: "ORGANIZATION", Score: 0.98}}},

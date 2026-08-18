@@ -89,4 +89,10 @@ type MultilingualConfig struct {
 	// domain.ModelPolicy enum at boot time, not a silent
 	// fallback to "auto").
 	TranslationPolicy string `yaml:"translation_policy" default:"auto"`
+
+	// TranslationProvider selects the translation provider strategy
+	// for the TextTrackMaterializer (PR-ARGOS-TRANSLATION, Aug 2026):
+	//   - "argos"  → Argos Translate primary + Ollama fallback (default)
+	//   - "ollama" → Ollama-only
+	TranslationProvider string `yaml:"translation_provider" default:"argos"`
 }

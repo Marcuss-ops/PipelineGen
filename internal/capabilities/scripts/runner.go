@@ -820,7 +820,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		if !r.runAudioCompilePhase(c, runID, req, exec, resumeIdx, result) {
 			return false
 		}
-		return r.publishFinalAudio(c, runID, req, routing, result)
+		return r.publishFinalAudio(c, runID, req, routing, exec, result)
 	}) {
 		return
 	}

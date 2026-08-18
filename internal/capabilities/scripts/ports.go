@@ -36,6 +36,15 @@ type TextGenerator interface {
 	GenerateSceneText(ctx context.Context, request GenerateRequest) ([]Scene, error)
 }
 
+// SceneTextTraceGenerator is implemented by generators that resolve an
+// auditable source (for example web research) while producing scene text.
+// The trace must travel with the durable result; otherwise the async runner
+// can successfully generate narration while silently dropping provenance.
+type SceneTextTraceGenerator interface {
+	TextGenerator
+	GenerateSceneTextWithTrace(context.Context, GenerateRequest) ([]Scene, scriptpkg.SourceTrace, error)
+}
+
 // SceneTextStreamer is the optional streaming variant of TextGenerator. A
 // generator that also implements this interface emits each scene as soon as
 // its text becomes final, letting the runner fire SceneTextReady(N) (a
@@ -50,6 +59,13 @@ type TextGenerator interface {
 // does not implement this interface.
 type SceneTextStreamer interface {
 	GenerateSceneTextStream(ctx context.Context, request GenerateRequest, emit func(Scene) error) error
+}
+
+// SceneTextTraceStreamer preserves research provenance across the streaming
+// boundary. It emits the same immutable scenes as SceneTextStreamer.
+type SceneTextTraceStreamer interface {
+	SceneTextStreamer
+	GenerateSceneTextStreamWithTrace(context.Context, GenerateRequest, func(Scene) error) (scriptpkg.SourceTrace, error)
 }
 
 // ScriptPersistenceInput is the typed handoff to the canonical SQLite
@@ -253,6 +269,28 @@ type OverlayRenderEnqueuer interface {
 	EnqueueChrononPlan(context.Context, capabilityoverlay.OverlayPlan) (RenderReference, error)
 }
 
+// LocalizedRenderInput is one ready-to-render localized unit: a scene whose
+// translation and voiceover for one language are final. It is the per-(scene,
+// language) trigger of the localized render fan-out — the runner emits it the
+// moment that unit's TTS completes, never after a global join.
+type LocalizedRenderInput struct {
+	RunID      string
+	SceneID    string
+	SceneIndex int
+	Language   Language
+	Text       string
+	Voiceover  AudioReference
+}
+
+// LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's
+// translation + TTS for a language are ready, so Rust can start on scene 1 ES
+// while scene 2 is still being translated/voiced. A nil enqueuer is a
+// legitimate no-op (render not registered); a non-nil enqueuer is fail-closed
+// (an enqueue error fails the run, never a silent skip).
+type LocalizedRenderEnqueuer interface {
+	EnqueueLocalizedRender(context.Context, LocalizedRenderInput) error
+}
+
 // CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
 // return a probed, certified final audio artifact; the runner never falls
 // back to chunked mixing when this port is unavailable or fails.
@@ -327,6 +365,43 @@ type ExecutionStep struct {
 	ErrorMessage string
 }
 
+// ArtifactOperation kinds — the stable vocabulary every phase uses when it
+// records an artifact operation, so a query can join translation → TTS →
+// subtitles → render → validation → Drive on one consistent operation kind.
+const (
+	OperationTranslation = "translation"
+	OperationTTS         = "tts"
+	OperationSubtitles   = "subtitles"
+	OperationRender      = "render"
+	OperationValidation  = "validation"
+	OperationDriveUpload = "drive_upload"
+)
+
+// ArtifactOperation is the end-to-end correlation key for one traceable
+// operation that produces, transforms, or validates an artifact. JobID rides
+// on the ExecutionContext; the remaining key fields (scene_id, language,
+// asset_id, operation_id) travel on this struct so a question like "why was
+// Spanish Scene 4 not uploaded?" can be answered by joining every phase on
+// the same key across translation → TTS → subtitles → render → validation →
+// Drive.
+type ArtifactOperation struct {
+	// OperationID is the stable per-attempt identifier of the operation
+	// (e.g. "translation:scene-4:es:attempt-1").
+	OperationID string `json:"operation_id"`
+	// Kind is one of the Operation* constants (translation/tts/subtitles/
+	// render/validation/drive_upload).
+	Kind string `json:"kind"`
+	// SceneID is empty for run-scoped artifacts (final audio, document).
+	SceneID string `json:"scene_id,omitempty"`
+	// Language is empty for run-scoped artifacts.
+	Language Language `json:"language,omitempty"`
+	// AssetID is the produced artifact identity; empty for text-only
+	// operations (translation).
+	AssetID string `json:"asset_id,omitempty"`
+	// Status is COMPLETED for a recorded produced/validated artifact.
+	Status string `json:"status"`
+}
+
 // ExecutionRecorder is the technology-independent lineage/step port. It is
 // deliberately narrower than the Job Registry adapter; the pipeline never
 // imports SQLite or a provider-specific recorder.
@@ -337,6 +412,10 @@ type ExecutionRecorder interface {
 	AttachInputAsset(context.Context, ExecutionContext, string, string, int) error
 	AttachOutputAsset(context.Context, ExecutionContext, string, string, int) error
 	RecordMetric(context.Context, ExecutionContext, string, string, float64, string) error
+	// RecordOperation records one artifact operation with its full
+	// correlation key (job_id from ExecutionContext + scene_id + language +
+	// asset_id + operation_id).
+	RecordOperation(context.Context, ExecutionContext, ArtifactOperation) error
 }
 
 // noopExecutionRecorder keeps local/unit runtimes safe when durable lineage
@@ -360,6 +439,9 @@ func (noopExecutionRecorder) AttachOutputAsset(context.Context, ExecutionContext
 	return nil
 }
 func (noopExecutionRecorder) RecordMetric(context.Context, ExecutionContext, string, string, float64, string) error {
+	return nil
+}
+func (noopExecutionRecorder) RecordOperation(context.Context, ExecutionContext, ArtifactOperation) error {
 	return nil
 }
 

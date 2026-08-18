@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
@@ -76,7 +75,7 @@ func runTranscriptCuesBackfill(args []string) error {
 			if track.TextKind != asset.TextTrackTranscript || track.Status != asset.TextTrackReady || !track.IsCurrent {
 				continue
 			}
-			byLang[track.LanguageCode] = cuesWithText(cues, track.TextContent)
+			byLang[track.LanguageCode] = texttracks.CuesWithText(cues, track.TextContent)
 		}
 		if err := svc.Repair(cmdContext(), id, byLang); err != nil {
 			return err
@@ -86,27 +85,4 @@ func runTranscriptCuesBackfill(args []string) error {
 	return nil
 }
 
-// cuesWithText keeps canonical VTT timing while projecting each already
-// translated full transcript onto the same cue count. The source translation
-// remains authoritative in asset_text_tracks; this avoids storing English text
-// in translated segment rows when no per-language VTT exists.
-func cuesWithText(timing []asset.TimedCue, text string) []asset.TimedCue {
-	words := strings.Fields(text)
-	out := make([]asset.TimedCue, len(timing))
-	for i, cue := range timing {
-		start := i * len(words) / len(timing)
-		end := (i + 1) * len(words) / len(timing)
-		if end <= start && start < len(words) {
-			end = start + 1
-		}
-		if start > len(words) {
-			start = len(words)
-		}
-		if end > len(words) {
-			end = len(words)
-		}
-		out[i] = cue
-		out[i].Text = strings.Join(words[start:end], " ")
-	}
-	return out
-}
+

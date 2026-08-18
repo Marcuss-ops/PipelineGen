@@ -4,6 +4,7 @@ package types
 // It was previously in the now-deleted internal/core/jobs/payloads.go (PR4).
 type StockRunPayload struct {
 	SearchQueries                  []string                 `json:"search_queries"`
+	SearchQueryLimits              []int                    `json:"search_query_limits,omitempty"`
 	DirectURLs                     []string                 `json:"direct_urls,omitempty"`
 	DriveURLs                      []string                 `json:"drive_urls,omitempty"`
 	Clips                          []ClipSpec               `json:"clips,omitempty"`

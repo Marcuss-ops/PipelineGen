@@ -38,7 +38,7 @@ const (
 // survive a semantic change in identity resolution or query planning.
 const (
 	identityVersion     = "v1"
-	queryPlannerVersion = "v1"
+	queryPlannerVersion = "v2"
 )
 
 var (
@@ -129,8 +129,9 @@ func (p *ResearchSubmissionPreflight) Validate(ctx context.Context, item scriptp
 			child := item
 			child.Source = src
 			child.Source.Research.Candidates = nil
-			child.Source.Topic = strings.TrimSpace(candidate) + " boxing career earnings business endorsements financial history"
-			child.Source.Query = ""
+			child.Source.Research.RankingMetric = resolveRankingMetric(src, strings.TrimSpace(src.Topic)).String()
+			child.Source.Topic = strings.TrimSpace(candidate)
+			child.Source.Query = researchSubjectIdentity(strings.TrimSpace(candidate)).CanonicalName
 			if err := p.Validate(ctx, child); err != nil {
 				return fmt.Errorf("research candidate %d: %w", index, err)
 			}
@@ -232,8 +233,9 @@ func (r *WebResearchResolver) Validate(ctx context.Context, item scriptpkg.Gener
 			child := item
 			child.Source = src
 			child.Source.Research.Candidates = nil
-			child.Source.Topic = strings.TrimSpace(candidate) + " boxing career earnings business endorsements financial history"
-			child.Source.Query = ""
+			child.Source.Research.RankingMetric = resolveRankingMetric(src, strings.TrimSpace(src.Topic)).String()
+			child.Source.Topic = strings.TrimSpace(candidate)
+			child.Source.Query = researchSubjectIdentity(strings.TrimSpace(candidate)).CanonicalName
 			if err := r.Validate(ctx, child); err != nil {
 				return fmt.Errorf("research candidate %d: %w", index, err)
 			}
@@ -325,7 +327,8 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	deadline := time.Duration(policy.TimeoutSeconds) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
-	queries := researchQueries(topic, src.Query, policy.MaxQueries)
+	metric := resolveRankingMetric(src, topic)
+	queries := researchQueries(topic, src.Query, policy.MaxQueries, metric)
 	lang := resCtx.Language
 	if lang == "" {
 		lang = "it"

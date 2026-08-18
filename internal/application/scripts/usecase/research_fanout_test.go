@@ -53,8 +53,8 @@ func TestWebResearchResolverQualityGateFailsWhenCoordinatorPoolInsufficient(t *t
 	resolver := NewWebResearchResolver(search, fetch)
 	resolver.SetCache(cache)
 	resolver.SetSearchCoordinator(coordinator)
-	if err := resolver.SetResearchRanker(scriptports.ResearchRankerFunc(func(_ context.Context, _ string, _ []scriptports.ResearchCandidateRankingInput) ([]scriptports.ResearchCandidateRanking, error) {
-		return nil, nil
+	if err := resolver.SetResearchRanker(scriptports.ResearchRankerFunc(func(_ context.Context, _ string, _ scriptpkg.RankingMetric, _ []scriptports.ResearchCandidateRankingInput) (scriptports.ResearchRankingResult, error) {
+		return scriptports.ResearchRankingResult{}, nil
 	})); err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +96,12 @@ func (f *testFetcher) Fetch(_ context.Context, url string, _ int) (scriptports.W
 
 func TestResearchFanoutAndRankingResolution(t *testing.T) {
 	resolver := NewWebResearchResolver(&testSearcher{}, &testFetcher{})
-	if err := resolver.SetResearchRanker(scriptports.ResearchRankerFunc(func(_ context.Context, _ string, inputs []scriptports.ResearchCandidateRankingInput) ([]scriptports.ResearchCandidateRanking, error) {
+	if err := resolver.SetResearchRanker(scriptports.ResearchRankerFunc(func(_ context.Context, _ string, _ scriptpkg.RankingMetric, inputs []scriptports.ResearchCandidateRankingInput) (scriptports.ResearchRankingResult, error) {
 		out := make([]scriptports.ResearchCandidateRanking, len(inputs))
 		for i, input := range inputs {
 			out[i] = scriptports.ResearchCandidateRanking{CandidateID: input.CandidateID, Rank: i + 1, Score: float64(len(inputs) - i), Rationale: "test ranking"}
 		}
-		return out, nil
+		return scriptports.ResearchRankingResult{Ranking: out}, nil
 	})); err != nil {
 		t.Fatal(err)
 	}

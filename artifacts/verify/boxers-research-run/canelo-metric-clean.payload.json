@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "canelo-metric-clean",
+      "title": "Canelo Álvarez estimated net worth",
+      "language": "en",
+      "tone": "documentary",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "research",
+        "topic": "Canelo Álvarez estimated net worth",
+        "search": true,
+        "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "metric-clean-v1"},
+        "research": {
+          "max_queries": 4,
+          "results_per_query": 12,
+          "max_pages": 4,
+          "min_sources": 2,
+          "require_citations": true,
+          "ranking_metric": "estimated_net_worth",
+          "candidates": ["Canelo Álvarez"]
+        }
+      },
+      "script_params": {"target_words": 200, "skip_quality_gate": false},
+      "output": {"save_to_db": true}
+    }
+  ]
+}

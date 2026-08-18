@@ -3,9 +3,13 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -83,7 +87,7 @@ func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) 
 	return nil
 }
 
-func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
+func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
 	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
 	if startErr != nil {
@@ -98,30 +102,32 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 			return result, false
 		}
-		if r.generationGate != nil {
-			if gateErr := r.generationGate.AcquireHigh(ctx); gateErr != nil {
-				r.failExecutionStep(ctx, exec, scriptStep, gateErr)
-				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, gateErr)
-				return result, false
-			}
-		}
 		r.markGenerationStart(runID, time.Now())
 		var scenes []Scene
 		var genErr error
+		var generatedTrace scriptpkg.SourceTrace
 		streamed := false
-		if streamer, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
+		var streamTranslationMetrics *TranslationPipelineMetrics
+		var streamAudioMetrics *AudioPipelineMetrics
+		var ready *sceneReadyCoordinator
+		if _, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
+			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
+		}
+		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && req.Source.Type != SourceClips {
+			streamed = true
+			scenes, generatedTrace, genErr = r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
+		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
 			// Scene-ready streaming: emit SceneTextReady(N) per scene as its
 			// text becomes final so downstream branches start while the LLM
 			// keeps generating later scenes. The explicit-clip marker rebind
 			// (bindExplicitClipSceneText) mutates scene text after generation,
 			// so clip sources keep the batch path to preserve that contract.
 			streamed = true
-			scenes, genErr = r.generateSceneTextStreaming(ctx, runID, req, exec, streamer)
+			scenes, genErr = r.generateSceneTextStreaming(ctx, runID, req, exec, streamer, ready)
+		} else if traced, ok := r.textGen.(SceneTextTraceGenerator); ok {
+			scenes, generatedTrace, genErr = traced.GenerateSceneTextWithTrace(ctx, req)
 		} else {
 			scenes, genErr = r.textGen.GenerateSceneText(ctx, req)
-		}
-		if r.generationGate != nil {
-			r.generationGate.Release()
 		}
 		if genErr != nil {
 			cause := fmt.Errorf("generate scene text failed: %w", genErr)
@@ -134,6 +140,17 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failExecutionStep(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
+		}
+		if ready != nil {
+			scenes, streamTranslationMetrics, streamAudioMetrics, genErr = ready.wait(ctx, scenes)
+			if genErr != nil {
+				cause := fmt.Errorf("scene ready downstream failed: %w", genErr)
+				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+				return result, false
+			}
+			// The normal translation/TTS stages become idempotent no-ops for
+			// these scenes, while their metrics remain visible on the result.
 		}
 		bindExplicitClipSceneText(req, scenes)
 		if req.Source.Type == SourceClips {
@@ -158,12 +175,15 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return nil, false
 		}
 		result = &GenerateResult{
-			Output:         output,
-			WordCount:      output.WordCount,
-			Scenes:         scenes,
-			Title:          req.Title,
-			OutputName:     req.OutputName,
-			VoiceoverGroup: req.ScriptParams.VoiceoverGroup,
+			SourceTrace:        generatedTrace,
+			Output:             output,
+			WordCount:          output.WordCount,
+			Scenes:             scenes,
+			Title:              req.Title,
+			OutputName:         req.OutputName,
+			VoiceoverGroup:     req.ScriptParams.VoiceoverGroup,
+			TranslationMetrics: streamTranslationMetrics,
+			AudioMetrics:       streamAudioMetrics,
 		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {
@@ -250,16 +270,54 @@ func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req Generate
 // one SceneCommitted (SceneTextReady) per scene as it is emitted and
 // accumulating the ordered scene list for the downstream stages. An emit
 // error (e.g. a failed SceneCommitObserver) aborts generation immediately.
-func (r *Runner) generateSceneTextStreaming(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer) ([]Scene, error) {
+func (r *Runner) generateSceneTextStreaming(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]Scene, error) {
+	scenes, _, err := r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
+	return scenes, err
+}
+
+func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]Scene, scriptpkg.SourceTrace, error) {
 	var scenes []Scene
-	if err := streamer.GenerateSceneTextStream(ctx, req, func(scene Scene) error {
-		scenes = append(scenes, scene)
-		return r.emitSceneCommit(ctx, runID, req, exec, scene)
-	}); err != nil {
-		return nil, err
+	var sceneMu sync.Mutex
+	sceneByIndex := make(map[int]Scene)
+	emit := func(scene Scene) error {
+		// The SceneTextReady boundary: pin when this scene's text became
+		// final so the streaming overlap is durable and provable (scene N's
+		// translation/TTS must start before scene N+1's text is ready).
+		scene.TextReadyAt = time.Now().UTC()
+		sceneMu.Lock()
+		sceneByIndex[scene.Index] = scene
+		sceneMu.Unlock()
+		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {
+			return err
+		}
+		if ready != nil {
+			ready.submit(scene)
+		}
+		return nil
 	}
+	var trace scriptpkg.SourceTrace
+	var err error
+	if traced, ok := streamer.(SceneTextTraceStreamer); ok {
+		trace, err = traced.GenerateSceneTextStreamWithTrace(ctx, req, emit)
+	} else {
+		err = streamer.GenerateSceneTextStream(ctx, req, emit)
+	}
+	if err != nil {
+		return nil, scriptpkg.SourceTrace{}, err
+	}
+	sceneMu.Lock()
+	indexes := make([]int, 0, len(sceneByIndex))
+	for index := range sceneByIndex {
+		indexes = append(indexes, index)
+	}
+	sort.Ints(indexes)
+	scenes = make([]Scene, 0, len(indexes))
+	for _, index := range indexes {
+		scenes = append(scenes, sceneByIndex[index])
+	}
+	sceneMu.Unlock()
 	if len(scenes) == 0 {
-		return nil, fmt.Errorf("generate scene text stream emitted zero scenes")
+		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("generate scene text stream emitted zero scenes")
 	}
-	return scenes, nil
+	return scenes, trace, nil
 }

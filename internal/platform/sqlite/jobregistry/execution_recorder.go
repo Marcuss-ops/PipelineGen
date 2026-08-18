@@ -88,6 +88,35 @@ func (r *JobRegistryExecutionRecorder) RecordMetric(ctx context.Context, exec sc
 	return r.registry.RecordMetric(ctx, capregistry.Metric{MetricID: metricID(exec.JobID, stepID, name), JobID: exec.JobID, StepID: stepID, Name: name, Value: value, Unit: unit, CreatedAt: nowRegistryString()})
 }
 
+// RecordOperation persists one artifact operation with its full correlation
+// key. It reuses the Job Registry event ledger (job_registry_events) so no
+// schema migration is needed: event_type "artifact_operation" + a JSON
+// payload carrying scene_id/language/asset_id/operation_id make each artifact
+// joinable across translation → TTS → render → validation → Drive.
+func (r *JobRegistryExecutionRecorder) RecordOperation(ctx context.Context, exec scriptgen.ExecutionContext, op scriptgen.ArtifactOperation) error {
+	if err := r.valid(exec); err != nil {
+		return err
+	}
+	if strings.TrimSpace(op.OperationID) == "" || strings.TrimSpace(op.Kind) == "" || strings.TrimSpace(op.Status) == "" {
+		return fmt.Errorf("execution recorder: operation_id, kind and status are required")
+	}
+	payload := fmt.Sprintf(`{"job_id":%q,"operation_id":%q,"kind":%q,"scene_id":%q,"language":%q,"asset_id":%q,"status":%q}`,
+		exec.JobID, op.OperationID, op.Kind, op.SceneID, string(op.Language), op.AssetID, op.Status)
+	_, err := r.registry.AppendEvent(ctx, capregistry.Event{
+		EventID:     operationEventID(exec.JobID, op.OperationID, op.Status),
+		JobID:       exec.JobID,
+		EventType:   "artifact_operation",
+		PayloadJSON: payload,
+		CreatedAt:   nowRegistryString(),
+	})
+	return err
+}
+
+func operationEventID(jobID, operationID, status string) string {
+	sum := sha256.Sum256([]byte(jobID + "\x00" + operationID + "\x00" + status))
+	return "artifact_operation_" + hex.EncodeToString(sum[:])
+}
+
 func registryStep(exec scriptgen.ExecutionContext, step scriptgen.ExecutionStep, status, message string) capregistry.Step {
 	return capregistry.Step{StepID: step.StepID, JobID: exec.JobID, StepName: step.Name, StepType: step.Type, Status: status, StartedAt: registryTime(step.StartedAt), CompletedAt: registryTime(step.CompletedAt), DurationMS: step.DurationMS, ErrorMessage: message, CreatedAt: registryTime(step.StartedAt), MetricsJSON: fmt.Sprintf(`{"root_job_id":%q,"parent_job_id":%q,"project_id":%q,"video_id":%q,"correlation_id":%q,"attempt":%d}`, exec.RootJobID, exec.ParentJobID, exec.ProjectID, exec.VideoID, exec.CorrelationID, exec.Attempt)}
 }

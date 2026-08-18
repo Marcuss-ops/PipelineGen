@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ObservedExecutor decorates a Client with per-operation measurement. It is
@@ -33,14 +33,14 @@ import (
 // recorder and the single timing point.
 type ObservedExecutor struct {
 	next     *Client
-	recorder capperformance.OperationRecorder
+	recorder kernobs.MeasuredOperationRecorder
 	log      *zap.Logger
 }
 
 // NewObservedExecutor builds the decorator. A nil recorder disables
 // recording (the wrapper still times the operation); a nil logger is a
 // no-op logger.
-func NewObservedExecutor(next *Client, recorder capperformance.OperationRecorder) *ObservedExecutor {
+func NewObservedExecutor(next *Client, recorder kernobs.MeasuredOperationRecorder) *ObservedExecutor {
 	return &ObservedExecutor{next: next, recorder: recorder, log: zap.NewNop()}
 }
 
@@ -74,8 +74,8 @@ func (o *ObservedExecutor) Execute(ctx context.Context, req request) (response, 
 // time and input/output bytes at the boundary; the Rust metrics block (when
 // present) supplies CPU time, byte counts measured at the source, cache
 // outcome and frame counts.
-func (o *ObservedExecutor) measurement(req request, started time.Time, result response, err error) capperformance.OperationMeasurement {
-	m := capperformance.OperationMeasurement{
+func (o *ObservedExecutor) measurement(req request, started time.Time, result response, err error) kernobs.MeasuredOperation {
+	m := kernobs.MeasuredOperation{
 		Operation:       string(req.Operation),
 		Width:           int(req.Width),
 		Height:          int(req.Height),

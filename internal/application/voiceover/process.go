@@ -34,7 +34,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
@@ -51,11 +50,8 @@ import (
 // now logs: job_id, asset_id, project, language, stage, status,
 // duration_ms.
 //
-// FASE 7 (July 2026): added histogram observation via
-// observability.VoiceoverStageDuration. Used by
-// ProcessSegmentUseCase.Execute for per-stage telemetry; the
-// batch path (processLanguage) inherits this via its delegation
-// to Execute — no more duplicated stageTiming closure.
+// Stage timings are recorded by the canonical observability run when one is
+// bound; this helper only emits the structured lifecycle log.
 func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) func(status string) {
 	start := time.Now()
 	logFields := []zap.Field{
@@ -75,7 +71,6 @@ func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) 
 			zap.String("status", status),
 		)
 		log.Info("pipeline_stage_completed", completedFields...)
-		observability.VoiceoverStageDuration.WithLabelValues(stage).Observe(dur.Seconds())
 	}
 }
 
@@ -253,11 +248,7 @@ func (s *Service) processLanguage(
 		OldCleanedPath: oldCleanedPath,
 	}
 
-	// Per-stage telemetry (tts/audio_post/publish/finalize) is emitted
-	// by ProcessSegmentUseCase.Execute internally via stageLog.
-	// No outer wrapper here — that would mix a coarse "pipeline" label
-	// into the same VoiceoverStageDuration histogram as the fine-grained
-	// per-stage labels, breaking p99 aggregation.
+	// Per-stage telemetry is emitted by the canonical observability run.
 	out, runErr := s.processSeg.Execute(ctx, cmd)
 
 	if out == nil {

@@ -19,7 +19,7 @@ import (
 )
 
 // healthCheck sends a GET /health to the persistent worker.
-// Must be called while p.mu is held.
+// Must be called while p.mu is held by lifecycle callers.
 func (p *Processor) healthCheck() error {
 	if p.baseURL == "" || p.httpClient == nil {
 		return fmt.Errorf("tts worker not started (no baseURL)")

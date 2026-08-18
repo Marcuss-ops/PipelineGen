@@ -1,0 +1,49 @@
+{
+  "name": "T04 The Biggest Winners of the 2026 Academy Awards",
+  "case_prefix": "t04-oscars-2026",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "The Biggest Winners of the 2026 Academy Awards",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "The 98th Academy Awards ceremony held on March 15 2026: the winners of Best Picture, Best Director, Best Actor, Best Actress, Best Supporting Actor and Best Supporting Actress, with the films and performances that won",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 3,
+            "results_per_query": 8,
+            "max_pages": 8,
+            "min_sources": 3,
+            "timeout_seconds": 120,
+            "require_citations": true
+          }
+        },
+        "script_params": {
+          "target_words": 600,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 400,
+    "max_words": 900,
+    "keywords": ["Best Picture", "Best Director", "Best Actor", "Best Actress", "Academy"],
+    "language_regex": ["\\b(the|and|won|winner|film)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

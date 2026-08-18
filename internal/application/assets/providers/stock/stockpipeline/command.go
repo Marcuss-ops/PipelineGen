@@ -79,7 +79,13 @@ func ValidateDurationContract(total, perSource, clips, clipDuration int, mode st
 // job-payload shape used by HandleJob — the use case and the worker each
 // derive their own serialisation.
 type StockCommand struct {
-	SearchQueries                  []string
+	SearchQueries []string
+	// SearchQueryLimits is the per-query result cap for
+	// search-and-run requests, aligned 1:1 with SearchQueries by
+	// index. Zero means "use the runtime default". Only the
+	// search-and-run request shape carries per-query limits; the
+	// legacy /run path leaves this nil.
+	SearchQueryLimits              []int
 	DirectURLs                     []string
 	DriveURLs                      []string
 	Clips                          []ClipSpec
@@ -165,8 +171,10 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		return nil, fmt.Errorf("stockpipeline: FromSearchAndRunRequest: nil *StockSearchAndRunRequest")
 	}
 	queries := make([]string, 0, len(r.Queries))
+	limits := make([]int, 0, len(r.Queries))
 	for _, q := range r.Queries {
 		queries = append(queries, q.Q)
+		limits = append(limits, q.Limit)
 	}
 	var metadata *ChunkMetadataInput
 	if r.Metadata != nil {
@@ -182,6 +190,7 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 	}
 	return &StockCommand{
 		SearchQueries:                  queries,
+		SearchQueryLimits:              limits,
 		DirectURLs:                     append([]string(nil), r.DirectURLs...),
 		DriveURLs:                      append([]string(nil), r.DriveURLs...),
 		Clips:                          append([]ClipSpec(nil), r.Clips...),
@@ -233,6 +242,7 @@ func (c *StockCommand) ToRunInput() *RunInput {
 	}
 	return &RunInput{
 		SearchQueries:                  append([]string(nil), c.SearchQueries...),
+		SearchQueryLimits:              append([]int(nil), c.SearchQueryLimits...),
 		DirectURLs:                     append([]string(nil), c.DirectURLs...),
 		DriveURLs:                      append([]string(nil), c.DriveURLs...),
 		Clips:                          append([]ClipSpec(nil), c.Clips...),
@@ -276,6 +286,9 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 	payload := make(map[string]any, 16)
 	if len(c.SearchQueries) > 0 {
 		payload["search_queries"] = c.SearchQueries
+	}
+	if len(c.SearchQueryLimits) > 0 {
+		payload["search_query_limits"] = c.SearchQueryLimits
 	}
 	if len(c.DirectURLs) > 0 {
 		payload["direct_urls"] = c.DirectURLs

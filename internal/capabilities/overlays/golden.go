@@ -108,7 +108,6 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase",
-			Type:           "text",
 			Text:           "QUESTO CAMBIA TUTTO",
 			Preset:         "caption_card",
 			StartFrame:     20,
@@ -116,7 +115,6 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "important_word",
-			Type:           "text",
 			Text:           "APPLE",
 			Preset:         "active_word_pop",
 			StartFrame:     65,
@@ -124,13 +122,8 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay",
-			Type:           "image",
 			Asset:          "assets/apple.png",
 			Preset:         "image_focus_in",
-			BoxWidth:       260,
-			BoxHeight:      260,
-			Fit:            "contain",
-			Position:       []float64{380, 0},
 			StartFrame:     90,
 			DurationFrames: 46,
 		},
@@ -326,7 +319,6 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase_1",
-			Type:           "text",
 			Text:           "IL FUTURO È ADESSO",
 			Preset:         "caption_card",
 			StartFrame:     24,
@@ -335,7 +327,6 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_word_1",
-			Type:           "text",
 			Text:           "VELOCITÀ",
 			Preset:         "active_word_pop",
 			StartFrame:     24,
@@ -344,19 +335,16 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_1",
-			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
 			Preset:         "image_focus_in",
 			BoxWidth:       300,
 			BoxHeight:      300,
-			Fit:            "contain",
 			Position:       []float64{380, 0},
 			StartFrame:     24,
 			DurationFrames: 132,
 		},
 		{
 			ID:             "important_phrase_2",
-			Type:           "text",
 			Text:           "CAMBIARE IL MERCATO",
 			Preset:         "caption_card",
 			StartFrame:     132,
@@ -365,7 +353,6 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_word_2",
-			Type:           "text",
 			Text:           "POTENZA",
 			Preset:         "active_word_pop",
 			StartFrame:     132,
@@ -374,12 +361,10 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_2",
-			Type:           "image",
 			Asset:          "assets/overlay_chart.png",
 			Preset:         "image_focus_in",
 			BoxWidth:       300,
 			BoxHeight:      300,
-			Fit:            "contain",
 			Position:       []float64{840, 380},
 			StartFrame:     120,
 			DurationFrames: 108,

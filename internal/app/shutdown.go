@@ -88,6 +88,17 @@ func buildCleanup(dbs *wiring.Databases, root *wiring.ComposeRoot, jobs *backgro
 				}
 			})
 		}
+		// PR-ARGOS-TRANSLATION (Aug 2026): stop the persistent Argos
+		// Translate sidecar so its python3 subprocess doesn't leak.
+		if root != nil && root.TextTracks != nil && root.TextTracks.ArgosServer != nil {
+			wg.Add(1)
+			concurrent.SafeGo("cleanup-argos-server", func() {
+				defer wg.Done()
+				if err := root.TextTracks.ArgosServer.Stop(); err != nil {
+					log.Warn("argos server stop returned error", zap.Error(err))
+				}
+			})
+		}
 		if root != nil && root.Outbox != nil && root.Outbox.EventsPool != nil {
 			const eventsPoolStopTimeout = 4 * time.Second
 			wg.Add(1)

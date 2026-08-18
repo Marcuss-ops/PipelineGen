@@ -37,7 +37,7 @@ import (
 // installed, server script not deployed, startup failure), Generate
 // falls back to the legacy spawn-per-call path for backward compat.
 // // Fields added (VO-DECOMPOSITION P0 #1 lazy worker state):
-//   - mu sync.Mutex — serialises HTTP calls to the single-threaded Python server
+//   - mu sync.Mutex — protects worker lifecycle only; HTTP calls are concurrent
 //   - cmd *exec.Cmd — the running subprocess (nil when not started)
 //   - baseURL string — "http://127.0.0.1:<port>" discovered from stdout
 //   - httpClient *http.Client — shared HTTP client (5-min timeout)
@@ -47,13 +47,14 @@ type Processor struct {
 	log              *zap.Logger
 
 	// Persistent worker state (VO-DECOMPOSITION P0 #1).
-	mu         sync.Mutex
-	cmd        *exec.Cmd
-	baseURL    string
-	httpClient *http.Client
-	started    bool
-	media      mediaexec.AudioProcessor
-	loudness   capabilityaudio.LoudnessProber
+	mu           sync.Mutex
+	requestSlots chan struct{}
+	cmd          *exec.Cmd
+	baseURL      string
+	httpClient   *http.Client
+	started      bool
+	media        mediaexec.AudioProcessor
+	loudness     capabilityaudio.LoudnessProber
 }
 
 // processorShape mirrors the GENERATE-side surface of
@@ -99,7 +100,25 @@ func NewProcessor(
 	return &Processor{
 		pythonScriptsDir: pythonScriptsDir,
 		log:              log,
+		requestSlots:     make(chan struct{}, DefaultTTSRequestConcurrency),
 	}
+}
+
+const DefaultTTSRequestConcurrency = 3
+
+// SetRequestConcurrency bounds simultaneous requests sent to the persistent
+// Edge TTS worker. It is deliberately separate from the application fan-out:
+// the sidecar is async, but the remote service may throttle excessive sockets.
+func (p *Processor) SetRequestConcurrency(n int) {
+	if p == nil {
+		return
+	}
+	if n <= 0 {
+		n = DefaultTTSRequestConcurrency
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requestSlots = make(chan struct{}, n)
 }
 
 func (p *Processor) SetMediaExecutor(media mediaexec.AudioProcessor) {
@@ -216,9 +235,8 @@ func (p *Processor) gateLoudness(ctx context.Context, res *AudioResult) error {
 // synthesizeOnce runs a single synthesis attempt (persistent worker when
 // available, legacy spawn-per-call otherwise). Kept separate from Generate
 // so the empty-audio retry loop re-runs the WHOLE synthesis, not just the
-// response parsing. Mutex scope mirrors the pre-split Generate contract:
-// ensureStarted + sendSynthesizeRequest run under p.mu; the legacy fallback
-// releases it first (each legacy call spawns its own subprocess).
+// response parsing. The lifecycle mutex is held only while starting/checking
+// the worker; the potentially-minute-long HTTP request is never serialized.
 func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeName string) (*AudioResult, error) {
 	// Try persistent worker first.
 	// BUG-FIX (2026-07-10): 3 interacting bugs caused the voiceover
@@ -233,21 +251,30 @@ func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeN
 	// The fix splits the lock scope: ensureStarted runs under p.mu
 	// (serialises startup), then the mutex is released before the
 	// legacy fallback (which does NOT need p.mu since each legacy
-	// call spawns its own subprocess). sendSynthesizeRequest runs
-	// under p.mu because the Python HTTP server is single-threaded.
+	// call spawns its own subprocess). HTTP requests use requestSlots,
+	// not the lifecycle mutex, because aiohttp is asynchronous.
+	lockWaitStart := time.Now()
 	p.mu.Lock()
+	lockWait := time.Since(lockWaitStart)
 	if err := p.ensureStarted(ctx); err != nil {
 		p.mu.Unlock()
 		p.log.Warn("persistent TTS worker unavailable, falling back to legacy spawn-per-call",
 			zap.Error(err))
 		return p.generateLegacy(ctx, input, safeName)
 	}
+	p.mu.Unlock()
 
-	// NOTE: p.mu is held here. sendSynthesizeRequest accesses the
-	// single-threaded Python HTTP server, so serialisation is needed.
-	// defer ensures unlock even on panic (BUG-FIX #1).
-	defer p.mu.Unlock()
-	return p.sendSynthesizeRequest(ctx, &AudioInput{
+	queueStart := time.Now()
+	if p.requestSlots != nil {
+		select {
+		case p.requestSlots <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		defer func() { <-p.requestSlots }()
+	}
+	queueWait := time.Since(queueStart)
+	res, err := p.sendSynthesizeRequest(ctx, &AudioInput{
 		Text:          input.Text,
 		Language:      input.Language,
 		Voice:         input.Voice,
@@ -255,6 +282,19 @@ func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeN
 		OutputDir:     input.OutputDir,
 		RemoveSilence: input.RemoveSilence,
 	})
+	if res != nil {
+		res.Metrics.LockWaitMS = lockWait.Milliseconds()
+		res.Metrics.QueueMS = queueWait.Milliseconds()
+		p.log.Info("TTS timing metrics",
+			zap.Int64("tts_queue_ms", res.Metrics.QueueMS),
+			zap.Int64("tts_lock_wait_ms", res.Metrics.LockWaitMS),
+			zap.Int64("tts_voice_resolve_ms", res.Metrics.VoiceResolveMS),
+			zap.Int64("tts_stream_ms", res.Metrics.StreamMS),
+			zap.Int64("tts_postprocess_ms", res.Metrics.PostprocessMS),
+			zap.Int64("tts_audio_duration_ms", res.Metrics.AudioDurationMS),
+			zap.Float64("tts_rtf", res.Metrics.RTF))
+	}
+	return res, err
 }
 
 // generateLegacy is the pre-P0-#1 spawn-per-call path. Retained as

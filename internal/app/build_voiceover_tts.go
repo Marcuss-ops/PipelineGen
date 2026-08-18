@@ -38,6 +38,11 @@ func buildVoiceoverTTSProvider(
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
+	requestConcurrency := cfg.Voiceover.MaxConcurrentTTS
+	if requestConcurrency <= 0 {
+		requestConcurrency = audioasset.DefaultTTSRequestConcurrency
+	}
+	audioProcessor.SetRequestConcurrency(requestConcurrency)
 	mediaProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	audioProcessor.SetMediaExecutor(mediaProcessor)
 	// Register the minimum-loudness gate: a non-empty but silent VO (edge-tts

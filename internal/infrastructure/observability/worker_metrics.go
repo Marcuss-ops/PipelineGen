@@ -187,6 +187,18 @@ var WorkerArtifactUploadFailuresTotal = promauto.NewCounterVec(prometheus.Counte
 	Help: "Total artifact-upload failures by reason (checksum_mismatch, s3_unreachable, auth_invalid, context_timeout).",
 }, []string{"reason"})
 
+// WorkerFinalizationDBLockedTotal counts artifact-finalization attempts
+// that hit SQLITE_BUSY / SQLITE_LOCKED ("database is locked") in the
+// JobFinalizer's media_assets upsert, partitioned by job_type and
+// outcome ("retried" = a bounded retry absorbed it, "terminal" = retries
+// were exhausted). A non-zero "terminal" rate is the canonical signal
+// that finalization is failing despite retries and jobs risk being
+// orphaned in RUNNING until the lease scanner requeues them.
+var WorkerFinalizationDBLockedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_finalization_db_locked_total",
+	Help: "Total artifact-finalization attempts hitting SQLITE_BUSY/SQLITE_LOCKED, by job_type and outcome (retried|terminal).",
+}, []string{"job_type", "outcome"})
+
 // WorkerFallbackTotal counts production fallback activations by
 // kind ("downgraded_path", "stale_cache_return", "skip_optimization").
 // The certification gate (worker-certification-checklist.md §3) bans

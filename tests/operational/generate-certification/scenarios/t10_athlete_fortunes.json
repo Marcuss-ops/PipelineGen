@@ -1,0 +1,75 @@
+{
+  "name": "T10 How the World's 10 Highest-Paid Athletes Built Their Fortunes",
+  "case_prefix": "t10-athlete-fortunes",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "How the World's 10 Highest-Paid Athletes Built Their Fortunes",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "How the world's 10 highest-paid athletes in 2025 built their fortunes, ranked by annual earnings. For each athlete explain total earnings, on-field vs off-field earnings, sport, and major business or endorsement angle.",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 2,
+            "results_per_query": 8,
+            "max_pages": 6,
+            "min_sources": 2,
+            "timeout_seconds": 120,
+            "require_citations": true,
+            "max_parallel": 6,
+            "ranking_metric": "annual_earnings",
+            "candidates": [
+              "Cristiano Ronaldo",
+              "Stephen Curry",
+              "Tyson Fury",
+              "Dak Prescott",
+              "Lionel Messi",
+              "LeBron James",
+              "Juan Soto",
+              "Karim Benzema",
+              "Shohei Ohtani",
+              "Kevin Durant"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 1200,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 800,
+    "max_words": 1600,
+    "keywords": ["Ronaldo", "Messi", "LeBron", "endorsement", "earnings"],
+    "expected_order": [
+      "Cristiano Ronaldo",
+      "Stephen Curry",
+      "Tyson Fury",
+      "Dak Prescott",
+      "Lionel Messi",
+      "LeBron James",
+      "Juan Soto",
+      "Karim Benzema",
+      "Shohei Ohtani",
+      "Kevin Durant"
+    ],
+    "language_regex": ["\\b(the|and|million|billion|sport)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

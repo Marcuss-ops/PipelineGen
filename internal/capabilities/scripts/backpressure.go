@@ -27,6 +27,10 @@ const DefaultNLPConcurrency = 4
 // branch: up to this many scene×language synthesis calls run concurrently.
 const DefaultTTSConcurrency = 4
 
+// DefaultTranslationConcurrency bounds concurrent scene×language translation
+// calls. Results are applied and checkpointed in canonical order.
+const DefaultTranslationConcurrency = 4
+
 // VidRushBackpressure holds the independent concurrency limits for the three
 // VidRush stages. Keeping them separate means a slow stage (e.g. a provider
 // download) can never consume the whole budget of a faster stage (e.g. entity
@@ -94,6 +98,14 @@ func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
 		capacity = 1
 	}
 	return &GenerationGate{capacity: capacity}
+}
+
+// Capacity returns the configured hard ceiling for high-priority Ollama work.
+func (g *GenerationGate) Capacity() int {
+	if g == nil || g.capacity <= 0 {
+		return 1
+	}
+	return g.capacity
 }
 
 // AcquireHigh blocks until the slot is available, with priority over any

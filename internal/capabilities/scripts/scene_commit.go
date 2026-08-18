@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+	"time"
 )
 
 // SceneCommitted is the stable per-scene boundary consumed by incremental
@@ -40,8 +41,13 @@ type SceneCommitted struct {
 	Revision int64 `json:"revision"`
 
 	// Language is the ISO 639-1 source language of Text.
-	Language string `json:"language"`
+	Language string    `json:"language"`
+	ReadyAt  time.Time `json:"ready_at"`
 }
+
+// SceneTextReadyEvent is the coordinator-facing name for the stable scene
+// boundary. SceneCommitted remains the compatibility name for VidRush.
+type SceneTextReadyEvent = SceneCommitted
 
 // SceneCommitObserver receives SceneCommitted events. It is the single seam
 // through which the incremental VidRush coordinator reacts to a stable scene.
@@ -64,6 +70,7 @@ func NewSceneCommitted(runID string, scene Scene, language Language, revision in
 		TextHash:   SceneTextHash(text),
 		Revision:   revision,
 		Language:   string(language),
+		ReadyAt:    time.Now().UTC(),
 	}
 }
 

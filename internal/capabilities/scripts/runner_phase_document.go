@@ -139,6 +139,17 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 				if err := r.attachOutputAsset(stageCtx, exec, documentStep.StepID, docRef.ID, len(docs)-1); err != nil {
 					return err
 				}
+				// Drive correlation: the published document is traceable to its
+				// upload via (language, asset_id) = (lang, docRef.ID).
+				if err := r.recordArtifactOperation(stageCtx, exec, ArtifactOperation{
+					OperationID: artifactOperationID(exec.Attempt, OperationDriveUpload, "document", string(lang)),
+					Kind:        OperationDriveUpload,
+					Language:    lang,
+					AssetID:     docRef.ID,
+					Status:      "COMPLETED",
+				}); err != nil {
+					return err
+				}
 			}
 			return nil
 		}); publishErr != nil {

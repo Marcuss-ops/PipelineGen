@@ -1,17 +1,14 @@
 // Package stock adapts the stock pipeline service to the
-// canonical providers.FetchProvider contract in
+// canonical providers.SearchProvider + FetchProvider contracts in
 // internal/application/assets/providers.
 //
-// Wave 12 scope: this adapter is the FIRST real FetchProvider in
-// the codebase. artlist and youtube implement only SearchProvider
-// because their download paths live elsewhere (artlist's pipeline
-// is stockpipeline + drive upload; youtube's yt-dlp path is the
-// channel-monitor's responsibility). Fetch was reserved at the
-// contract level so the upcoming channel-monitor YouTube fetch path
-// and Stock's binary delivery had a stable target — Stock is now
-// the first concrete FetchProvider and SETS THE PATTERN for any
-// subsequent Fetch source (eg. artlist if a public fetch binary
-// ever lands, channel-monitor if it adopts the contract).
+// Wave 12 scope: this adapter was the FIRST real FetchProvider in
+// the codebase. Search was added later (August 2026) so the stock
+// source can appear in the unified /api/media/search discovery
+// universe: Adapter.Search delegates to stockpipeline.Service.Search,
+// which resolves a free-text query through the YouTube channel
+// lister (ytsearch). Stock therefore satisfies BOTH contracts —
+// Search (metadata discovery) and Fetch (binary staging).
 //
 // Layout note (post-Agent-3 cleanup): stock lives at
 // providers/stock/adapter.go, parallel to artlist/adapter.go and
@@ -27,14 +24,15 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// Compile-time assertion: *Adapter satisfies providers.FetchProvider.
-// Catches interface drift at build time. The Adapter intentionally
-// does NOT implement SearchProvider — Stock is fetch-only by design
-// (the search path is stockpipeline.query.go::resolveQuery, which
-// is part of pipeline orchestration, NOT a source-search surface).
-var _ providers.FetchProvider = (*Adapter)(nil)
+// Compile-time assertions: *Adapter satisfies both SearchProvider and
+// FetchProvider. Catches interface drift at build time.
+var (
+	_ providers.SearchProvider = (*Adapter)(nil)
+	_ providers.FetchProvider  = (*Adapter)(nil)
+)
 
 // ErrSourceNotWired is returned by Fetch when the Adapter has no
 // underlying runner wired (nil interface value).
@@ -60,6 +58,7 @@ var ErrSourceNotWired = errors.New("stock adapter: runner not wired")
 type stockRunner interface {
 	Run(ctx context.Context, input *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error)
 	StageSource(ctx context.Context, url string) (*stockpipeline.StagedSource, error)
+	Search(ctx context.Context, query string, limit int) ([]stockpipeline.VideoSource, error)
 }
 
 // Adapter wraps a stockRunner (production: *stockpipeline.Service)
@@ -92,24 +91,65 @@ func (a *Adapter) Name() string { return "stock" }
 
 // Capabilities implements providers.Provider.
 //
-// CapabilityFetch IS declared: this adapter IS a FetchProvider, so
-// Registry.ByCapability(CapabilityFetch) returns it. This is the
-// first adapter in the codebase to advertise CapabilityFetch, so
-// the registry's fetch capability slot goes from empty → {stock}.
+// CapabilitySearch IS declared: Adapter.Search resolves a free-text
+// query through the YouTube channel lister (stockpipeline.Service.Search),
+// so Registry.ByCapability(CapabilitySearch) and the unified search
+// aggregator see Stock as a discovery backend.
 //
-// CapabilitySearch is intentionally NOT declared: Stock's URL
-// resolution lives in stockpipeline.query.go (resolveQuery) —
-// it is part of pipeline orchestration, NOT a SearchProvider
-// surface. Treating Stock as a search source would conflate the
-// pipeline-runner and source-searcher roles.
+// CapabilityFetch IS declared: this adapter IS a FetchProvider, so
+// Registry.ByCapability(CapabilityFetch) returns it. Stock was the
+// first adapter in the codebase to advertise CapabilityFetch.
 //
 // CapabilityVideo IS declared: Stock returns video content; a
 // caller filtering ByCapability(CapabilityVideo) sees Stock.
 func (a *Adapter) Capabilities() []providers.Capability {
 	return []providers.Capability{
+		providers.CapabilitySearch,
 		providers.CapabilityFetch,
 		providers.CapabilityVideo,
 	}
+}
+
+// Search implements providers.SearchProvider.
+//
+// It resolves a free-text query through the stock pipeline's YouTube
+// channel lister (stockpipeline.Service.Search) and normalises the
+// results into providers.Candidate. Candidates carry the canonical
+// YouTube watch URL as SourceRef so downstream ingest can reconstruct
+// the source. The runner MUST be wired; an empty query is a caller
+// error, not a transient one.
+func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
+	if a.runner == nil {
+		return providers.SearchResult{}, ErrSourceNotWired
+	}
+	if req.Query == "" {
+		return providers.SearchResult{}, fmt.Errorf("stock search: query is required")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	sources, err := a.runner.Search(ctx, req.Query, limit)
+	if err != nil {
+		return providers.SearchResult{}, fmt.Errorf("stock search: %w", err)
+	}
+	candidates := make([]providers.Candidate, 0, len(sources))
+	for _, v := range sources {
+		candidates = append(candidates, providers.Candidate{
+			SourceName: a.Name(),
+			SourceRef:  v.URL,
+			ExternalID: v.URL,
+			Title:      v.Title,
+			PageURL:    v.URL,
+			MediaType:  asset.MediaType("video"),
+			Duration:   time.Duration(v.DurationSec * float64(time.Second)),
+			DurationMs: int64(v.DurationSec * 1000),
+		})
+	}
+	return providers.SearchResult{Candidates: candidates}, nil
 }
 
 // Fetch implements providers.FetchProvider.

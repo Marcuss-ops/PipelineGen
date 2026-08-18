@@ -1,67 +1,53 @@
-// Package overlays — template_registry.go owns the canonical semantic→layer
-// transport table: the single place that knows every semantic entity's
-// concrete layer shape AND the canonical primitive it terminates in. Kept
-// separate from chronon.go so the compiler stays under the max-lines-per-file
-// budget.
+// Package overlays — template_registry.go owns the MINIMAL transport shape
+// PipelineGen still needs after ADR-029: the content primitive (what a layer
+// carries — text / image / video / shape) plus, ONLY for the preset-less
+// primitives (backgrounds, shapes, effects, bare image treatments), the bare
+// layer type and geometry.
 //
-// NOTE: this table carries ONLY the transport shape (primitive + the
-// fit/box/position Chronon still consumes while its LayoutResolver wiring
-// lands). The editorial semantic_role → Chronon visual-preset decision is
-// owned by SemanticOverlayResolver (semantic_resolver.go) and is deliberately
-// NOT duplicated here.
+// Preset-driven templates (every template with a semantic_role → preset
+// mapping in SemanticOverlayResolver) carry ONLY their Primitive here: their
+// layer `type` is derived by Chronon from the preset's supported_layer, and
+// image geometry (box/fit/position) is owned by the preset (VisualPresetRegistry).
+// PipelineGen no longer hardcodes IMAGE_OVERLAY/PERSON/… type or geometry.
 package overlays
 
-// templateRegistry is the canonical semantic→concrete transport table. It is
-// the single place that knows every semantic entity's concrete layer shape
-// AND the canonical primitive it terminates in — the golden workload shapes
-// used by GoldenOverlayPlanV1 plus the extended semantic entity vocabulary.
+// templateRegistry is the minimal semantic→content table. Every entry MUST
+// declare its canonical Primitive: the compiler fails closed on a template
+// without one, so a new entity can never be added without deciding which of
+// Text/Image/Video/Shape it terminates in.
 //
-// Every entry MUST declare its canonical Primitive: the compiler fails closed
-// on a template without one, so a new entity can never be added without
-// deciding which of Text/Image/Video/Shape it terminates in.
+// The six preset-less primitives (BACKGROUND, PRODUCT, LOGO, VIDEO_BACKGROUND,
+// SHAPE, LIGHT_LEAK) additionally declare their bare transport shape, because
+// they have no Chronon visual preset to derive it from. Everything else leaves
+// LayerType/Fit/Box/Position zero: the compiler emits neither type nor geometry
+// for preset-driven layers (Chronon owns them).
 var templateRegistry = map[string]TemplateSpec{
+	// ── Preset-driven templates: content primitive only ─────────────────
+	"IMPORTANT_PHRASE": {Primitive: PrimitiveText},
+	"IMPORTANT_WORD":   {Primitive: PrimitiveText},
+	"IMAGE_OVERLAY":    {Primitive: PrimitiveImage},
+	"PERSON":           {Primitive: PrimitiveText},
+	"NUMBER":           {Primitive: PrimitiveText},
+	"QUOTE":            {Primitive: PrimitiveText},
+	"LOCATION":         {Primitive: PrimitiveText},
+
+	// Concrete templates referenced by the kind registry / renderers.
+	"person_default":  {Primitive: PrimitiveText},
+	"org_default":     {Primitive: PrimitiveText},
+	"gpe_default":     {Primitive: PrimitiveText},
+	"concept_default": {Primitive: PrimitiveText},
+	"lower_third":     {Primitive: PrimitiveText},
+	"image_popup":     {Primitive: PrimitiveImage},
+	"quote":           {Primitive: PrimitiveText},
+
+	// ── Preset-less primitives: primitive + bare transport shape ────────
+	// These have no semantic_role → preset mapping, so the render-plan layer
+	// type and geometry are fundamental layer data (not a visual preset).
 	"BACKGROUND": {
 		LayerType:  "image",
 		Fit:        "cover",
 		Primitive:  PrimitiveImage,
 		FullCanvas: true,
-	},
-	"IMPORTANT_PHRASE": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"IMPORTANT_WORD": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"IMAGE_OVERLAY": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  260,
-		BoxHeight: 260,
-		Position:  []float64{380, 0},
-		Primitive: PrimitiveImage,
-	},
-	// ── The canonical semantic entity vocabulary ────────────────────────
-	// PERSON, LOCATION and QUOTE are the semantic spellings of the concrete
-	// entity-card / quote templates below (aliases are pinned by tests);
-	// NUMBER is a centered stat card; PRODUCT and LOGO are asset-driven
-	// images (they fail closed when the item carries no asset).
-	"PERSON": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"NUMBER": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"QUOTE": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"LOCATION": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
 	},
 	"PRODUCT": {
 		LayerType: "image",
@@ -79,10 +65,6 @@ var templateRegistry = map[string]TemplateSpec{
 		Position:  []float64{1060, 500},
 		Primitive: PrimitiveImage,
 	},
-	// ── The Video and Shape primitives ──────────────────────────────────
-	// VIDEO_BACKGROUND is the full-canvas video counterpart of BACKGROUND;
-	// SHAPE is a full-canvas solid-color rect (Chronon "color" layer),
-	// defaulting to a semi-transparent wash overridable via Params["color"].
 	"VIDEO_BACKGROUND": {
 		LayerType:  "video",
 		Fit:        "cover",
@@ -94,55 +76,10 @@ var templateRegistry = map[string]TemplateSpec{
 		Color:     []float64{0, 0, 0, 0.35},
 		Primitive: PrimitiveShape,
 	},
-	// LIGHT_LEAK is a composited video effect layer: a light-leak clip blended
-	// over the background (screen blend by default). Its opacity and
-	// loop/terminate behavior are per-item params; the source is the leak
-	// clip (Video primitive → layer.source).
 	"LIGHT_LEAK": {
 		LayerType: "video",
 		Fit:       "cover",
 		Primitive: PrimitiveVideo,
 		BlendMode: "screen",
-	},
-	// ── Concrete templates referenced by the kind registry / renderers ──
-	// Entity cards (entity_card kind) compile to a text layer carrying the
-	// entity name; the Chronon preset resolved by SemanticOverlayResolver
-	// (lower_third_safe / organization_card / location_card) decides the final
-	// portrait/name geometry. The optional image AssetRef becomes the card's
-	// portrait (layer.Asset) alongside the name (layer.Text).
-	"person_default": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"org_default": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"gpe_default": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"concept_default": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	// Non-entity visual capabilities (ChrononOverlayRegistry kinds): a lower
-	// third docks text in the bottom-left safe area, an image popup is a
-	// contained image on the right, and a quote is centered text.
-	"lower_third": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
-	},
-	"image_popup": {
-		LayerType: "image",
-		Fit:       "contain",
-		BoxWidth:  260,
-		BoxHeight: 260,
-		Position:  []float64{380, 0},
-		Primitive: PrimitiveImage,
-	},
-	"quote": {
-		LayerType: "text",
-		Primitive: PrimitiveText,
 	},
 }

@@ -1,0 +1,63 @@
+{
+  "name": "T03 The 10 Largest Economies in the World in 2026",
+  "case_prefix": "t03-gdp-2026",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "The 10 Largest Economies in the World in 2026",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "The 10 largest economies in the world in 2026, ranked by nominal GDP in US dollars (IMF World Economic Outlook)",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 2,
+            "results_per_query": 8,
+            "max_pages": 6,
+            "min_sources": 2,
+            "timeout_seconds": 120,
+            "require_citations": true,
+            "max_parallel": 6,
+            "ranking_metric": "nominal_gdp_usd",
+            "candidates": [
+              "United States",
+              "China",
+              "Germany",
+              "Japan",
+              "India",
+              "United Kingdom",
+              "France",
+              "Italy",
+              "Canada",
+              "Brazil"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 900,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 600,
+    "max_words": 1300,
+    "keywords": ["United States", "China", "Germany", "Japan", "India", "GDP"],
+    "language_regex": ["\\b(the|and|trillion|billion|economy)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

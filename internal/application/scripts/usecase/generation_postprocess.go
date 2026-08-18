@@ -15,11 +15,11 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ProcessedGeneration holds everything produced by the postprocess
@@ -27,7 +27,7 @@ import (
 type ProcessedGeneration struct {
 	PostResult    *adapters.PipelineResult
 	Provenance    *scriptpkg.GenerationProvenance
-	PostprocessMs map[string]int64
+	PostprocessMs map[string]int64 // compatibility projection from RunReport
 }
 
 // GenerationPostprocessor runs the postprocessor registry for a
@@ -74,8 +74,7 @@ func (p *GenerationPostprocessor) Process(
 
 	if p.ppReg == nil {
 		return &ProcessedGeneration{
-			Provenance:    provenance,
-			PostprocessMs: make(map[string]int64),
+			Provenance: provenance, PostprocessMs: map[string]int64{},
 		}, nil
 	}
 
@@ -115,10 +114,6 @@ func (p *GenerationPostprocessor) Process(
 		postResult.FinalSpecScene = collapseSpecSceneOutput(engineResult.Output.Text, postResult.FinalSpecScene)
 	}
 
-	postprocessMs := make(map[string]int64)
-	if postResult != nil && len(postResult.StageDurations) > 0 {
-		postprocessMs = maps.Clone(postResult.StageDurations)
-	}
 	if postResult != nil && len(postResult.StageProgress) > 0 {
 		tracker.SetStageProgress(postResult.StageProgress)
 	}
@@ -130,6 +125,12 @@ func (p *GenerationPostprocessor) Process(
 		})
 	}
 
+	postprocessMs := map[string]int64{}
+	if run := kernobs.FromContext(ctx); run != nil {
+		for _, stage := range run.Report().Stages {
+			postprocessMs[stage.Name] = stage.DurationMs
+		}
+	}
 	return &ProcessedGeneration{
 		PostResult:    postResult,
 		Provenance:    provenance,
@@ -137,25 +138,19 @@ func (p *GenerationPostprocessor) Process(
 	}, nil
 }
 
-// VidRushTimingFields projects the processor timings onto the stable flat
-// fields used by operational reports. The detailed map remains the source of
-// truth; this projection only names the stages that already exist in the
-// canonical postprocessor registry.
+// VidRushTimingFields is a compatibility projection from canonical stage
+// durations. It performs no measurement and owns no timing state.
 func VidRushTimingFields(stageDurations map[string]int64) scriptpkg.GenerationTimings {
-	var timings scriptpkg.GenerationTimings
-	if stageDurations == nil {
-		return timings
-	}
-	timings.SegmentExtractionMs = stageDurations[string(adapters.ProcessorEntities)]
-	timings.QueryGenerationMs = timings.SegmentExtractionMs
-	timings.ArtlistSearchMs = stageDurations[string(adapters.ProcessorClipSearch)]
-	timings.InternetImageSearchMs = stageDurations[string(adapters.ProcessorInternetImages)]
-	timings.ImageGenerationMs = stageDurations[string(adapters.ProcessorImages)]
-	timings.SQLiteMs = stageDurations[string(adapters.ProcessorPersistence)]
-	timings.BindingMs = stageDurations[string(adapters.ProcessorClipBindings)]
-	return timings
+	var t scriptpkg.GenerationTimings
+	t.SegmentExtractionMs = stageDurations[string(adapters.ProcessorEntities)]
+	t.QueryGenerationMs = t.SegmentExtractionMs
+	t.ArtlistSearchMs = stageDurations[string(adapters.ProcessorClipSearch)]
+	t.InternetImageSearchMs = stageDurations[string(adapters.ProcessorInternetImages)]
+	t.ImageGenerationMs = stageDurations[string(adapters.ProcessorImages)]
+	t.SQLiteMs = stageDurations[string(adapters.ProcessorPersistence)]
+	t.BindingMs = stageDurations[string(adapters.ProcessorClipBindings)]
+	return t
 }
-
 func collapseSpecSceneOutput(text string, current scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
 	scene := scriptpkg.SpecScene{
 		ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,

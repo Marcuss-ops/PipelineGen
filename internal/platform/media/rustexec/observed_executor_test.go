@@ -10,28 +10,28 @@ import (
 	"sync"
 	"testing"
 
-	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // recordingRecorder captures measurements; an optional error injects a
 // metric-write failure.
 type recordingRecorder struct {
 	mu    sync.Mutex
-	calls []capperformance.OperationMeasurement
+	calls []kernobs.MeasuredOperation
 	err   error
 }
 
-func (r *recordingRecorder) RecordOperation(_ context.Context, m capperformance.OperationMeasurement) error {
+func (r *recordingRecorder) RecordOperation(_ context.Context, m kernobs.MeasuredOperation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, m)
 	return r.err
 }
 
-func (r *recordingRecorder) measurements() []capperformance.OperationMeasurement {
+func (r *recordingRecorder) measurements() []kernobs.MeasuredOperation {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]capperformance.OperationMeasurement(nil), r.calls...)
+	return append([]kernobs.MeasuredOperation(nil), r.calls...)
 }
 
 // cannedRunner is the narrow commandRunner test seam returning a canned

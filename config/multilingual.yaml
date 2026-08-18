@@ -62,6 +62,10 @@ media:
     # Translation policy: "auto" | "fast" | "quality"
     # Maps onto translation.TranslationPort's ModelPolicy.
     translation_policy: "auto"
+    # Translation provider: "argos" | "ollama" (PR-ARGOS-TRANSLATION, Aug 2026)
+    #   - "argos"  -> Argos Translate primary (offline, deterministic) + Ollama fallback
+    #   - "ollama" -> Ollama-only
+    translation_provider: "argos"
     # Fail-closed gate: when true, the YouTube acquisition
     # chain surfaces ErrLanguageUndeterminable PRE-STEP-9
     # if no chain level surfaces a real BCP-47 language.

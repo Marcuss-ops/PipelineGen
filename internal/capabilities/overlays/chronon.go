@@ -137,8 +137,11 @@ type ChrononCanvas struct {
 // ChrononLayer mirrors the chronon.render-plan.v1 layer block. Field order
 // follows the canonical golden document so JSON output stays stable.
 type ChrononLayer struct {
-	ID    string `json:"id"`
-	Type  string `json:"type"`
+	ID string `json:"id"`
+	// Type is the layer primitive. It is omitted for preset-driven layers
+	// (Chronon derives it from the preset's supported_layer — ADR-029) and
+	// present only for preset-less primitives.
+	Type  string `json:"type,omitempty"`
 	Asset string `json:"asset,omitempty"`
 	// Source is the video-source logical path for the Video primitive:
 	// Chronon "video" layers reference `source`, not `asset`.
@@ -330,23 +333,29 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		// through the SemanticOverlayResolver (semantic_role → Chronon preset),
 		// never from a hard-coded geometry map. Preset-less primitives
 		// (backgrounds, shapes, effects) resolve to an empty preset.
-		preset, _ := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
-		if spec.Primitive == PrimitiveText && preset == "" {
+		preset, presetDriven := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+		if spec.Primitive == PrimitiveText && !presetDriven {
 			return ChrononCompileResult{}, fmt.Errorf("overlay plan: text template %q has no semantic_role → preset mapping", item.TemplateID)
 		}
 		layer := ChrononLayer{
 			ID:             item.ID,
-			Type:           spec.LayerType,
 			Preset:         preset,
-			Fit:            spec.Fit,
-			BoxWidth:       spec.BoxWidth,
-			BoxHeight:      spec.BoxHeight,
-			Position:       spec.Position,
 			StartFrame:     startFrame,
 			DurationFrames: endFrame - startFrame,
-			BlendMode:      spec.BlendMode,
-			Opacity:        spec.Opacity,
-			Loop:           spec.Loop,
+		}
+		// Preset-less primitives carry their bare transport shape (layer type
+		// + geometry); preset-driven layers leave both to Chronon (derived
+		// from supported_layer + the preset box/anchor). Per-item Params may
+		// still override either below.
+		if !presetDriven {
+			layer.Type = spec.LayerType
+			layer.Fit = spec.Fit
+			layer.BoxWidth = spec.BoxWidth
+			layer.BoxHeight = spec.BoxHeight
+			layer.Position = spec.Position
+			layer.BlendMode = spec.BlendMode
+			layer.Opacity = spec.Opacity
+			layer.Loop = spec.Loop
 		}
 		if layer.DurationFrames <= 0 {
 			return ChrononCompileResult{}, fmt.Errorf("overlay plan: item %q compiles to a non-positive frame range", item.ID)

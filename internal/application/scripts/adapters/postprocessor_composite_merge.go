@@ -25,10 +25,6 @@ import (
 // post-walk envelope via the empty-aware fallback in
 // generate_one_usecase.go.
 //
-// P1 #10 (June 2026) wall-clock timing — keep the per-processor
-// StageDurations map hot so the outer use case can stream it into
-// GenerationTimings.PostprocessMs (canonical Issue #3 plumbing).
-//
 // currentInput is the by-value copy of the ProcessInput that Run()
 // passes to processors; nil-safe so callers that pre-Issue-1 wiring
 // (eg. in older tests) keep working.
@@ -59,10 +55,6 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			projectPostSegmentClipBindings(currentInput.SpecScene.Scenes, src.VisualAssignments)
 			dst.FinalSpecScene = currentInput.SpecScene
 		}
-	}
-	// P1 #10 (June 2026): record per-processor wall-clock timing.
-	if dst.StageDurations == nil {
-		dst.StageDurations = make(map[string]int64)
 	}
 	if len(src.StageProgress) > 0 {
 		if dst.StageProgress == nil {

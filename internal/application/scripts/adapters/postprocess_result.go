@@ -31,9 +31,6 @@ type PostProcessResult struct {
 	// When true, IsEmpty() returns false even if all output fields
 	// are zero. P1 #10 (June 2026).
 	Changed bool `json:"changed,omitempty"`
-	// DurationMs is the wall-clock time this processor consumed, set
-	// by the registry's Run() method before merge. P1 #10 (June 2026).
-	DurationMs int64 `json:"duration_ms,omitempty"`
 	// SynthesizedScenes carries scene bundles constructed by an
 	// individual processor when the canonical SpecScene pipeline
 	// could not produce them. The clip-bindings prose-fallback

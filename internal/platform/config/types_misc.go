@@ -85,6 +85,12 @@ type PathsConfig struct {
 	ClipTextDir      string `yaml:"clip_text_dir" env:"VELOX_CLIP_TEXT_DIR" default:""`
 	PythonScriptsDir string `yaml:"python_scripts_dir" env:"VELOX_PYTHON_SCRIPTS_DIR" default:"scripts"`
 	WorkflowsDir     string `yaml:"workflows_dir" env:"VELOX_WORKFLOWS_DIR" default:"./workflows"`
+	// ArgosPythonBin is the interpreter that hosts the Argos Translate
+	// sidecar (PR-ARGOS-TRANSLATION, Aug 2026). Defaults to the argostranslate
+	// venv when set; empty falls back to the PATH-resolved python3. This is
+	// separate from python_scripts_dir because Argos lives in its own venv
+	// (.venv-argos) distinct from the Whisper runtime (.venv-whisper).
+	ArgosPythonBin string `yaml:"argos_python_bin" env:"VELOX_ARGOS_PYTHON" default:""`
 }
 
 type WorkersConfig struct {

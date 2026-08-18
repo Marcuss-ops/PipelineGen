@@ -234,6 +234,13 @@ func (p *GenerationPreparer) Prepare(
 			if resolved.ResearchEvidence != nil {
 				plan.ResearchEvidence = resolved.ResearchEvidence.Clone()
 			}
+			if resolved.ResearchReport != nil {
+				report := *resolved.ResearchReport
+				if resolved.ResearchReport.Evidence != nil {
+					report.Evidence = resolved.ResearchReport.Evidence.Clone()
+				}
+				plan.ResearchReport = &report
+			}
 			if len(resolved.SearchResults) > 0 {
 				plan.SearchResults = append([]scriptpkg.SearchResultItem(nil), resolved.SearchResults...)
 			}

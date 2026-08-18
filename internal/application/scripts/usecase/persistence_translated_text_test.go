@@ -37,7 +37,6 @@ func TestBuildGenerationResult_SerializesMetadataArtifactsAsJSON(t *testing.T) {
 		scriptpkg.ResolvedGenerationPlan{Title: "Internal title", Language: "it"},
 		engineResult,
 		postResult,
-		scriptpkg.GenerationTimings{},
 	)
 
 	raw, err := json.Marshal(result)
@@ -95,9 +94,8 @@ func TestBuildGenerationResult_PrefersTranslatedOutput_StandaloneCases(t *testin
 		Title:    "Test",
 		Language: "en",
 	}
-	timings := scriptpkg.GenerationTimings{}
 
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+	result := buildGenerationResult(item, plan, engineResult, postResult)
 
 	if result.Output.Text != "Testo italiano tradotto." {
 		t.Errorf("expected translated text in Output.Text, got %q", result.Output.Text)
@@ -126,9 +124,8 @@ func TestBuildGenerationResult_FallsBackToOriginalWhenNoTranslation(t *testing.T
 		Title:    "Test",
 		Language: "en",
 	}
-	timings := scriptpkg.GenerationTimings{}
 
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+	result := buildGenerationResult(item, plan, engineResult, postResult)
 
 	if result.Output.Text != "Original English text." {
 		t.Errorf("expected original text when no translation, got %q", result.Output.Text)
@@ -154,10 +151,9 @@ func TestBuildGenerationResult_FallsBackToOriginalWhenPostResultNil(t *testing.T
 		Title:    "Test",
 		Language: "en",
 	}
-	timings := scriptpkg.GenerationTimings{}
 
 	// nil postResult — should not panic
-	result := buildGenerationResult(item, plan, engineResult, nil, timings)
+	result := buildGenerationResult(item, plan, engineResult, nil)
 
 	if result.Output.Text != "Original text." {
 		t.Errorf("expected original text when postResult is nil, got %q", result.Output.Text)
@@ -209,9 +205,8 @@ func TestBuildGenerationResult_StripsVoiceoverLocalPathAndKeepsImages(t *testing
 		Title:    "Test",
 		Language: "en",
 	}
-	timings := scriptpkg.GenerationTimings{}
 
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+	result := buildGenerationResult(item, plan, engineResult, postResult)
 
 	if result.Output.SpecScene.Scenes[0].Bindings.Voiceover == nil {
 		t.Fatal("expected voiceover binding in final result")

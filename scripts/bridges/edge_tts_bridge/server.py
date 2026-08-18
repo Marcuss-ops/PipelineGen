@@ -42,6 +42,7 @@ import json
 import os
 import socket
 import sys
+import time
 
 from aiohttp import web
 from edge_tts import Communicate
@@ -81,7 +82,9 @@ async def handle_synthesize(request: web.Request) -> web.Response:
             status=400,
         )
 
+    resolve_started = time.monotonic()
     voice = await resolve_voice(parsed.lang, parsed.voice or None)
+    voice_resolve_ms = round((time.monotonic() - resolve_started) * 1000)
 
     out_dir = os.path.dirname(parsed.out)
     if out_dir:
@@ -93,6 +96,7 @@ async def handle_synthesize(request: web.Request) -> web.Response:
     meta_part = meta_path + ".part"
 
     boundary_count = 0
+    stream_started = time.monotonic()
     try:
         communicate = Communicate(
             parsed.text, voice, boundary=edge_boundary_mode(parsed.boundary))
@@ -133,6 +137,8 @@ async def handle_synthesize(request: web.Request) -> web.Response:
         "path": out_path,
         "metadata_path": meta_path if boundary_count > 0 else "",
         "boundary_count": boundary_count,
+        "voice_resolve_ms": voice_resolve_ms,
+        "stream_ms": round((time.monotonic() - stream_started) * 1000),
     })
 
 

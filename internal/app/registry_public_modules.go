@@ -27,6 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -147,5 +148,32 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 
 	log.Info("admin module registered (drive canary: /api/drive/canary-upload)")
+	return nil
+}
+
+// registerResearchCacheAdminModule wires the research-cache invalidation
+// endpoint. It is registered independently of the Drive canary so cache
+// invalidation does not depend on Drive being wired: the only requirement is
+// the media DB (research_cache lives in root.DB.DB).
+func registerResearchCacheAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+	if root.DB == nil || root.DB.DB == nil {
+		log.Warn("research cache admin module skipped: DB not wired")
+		return nil
+	}
+
+	handler := admin.NewResearchCacheInvalidateHandler(topicsourcecache.NewRepository(root.DB.DB), log)
+	mod := module.NewRouteModule(
+		"admin-research-cache",
+		func() bool { return true },
+		"/admin/research",
+		handler,
+		log,
+		module.WithMiddleware(middleware.RequireAdminToken(cfg, log)),
+	)
+	if err := tryRegisterModuleStrict(registry, log, mod, WithRegistrationPoint("register.AdminResearchCache")); err != nil {
+		return fmt.Errorf("wire registry: admin research cache: %w", err)
+	}
+
+	log.Info("admin research cache module registered (/api/admin/research/cache/invalidate)")
 	return nil
 }

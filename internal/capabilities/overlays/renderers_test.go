@@ -40,8 +40,8 @@ func TestRenderers_CompileEntityCards(t *testing.T) {
 		if tc.renderer.Name() != tc.name {
 			t.Fatalf("%s.Name() = %q, want %q", tc.name, tc.renderer.Name(), tc.name)
 		}
-		if layer.Type != "text" {
-			t.Errorf("%s: layer.Type = %q, want text", tc.name, layer.Type)
+		if layer.Type != "" {
+			t.Errorf("%s: layer.Type = %q, want empty (Chronon derives it)", tc.name, layer.Type)
 		}
 		if layer.Preset != tc.wantPreset {
 			t.Errorf("%s: layer.Preset = %q, want %s", tc.name, layer.Preset, tc.wantPreset)
@@ -65,8 +65,8 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lt.Type != "text" || lt.Preset != "lower_third_safe" {
-		t.Fatalf("lower_third layer = %+v, want text/lower_third_safe", lt)
+	if lt.Type != "" || lt.Preset != "lower_third_safe" {
+		t.Fatalf("lower_third layer = %+v, want preset lower_third_safe with no type", lt)
 	}
 
 	popup, err := (ImagePopupRenderer{}).Compile(OverlayItem{
@@ -76,24 +76,24 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if popup.Type != "image" || popup.Fit != "contain" || popup.BoxWidth != 260 || popup.BoxHeight != 260 {
-		t.Fatalf("image_popup layer = %+v, want image/contain/260x260", popup)
+	if popup.Preset != "image_focus_in" || popup.Type != "" || popup.Fit != "" || popup.BoxWidth != 0 || popup.BoxHeight != 0 {
+		t.Fatalf("image_popup layer = %+v, want preset image_focus_in with no type/geometry", popup)
 	}
 
 	quote, err := (QuoteRenderer{}).Compile(OverlayItem{ID: "q", Kind: "quote", TemplateID: "QUOTE", Text: "\"Cambia tutto\"", StartMs: 0, EndMs: 2000}, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quote.Type != "text" || quote.Preset != "caption_card" {
-		t.Fatalf("quote layer = %+v, want text/caption_card", quote)
+	if quote.Type != "" || quote.Preset != "caption_card" {
+		t.Fatalf("quote layer = %+v, want preset caption_card with no type", quote)
 	}
 
 	number, err := (NumberRenderer{}).Compile(OverlayItem{ID: "n", Kind: "number", TemplateID: "NUMBER", Text: "47%", StartMs: 0, EndMs: 2000}, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if number.Type != "text" || number.Preset != "active_word_pop" {
-		t.Fatalf("number layer = %+v, want text/active_word_pop", number)
+	if number.Type != "" || number.Preset != "active_word_pop" {
+		t.Fatalf("number layer = %+v, want preset active_word_pop with no type", number)
 	}
 
 	product, err := (ProductRenderer{}).Compile(OverlayItem{

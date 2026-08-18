@@ -379,6 +379,52 @@ func TestAcquireSegmentText_WhisperDetectsLanguage(t *testing.T) {
 	}
 }
 
+// TestAcquireSegmentText_WhisperPropagatesCues pins the priority-5
+// fix (PR-PY-CLIPS-CORRETTE-TRADOTTE, Aug 2026): the Whisper branch of
+// AcquireSegmentText MUST propagate det.Cues verbatim into the
+// ResolvedTextBundle — a Whisper-transcribed clip keeps its timed
+// segments (asset_text_track_segments) instead of degrading to plain
+// text with no timing (which broke SRT/VTT/ASS generation).
+func TestAcquireSegmentText_WhisperPropagatesCues(t *testing.T) {
+	cues := []asset.TimedCue{
+		{StartMs: 0, EndMs: 1200, Text: "Hello"},
+		{StartMs: 1200, EndMs: 2400, Text: "world"},
+	}
+	subs := &stubSubtitles{bundle: nil} // valid "not found" → fall through to Whisper
+	trans := &stubTranscriber{det: &asset.TranscriptResult{
+		Text:             "Hello world",
+		DetectedLanguage: "en",
+		Cues:             cues,
+	}}
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_whisper_cues_001",
+		VideoID:   "v_whisper_cues_001",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil {
+		t.Fatal("bundle should not be nil")
+	}
+	if bundle.SourceType != asset.TextSourceWhisper {
+		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, asset.TextSourceWhisper)
+	}
+	if bundle.LanguageCode != "en" {
+		t.Fatalf("LanguageCode = %q, want %q", bundle.LanguageCode, "en")
+	}
+	if len(bundle.Cues) != len(cues) {
+		t.Fatalf("Cues should propagate det.Cues verbatim; got len=%d want %d", len(bundle.Cues), len(cues))
+	}
+	for i := range cues {
+		if bundle.Cues[i] != cues[i] {
+			t.Fatalf("cue %d mismatch: got %+v want %+v", i, bundle.Cues[i], cues[i])
+		}
+	}
+}
+
 func TestAcquireSegmentText_SubtitleErrorFallsThroughToWhisper(t *testing.T) {
 	// godlike/07: subtitle errors are LOGGED + SWALLOWED so the chain
 	// can fall through to Whisper. Whisper errors are propagated.

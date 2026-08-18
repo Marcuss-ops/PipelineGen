@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"go.uber.org/zap"
@@ -44,12 +45,14 @@ type ttsSynthesizeResponse struct {
 	// boundaries in the same synthesis stream (empty otherwise).
 	MetadataPath string `json:"metadata_path,omitempty"`
 	// BoundaryCount is the number of WordBoundary chunks captured.
-	BoundaryCount int `json:"boundary_count,omitempty"`
+	BoundaryCount  int   `json:"boundary_count,omitempty"`
+	VoiceResolveMS int64 `json:"voice_resolve_ms,omitempty"`
+	StreamMS       int64 `json:"stream_ms,omitempty"`
 }
 
 // sendSynthesizeRequest sends a POST /synthesize to the persistent worker
-// and returns the AudioResult. Must be called while p.mu is held (the mutex
-// serialises all HTTP calls to the single-threaded Python server).
+// and returns the AudioResult. The persistent aiohttp worker handles these
+// requests concurrently; lifecycle protection is owned by synthesizeOnce.
 //
 // godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): every
 // failure path wraps a typed sentinel + the underlying cause (dual %w,
@@ -122,11 +125,18 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 		Voice:         ttsOut.Voice,
 		MetadataPath:  ttsOut.MetadataPath,
 		BoundaryCount: ttsOut.BoundaryCount,
+		Metrics: TTSMetrics{
+			VoiceResolveMS: ttsOut.VoiceResolveMS,
+			StreamMS:       ttsOut.StreamMS,
+		},
 	}
+	postprocessStart := time.Now()
 
 	p.log.Info("TTS synthesized via persistent worker",
 		zap.String("path", outputPath),
-		zap.String("voice", ttsOut.Voice))
+		zap.String("voice", ttsOut.Voice),
+		zap.Int64("voice_resolve_ms", result.Metrics.VoiceResolveMS),
+		zap.Int64("stream_ms", result.Metrics.StreamMS))
 
 	// Optional silence removal (mirrors the legacy processor.go block).
 	if input.RemoveSilence {
@@ -162,6 +172,11 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 		}
 	} else {
 		p.log.Warn("failed to probe synthesized audio duration", zap.Error(mediaErr))
+	}
+	result.Metrics.PostprocessMS = time.Since(postprocessStart).Milliseconds()
+	result.Metrics.AudioDurationMS = result.Duration.Milliseconds()
+	if result.Metrics.AudioDurationMS > 0 {
+		result.Metrics.RTF = float64(result.Metrics.StreamMS) / float64(result.Metrics.AudioDurationMS)
 	}
 
 	return result, nil

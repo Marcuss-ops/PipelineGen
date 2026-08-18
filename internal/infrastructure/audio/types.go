@@ -57,4 +57,19 @@ type AudioResult struct {
 	// BoundaryCount is the number of word boundaries captured by the bridge
 	// in one synthesis pass. Zero means no timing was captured.
 	BoundaryCount int
+
+	// Metrics describes one persistent-worker synthesis attempt. Durations
+	// are wall-clock milliseconds and are intentionally kept with the asset
+	// result so callers can diagnose queueing versus Edge service time.
+	Metrics TTSMetrics
+}
+
+type TTSMetrics struct {
+	QueueMS         int64   `json:"tts_queue_ms,omitempty"`
+	LockWaitMS      int64   `json:"tts_lock_wait_ms,omitempty"`
+	VoiceResolveMS  int64   `json:"tts_voice_resolve_ms,omitempty"`
+	StreamMS        int64   `json:"tts_stream_ms,omitempty"`
+	PostprocessMS   int64   `json:"tts_postprocess_ms,omitempty"`
+	AudioDurationMS int64   `json:"tts_audio_duration_ms,omitempty"`
+	RTF             float64 `json:"tts_rtf,omitempty"`
 }

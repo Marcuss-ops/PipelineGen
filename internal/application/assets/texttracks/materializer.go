@@ -23,12 +23,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // OutboxEnqueuer is the narrow port the materializer uses to
@@ -70,6 +72,17 @@ type Materializer struct {
 	outbox      OutboxEnqueuer
 	resolverCfg ResolverConfig
 	log         *zap.Logger
+
+	// mu guards the MaterializationReport mutations that concurrent
+	// materializeOne goroutines share (CreatedLanguages, SkippedLanguages,
+	// RetranslatedLanguages, FailedLanguages).
+	mu sync.Mutex
+	// concurrency bounds the parallel per-language fan-out. 1 (default)
+	// preserves the legacy sequential behavior; >1 runs candidate
+	// translations concurrently. The concrete speedup is bounded by the
+	// upstream translator's own parallelism (e.g. Ollama
+	// OLLAMA_NUM_PARALLEL).
+	concurrency int
 }
 
 func NewMaterializer(
@@ -100,7 +113,22 @@ func NewMaterializer(
 		outbox:      outbox,
 		resolverCfg: resolverCfg,
 		log:         log,
+		concurrency: 1,
 	}, nil
+}
+
+// SetConcurrency bounds the parallel per-language fan-out. Values <1 are
+// clamped to 1 (sequential). It is safe to call before Materialize; the
+// materializer is safe for concurrent Materialize calls only when a single
+// concurrency value is set once at composition time.
+func (m *Materializer) SetConcurrency(n int) {
+	if m == nil {
+		return
+	}
+	if n < 1 {
+		n = 1
+	}
+	m.concurrency = n
 }
 
 // Materialize runs the (a-f) pipeline for a single (asset, kind) pair.
@@ -186,14 +214,38 @@ func (m *Materializer) Materialize(
 		zap.Int("candidate_count", len(candidates)),
 	)
 
-	for _, targetLang := range candidates {
-		if err := m.materializeOne(ctx, resolver, source, targetLang, report); err != nil {
-			report.FailedLanguages[targetLang] = err.Error()
-			m.log.Warn("texttracks.materialize.language_failed",
-				zap.String("asset_id", assetID),
-				zap.String("target_language", targetLang),
-				zap.Error(err),
-			)
+	if m.concurrency > 1 && len(candidates) > 1 {
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(m.concurrency)
+		for _, targetLang := range candidates {
+			targetLang := targetLang
+			g.Go(func() error {
+				if err := m.materializeOne(gctx, resolver, source, targetLang, report); err != nil {
+					m.mu.Lock()
+					report.FailedLanguages[targetLang] = err.Error()
+					m.mu.Unlock()
+					m.log.Warn("texttracks.materialize.language_failed",
+						zap.String("asset_id", assetID),
+						zap.String("target_language", targetLang),
+						zap.Error(err),
+					)
+				}
+				return nil
+			})
+		}
+		// Per-language errors are recorded on the report and never
+		// propagated; the loop always drains every candidate.
+		_ = g.Wait()
+	} else {
+		for _, targetLang := range candidates {
+			if err := m.materializeOne(ctx, resolver, source, targetLang, report); err != nil {
+				report.FailedLanguages[targetLang] = err.Error()
+				m.log.Warn("texttracks.materialize.language_failed",
+					zap.String("asset_id", assetID),
+					zap.String("target_language", targetLang),
+					zap.Error(err),
+				)
+			}
 		}
 	}
 
@@ -266,7 +318,9 @@ func (m *Materializer) materializeOne(
 		return fmt.Errorf("find current for translation: %w", err)
 	}
 	if existing != nil {
+		m.mu.Lock()
 		report.SkippedLanguages = append(report.SkippedLanguages, targetLang)
+		m.mu.Unlock()
 		m.log.Info("texttracks.materialize.translation_key_hit",
 			zap.String("asset_id", report.AssetID),
 			zap.String("kind", string(report.Kind)),
@@ -274,19 +328,6 @@ func (m *Materializer) materializeOne(
 		)
 		return nil
 	}
-
-	// (Step 4) Compute the deterministic translation fingerprint
-	// for the insert path. Same canonical formula; this copy is
-	// persisted on the new row via InsertTranslationWithAuditPredecessor
-	// below. The lookup above and the insert here MUST share the
-	// same formula values, so both go through asset.TranslationKey.
-	translationKey := asset.TranslationKey(
-		report.SourceTextHash,
-		targetLang,
-		m.resolverCfg.TranslationModel,
-		m.resolverCfg.ModelVersion,
-		m.resolverCfg.PromptVersion,
-	)
 
 	// Soft-fallback classifier: keep the legacy
 	// created-vs-retranslated split so callers can see "this
@@ -318,14 +359,16 @@ func (m *Materializer) materializeOne(
 			"preserve_scene_markers": "true",
 		},
 	}
-	// Thread the active TranslationPolicy into the Translate
-	// call. "auto" + unknown → nil (server default); the
-	// concrete model name comes from the operator-curated
-	// TranslationModel.
-	if m.resolverCfg.TranslationModel != "" {
+	// Thread the Ollama fallback model into the Translate call.
+	// OllamaModel is decoupled from the request fingerprint
+	// (TranslationModel): the fingerprint identifies the active
+	// translation stack (e.g. "argos-translate"), while
+	// OllamaModel is the concrete model the Ollama fallback should
+	// use. "auto" + unknown → nil (server default).
+	if m.resolverCfg.OllamaModel != "" {
 		cmd.ModelPolicy = &translation.ModelPolicy{
 			Provider: "ollama",
-			Model:    m.resolverCfg.TranslationModel,
+			Model:    m.resolverCfg.OllamaModel,
 		}
 	}
 
@@ -339,6 +382,29 @@ func (m *Materializer) materializeOne(
 			AttemptedText: source.TextContent,
 		}
 	}
+
+	// Honest provenance (PR-ARGOS-TRANSLATION): the persisted fingerprint
+	// MUST reflect the provider that actually produced the translation. When
+	// the Ollama fallback wins under an Argos-primary stack, stamping the
+	// Argos fingerprint ("argos-translate") onto an Ollama row would mislabel
+	// provenance AND poison the lookup-before-translate gate (a later run
+	// would reuse Ollama text as if it were Argos).
+	translationModel := m.resolverCfg.TranslationModel
+	modelVersion := m.resolverCfg.ModelVersion
+	if translationModel == translation.ArgosTranslationModel && translated.UsedProvider == translation.ProviderOllama {
+		translationModel = translation.ProviderOllama
+		modelVersion = translated.UsedModel
+		if modelVersion == "" {
+			modelVersion = "ollama-server-default"
+		}
+	}
+	translationKey := asset.TranslationKey(
+		report.SourceTextHash,
+		targetLang,
+		translationModel,
+		modelVersion,
+		m.resolverCfg.PromptVersion,
+	)
 
 	// (e) Build the new READY track. The translation_key
 	// persisted here matches the lookup probe; the partial
@@ -357,7 +423,7 @@ func (m *Materializer) materializeOne(
 		IsOriginal:         false,
 		Provider:           translated.UsedProvider,
 		ModelName:          translated.UsedModel,
-		ModelVersion:       m.resolverCfg.ModelVersion,
+		ModelVersion:       modelVersion,
 		PromptVersion:      m.resolverCfg.PromptVersion,
 		TextHash:           ComputeSourceTextHash(translated.TranslatedText),
 		SourceVersion:      source.SourceVersion,
@@ -393,12 +459,14 @@ func (m *Materializer) materializeOne(
 		return fmt.Errorf("insert translation with audit predecessor: %w", err)
 	}
 
+	m.mu.Lock()
 	switch classification {
 	case "created":
 		report.CreatedLanguages = append(report.CreatedLanguages, targetLang)
 	case "retranslated":
 		report.RetranslatedLanguages = append(report.RetranslatedLanguages, targetLang)
 	}
+	m.mu.Unlock()
 	return nil
 }
 

@@ -56,18 +56,6 @@ var (
 		Help: "Total number of voiceover pipeline executions, partitioned by final status.",
 	}, []string{"status"})
 
-	// VoiceoverStageDuration tracks per-stage execution time in seconds.
-	// Labels:
-	//   stage="tts"        — Stage 1: TTSProvider.Synthesize
-	//   stage="audio_post"  — Stage 2: AudioPostProcessor.Process
-	//   stage="publish"     — Stage 3: VoiceoverPublisher.Publish
-	//   stage="finalize"    — Stage 4: BeginTx + Finalizer.Finalize + Commit
-	VoiceoverStageDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "voiceover_stage_duration_seconds",
-		Help:    "Duration of each voiceover pipeline stage in seconds.",
-		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
-	}, []string{"stage"})
-
 	// DriveUploadFailuresTotal counts Stage 3 (Publisher.Publish) failures.
 	// godlike/07 NO-FAKE-AVAILABILITY: incremented ONLY when the publisher
 	// returns a non-nil error — the counter is the canonical metric for

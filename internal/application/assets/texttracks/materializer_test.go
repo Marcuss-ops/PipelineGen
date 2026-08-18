@@ -712,3 +712,58 @@ func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr tran
 	}
 	return m
 }
+
+// ── PR-ARGOS-TRANSLATION provenance fix ────────────────────────────────
+
+// ollamaFallbackTranslator simulates the FallbackTranslator returning an
+// Ollama result while the Argos-primary stack is configured (i.e. the Argos
+// bridge failed and the Ollama fallback produced the text).
+type ollamaFallbackTranslator struct{}
+
+func (*ollamaFallbackTranslator) Translate(_ context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
+	return translation.TranslationResult{
+		TranslatedText: "[ollama] " + cmd.Text,
+		UsedProvider:   translation.ProviderOllama,
+		UsedModel:      "gemma4:e4b",
+		SourceLang:     cmd.SourceLang,
+		TargetLang:     cmd.TargetLang,
+	}, nil
+}
+
+// TestMaterialize_OllamaFallbackUnderArgos_PersistsHonestFingerprint pins
+// the provenance fix: when the configured stack is Argos-primary but the
+// Ollama fallback actually wins, the persisted row MUST NOT carry the Argos
+// fingerprint ("argos-translate"/"argos-translate/v2"). It must stamp the
+// honest "ollama" provider + the winning model so a later run can
+// distinguish the fallback translation from a true Argos translation.
+func TestMaterialize_OllamaFallbackUnderArgos_PersistsHonestFingerprint(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	tr := &ollamaFallbackTranslator{}
+	ob := &fakeOutbox{}
+	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+
+	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"},
+		translation.ArgosTranslationModel, translation.ArgosTranslationModelVersion, "prompt-v1")
+
+	srcHash := texttracks.ComputeSourceTextHash("hello world")
+	_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+
+	itRow, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	if itRow == nil {
+		t.Fatal("expected it row to be persisted")
+	}
+	if itRow.Provider != translation.ProviderOllama {
+		t.Fatalf("provider=%q, want %q", itRow.Provider, translation.ProviderOllama)
+	}
+	if itRow.ModelVersion != "gemma4:e4b" {
+		t.Fatalf("model_version=%q, want %q (honest Ollama model, not the Argos token)", itRow.ModelVersion, "gemma4:e4b")
+	}
+	wantKey := asset.TranslationKey(srcHash, "it", translation.ProviderOllama, "gemma4:e4b", "prompt-v1")
+	if itRow.TranslationKey != wantKey {
+		t.Fatalf("translation_key=%q, want %q", itRow.TranslationKey, wantKey)
+	}
+}

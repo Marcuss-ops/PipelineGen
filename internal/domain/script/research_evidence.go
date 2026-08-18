@@ -21,6 +21,12 @@ type RankedResearchCandidate struct {
 	CacheKey    string              `json:"cache_key,omitempty"`
 	Sources     []ResearchWebSource `json:"sources"`
 	Claims      []ResearchClaim     `json:"claims"`
+	// MetricEvidenceQuality is HIGH|MEDIUM|LOW|NONE for the requested ranking
+	// metric; MetricClaimCount is how many verified claims mention it. Together
+	// they let a consumer spot a single weak candidate (e.g. Canelo) without
+	// treating the whole ranking as uncertain.
+	MetricEvidenceQuality string `json:"metric_evidence_quality,omitempty"`
+	MetricClaimCount      int    `json:"metric_claim_count,omitempty"`
 }
 
 type ResearchEvidencePack struct {
@@ -144,14 +150,14 @@ func (p *ResearchEvidencePack) NarrativePlanInstructions() string {
 	}
 	out.WriteString("CONCLUSION\n\n")
 	out.WriteString("SCENE OWNERSHIP RULES:\n")
-	out.WriteString("- Each ranked boxer owns exactly one scene: the scene named above.\n")
-	out.WriteString("- In a boxer scene, discuss only that boxer; do not reuse another boxer as the subject.\n")
+	out.WriteString("- Each ranked candidate owns exactly one scene: the scene named above.\n")
+	out.WriteString("- In a candidate's scene, discuss only that candidate; do not reuse another candidate as the scene's subject.\n")
 	out.WriteString("- Do not copy a generic ranking paragraph into multiple scenes.\n")
-	out.WriteString("- Do not add boxers that are not in this plan.\n")
+	out.WriteString("- Do not add candidates that are not in this plan.\n")
 	out.WriteString("- Use the candidate's own evidence claims and sources for that scene.\n")
 	out.WriteString("- The rank order is fixed after research; do not invent a different order.\n")
-	out.WriteString("- Mention the exact boxer name in its own scene heading and narration.\n")
-	out.WriteString("- Keep the introduction and conclusion separate from the ten boxer scenes.\n")
+	out.WriteString("- Mention the exact candidate name in its own scene heading and narration.\n")
+	out.WriteString("- Keep the introduction and conclusion separate from the ranked candidate scenes.\n")
 	return strings.TrimSpace(out.String())
 }
 

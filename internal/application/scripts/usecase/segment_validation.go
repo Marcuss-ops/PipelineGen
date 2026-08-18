@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -212,11 +213,15 @@ func (e *Engine) generateSegments(
 	plan *scriptpkg.ResolvedGenerationPlan,
 	req ports.TextGenerationRequest,
 ) (*ports.GenerationResult, error) {
-	if plan == nil || len(plan.Segments) == 0 {
-		// ollama.generate is the external LLM boundary. The canonical Run
-		// clock records it as an OperationReport under script.engine.
+	generate := func(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
+		if e.generationGate != nil {
+			if err := e.generationGate.AcquireHigh(ctx); err != nil {
+				return nil, err
+			}
+			defer e.generationGate.Release()
+		}
 		var out *ports.GenerationResult
-		if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 			Stage:     scriptgen.StageScriptEngine,
 			Component: kernobs.ComponentOllama,
 			Operation: kernobs.OperationGenerate,
@@ -224,15 +229,22 @@ func (e *Engine) generateSegments(
 			var genErr error
 			out, genErr = e.ollamaGen.GenerateScript(opCtx, req)
 			return genErr
-		}); err != nil {
-			return nil, err
-		}
-		return out, nil
+		})
+		return out, err
+	}
+	if plan == nil || len(plan.Segments) == 0 {
+		return generate(ctx, req)
 	}
 	settings := e.segmentSettings()
 	texts := make([]string, len(plan.Segments))
 	var first *ports.GenerationResult
-	for index, segment := range plan.Segments {
+	type segmentOutput struct {
+		index  int
+		text   string
+		result *ports.GenerationResult
+		err    error
+	}
+	generateOne := func(index int, segment scriptpkg.ScriptSegment) segmentOutput {
 		segmentPlan := *plan
 		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
 		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
@@ -254,18 +266,13 @@ func (e *Engine) generateSegments(
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
 		var result *ports.GenerationResult
+		var lastErr error
 		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
-			// Each per-segment LLM call is its own ollama.generate operation.
-			if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-				Stage:     scriptgen.StageScriptEngine,
-				Component: kernobs.ComponentOllama,
-				Operation: kernobs.OperationGenerate,
-			}, func(opCtx context.Context) error {
-				var genErr error
-				result, genErr = e.ollamaGen.GenerateScript(opCtx, segmentReq)
-				return genErr
-			}); opErr != nil {
-				return nil, opErr
+			var genErr error
+			result, genErr = generate(ctx, segmentReq)
+			if genErr != nil {
+				lastErr = genErr
+				break
 			}
 			candidate := splitGeneratedSegmentParagraphs(result.Script)
 			// This request owns exactly one editorial segment. Models may
@@ -284,12 +291,60 @@ func (e *Engine) generateSegments(
 				}
 			}
 			if attempt == settings.maxRegenerationAttempts {
-				return nil, fmt.Errorf("%w: segment[%d] did not produce one valid paragraph", scriptpkg.ErrSegmentValidationFailed, index)
+				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph", scriptpkg.ErrSegmentValidationFailed, index)
+				break
 			}
 			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Target %d words; return exactly one paragraph.", segmentReq.MinWords)
 		}
+		if lastErr != nil {
+			return segmentOutput{index: index, result: result, err: lastErr}
+		}
+		return segmentOutput{index: index, text: texts[index], result: result}
+	}
+	workers := len(plan.Segments)
+	if e.generationGate != nil {
+		workers = e.generationGate.Capacity()
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(plan.Segments) {
+		workers = len(plan.Segments)
+	}
+	jobs := make(chan int)
+	results := make(chan segmentOutput, len(plan.Segments))
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				results <- generateOne(index, plan.Segments[index])
+			}
+		}()
+	}
+	go func() {
+		for index := range plan.Segments {
+			select {
+			case jobs <- index:
+			case <-ctx.Done():
+				close(jobs)
+				wg.Wait()
+				close(results)
+				return
+			}
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+	for output := range results {
+		if output.err != nil {
+			return nil, output.err
+		}
+		texts[output.index] = output.text
 		if first == nil {
-			first = result
+			first = output.result
 		}
 	}
 	if first == nil {

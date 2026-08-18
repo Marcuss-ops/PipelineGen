@@ -457,11 +457,23 @@ type Scene struct {
 	DurationMS int64  `json:"duration_ms,omitempty"`
 	// DurationUS is the sealed internal timing value. DurationMS remains only
 	// as a legacy wire field at the boundary.
-	DurationUS   int64                         `json:"duration_us,omitempty"`
-	Clip         *ClipReference                `json:"clip,omitempty"`
-	Clips        []*ClipReference              `json:"clips,omitempty"`
-	Text         map[Language]string           `json:"text"`
-	Voiceover    map[Language]AudioReference   `json:"voiceover,omitempty"`
+	DurationUS int64                       `json:"duration_us,omitempty"`
+	Clip       *ClipReference              `json:"clip,omitempty"`
+	Clips      []*ClipReference            `json:"clips,omitempty"`
+	Text       map[Language]string         `json:"text"`
+	Voiceover  map[Language]AudioReference `json:"voiceover,omitempty"`
+
+	// TextReadyAt is the wall-clock instant this scene's text became final
+	// (the SceneTextReady boundary). TranslationStartedAt and TTSStartedAt
+	// mark when this scene's downstream branches first began. Together they
+	// make streaming overlap durable and provable: in a streaming run,
+	// scene N's translation/TTS must start before scene N+1's text is ready.
+	// They are zero in the batch path, where every scene becomes ready at
+	// once and no per-scene ready boundary exists.
+	TextReadyAt          time.Time `json:"text_ready_at,omitempty"`
+	TranslationStartedAt time.Time `json:"translation_started_at,omitempty"`
+	TTSStartedAt         time.Time `json:"tts_started_at,omitempty"`
+
 	Audio        capabilityaudio.AudioIntent   `json:"audio"`
 	AudioIntents []capabilityaudio.AudioIntent `json:"audio_intents,omitempty"`
 	// Annotations is the deterministic scene-local semantic surface
@@ -606,10 +618,19 @@ type GenerateResult struct {
 	WordCount      int    `json:"word_count"`
 	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 
-	AudioMode     capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
-	AudioStrategy capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
-	FinalAudio    *FinalAudioReference                `json:"final_audio,omitempty"`
-	AudioMetrics  *AudioPipelineMetrics               `json:"audio_metrics,omitempty"`
+	AudioMode          capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
+	AudioStrategy      capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
+	FinalAudio         *FinalAudioReference                `json:"final_audio,omitempty"`
+	AudioMetrics       *AudioPipelineMetrics               `json:"audio_metrics,omitempty"`
+	TranslationMetrics *TranslationPipelineMetrics         `json:"translation_metrics,omitempty"`
+}
+
+// TranslationPipelineMetrics makes translation fan-out observable without
+// conflating provider work (sum) with wall-clock latency (critical path).
+type TranslationPipelineMetrics struct {
+	Calls       int   `json:"calls"`
+	Concurrency int   `json:"concurrency"`
+	WallMS      int64 `json:"wall_ms"`
 }
 
 // GenerationRun is the canonical aggregate that tracks a single
