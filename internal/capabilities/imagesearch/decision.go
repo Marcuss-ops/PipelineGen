@@ -94,7 +94,8 @@ type ImageSearchDecision struct {
 	// badges (MONEY, DATE, EVENT) — explicitly NOT image search subjects.
 	Visual []ResolvedEntity `json:"visual,omitempty"`
 	// Negated are the entities the sentence explicitly excludes ("Mike Tyson"
-	// in "Tyson Fury, not Mike Tyson"). They must never drive an image.
+	// in "Tyson Fury, not Mike Tyson", "instead of Mike Tyson", "rather than
+	// Mike Tyson", "unlike Mike Tyson"). They must never drive an image.
 	Negated []ResolvedEntity `json:"negated,omitempty"`
 	// ImportantPhrases are the editorial phrases (e.g. "earned more than
 	// $100 million") that can feed the visual scheduler.

@@ -257,12 +257,22 @@ func canonicalValue(typ, name string) string {
 }
 
 // normalizeBaselineValue cleans the extractor's span quirks before dedup:
-// trailing connectors ("Manny Pacquiao and" → "Manny Pacquiao", "Manny
-// Pacquiao e" → "Manny Pacquiao") and possessives ("Tesla's Cybertruck" →
-// "Tesla Cybertruck").
+// leading contrast openers ("Unlike Mike Tyson" → "Mike Tyson"), trailing
+// connectors ("Manny Pacquiao and" → "Manny Pacquiao", "Manny Pacquiao e"
+// → "Manny Pacquiao") and possessives ("Tesla's Cybertruck" → "Tesla
+// Cybertruck").
 func normalizeBaselineValue(value string) string {
 	value = strings.TrimSpace(value)
 	fields := strings.Fields(value)
+	// Strip a sentence-initial contrast opener the extractor folded into the
+	// span ("Unlike Mike Tyson" → "Mike Tyson", deduped onto the KB id).
+	for len(fields) > 0 {
+		first := strings.ToLower(strings.Trim(fields[0], ".,;:!?\"'"))
+		if !leadingContrastWords[first] {
+			break
+		}
+		fields = fields[1:]
+	}
 	for len(fields) > 0 {
 		last := strings.ToLower(strings.Trim(fields[len(fields)-1], ".,;:!?\"'"))
 		switch last {
@@ -357,67 +367,106 @@ func resolveValues(text string, baseline *scriptpkg.EntityResult, lang string) (
 
 // ── Negation pass ─────────────────────────────────────────────────────
 
-// applyNegation moves an entity to the Negated list when a negation particle
-// (not/no/never/neither/nor, non/mai/né/…) occurs within the three tokens
-// before its first mention. The negated entity never drives a query.
+// applyNegation moves an entity to the Negated list when a negation
+// construction ("not Mike Tyson", "instead of Mike Tyson", "rather than
+// Mike Tyson", "unlike Mike Tyson", "non/invece di/piuttosto che Mike
+// Tyson") precedes it. A phrase negates only the FIRST entity mentioned
+// after it (within the three-token window), so in "Unlike Mike Tyson, Floyd
+// Mayweather …" only Mike Tyson is excluded — the phrase can never reach
+// across another entity. Negated entities never drive a query.
 func applyNegation(text string, entities []ResolvedEntity, lang string) ([]ResolvedEntity, []ResolvedEntity) {
 	tokens := tokenizeWords(text)
-	particles := negationParticlesFor(lang)
-	var kept, negated []ResolvedEntity
-	for _, entity := range entities {
-		if entityNegated(tokens, entity.Text, particles) {
-			negated = append(negated, entity)
-			continue
+	negatedIdx := map[int]bool{}
+	for _, phrase := range negationPhrasesFor(lang) {
+		for e := 0; e < len(tokens); e++ {
+			if !phraseEndsAt(tokens, e, phrase) {
+				continue
+			}
+			best, bestStart := -1, len(tokens)+1
+			for idx, entity := range entities {
+				start := entityTokenStart(tokens, entity.Text)
+				if start < 0 || start <= e || start-e > 3 {
+					continue
+				}
+				if start < bestStart {
+					best, bestStart = idx, start
+				}
+			}
+			if best >= 0 {
+				negatedIdx[best] = true
+			}
 		}
-		kept = append(kept, entity)
+	}
+	var kept, negated []ResolvedEntity
+	for idx, entity := range entities {
+		if negatedIdx[idx] {
+			negated = append(negated, entity)
+		} else {
+			kept = append(kept, entity)
+		}
 	}
 	return kept, negated
 }
 
-// entityNegated checks the window before the entity's first verbatim mention:
-// the entity's words must occur as a consecutive token run, and a negation
-// particle must sit within the three tokens before that run.
-func entityNegated(tokens []string, entityText string, particles map[string]bool) bool {
-	words := strings.Fields(entityText)
-	if len(words) == 0 {
+// phraseEndsAt reports whether phrase occurs as a contiguous token run
+// ending exactly at token index e ("instead of Mike Tyson": the phrase
+// [instead of] ends at the token before "Mike").
+func phraseEndsAt(tokens []string, e int, phrase []string) bool {
+	n := len(phrase)
+	start := e - n + 1
+	if start < 0 {
 		return false
 	}
 	trim := func(tok string) string { return strings.Trim(tok, ".,;:!?\"'()") }
+	for k := 0; k < n; k++ {
+		if !strings.EqualFold(trim(tokens[start+k]), phrase[k]) {
+			return false
+		}
+	}
+	return true
+}
+
+// entityTokenStart returns the token index where the entity's words first
+// occur as a consecutive (case-insensitive, punctuation-trimmed) run, or -1.
+func entityTokenStart(tokens []string, entityText string) int {
+	words := strings.Fields(entityText)
+	if len(words) == 0 {
+		return -1
+	}
+	trim := func(tok string) string { return strings.Trim(tok, ".,;:!?\"'()") }
 	for i := 0; i+len(words) <= len(tokens); i++ {
-		match := true
-		for j, word := range words {
-			if !strings.EqualFold(trim(tokens[i+j]), word) {
-				match = false
+		ok := true
+		for j, w := range words {
+			if !strings.EqualFold(trim(tokens[i+j]), w) {
+				ok = false
 				break
 			}
 		}
-		if !match {
-			continue
+		if ok {
+			return i
 		}
-		for k := i - 1; k >= 0 && k >= i-3; k-- {
-			if particles[strings.ToLower(trim(tokens[k]))] {
-				return true
-			}
-		}
-		return false
 	}
-	return false
+	return -1
 }
 
 // ── Coreference pass ──────────────────────────────────────────────────
 
-// applyCoreference grounds a leading pronoun — or, in Italian, a dropped
-// subject after a subordinate clause ("Dopo aver guadagnato …, ha ampliato
-// …") or the article+possessive opener ("Il suo successo …") — on the most
-// recent prior person. Without a supplied antecedent the pronoun is never
-// resolved ("His fortune changed …" / "La sua fortuna …" → no entity).
+// applyCoreference grounds a leading pronoun ("He later invested …"), a
+// dropped Italian subject ("Dopo aver guadagnato …, ha ampliato …"), the
+// article+possessive opener ("La sua fortuna …") or an alias descriptor
+// ("The fighter later invested …" → the prior boxer) on a prior person.
+// Domain-specific aliases only ground on a prior person of the right domain
+// ("the fighter" never resolves to Steve Jobs). Without a supplied
+// antecedent nothing is ever invented ("His fortune changed …" / "La sua
+// fortuna …" / "The fighter …" with no prior → no entity).
 func (r *Resolver) applyCoreference(text string, req Request, entities []ResolvedEntity, lang string) []ResolvedEntity {
 	hasPronoun := startsWithPronoun(text, lang) || (startsSubordinateClause(text, lang) && sentenceHasPronoun(text, lang))
-	if !hasPronoun || len(req.PriorPersons) == 0 {
+	alias := matchAlias(text, lang)
+	if (!hasPronoun && alias == nil) || len(req.PriorPersons) == 0 {
 		return entities
 	}
-	prior := req.PriorPersons[0]
-	if strings.TrimSpace(prior) == "" {
+	prior := resolvePriorPerson(req.PriorPersons, alias)
+	if prior == "" {
 		return entities
 	}
 	// The prior person may already be an explicit entity of this sentence
@@ -429,12 +478,21 @@ func (r *Resolver) applyCoreference(text string, req Request, entities []Resolve
 			return entities
 		}
 	}
-	entities = append(entities, ResolvedEntity{
+	entity := ResolvedEntity{
 		Type:        "PERSON",
 		Text:        prior,
 		MentionAt:   runeOffset(text, leadingToken(text)),
 		CanonicalID: capabilityentities.CanonicalEntityID("PERSON", prior),
-	})
+	}
+	// A known prior person carries its KB metadata, so an alias/pronoun
+	// resolution queries like the identity itself ("Tyson Fury boxer", never
+	// a bare name that could hit the wrong person).
+	if entry := knownEntityByName(prior); entry != nil {
+		entity.Hint = entry.Hint
+		entity.Domain = entry.Domain
+		entity.QueryName = entry.QueryName
+	}
+	entities = append(entities, entity)
 	return entities
 }
 

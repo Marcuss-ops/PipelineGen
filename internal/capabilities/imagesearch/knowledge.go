@@ -304,19 +304,36 @@ var eventREIT = regexp.MustCompile(`((?:storico|grande|importante|epico|leggenda
 
 // ── Structural vocabulary ─────────────────────────────────────────────
 
-// negationParticles are the English particles that negate an
-// immediately-following entity ("not Mike Tyson"). Mirrors
+// negationPhrases are the English constructions that exclude an entity that
+// follows them: particles ("not Mike Tyson") and multi-word contrast
+// phrases ("instead of Mike Tyson", "rather than Mike Tyson", "unlike Mike
+// Tyson", "as opposed to Mike Tyson"). The particle set mirrors
 // config/lexicons/en/negative_particles.txt.
-var negationParticles = map[string]bool{
-	"not": true, "no": true, "never": true, "neither": true, "nor": true,
+var negationPhrases = [][]string{
+	{"not"}, {"no"}, {"never"}, {"neither"}, {"nor"},
+	{"instead", "of"}, {"rather", "than"}, {"unlike"}, {"other", "than"},
+	{"as", "opposed", "to"}, {"in", "contrast", "to"},
 }
 
-// negationParticlesIT are the Italian particles that negate an
-// immediately-following entity ("non Mike Tyson"). Mirrors
-// config/lexicons/it/negative_particles.txt.
-var negationParticlesIT = map[string]bool{
-	"non": true, "no": true, "mai": true, "ne": true, "né": true,
-	"neanche": true, "nemmeno": true, "neppure": true,
+// negationPhrasesIT are the Italian negation constructions ("non Mike
+// Tyson", "invece di Mike Tyson", "piuttosto che Mike Tyson", "a
+// differenza di Mike Tyson", "anziché Mike Tyson"). The particle set
+// mirrors config/lexicons/it/negative_particles.txt.
+var negationPhrasesIT = [][]string{
+	{"non"}, {"no"}, {"mai"}, {"ne"}, {"né"}, {"neanche"}, {"nemmeno"}, {"neppure"},
+	{"invece", "di"}, {"piuttosto", "che"}, {"anziché"},
+	{"a", "differenza", "di"}, {"al", "posto", "di"}, {"diversamente", "da"},
+}
+
+// leadingContrastWords are sentence-initial contrast openers that the CPU
+// extractor may fold into a person span ("Unlike Mike Tyson" → "Mike
+// Tyson"). normalizeBaselineValue strips them from the front of a baseline
+// value so the dedup collapses onto the KB identity.
+var leadingContrastWords = map[string]bool{
+	// English.
+	"unlike": true, "rather": true, "instead": true, "despite": true,
+	// Italian.
+	"invece": true, "piuttosto": true, "anziché": true,
 }
 
 // pronouns are the English subject/possessive pronouns the resolver can
@@ -402,13 +419,152 @@ var fightContextWordsIT = []string{
 	"combatté", "sfida",
 }
 
+// ── Alias descriptors (noun-phrase coreference) ───────────────────────
+
+// aliasDescriptor is one descriptor noun phrase that refers to a prior
+// person without naming them ("the fighter", "il combattente"). A non-empty
+// Domain restricts resolution to prior persons that are known identities of
+// that domain ("the fighter" only grounds on a known boxer); an empty Domain
+// resolves to the most recent prior person regardless.
+type aliasDescriptor struct {
+	surface string
+	domain  string
+}
+
+// aliases and aliasesIT are the English and Italian descriptor tables.
+// Longer surfaces are preferred by matchAlias ("the heavyweight champion"
+// over "the champion").
+var aliases = []aliasDescriptor{
+	{surface: "the heavyweight champion", domain: "boxing"},
+	{surface: "the fighter", domain: "boxing"},
+	{surface: "the boxer", domain: "boxing"},
+	{surface: "the champion", domain: "boxing"},
+	{surface: "the athlete"},
+	{surface: "the legend"},
+	{surface: "the businessman"},
+	{surface: "the icon"},
+}
+
+var aliasesIT = []aliasDescriptor{
+	{surface: "il campione dei pesi massimi", domain: "boxing"},
+	{surface: "il combattente", domain: "boxing"},
+	{surface: "il pugile", domain: "boxing"},
+	{surface: "il campione", domain: "boxing"},
+	{surface: "l'atleta"},
+	{surface: "la leggenda"},
+	{surface: "l'imprenditore"},
+	{surface: "l'icona"},
+}
+
 // ── Language accessors ────────────────────────────────────────────────
 
-func negationParticlesFor(lang string) map[string]bool {
+func negationPhrasesFor(lang string) [][]string {
 	if lang == "it" {
-		return negationParticlesIT
+		return negationPhrasesIT
 	}
-	return negationParticles
+	return negationPhrases
+}
+
+// matchAlias returns the longest alias descriptor that opens the sentence,
+// or nil when none does ("The fighter later invested …" → the fighter;
+// "Il pugile in seguito …" → il pugile). Only the leading position is
+// considered: like pronoun coreference, an alias is the sentence SUBJECT.
+func matchAlias(text string, lang string) *aliasDescriptor {
+	tokens := tokenizeWords(text)
+	if len(tokens) == 0 {
+		return nil
+	}
+	table := aliases
+	if lang == "it" {
+		table = aliasesIT
+	}
+	var best *aliasDescriptor
+	bestLen := 0
+	for i := range table {
+		words := strings.Fields(table[i].surface)
+		if len(words) == 0 || len(words) > len(tokens) {
+			continue
+		}
+		ok := true
+		for k, w := range words {
+			if !strings.EqualFold(strings.Trim(tokens[k], ".,;:!?\"'"), w) {
+				ok = false
+				break
+			}
+		}
+		if ok && len(words) > bestLen {
+			best = &table[i]
+			bestLen = len(words)
+		}
+	}
+	return best
+}
+
+// knownEntityByName returns the KB entry for a (canonical) person name,
+// matched case-insensitively on Name or any language surface, or nil.
+func knownEntityByName(name string) *KnownEntity {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	for i := range knownEntities {
+		entry := &knownEntities[i]
+		if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(entry.Name))) {
+			return entry
+		}
+		for _, s := range entry.Surfaces {
+			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
+				return entry
+			}
+		}
+		for _, s := range entry.SurfacesIT {
+			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
+				return entry
+			}
+		}
+	}
+	return nil
+}
+
+// knownDomain reports whether the (canonical) person name is a known
+// identity of the given domain in the knowledge base.
+func knownDomain(name string, domain string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	for _, entry := range knownEntities {
+		if entry.Domain != domain {
+			continue
+		}
+		if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(entry.Name))) {
+			return true
+		}
+		for _, s := range entry.Surfaces {
+			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
+				return true
+			}
+		}
+		for _, s := range entry.SurfacesIT {
+			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolvePriorPerson picks the prior person a pronoun or alias grounds on.
+// Domain-specific aliases only resolve to a prior person that is a known
+// identity of that domain ("the fighter" → a known boxer, never Steve
+// Jobs); pronouns and generic aliases resolve to the most recent prior
+// person. Returns "" when nothing is resolvable.
+func resolvePriorPerson(priors []string, alias *aliasDescriptor) string {
+	for _, prior := range priors {
+		prior = strings.TrimSpace(prior)
+		if prior == "" {
+			continue
+		}
+		if alias != nil && alias.domain != "" && !knownDomain(prior, alias.domain) {
+			continue
+		}
+		return prior
+	}
+	return ""
 }
 
 func pronounsFor(lang string) map[string]bool {
