@@ -14,6 +14,7 @@
       "scripts/start.sh",
       "scripts/start_server_bg.sh",
       "scripts/operate_script_generate.sh",
+      "scripts/actor_10_generate_and_render.sh",
       "scripts/lib/dotenv.sh",
       ".split2-push.sh",
       "start_server.sh",
@@ -40,7 +41,8 @@
       "internal/application/scripts/usecase/",
       "internal/infrastructure/webresearch/",
       "internal/infrastructure/database/sqlite/scripts/",
-      "config/lexicons/"
+      "config/lexicons/",
+      "researchlive"
     ],
     "go_packages": [
       "./internal/application/scripts/usecase/...",
@@ -176,7 +178,8 @@
       "internal/domain/drive/",
       "internal/infrastructure/drive/",
       "internal/application/publish_drive/",
-      "scripts/verify_drive_only_certification.sh"
+      "scripts/verify_drive_only_certification.sh",
+      "scripts/render_clip_watermark_drive.sh"
     ],
     "go_packages": [
       "./internal/domain/drive/...",
