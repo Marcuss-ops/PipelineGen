@@ -64,7 +64,6 @@ type FinalizeInputs struct {
 	EngineResult *EngineResult
 	PostResult   *adapters.PipelineResult
 	Provenance   *scriptpkg.GenerationProvenance
-	Timings      scriptpkg.GenerationTimings
 }
 
 // Finalize builds the result, enforces the clip-native contract,
@@ -86,9 +85,7 @@ func (f *GenerationFinalizer) Finalize(
 	engineResult := inputs.EngineResult
 	postResult := inputs.PostResult
 	provenance := inputs.Provenance
-	timings := inputs.Timings
-
-	result := buildGenerationResultWithCache(item, plan, engineResult, postResult, timings, f.vidRushCache, ctx)
+	result := buildGenerationResultWithCache(item, plan, engineResult, postResult, f.vidRushCache, ctx)
 	result.AudioMode = plan.AudioMode
 
 	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {

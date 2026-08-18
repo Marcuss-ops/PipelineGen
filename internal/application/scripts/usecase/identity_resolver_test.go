@@ -35,16 +35,59 @@ func TestSubjectIdentityResolver_ResolveKnownBoxer(t *testing.T) {
 	}
 }
 
-func TestSubjectIdentityResolver_ResolveUnknownBoxer(t *testing.T) {
+func TestSubjectIdentityResolver_ResolveUnknownSubjectHasNoDomainTerms(t *testing.T) {
 	resolver := NewSubjectIdentityResolver()
 	identity := resolver.Resolve("Some Unknown Fighter")
 
 	if identity.CanonicalName != "Some Unknown Fighter" {
 		t.Errorf("Resolve(unknown).CanonicalName = %q, want %q", identity.CanonicalName, "Some Unknown Fighter")
 	}
-	if len(identity.RequiredTerms) == 0 {
-		t.Error("Resolve(unknown).RequiredTerms should not be empty")
+	// Unknown subjects must NOT carry boxing vocabulary: research must
+	// work for arbitrary domains (athletes, tennis players, countries,
+	// actors), and the subject filter falls back to canonical-name token
+	// matching instead.
+	if len(identity.RequiredTerms) != 0 {
+		t.Errorf("Resolve(unknown).RequiredTerms must be empty for unknown subjects, got %v", identity.RequiredTerms)
 	}
+}
+
+func TestSubjectIdentityResolver_JordanDisambiguation(t *testing.T) {
+	resolver := NewSubjectIdentityResolver()
+	mj := resolver.Resolve("Michael Jordan")
+	mbj := resolver.Resolve("Michael B. Jordan")
+
+	if mj.CanonicalName != "Michael Jordan" || mbj.CanonicalName != "Michael B. Jordan" {
+		t.Fatalf("Jordans must resolve to distinct identities: MJ=%q MBJ=%q", mj.CanonicalName, mbj.CanonicalName)
+	}
+	if mj.ID == mbj.ID {
+		t.Fatalf("Michael Jordan and Michael B. Jordan must not share an identity ID (%q)", mj.ID)
+	}
+	// Disambiguation happens through Required/Excluded terms consumed by
+	// the subject filter: the basketball Jordan requires basketball
+	// context and excludes the actor's pages, and vice versa.
+	if !containsAnyTerm(mj.RequiredTerms, "basketball", "nba", "chicago bulls") {
+		t.Errorf("Michael Jordan required terms must include basketball context, got %v", mj.RequiredTerms)
+	}
+	if !containsAnyTerm(mj.ExcludedTerms, "michael b. jordan", "creed", "black panther") {
+		t.Errorf("Michael Jordan excluded terms must reject the actor's pages, got %v", mj.ExcludedTerms)
+	}
+	if !containsAnyTerm(mbj.RequiredTerms, "michael b. jordan", "creed", "black panther", "actor") {
+		t.Errorf("Michael B. Jordan required terms must include acting context, got %v", mbj.RequiredTerms)
+	}
+	if !containsAnyTerm(mbj.ExcludedTerms, "chicago bulls", "air jordan", "space jam") {
+		t.Errorf("Michael B. Jordan excluded terms must reject the basketball player's pages, got %v", mbj.ExcludedTerms)
+	}
+}
+
+func containsAnyTerm(terms []string, candidates ...string) bool {
+	for _, term := range terms {
+		for _, cand := range candidates {
+			if term == cand {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestSubjectIdentityResolver_ResolveCaseInsensitive(t *testing.T) {

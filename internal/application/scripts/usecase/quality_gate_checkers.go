@@ -39,6 +39,7 @@ var qualityGateRules = []qualityChecker{
 	sourceCoverageChecker{},
 	clipCoverageChecker{},
 	unsupportedClaimsChecker{},
+	researchCandidateCoverageChecker{},
 	segmentNarrativeChecker{},
 	targetWordsChecker{},
 }

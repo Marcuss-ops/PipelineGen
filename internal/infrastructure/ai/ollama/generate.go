@@ -128,10 +128,8 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if languageLabel == "" {
 		languageLabel = "unknown"
 	}
-	genStart := time.Now()
 	genOutcome := "error"
 	defer func() {
-		metrics.ScriptGenerationDuration.WithLabelValues(modelLabel, languageLabel, genOutcome).Observe(time.Since(genStart).Seconds())
 		metrics.ScriptGenerationTotal.WithLabelValues(modelLabel, languageLabel, genOutcome).Inc()
 	}()
 

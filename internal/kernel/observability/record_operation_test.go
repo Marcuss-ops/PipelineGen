@@ -67,3 +67,21 @@ func TestRecordOperationFromContextRecordsOnBoundRun(t *testing.T) {
 		t.Fatalf("operations = %+v", report.Operations)
 	}
 }
+
+func TestRecordMeasuredOperationKeepsAnalyticsPayloadCanonical(t *testing.T) {
+	run := NewRunObserver(nil).StartRun(context.Background(), RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+	ctx := WithRun(context.Background(), run)
+	RecordMeasuredOperation(ctx, MeasuredOperation{
+		Stage: "render", Component: "rust", Provider: "ffmpeg", Operation: "mux",
+		ElapsedMS: 42, SourceDurationMS: 1000, SourceSizeBytes: 12, OutputSizeBytes: 34,
+		CPUUserMS: 7, CacheHit: true, Strategy: "copy",
+	})
+	got := run.Report()
+	if len(got.Operations) != 1 {
+		t.Fatalf("operations = %d, want 1", len(got.Operations))
+	}
+	op := got.Operations[0]
+	if op.Stage != "render" || op.Operation != "mux" || op.DurationMs != 42 || op.OutputSizeBytes != 34 || !op.CacheHit {
+		t.Fatalf("canonical operation lost measurement facts: %+v", op)
+	}
+}

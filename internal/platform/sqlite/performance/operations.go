@@ -36,7 +36,7 @@ func NewOperationStore(db *sql.DB) (*OperationStore, error) {
 	return &OperationStore{db: db}, nil
 }
 
-var _ capperformance.OperationRecorder = (*OperationStore)(nil)
+var _ kernobs.MeasuredOperationRecorder = (*OperationStore)(nil)
 var _ capperformance.OperationAnalytics = (*OperationStore)(nil)
 
 // RecordOperation persists one operation measurement. Fail-closed on a
@@ -44,10 +44,14 @@ var _ capperformance.OperationAnalytics = (*OperationStore)(nil)
 // every other field is optional (zero = not measurable at the boundary).
 // operation_id is generated per observation (the upsert keeps a concurrent
 // re-record of the same id convergent, never duplicated).
-func (s *OperationStore) RecordOperation(ctx context.Context, m capperformance.OperationMeasurement) error {
+func (s *OperationStore) RecordOperation(ctx context.Context, m kernobs.MeasuredOperation) error {
 	if err := validateMeasurement(m); err != nil {
 		return err
 	}
+	// The run-bound report is authoritative. The performance table below is
+	// only an analytics projection of this same measurement; it is never a
+	// second timing point or a second contract.
+	kernobs.RecordMeasuredOperation(ctx, m)
 	runID, jobID, stepID := resolveIdentity(ctx)
 	cacheHit := 0
 	if m.CacheHit {
@@ -130,7 +134,7 @@ func (s *OperationStore) OperationStats(ctx context.Context, since string) ([]ca
 
 // validateMeasurement fails closed on an anonymous operation: aggregation is
 // meaningless without an operation name. Everything else is optional.
-func validateMeasurement(m capperformance.OperationMeasurement) error {
+func validateMeasurement(m kernobs.MeasuredOperation) error {
 	if strings.TrimSpace(m.Operation) == "" {
 		return errors.New("performance operations: operation is required")
 	}

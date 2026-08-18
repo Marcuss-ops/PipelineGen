@@ -79,10 +79,19 @@ type ResearchPolicy struct {
 	FreshnessDays      int     `json:"freshness_days,omitempty"`
 	RequireCitations   bool    `json:"require_citations,omitempty"`
 	// Candidates enables bounded, independent subject research. The resolver
-	// returns an aggregate only after every candidate completes successfully.
+	// returns an aggregate only after every candidate completes successfully
+	// unless AllowPartialCandidates is explicitly enabled.
 	Candidates []string `json:"candidates,omitempty"`
+	// AllowPartialCandidates permits an explicitly degraded ranking when one
+	// or more candidates fail the evidence gate. It is false by default so a
+	// requested Top-N can never be silently published with fewer subjects.
+	AllowPartialCandidates bool `json:"allow_partial_candidates,omitempty"`
 	// MaxParallel bounds candidate research; zero uses the resolver default.
 	MaxParallel int `json:"max_parallel,omitempty"`
+	// RankingMetric declares the editorial criterion used to order
+	// candidates (e.g. estimated_net_worth, career_earnings). When empty
+	// the resolver infers a metric from the topic wording.
+	RankingMetric string `json:"ranking_metric,omitempty"`
 }
 
 // SourceSpec declares where script-generation input comes from.

@@ -1,0 +1,54 @@
+{
+  "name": "T05 Michael Jordan vs Michael B. Jordan identity collision",
+  "case_prefix": "t05-jordan-identity",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "Michael Jordan vs Michael B. Jordan: How Two Famous Jordans Built Completely Different Careers",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "Michael Jordan vs Michael B. Jordan: how two famous Jordans built completely different careers. Michael Jordan as basketball player and businessman; Michael B. Jordan as actor and producer. Keep the two careers strictly separate.",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 3,
+            "results_per_query": 8,
+            "max_pages": 8,
+            "min_sources": 2,
+            "timeout_seconds": 120,
+            "require_citations": true,
+            "max_parallel": 2,
+            "candidates": [
+              "Michael Jordan",
+              "Michael B. Jordan"
+            ]
+          }
+        },
+        "script_params": {
+          "target_words": 700,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 450,
+    "max_words": 1100,
+    "keywords": ["Michael Jordan", "Michael B. Jordan", "basketball", "actor"],
+    "language_regex": ["\\b(the|and|career|NBA|Hollywood)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

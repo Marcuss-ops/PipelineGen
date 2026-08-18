@@ -15,6 +15,75 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type readyProbeTranslator struct{ started chan struct{} }
+
+func (p *readyProbeTranslator) Translate(_ context.Context, in TranslationInput) (string, error) {
+	if in.SceneID == "scene-0" {
+		select {
+		case <-p.started:
+		default:
+			close(p.started)
+		}
+	}
+	return "translated " + in.SourceText, nil
+}
+
+type readyProbeVoiceover struct{ started chan struct{} }
+
+func (p *readyProbeVoiceover) Generate(_ context.Context, in VoiceoverInput) (AudioReference, error) {
+	if in.SceneID == "scene-0" {
+		select {
+		case <-p.started:
+		default:
+			close(p.started)
+		}
+	}
+	return AudioReference{ID: "ready-" + in.SceneID + "-" + string(in.Language), FilePath: "/tmp/ready.mp3", Duration: 1}, nil
+}
+
+func TestSceneTextStreaming_DownstreamStartsBeforeNextSceneReady(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
+	translator := &readyProbeTranslator{started: make(chan struct{})}
+	voiceover := &readyProbeVoiceover{started: make(chan struct{})}
+	runner.textGen = streamer
+	runner.translator = translator
+	runner.voiceoverGen = voiceover
+
+	req := defaultTestRequest()
+	runID := "run-stream-downstream-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	done := make(chan struct{})
+	go func() { defer close(done); runner.Execute(context.Background(), runID, req) }()
+
+	select {
+	case <-streamer.emitted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 was not emitted")
+	}
+	select {
+	case <-translator.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 translation did not start")
+	}
+	select {
+	case <-voiceover.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 TTS did not start")
+	}
+
+	// The generator is intentionally blocked before scene 1. Reaching both
+	// probes here proves the downstream path consumes SceneTextReady rather
+	// than waiting for the global generation stage.
+	close(streamer.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("streaming run did not complete")
+	}
+	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
+}
+
 // gatedStreamingTextGenerator implements both TextGenerator (batch fallback)
 // and SceneTextStreamer. It emits scenes one at a time and blocks after the
 // first scene until release is closed, so a test can observe the runner's

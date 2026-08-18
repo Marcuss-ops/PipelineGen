@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -30,6 +31,14 @@ type VidRushSegmentEnricher struct {
 	extractor EntityExtractor
 	metrics   VidRushMetrics
 	cache     scriptports.VidRushCachePort
+	// imageSearch is the optional deterministic Image Search Intent resolver
+	// (capabilities/imagesearch — the same one the golden battery certifies).
+	// When wired, its decision drives the segment's image fan-out: ordered
+	// queries (primary first, negated excluded, MONEY/DATE excluded) when an
+	// imageable entity exists, and an EMPTY query set (provider disabled) on
+	// abstract sentences — the no-image decision the battery certifies. Nil
+	// keeps the legacy ad-hoc query builder.
+	imageSearch *capabilityimagesearch.Resolver
 	// Ollama's configured local model is single-slot on this host. Keep the
 	// segment workers bounded at four for ordering/CPU work, but serialize the
 	// remote model call so requests do not queue indefinitely inside Ollama.
@@ -52,6 +61,17 @@ func NewVidRushSegmentEnricher(extractor EntityExtractor, cache scriptports.VidR
 		m = metrics[0]
 	}
 	return &VidRushSegmentEnricher{extractor: extractor, metrics: m, cache: cache, extractionGate: make(chan struct{}, 1)}
+}
+
+// WithImageSearchResolver attaches the deterministic Image Search Intent
+// resolver (the same one the golden battery certifies) to the enricher. It
+// is chainable and nil-safe; it is also available on EntitiesProcessor via
+// the embedded enricher. Nil keeps the legacy ad-hoc query builder.
+func (e *VidRushSegmentEnricher) WithImageSearchResolver(resolver *capabilityimagesearch.Resolver) *VidRushSegmentEnricher {
+	if e != nil {
+		e.imageSearch = resolver
+	}
+	return e
 }
 
 func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
@@ -154,7 +174,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 							p.metrics.IncSegments()
 							p.metrics.IncExtractionCache(false)
 						}
-						seg := buildVidRushSegmentResult(plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
+						seg := buildVidRushSegmentResult(ctx, p.imageSearch, plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
 						seg.Cache.Extraction = "MISS"
 						outcomes <- extractionOutcome{index: index, segment: seg}
 					}
@@ -340,6 +360,8 @@ func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSeg
 }
 
 func buildVidRushSegmentResult(
+	ctx context.Context,
+	resolver *capabilityimagesearch.Resolver,
 	plan *scriptpkg.ResolvedGenerationPlan,
 	canonicalSeg scriptpkg.CanonicalSegment,
 	res *scriptpkg.EntityResult,
@@ -415,8 +437,10 @@ func buildVidRushSegmentResult(
 	if len(manualImageQueries) > 0 {
 		insights.ImageQueries = uniqueLimitedStrings(manualImageQueries, imageLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotSecondaryImage) {
-		insights.ImageQueries = buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
-		insights.ImageQueries = uniqueLimitedStrings(insights.ImageQueries, imageLimit)
+		queries, required, noImageReason := resolveImageQueries(ctx, resolver, plan, visualText, insights, imagePhrases, imageLimit)
+		insights.ImageQueries = queries
+		insights.ImageSearchRequired = required
+		insights.ImageSearchNoImageReason = noImageReason
 	}
 
 	return scriptpkg.VidRushSegmentResult{
@@ -429,6 +453,40 @@ func buildVidRushSegmentResult(
 		Assets:    scriptpkg.SegmentAssetSelection{},
 		Cache:     scriptpkg.SegmentCacheState{},
 	}
+}
+
+// resolveImageQueries produces the segment's image search queries. When the
+// deterministic Image Search Intent resolver (capabilities/imagesearch) is
+// wired, its decision drives the fan-out: ordered queries (primary first,
+// negated entities excluded, value entities MONEY/DATE/EVENT routed to the
+// visual system) on Required=true, and NO queries on Required=false. The
+// empty set is what disables the internet-images provider (the fan-out gates
+// on len(ImageQueries) > 0), so the battery-certified no-image decision
+// (T24/T25/T26: abstract sentences must not force an image search) takes
+// effect end-to-end; the Artlist video path stays independent and still
+// covers anonymous-but-visual B-roll. Without a resolver the legacy ad-hoc
+// builder is used unchanged (Required=true).
+func resolveImageQueries(
+	ctx context.Context,
+	resolver *capabilityimagesearch.Resolver,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	visualText string,
+	insights scriptpkg.SegmentInsights,
+	imagePhrases []string,
+	imageLimit int,
+) (queries []string, required bool, noImageReason string) {
+	if resolver != nil {
+		decision := resolver.Resolve(ctx, capabilityimagesearch.Request{
+			Text: visualText, Language: plan.Language,
+		})
+		if !decision.Required {
+			return nil, false, decision.NoImageReason
+		}
+		if len(decision.Queries) > 0 {
+			return uniqueLimitedStrings(decision.Queries, imageLimit), true, ""
+		}
+	}
+	return uniqueLimitedStrings(buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic), imageLimit), true, ""
 }
 
 // segmentQueryContext keeps visual retrieval grounded in the source supplied
@@ -585,7 +643,7 @@ func (e *VidRushSegmentEnricher) enrichSegment(ctx context.Context, plan *script
 	if res == nil {
 		res = &scriptpkg.EntityResult{}
 	}
-	seg := buildVidRushSegmentResult(plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
+	seg := buildVidRushSegmentResult(ctx, e.imageSearch, plan, canonicalSeg, res, limits.entities, limits.phrases, limits.words, limits.artlist, limits.images, segmentQueryContext(plan, canonicalSeg))
 	seg.Cache.Extraction = "MISS"
 	if plan.MediaPlan.ForceRefreshExtraction {
 		seg.Cache.Extraction = "REFRESHED"

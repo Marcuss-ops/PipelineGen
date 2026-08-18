@@ -97,8 +97,8 @@ type GenerationResult struct {
 	// Canonical artifacts (PR 9):
 	//   ArtifactResult bundles every postprocessor output.
 	Artifacts ArtifactResult `json:"artifacts,omitempty"`
-
-	// Timings
+	// Timings is a read-only compatibility projection of the canonical run
+	// report. No producer may write this structure directly.
 	Timings GenerationTimings `json:"timings,omitempty"`
 
 	// Warnings (non-fatal per-postprocessor)
@@ -136,6 +136,23 @@ type GenerationResult struct {
 	// requested_mode, used_mode, fallback_used, model, prompt_version,
 	// planner_version).
 	Provenance *GenerationProvenance `json:"provenance,omitempty"`
+}
+
+// GenerationTimings is a temporary read-only API projection. The authority
+// is kernel/observability.RunReport; this type contains no measurement logic.
+type GenerationTimings struct {
+	SourceResolveMs       int64            `json:"source_resolve_ms,omitempty"`
+	PlanBuildMs           int64            `json:"plan_build_ms,omitempty"`
+	EngineMs              int64            `json:"engine_ms,omitempty"`
+	PostprocessMs         map[string]int64 `json:"postprocess_ms,omitempty"`
+	SegmentExtractionMs   int64            `json:"segment_extraction_ms,omitempty"`
+	QueryGenerationMs     int64            `json:"query_generation_ms,omitempty"`
+	ArtlistSearchMs       int64            `json:"artlist_search_ms,omitempty"`
+	InternetImageSearchMs int64            `json:"internet_image_search_ms,omitempty"`
+	ImageGenerationMs     int64            `json:"image_generation_ms,omitempty"`
+	SQLiteMs              int64            `json:"sqlite_ms,omitempty"`
+	BindingMs             int64            `json:"binding_ms,omitempty"`
+	TotalMs               int64            `json:"total_ms,omitempty"`
 }
 
 type FinalAudioArtifact struct {
@@ -298,6 +315,12 @@ type SourceTrace struct {
 	SearchResults []SearchResultItem `json:"search_results,omitempty"`
 	// AcceptedClipIDs lists the clip IDs used in generation.
 	AcceptedClipIDs []string `json:"accepted_clip_ids,omitempty"`
+	// ResearchReport and ResearchEvidence preserve the complete web-research
+	// provenance through the async generation result. They are intentionally
+	// outside narration text: consumers can audit sources without feeding URLs
+	// into TTS or the generated prose.
+	ResearchReport   *ResearchReport       `json:"research_report,omitempty"`
+	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`
 }
 
 // CacheResult records the memory gate outcome.
@@ -363,54 +386,6 @@ type DocumentArtifact struct {
 	SpecSceneSHA256 string `json:"specscene_sha256,omitempty"`
 	SceneCount      int    `json:"scene_count,omitempty"`
 	Language        string `json:"language,omitempty"`
-}
-
-// GenerationTimings holds elapsed-time metrics for each generation phase.
-//
-// Migration note: the audio-* fields below (tts_total_ms, audio_mix_ms,
-// audio_encode_ms, audio_probe_ms, audio_hash_ms, audio_pipeline_total_ms,
-// final_audio_duration_ms, and the audio_plan/timeline/clip_audio_prepare
-// triple) are a legacy projection. The canonical durable audio timing
-// contract is scriptgeneration.AudioPipelineMetrics
-// (internal/capabilities/scripts/model.go, JSON "audio_metrics"). Add new
-// audio timing fields there, not here; this struct is migration-only and must
-// converge onto that capability contract.
-type GenerationTimings struct {
-	SourceResolveMs int64 `json:"source_resolve_ms,omitempty"`
-	PlanBuildMs     int64 `json:"plan_build_ms,omitempty"`
-	EngineMs        int64 `json:"engine_ms,omitempty"`
-
-	// Per-postprocessor timings (keyed by processor name).
-	PostprocessMs map[string]int64 `json:"postprocess_ms,omitempty"`
-
-	// VidRush stage timings. They remain flat and machine-readable so an
-	// operator can compare cold/warm runs without parsing processor labels.
-	SegmentExtractionMs     int64 `json:"segment_extraction_ms,omitempty"`
-	QueryGenerationMs       int64 `json:"query_generation_ms,omitempty"`
-	ArtlistSearchMs         int64 `json:"artlist_search_ms,omitempty"`
-	ArtlistStreamResolveMs  int64 `json:"artlist_stream_resolve_ms,omitempty"`
-	ArtlistDownloadMs       int64 `json:"artlist_download_ms,omitempty"`
-	InternetImageSearchMs   int64 `json:"internet_image_search_ms,omitempty"`
-	InternetImageDownloadMs int64 `json:"internet_image_download_ms,omitempty"`
-	ImageGenerationQueueMs  int64 `json:"image_generation_queue_ms,omitempty"`
-	ImageGenerationMs       int64 `json:"image_generation_ms,omitempty"`
-	DriveUploadMs           int64 `json:"drive_upload_ms,omitempty"`
-	SQLiteMs                int64 `json:"sqlite_ms,omitempty"`
-	BindingMs               int64 `json:"binding_ms,omitempty"`
-	TTSTotalMs              int64 `json:"tts_total_ms,omitempty"`
-	TTSCalls                int   `json:"tts_calls,omitempty"`
-	TimelineCompileMs       int64 `json:"timeline_compile_ms,omitempty"`
-	AudioPlanCompileMs      int64 `json:"audio_plan_compile_ms,omitempty"`
-	ClipAudioPrepareMs      int64 `json:"clip_audio_prepare_ms,omitempty"`
-	AudioMixMs              int64 `json:"audio_mix_ms,omitempty"`
-	AudioEncodeMs           int64 `json:"audio_encode_ms,omitempty"`
-	AudioEncodePasses       int   `json:"audio_encode_passes,omitempty"`
-	AudioProbeMs            int64 `json:"audio_probe_ms,omitempty"`
-	AudioHashMs             int64 `json:"audio_hash_ms,omitempty"`
-	AudioPipelineTotalMs    int64 `json:"audio_pipeline_total_ms,omitempty"`
-	FinalAudioDurationMS    int64 `json:"final_audio_duration_ms,omitempty"`
-
-	TotalMs int64 `json:"total_ms"`
 }
 
 // GenerationEnvelopeResult is the canonical typed envelope

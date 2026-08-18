@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"strings"
 
@@ -155,31 +154,40 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// (structural subset). DefaultTimeout is left at 0 — the
 	// adapter's constructor applies the canonical 5-minute
 	// default (see ytinfra.WhisperTranscriberConfig).
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (Aug 2026): Whisper is
+	// fail-SOFT at composition time. When python3 or the bridge script
+	// (scripts/bridges/whisper_transcriber.py) is missing, the adapter
+	// returns ErrWhisperBridgeUnavailable — we log a warning and leave
+	// the port nil so the 5-priority acquisition chain simply SKIPS
+	// the Whisper fallback (priority 5) instead of failing the whole
+	// boot. The gap is observable (AcquireService surfaces
+	// ErrNoSourceAcquired for clips with no other transcript source),
+	// never a silent placeholder transcript (godlike/07 no-fake-
+	// availability: nil port = capability absent, not fake data).
+	var whisperAdapter ytinfra.WhisperTranscriber
 	whisperConcrete, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{}, log)
 	if wErr != nil {
-		// godlike/07 fail-closed: surface the typed error.
-		// The composition root MUST NOT register a
-		// half-wired wiring.AIBundle — operators see a hard fail
-		// at startup, not silent gaps at runtime.
-		return nil, fmt.Errorf("compose ai: whisper transcriber: %w", wErr)
-	}
-	log.Info("WhisperTranscriber adapter configured (Fase 5)")
-	// Derived transcript cache: source bytes + Whisper processor version
-	// identify the result; local temporary paths never become cache keys.
-	var whisperAdapter ytinfra.WhisperTranscriber = whisperConcrete
-	if cache, cacheErr := wiring.NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
-		// The Whisper bridge has its own execution contract; the Ollama
-		// chat model is unrelated and must not invalidate or alias
-		// transcription artifacts.
-		version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
-		if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
-			whisperAdapter = cached
-			log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
-		} else {
-			log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
-		}
+		log.Warn("WhisperTranscriber adapter unavailable; the acquisition chain will skip the Whisper fallback",
+			zap.Error(wErr))
 	} else {
-		log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
+		log.Info("WhisperTranscriber adapter configured (Fase 5)")
+		whisperAdapter = whisperConcrete
+		// Derived transcript cache: source bytes + Whisper processor version
+		// identify the result; local temporary paths never become cache keys.
+		if cache, cacheErr := wiring.NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
+			// The Whisper bridge has its own execution contract; the Ollama
+			// chat model is unrelated and must not invalidate or alias
+			// transcription artifacts.
+			version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
+			if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+				whisperAdapter = cached
+				log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
+			} else {
+				log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
+			}
+		} else {
+			log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
+		}
 	}
 
 	// P1 verdetto: wiring.SceneTextGenerator wraps the Engine to produce

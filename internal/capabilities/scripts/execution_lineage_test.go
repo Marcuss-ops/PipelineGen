@@ -31,6 +31,7 @@ type recordingExecutionRecorder struct {
 	steps       []ExecutionStep
 	inputs      []string
 	outputs     []string
+	operations  []ArtifactOperation
 	completeErr error
 }
 
@@ -61,6 +62,22 @@ func (r *recordingExecutionRecorder) AttachOutputAsset(_ context.Context, exec E
 }
 func (r *recordingExecutionRecorder) RecordMetric(_ context.Context, exec ExecutionContext, _ string, _ string, _ float64, _ string) error {
 	r.contexts = append(r.contexts, exec)
+	return nil
+}
+func (r *recordingExecutionRecorder) RecordOperation(_ context.Context, exec ExecutionContext, op ArtifactOperation) error {
+	r.contexts = append(r.contexts, exec)
+	r.operations = append(r.operations, op)
+	return nil
+}
+
+// operationByKey finds the first recorded operation matching kind+scene+lang.
+func (r *recordingExecutionRecorder) operationByKey(kind, sceneID string, lang Language) *ArtifactOperation {
+	for i := range r.operations {
+		op := &r.operations[i]
+		if op.Kind == kind && op.SceneID == sceneID && op.Language == lang {
+			return op
+		}
+	}
 	return nil
 }
 

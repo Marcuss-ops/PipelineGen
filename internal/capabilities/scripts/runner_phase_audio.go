@@ -183,6 +183,19 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				metrics.AudioPlanCompileMS = compileTimings.AudioPlanCompileMS
 				metrics.ClipAudioPrepareMS = compileTimings.ClipAudioPrepareMS
 				r.recordAudioRenderOperations(ctx, metrics)
+				// Render correlation: the produced final_audio asset is
+				// traceable to the render operation via its asset_id.
+				if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+					OperationID: artifactOperationID(exec.Attempt, OperationRender, "final_audio"),
+					Kind:        OperationRender,
+					Language:    req.SourceLanguage,
+					AssetID:     finalAudio.AssetID,
+					Status:      "COMPLETED",
+				}); err != nil {
+					r.failExecutionStep(ctx, exec, audioStep, err)
+					r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
+					return false
+				}
 				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
 					cause := fmt.Errorf("final audio certification failed: %w", err)
 					r.failExecutionStep(ctx, exec, audioStep, cause)
@@ -207,6 +220,19 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				cause := fmt.Errorf("master audio certification failed: %w", err)
 				r.failExecutionStep(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
+			}
+			// Validation correlation: the certified master is traceable to its
+			// validation operation via the same asset_id.
+			if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+				OperationID: artifactOperationID(exec.Attempt, OperationValidation, "master"),
+				Kind:        OperationValidation,
+				Language:    req.SourceLanguage,
+				AssetID:     finalAudio.AssetID,
+				Status:      "COMPLETED",
+			}); err != nil {
+				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
 			if r.checkpoints != nil {

@@ -222,3 +222,40 @@ func TestResolveInputQueries_NilInputsAreNoOp(t *testing.T) {
 	var svc *Service
 	require.NoError(t, svc.resolveInputQueries(context.Background(), nil))
 }
+
+func TestResolveInputQueries_HonorsPerQueryLimit(t *testing.T) {
+	lister := &queryResolutionLister{
+		results: make(map[string][]VideoInfo),
+		errors:  make(map[string]error),
+	}
+	svc := newQueryResolutionService(lister)
+	input := &RunInput{
+		SearchQueries:     []string{"a", "b"},
+		SearchQueryLimits: []int{1, 3},
+	}
+
+	require.NoError(t, svc.resolveInputQueries(context.Background(), input))
+	_, calls, _ := lister.snapshot()
+	require.Len(t, calls, 2)
+	require.Contains(t, calls, "ytsearch1:a", "limit:1 must win over the runtime default")
+	require.Contains(t, calls, "ytsearch3:b", "limit:3 must win over the runtime default")
+}
+
+func TestResolveInputQueries_DefaultsWhenLimitsMissing(t *testing.T) {
+	// A shorter limits slice (or no limits at all) must fall back to the
+	// runtime default (25) per query rather than zeroing the fan-out.
+	lister := &queryResolutionLister{
+		results: map[string][]VideoInfo{"a": {videoInfo("a")}},
+		errors:  make(map[string]error),
+	}
+	svc := newQueryResolutionService(lister)
+	input := &RunInput{
+		SearchQueries:     []string{"a", "b"},
+		SearchQueryLimits: []int{1}, // shorter than queries
+	}
+
+	require.NoError(t, svc.resolveInputQueries(context.Background(), input))
+	_, calls, _ := lister.snapshot()
+	require.Contains(t, calls, "ytsearch1:a", "explicit limit honoured")
+	require.Contains(t, calls, "ytsearch25:b", "missing limit falls back to runtime default")
+}

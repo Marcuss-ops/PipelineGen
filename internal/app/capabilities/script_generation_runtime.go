@@ -232,6 +232,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	vidRushEnricher := documentadapters.NewVidRushSegmentEnricher(vidRushEntityExtractor, vidRushCache, vidRushMetrics)
+	// The enricher consumes the SAME resolver: the ordered image search
+	// queries (primary first, negated excluded) drive the segment fan-out.
+	vidRushEnricher.WithImageSearchResolver(imageSearchResolver)
 	var vidRushFanout scriptgen.SegmentProviderResolver
 	if vidRushProviders != nil {
 		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithCache(
@@ -269,7 +272,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	if nlpConcurrency <= 0 {
 		nlpConcurrency = scriptgen.DefaultNLPConcurrency
 	}
-	runner.SetGenerationGate(scriptgen.NewGenerationGateWithCapacity(nlpConcurrency))
+	ollamaGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
+	runner.SetGenerationGate(ollamaGate)
+	if root.AI != nil && root.AI.SceneTextGenerator != nil {
+		root.AI.SceneTextGenerator.SetSegmentConcurrency(nlpConcurrency)
+		root.AI.SceneTextGenerator.Engine.SetGenerationGate(ollamaGate)
+	}
 
 	ttsConcurrency := cfg.Scripts.TTSConcurrency
 	if ttsConcurrency <= 0 {

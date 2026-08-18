@@ -28,7 +28,8 @@ import (
 )
 
 // ensureStarted launches the persistent TTS server if not already running.
-// Must be called while p.mu is held.
+// Must be called while p.mu is held. It only protects lifecycle state;
+// synthesis requests are deliberately outside this critical section.
 //
 // Protocol:
 //  1. Spawn `python3 tts_edge_server.py --host 127.0.0.1 --port 0` with
@@ -164,13 +165,27 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		zap.Int("port", port),
 		zap.String("base_url", p.baseURL))
 
-	// Warmup: validate /health responds 200.
-	if err := p.healthCheck(); err != nil {
+	// Warmup: PORT means the socket was allocated, not that aiohttp has
+	// completed startup. Retry the probe briefly so concurrent first callers
+	// do not incorrectly fall back to the legacy spawn-per-call path.
+	var healthErr error
+	for attempt := 0; attempt < 30; attempt++ {
+		if healthErr = p.healthCheck(); healthErr == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			healthErr = ctx.Err()
+			attempt = 30
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if healthErr != nil {
 		p.started = false
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
 		}
-		return fmt.Errorf("tts server health check failed after startup: %w: %w", err, ErrWorkerHealthFailed)
+		return fmt.Errorf("tts server health check failed after startup: %w: %w", healthErr, ErrWorkerHealthFailed)
 	}
 
 	p.log.Info("audio.Processor: TTS server warmup complete, ready for synthesis")

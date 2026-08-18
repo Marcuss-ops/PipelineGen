@@ -34,7 +34,7 @@ func ddgResponse(status int, body string) *http.Response {
 func newDDGProviderScripted(t *testing.T, firstStatus int, laterStatus int) (*DuckDuckGoSearchProvider, *int) {
 	t.Helper()
 	p := NewDuckDuckGoSearchProvider(zap.NewNop())
-	p.backoff = func() time.Duration { return 0 } // keep tests instant
+	p.backoff = func(int) time.Duration { return 0 } // keep tests instant
 	calls := 0
 	p.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
@@ -195,31 +195,69 @@ func TestDuckDuckGoSearchProvider_AnomalyChallengePersists_ReturnsError(t *testi
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("error = %q, want the retried 403 status", err.Error())
 	}
-	if *calls != 2 {
-		t.Errorf("round trips = %d, want exactly 2 (one retry, no more)", *calls)
+	if *calls != 3 {
+		t.Errorf("round trips = %d, want exactly 3 (two retries, then give up)", *calls)
 	}
 	if hits != nil {
 		t.Errorf("hits = %v, want nil on persistent challenge", hits)
 	}
 }
 
-func TestDuckDuckGoSearchProvider_NoRetryOnNonChallengeStatus(t *testing.T) {
-	p, calls := newDDGProviderScripted(t, http.StatusInternalServerError, http.StatusOK)
+func TestDuckDuckGoSearchProvider_NoRetryOnDefinitiveClientError(t *testing.T) {
+	p, calls := newDDGProviderScripted(t, http.StatusNotFound, http.StatusOK)
 	hits, err := p.Search(context.Background(), "joe frazier", 5)
 	if err == nil {
-		t.Fatalf("expected error on 500, got hits=%d", len(hits))
+		t.Fatalf("expected error on 404, got hits=%d", len(hits))
 	}
 	if *calls != 1 {
-		t.Errorf("round trips = %d, want 1 (500 is not retried — selective retry only)", *calls)
+		t.Errorf("round trips = %d, want 1 (404 is a definitive client error, not retried)", *calls)
 	}
 	if hits != nil {
-		t.Errorf("hits = %v, want nil on 500", hits)
+		t.Errorf("hits = %v, want nil on 404", hits)
+	}
+}
+
+func TestDuckDuckGoSearchProvider_RetriesOnServerError(t *testing.T) {
+	p, calls := newDDGProviderScripted(t, http.StatusInternalServerError, http.StatusOK)
+	hits, err := p.Search(context.Background(), "joe frazier", 5)
+	if err != nil {
+		t.Fatalf("unexpected error after 5xx retry: %v", err)
+	}
+	if *calls != 2 {
+		t.Errorf("round trips = %d, want 2 (initial 500 + one retry)", *calls)
+	}
+	if len(hits) != 2 {
+		t.Errorf("hit count = %d, want 2 parsed from retried response", len(hits))
+	}
+}
+
+func TestDuckDuckGoSearchProvider_RetriesOnTimeout(t *testing.T) {
+	p := NewDuckDuckGoSearchProvider(zap.NewNop())
+	p.backoff = func(int) time.Duration { return 0 }
+	calls := 0
+	p.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return nil, context.DeadlineExceeded // simulate the reported per-query timeout
+		}
+		return ddgResponse(http.StatusOK, ddgSampleHTML), nil
+	})
+
+	hits, err := p.Search(context.Background(), "joe frazier", 5)
+	if err != nil {
+		t.Fatalf("unexpected error after timeout retry: %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("round trips = %d, want 2 (timeout + one retry)", calls)
+	}
+	if len(hits) != 2 {
+		t.Errorf("hit count = %d, want 2 parsed from retried response", len(hits))
 	}
 }
 
 func TestDuckDuckGoSearchProvider_RetryBackoffRespectsContextCancel(t *testing.T) {
 	p := NewDuckDuckGoSearchProvider(zap.NewNop())
-	p.backoff = func() time.Duration { return time.Hour } // would block forever if not cancelled
+	p.backoff = func(int) time.Duration { return time.Hour } // would block forever if not cancelled
 	calls := 0
 	p.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++

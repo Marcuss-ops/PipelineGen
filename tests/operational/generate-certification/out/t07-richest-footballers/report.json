@@ -1,0 +1,81 @@
+{
+  "test_id": "t07",
+  "title": "T07 The 10 Richest Footballers in the World (net worth only)",
+  "result": "PASS",
+  "job": {
+    "id": "job_1787058206790806969_8c8b7cee",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 1286,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 10,
+  "verified_claims": 55,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "estimated_net_worth",
+    "resolved_metric": "estimated_net_worth",
+    "strategy": "deterministic_verified_financial_evidence",
+    "fallback_used": false,
+    "candidates_with_evidence": 7,
+    "ranking_confidence": {
+      "comparable_candidates": 7,
+      "total_candidates": 10,
+      "coverage": 0.7,
+      "low_confidence_candidates": [
+        "Kevin De Bruyne",
+        "Robert Lewandowski",
+        "Vinícius Júnior"
+      ]
+    }
+  },
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 20,
+    "sources": 55,
+    "pages_fetched": 48,
+    "pages_failed": 11,
+    "rejected_sources": 0,
+    "requested_metric": "estimated_net_worth",
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 10,
+    "present_in_script": 10,
+    "missing": []
+  },
+  "notes": [
+    "ranking strategy=deterministic_verified_financial_evidence fallback_used=False candidates_with_evidence=7"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

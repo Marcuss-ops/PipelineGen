@@ -191,6 +191,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: admin: %w", err)
 	}
 
+	// Research cache invalidation — operational admin surface, registered
+	// independently of the Drive canary (only needs the media DB).
+	if err := registerResearchCacheAdminModule(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: admin research cache: %w", err)
+	}
+
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
 	// registerAssets (consumes explicit registryCrossStepState). Wraps

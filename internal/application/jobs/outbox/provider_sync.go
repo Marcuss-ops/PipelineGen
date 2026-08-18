@@ -12,11 +12,11 @@
 //   - provider switch (allowlist: drive|youtube|stock):
 //
 //   - stock     → ack nil + reason="fetch_only_by_design".
-//     Stock is fetch-only by design (its CapabilitySearch
-//     is intentionally absent); no inbound sync path
-//     exists. Validating the envelope + emitting the
-//     audit log is the only correct action. Producers
-//     must not retry.
+//     Stock has no inbound sync path (it resolves
+//     sources on-demand via the YouTube channel lister,
+//     rather than ingesting a provider catalog). Validating
+//     the envelope + emitting the audit log is the only
+//     correct action. Producers must not retry.
 //
 //   - drive | youtube → enqueue a real sync job onto jobs.Service
 //     (the canonical async pipeline) with JobType
@@ -224,7 +224,7 @@ func (h *ProviderSyncHandler) Handle(ctx context.Context, evt outboxevents.Event
 
 	switch req.Provider {
 	case providerSyncProviderStock:
-		// Stock is fetch-only by design. Per dictate (2): ack nil with
+		// Stock has no inbound sync path. Per dictate (2): ack nil with
 		// reason=", do NOT enqueue, do NOT retry. Duplicate events
 		// collapse via outbox event_key.
 		h.log.Info("provider.sync.stock acknowledged — fetch_only_by_design (no inbound sync)",

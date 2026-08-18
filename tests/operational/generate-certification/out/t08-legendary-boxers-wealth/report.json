@@ -1,0 +1,101 @@
+{
+  "test_id": "t08",
+  "title": "T08 The 10 Richest Legendary Boxers of the 20th Century (fail-closed check)",
+  "result": "PASS_WITH_NOTE",
+  "job": {
+    "id": "job_1787058281417864011_4196fd60",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 927,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 7,
+  "verified_claims": 42,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "estimated_net_worth",
+    "resolved_metric": "estimated_net_worth",
+    "strategy": "deterministic_verified_financial_evidence",
+    "fallback_used": false,
+    "candidates_with_evidence": 7,
+    "uncertain": true,
+    "ranking_confidence": {
+      "comparable_candidates": 3,
+      "total_candidates": 7,
+      "coverage": 0.42857142857142855,
+      "low_confidence_candidates": [
+        "George Foreman",
+        "Jack Dempsey",
+        "Joe Louis",
+        "Rocky Marciano"
+      ]
+    }
+  },
+  "dropped_candidates": [
+    {
+      "candidate_id": "Joe Frazier",
+      "reason": "RESEARCH_INSUFFICIENT_SOURCES: accepted 1/3 sources, full pages 0/1, evidence score 0.55/2.10: https://www.celebsagewiki.com/joe-frazier: page fetch returned status 404"
+    },
+    {
+      "candidate_id": "Roberto Durán",
+      "reason": "RESEARCH_INSUFFICIENT_SOURCES: accepted 0/3 sources, full pages 0/1, evidence score 0.00/2.10"
+    },
+    {
+      "candidate_id": "Marvin Hagler",
+      "reason": "RESEARCH_INSUFFICIENT_SOURCES: accepted 0/3 sources, full pages 0/1, evidence score 0.00/2.10"
+    }
+  ],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 14,
+    "sources": 42,
+    "pages_fetched": 40,
+    "pages_failed": 5,
+    "rejected_sources": 3,
+    "requested_metric": "estimated_net_worth",
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 7,
+    "present_in_script": 7,
+    "missing": [
+      "Joe Frazier",
+      "Roberto Durán",
+      "Marvin Hagler"
+    ]
+  },
+  "notes": [
+    "3 candidate(s) dropped at research gate (partial ranking, uncertain): Joe Frazier, Roberto Durán, Marvin Hagler",
+    "ranking marked uncertain (candidates_with_evidence=7)"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

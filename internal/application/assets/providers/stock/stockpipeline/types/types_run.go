@@ -67,7 +67,16 @@ type ClipSpec struct {
 // DriveURLs field holds Google Drive source URLs.
 type RunInput struct {
 	SearchQueries []string
-	DirectURLs    []string
+	// SearchQueryLimits carries the per-query result cap for
+	// search-and-run requests, aligned 1:1 with SearchQueries by
+	// index. A zero/missing entry means "use the runtime default
+	// (RuntimeConfig.MaxResults)". Populated by FromSearchAndRunRequest
+	// so a caller's `limit` survives the jobs wire round-trip and is
+	// honoured by resolveInputQueries → resolveQuery instead of the
+	// default fan-out. The legacy /run path has no per-query limits
+	// and leaves this nil.
+	SearchQueryLimits []int
+	DirectURLs        []string
 	// SourceDurations maps a resolved DirectURL to the source video's
 	// real duration in seconds (when known from the search provider's
 	// metadata). Populated by Service.resolveInputQueries so the

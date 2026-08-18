@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ type candidateResearchResult struct {
 	Report      *scriptpkg.ResearchReport
 	Fingerprint string
 	CacheKey    string
+	// DropReason is set when the candidate failed the research quality gate
+	// and was excluded from the ranking instead of failing the whole fanout.
+	DropReason string
 }
 
 func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
@@ -47,6 +51,7 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	if lang == "" {
 		lang = "it"
 	}
+	metric := resolveRankingMetric(src, topic)
 	aggregateKey := researchAggregateCacheKey(topic, lang, src, r.policyVersion)
 	if cached := r.loadAggregateCache(ctx, aggregateKey, src, topic, lang, resCtx); cached != nil {
 		return cached, nil
@@ -60,6 +65,11 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 
 	child := src
 	child.Research.Candidates = nil
+	// Propagate the resolved metric so per-candidate query planning and the
+	// per-candidate cache key are metric-aware (e.g. a net-worth ranking
+	// researches "estimated net worth" evidence instead of generic career
+	// material).
+	child.Research.RankingMetric = metric.String()
 	child.Topic = ""
 	child.Query = ""
 	workers := src.Research.MaxParallel
@@ -68,12 +78,14 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	}
 	resolved, err := concurrent.Map(ctx, candidates, workers, func(childCtx context.Context, index int, candidate string) (*candidateResearchResult, error) {
 		candidateSource := child
-		candidateSource.Topic = candidate + " boxer"
-		// Keep the seed query broad enough for providers such as SearXNG to
-		// return results. The candidate-aware subject filter is the final
-		// relevance gate; forcing quotes plus "wikipedia" made otherwise
-		// well-documented candidates return zero results on some engines.
-		candidateSource.Query = researchCandidateSearchName(candidate) + " boxing"
+		canonical := researchSubjectIdentity(candidate).CanonicalName
+		candidateSource.Topic = canonical
+		// Use the clean canonical name (not "candidate + boxer/boxing") so
+		// identity resolution stays exact: the metric-aware QueryPlanner then
+		// emits clean queries like "Canelo Álvarez estimated net worth"
+		// instead of "Canelo Álvarez boxing estimated net worth". The
+		// candidate-aware subject filter remains the final relevance gate.
+		candidateSource.Query = canonical
 		candidateSource.Research.MaxQueries = src.Research.MaxQueries
 		if candidateSource.Research.MaxQueries <= 0 {
 			candidateSource.Research.MaxQueries = 1
@@ -85,10 +97,17 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 		candidateResolver.subject = candidate
 		result, resolveErr := candidateResolver.Resolve(childCtx, candidateSource, candidateContext)
 		if resolveErr != nil {
+			// A candidate below the evidence gate must NOT fail the whole
+			// fanout: it is excluded from the ranking and the aggregate is
+			// marked uncertain, so the pipeline degrades gracefully instead
+			// of aborting 9 good candidates because of 1 weak one.
+			if errors.Is(resolveErr, ErrResearchInsufficientSources) {
+				return &candidateResearchResult{Index: index, CandidateID: candidate, Label: candidate, DropReason: resolveErr.Error()}, nil
+			}
 			return nil, fmt.Errorf("candidate %q: %w", candidate, resolveErr)
 		}
 		if result.ResearchReport == nil || !result.ResearchReport.QualityGatePassed {
-			return nil, fmt.Errorf("candidate %q failed research quality gate", candidate)
+			return &candidateResearchResult{Index: index, CandidateID: candidate, Label: candidate, DropReason: "failed research quality gate"}, nil
 		}
 		return &candidateResearchResult{Index: index, CandidateID: candidate, Label: candidate, Resolved: result, Report: result.ResearchReport, Fingerprint: result.Fingerprint, CacheKey: result.ResearchReport.CacheKey}, nil
 	})
@@ -96,14 +115,43 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 		return nil, fmt.Errorf("research fan-out failed: %w", err)
 	}
 
+	// Partition into candidates that cleared the gate and candidates that
+	// were dropped. Ranking runs only on the survivors; if every candidate
+	// was dropped the fanout still fails closed (nothing to rank or write).
+	dropped := make([]scriptpkg.DroppedResearchCandidate, 0, len(candidates))
+	survivors := make([]*candidateResearchResult, 0, len(resolved))
+	for _, result := range resolved {
+		if result.DropReason != "" {
+			dropped = append(dropped, scriptpkg.DroppedResearchCandidate{CandidateID: result.CandidateID, Reason: result.DropReason})
+			continue
+		}
+		survivors = append(survivors, result)
+	}
+	if len(survivors) == 0 {
+		reasons := make([]string, 0, len(dropped))
+		for _, d := range dropped {
+			reasons = append(reasons, fmt.Sprintf("%s: %s", d.CandidateID, d.Reason))
+		}
+		return nil, fmt.Errorf("%w: all %d candidates failed the research quality gate: %s", ErrResearchInsufficientSources, len(candidates), strings.Join(reasons, "; "))
+	}
+	if len(dropped) > 0 && !src.Research.AllowPartialCandidates {
+		reasons := make([]string, 0, len(dropped))
+		for _, d := range dropped {
+			reasons = append(reasons, fmt.Sprintf("%s: %s", d.CandidateID, d.Reason))
+		}
+		return nil, fmt.Errorf("%w: %d/%d candidates failed the research quality gate: %s", ErrResearchInsufficientSources, len(dropped), len(candidates), strings.Join(reasons, "; "))
+	}
+	resolved = survivors
+
 	inputs := make([]scriptports.ResearchCandidateRankingInput, len(resolved))
 	for i, result := range resolved {
 		inputs[i] = scriptports.ResearchCandidateRankingInput{CandidateID: result.CandidateID, Label: result.Label, Sources: result.Report.Sources, Claims: result.Report.Claims}
 	}
-	ranking, err := r.ranker.Rank(ctx, topic, inputs)
+	rankingResult, err := r.ranker.Rank(ctx, topic, metric, inputs)
 	if err != nil {
 		return nil, fmt.Errorf("research ranking failed: %w", err)
 	}
+	ranking := rankingResult.Ranking
 	if err := validateResearchRanking(inputs, ranking); err != nil {
 		return nil, err
 	}
@@ -111,6 +159,13 @@ func (r *WebResearchResolver) resolveCandidates(ctx context.Context, src scriptp
 	if err != nil {
 		return nil, err
 	}
+	rankingInfo := rankingResult.Info
+	if len(dropped) > 0 {
+		rankingInfo.CandidatesWithEvidence = len(resolved)
+		rankingInfo.Uncertain = true
+	}
+	aggregateReport.Ranking = &rankingInfo
+	aggregateReport.DroppedCandidates = dropped
 	aggregateReport.CacheKey = aggregateKey
 	aggregateReport.Evidence = pack
 	aggregateReport.CacheSaved = false
@@ -198,7 +253,7 @@ func buildResearchEvidencePack(topic string, results []*candidateResearchResult,
 		aggregate.PagesFetched += result.Report.PagesFetched
 		aggregate.PagesFailed += result.Report.PagesFailed
 		aggregate.RejectedSources += result.Report.RejectedSources
-		pack.Candidates = append(pack.Candidates, scriptpkg.RankedResearchCandidate{CandidateID: ranked.CandidateID, Label: result.Label, Rank: ranked.Rank, Score: ranked.Score, Rationale: ranked.Rationale, Fingerprint: result.Fingerprint, CacheKey: result.CacheKey, Sources: sources, Claims: claims})
+		pack.Candidates = append(pack.Candidates, scriptpkg.RankedResearchCandidate{CandidateID: ranked.CandidateID, Label: result.Label, Rank: ranked.Rank, Score: ranked.Score, Rationale: ranked.Rationale, Fingerprint: result.Fingerprint, CacheKey: result.CacheKey, Sources: sources, Claims: claims, MetricEvidenceQuality: ranked.MetricEvidenceQuality, MetricClaimCount: ranked.MetricClaimCount})
 	}
 	aggregate.AcceptedSources = len(aggregate.Sources)
 	if err := pack.Validate(); err != nil {
@@ -224,8 +279,20 @@ func researchAggregateCacheKey(topic, language string, src scriptpkg.SourceSpec,
 		// evidence than a SearXNG-only one.
 		version += "|" + policyVersion
 	}
-	policy := fmt.Sprintf("%d|%d|%d|%d|%t|%s", src.Research.MaxPages, src.Research.MinSources, src.Research.FreshnessDays, src.Research.MaxParallel, src.Research.RequireCitations, strings.Join(src.Research.Candidates, "\n"))
+	policy := fmt.Sprintf("%d|%d|%d|%d|%t|%s|%s", src.Research.MaxPages, src.Research.MinSources, src.Research.FreshnessDays, src.Research.MaxParallel, src.Research.RequireCitations, strings.Join(src.Research.Candidates, "\n"), resolveRankingMetric(src, topic))
 	return scriptpkg.ComputeResearchCacheKey(hashResearch(topic), language, version, hashResearch(policy), src.Research.MaxPages)
+}
+
+// resolveRankingMetric returns the explicit ranking metric when the request
+// declares one, otherwise infers it from the topic wording. The resolved
+// metric is folded into the aggregate cache key so a metric change
+// invalidates only the aggregate while the per-candidate research caches
+// remain reusable.
+func resolveRankingMetric(src scriptpkg.SourceSpec, topic string) scriptpkg.RankingMetric {
+	if strings.TrimSpace(src.Research.RankingMetric) != "" {
+		return scriptpkg.NormalizeRankingMetric(src.Research.RankingMetric)
+	}
+	return scriptpkg.InferRankingMetricFromTopic(topic)
 }
 
 func (r *WebResearchResolver) loadAggregateCache(ctx context.Context, key string, src scriptpkg.SourceSpec, topic, language string, resCtx scriptpkg.SourceResolutionContext) *scriptpkg.ResolvedSource {

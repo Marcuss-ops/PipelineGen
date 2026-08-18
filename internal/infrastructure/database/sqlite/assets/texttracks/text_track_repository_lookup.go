@@ -57,7 +57,9 @@ func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, la
 // Fase 1.b, July 2026) AND the Fase 4 ClipSourceBuilder video-pipeline
 // cutover. It returns a single text track PLUS its timed cues (if the
 // source carried per-segment timing) for the given (asset, language,
-// kind) triple, filtered to status=READY.
+// kind) triple, filtered to status=READY AND is_current=1 (the
+// authoritative row — a stale is_current=0 predecessor with its own
+// stale segments must never shadow the current track; PR-ARGOS-TRANSLATION).
 //
 // Return contract (Fase 4, matches the domain port):
 //
@@ -93,6 +95,7 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 		        created_at, updated_at
 		 FROM asset_text_tracks
 		 WHERE asset_id = ? AND language_code = ? AND text_kind = ?
+		   AND is_current = 1
 		   AND status = ?`,
 		assetID, languageCode, string(kind), string(asset.TextTrackReady),
 	)
@@ -166,6 +169,56 @@ func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trac
 		return nil, fmt.Errorf("findCuesForTrackID: rows: %w", err)
 	}
 	return cues, nil
+}
+
+// FindByID returns a single text track plus its timed cues by PRIMARY KEY.
+// Unlike FindReady (keyed on asset/language/kind + READY), this is the raw
+// PK fetch the localization subtitle wire uses when a LocalizedClipPlan
+// references a translated track by (SubtitleTrackID, SubtitleSHA256).
+//
+// Return contract (mirrors FindReady):
+//
+//	(track, cues, nil) — row found; cues is nil when the row has
+//	                      no per-segment timing rows.
+//	(nil, nil, nil)    — no row with that id.
+//	(nil, nil, err)    — repository-level error.
+//
+// godlike/06 SSOT: this is the canonical PK → (track, cues) fetch. The
+// fail-closed status/hash verification (READY + text-hash match against the
+// plan) is the adapter's responsibility (composition root), NOT this read
+// path — a raw PK fetch must not hide rows from forensic callers.
+func (r *TextTrackRepositorySQLite) FindByID(ctx context.Context, trackID int64) (*asset.TextTrack, []asset.TimedCue, error) {
+	if trackID <= 0 {
+		return nil, nil, fmt.Errorf("text_track_repository.FindByID: TrackID is required")
+	}
+
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id, asset_id, language_code, text_kind,
+		        text_content,
+		        source_type, source_language_code, is_original,
+		        provider, model_name, model_version, prompt_version,
+		        text_hash, source_version, translation_key, is_current,
+		        source_track_id, source_text_hash,
+		        confidence, status,
+		        created_at, updated_at
+		 FROM asset_text_tracks
+		 WHERE id = ?`,
+		trackID,
+	)
+
+	t, err := scanTextTrack(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("text_track_repository.FindByID: %w", err)
+	}
+
+	cues, cueErr := r.findCuesForTrackID(ctx, t.ID)
+	if cueErr != nil {
+		return nil, nil, fmt.Errorf("text_track_repository.FindByID: cues: %w", cueErr)
+	}
+	return t, cues, nil
 }
 
 // ListReadyLanguages enumerates the sorted set of language codes

@@ -32,6 +32,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // stubPostProcessor implements adapters.PostProcessor for tests.
@@ -196,7 +197,9 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 
 	item := itemForTimingsTest()
 
-	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "timings", AttemptID: "timings"})
+	ctx := kernobs.WithRun(context.Background(), run)
+	result, err := uc.Execute(ctx, item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err, "Execute must succeed for a well-formed text-only item")
 	require.NotNil(t, result, "Execute must return a non-nil result")
 	require.NotNil(t, result.Timings.PostprocessMs,

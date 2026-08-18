@@ -12,45 +12,9 @@
 // measures wall time and input/output bytes at the boundary.
 package performance
 
-import "context"
-
-// OperationMeasurement is one media operation's measured facts. Zero fields
-// mean "not measurable at this boundary" (e.g. source SHA256 is filled by
-// the caller when known, not hashed at the choke point).
-type OperationMeasurement struct {
-	Operation        string
-	SourceSHA256     string
-	SourceDurationMS int64
-	SourceSizeBytes  int64
-
-	Width  int
-	Height int
-	FPS    float64
-
-	InputCodec  string
-	OutputCodec string
-
-	ElapsedMS       int64
-	CPUUserMS       int64
-	CPUSystemMS     int64
-	OutputSizeBytes int64
-
-	CacheHit bool
-	Strategy string
-
-	MetadataJSON string
-	CreatedAt    string
-}
-
-// OperationRecorder is the single durable sink for per-operation media
-// measurements. Implementations persist into the canonical performance
-// registry (performance_operations); the sink must never fail the operation
-// it measures — a metric write failure is a logged warning, not a render
-// failure. Correlation identity (run_id/job_id/step_id) is resolved from
-// the execution context by the implementation.
-type OperationRecorder interface {
-	RecordOperation(ctx context.Context, measurement OperationMeasurement) error
-}
+import (
+	"context"
+)
 
 // OperationStats is one operation's aggregate across the recorded runs. It
 // is the query-side answer to "what does this operation cost": runs,

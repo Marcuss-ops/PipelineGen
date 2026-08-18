@@ -1,0 +1,70 @@
+{
+  "test_id": "t09",
+  "title": "T09 How the 2026 Oscars Were Different From the 2025 Oscars",
+  "result": "FAIL",
+  "job": {
+    "id": "job_1787058341493380314_bd7c227e",
+    "status": "FAILED",
+    "error": "generate job handler: durable run failed: generate scene text failed: scenetext: source resolution failed for type \"research\": RESEARCH_INSUFFICIENT_SOURCES: accepted 0/3 sources, full pages 0/1, evidence score 0.00/2.10: https://www.monsterenergy.com/en-us/promotions/win-tickets-morgan-wallen-mn/: page fetch returned status 403",
+    "word_count": 0,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 0,
+  "research_passed": 0,
+  "verified_claims": 0,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": null,
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": null,
+    "cache_hit": null,
+    "queries": 0,
+    "sources": 0,
+    "pages_fetched": 0,
+    "pages_failed": 0,
+    "rejected_sources": 0,
+    "requested_metric": null,
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 0,
+    "evidence": 0,
+    "present_in_script": 0,
+    "missing": []
+  },
+  "notes": [
+    "job terminal status 'FAILED' — generate job handler: durable run failed: generate scene text failed: scenetext: source resolution failed for type \"research\": RESEARCH_INSUFFICIENT_SOURCES: accepted 0/3 sources, full pages 0/1, evidence score 0.00/2.10: https://www.monsterenergy.com/en-us/promotions/win-tickets-morgan-wallen-mn/: page fetch returned status 403",
+    "script missing required keyword 'Anora'",
+    "script missing required keyword '2025'",
+    "script missing required keyword '2026'",
+    "script missing required keyword 'Oscar'",
+    "script does not mention Anora (2025 Best Picture) — temporal comparison may be incomplete"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

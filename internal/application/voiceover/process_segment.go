@@ -318,10 +318,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		Status:   StatusFailed,
 	}
 
-	// ── FASE 7 structured logging + metrics helper ──────────────────
-	// The shared stageLog helper (process.go) now emits start/completed
-	// log lines AND observes VoiceoverStageDuration — both callers
-	// (processLanguage and Execute) benefit from the same telemetry.
+	// ── Structured logging helper ───────────────────────────────────
+	// The shared stageLog helper emits lifecycle logs; canonical runs own
+	// timing observations.
 	log := u.deps.Logger
 
 	// Stage 1: TTSProvider.Synthesize.

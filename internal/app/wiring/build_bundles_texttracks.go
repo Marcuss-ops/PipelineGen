@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -40,6 +41,19 @@ type TextTrackBundle struct {
 	JobHandler     *texttracks.MaterializeJobHandler
 	AcquireService *texttracks.AcquireService
 	FanOut         *texttracks.MaterializeFanOut
+
+	// Translator is the canonical clip-translation port (Argos primary +
+	// Ollama fallback, or Ollama-only per translation_provider). Exposed so
+	// other consumers (e.g. the multilingual render admin command's
+	// CueTranslator) route through the SAME provider chain as the
+	// materializer instead of reaching Ollama directly.
+	Translator translation.TranslationPort
+
+	// ArgosServer is the persistent Argos Translate sidecar adapter
+	// (PR-ARGOS-TRANSLATION, Aug 2026). Exposed so the composition
+	// root can register its Stop on graceful shutdown. nil when the
+	// provider is ollama-only or the bridge is unavailable.
+	ArgosServer *translation.ArgosServerTranslator
 }
 
 // AcquirePorts groups the two ports the AcquireService needs.
@@ -96,18 +110,54 @@ func BuildTextTrackBundle(
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: language registry: %w", err)
 	}
+
+	// PR-ARGOS-TRANSLATION (Aug 2026): the active provider strategy is
+	// selected by media.multilingual.translation_provider (argos|ollama).
+	// Argos Translate is the deterministic, CPU-only primary; Ollama is
+	// the quality fallback. Construction is fail-SOFT: when the Argos
+	// bridge is unavailable the materializer falls back to Ollama-only
+	// and the request fingerprint stays on the Ollama model taxonomy
+	// (no provider-name leak into persisted provenance).
+	ollamaModel := resolveTranslationModel(mlCfg.TranslationPolicy)
+	translationModel := ollamaModel
+	modelVersion := cfg.External.OllamaModel
+
+	var clipTranslator translation.TranslationPort = ai.OllamaTranslator
+	var argosServer *translation.ArgosServerTranslator
+
+	if resolveTranslationProvider(mlCfg.TranslationProvider) == "argos" {
+		server, argosErr := translation.NewArgosServerTranslator(
+			translation.ArgosServerConfig{
+				ScriptsDir: cfg.Paths.PythonScriptsDir,
+				PythonBin:  cfg.Paths.ArgosPythonBin,
+			},
+			log,
+		)
+		if argosErr != nil {
+			log.Warn("ArgosTranslator unavailable; using Ollama-only translation",
+				zap.Error(argosErr))
+		} else {
+			argosServer = server
+			clipTranslator = translation.NewFallbackTranslator(server, ai.OllamaTranslator, log)
+			translationModel = translation.ArgosTranslationModel
+			modelVersion = translation.ArgosTranslationModelVersion
+			log.Info("ArgosTranslator wired as primary translation provider (Ollama fallback)")
+		}
+	}
+
 	resolverCfg := texttracks.ResolverConfig{
 		Registry:          registry,
 		SourceLanguage:    mlCfg.SourceLanguage,
-		ModelVersion:      cfg.External.OllamaModel,
+		ModelVersion:      modelVersion,
 		PromptVersion:     resolveTranslationPromptVersion(cfg),
 		TranslationPolicy: mlCfg.TranslationPolicy,
-		TranslationModel:  resolveTranslationModel(mlCfg.TranslationPolicy),
+		TranslationModel:  translationModel,
+		OllamaModel:       ollamaModel,
 	}
 
 	materializer, err := texttracks.NewMaterializer(
 		repos.TextTrackRepo,
-		ai.OllamaTranslator,
+		clipTranslator,
 		outbox.EventsRepo,
 		resolverCfg,
 		log,
@@ -115,6 +165,11 @@ func BuildTextTrackBundle(
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: materializer: %w", err)
 	}
+	// Parallel per-language translation fan-out. The upstream translator
+	// (Ollama) is the dominant per-language cost; overlapping the calls
+	// hides its latency. Keep a modest bound so a single materialize run
+	// never saturates the LLM/GPU.
+	materializer.SetConcurrency(4)
 
 	handler := texttracks.NewMaterializeJobHandler(materializer, log)
 
@@ -185,6 +240,8 @@ func BuildTextTrackBundle(
 		Materializer:   materializer,
 		JobHandler:     handler,
 		AcquireService: acquireService,
+		Translator:     clipTranslator,
+		ArgosServer:    argosServer,
 		// FanOut is populated by WireTextTracksFanOut (called
 		// after NewComposition assembles the JobsBundle so the
 		// fan-out can reach the broker).
@@ -315,7 +372,8 @@ func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 		nested.RequireTranscriptReady ||
 		nested.RequireAllLanguagesBeforeVideo ||
 		nested.SourceLanguage != "" ||
-		nested.TranslationPolicy != "" {
+		nested.TranslationPolicy != "" ||
+		nested.TranslationProvider != "" {
 		return nested
 	}
 	return cfg.Multilingual
@@ -326,6 +384,17 @@ func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 // adds cfg.AI.TranslationPromptVersion.
 func resolveTranslationPromptVersion(_ *config.Config) string {
 	return "v1"
+}
+
+// resolveTranslationProvider maps media.multilingual.translation_provider
+// to the canonical provider strategy token. "ollama" → Ollama-only;
+// anything else ("argos", "auto", empty) → Argos primary + Ollama fallback
+// (the default).
+func resolveTranslationProvider(provider string) string {
+	if strings.EqualFold(strings.TrimSpace(provider), "ollama") {
+		return "ollama"
+	}
+	return "argos"
 }
 
 // resolveTranslationModel maps MultilingualConfig.TranslationPolicy

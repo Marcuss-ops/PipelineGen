@@ -346,6 +346,58 @@ func TestToJobPayload_EquivalentToLegacyStockPayloadToMap(t *testing.T) {
 		"ToJobPayload projection must produce the same StockRunPayload values as the legacy stockPayloadToMap helper for an equivalent command")
 }
 
+// TestFromSearchAndRunRequest_PreservesQueryLimits pins the per-query
+// `limit` propagation that was previously dropped: each SearchQuery.Limit
+// must survive the request → StockCommand projection aligned 1:1 with the
+// resolved query string (zero when the caller omitted limit).
+func TestFromSearchAndRunRequest_PreservesQueryLimits(t *testing.T) {
+	r := &StockSearchAndRunRequest{
+		Queries: []SearchQuery{
+			{Q: "ocean", Limit: 1},
+			{Q: "beach", Limit: 3},
+			{Q: "coast"},
+		},
+	}
+	cmd, err := FromSearchAndRunRequest(r)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ocean", "beach", "coast"}, cmd.SearchQueries)
+	assert.Equal(t, []int{1, 3, 0}, cmd.SearchQueryLimits)
+}
+
+// TestToJobPayload_RoundTrip_SearchQueryLimits pins the search_query_limits
+// wire shape so the async path (command → ToJobPayload → jobs broker →
+// HandleJob → RunInput) preserves per-query limits end-to-end.
+func TestToJobPayload_RoundTrip_SearchQueryLimits(t *testing.T) {
+	cmd := &StockCommand{
+		SearchQueries:     []string{"ocean", "beach"},
+		SearchQueryLimits: []int{1, 3},
+		TotalMinutes:      1,
+	}
+
+	payload := cmd.ToJobPayload()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"search_query_limits":[1,3]`)
+
+	var rp StockRunPayload
+	require.NoError(t, json.Unmarshal(raw, &rp))
+	assert.Equal(t, cmd.SearchQueryLimits, rp.SearchQueryLimits)
+}
+
+// TestToJobPayload_OmitsEmptySearchQueryLimits locks the omitempty-adjacent
+// contract: when no query carries an explicit limit, the wire shape must not
+// emit a search_query_limits key (legacy /run and direct-url callers stay
+// byte-compatible).
+func TestToJobPayload_OmitsEmptySearchQueryLimits(t *testing.T) {
+	cmd := &StockCommand{
+		SearchQueries: []string{"ocean"},
+		TotalMinutes:  1,
+	}
+	raw, err := json.Marshal(cmd.ToJobPayload())
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "search_query_limits")
+}
+
 // TestStockRunPayload_AsyncRoundTrip pins the JSON wire-shape contract
 // of the Async field: zero-value omitted (omitempty), true emitted
 // verbatim. Operators who set "async": false on the wire get exactly

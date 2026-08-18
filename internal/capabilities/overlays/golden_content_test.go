@@ -121,7 +121,6 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_1",
-        "type": "text",
         "text": "A MAJOR CHANGE",
         "preset": "caption_card",
         "start_frame": 24,
@@ -129,7 +128,6 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_2",
-        "type": "text",
         "text": "THIS CHANGES EVERYTHING",
         "preset": "caption_card",
         "start_frame": 90,
@@ -187,9 +185,12 @@ func TestCompileChrononPlanGoldenContent02Animations(t *testing.T) {
 }
 
 // TestGoldenContent03ImagesFitAndBounds certifies GOLDEN 03 image geometry:
-// every image overlay uses the aspect-preserving "contain" fit and its
-// explicit box+position stays fully inside the 1280x720 canvas (no overflow,
-// no off-canvas ink). The background ("cover", full canvas) is excluded.
+// every image overlay resolves to the image_focus_in preset (Chronon owns the
+// canonical 260×260 "contain" geometry). Explicit Params box+position stay
+// fully inside the 1280x720 canvas (no overflow, no off-canvas ink); an
+// overlay without an explicit position carries no geometry and is placed by
+// Chronon via the preset anchor. The background ("cover", full canvas) is
+// excluded.
 func TestGoldenContent03ImagesFitAndBounds(t *testing.T) {
 	got, err := CompileChrononPlan(GoldenOverlayPlanContent03Images())
 	if err != nil {
@@ -197,12 +198,17 @@ func TestGoldenContent03ImagesFitAndBounds(t *testing.T) {
 	}
 	imageLayers := 0
 	for _, layer := range got.Plan.Layers {
-		if layer.Fit != "contain" {
-			continue // background is "cover"; only overlay images carry contain
+		if layer.Preset != "image_focus_in" {
+			continue // background is "cover"; only overlay images carry the preset
 		}
 		imageLayers++
 		if len(layer.Position) != 2 {
-			t.Fatalf("image overlay %q missing position", layer.ID)
+			// No explicit position → Chronon owns placement (preset anchor).
+			if layer.BoxWidth != 0 || layer.BoxHeight != 0 {
+				t.Errorf("image overlay %q carries a box without a position: %dx%d",
+					layer.ID, layer.BoxWidth, layer.BoxHeight)
+			}
+			continue
 		}
 		x, y := layer.Position[0], layer.Position[1]
 		if x < 0 || y < 0 ||

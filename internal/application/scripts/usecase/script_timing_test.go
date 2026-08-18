@@ -259,15 +259,17 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 	ppReg.Freeze()
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Postprocessors: []string{"entities", "metadata"}}
-	result, err := ppReg.Run(ctx, plan, adapters.ProcessInput{})
+	_, err := ppReg.Run(ctx, plan, adapters.ProcessInput{})
 	require.NoError(t, err)
 
 	report := run.Report()
 	for _, name := range []string{"entities", "metadata"} {
 		canonical, ok := scriptTimingStageMs(report, name)
 		require.True(t, ok, "postprocessor stage %q must be recorded on the run", name)
-		assert.Equal(t, canonical, result.StageDurations[name],
-			"StageDurations[%q] must equal the canonical stage observation", name)
+		got, ok := scriptTimingStageMs(report, name)
+		assert.True(t, ok)
+		assert.Equal(t, canonical, got,
+			"stage report %q must equal the canonical stage observation", name)
 	}
 }
 

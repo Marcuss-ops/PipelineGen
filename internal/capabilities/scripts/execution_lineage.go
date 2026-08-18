@@ -91,6 +91,34 @@ func (r *Runner) recordExecutionMetric(ctx context.Context, exec ExecutionContex
 	return nil
 }
 
+// recordArtifactOperation records one artifact operation with its full
+// correlation key. It is fail-closed like every other recorder call: a
+// recorder error fails the run, never a silent skip — the trace is part of the
+// contract, not best-effort observability.
+func (r *Runner) recordArtifactOperation(ctx context.Context, exec ExecutionContext, op ArtifactOperation) error {
+	if strings.TrimSpace(op.OperationID) == "" || strings.TrimSpace(op.Kind) == "" {
+		return fmt.Errorf("artifact operation requires operation_id and kind")
+	}
+	if err := r.recorder.RecordOperation(ctx, exec, op); err != nil {
+		return fmt.Errorf("record %s operation %q: %w", op.Kind, op.OperationID, err)
+	}
+	return nil
+}
+
+// artifactOperationID builds the stable per-attempt operation identifier from
+// the operation kind and its disambiguating qualifiers (scene, language,
+// artifact subject). It is a correlation key, not a display string: the
+// attempt suffix makes a retry's operation distinct from the original while
+// keeping the (kind, scene, language) lineage joinable.
+func artifactOperationID(attempt int, qualifiers ...string) string {
+	if attempt <= 0 {
+		attempt = 1
+	}
+	parts := append([]string{}, qualifiers...)
+	parts = append(parts, fmt.Sprintf("attempt-%d", attempt))
+	return strings.Join(parts, ":")
+}
+
 // CertifyExecutionLineage verifies the latest state of every required step
 // and the required input/output edges for one completed execution. Repeated
 // start/complete callbacks for the same step are normal; the final callback

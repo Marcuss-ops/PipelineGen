@@ -49,14 +49,29 @@ type ResearchCandidateRanking struct {
 	Rank        int
 	Score       float64
 	Rationale   string
+	// MetricEvidenceQuality is HIGH|MEDIUM|LOW|NONE for the requested metric
+	// (see scriptpkg.MetricEvidenceQuality*). Populated by deterministic
+	// rankings; empty for pure LLM semantic rankings.
+	MetricEvidenceQuality string
+	// MetricClaimCount is the number of verified claims that mention the
+	// requested metric for this candidate.
+	MetricClaimCount int
+}
+
+// ResearchRankingResult couples the ordered candidates with the metadata
+// that makes the ranking strategy observable (metric resolved, fallback
+// used, evidence coverage).
+type ResearchRankingResult struct {
+	Ranking []ResearchCandidateRanking
+	Info    scriptpkg.ResearchRankingInfo
 }
 
 type ResearchRanker interface {
-	Rank(context.Context, string, []ResearchCandidateRankingInput) ([]ResearchCandidateRanking, error)
+	Rank(context.Context, string, scriptpkg.RankingMetric, []ResearchCandidateRankingInput) (ResearchRankingResult, error)
 }
 
-type ResearchRankerFunc func(context.Context, string, []ResearchCandidateRankingInput) ([]ResearchCandidateRanking, error)
+type ResearchRankerFunc func(context.Context, string, scriptpkg.RankingMetric, []ResearchCandidateRankingInput) (ResearchRankingResult, error)
 
-func (f ResearchRankerFunc) Rank(ctx context.Context, topic string, inputs []ResearchCandidateRankingInput) ([]ResearchCandidateRanking, error) {
-	return f(ctx, topic, inputs)
+func (f ResearchRankerFunc) Rank(ctx context.Context, topic string, metric scriptpkg.RankingMetric, inputs []ResearchCandidateRankingInput) (ResearchRankingResult, error) {
+	return f(ctx, topic, metric, inputs)
 }

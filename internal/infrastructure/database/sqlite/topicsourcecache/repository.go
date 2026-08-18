@@ -4,9 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// Resolver-version discriminators for research_cache rows. They MUST match
+// the literals written by the source resolvers:
+//   - "webresearch"        → per-candidate evidence rows (single-candidate resolve)
+//   - "webresearch-fanout" → the fanout aggregate row (assembled evidence pack
+//     PLUS the ranking, persisted together in research_report_json.ranking).
+//
+// There is no separate ranking table: the ranking lives inside the aggregate
+// row, so invalidating the aggregate also invalidates its ranking.
+const (
+	researchResolverVersionCandidate = "webresearch"
+	researchResolverVersionFanout    = "webresearch-fanout"
 )
 
 type Repository struct{ db *sql.DB }
@@ -110,6 +124,56 @@ func (r *Repository) SaveResearchCache(ctx context.Context, rec scriptpkg.Resear
 		rec.HitCount, toSQLiteDatetime(rec.ExpiresAt), toSQLiteDatetime(rec.CreatedAt), toSQLiteDatetime(rec.UpdatedAt),
 	)
 	return err
+}
+
+// DeleteResearchCache deletes research_cache rows matching the given scope.
+//
+// scope "aggregate" targets fanout aggregate rows (resolver_version =
+// "webresearch-fanout"), which embed BOTH the assembled evidence pack and the
+// ranking — there is no separate ranking table, so this also invalidates the
+// ranking. scope "candidate" targets per-candidate evidence rows
+// (resolver_version = "webresearch").
+//
+// topic narrows the match against the stored topic column: the parent topic
+// for aggregate rows, the candidate canonical name for candidate rows.
+// rankingMetric optionally narrows aggregate rows by the requested_metric
+// recorded in research_report_json.ranking; it is ignored for candidate scope.
+func (r *Repository) DeleteResearchCache(ctx context.Context, scope, topic, rankingMetric string) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, nil
+	}
+	topic = strings.TrimSpace(topic)
+	scope = strings.TrimSpace(scope)
+	if topic == "" {
+		return 0, fmt.Errorf("DeleteResearchCache: topic is required")
+	}
+
+	switch scope {
+	case "aggregate":
+		if metric := strings.TrimSpace(rankingMetric); metric != "" {
+			metric = scriptpkg.NormalizeRankingMetric(metric).String()
+			return r.execDelete(ctx,
+				`DELETE FROM research_cache WHERE resolver_version = ? AND topic = ? AND json_extract(research_report_json, '$.ranking.requested_metric') = ?`,
+				researchResolverVersionFanout, topic, metric)
+		}
+		return r.execDelete(ctx,
+			`DELETE FROM research_cache WHERE resolver_version = ? AND topic = ?`,
+			researchResolverVersionFanout, topic)
+	case "candidate":
+		return r.execDelete(ctx,
+			`DELETE FROM research_cache WHERE resolver_version = ? AND topic = ?`,
+			researchResolverVersionCandidate, topic)
+	default:
+		return 0, fmt.Errorf("DeleteResearchCache: unsupported scope %q (want aggregate or candidate)", scope)
+	}
+}
+
+func (r *Repository) execDelete(ctx context.Context, query string, args ...any) (int64, error) {
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func toSQLiteDatetime(t time.Time) interface{} {

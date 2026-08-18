@@ -20,13 +20,17 @@ import (
 
 // SubjectIdentityResolver resolves a candidate name to its canonical
 // SubjectIdentity. Unknown names get an auto-generated identity with
-// the candidate as canonical name and boxing-related required terms.
+// the candidate as canonical name and no domain-specific required
+// terms, so research works for arbitrary subjects (boxing and every
+// other domain rely on the subject filter's canonical-name token
+// matching instead of hardcoded boxing vocabulary).
 type SubjectIdentityResolver struct {
 	identities []scriptpkg.SubjectIdentity
 }
 
 // NewSubjectIdentityResolver creates a resolver with the default
-// boxing identity registry.
+// identity registry (known boxing subjects plus curated non-boxing
+// identities such as the two Jordans).
 func NewSubjectIdentityResolver() *SubjectIdentityResolver {
 	return &SubjectIdentityResolver{identities: defaultBoxerIdentities()}
 }
@@ -61,7 +65,6 @@ func fallbackIdentity(subject string) scriptpkg.SubjectIdentity {
 	return scriptpkg.SubjectIdentity{
 		ID:            slugIdentityID(canonical),
 		CanonicalName: canonical,
-		RequiredTerms: []string{"boxing", "boxer", "fight"},
 		SubjectType:   "person",
 	}
 }
@@ -170,6 +173,26 @@ func defaultBoxerIdentities() []scriptpkg.SubjectIdentity {
 			CanonicalName: "Oscar De La Hoya",
 			Aliases:       []string{"Oscar de la Hoya", "The Golden Boy"},
 			RequiredTerms: []string{"boxing", "boxer", "fight", "hoya", "de la hoya"},
+			SubjectType:   "person",
+		},
+		// Non-boxing identities. RequiredTerms keep each subject's pool
+		// on-topic; ExcludedTerms reject the other Jordan's pages, so
+		// "Michael Jordan" research never migrates into "Michael B.
+		// Jordan" evidence and vice versa.
+		{
+			ID:            "michael-jordan",
+			CanonicalName: "Michael Jordan",
+			Aliases:       []string{"Mike Jordan", "MJ", "His Airness"},
+			RequiredTerms: []string{"michael jordan", "basketball", "nba", "chicago bulls"},
+			ExcludedTerms: []string{"michael b. jordan", "creed", "black panther"},
+			SubjectType:   "person",
+		},
+		{
+			ID:            "michael-b-jordan",
+			CanonicalName: "Michael B. Jordan",
+			Aliases:       []string{"Michael Bakari Jordan"},
+			RequiredTerms: []string{"michael b. jordan", "creed", "black panther", "actor"},
+			ExcludedTerms: []string{"chicago bulls", "air jordan", "space jam"},
 			SubjectType:   "person",
 		},
 	}

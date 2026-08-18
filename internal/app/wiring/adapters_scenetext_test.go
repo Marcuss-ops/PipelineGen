@@ -4,18 +4,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 type captureSourceResolver struct {
@@ -348,4 +353,133 @@ func TestBuildEditorialPrompt_ForcesExplicitEntityMention(t *testing.T) {
 			t.Fatalf("editorial prompt missing %q:\n%s", want, prompt)
 		}
 	}
+}
+
+// ── SceneTextStreamer wiring (adapter → Ollama engine) ───────────────────
+
+// recordingStreamScriptGenerator is a ports.ScriptGenerator that returns one
+// deterministic single-scene V1 envelope per call and records the
+// interleaving of provider calls and scene emissions. The recorded sequence
+// proves the adapter emits each scene before issuing the next model call
+// (true streaming) rather than returning the complete result up front.
+type recordingStreamScriptGenerator struct {
+	mu     sync.Mutex
+	calls  int
+	events []string
+}
+
+func v1Envelope(text string) string {
+	return `{"schema_version":1,"text":"` + text + `","specscene":{"version":1,"scenes":[{"id":"model-scene","index":0,"text":"` + text + `","kind":"narration","bindings":{}}]}}`
+}
+
+func (g *recordingStreamScriptGenerator) GenerateScript(_ context.Context, _ scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
+	g.mu.Lock()
+	index := g.calls
+	g.calls++
+	g.events = append(g.events, fmt.Sprintf("call:%d", index))
+	g.mu.Unlock()
+	text := fmt.Sprintf("narration for segment %d", index)
+	return &scriptports.GenerationResult{Script: v1Envelope(text), WordCount: 3, Model: "fake-model"}, nil
+}
+
+func (g *recordingStreamScriptGenerator) recordEmit(index int) {
+	g.mu.Lock()
+	g.events = append(g.events, fmt.Sprintf("emit:%d", index))
+	g.mu.Unlock()
+}
+
+func (g *recordingStreamScriptGenerator) snapshotEvents() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.events...)
+}
+
+// TestSceneTextGeneratorStreamsSegments proves segmented calls overlap while
+// each scene is emitted as soon as its own model result is final.
+func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
+	gen := &recordingStreamScriptGenerator{}
+	engine := usecase.NewEngine(gen, nil, zap.NewNop())
+	generator := NewSceneTextGenerator(engine, zap.NewNop())
+
+	req := scriptgen.GenerateRequest{
+		SourceLanguage: "en",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "Segmented topic"},
+		Title:          "Segmented",
+		ScriptParams:   scriptpkg.ScriptSpec{SegmentTopics: []string{"Intro", "Body", "Outro"}},
+	}
+
+	var emitted []scriptgen.Scene
+	_, err := generator.GenerateSceneTextStreamWithTrace(context.Background(), req, func(scene scriptgen.Scene) error {
+		gen.recordEmit(scene.Index)
+		emitted = append(emitted, scene)
+		return nil
+	})
+	require.NoError(t, err)
+
+	require.Len(t, emitted, 3, "three segments must produce three scenes")
+	for i, scene := range emitted {
+		require.Equal(t, i, scene.Index, "scenes must arrive in canonical order")
+		require.Equal(t, fmt.Sprintf("scene-%d", i), scene.ID)
+		require.Equal(t, fmt.Sprintf("narration for segment %d", i), scene.Text["en"])
+	}
+	// Fan-out proof: all calls are not forced through a call→emit barrier.
+	events := gen.snapshotEvents()
+	require.Len(t, events, 6)
+	callCount := 0
+	emitCount := 0
+	for _, event := range events {
+		if strings.HasPrefix(event, "call:") {
+			callCount++
+		} else if strings.HasPrefix(event, "emit:") {
+			emitCount++
+		}
+	}
+	require.Equal(t, 3, callCount)
+	require.Equal(t, 3, emitCount)
+	require.Contains(t, events[:3], "call:1", "a second segment must start before the first emission")
+}
+
+// proseBatchScriptGenerator returns a two-scene V1 envelope from a single
+// model call, simulating the prose (no explicit segment) case.
+type proseBatchScriptGenerator struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (g *proseBatchScriptGenerator) GenerateScript(_ context.Context, _ scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
+	g.mu.Lock()
+	g.calls++
+	g.mu.Unlock()
+	script := `{"schema_version":1,"text":"one. two.","specscene":{"version":1,"scenes":[` +
+		`{"id":"scene-0","index":0,"text":"one.","kind":"narration","bindings":{}},` +
+		`{"id":"scene-1","index":1,"text":"two.","kind":"narration","bindings":{}}]}}`
+	return &scriptports.GenerationResult{Script: script, WordCount: 4, Model: "fake-model"}, nil
+}
+
+// TestSceneTextGeneratorStreamFallsBackToBatchForProse documents the prose
+// boundary: without explicit editorial segments there is no safe scene
+// boundary, so the adapter keeps the single batch call and emits the
+// already-planned scenes afterward (still through the same streaming emit
+// seam the runner consumes).
+func TestSceneTextGeneratorStreamFallsBackToBatchForProse(t *testing.T) {
+	gen := &proseBatchScriptGenerator{}
+	engine := usecase.NewEngine(gen, nil, zap.NewNop())
+	generator := NewSceneTextGenerator(engine, zap.NewNop())
+
+	req := scriptgen.GenerateRequest{
+		SourceLanguage: "en",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "Prose topic"},
+		Title:          "Prose",
+	}
+
+	var emitted []scriptgen.Scene
+	_, err := generator.GenerateSceneTextStreamWithTrace(context.Background(), req, func(scene scriptgen.Scene) error {
+		emitted = append(emitted, scene)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, gen.calls, "prose without segments must stay a single batch call")
+	require.Len(t, emitted, 2)
+	require.Equal(t, "scene-0", emitted[0].ID)
+	require.Equal(t, "scene-1", emitted[1].ID)
 }

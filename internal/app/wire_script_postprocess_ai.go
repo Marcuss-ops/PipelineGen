@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
@@ -93,7 +94,13 @@ func registerAIBackedProcessors(
 		entityAdapter = localnlp.NewHybridExtractor()
 		log.Info("EntitiesProcessor wired with local auto CPU/GPU extractor")
 	}
-	if !ppReg.Register(adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)) {
+	// The deterministic Image Search Intent resolver (the same one the golden
+	// battery certifies) drives the entity-bearing segments' image queries:
+	// ordered primary-first, negated entities excluded, MONEY/DATE routed to
+	// the visual system. Entity-less scenes keep the compact B-roll fallback.
+	entitiesProcessor := adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)
+	entitiesProcessor.WithImageSearchResolver(capabilityimagesearch.NewResolver(entityAdapter))
+	if !ppReg.Register(entitiesProcessor) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
 

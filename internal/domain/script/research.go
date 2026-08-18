@@ -42,6 +42,15 @@ type ResearchClaim struct {
 	Verified  bool     `json:"verified"`
 }
 
+// DroppedResearchCandidate records a candidate that failed the research
+// quality gate and was excluded from the ranking instead of failing the
+// whole fanout. A non-empty list means the resulting ranking is partial
+// and must be surfaced as uncertain.
+type DroppedResearchCandidate struct {
+	CandidateID string `json:"candidate_id"`
+	Reason      string `json:"reason"`
+}
+
 type ResearchReport struct {
 	Status            string                `json:"status"`
 	Mode              string                `json:"mode,omitempty"`
@@ -64,4 +73,12 @@ type ResearchReport struct {
 	QualityGatePassed bool                  `json:"quality_gate_passed"`
 	CacheHit          bool                  `json:"cache_hit"`
 	Evidence          *ResearchEvidencePack `json:"evidence,omitempty"`
+	// Ranking records the metric and strategy that produced the candidate
+	// order, including any deterministic fallback. It makes degradation
+	// observable instead of silently changing the ranking criterion.
+	Ranking *ResearchRankingInfo `json:"ranking,omitempty"`
+	// DroppedCandidates lists candidates excluded at research time (below
+	// the evidence gate). When non-empty the aggregate is partial and the
+	// ranking must be treated as uncertain.
+	DroppedCandidates []DroppedResearchCandidate `json:"dropped_candidates,omitempty"`
 }

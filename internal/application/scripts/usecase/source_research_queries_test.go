@@ -60,6 +60,35 @@ func TestResearchCacheIdentity_PolicyVersionConsistency(t *testing.T) {
 	}
 }
 
+func TestResearchCacheIdentity_MetricSensitivity(t *testing.T) {
+	base := scriptpkg.SourceSpec{
+		Type:        scriptpkg.SourceResearch,
+		Topic:       "Canelo Álvarez boxer",
+		Search:      true,
+		CachePolicy: scriptpkg.SourceCachePolicy{Mode: scriptpkg.SourceCacheModePreferCache, Version: "test-v1"},
+		Research:    scriptpkg.ResearchPolicy{MaxQueries: 4, MaxPages: 8, MinSources: 3},
+	}
+	_, _, _, _, generic := researchCacheIdentity(base, "en", "provider=searxng,target_pool=8")
+
+	netWorth := base
+	netWorth.Research.RankingMetric = "estimated_net_worth"
+	_, _, _, _, netWorthKey := researchCacheIdentity(netWorth, "en", "provider=searxng,target_pool=8")
+
+	career := base
+	career.Research.RankingMetric = "career_earnings"
+	_, _, _, _, careerKey := researchCacheIdentity(career, "en", "provider=searxng,target_pool=8")
+
+	if netWorthKey == generic {
+		t.Error("net-worth metric must change the candidate cache key vs generic")
+	}
+	if careerKey == netWorthKey {
+		t.Error("career-earnings and net-worth metrics must produce distinct candidate cache keys")
+	}
+	if careerKey == generic {
+		t.Error("career-earnings metric must change the candidate cache key vs generic")
+	}
+}
+
 func TestResearchAggregateCacheKey_PolicyVersionSensitivity(t *testing.T) {
 	src := scriptpkg.SourceSpec{
 		Type:        scriptpkg.SourceResearch,

@@ -140,7 +140,8 @@ func TestLayoutExplicitNumericPositionWins(t *testing.T) {
 }
 
 // TestLayoutTemplateDefaultUntouched: an image layer without any position
-// param keeps its template default (legacy fixture compatibility).
+// param carries NO position — preset-driven images leave placement to
+// Chronon's anchor resolver (ADR-029), so there is no Go template default.
 func TestLayoutTemplateDefaultUntouched(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -155,8 +156,11 @@ func TestLayoutTemplateDefaultUntouched(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	layer := got.Plan.Layers[0]
-	if layer.Position[0] != 380 || layer.Position[1] != 0 {
-		t.Fatalf("template default must be preserved, got %v", layer.Position)
+	if layer.Position != nil {
+		t.Fatalf("preset-driven image must not carry a template-default position, got %v", layer.Position)
+	}
+	if layer.Type != "" || layer.Fit != "" {
+		t.Fatalf("preset-driven image must not carry type/fit (Chronon derives them), got type=%q fit=%q", layer.Type, layer.Fit)
 	}
 }
 
@@ -181,7 +185,7 @@ func TestLayoutTextNeverAutoLaidOut(t *testing.T) {
 	if layer.Position != nil {
 		t.Fatalf("text layers must not carry a layout position, got %v", layer.Position)
 	}
-	if layer.Type != "text" || layer.Preset != "caption_card" {
+	if layer.Type != "" || layer.Preset != "caption_card" {
 		t.Fatalf("unexpected layer: %s/%s", layer.Type, layer.Preset)
 	}
 }

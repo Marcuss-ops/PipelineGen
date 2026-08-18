@@ -95,10 +95,7 @@ func (r *PostProcessorRegistry) run(
 		return &PipelineResult{FinalSpecScene: input.SpecScene}, nil
 	}
 
-	result := &PipelineResult{
-		StageDurations: make(map[string]int64),
-		StageProgress:  make(map[string]job.StageProgress),
-	}
+	result := &PipelineResult{StageProgress: make(map[string]job.StageProgress)}
 	// Issue #1 (June 2026): seed FinalSpecScene with the
 	// pre-walk envelope so buildGenerationResult's empty-aware
 	// fallback sees a populated surface even when the loop
@@ -227,7 +224,6 @@ func (r *PostProcessorRegistry) run(
 				Index: index, Total: len(plan.Postprocessors), Name: name,
 				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond, Err: err,
 			})
-			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, err.Error())
 			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
 			warnings = append(warnings, warn)
@@ -267,7 +263,6 @@ func (r *PostProcessorRegistry) run(
 				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
 				Err: fmt.Errorf("nil result"),
 			})
-			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "nil result")
 			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
 			warnings = append(warnings, warn)
@@ -277,9 +272,6 @@ func (r *PostProcessorRegistry) run(
 			}
 			continue
 		}
-
-		ppResult.DurationMs = stageReport.DurationMs
-		result.StageDurations[string(name)] = stageReport.DurationMs
 
 		if ppResult.IsEmpty() {
 			reportProcessorProgress(reporter, ProcessorProgressEvent{

@@ -1,0 +1,49 @@
+{
+  "name": "T09 How the 2026 Oscars Were Different From the 2025 Oscars",
+  "case_prefix": "t09-oscars-2025-vs-2026",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "How the 2026 Oscars Were Different From the 2025 Oscars",
+        "language": "en",
+        "tone": "documentary",
+        "source": {
+          "type": "research",
+          "topic": "How the 2026 Academy Awards ceremony (98th, held March 15 2026) were different from the 2025 Academy Awards ceremony (97th). Best Picture 2025 was Anora. Compare the two ceremonies year by year: hosts, Best Picture, Best Director, acting winners, and notable changes. Never mix the winners of one year into the other.",
+          "search": true,
+          "cache": {"mode": "force_refresh", "ttl_hours": 168, "version": "research-v1"},
+          "research": {
+            "max_queries": 3,
+            "results_per_query": 8,
+            "max_pages": 8,
+            "min_sources": 3,
+            "timeout_seconds": 120,
+            "require_citations": true
+          }
+        },
+        "script_params": {
+          "target_words": 700,
+          "skip_quality_gate": false,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": true,
+          "save_to_db": false
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 450,
+    "max_words": 1100,
+    "keywords": ["Anora", "2025", "2026", "Oscar"],
+    "language_regex": ["\\b(the|and|ceremony|Best Picture|winner)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true
+  }
+}

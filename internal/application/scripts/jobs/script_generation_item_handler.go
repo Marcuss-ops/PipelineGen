@@ -244,7 +244,8 @@ func toScriptItemResultMap(itemID, requestedLanguage, childJobID, parentJobID st
 		// this, /api/jobs/:id/full exposed the generated scenes but dropped the
 		// evidence that source.search actually used Qdrant results and which
 		// accepted clip IDs reached SpecScene.
-		if len(res.Source.SearchResults) > 0 || len(res.Source.AcceptedClipIDs) > 0 {
+		if len(res.Source.SearchResults) > 0 || len(res.Source.AcceptedClipIDs) > 0 ||
+			res.Source.ResearchReport != nil || res.Source.ResearchEvidence != nil {
 			m["source"] = res.Source
 		}
 	}

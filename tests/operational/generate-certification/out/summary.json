@@ -1,0 +1,164 @@
+[
+  {
+    "test_id": "t01",
+    "title": "T01 The 10 Highest-Paid Athletes in the World in 2025",
+    "result": "FAIL",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "annual_earnings",
+      "strategy": "deterministic_verified_financial_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 9,
+      "uncertain": true
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t02",
+    "title": "T02 The Current Top 10 Men's Tennis Players in the World (freshness)",
+    "result": "FAIL",
+    "status": "FAILED",
+    "ranking": null,
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t03",
+    "title": "T03 The 10 Largest Economies in the World in 2026",
+    "result": "FAIL",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "generic",
+      "strategy": "deterministic_verified_evidence",
+      "fallback_used": true,
+      "candidates_with_evidence": 6,
+      "uncertain": null
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t04",
+    "title": "T04 The Biggest Winners of the 2026 Academy Awards",
+    "result": "FAIL",
+    "status": "FAILED",
+    "ranking": null,
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t05",
+    "title": "T05 Michael Jordan vs Michael B. Jordan identity collision",
+    "result": "PASS",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "generic",
+      "strategy": "llm_verified_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 0,
+      "uncertain": null
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t06",
+    "title": "T06 10 Boxing Superstars Who Conquered Different Eras",
+    "result": "PASS",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "sports_achievement",
+      "strategy": "llm_verified_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 8,
+      "uncertain": null
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 1,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t07",
+    "title": "T07 The 10 Richest Footballers in the World (net worth only)",
+    "result": "PASS",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "estimated_net_worth",
+      "strategy": "deterministic_verified_financial_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 7,
+      "uncertain": null
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t08",
+    "title": "T08 The 10 Richest Legendary Boxers of the 20th Century (fail-closed check)",
+    "result": "PASS_WITH_NOTE",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "estimated_net_worth",
+      "strategy": "deterministic_verified_financial_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 7,
+      "uncertain": true
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t09",
+    "title": "T09 How the 2026 Oscars Were Different From the 2025 Oscars",
+    "result": "FAIL",
+    "status": "FAILED",
+    "ranking": null,
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  },
+  {
+    "test_id": "t10",
+    "title": "T10 How the World's 10 Highest-Paid Athletes Built Their Fortunes",
+    "result": "FAIL",
+    "status": "SUCCEEDED",
+    "ranking": {
+      "resolved_metric": "annual_earnings",
+      "strategy": "deterministic_verified_financial_evidence",
+      "fallback_used": false,
+      "candidates_with_evidence": 8,
+      "uncertain": null
+    },
+    "grounding": {
+      "unsupported_numbers": 0,
+      "foreign_candidate_claims": 0,
+      "script_identity_bleed": 0
+    }
+  }
+]

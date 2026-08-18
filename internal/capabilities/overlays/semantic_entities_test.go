@@ -14,10 +14,11 @@ func entityPlan(items ...OverlayItem) OverlayPlan {
 }
 
 // TestSemanticEntitiesTerminateInCanonicalPrimitives pins the semantic
-// entity vocabulary: every one of the nine canonical entities compiles to a
-// layer whose type matches its canonical primitive (Text/Image/Video/Shape).
-// Asset-driven entities (IMAGE_OVERLAY / PRODUCT / LOGO) carry an asset ref,
-// text-driven entities carry text.
+// entity vocabulary: preset-driven entities (IMPORTANT_PHRASE, PERSON, …)
+// resolve to a Chronon preset and emit NO type (Chronon derives it from
+// supported_layer); preset-less primitives (PRODUCT / LOGO) still emit their
+// image type. Asset-driven entities carry an asset ref, text-driven entities
+// carry text.
 func TestSemanticEntitiesTerminateInCanonicalPrimitives(t *testing.T) {
 	cases := []struct {
 		entity     string
@@ -25,13 +26,13 @@ func TestSemanticEntitiesTerminateInCanonicalPrimitives(t *testing.T) {
 		wantPreset string
 		withAsset  bool
 	}{
-		{"IMPORTANT_PHRASE", "text", "caption_card", false},
-		{"IMPORTANT_WORD", "text", "active_word_pop", false},
-		{"IMAGE_OVERLAY", "image", "", true},
-		{"PERSON", "text", "lower_third_safe", false},
-		{"NUMBER", "text", "active_word_pop", false},
-		{"QUOTE", "text", "caption_card", false},
-		{"LOCATION", "text", "location_card", false},
+		{"IMPORTANT_PHRASE", "", "caption_card", false},
+		{"IMPORTANT_WORD", "", "active_word_pop", false},
+		{"IMAGE_OVERLAY", "", "image_focus_in", true},
+		{"PERSON", "", "lower_third_safe", false},
+		{"NUMBER", "", "active_word_pop", false},
+		{"QUOTE", "", "caption_card", false},
+		{"LOCATION", "", "location_card", false},
 		{"PRODUCT", "image", "", true},
 		{"LOGO", "image", "", true},
 	}
@@ -87,6 +88,41 @@ func TestSemanticEntityAliasesPinConcordance(t *testing.T) {
 			s.BoxWidth != c.BoxWidth || s.BoxHeight != c.BoxHeight ||
 			s.Primitive != c.Primitive {
 			t.Errorf("alias %s diverges from %s:\n got  %+v\n want %+v", semantic, concrete, s, c)
+		}
+	}
+}
+
+// TestSemanticResolverCoversSemanticItemVocabulary pins the editorial mapping
+// for every SemanticItem type (the semantic index vocabulary): each resolves
+// to a canonical Chronon preset through the single SemanticOverlayResolver —
+// no scattered switches, and every role terminates in an EXISTING preset
+// (ADR-029: no new Chronon preset is invented in Go).
+func TestSemanticResolverCoversSemanticItemVocabulary(t *testing.T) {
+	want := map[string]string{
+		"PERSON":           "lower_third_safe",
+		"ORGANIZATION":     "organization_card",
+		"LOCATION":         "location_card",
+		"DATE":             "lower_third_safe",
+		"MONEY":            "active_word_pop",
+		"NUMBER":           "active_word_pop",
+		"PERCENTAGE":       "active_word_pop",
+		"IMPORTANT_PHRASE": "caption_card",
+		"QUOTE":            "caption_card",
+		"CLAIM":            "caption_card",
+		"STATISTIC":        "active_word_pop",
+		"RANKING":          "active_word_pop",
+		"TITLE":            "lower_third_safe",
+		"EVENT":            "lower_third_safe",
+		"IMAGE_ENTITY":     "image_focus_in",
+	}
+	for role, preset := range want {
+		got, ok := DefaultSemanticOverlayResolver.PresetFor(role)
+		if !ok {
+			t.Errorf("semantic role %q has no preset mapping", role)
+			continue
+		}
+		if got != preset {
+			t.Errorf("semantic role %q → %q, want %q", role, got, preset)
 		}
 	}
 }

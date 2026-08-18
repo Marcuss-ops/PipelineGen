@@ -121,7 +121,7 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	// scene-3 Tom Hanks: frame(48240ms * 30 / 1000) = round(1447.2) = 1447;
 	// duration = frame(48360) - frame(48240) = round(1450.8) - 1447 = 1451-1447 = 4.
 	tom := layerByID["overlay-scene-3-tom-hanks"]
-	require.Equal(t, "text", tom.Type)
+	require.Equal(t, "", tom.Type)
 	require.Equal(t, "lower_third_safe", tom.Preset)
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.Equal(t, int64(1447), tom.StartFrame)

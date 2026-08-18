@@ -172,7 +172,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	b.WriteString("Paraphrase the supplied source naturally, preserving every name, date, score, result, and supported statement. Do not imitate the speaker or turn the narration into first-person dialogue.\n")
 	b.WriteString("Do not invent names, dates, scores, results, or events.\n")
 	b.WriteString("If a topic has no source_text, write the segment using only the topic and the global source. Do not repeat facts from previous segments.\n")
-	b.WriteString("Target words are budget guidance, not exact count.\n")
+	b.WriteString("Target words and explicit min_words/max_words are a hard editorial contract. If the segment is 500 words, stay within its declared range; never compensate with filler or extra paragraphs.\n")
 	b.WriteString("Do not print segment titles (SEGMENT 1, Topic:, Source text:) in the output.\n")
 	b.WriteString("Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene. Output only the script text.\n")
 	return b.String()

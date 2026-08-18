@@ -66,8 +66,6 @@ func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
 		CacheStatus: "miss",
 	}
 
-	timings := scriptpkg.GenerationTimings{} // zero-value timing (no assertions on timings in B3)
-
 	// Minimal GenerationItemV2 (the function only reads field-level data
 	// for ScriptID lookup; we leave it zero-valued for hermetic clarity).
 	item := scriptpkg.GenerationItemV2{}
@@ -82,7 +80,7 @@ func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
 		}
 
 		// ── Act ──
-		result := buildGenerationResult(item, plan, engineResult, post, timings)
+		result := buildGenerationResult(item, plan, engineResult, post)
 
 		// ── Assert ──
 		if result == nil {
@@ -101,7 +99,7 @@ func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
 	// ── Case 2: Fallback (postResult nil — defensive nil-tolerance) ────────
 	t.Run("PostResultNil_FallsBackToEngineResultOutputText", func(t *testing.T) {
 		// ── Act ──
-		result := buildGenerationResult(item, plan, engineResult, nil, timings)
+		result := buildGenerationResult(item, plan, engineResult, nil)
 
 		// ── Assert ──
 		if result == nil {
@@ -122,7 +120,7 @@ func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
 		}
 
 		// ── Act ──
-		result := buildGenerationResult(item, plan, engineResult, post, timings)
+		result := buildGenerationResult(item, plan, engineResult, post)
 
 		// ── Assert ──
 		if result == nil {

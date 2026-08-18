@@ -1,0 +1,83 @@
+{
+  "test_id": "t10",
+  "title": "T10 How the World's 10 Highest-Paid Athletes Built Their Fortunes",
+  "result": "FAIL",
+  "job": {
+    "id": "job_1787058358892904494_32b70338",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 1708,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 10,
+  "verified_claims": 60,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "annual_earnings",
+    "resolved_metric": "annual_earnings",
+    "strategy": "deterministic_verified_financial_evidence",
+    "fallback_used": false,
+    "candidates_with_evidence": 8,
+    "ranking_confidence": {
+      "comparable_candidates": 8,
+      "total_candidates": 10,
+      "coverage": 0.8,
+      "low_confidence_candidates": [
+        "Juan Soto",
+        "Karim Benzema"
+      ]
+    }
+  },
+  "dropped_candidates": [],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": 0,
+    "concepts": 0,
+    "extract_entities": true
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 20,
+    "sources": 60,
+    "pages_fetched": 61,
+    "pages_failed": 3,
+    "rejected_sources": 4,
+    "requested_metric": "annual_earnings",
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 10,
+    "present_in_script": 10,
+    "missing": []
+  },
+  "notes": [
+    "word count 1708 above target ceiling 1600",
+    "extract_entities enabled but no entities found in the job result",
+    "ranking order diverges from ground truth: #1: expected Cristiano Ronaldo, got Dak Prescott; #2: expected Stephen Curry, got Shohei Ohtani; #3: expected Tyson Fury, got Cristiano Ronaldo; #4: expected Dak Prescott, got Lionel Messi; #5: expected Lionel Messi, got Kevin Durant; #6: expected LeBron James, got Stephen Curry; #7: expected Juan Soto, got Tyson Fury; #8: expected Karim Benzema, got LeBron James; #9: expected Shohei Ohtani, got Juan Soto; #10: expected Kevin Durant, got Karim Benzema",
+    "entities postprocessor emits KEYWORD concepts + important phrases only; typed PERSON/ORGANIZATION/MONEY/DATE/STATISTIC extraction is not exposed by the current pipeline"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

@@ -36,17 +36,21 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 	}
 	// The preset is resolved through the single SemanticOverlayResolver
 	// (semantic_role → Chronon preset), never from the geometry table.
-	preset, _ := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+	preset, presetDriven := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
 	layer := ChrononLayer{
 		ID:             item.ID,
-		Type:           spec.LayerType,
 		Preset:         preset,
-		Fit:            spec.Fit,
-		BoxWidth:       spec.BoxWidth,
-		BoxHeight:      spec.BoxHeight,
-		Position:       spec.Position,
 		StartFrame:     frameAt(item.StartMs),
 		DurationFrames: frameAt(item.EndMs) - frameAt(item.StartMs),
+	}
+	// Preset-less primitives carry their bare transport shape; preset-driven
+	// layers leave type/geometry to Chronon (derived from the preset).
+	if !presetDriven {
+		layer.Type = spec.LayerType
+		layer.Fit = spec.Fit
+		layer.BoxWidth = spec.BoxWidth
+		layer.BoxHeight = spec.BoxHeight
+		layer.Position = spec.Position
 	}
 	if layer.DurationFrames <= 0 {
 		return ChrononLayer{}, fmt.Errorf("overlay renderer: item %q compiles to a non-positive frame range", item.ID)

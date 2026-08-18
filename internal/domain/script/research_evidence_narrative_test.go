@@ -20,8 +20,8 @@ func TestResearchEvidenceNarrativePlanAssignsOneScenePerRank(t *testing.T) {
 		"SCENE 2 — RANK #2 — Mike Tyson",
 		"SCENE 3 — RANK #1 — Muhammad Ali",
 		"CONCLUSION",
-		"Each ranked boxer owns exactly one scene",
-		"do not reuse another boxer as the subject",
+		"Each ranked candidate owns exactly one scene",
+		"do not reuse another candidate as the scene's subject",
 	} {
 		if !containsText(got, want) {
 			t.Fatalf("narrative plan missing %q:\n%s", want, got)

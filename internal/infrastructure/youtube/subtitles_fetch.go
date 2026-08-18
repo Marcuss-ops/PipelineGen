@@ -19,12 +19,17 @@
 //     landed" outcome and signals the orchestrator via the
 //     canonical (nil, nil) sentinel (subtitles_fallback.go).
 //
-// godlike/07 honest scope-lock: as of 2026-07-06 this adapter is
-// NOT wired in the production composition root (only the
-// application-layer YTDLPSubtitleAdapter in
-// internal/application/transcripts/ytdlp_subtitles.go is wired via
-// internal/app/lifecycle_scheduler.go:88). The split is future-
-// proofing + drift prevention per godlike/06 SSOT.
+// godlike/06 SSOT wiring (corrected Aug 2026): this adapter IS wired
+// in the production composition root. build_bundles_domain_media.go
+// constructs the concrete *ytinfra.SubtitleFetcherAdapter and wires it
+// into (1) TextTrackResolver.Subtitles (acquisition priorities 3+4),
+// (2) youtube.ServiceAdapterDeps.SubtitleFetcher, and (3)
+// DomainBundle.SubtitleFetcher, which composition.go threads into the
+// backfill AcquireService. The separate
+// platformyoutube.YTDLPSubtitleAdapter
+// (internal/platform/youtube/ytdlp_subtitles.go) is a distinct adapter
+// scoped to the channel-monitor scheduler path (lifecycle_scheduler.go)
+// — not the clip acquisition chain.
 package youtube
 
 import (

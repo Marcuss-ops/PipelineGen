@@ -53,6 +53,16 @@ type SegmentInsights struct {
 	ImportantWords   []string          `json:"important_words,omitempty"`
 	ArtlistQueries   []string          `json:"artlist_queries,omitempty"`
 	ImageQueries     []string          `json:"image_queries,omitempty"`
+	// ImageSearchRequired is the deterministic image search decision of the
+	// Image Search Intent resolver (capabilities/imagesearch): false when the
+	// scene carries no visual entity (abstract/editorial text). When false,
+	// ImageQueries holds only the compact B-roll fallback; the flag itself is
+	// the decision the visual scheduler consumes. Omitted (false) when the
+	// resolver is not wired.
+	ImageSearchRequired bool `json:"image_search_required,omitempty"`
+	// ImageSearchNoImageReason explains a Required=false decision
+	// (e.g. "no_visual_entity", "pronoun_without_antecedent").
+	ImageSearchNoImageReason string `json:"image_search_no_image_reason,omitempty"`
 }
 
 // SegmentAssetCandidate is a single candidate found for a segment.

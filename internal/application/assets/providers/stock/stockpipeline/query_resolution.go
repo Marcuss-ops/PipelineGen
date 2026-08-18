@@ -39,6 +39,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 	}
 
 	queries := append([]string(nil), input.SearchQueries...)
+	limits := append([]int(nil), input.SearchQueryLimits...)
 	results := make([]searchQueryResolution, len(queries))
 	workerCount := maxSearchQueryWorkers
 	if workerCount > len(queries) {
@@ -65,7 +66,11 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 						results[index].err = err
 						continue
 					}
-					sources, err := s.resolveQuery(workCtx, queries[index])
+					limit := 0
+					if index < len(limits) {
+						limit = limits[index]
+					}
+					sources, err := s.resolveQuery(workCtx, queries[index], limit)
 					results[index] = searchQueryResolution{sources: sources, err: err}
 				}
 			}

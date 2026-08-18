@@ -92,6 +92,7 @@ func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *
 
 	input := &RunInput{
 		SearchQueries:                  payload.SearchQueries,
+		SearchQueryLimits:              payload.SearchQueryLimits,
 		DirectURLs:                     payload.DirectURLs,
 		DriveURLs:                      payload.DriveURLs,
 		Clips:                          append([]ClipSpec(nil), payload.Clips...),

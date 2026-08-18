@@ -49,7 +49,7 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 		AudioMetrics: &AudioPipelineMetrics{},
 	}
 
-	ok := runner.publishFinalAudio(context.Background(), "run-1", req, testRoutingContext(), result)
+	ok := runner.publishFinalAudio(context.Background(), "run-1", req, testRoutingContext(), NewExecutionContext("run-1", "corr-1"), result)
 	require.True(t, ok, "publish must succeed")
 	require.Equal(t, 1, publisher.calls)
 	require.Equal(t, "final-audio-canonical-01k", result.FinalAudio.AssetID, "audio_asset_id must be the canonical asset ID, not the local path")
@@ -77,7 +77,7 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 		},
 	}
 
-	ok := runner.publishFinalAudio(context.Background(), "run-2", req, testRoutingContext(), result)
+	ok := runner.publishFinalAudio(context.Background(), "run-2", req, testRoutingContext(), NewExecutionContext("run-2", "corr-2"), result)
 	require.False(t, ok, "publish with an empty canonical asset ID must fail closed")
 	run, err := repo.Get(context.Background(), "run-2")
 	require.NoError(t, err)

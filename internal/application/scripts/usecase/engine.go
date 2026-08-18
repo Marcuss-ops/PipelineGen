@@ -56,6 +56,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -89,6 +90,25 @@ type Engine struct {
 	defaultLanguage                string
 	defaultTone                    string
 	wordsPerMinute                 int
+	generationGate                 *scriptgen.GenerationGate
+}
+
+// SetGenerationGate limits the individual Ollama invocation. It must not be
+// held across the whole script: segment workers need to overlap while still
+// sharing one hard ceiling with other local Ollama workloads.
+func (e *Engine) SetGenerationGate(gate *scriptgen.GenerationGate) {
+	if e != nil {
+		e.generationGate = gate
+	}
+}
+
+// GenerationConcurrency exposes the configured gate ceiling to the streaming
+// adapter so it does not create more local jobs than Ollama can admit.
+func (e *Engine) GenerationConcurrency() int {
+	if e == nil || e.generationGate == nil {
+		return 0
+	}
+	return e.generationGate.Capacity()
 }
 
 // scriptOllamaGenerator is the narrow interface satisfied by both

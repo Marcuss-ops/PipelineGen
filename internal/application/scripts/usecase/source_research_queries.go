@@ -37,7 +37,7 @@ func researchCacheIdentity(src scriptpkg.SourceSpec, language, policyVersion str
 	if policy.MaxPages <= 0 {
 		policy.MaxPages = researchDefaultMaxPages
 	}
-	queries := researchQueries(topic, src.Query, policy.MaxQueries)
+	queries := researchQueries(topic, src.Query, policy.MaxQueries, resolveRankingMetric(src, topic))
 	lang := strings.TrimSpace(language)
 	if lang == "" {
 		lang = "it"
@@ -51,7 +51,7 @@ func researchCacheIdentity(src scriptpkg.SourceSpec, language, policyVersion str
 	return topic, queries, src.CachePolicy, version, key
 }
 
-func researchQueries(topic, explicit string, max int) []string {
+func researchQueries(topic, explicit string, max int, metric scriptpkg.RankingMetric) []string {
 	query := strings.TrimSpace(explicit)
 	if query == "" {
 		query = strings.TrimSpace(topic)
@@ -63,21 +63,22 @@ func researchQueries(topic, explicit string, max int) []string {
 		return []string{query}
 	}
 
-	// Delegate to the QueryPlanner for data-driven query escalation.
-	// The planner uses the SubjectIdentity registry for alias-aware
-	// query generation instead of hardcoded variants.
+	// Delegate to the QueryPlanner for data-driven, metric-aware query
+	// escalation. The planner uses the SubjectIdentity registry for
+	// alias-aware query generation instead of hardcoded variants.
 	resolver := NewSubjectIdentityResolver()
 	identity := resolver.Resolve(query)
-	planner := &QueryPlanner{}
+	planner := NewQueryPlannerForMetric(metric)
 	plan := planner.FullPlan(identity, max)
 	if len(plan) == 0 {
 		// Fallback: if the planner returns nothing (unknown identity),
-		// use the legacy hardcoded queries.
+		// use subject-agnostic legacy queries. No domain qualifier is
+		// hardcoded here: the subject filter owns relevance.
 		plan = []string{
 			query,
-			query + " boxing earnings",
-			query + " boxing career championships",
 			query + " biography",
+			query + " career",
+			query + " achievements",
 		}
 	}
 	if len(plan) > max {

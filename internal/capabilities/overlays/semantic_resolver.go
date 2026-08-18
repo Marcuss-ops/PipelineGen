@@ -10,9 +10,12 @@
 //	IMPORTANT_PHRASE → caption_card
 //	IMPORTANT_WORD   → active_word_pop
 //	PERSON           → lower_third_safe
-//	ORG              → organization_card
+//	ORGANIZATION     → organization_card
 //	LOCATION         → location_card
-//	IMAGE            → image_focus_in
+//	IMAGE_ENTITY     → image_focus_in
+//	NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → active_word_pop
+//	QUOTE/CLAIM      → caption_card
+//	DATE/TITLE/EVENT → lower_third_safe
 //
 // The preset ids are owned by Chronon3d's VisualPresetRegistry; this package
 // only references them by string. Adding a semantic role that maps to a new
@@ -53,6 +56,23 @@ var semanticPresetTable = map[string]SemanticPreset{
 	"PERSON":           PresetLowerThirdSafe,
 	"LOCATION":         PresetLocationCard,
 	"IMAGE_OVERLAY":    PresetImageFocusIn,
+
+	// ── Extended SemanticItem vocabulary (the semantic index) ──────────
+	// Value and editorial-artifact roles map onto the canonical Chronon
+	// presets (ADR-029): numeric values reuse active_word_pop, statements
+	// reuse caption_card, lower-third surfaces reuse lower_third_safe, and
+	// image-bound entities reuse image_focus_in. No new Chronon preset is
+	// invented here.
+	"ORGANIZATION": PresetOrganizationCard,
+	"DATE":         PresetLowerThirdSafe,
+	"MONEY":        PresetActiveWordPop,
+	"PERCENTAGE":   PresetActiveWordPop,
+	"CLAIM":        PresetCaptionCard,
+	"STATISTIC":    PresetActiveWordPop,
+	"RANKING":      PresetActiveWordPop,
+	"TITLE":        PresetLowerThirdSafe,
+	"EVENT":        PresetLowerThirdSafe,
+	"IMAGE_ENTITY": PresetImageFocusIn,
 
 	// ── Concrete templates referenced by the kind registry ──────────────
 	"person_default":  PresetLowerThirdSafe,

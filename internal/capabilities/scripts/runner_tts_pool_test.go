@@ -102,7 +102,7 @@ func TestBuildVoiceoverWork_SkipsEmptyAndExisting(t *testing.T) {
 		},
 	}
 
-	work := buildVoiceoverWork(scenes)
+	work := buildVoiceoverWork(scenes, "en", []Language{"es"})
 	// s0/en is already generated (skipped), s0/es is empty (skipped);
 	// only s1/en remains.
 	require.Len(t, work, 1)
@@ -112,17 +112,20 @@ func TestBuildVoiceoverWork_SkipsEmptyAndExisting(t *testing.T) {
 	require.Same(t, &scenes[1], work[0].scene, "work item must point at the same scene")
 }
 
-// TestBuildVoiceoverWork_DeterministicLanguageOrder pins that multiple
-// languages in one scene are emitted in sorted order, so output-asset lineage
-// ordinals are stable across runs.
-func TestBuildVoiceoverWork_DeterministicLanguageOrder(t *testing.T) {
+// TestBuildVoiceoverWork_DispatchesSourceBeforeTargets pins the dispatch
+// priority key: languages are ordered by (scene_index, language_priority),
+// NOT alphabetically — the source language dispatches before a target even
+// when it sorts later, so output-asset lineage ordinals follow the caller's
+// language order.
+func TestBuildVoiceoverWork_DispatchesSourceBeforeTargets(t *testing.T) {
 	scenes := []Scene{{
 		ID: "s0", Index: 0,
 		Text: map[Language]string{"es": "hola", "en": "hello"},
 	}}
 
-	work := buildVoiceoverWork(scenes)
+	// Alphabetical order would be en, es; priority order is es (source), en.
+	work := buildVoiceoverWork(scenes, "es", []Language{"en"})
 	require.Len(t, work, 2)
-	require.Equal(t, Language("en"), work[0].lang)
-	require.Equal(t, Language("es"), work[1].lang)
+	require.Equal(t, Language("es"), work[0].lang)
+	require.Equal(t, Language("en"), work[1].lang)
 }

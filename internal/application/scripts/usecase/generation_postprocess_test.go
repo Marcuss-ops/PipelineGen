@@ -146,12 +146,6 @@ func TestGenerationPostprocessor_Process_Success(t *testing.T) {
 	if processed.Provenance == nil {
 		t.Error("expected non-nil Provenance")
 	}
-	if len(processed.PostprocessMs) == 0 {
-		t.Error("expected StageDurations to be populated")
-	}
-	if _, ok := processed.PostprocessMs["fake"]; !ok {
-		t.Errorf("expected PostprocessMs to contain 'fake', got %v", processed.PostprocessMs)
-	}
 }
 
 func TestGenerationPostprocessor_Process_NilEngineResult_ReturnsTypedError(t *testing.T) {

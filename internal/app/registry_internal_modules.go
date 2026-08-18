@@ -131,7 +131,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 				return registryCrossStepState{}, err
 			}
 		}
-		providerEntries = append(providerEntries, TrackedProviderEntry{Id: "stock", Kind: ProviderKindFetch, Fetch: stockadapter.NewAdapter(stockW.Service)})
+		providerEntries = append(providerEntries, TrackedProviderEntry{Id: "stock", Kind: ProviderKindSearch, Search: stockadapter.NewAdapter(stockW.Service)})
 	}
 	scriptAssetsDescriptor, err := scriptassetsapi.Build(scriptassetsapi.Dependencies{Logger: log})
 	if err != nil {

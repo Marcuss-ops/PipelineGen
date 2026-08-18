@@ -1,0 +1,90 @@
+{
+  "test_id": "t01",
+  "title": "T01 The 10 Highest-Paid Athletes in the World in 2025",
+  "result": "FAIL",
+  "job": {
+    "id": "job_1787057924417143793_fbaee3f8",
+    "status": "SUCCEEDED",
+    "error": null,
+    "word_count": 1394,
+    "model": null,
+    "cache_status": null,
+    "duration_ms": null,
+    "quality_gate": null,
+    "unsupported_claims": null
+  },
+  "research_candidates": 10,
+  "research_passed": 9,
+  "verified_claims": 54,
+  "rejected_claims": 0,
+  "provider_usage": {},
+  "ranking": {
+    "requested_metric": "annual_earnings",
+    "resolved_metric": "annual_earnings",
+    "strategy": "deterministic_verified_financial_evidence",
+    "fallback_used": false,
+    "candidates_with_evidence": 9,
+    "uncertain": true,
+    "ranking_confidence": {
+      "comparable_candidates": 7,
+      "total_candidates": 9,
+      "coverage": 0.7777777777777778,
+      "low_confidence_candidates": [
+        "Juan Soto",
+        "Karim Benzema"
+      ]
+    }
+  },
+  "dropped_candidates": [
+    {
+      "candidate_id": "Shohei Ohtani",
+      "reason": "RESEARCH_INSUFFICIENT_SOURCES: accepted 1/2 sources, full pages 0/0, evidence score 0.55/1.40: https://www.psychnewsdaily.com/highest-paid-mlb-player/: page fetch returned status 404"
+    }
+  ],
+  "writer": {
+    "calls": 0
+  },
+  "grounding": {
+    "unsupported_numbers": 0,
+    "foreign_candidate_claims": 0,
+    "script_identity_bleed": 0
+  },
+  "semantic_index": {
+    "persons": null,
+    "organizations": null,
+    "money": null,
+    "dates": null,
+    "statistics": null,
+    "important_phrases": null,
+    "concepts": null,
+    "extract_entities": false
+  },
+  "research": {
+    "mode": "multi_candidate",
+    "cache_hit": false,
+    "queries": 18,
+    "sources": 54,
+    "pages_fetched": 55,
+    "pages_failed": 2,
+    "rejected_sources": 3,
+    "requested_metric": "annual_earnings",
+    "freshness_days": 0
+  },
+  "candidates": {
+    "provided": 10,
+    "evidence": 9,
+    "present_in_script": 9,
+    "missing": [
+      "Shohei Ohtani"
+    ]
+  },
+  "notes": [
+    "1 candidate(s) dropped at research gate (partial ranking, uncertain): Shohei Ohtani",
+    "script missing 1 candidate(s): Shohei Ohtani",
+    "ranking order diverges from ground truth: #1: expected Cristiano Ronaldo, got Dak Prescott; #2: expected Stephen Curry, got Cristiano Ronaldo; #3: expected Tyson Fury, got LeBron James; #4: expected Dak Prescott, got Kevin Durant; #6: expected LeBron James, got Stephen Curry; #7: expected Juan Soto, got Tyson Fury; #8: expected Karim Benzema, got Juan Soto; #9: expected Shohei Ohtani, got Karim Benzema; #10: expected Kevin Durant, got Karim Benzema"
+  ],
+  "_details": {
+    "claim_contamination": [],
+    "script_contamination": []
+  }
+}

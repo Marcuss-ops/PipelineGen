@@ -65,7 +65,7 @@ func boundRunCtx(t *testing.T) context.Context {
 func TestOperationStoreRecordsAndResolvesIdentity(t *testing.T) {
 	store := newOperationsStore(t)
 	ctx := boundRunCtx(t)
-	err := store.RecordOperation(ctx, capperformance.OperationMeasurement{
+	err := store.RecordOperation(ctx, kernobs.MeasuredOperation{
 		Operation:        "normalize",
 		ElapsedMS:        18000,
 		SourceDurationMS: 60000,
@@ -90,14 +90,14 @@ func TestOperationStoreRecordsAndResolvesIdentity(t *testing.T) {
 
 func TestOperationStoreRejectsAnonymousOperation(t *testing.T) {
 	store := newOperationsStore(t)
-	if err := store.RecordOperation(context.Background(), capperformance.OperationMeasurement{}); err == nil {
+	if err := store.RecordOperation(context.Background(), kernobs.MeasuredOperation{}); err == nil {
 		t.Fatal("empty operation must be rejected")
 	}
 }
 
 func TestOperationStoreDefaultsIdentityOutsideRun(t *testing.T) {
 	store := newOperationsStore(t)
-	if err := store.RecordOperation(context.Background(), capperformance.OperationMeasurement{Operation: "probe"}); err != nil {
+	if err := store.RecordOperation(context.Background(), kernobs.MeasuredOperation{Operation: "probe"}); err != nil {
 		t.Fatal(err)
 	}
 	var runID, jobID string
@@ -112,7 +112,7 @@ func TestOperationStoreDefaultsIdentityOutsideRun(t *testing.T) {
 func TestOperationStatsComputesRTF(t *testing.T) {
 	store := newOperationsStore(t)
 	ctx := context.Background()
-	records := []capperformance.OperationMeasurement{
+	records := []kernobs.MeasuredOperation{
 		{Operation: "normalize", ElapsedMS: 18000, SourceDurationMS: 60000},
 		{Operation: "normalize", ElapsedMS: 18000, SourceDurationMS: 60000},
 		{Operation: "watermark", ElapsedMS: 3000, SourceDurationMS: 30000},
@@ -145,8 +145,8 @@ func TestOperationStatsComputesRTF(t *testing.T) {
 func TestOperationStatsSinceFilter(t *testing.T) {
 	store := newOperationsStore(t)
 	ctx := context.Background()
-	early := capperformance.OperationMeasurement{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-01T00:00:00Z"}
-	late := capperformance.OperationMeasurement{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-18T00:00:00Z"}
+	early := kernobs.MeasuredOperation{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-01T00:00:00Z"}
+	late := kernobs.MeasuredOperation{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-18T00:00:00Z"}
 	if err := store.RecordOperation(ctx, early); err != nil {
 		t.Fatal(err)
 	}

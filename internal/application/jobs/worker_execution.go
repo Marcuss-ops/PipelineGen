@@ -74,6 +74,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
@@ -157,12 +158,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		}()
 	}
 
+	claimAt := time.Now().UTC()
 	w.log.Info("running job",
 		zap.String("job_id", j.ID),
 		zap.String("type", j.Type),
 		zap.String("correlation_id", j.CorrelationID),
 		zap.String("lease_id", j.LeaseID),
 		zap.Int("revision", j.Revision),
+		zap.Time("lease_acquired_at", claimAt),
 	)
 
 	ledger := NewJobRegistryRecorder(w.jobLedger, w.log)
@@ -217,8 +220,9 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// pre-Fase-4 polling model.
 	stopLease := make(chan struct{})
 	leaseDone := make(chan struct{})
+	var renewCount atomic.Int64
 	go w.renewLeaseLoopWith(jobCtx, j.ID, stopLease, leaseDone,
-		renewLeaseLoopOpts{jobCancel: jobCancel})
+		renewLeaseLoopOpts{jobCancel: jobCancel, renewCount: &renewCount})
 	defer func() {
 		close(stopLease)
 		<-leaseDone
@@ -271,6 +275,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// ::JobExecutionTools).
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
+	writerCompletedAt := time.Now().UTC()
 
 	// FASE 2 observability: the attempt status mirrors the dispatcher
 	// outcome (dispatchErr != nil → the run closes as FAILED with the
@@ -287,6 +292,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	defer finalCancel()
 
 	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)
+	w.log.Info("worker: post-writer finalization complete",
+		zap.String("job_id", j.ID),
+		zap.String("job_type", j.Type),
+		zap.Time("writer_completed_at", writerCompletedAt),
+		zap.Int64("post_writer_finalize_ms", time.Since(writerCompletedAt).Milliseconds()),
+		zap.Int64("lease_renew_count", renewCount.Load()),
+		zap.Int64("lease_duration_ms", time.Since(claimAt).Milliseconds()),
+	)
 
 	finalStatus := "SUCCEEDED"
 	var finalResult []byte

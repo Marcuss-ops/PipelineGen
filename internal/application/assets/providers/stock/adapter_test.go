@@ -12,23 +12,29 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 )
 
-// Compile-time interface guard: catches interface drift at build time.
-// The Adapter intentionally does NOT implement SearchProvider — Stock
-// is fetch-only by design (see adapter.go package doc).
-var _ providers.FetchProvider = (*stock.Adapter)(nil)
+// Compile-time interface guards: catches interface drift at build time.
+// The Adapter satisfies both SearchProvider and FetchProvider.
+var (
+	_ providers.SearchProvider = (*stock.Adapter)(nil)
+	_ providers.FetchProvider  = (*stock.Adapter)(nil)
+)
 
 // fakeRunner is a minimal stub of stockpipeline.stockRunner. It captures the
-// most-recent RunInput / stagedURL and returns canned outputs so unit tests
-// can verify dispatch + happy-path mapping without standing up a real
-// *stockpipeline.Service (which carries a heavy Drive+Jobs+AssetIndex
+// most-recent RunInput / stagedURL / searchQuery and returns canned outputs so
+// unit tests can verify dispatch + happy-path mapping without standing up a
+// real *stockpipeline.Service (which carries a heavy Drive+Jobs+AssetIndex
 // dependency chain).
 type fakeRunner struct {
-	lastInput *stockpipeline.RunInput
-	result    *stockpipeline.PipelineResult
-	err       error
-	stagedURL string
-	staged    *stockpipeline.StagedSource
-	stageErr  error
+	lastInput   *stockpipeline.RunInput
+	result      *stockpipeline.PipelineResult
+	err         error
+	stagedURL   string
+	staged      *stockpipeline.StagedSource
+	stageErr    error
+	searchQuery string
+	searchLimit int
+	sources     []stockpipeline.VideoSource
+	searchErr   error
 }
 
 func (f *fakeRunner) Run(_ context.Context, in *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error) {
@@ -41,6 +47,12 @@ func (f *fakeRunner) StageSource(_ context.Context, url string) (*stockpipeline.
 	return f.staged, f.stageErr
 }
 
+func (f *fakeRunner) Search(_ context.Context, query string, limit int) ([]stockpipeline.VideoSource, error) {
+	f.searchQuery = query
+	f.searchLimit = limit
+	return f.sources, f.searchErr
+}
+
 // TestAdapter_NameReturnsStock verifies the canonical identifier.
 func TestAdapter_NameReturnsStock(t *testing.T) {
 	a := stock.NewAdapter(nil) // nil runner tolerated by Name/Capabilities (no methods invoked)
@@ -49,33 +61,30 @@ func TestAdapter_NameReturnsStock(t *testing.T) {
 	}
 }
 
-// TestAdapter_CapabilitiesAdvertisesFetchOnly verifies that Stock
-// declares CapabilityFetch and CapabilityVideo but NOT CapabilitySearch
-// (Stock is fetch-only by design; one SearchProvider negative assertion
-// keeps the segregation intact under future refactors).
-func TestAdapter_CapabilitiesAdvertisesFetchOnly(t *testing.T) {
+// TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo verifies that
+// Stock declares CapabilitySearch, CapabilityFetch and CapabilityVideo.
+func TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo(t *testing.T) {
 	a := stock.NewAdapter(nil)
 	caps := a.Capabilities()
+	if !hasCap(caps, providers.CapabilitySearch) {
+		t.Errorf("Capabilities() missing CapabilitySearch: %v", caps)
+	}
 	if !hasCap(caps, providers.CapabilityFetch) {
 		t.Errorf("Capabilities() missing CapabilityFetch: %v", caps)
 	}
 	if !hasCap(caps, providers.CapabilityVideo) {
 		t.Errorf("Capabilities() missing CapabilityVideo: %v", caps)
 	}
-	if hasCap(caps, providers.CapabilitySearch) {
-		t.Errorf("Capabilities() must NOT declare CapabilitySearch (Stock is fetch-only): %v", caps)
-	}
 }
 
-// TestAdapter_DoesNotImplementSearchProvider is a structural guard
-// mirroring artlist/youtube — keeps the segregation intact under
-// future refactors. Type assertion on `any` checks the underlying
-// type, not the runtime value (so a typed-nil pointer is sufficient
-// to validate).
-func TestAdapter_DoesNotImplementSearchProvider(t *testing.T) {
+// TestAdapter_ImplementsSearchProvider is a structural guard mirroring
+// artlist/youtube. Type assertion on `any` checks the underlying type,
+// not the runtime value (so a typed-nil pointer is sufficient to
+// validate).
+func TestAdapter_ImplementsSearchProvider(t *testing.T) {
 	a := stock.NewAdapter(nil)
-	if _, ok := any(a).(providers.SearchProvider); ok {
-		t.Fatal("stock Adapter must NOT satisfy SearchProvider")
+	if _, ok := any(a).(providers.SearchProvider); !ok {
+		t.Fatal("stock Adapter must satisfy SearchProvider")
 	}
 }
 
@@ -193,6 +202,92 @@ func TestFetch_EmptyLocalPath_ReturnsError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Fetch(empty LocalPath) err = nil, want non-nil")
+	}
+}
+
+// TestSearch_NilRunnerReturnsErrSourceNotWired protects against
+// production-wired nil pointers, mirroring Fetch.
+func TestSearch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
+	a := stock.NewAdapter(nil)
+	_, err := a.Search(context.Background(), providers.SearchRequest{
+		Query: "boxing",
+		Limit: 5,
+	})
+	if !errors.Is(err, stock.ErrSourceNotWired) {
+		t.Fatalf("Search(nil runner) err = %v, want ErrSourceNotWired", err)
+	}
+}
+
+// TestSearch_EmptyQuery_ReturnsError protects against bad input —
+// empty query is a programmer error, not a transient one.
+func TestSearch_EmptyQuery_ReturnsError(t *testing.T) {
+	fr := &fakeRunner{}
+	a := stock.NewAdapter(fr)
+	_, err := a.Search(context.Background(), providers.SearchRequest{Query: ""})
+	if err == nil {
+		t.Fatal("Search(empty query) err = nil, want non-nil")
+	}
+	if fr.searchQuery != "" {
+		t.Errorf("runner.Search called despite empty query; searchQuery = %q", fr.searchQuery)
+	}
+}
+
+// TestSearch_MapsVideoSourceToCandidate verifies the happy path maps
+// VideoSource → providers.Candidate with the canonical YouTube URL as
+// SourceRef/ExternalID and the video media type.
+func TestSearch_MapsVideoSourceToCandidate(t *testing.T) {
+	fr := &fakeRunner{
+		sources: []stockpipeline.VideoSource{
+			{URL: "https://www.youtube.com/watch?v=abc123", Title: "Mayweather highlights", DurationSec: 62.5},
+			{URL: "https://www.youtube.com/watch?v=def456", Title: "", DurationSec: 0},
+		},
+	}
+	a := stock.NewAdapter(fr)
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "Floyd Mayweather", Limit: 2})
+	if err != nil {
+		t.Fatalf("Search(...) err = %v", err)
+	}
+	if fr.searchQuery != "Floyd Mayweather" {
+		t.Errorf("searchQuery = %q, want Floyd Mayweather", fr.searchQuery)
+	}
+	if fr.searchLimit != 2 {
+		t.Errorf("searchLimit = %d, want 2", fr.searchLimit)
+	}
+	if len(res.Candidates) != 2 {
+		t.Fatalf("len(Candidates) = %d, want 2", len(res.Candidates))
+	}
+	c0 := res.Candidates[0]
+	if c0.SourceName != "stock" {
+		t.Errorf("c0.SourceName = %q, want stock", c0.SourceName)
+	}
+	if c0.SourceRef != "https://www.youtube.com/watch?v=abc123" {
+		t.Errorf("c0.SourceRef = %q, want youtube URL", c0.SourceRef)
+	}
+	if c0.ExternalID != "https://www.youtube.com/watch?v=abc123" {
+		t.Errorf("c0.ExternalID = %q, want youtube URL", c0.ExternalID)
+	}
+	if c0.Title != "Mayweather highlights" {
+		t.Errorf("c0.Title = %q, want Mayweather highlights", c0.Title)
+	}
+	if c0.MediaType != "video" {
+		t.Errorf("c0.MediaType = %q, want video", c0.MediaType)
+	}
+	if c0.DurationMs != int64(62.5*1000) {
+		t.Errorf("c0.DurationMs = %d, want %d", c0.DurationMs, int64(62.5*1000))
+	}
+}
+
+// TestSearch_RunnerError_Wrapped protects against silent error loss.
+func TestSearch_RunnerError_Wrapped(t *testing.T) {
+	sentinel := errors.New("channel lister down")
+	fr := &fakeRunner{searchErr: sentinel}
+	a := stock.NewAdapter(fr)
+	_, err := a.Search(context.Background(), providers.SearchRequest{Query: "boxing", Limit: 1})
+	if err == nil {
+		t.Fatal("Search(search err) err = nil, want non-nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("Search error does not wrap sentinel: %v", err)
 	}
 }
 
