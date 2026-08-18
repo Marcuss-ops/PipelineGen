@@ -140,8 +140,16 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// PRODUCT / LOGO entities are owned by the planner above: their resolver
 	// items (and concept cards derived from the same names) are dropped so no
 	// entity is ever rendered twice.
+	//
+	// The chosen entity BECOMES the card with its image asset: each card
+	// resolves the best content-addressed asset of its canonical_entity_id
+	// through the EntityMediaResolver (the run's own entity-image bindings,
+	// indexed by the resolver's CanonicalEntityID) and carries it as
+	// AssetRefs + EntityRef.CanonicalEntityID. Cards without an indexed
+	// asset stay text-only — the card is never dropped for lack of media.
 	if result.EntityTimeline != nil && len(result.EntityTimeline.Scenes) > 0 {
 		owned := plannerOwnedEntityIDs(result)
+		media, canonicalByStable := entityCardMediaIndex(result)
 		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*result.EntityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPS)
 		if err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
@@ -153,7 +161,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 			if owned[item.EntityID] {
 				continue
 			}
-			items = append(items, item)
+			items = append(items, attachEntityCardAsset(item, media, canonicalByStable))
 		}
 	}
 	if len(items) == 0 {
@@ -282,10 +290,12 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 			}
 			out.Logos = append(out.Logos, imageCandidate(entity.Image, occ, score))
 		default:
-			if entity.Image == nil {
-				continue
-			}
-			out.Images = append(out.Images, imageCandidate(entity.Image, occ, score))
+			// Entity-card kinds (PERSON / ORGANIZATION / LOCATION / CONCEPT):
+			// the card IS the image asset — the resolver path above attaches
+			// the entity's resolved media to the card item, so pushing the
+			// same image here as a generic IMAGE_OVERLAY would render it twice.
+			// An entity image without an indexed asset stays text-only.
+			continue
 		}
 	}
 	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.Quotes)+len(out.Products)+len(out.Logos) == 0 {
@@ -338,6 +348,101 @@ func entityCardTemplate(templateID string) bool {
 		return true
 	}
 	return false
+}
+
+// entityCardKind reports whether an overlay kind is an entity-card kind
+// (PERSON / ORGANIZATION / LOCATION / CONCEPT) — the kinds whose image is
+// carried BY the card instead of a generic IMAGE_OVERLAY.
+func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
+	switch kind {
+	case capabilityoverlay.KindEntityCard, capabilityoverlay.KindOrganization, capabilityoverlay.KindLocation, capabilityoverlay.KindConcept:
+		return true
+	}
+	return false
+}
+
+// entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
+// index from the result's OWN entity-image bindings: every entity-card-kind
+// annotation entity with a content-addressed binding (asset id + sha256 +
+// url) is indexed so the EntityMediaResolver can pick the best asset for its
+// card. The join key is the resolver's CanonicalEntityID when the annotation
+// was stamped with one (capabilities/imagesearch), else the deterministic
+// derivation from (type, canonical name) — the two agree whenever the
+// surface IS the canonical name. Bindings without a content address are
+// deliberately NOT indexed: a card asset must be verifiable, never a bare
+// reference.
+//
+// The second return maps each annotated entity's StableEntityID to its
+// canonical id, so a resolver card item (keyed by the same StableEntityID)
+// can look up the identity to resolve.
+func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMediaResolver, map[string]string) {
+	index := capabilityentities.NewEntityMediaIndex()
+	media := capabilityentities.NewEntityMediaResolver()
+	canonicalByStable := map[string]string{}
+	for i := range result.Scenes {
+		ann := result.Scenes[i].Annotations
+		if ann == nil {
+			continue
+		}
+		for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+			if !entityCardKind(capabilityoverlay.EntityTypeToKind(entity.Type)) {
+				continue
+			}
+			binding := entity.Image
+			if binding == nil || strings.TrimSpace(binding.AssetID) == "" {
+				continue
+			}
+			canonical := strings.TrimSpace(entity.CanonicalEntityID)
+			if canonical == "" {
+				canonical = capabilityentities.CanonicalEntityID(entity.Type, entity.CanonicalName)
+			}
+			if canonical == "" {
+				continue
+			}
+			stable := capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
+			canonicalByStable[stable] = canonical
+			url := entityImageURL(binding)
+			if url == "" || strings.TrimSpace(binding.SHA256) == "" {
+				continue
+			}
+			score := entity.Confidence
+			if score <= 0 {
+				score = 0.9
+			}
+			// Fail-open on an invalid record: the card stays text-only rather
+			// than failing the whole overlay plan over one unverifiable asset.
+			_ = index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
+				AssetID: binding.AssetID, AssetType: "photo",
+				SHA256: binding.SHA256, StorageURL: url,
+				QualityScore: score, Source: binding.Source,
+			})
+		}
+	}
+	media.SetIndex(index)
+	return media, canonicalByStable
+}
+
+// attachEntityCardAsset resolves the card's canonical_entity_id through the
+// EntityMediaResolver and attaches the best content-addressed asset to the
+// card item (AssetRefs) plus the canonical identity (EntityRef.CanonicalEntityID).
+// The input item is never mutated; an entity without an indexed asset, or
+// without a known canonical identity, is returned unchanged (text-only card).
+func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string) capabilityoverlay.OverlayItem {
+	canonical := canonicalByStable[item.EntityID]
+	if canonical == "" {
+		return item
+	}
+	ref, err := media.ResolveBest(canonical)
+	if err != nil {
+		return item
+	}
+	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
+		AssetID: ref.AssetID, URL: ref.URL, SHA256: ref.SHA256, MediaType: ref.MediaType,
+	}}
+	if item.EntityRef != nil {
+		item.EntityRef.CanonicalEntityID = canonical
+	}
+	return item
 }
 
 // imageCandidate projects an entity image binding onto the planner's

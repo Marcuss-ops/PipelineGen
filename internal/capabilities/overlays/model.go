@@ -96,6 +96,12 @@ type OverlayEntityRef struct {
 	// SurfaceText is the verbatim mention the voiceover actually spoke
 	// (may differ from the canonical name, e.g. "Cook" vs "Tim Cook").
 	SurfaceText string `json:"surface_text,omitempty"`
+	// CanonicalEntityID is the stable canonical identity of the entity in
+	// the entities-package spelling (e.g. "person:floyd-mayweather") — the
+	// join key the media index / EntityMediaResolver used to select the
+	// item's asset. RenderingGen receives WHO the overlay is about under the
+	// same id the resolver chose, never a re-derived spelling.
+	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 }
 
 type OverlayAssetRef struct {

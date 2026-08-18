@@ -98,6 +98,11 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
 			Mentions: mentions,
 		}
+		// Stamp the canonical_entity_id the Image Search Intent resolver
+		// chose for this entity (the join key of the overlay media index), so
+		// the overlay compile resolves the card asset under the SAME identity
+		// — never a re-derivation from a possibly-different surface.
+		item.CanonicalEntityID = resolverCanonicalID(seg, canonical, value)
 		if kind == "PERSON" || kind == "ORG" || kind == "GPE" {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
@@ -473,6 +478,22 @@ func findAnnotationSpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 		}
 	}
 	return scriptpkg.AnnotationSpan{}, false
+}
+
+// resolverCanonicalID looks up the canonical_entity_id the Image Search
+// Intent resolver chose for an entity, joined by the lowercased canonical
+// name first and then the raw extracted value (the resolver may key a
+// different spelling). Empty when the resolver was not wired or the entity
+// was not part of its decision — the overlay compile then derives the id
+// deterministically from (type, canonical name).
+func resolverCanonicalID(seg scriptpkg.VidRushSegmentResult, canonical, value string) string {
+	if len(seg.Insights.ImageEntityCanonicalIDs) == 0 {
+		return ""
+	}
+	if id := seg.Insights.ImageEntityCanonicalIDs[strings.ToLower(strings.TrimSpace(canonical))]; id != "" {
+		return id
+	}
+	return seg.Insights.ImageEntityCanonicalIDs[strings.ToLower(strings.TrimSpace(value))]
 }
 
 func normalizeAnnotationType(raw string) string {

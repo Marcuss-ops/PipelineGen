@@ -118,18 +118,21 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.NoError(t, plan.Validate())
 	require.NotEmpty(t, plan.Items)
 
-	// 2. Content selection: the full nine-template vocabulary, each anchored
-	//    to certified timing (never estimated).
+	// 2. Content selection: the semantic vocabulary, each anchored to
+	//    certified timing (never estimated). The chosen entity (Tim Cook) is
+	//    the person card carrying its image asset — entity-card images never
+	//    render as a separate IMAGE_OVERLAY (the card replaces it).
 	templates := map[string]bool{}
 	for _, item := range plan.Items {
 		templates[item.TemplateID] = true
 	}
 	for _, want := range []string{
-		"IMPORTANT_PHRASE", "IMPORTANT_WORD", "IMAGE_OVERLAY",
+		"IMPORTANT_PHRASE", "IMPORTANT_WORD",
 		"person_default", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
 	} {
 		require.True(t, templates[want], "plan must carry template %q (got %v)", want, templates)
 	}
+	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity-card images must not render twice (the card carries the asset)")
 
 	// 3. OverlayPlan → chronon.render-plan.v1.
 	compiled, err := capabilityoverlay.CompileChrononPlan(*plan)

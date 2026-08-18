@@ -63,6 +63,17 @@ type SegmentInsights struct {
 	// ImageSearchNoImageReason explains a Required=false decision
 	// (e.g. "no_visual_entity", "pronoun_without_antecedent").
 	ImageSearchNoImageReason string `json:"image_search_no_image_reason,omitempty"`
+	// ImagePrimaryCanonicalID is the canonical_entity_id (entities-package
+	// spelling, e.g. "person:floyd-mayweather") of the resolver's chosen
+	// PRIMARY entity — the entity that must drive the primary image and the
+	// entity card. Empty when the resolver is not wired or the decision is
+	// no-image.
+	ImagePrimaryCanonicalID string `json:"image_primary_canonical_id,omitempty"`
+	// ImageEntityCanonicalIDs maps each imageable entity's lowercased
+	// surface/canonical text to the canonical_entity_id the resolver chose
+	// for it. The scene-annotation projection consumes it to stamp the SAME
+	// identity onto the annotated entity (join key of the media index).
+	ImageEntityCanonicalIDs map[string]string `json:"image_entity_canonical_ids,omitempty"`
 }
 
 // SegmentAssetCandidate is a single candidate found for a segment.
