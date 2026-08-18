@@ -100,55 +100,86 @@ var knownEntities = []KnownEntity{
 
 	// ── Ambiguous identities (the T18/T19 golden pair) ──────────────────
 	{Kind: "person", Type: "PERSON", Name: "Michael Jordan", Surfaces: []string{"Michael Jordan"}, Domain: "basketball", Hint: "basketball", Disambiguates: true,
-		RequireAny: []string{"basketball", "bulls", "nba", "chicago", "legend", "court", "jersey", "team", "game"},
-		ForbidAny:  []string{"actor", "film", "movie", "hollywood", "starred", "films"},
+		RequireAny:   []string{"basketball", "bulls", "nba", "chicago", "legend", "court", "jersey", "team", "game"},
+		ForbidAny:    []string{"actor", "film", "movie", "hollywood", "starred", "films"},
 		RequireAnyIT: []string{"basket", "bulls", "nba", "chicago", "leggenda", "campo", "maglia", "squadra", "partita", "pallacanestro", "giocatore"},
 		ForbidAnyIT:  []string{"attore", "film", "cinema", "hollywood", "recitato", "pellicole", "interpretato"}},
 	// The canonical Name carries no period so SafeEntityID derives the clean
 	// slug "michael-b-jordan" (the verbatim surface keeps the period).
 	{Kind: "person", Type: "PERSON", Name: "Michael B Jordan", QueryName: "Michael B Jordan", Surfaces: []string{"Michael B. Jordan", "Michael B Jordan"}, Domain: "acting", Hint: "actor", Disambiguates: true,
-		RequireAny: []string{"actor", "film", "movie", "hollywood", "starred", "films", "star"},
-		ForbidAny:  []string{"basketball", "bulls", "nba", "chicago", "legend"},
+		RequireAny:   []string{"actor", "film", "movie", "hollywood", "starred", "films", "star"},
+		ForbidAny:    []string{"basketball", "bulls", "nba", "chicago", "legend"},
 		RequireAnyIT: []string{"attore", "film", "cinema", "hollywood", "recitato", "pellicole", "interpretato", "star"},
 		ForbidAnyIT:  []string{"basket", "bulls", "nba", "chicago", "leggenda", "pallacanestro", "squadra", "partita"}},
 
+	// ── Ambiguous identities (Mercury/Jordan/Turkey pairs) ─────────────
+	{Kind: "person", Type: "PERSON", Name: "Freddie Mercury", Surfaces: []string{"Freddie Mercury"}, Domain: "music", Hint: "singer", Disambiguates: true,
+		RequireAny: []string{"singer", "band", "queen", "rock", "vocals", "lead", "music", "song", "live aid", "bohemian"},
+		ForbidAny:  []string{"planet", "solar", "orbit", "sun", "space", "smallest", "closest", "innermost", "astronomy", "celestial", "craters"},
+		RequireAnyIT: []string{"cantante", "band", "queen", "rock", "voce", "musica", "canzone", "principale"},
+		ForbidAnyIT:  []string{"pianeta", "sistema solare", "orbita", "sole", "spazio", "più piccolo", "astronomia", "cratere"}},
+	{Kind: "object", Type: "OBJECT", Name: "Mercury", Surfaces: []string{"Mercury"}, Hint: "planet",
+		RequireAny: []string{"planet", "solar", "orbit", "sun", "space", "smallest", "closest", "innermost", "astronomy", "celestial", "craters", "surface"},
+		ForbidAny:  []string{"singer", "band", "queen", "rock", "vocals", "lead", "music", "song", "bohemian", "live aid"},
+		SurfacesIT: []string{"Mercurio"},
+		RequireAnyIT: []string{"pianeta", "sistema solare", "orbita", "sole", "spazio", "più piccolo", "più vicino", "astronomia", "cratere"},
+		ForbidAnyIT:  []string{"cantante", "band", "queen", "rock", "voce", "musica", "canzone"}},
+	{Kind: "place", Type: "GPE", Name: "Jordan", Surfaces: []string{"Jordan"},
+		RequireAny: []string{"country", "kingdom", "amman", "middle east", "nation", "capital", "borders", "desert", "hashemite"},
+		ForbidAny:  []string{"basketball", "bulls", "nba", "legend", "court", "jersey", "team", "game", "actor", "film", "movie", "hollywood", "starred"},
+		SurfacesIT: []string{"Giordania"},
+		RequireAnyIT: []string{"paese", "regno", "amman", "medio oriente", "nazione", "capitale", "confini", "deserto", "hashemita", "arabo"},
+		ForbidAnyIT:  []string{"basket", "pallacanestro", "bulls", "nba", "leggenda", "attore", "film", "cinema", "hollywood", "giocatore", "maglia"}},
+	{Kind: "place", Type: "GPE", Name: "Turkey", Surfaces: []string{"Turkey"},
+		RequireAny: []string{"country", "europe", "asia", "ankara", "istanbul", "nation", "republic", "capital", "border", "coastline", "mediterranean"},
+		ForbidAny:  []string{"farm", "strutted", "barnyard", "gobble", "thanksgiving", "roasted", "poultry", "flock", "wild", "turkey bird"},
+		SurfacesIT: []string{"Turchia"},
+		RequireAnyIT: []string{"paese", "europa", "asia", "ankara", "istanbul", "nazione", "repubblica", "capitale", "confini", "costa", "mediterraneo"},
+		ForbidAnyIT:  []string{"fattoria", "cortile", "tacchino", "ringraziamento", "arrosto", "pollame", "stormo"}},
+	{Kind: "animal", Type: "ANIMAL", Name: "turkey", Surfaces: []string{"turkey"}, Generic: true, KindWord: "bird",
+		RequireAny: []string{"farm", "strutted", "barnyard", "gobble", "thanksgiving", "roasted", "poultry", "flock", "wild", "dawn"},
+		ForbidAny:  []string{"country", "europe", "asia", "ankara", "istanbul", "nation", "republic", "capital", "border", "coastline", "mediterranean"},
+		SurfacesIT: []string{"tacchino"},
+		RequireAnyIT: []string{"fattoria", "cortile", "ringraziamento", "arrosto", "pollame", "stormo", "faceva la ruota", "selvatico"},
+		ForbidAnyIT:  []string{"paese", "europa", "asia", "ankara", "istanbul", "nazione", "repubblica", "capitale", "confini", "costa", "mediterraneo"}},
+
 	// ── Orgs / brands ───────────────────────────────────────────────────
 	{Kind: "org", Type: "ORG", Name: "Apple", Surfaces: []string{"Apple"}, Hint: "company",
-		RequireAny: []string{"reported", "demand", "devices", "earnings", "revenue", "sales", "company", "inc", "products", "technology", "introduced", "announced", "unveiled", "vision pro", "spatial", "headset", "iphone", "shares", "stock", "quarter", "profit"},
-		ForbidAny:  []string{"farmer", "tree", "picked", "fruit", "orchard", "harvest", "red apple", "green apple"},
+		RequireAny:   []string{"reported", "demand", "devices", "earnings", "revenue", "sales", "company", "inc", "products", "technology", "introduced", "announced", "unveiled", "vision pro", "spatial", "headset", "iphone", "shares", "stock", "quarter", "profit"},
+		ForbidAny:    []string{"farmer", "tree", "picked", "fruit", "orchard", "harvest", "red apple", "green apple"},
 		RequireAnyIT: []string{"riportato", "domanda", "dispositivi", "ricavi", "vendite", "azienda", "inc", "prodotti", "tecnologia", "introdotto", "annunciato", "svelato", "vision pro", "spaziale", "cuffia", "iphone", "azioni", "titolo", "trimestre", "utile", "elaborazione"},
 		ForbidAnyIT:  []string{"contadino", "albero", "raccolto", "frutto", "frutteto", "mela rossa", "mela verde", "mele", "cestino", "raccolta"}},
 	{Kind: "org", Type: "ORG", Name: "Tesla", Surfaces: []string{"Tesla"},
-		RequireAny: []string{"cybertruck", "model", "car", "vehicle", "automotive", "musk", "electric", "ev", "unveiled", "factory", "design", "truck"},
-		ForbidAny:  []string{},
+		RequireAny:   []string{"cybertruck", "model", "car", "vehicle", "automotive", "musk", "electric", "ev", "unveiled", "factory", "design", "truck"},
+		ForbidAny:    []string{},
 		RequireAnyIT: []string{"cybertruck", "modello", "auto", "veicolo", "automobilistico", "musk", "elettrica", "elettrico", "svelato", "presentato", "fabbrica", "design", "camion", "veicoli", "automotive"},
 		ForbidAnyIT:  []string{}},
 	{Kind: "org", Type: "ORG", Name: "SpaceX", Surfaces: []string{"SpaceX"},
-		RequireAny: []string{"starship", "rocket", "launch", "mission", "space", "musk", "falcon", "orbit"},
-		ForbidAny:  []string{},
+		RequireAny:   []string{"starship", "rocket", "launch", "mission", "space", "musk", "falcon", "orbit"},
+		ForbidAny:    []string{},
 		RequireAnyIT: []string{"starship", "razzo", "lancio", "missione", "missioni", "spazio", "spaziali", "musk", "falcon", "orbita", "sviluppato"},
 		ForbidAnyIT:  []string{}},
 	{Kind: "org", Type: "ORG", Name: "Jaguar", Surfaces: []string{"Jaguar"}, Hint: "car",
-		RequireAny: []string{"unveiled", "vehicle", "car", "luxury", "automotive", "model", "announced", "launched", "sedan", "suv", "design", "brand"},
-		ForbidAny:  []string{"rainforest", "jungle", "forest", "moved", "wild", "prey", "hunting", "animal"},
+		RequireAny:   []string{"unveiled", "vehicle", "car", "luxury", "automotive", "model", "announced", "launched", "sedan", "suv", "design", "brand"},
+		ForbidAny:    []string{"rainforest", "jungle", "forest", "moved", "wild", "prey", "hunting", "animal"},
 		RequireAnyIT: []string{"svelato", "veicolo", "auto", "lusso", "automotive", "modello", "annunciato", "lanciato", "berlina", "suv", "design", "marchio", "presentato"},
 		ForbidAnyIT:  []string{"foresta", "giungla", "selva", "selvaggio", "preda", "caccia", "animale", "amazzonia", "amazzonica", "si muoveva", "silenziosamente", "felino"}},
 	{Kind: "org", Type: "ORG", Name: "Chicago Bulls", Surfaces: []string{"Chicago Bulls"}, Domain: "basketball",
-		RequireAny: []string{"basketball", "nba", "chicago", "jordan", "legend", "team", "court", "game"},
-		ForbidAny:  []string{},
+		RequireAny:   []string{"basketball", "nba", "chicago", "jordan", "legend", "team", "court", "game"},
+		ForbidAny:    []string{},
 		RequireAnyIT: []string{"basket", "nba", "chicago", "jordan", "leggenda", "squadra", "campo", "partita", "pallacanestro"},
 		ForbidAnyIT:  []string{}},
 	{Kind: "org", Type: "ORG", Name: "Mayweather Promotions", Surfaces: []string{"Mayweather Promotions"}},
 
 	// ── Products (merged with their brand when the brand co-occurs) ─────
 	{Kind: "product", Type: "PRODUCT", Name: "Apple Vision Pro", Surfaces: []string{"Vision Pro"}, Brand: "Apple",
-		RequireAny: []string{"apple", "introduced", "spatial", "device", "headset", "computing"},
+		RequireAny:   []string{"apple", "introduced", "spatial", "device", "headset", "computing"},
 		RequireAnyIT: []string{"apple", "introdotto", "spaziale", "dispositivo", "cuffia", "elaborazione", "computing"}},
 	{Kind: "product", Type: "PRODUCT", Name: "Tesla Cybertruck", Surfaces: []string{"Cybertruck"}, Brand: "Tesla",
-		RequireAny: []string{"tesla", "truck", "vehicle", "automotive", "design", "unveiled", "car"},
+		RequireAny:   []string{"tesla", "truck", "vehicle", "automotive", "design", "unveiled", "car"},
 		RequireAnyIT: []string{"tesla", "camion", "veicolo", "automobilistico", "design", "svelato", "presentato", "auto"}},
 	{Kind: "product", Type: "PRODUCT", Name: "SpaceX Starship", Surfaces: []string{"Starship"}, Brand: "SpaceX",
-		RequireAny: []string{"spacex", "rocket", "space", "mission", "launch", "vehicle", "next"},
+		RequireAny:   []string{"spacex", "rocket", "space", "mission", "launch", "vehicle", "next"},
 		RequireAnyIT: []string{"spacex", "razzo", "spazio", "missione", "lancio", "veicolo", "prossima", "generazione", "sviluppato"}},
 
 	// ── Landmarks / locations ───────────────────────────────────────────
@@ -167,15 +198,15 @@ var knownEntities = []KnownEntity{
 
 	// ── Generic subjects (lowercase, context-gated) ─────────────────────
 	{Kind: "animal", Type: "ANIMAL", Name: "jaguar", Surfaces: []string{"jaguar"}, Generic: true, KindWord: "animal",
-		RequireAny: []string{"rainforest", "jungle", "forest", "moved", "silently", "wild", "prey", "hunting", "amazon", "cat", "animal", "prowled", "stalked"},
-		ForbidAny:  []string{"unveiled", "vehicle", "car", "luxury", "automotive", "launched", "sedan", "suv"},
-		SurfacesIT: []string{"giaguaro"},
+		RequireAny:   []string{"rainforest", "jungle", "forest", "moved", "silently", "wild", "prey", "hunting", "amazon", "cat", "animal", "prowled", "stalked"},
+		ForbidAny:    []string{"unveiled", "vehicle", "car", "luxury", "automotive", "launched", "sedan", "suv"},
+		SurfacesIT:   []string{"giaguaro"},
 		RequireAnyIT: []string{"foresta", "amazzonia", "amazzonica", "si muoveva", "silenziosamente", "selvaggio", "preda", "caccia", "felino", "animale", "giungla", "selva", "appostato", "braccato", "attraversava"},
 		ForbidAnyIT:  []string{"svelato", "veicolo", "auto", "lusso", "automotive", "lanciato", "berlina", "suv", "marchio", "modello", "presentato"}},
 	{Kind: "object", Type: "OBJECT", Name: "apple fruit", Surfaces: []string{"apple"}, Generic: true, KindWord: "fruit",
-		RequireAny: []string{"farmer", "tree", "picked", "fruit", "orchard", "red", "green", "harvest", "grew", "grow", "basket", "apples", "ate"},
-		ForbidAny:  []string{"reported", "demand", "devices", "earnings", "revenue", "sales", "company", "inc", "products", "technology", "introduced", "spatial", "iphone"},
-		SurfacesIT: []string{"mela", "mele"},
+		RequireAny:   []string{"farmer", "tree", "picked", "fruit", "orchard", "red", "green", "harvest", "grew", "grow", "basket", "apples", "ate"},
+		ForbidAny:    []string{"reported", "demand", "devices", "earnings", "revenue", "sales", "company", "inc", "products", "technology", "introduced", "spatial", "iphone"},
+		SurfacesIT:   []string{"mela", "mele"},
 		RequireAnyIT: []string{"contadino", "albero", "raccolto", "raccolta", "frutto", "frutteto", "mela rossa", "rosso", "rossa", "verde", "cestino", "mangiato", "mele"},
 		ForbidAnyIT:  []string{"riportato", "domanda", "dispositivi", "ricavi", "vendite", "azienda", "inc", "prodotti", "tecnologia", "introdotto", "spaziale", "iphone", "azioni", "trimestre", "utile"}},
 
@@ -457,199 +488,3 @@ var aliasesIT = []aliasDescriptor{
 }
 
 // ── Language accessors ────────────────────────────────────────────────
-
-func negationPhrasesFor(lang string) [][]string {
-	if lang == "it" {
-		return negationPhrasesIT
-	}
-	return negationPhrases
-}
-
-// matchAlias returns the longest alias descriptor that opens the sentence,
-// or nil when none does ("The fighter later invested …" → the fighter;
-// "Il pugile in seguito …" → il pugile). Only the leading position is
-// considered: like pronoun coreference, an alias is the sentence SUBJECT.
-func matchAlias(text string, lang string) *aliasDescriptor {
-	tokens := tokenizeWords(text)
-	if len(tokens) == 0 {
-		return nil
-	}
-	table := aliases
-	if lang == "it" {
-		table = aliasesIT
-	}
-	var best *aliasDescriptor
-	bestLen := 0
-	for i := range table {
-		words := strings.Fields(table[i].surface)
-		if len(words) == 0 || len(words) > len(tokens) {
-			continue
-		}
-		ok := true
-		for k, w := range words {
-			if !strings.EqualFold(strings.Trim(tokens[k], ".,;:!?\"'"), w) {
-				ok = false
-				break
-			}
-		}
-		if ok && len(words) > bestLen {
-			best = &table[i]
-			bestLen = len(words)
-		}
-	}
-	return best
-}
-
-// knownEntityByName returns the KB entry for a (canonical) person name,
-// matched case-insensitively on Name or any language surface, or nil.
-func knownEntityByName(name string) *KnownEntity {
-	lower := strings.ToLower(strings.TrimSpace(name))
-	for i := range knownEntities {
-		entry := &knownEntities[i]
-		if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(entry.Name))) {
-			return entry
-		}
-		for _, s := range entry.Surfaces {
-			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
-				return entry
-			}
-		}
-		for _, s := range entry.SurfacesIT {
-			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
-				return entry
-			}
-		}
-	}
-	return nil
-}
-
-// knownDomain reports whether the (canonical) person name is a known
-// identity of the given domain in the knowledge base.
-func knownDomain(name string, domain string) bool {
-	lower := strings.ToLower(strings.TrimSpace(name))
-	for _, entry := range knownEntities {
-		if entry.Domain != domain {
-			continue
-		}
-		if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(entry.Name))) {
-			return true
-		}
-		for _, s := range entry.Surfaces {
-			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
-				return true
-			}
-		}
-		for _, s := range entry.SurfacesIT {
-			if strings.EqualFold(lower, strings.ToLower(strings.TrimSpace(s))) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// resolvePriorPerson picks the prior person a pronoun or alias grounds on.
-// Domain-specific aliases only resolve to a prior person that is a known
-// identity of that domain ("the fighter" → a known boxer, never Steve
-// Jobs); pronouns and generic aliases resolve to the most recent prior
-// person. Returns "" when nothing is resolvable.
-func resolvePriorPerson(priors []string, alias *aliasDescriptor) string {
-	for _, prior := range priors {
-		prior = strings.TrimSpace(prior)
-		if prior == "" {
-			continue
-		}
-		if alias != nil && alias.domain != "" && !knownDomain(prior, alias.domain) {
-			continue
-		}
-		return prior
-	}
-	return ""
-}
-
-func pronounsFor(lang string) map[string]bool {
-	if lang == "it" {
-		return pronounsIT
-	}
-	return pronouns
-}
-
-func subordinateMarkersFor(lang string) map[string]bool {
-	if lang == "it" {
-		return subordinateMarkersIT
-	}
-	return subordinateMarkers
-}
-
-func fightContextWordsFor(lang string) []string {
-	if lang == "it" {
-		return fightContextWordsIT
-	}
-	return fightContextWords
-}
-
-func moneyPatternsFor(lang string) []moneyPattern {
-	if lang == "it" {
-		return moneyPatternsIT
-	}
-	return moneyPatterns
-}
-
-// hasFightContext reports whether the sentence expresses an actual fight
-// event between its subjects, for the request language.
-func hasFightContext(lower string, lang string) bool {
-	for _, word := range fightContextWordsFor(lang) {
-		if strings.Contains(lower, word) {
-			return true
-		}
-	}
-	return false
-}
-
-// leadingToken returns the lowercased first word of the text, punctuation
-// trimmed.
-func leadingToken(text string) string {
-	fields := strings.Fields(strings.TrimSpace(text))
-	if len(fields) == 0 {
-		return ""
-	}
-	return strings.ToLower(strings.Trim(fields[0], ".,;:!?\"'"))
-}
-
-// startsWithPronoun reports whether the sentence opens with a resolvable
-// pronoun ("He later invested …", "His fortune changed …", "La sua fortuna
-// …", "Lui in seguito …"), for the request language.
-func startsWithPronoun(text string, lang string) bool {
-	if lang == "it" {
-		return startsWithPronounIT(text)
-	}
-	return pronouns[leadingToken(text)]
-}
-
-// startsWithPronounIT handles the Italian pronoun openers: a bare subject /
-// possessive pronoun ("Lui", "Suo") OR the article+possessive pattern ("Il
-// suo", "La sua", "I suoi", "Le sue").
-func startsWithPronounIT(text string) bool {
-	fields := strings.Fields(strings.TrimSpace(text))
-	if len(fields) == 0 {
-		return false
-	}
-	first := strings.ToLower(strings.Trim(fields[0], ".,;:!?\"'"))
-	if pronounsIT[first] {
-		return true
-	}
-	if len(fields) >= 2 {
-		second := strings.ToLower(strings.Trim(fields[1], ".,;:!?\"'"))
-		if italianArticles[first] && italianPossessives[second] {
-			return true
-		}
-	}
-	return false
-}
-
-// startsSubordinateClause reports whether the sentence opens a subordinate
-// clause ("After earning … , Floyd Mayweather …", "Dopo aver guadagnato …"),
-// for the request language.
-func startsSubordinateClause(text string, lang string) bool {
-	return subordinateMarkersFor(lang)[leadingToken(text)]
-}

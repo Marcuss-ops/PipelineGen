@@ -26,12 +26,12 @@
 //
 // WORKFLOW (operator):
 //
-//	1. IMAGESEARCH_LIVE_E2E=1 PEXELS_API_KEY=... go test ./internal/capabilities/imagesearch/ -run TestLiveImageSearchRelevance_Record -v
-//	   → writes testdata/live_relevance_snapshot.json (never committed empty).
-//	2. Label each candidate in testdata/live_relevance_labels.json
-//	   (relevant / wrong_identity per candidate id, per case).
-//	3. Commit snapshot + labels. From then on the normal suite certifies
-//	   them: go test ./internal/capabilities/imagesearch/ -run TestImageSearchLiveRelevance_Certify -v
+//  1. IMAGESEARCH_LIVE_E2E=1 PEXELS_API_KEY=... go test ./internal/capabilities/imagesearch/ -run TestLiveImageSearchRelevance_Record -v
+//     → writes testdata/live_relevance_snapshot.json (never committed empty).
+//  2. Label each candidate in testdata/live_relevance_labels.json
+//     (relevant / wrong_identity per candidate id, per case).
+//  3. Commit snapshot + labels. From then on the normal suite certifies
+//     them: go test ./internal/capabilities/imagesearch/ -run TestImageSearchLiveRelevance_Certify -v
 //
 // RATE LIMITS: Pexels free tier is ~200 req/hour. The full battery is
 // ~28 cases × 1-4 queries × 2 providers, so a full record run can approach
@@ -59,12 +59,12 @@ import (
 )
 
 const (
-	liveE2EEnv        = "IMAGESEARCH_LIVE_E2E"
-	envPexelsAPIKey   = "PEXELS_API_KEY"
-	envPexelsBaseURL  = "PEXELS_BASE_URL"
-	envPixabayAPIKey  = "PIXABAY_API_KEY"
-	envCaseFilter     = "IMAGESEARCH_E2E_CASES"
-	envQueryLimit     = "IMAGESEARCH_E2E_QUERY_LIMIT"
+	liveE2EEnv          = "IMAGESEARCH_LIVE_E2E"
+	envPexelsAPIKey     = "PEXELS_API_KEY"
+	envPexelsBaseURL    = "PEXELS_BASE_URL"
+	envPixabayAPIKey    = "PIXABAY_API_KEY"
+	envCaseFilter       = "IMAGESEARCH_E2E_CASES"
+	envQueryLimit       = "IMAGESEARCH_E2E_QUERY_LIMIT"
 	defaultSnapshotPath = "testdata/live_relevance_snapshot.json"
 	defaultLabelsPath   = "testdata/live_relevance_labels.json"
 
@@ -100,10 +100,10 @@ type liveQueryResults struct {
 
 // liveCaseResults is the full recorded surface of one battery case.
 type liveCaseResults struct {
-	ID      string              `json:"id"`
-	Text    string              `json:"text"`
-	Queries []string            `json:"queries"`
-	Results []liveQueryResults  `json:"results"`
+	ID      string             `json:"id"`
+	Text    string             `json:"text"`
+	Queries []string           `json:"queries"`
+	Results []liveQueryResults `json:"results"`
 }
 
 // liveSnapshot is the committed record of one live run. It is the input of
@@ -124,7 +124,7 @@ type liveCandidateLabel struct {
 
 // liveLabels maps case id → candidate id → human judgment.
 type liveLabels struct {
-	Schema string                              `json:"schema"`
+	Schema string                                   `json:"schema"`
 	Labels map[string]map[string]liveCandidateLabel `json:"labels"`
 }
 
@@ -257,16 +257,16 @@ func negatedReason(c liveCandidate, negated []wantEntity) string {
 
 // liveCaseMetrics is one case's result-side certification row.
 type liveCaseMetrics struct {
-	id               string
-	imageResults     int // distinct candidates recorded for the case
-	topCandidates    []liveCandidate
-	relevantTop1     bool // top-1 candidate labeled relevant
-	relevantTop3     int  // count of relevant among top-3
-	relevantTop5     int  // count of relevant among top-5
-	wrongIdentity    int  // wrong-identity hits among top-5
-	negatedSeen      int  // negated-person hits among top-5
-	wrongSelected    bool // the selected (top-1) image is a wrong identity
-	labeled          bool // case has at least one human label
+	id            string
+	imageResults  int // distinct candidates recorded for the case
+	topCandidates []liveCandidate
+	relevantTop1  bool // top-1 candidate labeled relevant
+	relevantTop3  int  // count of relevant among top-3
+	relevantTop5  int  // count of relevant among top-5
+	wrongIdentity int  // wrong-identity hits among top-5
+	negatedSeen   int  // negated-person hits among top-5
+	wrongSelected bool // the selected (top-1) image is a wrong identity
+	labeled       bool // case has at least one human label
 }
 
 func (m liveCaseMetrics) pass() bool {
@@ -365,10 +365,10 @@ func certifyLiveCase(gc goldenCase, res liveCaseResults, labels map[string]liveC
 
 // liveCertification is the aggregate of a full snapshot run.
 type liveCertification struct {
-	rows            []liveCaseMetrics
-	casesWithResults int
-	labeledCases     int
-	rel1, rel3, rel5 int // cases with ≥1 relevant candidate in the top-k window
+	rows               []liveCaseMetrics
+	casesWithResults   int
+	labeledCases       int
+	rel1, rel3, rel5   int // cases with ≥1 relevant candidate in the top-k window
 	wrongIdentityTotal int
 	wrongSelectedCases int
 	negatedTotal       int
