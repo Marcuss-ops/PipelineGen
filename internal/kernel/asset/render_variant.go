@@ -27,26 +27,26 @@ const RenderProfileFFmpegAss1080pV1 = "ffmpeg-ass-1080p-v1"
 // RenderVariant is one rendered, validated, uploaded per-language clip
 // variant. Maps 1:1 to a row in asset_render_variants.
 type RenderVariant struct {
-	ID            int64               `json:"id"`
-	SourceClipID  string              `json:"source_clip_id"`
-	LanguageCode  string              `json:"language_code"`
-	Fingerprint   string              `json:"fingerprint"`
-	SourceClipSHA256 string           `json:"source_clip_sha256"`
-	TranscriptSHA256 string           `json:"transcript_sha256"`
-	TranslationVersion string         `json:"translation_version"`
-	SubtitleStyleVersion string       `json:"subtitle_style_version"`
-	RenderProfileVersion string       `json:"render_profile_version"`
-	SubtitleHash string              `json:"subtitle_hash"`
-	OutputHash   string              `json:"output_hash"`
-	DriveFileID  string              `json:"drive_file_id"`
-	DriveLink    string              `json:"drive_link"`
-	DurationMs   int64               `json:"duration_ms"`
-	SizeBytes    int64               `json:"size_bytes"`
-	Status       RenderVariantStatus `json:"status"`
-	ValidationError string           `json:"validation_error"`
-	IsCurrent    bool                `json:"is_current"`
-	CreatedAt    time.Time           `json:"created_at"`
-	UpdatedAt    time.Time           `json:"updated_at"`
+	ID                   int64               `json:"id"`
+	SourceClipID         string              `json:"source_clip_id"`
+	LanguageCode         string              `json:"language_code"`
+	Fingerprint          string              `json:"fingerprint"`
+	SourceClipSHA256     string              `json:"source_clip_sha256"`
+	TranscriptSHA256     string              `json:"transcript_sha256"`
+	TranslationVersion   string              `json:"translation_version"`
+	SubtitleStyleVersion string              `json:"subtitle_style_version"`
+	RenderProfileVersion string              `json:"render_profile_version"`
+	SubtitleHash         string              `json:"subtitle_hash"`
+	OutputHash           string              `json:"output_hash"`
+	DriveFileID          string              `json:"drive_file_id"`
+	DriveLink            string              `json:"drive_link"`
+	DurationMs           int64               `json:"duration_ms"`
+	SizeBytes            int64               `json:"size_bytes"`
+	Status               RenderVariantStatus `json:"status"`
+	ValidationError      string              `json:"validation_error"`
+	IsCurrent            bool                `json:"is_current"`
+	CreatedAt            time.Time           `json:"created_at"`
+	UpdatedAt            time.Time           `json:"updated_at"`
 }
 
 // RenderVariantRepository is the canonical port for persisting and querying
@@ -82,6 +82,25 @@ func RenderVariantFingerprint(
 		strings.TrimSpace(transcriptSHA256),
 		strings.TrimSpace(targetLanguage),
 		strings.TrimSpace(translationVersion),
+		strings.TrimSpace(subtitleStyleVersion),
+		strings.TrimSpace(renderProfileVersion),
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// RenderVariantContentFingerprint identifies the rendered pixels by their
+// content inputs. Translation provider/model metadata is deliberately not
+// included: when the localized TextTrack hash is identical, the subtitles
+// and resulting MP4 are identical even if the provider version changed.
+func RenderVariantContentFingerprint(
+	sourceClipSHA256, transcriptSHA256, targetLanguage,
+	subtitleStyleVersion, renderProfileVersion string,
+) string {
+	parts := []string{
+		strings.TrimSpace(sourceClipSHA256),
+		strings.TrimSpace(transcriptSHA256),
+		strings.TrimSpace(targetLanguage),
 		strings.TrimSpace(subtitleStyleVersion),
 		strings.TrimSpace(renderProfileVersion),
 	}

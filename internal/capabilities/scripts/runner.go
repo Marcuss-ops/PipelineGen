@@ -361,6 +361,26 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
 }
 
+// localizedRenderClipFields resolves the source-clip reference a localized
+// render needs from a scene's clip bindings. It prefers the primary Clip and
+// falls back to the first multi-clip binding; both are empty for audio-only
+// scenes. The clip ID doubles as the media asset id (ClipReference.ID is the
+// canonical asset identity) and DurationUS is converted to milliseconds.
+func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, durationMS int64) {
+	clip := scene.Clip
+	if clip == nil && len(scene.Clips) > 0 {
+		clip = scene.Clips[0]
+	}
+	if clip == nil {
+		return "", "", "", 0
+	}
+	durationMS = clip.DurationUS / 1000
+	if durationMS <= 0 && clip.Duration > 0 {
+		durationMS = int64(clip.Duration * 1000)
+	}
+	return clip.ID, clip.ID, clip.SHA256, durationMS
+}
+
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 	r.combinedAudioRenderer = renderer
 }

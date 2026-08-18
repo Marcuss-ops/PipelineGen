@@ -11,7 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
@@ -27,12 +26,30 @@ func (f *fakeMediaMemoryPort) EmbeddingVersion() string {
 	return "test-embedding-v1"
 }
 
+// fakeRanker is a test double for the CandidateRanker port. The Brain
+// orchestration tests are about ranking plumbing, not scoring, so the
+// fake returns candidates unchanged. Using a fake (rather than the
+// production MediaMemory-backed adapter) keeps the core package test
+// free of the mediamemory dependency and the brain<->mediamemory
+// architectural cycle.
+type fakeRanker struct{}
+
+func (fakeRanker) Rank(_ context.Context, _ brain.SceneRequest, _ brain.VisualIntent, candidates []brain.Candidate, _ brain.ResolutionPolicy) ([]brain.Candidate, error) {
+	return candidates, nil
+}
+
+func (fakeRanker) Version() string { return "test-ranker-v1" }
+
+func (fakeRanker) DiversityPolicyVersion() string { return "test-diversity-v1" }
+
+var _ ranker.CandidateRanker = fakeRanker{}
+
 func newTestBrain(candidates []brain.Candidate) brain.Brain {
 	return NewCanonicalBrain(
 		normalizer.NewDefaultNormalizer(),
 		intent.NewDefaultResolver(),
 		&fakeMediaMemoryPort{candidates: candidates},
-		ranker.NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil)),
+		fakeRanker{},
 		planner.NewDefaultPlanner(),
 	)
 }

@@ -38,8 +38,8 @@ func NewSource(jobsDB, obsDB *sql.DB) (*Source, error) {
 
 var _ perf.ReportSource = (*Source)(nil)
 
-// Load reads the canonical RunReport, the job's AudioPipelineMetrics, and the
-// recorded execution steps for one job. The latest run is authoritative.
+// Load reads the canonical RunReport and projects audio metrics from its
+// operations. Workflow payloads are not an authority for timings.
 func (s *Source) Load(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, []scriptgeneration.ExecutionStep, error) {
 	if s == nil || s.obs == nil || s.jobs == nil {
 		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, nil, errors.New("performance source: databases are not configured")
@@ -60,10 +60,10 @@ func (s *Source) Load(ctx context.Context, jobID string) (kernobs.RunReport, scr
 }
 
 func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, error) {
-	var reportJSON, payloadJSON string
+	var reportJSON string
 	err := s.obs.QueryRowContext(ctx,
-		`SELECT report_json, workflow_payload_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`,
-		jobID).Scan(&reportJSON, &payloadJSON)
+		`SELECT report_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`,
+		jobID).Scan(&reportJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no run for job %s", jobID)
@@ -76,19 +76,57 @@ func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, 
 		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: decode run report %s: %w", jobID, err)
 	}
 
-	audio := scriptgeneration.AudioPipelineMetrics{}
-	if payloadJSON != "" && payloadJSON != "{}" {
-		var checkpoint struct {
-			Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
+	return run, projectAudioMetrics(run), nil
+}
+
+func projectAudioMetrics(run kernobs.RunReport) scriptgeneration.AudioPipelineMetrics {
+	var audio scriptgeneration.AudioPipelineMetrics
+	for _, op := range run.Operations {
+		if op.OutputDurationMS > audio.AudioDurationMS {
+			audio.AudioDurationMS = op.OutputDurationMS
 		}
-		if err := json.Unmarshal([]byte(payloadJSON), &checkpoint); err != nil {
-			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: decode workflow checkpoint %s: %w", jobID, err)
-		}
-		if checkpoint.Result != nil && checkpoint.Result.AudioMetrics != nil {
-			audio = *checkpoint.Result.AudioMetrics
+		switch op.Operation {
+		case "audio_render":
+			audio.TotalMS = op.DurationMs
+		case "synthesize":
+			if op.Stage == "voiceover" {
+				audio.TTSMS += op.DurationMs
+				if op.Items > 0 {
+					audio.TTSCalls += int(op.Items)
+				} else {
+					audio.TTSCalls++
+				}
+			}
+		case "timeline_compile":
+			audio.TimelineCompileMS += op.DurationMs
+		case "audio_plan_compile":
+			audio.AudioPlanCompileMS += op.DurationMs
+		case "clip_audio_prepare":
+			audio.ClipAudioPrepareMS += op.DurationMs
+		case "mix":
+			audio.MixMS += op.DurationMs
+		case "aac_encode":
+			audio.AACEncodeMS += op.DurationMs
+		case "probe":
+			audio.ProbeMS += op.DurationMs
+		case "hash":
+			audio.HashMS += op.DurationMs
+		case "upload":
+			if op.Stage == "audio_compile" {
+				audio.UploadMS += op.DurationMs
+			}
 		}
 	}
-	return run, audio, nil
+	if audio.TotalMS == 0 {
+		audio.TotalMS = audio.TTSMS + audio.TimelineCompileMS + audio.AudioPlanCompileMS + audio.ClipAudioPrepareMS + audio.MixMS + audio.AACEncodeMS + audio.ProbeMS + audio.HashMS + audio.UploadMS
+	}
+	if audio.AudioDurationMS > 0 {
+		audio.AudioRTF = float64(audio.TotalMS) / float64(audio.AudioDurationMS)
+		if audio.AudioRTF > 0 {
+			audio.AudioSpeed = 1 / audio.AudioRTF
+		}
+	}
+	return audio
 }
 
 func (s *Source) loadSteps(ctx context.Context, jobID string) ([]scriptgeneration.ExecutionStep, error) {

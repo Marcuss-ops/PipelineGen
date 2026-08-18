@@ -51,3 +51,4 @@ internal/application/voiceover/upload_intent.go	database/sql	@agent/Codebuff	202
 internal/application/workerdoctor/probes_dependency.go	os.OpenFile	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/assets/texttracks/ass_materializer.go	os.Open	@agent/Antigravity	2026-08-31	validate subtitle ASS files
 internal/application/scripts/usecase/clip_sampler_gates.go	database/sql	@agent/Antigravity	2026-08-31	enforce subtitles check on candidate clips
+internal/application/assets/multilingual/renderer.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS

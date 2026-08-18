@@ -45,6 +45,7 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ── Fakes ──────────────────────────────────────────────────────────────────
@@ -57,16 +58,35 @@ type fakeOllamaGen struct {
 	capturedReq atomic.Pointer[scriptports.TextGenerationRequest]
 }
 
-func (f *fakeOllamaGen) GenerateScript(_ context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
+// GenerateScript mirrors the real owner-owned boundary: like
+// *ollama.Generator.GenerateScript, it emits the canonical ollama/generate
+// operation itself. The Engine fan-out must not re-time the same boundary, so
+// this fake records exactly once per call and leaves the engine with nothing
+// extra to measure.
+func (f *fakeOllamaGen) GenerateScript(ctx context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	f.calls.Add(1)
 	f.capturedReq.Store(&req)
-	if f.returnErr != nil {
-		return nil, f.returnErr
+	var result *scriptports.GenerationResult
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage:     kernobs.StageGenerate,
+		Component: kernobs.ComponentOllama,
+		Operation: kernobs.OperationGenerate,
+		Items:     1,
+	}, func(context.Context) error {
+		if f.returnErr != nil {
+			return f.returnErr
+		}
+		if f.result != nil {
+			result = f.result
+		} else {
+			result = defaultFakeResult()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if f.result != nil {
-		return f.result, nil
-	}
-	return defaultFakeResult(), nil
+	return result, nil
 }
 
 // fakeMemoryGate is a memoryGateChecker injected into Engine for tests.

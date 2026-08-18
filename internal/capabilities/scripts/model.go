@@ -232,17 +232,16 @@ type FinalAudioReference struct {
 	CopyEligible         bool   `json:"copy_eligible"`
 }
 
-// AudioPipelineMetrics is the canonical durable timing contract for the
-// combined-audio pipeline (COMBINED_TIMELINE). It is owned by this capability
-// package and is the surface the script runner persists under
-// GenerateResult.AudioMetrics (JSON "audio_metrics").
+// AudioPipelineMetrics is an audio-friendly API projection of canonical
+// observability stages and operations. It is not an authority and must not
+// acquire independent timers or persistence writers.
 //
 // Relationship to the legacy domain contract: internal/domain/script
 // .GenerationTimings carries an overlapping set of flat *_ms audio fields used
 // only by the migration-only internal/application/scripts/usecase path. That
 // struct is a legacy projection; this struct is the authority. Field map:
 //
-//	GenerationTimings (domain, legacy)  AudioPipelineMetrics (canonical)
+//	GenerationTimings (domain, legacy)  AudioPipelineMetrics (projection)
 //	tts_total_ms                          tts_ms
 //	audio_mix_ms                          mix_ms
 //	audio_encode_ms                       aac_encode_ms
@@ -256,11 +255,11 @@ type FinalAudioReference struct {
 //	audio_plan_compile_ms                 audio_plan_compile_ms (unchanged)
 //	clip_audio_prepare_ms                 clip_audio_prepare_ms (unchanged)
 //
-// Canonical-only fields with no legacy equivalent: media_fetch_ms, upload_ms,
+// Projection-only fields with no legacy equivalent: media_fetch_ms, upload_ms,
 // audio_rtf, audio_speed, tts_scenes.
 //
-// Do NOT add new audio timing fields to GenerationTimings; extend this struct
-// instead. The legacy struct is migration-only and must converge here.
+// Do NOT add new timing fields here as an authority; derive them from the
+// canonical RunReport and keep this struct stable for API consumers.
 type AudioPipelineMetrics struct {
 	TTSMS              int64             `json:"tts_ms"`
 	MediaFetchMS       int64             `json:"media_fetch_ms"`
@@ -625,8 +624,9 @@ type GenerateResult struct {
 	TranslationMetrics *TranslationPipelineMetrics         `json:"translation_metrics,omitempty"`
 }
 
-// TranslationPipelineMetrics makes translation fan-out observable without
-// conflating provider work (sum) with wall-clock latency (critical path).
+// TranslationPipelineMetrics is a read-only API projection of canonical
+// translation operations. The RunReport/observability database is the only
+// measurement authority.
 type TranslationPipelineMetrics struct {
 	Calls       int   `json:"calls"`
 	Concurrency int   `json:"concurrency"`

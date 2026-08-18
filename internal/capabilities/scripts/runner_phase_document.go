@@ -39,7 +39,15 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 			return false
 		}
+		// Idempotent restart: seed the publication maps with documents already
+		// published in a prior attempt so a resume reuses them instead of
+		// re-uploading (0 duplicate Docs).
 		docs := make(map[Language]DocumentReference)
+		if result.Documents != nil {
+			for lang, ref := range result.Documents {
+				docs[lang] = ref
+			}
+		}
 		renderers := make(map[Language]string)
 		hashes := make(map[Language]string)
 		sceneCounts := make(map[Language]int)
@@ -110,6 +118,15 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		if _, publishErr := kernobs.MeasureStageReport(ctx, StageDocumentPublish, func(stageCtx context.Context) error {
 			for _, lang := range docsLangs {
 				rd := rendered[lang]
+				// Idempotent restart: a language already published in a prior
+				// attempt is reused (same deterministic identity) — never
+				// re-uploaded, so a resume writes 0 duplicate Docs.
+				if existing, ok := docs[lang]; ok && existing.ID != "" {
+					renderers[lang] = rd.rendererID
+					hashes[lang] = rd.hash
+					sceneCounts[lang] = rd.sceneCount
+					continue
+				}
 				title := req.Title
 				if title == "" {
 					title = "Script"
@@ -150,6 +167,14 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 				}); err != nil {
 					return err
 				}
+				// Per-language durable checkpoint: a crash right after this doc
+				// is published must not re-upload it on restart. The maps are
+				// projected onto the durable result before the checkpoint.
+				result.Documents = docs
+				result.DocumentRenderers = renderers
+				result.DocumentSpecSceneSHA256 = hashes
+				result.DocumentSceneCounts = sceneCounts
+				r.checkpoint(stageCtx, runID, result)
 			}
 			return nil
 		}); publishErr != nil {

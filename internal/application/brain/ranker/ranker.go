@@ -1,13 +1,13 @@
-// Package ranker is the canonical home of candidate ranking for
-// the Brain capability.
+// Package ranker is the canonical home of the CandidateRanker port
+// for the Brain capability.
 //
 // godlike/06 SSOT: the CandidateRanker is the single owner of the
 // (candidates + intent -> ordered candidates) transformation. It
 // performs no IO and depends only on the brain types and stdlib.
 //
-// The concrete implementation lives in adapter.go and is backed by the
-// rich MediaMemory ranker; the previous toy defaultRanker has been
-// removed.
+// The concrete implementation is the MediaMemory-backed adapter wired
+// in the composition root (internal/app); the previous toy
+// defaultRanker has been removed.
 package ranker
 
 import (

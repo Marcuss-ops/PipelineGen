@@ -2,28 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 	"go.uber.org/zap"
 )
 
@@ -54,198 +45,6 @@ const subtitleStyleVersion = "vidrush-default:vidrush-ass-v2"
 //	    --languages=en,it,pl,ru,de,es,pt-BR,fr,tr,id \
 //	    --drive-folder-id=1I5XdK72kyYTUYdZYCV0ki6FnAwJxRfKI \
 //	    --concurrency=4 --json
-func runMultilingualRender(args []string) error {
-	fs := flag.NewFlagSet("multilingual-render", flag.ContinueOnError)
-	ids := fs.String("asset-ids", "", "comma-separated source clip asset IDs (required)")
-	sourceLang := fs.String("source-lang", "", "BCP-47 source language (default: config multilingual.source_language)")
-	langs := fs.String("languages", "", "BCP-47 csv, [0]=source [1:]=targets (default: config registry)")
-	driveFolder := fs.String("drive-folder-id", "", "destination Drive folder (default: asset folder_id or config clips folder)")
-	concurrency := fs.Int("concurrency", 4, "render fan-out concurrency")
-	translateConcurrency := fs.Int("translate-concurrency", 4, "per-cue translation concurrency")
-	force := fs.Bool("force", false, "bypass render variant reuse: always re-render + re-validate + re-upload")
-	docsFolder := fs.String("docs-folder-id", "", "destination Drive folder for the localization manifest Google Doc (default: clip destination folder)")
-	certifyJSON := fs.String("certify-json", "", "write the canonical certification report JSON to this path (\"-\" for stdout)")
-	jsonOut := fs.Bool("json", false, "machine-readable JSON output")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	assetIDs := splitCSV(*ids)
-	if len(assetIDs) == 0 {
-		return fmt.Errorf("multilingual-render: --asset-ids is required")
-	}
-
-	cfg, log, cleanup, err := appLogger()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
-	if err != nil {
-		return err
-	}
-	defer rootCleanup()
-
-	svc, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
-		Data: texttracks.BackfillDataDeps{
-			Clips:      root.Repos.ClipsRepo,
-			Repo:       root.Repos.TextTrackRepo,
-			Cues:       root.Domains.CueWriter,
-			SubArtRepo: root.Repos.SubtitleArtifactRepo,
-		},
-		Pipeline: texttracks.BackfillPipelineDeps{
-			Materializer: root.TextTracks.Materializer,
-			Acquirer:     root.TextTracks.AcquireService,
-		},
-		Delivery: texttracks.BackfillDeliveryDeps{
-			Publisher:     root.Drive.Publisher,
-			DriveFolderID: cfg.Drive.ClipsFolder(),
-		},
-		Log: log,
-	})
-	if err != nil {
-		return fmt.Errorf("multilingual-render: new backfill service: %w", err)
-	}
-
-	variantRepo, err := sqtexttracks.NewRenderVariantRepository(root.DB.DB, log)
-	if err != nil {
-		return fmt.Errorf("multilingual-render: new variant repo: %w", err)
-	}
-	renderer, err := multilingual.NewRenderer(variantRepo, root.Drive.Publisher, cfg.External.FfmpegPath, log)
-	if err != nil {
-		return fmt.Errorf("multilingual-render: new renderer: %w", err)
-	}
-	mediaProfile := root.MediaExec.Profile.WithDefaults()
-	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	rustClipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, mediaProfile, log)
-	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPS)
-	subMat := texttracks.NewSubtitleArtifactMaterializer(root.Repos.SubtitleArtifactRepo, "data/media/subtitles", root.Drive.Publisher)
-	cueRepair, err := texttracks.NewCueRepairService(root.Domains.CueWriter)
-	if err != nil {
-		return fmt.Errorf("multilingual-render: new cue repair: %w", err)
-	}
-
-	srcLang, targetLangs := resolveLanguages(cfg, *sourceLang, *langs)
-
-	// PR-ARGOS-TRANSLATION (Aug 2026): the CueTranslator routes through the
-	// SAME provider chain as the materializer (Argos primary + Ollama
-	// fallback, or Ollama-only per translation_provider) instead of reaching
-	// Ollama directly, so the per-cue translation and the full-text
-	// translation stay on one canonical provider stack.
-	if root.TextTracks == nil || root.TextTracks.Translator == nil {
-		return fmt.Errorf("multilingual-render: translation provider is not configured")
-	}
-	cueTranslator := texttracks.NewCueTranslator(
-		root.TextTracks.Translator,
-		srcLang,
-		cfg.External.OllamaModel,
-		*translateConcurrency,
-		log,
-	)
-
-	// Metrics: confluent into the canonical performance registry.
-	perfReg, err := perfstore.New(root.DB.DB)
-	if err != nil {
-		return fmt.Errorf("multilingual-render: performance registry: %w", err)
-	}
-	opStore, err := perfstore.NewOperationStore(root.DB.DB)
-	if err != nil {
-		return fmt.Errorf("multilingual-render: performance operation store: %w", err)
-	}
-	rec := multilingual.NewRecorder(perfReg, opStore, log)
-
-	// Process-level CPU/RSS sampled once around the whole run (the admin
-	// process is dedicated to this single job).
-	cpuStartUser, cpuStartSystem, _ := multilingual.ProcessResources()
-
-	var all []langReport
-	var summaries []multilingual.RunMetrics
-	var validatedCounts []int
-	var docRefs []*multilingual.LocalizationDocRef
-	for _, id := range assetIDs {
-		rep, summary, docRef, rErr := processOneClip(cmdContext(), svc, renderer, subMat, cueRepair, cueTranslator, rec,
-			root.Repos.ClipsRepo, root.Repos.TextTrackRepo, cfg, id, srcLang, targetLangs, *driveFolder, *docsFolder, *concurrency, *force, root.Drive.DocClient, log)
-		if rErr != nil {
-			return rErr
-		}
-		cpuEndUser, cpuEndSystem, peakRSS := multilingual.ProcessResources()
-		summary.CPUUserMS = cpuEndUser - cpuStartUser
-		summary.CPUSystemMS = cpuEndSystem - cpuStartSystem
-		summary.PeakRSSBytes = peakRSS
-		rec.RecordRun(cmdContext(), summary)
-		summaries = append(summaries, summary)
-		validatedCounts = append(validatedCounts, countValidated(rep))
-		all = append(all, rep...)
-		if docRef != nil {
-			docRefs = append(docRefs, docRef)
-		}
-	}
-
-	if *certifyJSON != "" {
-		return writeCertification(*certifyJSON, summaries, validatedCounts)
-	}
-
-	if *jsonOut {
-		b, _ := json.MarshalIndent(struct {
-			SourceLanguage  string                            `json:"source_language"`
-			TargetLanguages []string                          `json:"target_languages"`
-			Variants        []langReport                      `json:"variants"`
-			LocalizationDoc []multilingual.LocalizationDocRef `json:"localization_docs,omitempty"`
-			Parallelism     []multilingual.RunMetrics         `json:"parallelism"`
-		}{srcLang, targetLangs, all, derefDocRefs(docRefs), summaries}, "", "  ")
-		fmt.Println(string(b))
-		return nil
-	}
-	printLangReport(all)
-	printPerLangTiming(all)
-	printLocalizationDocs(docRefs)
-	printParallelism(summaries)
-	return nil
-}
-
-// adminRustRenderer keeps the application renderer independent of the
-// concrete Rust adapter while making this operational command use the same
-// sealed render_clip boundary as the main clip-render capability.
-type adminRustRenderer struct {
-	renderer *rustexec.ClipRenderer
-}
-
-func (a adminRustRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (multilingual.RustRenderResult, error) {
-	result, err := a.renderer.RenderClip(ctx, plan)
-	if err != nil {
-		return multilingual.RustRenderResult{}, err
-	}
-	return multilingual.RustRenderResult{OutputPath: result.OutputPath}, nil
-}
-
-// langReport is one row of the per-language report.
-type langReport struct {
-	Language     string  `json:"language"`
-	Transcript   string  `json:"transcript"`    // reused | generated | missing
-	Translation  string  `json:"translation"`   // source | translated | failed (per-cue)
-	TranslateMS  int64   `json:"translate_ms"`  // per-cue translation wall time
-	ASSStatus    string  `json:"ass_status"`    // ready | failed
-	ASSMS        int64   `json:"ass_ms"`        // ASS generation + upload wall time
-	RenderStatus string  `json:"render_status"` // ready | reused | failed
-	RenderMS     int64   `json:"render_ms"`
-	RTF          float64 `json:"render_rtf"` // render_ms / source_duration_ms
-	SizeBytes    int64   `json:"size_bytes"`
-	DurationMs   int64   `json:"duration_ms"`
-	Validation   string  `json:"validation"` // ok | <error>
-	Fingerprint  string  `json:"fingerprint"`
-	OutputHash   string  `json:"output_hash"`
-	DriveLink    string  `json:"drive_link,omitempty"`
-	// Per-language lifecycle timing (RFC3339, empty = not recorded).
-	Priority          int    `json:"priority"`
-	TextReadyAt       string `json:"text_ready_at,omitempty"`
-	QueuedAt          string `json:"queued_at,omitempty"`
-	RenderStartedAt   string `json:"render_started_at,omitempty"`
-	RenderCompletedAt string `json:"render_completed_at,omitempty"`
-	UploadCompletedAt string `json:"upload_completed_at,omitempty"`
-	WorkerID          int    `json:"worker_id"`
-}
-
 func processOneClip(
 	ctx context.Context,
 	svc *texttracks.BackfillService,
@@ -264,6 +63,7 @@ func processOneClip(
 	concurrency int,
 	force bool,
 	docClient drive.DocClient,
+	overlays overlayAssets,
 	log *zap.Logger,
 ) ([]langReport, multilingual.RunMetrics, *multilingual.LocalizationDocRef, error) {
 	totalStart := time.Now()
@@ -286,6 +86,11 @@ func processOneClip(
 	sourceSHA := item.ContentHash()
 	if sourceSHA == "" {
 		sourceSHA = item.FileHash()
+	}
+	if !isSHA256Hex(sourceSHA) && sourcePath != "" {
+		if calculated, hashErr := hashLocalFile(sourcePath); hashErr == nil {
+			sourceSHA = calculated
+		}
 	}
 	// Expected fps = the source clip's frame rate (the burn profile never
 	// changes it). Probed once per clip, best-effort: 0 disables the exact
@@ -418,23 +223,65 @@ func processOneClip(
 			translationVersion = track.SourceVersion
 		}
 		in := multilingual.VariantInput{
-			SourceClipID:         id,
-			SourcePath:           sourcePath,
-			SourceSHA256:         sourceSHA,
-			SourceDuration:       item.Duration,
-			SourceFPS:            sourceFPS,
-			Language:             lang,
-			Priority:             priority,
-			TextReadyAt:          textReadyAt,
-			TranscriptSHA256:     track.TextHash,
-			TranslationVersion:   translationVersion,
+			SourceClipID:           id,
+			SourcePath:             sourcePath,
+			SourceSHA256:           sourceSHA,
+			SourceDuration:         item.Duration,
+			SourceFPS:              sourceFPS,
+			Language:               lang,
+			Priority:               priority,
+			TextReadyAt:            textReadyAt,
+			TranscriptSHA256:       track.TextHash,
+			TranslationVersion:     translationVersion,
+			SubtitleStyleVersion:   subtitleStyleVersion,
+			ASSPath:                assOut.LocalPath,
+			ASSHash:                assOut.FileHash,
+			OutputFilename:         base + "." + lang + ".mp4",
+			DriveFolderID:          folder,
+			WorkDir:                filepath.Join("data", "media", "renders"),
+			Force:                  force,
+			BackgroundAssetID:      overlays.BackgroundAssetID,
+			BackgroundPath:         overlays.BackgroundPath,
+			BackgroundSHA256:       overlays.BackgroundSHA256,
+			WatermarkAssetID:       overlays.WatermarkAssetID,
+			WatermarkPath:          overlays.WatermarkPath,
+			WatermarkSHA256:        overlays.WatermarkSHA256,
+			WatermarkPosition:      overlays.Position,
+			WatermarkOpacity:       overlays.Opacity,
+			WatermarkMarginPX:      overlays.MarginPX,
+			ForegroundScalePercent: overlays.ScalePercent,
+			RenderProfileVersion:   overlays.ProfileVersion(),
+		}
+		inputs = append(inputs, in)
+		pool.Submit(in)
+		return rep
+	}
+
+	// submitReusable is the fast path: when the translated TextTrack and the
+	// variant fingerprint already match, do not call the translator or build a
+	// new ASS file. RenderOne still performs its own authoritative cache check.
+	submitReusable := func(lang string, track *asset.TextTrack, priority int, textReadyAt time.Time) langReport {
+		translationVersion := track.ModelVersion
+		if translationVersion == "" {
+			translationVersion = track.SourceVersion
+		}
+		rep := langReport{
+			Language: lang, Transcript: transcriptStatus, Translation: "translated",
+			Priority: priority, TextReadyAt: formatTS(textReadyAt), ASSStatus: "ready",
+		}
+		in := multilingual.VariantInput{
+			SourceClipID: id, SourcePath: sourcePath, SourceSHA256: sourceSHA,
+			SourceDuration: item.Duration, SourceFPS: sourceFPS, Language: lang,
+			Priority: priority, TextReadyAt: textReadyAt,
+			TranscriptSHA256: track.TextHash, TranslationVersion: translationVersion,
 			SubtitleStyleVersion: subtitleStyleVersion,
-			ASSPath:              assOut.LocalPath,
-			ASSHash:              assOut.FileHash,
-			OutputFilename:       base + "." + lang + ".mp4",
-			DriveFolderID:        folder,
-			WorkDir:              filepath.Join("data", "media", "renders"),
-			Force:                force,
+			OutputFilename:       base + "." + lang + ".mp4", DriveFolderID: folder,
+			WorkDir: filepath.Join("data", "media", "renders"), Force: false,
+			BackgroundAssetID: overlays.BackgroundAssetID, BackgroundPath: overlays.BackgroundPath, BackgroundSHA256: overlays.BackgroundSHA256,
+			WatermarkAssetID: overlays.WatermarkAssetID, WatermarkPath: overlays.WatermarkPath, WatermarkSHA256: overlays.WatermarkSHA256,
+			WatermarkPosition: overlays.Position, WatermarkOpacity: overlays.Opacity, WatermarkMarginPX: overlays.MarginPX,
+			ForegroundScalePercent: overlays.ScalePercent,
+			RenderProfileVersion:   overlays.ProfileVersion(),
 		}
 		inputs = append(inputs, in)
 		pool.Submit(in)
@@ -448,6 +295,23 @@ func processOneClip(
 	// Targets (priority 1..N): translate per-cue → ASS → submit render,
 	// overlapping EN's render already in flight.
 	for i, lang := range targetLangs {
+		// Probe the existing translated track before invoking the provider. If
+		// its variant is already READY, the whole language is reused: no
+		// translation, no ASS generation, no Rust process, no Drive upload.
+		if !force {
+			if readyTrack, readyCues, readyErr := trackRepo.FindReady(ctx, id, lang, asset.TextTrackTranscript); readyErr == nil && readyTrack != nil && len(readyCues) > 0 {
+				translationVersion := readyTrack.ModelVersion
+				if translationVersion == "" {
+					translationVersion = readyTrack.SourceVersion
+				}
+				if renderer.IsReusable(ctx, id, sourceSHA, lang, readyTrack.TextHash, translationVersion, subtitleStyleVersion, overlays.ProfileVersion()) {
+					byLang[lang] = readyCues
+					translationStatus[lang] = "translated"
+					reports = append(reports, submitReusable(lang, readyTrack, i+1, time.Now()))
+					continue
+				}
+			}
+		}
 		langStart := time.Now()
 		translatedCues, tStats, tErr := cueTranslator.Translate(ctx, srcCues, lang)
 		elapsed := time.Since(langStart).Milliseconds()
@@ -625,327 +489,4 @@ func processOneClip(
 	docRef := publishLocalizationDoc(ctx, docClient, id, base, docsFolder, folder, renderReport.Variants, force, log)
 
 	return reports, summary, docRef, nil
-}
-
-// opMetadata is a compact per-operation correlation payload (asset + language
-// + any operation-specific fields like queue_ms / worker_id / concurrency).
-func opMetadata(assetID, lang string, extra map[string]any) string {
-	m := map[string]any{"asset_id": assetID, "language": lang}
-	for k, v := range extra {
-		m[k] = v
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
-
-// resolveLanguages returns the canonical (source, targets) pair. When
-// --languages is provided, its first entry is the source and the rest are
-// targets. Otherwise the source comes from --source-lang (or config) and the
-// targets from the config registry (enabled + translate_clips).
-func resolveLanguages(cfg *config.Config, sourceLangFlag, langsFlag string) (string, []string) {
-	srcDefault := "en"
-	if cfg.Media.Multilingual.SourceLanguage != "" {
-		srcDefault = cfg.Media.Multilingual.SourceLanguage
-	}
-	if langsFlag != "" {
-		parts := splitCSV(langsFlag)
-		if len(parts) == 0 {
-			return srcDefault, nil
-		}
-		src := parts[0]
-		if src == "" {
-			src = srcDefault
-		}
-		return src, parts[1:]
-	}
-	src := sourceLangFlag
-	if src == "" {
-		src = srcDefault
-	}
-	out := make([]string, 0)
-	for _, spec := range cfg.Media.Multilingual.Languages {
-		if !spec.Enabled || !spec.TranslateClips {
-			continue
-		}
-		if spec.Code == src {
-			continue
-		}
-		out = append(out, spec.Code)
-	}
-	sort.Strings(out)
-	return src, out
-}
-
-func resolveDriveFolder(cfg *config.Config, item *asset.Asset, override string) string {
-	if override != "" {
-		return override
-	}
-	if item != nil && item.FolderID() != "" {
-		return item.FolderID()
-	}
-	return cfg.Drive.ClipsFolder()
-}
-
-func orDefault(s, d string) string {
-	if s == "" {
-		return d
-	}
-	return s
-}
-
-// countValidated returns the number of language variants whose output-contract
-// validation passed (Validation == "ok"). This is the "validated" count in the
-// certification report — distinct from SuccessCount (rendered/reused).
-func countValidated(reports []langReport) int {
-	n := 0
-	for _, r := range reports {
-		if r.Validation == "ok" {
-			n++
-		}
-	}
-	return n
-}
-
-// writeCertification emits the canonical certification report JSON. One asset
-// → a single object; multiple assets → a JSON array. AvoidedWorkMS is 0 here:
-// a single run cannot measure what a warm re-run would have skipped (that is
-// the cold-vs-warm comparison in renderer_cache_test.go).
-func writeCertification(path string, summaries []multilingual.RunMetrics, validatedCounts []int) error {
-	certs := make([]multilingual.CertificationReport, 0, len(summaries))
-	for i, s := range summaries {
-		validated := 0
-		if i < len(validatedCounts) {
-			validated = validatedCounts[i]
-		}
-		certs = append(certs, multilingual.BuildCertification(s, validated, 0))
-	}
-	var b []byte
-	var err error
-	if len(certs) == 1 {
-		b, err = json.MarshalIndent(certs[0], "", "  ")
-	} else {
-		b, err = json.MarshalIndent(certs, "", "  ")
-	}
-	if err != nil {
-		return err
-	}
-	if path == "-" {
-		fmt.Println(string(b))
-		return nil
-	}
-	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
-		return err
-	}
-	fmt.Printf("certification report written to %s\n", path)
-	return nil
-}
-
-// derefDocRefs flattens []*LocalizationDocRef into the value slice used by the
-// JSON output (nil refs are dropped).
-func derefDocRefs(refs []*multilingual.LocalizationDocRef) []multilingual.LocalizationDocRef {
-	out := make([]multilingual.LocalizationDocRef, 0, len(refs))
-	for _, r := range refs {
-		if r != nil {
-			out = append(out, *r)
-		}
-	}
-	return out
-}
-
-// printLocalizationDocs prints the localization manifest doc(s) and their
-// ordered entries (already priority-sorted by AssembleLocalizationEntries).
-func printLocalizationDocs(refs []*multilingual.LocalizationDocRef) {
-	if len(refs) == 0 {
-		return
-	}
-	fmt.Println("=== Localization manifest (Google Docs) ===")
-	for _, r := range refs {
-		if r == nil {
-			continue
-		}
-		fmt.Printf("doc: %s (%d entries)\n", r.Link, len(r.Entries))
-		for _, e := range r.Entries {
-			fmt.Printf("  #%d %-6s %-9s %s\n", e.Priority, e.Language, e.Status, e.DriveLink)
-		}
-	}
-}
-
-// publishLocalizationDoc assembles the localization manifest Google Doc with
-// entries in REQUESTED order (source=0, targets=1..N) — never render
-// completion order — and publishes it idempotently. Fail-soft: no DocClient
-// (or no destination folder) returns a nil-ID ref whose ordered entries are
-// still populated, so the requested order survives even offline.
-func publishLocalizationDoc(
-	ctx context.Context,
-	docClient drive.DocClient,
-	id, base, docsFolder, fallbackFolder string,
-	variants []multilingual.VariantResult,
-	force bool,
-	log *zap.Logger,
-) *multilingual.LocalizationDocRef {
-	entries := multilingual.AssembleLocalizationEntries(variants)
-	ref := &multilingual.LocalizationDocRef{Entries: entries}
-	folder := docsFolder
-	if folder == "" {
-		folder = fallbackFolder
-	}
-	if docClient == nil || folder == "" {
-		log.Info("multilingual-render.localization_doc.skipped",
-			zap.String("asset_id", id),
-			zap.String("reason", "no doc client or no destination folder"),
-			zap.Int("entries", len(entries)))
-		return ref
-	}
-
-	title := "Localization — " + base
-	if base == "" {
-		title = "Localization — " + id
-	}
-	content := multilingual.RenderLocalizationDoc(title, entries)
-	key := "localization:asset:" + id
-	doc, err := docClient.CreateDocIdempotent(ctx, title, content, folder, key, force)
-	if err != nil {
-		log.Warn("multilingual-render.localization_doc.failed",
-			zap.String("asset_id", id), zap.Error(err))
-		return ref
-	}
-	if doc == nil {
-		return ref
-	}
-	ref.ID = doc.ID
-	ref.Link = doc.URL
-	log.Info("multilingual-render.localization_doc.published",
-		zap.String("asset_id", id),
-		zap.String("doc_id", doc.ID),
-		zap.String("link", doc.URL),
-		zap.Int("entries", len(entries)))
-	return ref
-}
-
-func printParallelism(summaries []multilingual.RunMetrics) {
-	for _, s := range summaries {
-		r := s.RenderConcurrency
-		tr := s.TranslateConcurrency
-		fmt.Println("=== Parallelism (observed) ===")
-		fmt.Printf("render:    configured=%d max_observed=%d avg_observed=%.2f wall_ms=%d work_ms=%d queue_ms=%d (max %d)\n",
-			r.Configured, r.MaxObserved, r.AvgObserved, r.WallMS, r.TotalWorkMS, r.TotalQueueMS, r.MaxQueueMS)
-		fmt.Printf("translate: configured=%d max_observed=%d avg_observed=%.2f wall_ms=%d work_ms=%d queue_ms=%d (max %d)\n",
-			tr.Configured, tr.MaxObserved, tr.AvgObserved, tr.WallMS, tr.TotalWorkMS, tr.TotalQueueMS, tr.MaxQueueMS)
-		tp := s.Throughput
-		fmt.Printf("throughput: clips/min=%.2f media_min/min=%.2f render_rtf=%.2f\n",
-			tp.ClipsPerMinute, tp.MediaMinutesPerMinute, tp.RenderRTF)
-		c := s.Operations
-		fmt.Printf("exec:       download=%d probe=%d transcribe=%d translate=%d fulltext_translate=%d ass=%d render=%d validate=%d upload=%d\n",
-			c.Download, c.Probe, c.Transcribe, c.Translate, c.TranslateFullText, c.ASS, c.Render, c.Validate, c.Upload)
-	}
-}
-
-func printLangReport(reports []langReport) {
-	fmt.Println("=== Multilingual Render Report ===")
-	fmt.Printf("%-8s %-10s %-11s %-11s %-5s %-7s %-7s %-8s %-6s %-9s %-6s %s\n",
-		"lang", "transcript", "translation", "translate_ms", "ass", "ass_ms", "render", "render_ms", "rtf", "size_mb", "valid", "drive_link")
-	var totalTranslate, totalASS, totalRender int64
-	var rendered, validated int
-	for _, r := range reports {
-		sizeMB := ""
-		if r.SizeBytes > 0 {
-			sizeMB = fmt.Sprintf("%.2f", float64(r.SizeBytes)/1024/1024)
-		}
-		fmt.Printf("%-8s %-10s %-11s %-11d %-5s %-7d %-7s %-8d %-6.2f %-9s %-6s %s\n",
-			r.Language, r.Transcript, r.Translation, r.TranslateMS, r.ASSStatus, r.ASSMS,
-			r.RenderStatus, r.RenderMS, r.RTF, sizeMB, r.Validation, r.DriveLink)
-		totalTranslate += r.TranslateMS
-		totalASS += r.ASSMS
-		totalRender += r.RenderMS
-		if r.RenderStatus == "ready" || r.RenderStatus == "reused" {
-			rendered++
-		}
-		if r.Validation == "ok" {
-			validated++
-		}
-	}
-	fmt.Println("---")
-	fmt.Printf("totals: translate_ms=%d ass_ms=%d render_ms=%d (per-language, summed) | rendered=%d\n",
-		totalTranslate, totalASS, totalRender, rendered)
-	fmt.Printf("validation: %d/%d PASS\n", validated, len(reports))
-}
-
-// printPerLangTiming prints the per-language lifecycle timing and certifies
-// that the source (priority 0) starts rendering before the first target
-// finishes — i.e. there is NO global "translate-all-then-render" barrier.
-func printPerLangTiming(reports []langReport) {
-	fmt.Println("=== Per-language timing ===")
-	fmt.Printf("%-3s %-8s %-24s %-24s %-24s %-24s %-24s %-8s %-9s\n",
-		"pri", "lang", "text_ready_at", "queued_at", "render_started_at", "render_completed_at", "upload_completed_at", "worker", "render_ms")
-	var srcStarted time.Time
-	var firstTargetReady, firstTargetCompleted time.Time
-	for _, r := range reports {
-		started := parseTS(r.RenderStartedAt)
-		ready := parseTS(r.TextReadyAt)
-		completed := parseTS(r.RenderCompletedAt)
-		fmt.Printf("%-3d %-8s %-24s %-24s %-24s %-24s %-24s %-8d %-9d\n",
-			r.Priority, r.Language, r.TextReadyAt, r.QueuedAt, r.RenderStartedAt, r.RenderCompletedAt, r.UploadCompletedAt, r.WorkerID, r.RenderMS)
-		if r.Priority == 0 {
-			srcStarted = started
-		} else {
-			if firstTargetReady.IsZero() || ready.Before(firstTargetReady) {
-				firstTargetReady = ready
-			}
-			if firstTargetCompleted.IsZero() || completed.Before(firstTargetCompleted) {
-				firstTargetCompleted = completed
-			}
-		}
-	}
-	fmt.Println("---")
-	if !srcStarted.IsZero() && !firstTargetCompleted.IsZero() {
-		fmt.Printf("certify: source render_started_at < first target render_completed_at => %v\n", srcStarted.Before(firstTargetCompleted))
-	}
-	if !srcStarted.IsZero() && !firstTargetReady.IsZero() {
-		fmt.Printf("certify: source render_started_at < first target text_ready_at => %v\n", srcStarted.Before(firstTargetReady))
-	}
-}
-
-// formatTS renders a timestamp as RFC3339Nano UTC (empty for the zero time).
-func formatTS(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.UTC().Format(time.RFC3339Nano)
-}
-
-// parseTS parses an RFC3339Nano timestamp back into time.Time (zero on error).
-func parseTS(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-// probeSourceFPS reads the source clip's frame rate via ffprobe so the
-// renderer can verify the output kept it (the burn profile never changes
-// fps). Best-effort: any failure returns (0, false), which disables the
-// exact-match check and leaves only the renderer's sane-range check. The bool
-// reports whether ffprobe actually ran, so the caller can count it as the
-// single source probe (never per-language).
-func probeSourceFPS(ffmpegPath, srcPath string) (float64, bool) {
-	if srcPath == "" {
-		return 0, false
-	}
-	ffprobe := "ffprobe"
-	if ffmpegPath != "" && ffmpegPath != "ffmpeg" {
-		ffprobe = filepath.Join(filepath.Dir(ffmpegPath), "ffprobe")
-	}
-	out, err := exec.Command(ffprobe, "-v", "error", "-select_streams", "v:0",
-		"-show_entries", "stream=avg_frame_rate", "-of", "default=noprint_wrappers=1:nokey=1", srcPath).Output()
-	if err != nil {
-		return 0, false
-	}
-	return multilingual.ParseFPS(strings.TrimSpace(string(out))), true
 }

@@ -111,13 +111,6 @@ func resolvePriorPerson(priors []string, alias *aliasDescriptor) string {
 	return ""
 }
 
-func pronounsFor(lang string) map[string]bool {
-	if lang == "it" {
-		return pronounsIT
-	}
-	return pronouns
-}
-
 func subordinateMarkersFor(lang string) map[string]bool {
 	if lang == "it" {
 		return subordinateMarkersIT

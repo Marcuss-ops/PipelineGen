@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -61,7 +60,6 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		if workers <= 0 {
 			workers = DefaultTranslationConcurrency
 		}
-		started := time.Now()
 		// Each unit is applied to result and checkpointed IMMEDIATELY as it
 		// completes (guarded by applyMu) — never after the whole fan-out — so
 		// a crash mid-phase (kill -9) preserves the already-translated scenes.
@@ -98,9 +96,17 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 			return false
 		}
-		result.TranslationMetrics = &TranslationPipelineMetrics{
-			Calls: len(work), Concurrency: workers, WallMS: time.Since(started).Milliseconds(),
+		var summary kernobs.OperationSummary
+		if run := kernobs.FromContext(ctx); run != nil {
+			summary = kernobs.SummarizeOperations(run.Report(), "translation", "translate")
 		}
+		if summary.Calls == 0 {
+			// A runner without a bound observability run is a supported test and
+			// dry-run mode. Preserve the count projection without creating a
+			// second timer; the authoritative wall time remains zero.
+			summary.Calls = int64(len(work))
+		}
+		result.TranslationMetrics = &TranslationPipelineMetrics{Calls: int(summary.Calls), Concurrency: workers, WallMS: summary.WallMs}
 		// Per-(scene, language) translation correlation: record each target
 		// translation so "Spanish Scene 4" is traceable to this operation.
 		for _, item := range work {
@@ -118,9 +124,9 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		}
 		r.log.Info("translation fanout complete",
 			zap.String("run_id", runID),
-			zap.Int("calls", len(work)),
+			zap.Int("calls", int(summary.Calls)),
 			zap.Int("concurrency", workers),
-			zap.Int64("wall_ms", time.Since(started).Milliseconds()),
+			zap.Int64("wall_ms", summary.WallMs),
 		)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageTranslatingScenes)))
 	}

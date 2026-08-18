@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -143,11 +142,8 @@ func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, sub
 			)
 			retProvider := string(cached.Provider)
 			if retProvider == "" || retProvider == "unknown" {
-				var meta map[string]any
-				if err := json.Unmarshal([]byte(cached.MetadataJSON), &meta); err == nil {
-					if src, ok := meta["source_name"].(string); ok && src != "" {
-						retProvider = src
-					}
+				if src := cached.ImageMetadata().SourceName; src != "" {
+					retProvider = src
 				}
 			}
 			return &SearchResult{

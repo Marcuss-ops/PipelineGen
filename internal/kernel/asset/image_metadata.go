@@ -246,3 +246,40 @@ func toStringSlice(v []any) []string {
 	}
 	return out
 }
+
+// ImageMetadata is the typed value object for the provenance/identity
+// fields carried by ImageAsset.MetadataJSON. It replaces ad-hoc
+// map[string]any + unchecked string-key reads (primitive obsession) with
+// typed field access while keeping MetadataJSON as the durable wire shape.
+//
+// Only the keys consumed by the application read paths are typed here;
+// the canonical writer remains CanonicalImageMetadataBuilder, which owns
+// the full wire contract (godlike/06 SSOT).
+type ImageMetadata struct {
+	Generator     string `json:"generator,omitempty"`
+	SourceName    string `json:"source_name,omitempty"`
+	SourceQuery   string `json:"source_query,omitempty"`
+	ResolvedQuery string `json:"resolved_query,omitempty"`
+}
+
+// ImageMetadata decodes ImageAsset.MetadataJSON into the typed value
+// object. Empty or malformed JSON yields the zero value, matching the
+// previous map[string]any readers which silently ignored decode errors.
+func (a *ImageAsset) ImageMetadata() ImageMetadata {
+	if a == nil {
+		return ImageMetadata{}
+	}
+	raw := strings.TrimSpace(a.MetadataJSON)
+	if raw == "" || raw == "{}" {
+		return ImageMetadata{}
+	}
+	var m ImageMetadata
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return ImageMetadata{}
+	}
+	m.Generator = strings.TrimSpace(m.Generator)
+	m.SourceName = strings.TrimSpace(m.SourceName)
+	m.SourceQuery = strings.TrimSpace(m.SourceQuery)
+	m.ResolvedQuery = strings.TrimSpace(m.ResolvedQuery)
+	return m
+}

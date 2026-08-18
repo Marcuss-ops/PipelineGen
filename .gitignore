@@ -250,6 +250,9 @@ secrets/
 # Then verify with: make whisper-preflight [VELOX_WHISPER_DEVICE=cuda]
 .venv-whisper/
 
+# Argos host-side Python venv (argos pipeline tooling).
+.venv-argos/
+
 # PR1 (Repository truth, June 2026):
 #   * scripts/archcheck/current_report.json is a per-run diagnostic snapshot
 #     of the codebase scan; regenerated cheaply on every `go run ./scripts/archcheck`.

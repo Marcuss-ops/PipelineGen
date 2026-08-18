@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -29,9 +30,7 @@ type sceneReadyCoordinator struct {
 	wg         sync.WaitGroup
 	started    time.Time
 	transCalls int
-	transWall  int64
 	ttsCalls   int
-	ttsWall    int64
 }
 
 func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
@@ -76,8 +75,16 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	if len(transWork) > 0 {
 		out.TranslationStartedAt = transStart
 	}
-	translated, err := concurrent.Map(c.ctx, transWork, c.runner.translationConcurrency, func(ctx context.Context, _ int, lang Language) (string, error) {
-		value, err := c.runner.translator.Translate(ctx, TranslationInput{SceneID: out.ID, SourceLanguage: c.req.SourceLanguage, TargetLanguage: lang, SourceText: out.Text[c.req.SourceLanguage]})
+	translated, err := concurrent.Map(c.ctx, transWork, c.runner.translationConcurrency, func(ctx context.Context, worker int, lang Language) (string, error) {
+		var value string
+		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage: "translation", Component: "translator", Operation: "translate", Provider: string(lang),
+			WorkerID: fmt.Sprintf("translation-%d", worker), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", out.ID, lang),
+		}, func(measureCtx context.Context) error {
+			var err error
+			value, err = c.runner.translator.Translate(measureCtx, TranslationInput{SceneID: out.ID, SourceLanguage: c.req.SourceLanguage, TargetLanguage: lang, SourceText: out.Text[c.req.SourceLanguage]})
+			return err
+		})
 		if err != nil {
 			return "", fmt.Errorf("translate ready scene %s to %s: %w", out.ID, lang, err)
 		}
@@ -104,7 +111,6 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	}
 	c.mu.Lock()
 	c.transCalls += len(transWork)
-	c.transWall += time.Since(transStart).Milliseconds()
 	c.mu.Unlock()
 
 	mode, err := capabilityaudio.ResolveAudioMode(c.req.Audio, false)
@@ -120,8 +126,17 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	}
 	ttsStart := time.Now().UTC()
 	out.TTSStartedAt = ttsStart
-	tts, err := concurrent.Map(c.ctx, langs, c.runner.ttsConcurrency, func(ctx context.Context, _ int, lang Language) (AudioReference, error) {
-		return c.runner.voiceoverGen.Generate(ctx, VoiceoverInput{SceneID: out.ID, Language: lang, Text: out.Text[lang], Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
+	tts, err := concurrent.Map(c.ctx, langs, c.runner.ttsConcurrency, func(ctx context.Context, worker int, lang Language) (AudioReference, error) {
+		var audioRef AudioReference
+		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+			Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize, Provider: string(lang),
+			WorkerID: fmt.Sprintf("tts-%d", worker), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", out.ID, lang),
+		}, func(measureCtx context.Context) error {
+			var err error
+			audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{SceneID: out.ID, Language: lang, Text: out.Text[lang], Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
+			return err
+		})
+		return audioRef, err
 	})
 	if err != nil {
 		return Scene{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)
@@ -147,13 +162,20 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		// Localized render fan-out: fire the render the moment this language's
 		// TTS is final, so Rust starts on this clip while later scenes are
 		// still being translated/voiced (never a global join).
+		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 		if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
-			RunID:      c.runID,
-			SceneID:    out.ID,
-			SceneIndex: out.Index,
-			Language:   lang,
-			Text:       out.Text[lang],
-			Voiceover:  out.Voiceover[lang],
+			RunID:          c.runID,
+			SceneID:        out.ID,
+			SceneIndex:     out.Index,
+			Language:       lang,
+			Text:           out.Text[lang],
+			Voiceover:      out.Voiceover[lang],
+			SourceLanguage: c.req.SourceLanguage,
+			SourceText:     out.Text[c.req.SourceLanguage],
+			ClipID:         clipID,
+			ClipAssetID:    clipAssetID,
+			ClipSHA256:     clipSHA256,
+			ClipDurationMS: clipDurationMS,
 		}); err != nil {
 			return Scene{}, fmt.Errorf("localized render scene %s lang %s: %w", out.ID, lang, err)
 		}
@@ -164,7 +186,6 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	}
 	c.mu.Lock()
 	c.ttsCalls += len(langs)
-	c.ttsWall += time.Since(ttsStart).Milliseconds()
 	c.mu.Unlock()
 	return out, nil
 }
@@ -190,5 +211,17 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 		}
 		ordered[i] = value
 	}
-	return ordered, &TranslationPipelineMetrics{Calls: c.transCalls, Concurrency: c.runner.translationConcurrency, WallMS: c.transWall}, &AudioPipelineMetrics{TTSCalls: c.ttsCalls, TTSMS: c.ttsWall}, nil
+	var translation, voiceover kernobs.OperationSummary
+	if run := kernobs.FromContext(ctx); run != nil {
+		report := run.Report()
+		translation = kernobs.SummarizeOperations(report, "translation", "translate")
+		voiceover = kernobs.SummarizeOperations(report, "voiceover", "synthesize")
+	}
+	if translation.Calls == 0 {
+		translation.Calls = int64(c.transCalls)
+	}
+	if voiceover.Calls == 0 {
+		voiceover.Calls = int64(c.ttsCalls)
+	}
+	return ordered, &TranslationPipelineMetrics{Calls: int(translation.Calls), Concurrency: c.runner.translationConcurrency, WallMS: translation.WallMs}, &AudioPipelineMetrics{TTSCalls: int(voiceover.Calls), TTSMS: voiceover.TotalMs}, nil
 }

@@ -5,7 +5,10 @@
 //
 //   - PhraseNormalizer         → internal/application/brain/normalizer
 //   - VisualIntentResolver     → internal/application/brain/intent
-//   - CandidateRanker          → internal/application/brain/ranker
+//   - CandidateRanker (port)   → internal/application/brain/ranker
+//     CandidateRanker (impl)   → internal/app/wiring (composition-root
+//     wiring; the MediaMemory-backed adapter lives there to avoid the
+//     brain <-> mediamemory architectural import cycle)
 //   - SceneVisualPlanner       → internal/application/brain/planner
 //   - SearchFanOut             → internal/application/search
 //
@@ -48,7 +51,7 @@ type canonicalBrainComponent struct {
 var brainComponents = []canonicalBrainComponent{
 	{Name: "PhraseNormalizer", PkgPath: "internal/application/brain/normalizer", Constructors: []string{"NewDefaultNormalizer"}},
 	{Name: "VisualIntentResolver", PkgPath: "internal/application/brain/intent", Constructors: []string{"NewDefaultResolver"}},
-	{Name: "CandidateRanker", PkgPath: "internal/application/brain/ranker", Constructors: []string{"NewDefaultRanker", "NewMediaMemoryRankerAdapter"}},
+	{Name: "CandidateRanker", PkgPath: "internal/app/wiring", Constructors: []string{"NewMediaMemoryRankerAdapter"}},
 	{Name: "SceneVisualPlanner", PkgPath: "internal/application/brain/planner", Constructors: []string{"NewDefaultPlanner"}},
 	{Name: "SearchFanOut", PkgPath: "internal/application/search", Constructors: []string{"NewSearchFanOut"}},
 	// EmbeddingChannelRegistry is canonical but its production constructor

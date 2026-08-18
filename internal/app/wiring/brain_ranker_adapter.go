@@ -1,16 +1,21 @@
-// Package ranker is the canonical home of candidate ranking for
-// the Brain capability.
+// brain_ranker_adapter.go adapts the rich MediaMemory ranker to the
+// brain.CandidateRanker port. It lives in the composition root
+// (internal/app) because it is a pure cross-package bridge that must
+// depend on both the brain types and the mediamemory ranker; keeping
+// it out of internal/application/brain/ranker removes the
+// brain <-> mediamemory architectural import cycle.
 //
-// godlike/06 SSOT: the CandidateRanker is the single owner of
-// the (candidates + intent -> ordered candidates) transformation. It
-// performs no IO and depends only on the brain types and stdlib.
-package ranker
+// godlike/06 SSOT: this is the canonical production implementation of
+// the CandidateRanker port; the previous toy defaultRanker has been
+// removed.
+package wiring
 
 import (
 	"context"
 	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
@@ -26,15 +31,15 @@ type mediaMemoryRankerAdapter struct {
 // provided MediaMemory ranker. This is the production constructor
 // used by the composition root so that the same ranker instance is
 // shared between the cascade and the Brain orchestrator.
-func NewMediaMemoryRankerAdapter(inner mediamemory.Ranker) CandidateRanker {
+func NewMediaMemoryRankerAdapter(inner mediamemory.Ranker) ranker.CandidateRanker {
 	if inner == nil {
-		panic("brain/ranker: MediaMemory ranker is required")
+		panic("app: MediaMemory ranker is required")
 	}
 	return &mediaMemoryRankerAdapter{inner: inner}
 }
 
 // Compile-time assertion: mediaMemoryRankerAdapter satisfies CandidateRanker.
-var _ CandidateRanker = (*mediaMemoryRankerAdapter)(nil)
+var _ ranker.CandidateRanker = (*mediaMemoryRankerAdapter)(nil)
 
 // Version returns the canonical ranking-policy version.
 func (r *mediaMemoryRankerAdapter) Version() string {
@@ -169,8 +174,8 @@ func toFilteredCandidate(c brain.Candidate) mediamemory.FilteredCandidate {
 
 // slotFitnessBonus returns a small score bump for candidates whose
 // media type matches one of the requested slots. This preserves the
-// slot-fitness behaviour tested by the brain/ranker tests while
-// keeping the MediaMemory ranker as the authoritative scorer.
+// slot-fitness behaviour tested by the ranker tests while keeping the
+// MediaMemory ranker as the authoritative scorer.
 func slotFitnessBonus(c mediamemory.MediaCandidate, slots []media.SlotKind) float64 {
 	for _, slot := range slots {
 		if media.IsMediaTypeAllowed(slot, c.MediaType) {

@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -126,45 +127,51 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// item is independent; results are applied in canonical order below.
 		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
 		if len(work) > 0 {
-			ttsStarted := time.Now()
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.
 			var applyMu sync.Mutex
 			results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
-				sceneTTSStarted := time.Now()
-				audioRef, err := r.voiceoverGen.Generate(opCtx, VoiceoverInput{
-					SceneID:  item.sceneID,
-					Language: item.lang,
-					Text:     item.text,
-					// Project is the canonical semantic project namespace
-					// resolved ONCE by resolveArtifactRoutingContext at
-					// generation start and propagated verbatim to the
-					// per-item pipeline so the voiceover publish satisfies
-					// the semantic publish contract
-					// (PR-VOICEOVER-DRIVE-DRIFT: Project is required). It is
-					// guaranteed non-empty here by the phase-level fail-fast
-					// gate above.
-					Project: routing.Project,
-					// VoiceoverFolderID is the caller-explicit Drive folder for
-					// voiceover artifacts, resolved ONCE by
-					// resolveArtifactRoutingContext (output.voiceover_folder_id;
-					// empty falls back to the configured default). Forwarded
-					// verbatim so the per-scene TTS command never replaces a
-					// caller-explicit destination with the default folder.
-					VoiceoverFolderID: routing.VoiceoverFolderID,
-					// Forward the request-level timing policy so the per-item
-					// pipeline can honour required/best-effort fail-closed
-					// semantics (missing/invalid timing fails the job instead of
-					// producing plausible-but-wrong timestamps).
-					Timing: req.Timing,
+				var audioRef AudioReference
+				ttsErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
+					Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize,
+					Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", item.sceneID, item.lang),
+				}, func(measureCtx context.Context) error {
+					var err error
+					audioRef, err = r.voiceoverGen.Generate(measureCtx, VoiceoverInput{
+						SceneID:  item.sceneID,
+						Language: item.lang,
+						Text:     item.text,
+						// Project is the canonical semantic project namespace
+						// resolved ONCE by resolveArtifactRoutingContext at
+						// generation start and propagated verbatim to the
+						// per-item pipeline so the voiceover publish satisfies
+						// the semantic publish contract
+						// (PR-VOICEOVER-DRIVE-DRIFT: Project is required). It is
+						// guaranteed non-empty here by the phase-level fail-fast
+						// gate above.
+						Project: routing.Project,
+						// VoiceoverFolderID is the caller-explicit Drive folder for
+						// voiceover artifacts, resolved ONCE by
+						// resolveArtifactRoutingContext (output.voiceover_folder_id;
+						// empty falls back to the configured default). Forwarded
+						// verbatim so the per-scene TTS command never replaces a
+						// caller-explicit destination with the default folder.
+						VoiceoverFolderID: routing.VoiceoverFolderID,
+						// Forward the request-level timing policy so the per-item
+						// pipeline can honour required/best-effort fail-closed
+						// semantics (missing/invalid timing fails the job instead of
+						// producing plausible-but-wrong timestamps).
+						Timing: req.Timing,
+					})
+					return err
 				})
-				if err != nil {
-					return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, err)
+				if ttsErr != nil {
+					return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, ttsErr)
 				}
 				metric := TTSSSceneMetric{
 					SceneID:          item.sceneID,
 					Language:         item.lang,
-					DurationMS:       time.Since(sceneTTSStarted).Milliseconds(),
+					DurationMS:       0,
 					Characters:       len([]rune(item.text)),
 					Words:            len(strings.Fields(item.text)),
 					OutputDurationMS: time.Duration(audioRef.Duration * float64(time.Second)).Milliseconds(),
@@ -191,13 +198,20 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// Localized render fan-out: enqueue the render for this
 				// (scene, language) the moment its TTS is final — outside the
 				// apply lock so the enqueue never blocks the other workers.
+				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-					RunID:      runID,
-					SceneID:    item.sceneID,
-					SceneIndex: item.scene.Index,
-					Language:   item.lang,
-					Text:       renderText,
-					Voiceover:  audioRef,
+					RunID:          runID,
+					SceneID:        item.sceneID,
+					SceneIndex:     item.scene.Index,
+					Language:       item.lang,
+					Text:           renderText,
+					Voiceover:      audioRef,
+					SourceLanguage: req.SourceLanguage,
+					SourceText:     item.scene.Text[req.SourceLanguage],
+					ClipID:         clipID,
+					ClipAssetID:    clipAssetID,
+					ClipSHA256:     clipSHA256,
+					ClipDurationMS: clipDurationMS,
 				}); err != nil {
 					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)
 				}
@@ -237,10 +251,20 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					return false
 				}
 			}
-			result.AudioMetrics.TTSMS += time.Since(ttsStarted).Milliseconds()
-			result.AudioMetrics.TTSCalls += len(work)
 		}
-		r.recordVoiceoverOperation(ctx, result.AudioMetrics.TTSMS)
+		// Project the TTS count + duration from the canonical voiceover
+		// operations — never a local counter or a second timer. Without a
+		// bound Run (test / dry-run) the count falls back to the work length;
+		// the authoritative wall time stays zero.
+		var tts kernobs.OperationSummary
+		if run := kernobs.FromContext(ctx); run != nil {
+			tts = kernobs.SummarizeOperations(run.Report(), "voiceover", "synthesize")
+		}
+		if tts.Calls == 0 {
+			tts.Calls = int64(len(work))
+		}
+		result.AudioMetrics.TTSMS = tts.TotalMs
+		result.AudioMetrics.TTSCalls = int(tts.Calls)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
 	if voiceoverSkipped {

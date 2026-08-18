@@ -129,3 +129,62 @@ func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testin
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
 	require.Len(t, enq.snapshot(), 6, "all 3 scenes × 2 languages must be enqueued by the end")
 }
+
+// TestLocalizedRenderClipFields pins the source-clip resolution helper: the
+// primary Clip wins, multi-clip bindings fall back to the first entry, and an
+// audio-only scene yields an empty reference.
+func TestLocalizedRenderClipFields(t *testing.T) {
+	primary := Scene{Clip: &ClipReference{ID: "clip-a", SHA256: "aa", DurationUS: 12_500_000}}
+	clipID, assetID, sha, dur := localizedRenderClipFields(primary)
+	require.Equal(t, "clip-a", clipID)
+	require.Equal(t, "clip-a", assetID)
+	require.Equal(t, "aa", sha)
+	require.Equal(t, int64(12_500), dur)
+
+	multi := Scene{Clips: []*ClipReference{{ID: "clip-b", SHA256: "bb", DurationUS: 8_000_000}}}
+	clipID, _, sha, dur = localizedRenderClipFields(multi)
+	require.Equal(t, "clip-b", clipID)
+	require.Equal(t, "bb", sha)
+	require.Equal(t, int64(8_000), dur)
+
+	clipID, assetID, sha, dur = localizedRenderClipFields(Scene{})
+	require.Empty(t, clipID)
+	require.Empty(t, assetID)
+	require.Empty(t, sha)
+	require.Zero(t, dur)
+}
+
+// TestRunner_LocalizedRenderFanout_CarriesSourceClip proves the fan-out hands
+// the source-clip reference to the enqueuer, so the real Rust adapter can
+// resolve (asset_id, sha256, duration) without re-deriving them.
+func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	enq := &recordingLocalizedRenderEnqueuer{}
+	runner.SetLocalizedRenderEnqueuer(enq)
+	runner.SetTTSConcurrency(1)
+	runner.SetTranslationConcurrency(1)
+	for i := range runner.textGen.(*stubTextGenerator).scenes {
+		runner.textGen.(*stubTextGenerator).scenes[i].Clip = &ClipReference{
+			ID: "clip-source", SHA256: "cccc", DurationUS: 12_000_000,
+		}
+	}
+
+	req := defaultTestRequest()
+	runID := "run-localized-render-clip"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status)
+
+	inputs := enq.snapshot()
+	require.Len(t, inputs, 6, "3 scenes × 2 languages")
+	for _, in := range inputs {
+		require.Equal(t, "clip-source", in.ClipID, "enqueued input must carry the source clip id")
+		require.Equal(t, "clip-source", in.ClipAssetID, "enqueued input must carry the media asset id")
+		require.Equal(t, "cccc", in.ClipSHA256, "enqueued input must carry the clip sha256")
+		require.Equal(t, int64(12_000), in.ClipDurationMS, "enqueued input must carry the clip duration")
+	}
+}

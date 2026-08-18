@@ -241,7 +241,7 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 //   - MetadataExportHandler (pre-built by composition root via the
 //     metadataexport package's typed-port adapter; passed in via
 //     metadataExportHandler; nil → skipped).
-//   - DeliveryHandler (deps.Infra.HTTPClient OR deps.Infra.DB; plus HMACSecrets
+//   - DeliveryHandler (deps.Infra.HTTPClient required; plus HMACSecrets
 //     OR InsecureDev). Explicit reference/materialization ports are supplied
 //     through DeliveryOperations; absent ports make explicit operations fail
 //     closed while legacy envelopes remain source-compatible.
@@ -273,7 +273,12 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		optional = append(optional, metadataExportHandler)
 	}
 	if deps != nil {
-		if (deps.Infra.HTTPClient != nil || deps.Infra.DB != nil) && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev) {
+		// The delivery handler is only registered when the composition
+		// root injects a concrete ports.Client. There is no application-
+		// layer fallback that builds an HTTP client; a missing client
+		// means the webhook delivery path is intentionally skipped
+		// rather than silently depending on an infrastructure driver.
+		if deps.Infra.HTTPClient != nil && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev) {
 			optional = append(optional, NewDeliveryHandlerWithOperations(log, deps.Infra.HTTPClient, deps.Infra.DB, deps.Infra.HMACSecrets, deps.Infra.InsecureDev, deps.Infra.DeliveryOperations))
 		}
 	}
@@ -332,7 +337,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		zap.Int("registered", len(optional)),
 		zap.Bool("asset_published_informational_wired", true),
 		zap.Bool("metadata_export_wired", metadataExportHandler != nil),
-		zap.Bool("delivery_wired", deps != nil && (deps.Infra.HTTPClient != nil || deps.Infra.DB != nil) && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev)),
+		zap.Bool("delivery_wired", deps != nil && deps.Infra.HTTPClient != nil && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs.Jobs != nil),
 		zap.Bool("voiceover_cleanup_driver_wired", deps != nil && deps.Jobs.VoiceoverCleanupDriver != nil),
 		zap.Bool("drive_delete_wired", deps != nil &&

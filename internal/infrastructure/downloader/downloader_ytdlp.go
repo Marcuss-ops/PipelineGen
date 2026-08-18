@@ -50,6 +50,16 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 			args = append(args, "--no-playlist")
 		}
 
+		// Resume interrupted downloads from yt-dlp's on-disk .part files
+		// instead of restarting from 0%. The stock pipeline's staging root
+		// is persistent across process restarts (acquisition
+		// FilesystemStager), so a job re-claimed after a graceful server
+		// restart continues the in-flight download rather than re-fetching
+		// the whole source (PR-STOCK-RESUME, August 2026). Explicit flag
+		// (rather than relying on yt-dlp's default) documents the intent
+		// and survives any future config/flag drift.
+		args = append(args, "--continue")
+
 		// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
 		// --no-warnings, and extractor-args. Format selection is via
 		// FormatArg so the downloader doesn't inline the -f string.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -342,26 +341,5 @@ func buildDomainMediaServices(
 	return voMetaWriter, clipWriter, nil
 }
 
-// buildBcp47CSV normalizes a config-driven BCP-47 list into the
-// comma-separated string yt-dlp's --sub-langs expects (e.g.
-// "it,en,es,pt-BR,fr,de"). godlike/07 NO-FAKE-AVAILABILITY: empty
-// or invalid entries are SILENTLY SKIPPED — the helper MUST NOT
-// default to "en" or any other language. Empty input collapses to
-// an empty string (which is the canonical "no preference" signal
-// at the SubtitleFetcherAdapter layer; FetchSegmentSubtitles
-// surfaces "und" when no langs are configured).
-//
-// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026). The helper
-// is the single canonical conversion point; callers MUST NOT
-// re-implement CSV joining inline.
-func buildBcp47CSV(codes []string) string {
-	var out []string
-	for _, raw := range codes {
-		normalized, err := asset.Normalize(raw)
-		if err != nil || normalized == "und" {
-			continue
-		}
-		out = append(out, normalized)
-	}
-	return strings.Join(out, ",")
-}
+// buildBcp47CSV was removed: unused after the SubtitleFetcherAdapter wiring
+// collapsed to the config-driven path.

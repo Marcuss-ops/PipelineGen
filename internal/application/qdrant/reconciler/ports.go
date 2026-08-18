@@ -184,22 +184,3 @@ func (noopMetrics) RecordDispatch(string, int)                     {}
 func (noopMetrics) RecordLegacyKeyStripped(string, int)            {}
 func (noopMetrics) RecordErrors(int)                               {}
 func (noopMetrics) RecordRunComplete(string, float64)              {}
-
-// noopOutboxEnqueuer is an explicit opt-in no-op OutboxRepairEnqueuer.
-// Tests that want to suppress dispatch without panicking via
-// NewServiceFromDeps can pass this directly. PR 10 removed the
-// SILENT fallback from NewServiceFromDeps's nil-replacement path
-// so production half-built wiring trips the panic — a silent noop
-// in Apply mode would have hidden every repair-dispatch regression.
-type noopOutboxEnqueuer struct{}
-
-func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string, string, bool) error { return nil }
-func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error                { return nil }
-
-// noopPayloadMutator is the default QdrantPayloadMutator when
-// Deps.Payload is nil. Same caveat as noopOutboxEnqueuer.
-type noopPayloadMutator struct{}
-
-func (noopPayloadMutator) DeletePayloadKeys(context.Context, string, []string, []string) error {
-	return nil
-}

@@ -1,7 +1,6 @@
 package images
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -76,7 +75,7 @@ func filterCachedImagesByProvider(images []asset.ImageAsset, provider asset.Imag
 	}
 	out := make([]asset.ImageAsset, 0, len(images))
 	for _, img := range images {
-		if img.Provider == provider || cachedImageMetadataField(img.MetadataJSON, "source_name") == string(provider) {
+		if img.Provider == provider || img.ImageMetadata().SourceName == string(provider) {
 			out = append(out, img)
 		}
 	}
@@ -86,9 +85,10 @@ func filterCachedImagesByProvider(images []asset.ImageAsset, provider asset.Imag
 const minCachedImageScore = 80
 
 func scoreCachedImageAsset(query string, img asset.ImageAsset) int {
+	meta := img.ImageMetadata()
 	candidates := []string{
-		cachedImageProvenanceQuery(img.MetadataJSON),
-		cachedImageResolvedQuery(img.MetadataJSON),
+		meta.SourceQuery,
+		meta.ResolvedQuery,
 		strings.TrimSpace(img.Description),
 		strings.Join(img.Tags, " "),
 	}
@@ -102,33 +102,6 @@ func scoreCachedImageAsset(query string, img asset.ImageAsset) int {
 		}
 	}
 	return best
-}
-
-func cachedImageProvenanceQuery(metadataJSON string) string {
-	return cachedImageMetadataField(metadataJSON, "source_query")
-}
-
-func cachedImageResolvedQuery(metadataJSON string) string {
-	return cachedImageMetadataField(metadataJSON, "resolved_query")
-}
-
-func cachedImageMetadataField(metadataJSON, field string) string {
-	if strings.TrimSpace(metadataJSON) == "" {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(metadataJSON), &payload); err != nil {
-		return ""
-	}
-	value, ok := payload[field]
-	if !ok {
-		return ""
-	}
-	s, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(s)
 }
 
 func betterCachedImageCandidate(a, b asset.ImageAsset) bool {

@@ -146,7 +146,7 @@ func (r *SQLiteRecorder) AppendStage(ctx context.Context, runID string, s kernob
 	if runID == "" || s.ObservationID == "" || s.Name == "" {
 		return r.fail(runID, "append_stage", errors.New("run_id, observation_id and name are required"))
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO run_stage_observations (observation_id,run_id,name,status,duration_ms,attempts,cache_status,error_code,items_input,items_completed,items_failed,bytes_processed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, s.ObservationID, runID, s.Name, s.Status, s.DurationMs, s.Attempts, nullable(s.CacheStatus), nullable(s.ErrorCode), s.ItemsInput, s.ItemsCompleted, s.ItemsFailed, s.BytesProcessed)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO run_stage_observations (observation_id,run_id,name,status,duration_ms,attempts,cache_status,error_code,items_input,items_completed,items_failed,bytes_processed,started_at,finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, s.ObservationID, runID, s.Name, s.Status, s.DurationMs, s.Attempts, nullable(s.CacheStatus), nullable(s.ErrorCode), s.ItemsInput, s.ItemsCompleted, s.ItemsFailed, s.BytesProcessed, nullableTime(s.StartedAt), nullableTime(s.FinishedAt))
 	if err != nil {
 		return r.fail(runID, "append_stage", err)
 	}
@@ -165,7 +165,7 @@ func (r *SQLiteRecorder) AppendOperation(ctx context.Context, runID string, o ke
 	if runID == "" || o.ObservationID == "" || o.Operation == "" {
 		return r.fail(runID, "append_operation", errors.New("run_id, observation_id and operation are required"))
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO run_operation_observations (observation_id,run_id,stage,component,operation,provider,status,duration_ms,attempts,items,bytes,cache_status,error_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, o.ObservationID, runID, o.Stage, o.Component, o.Operation, nullable(o.Provider), o.Status, o.DurationMs, o.Attempts, o.Items, o.Bytes, nullable(o.CacheStatus), nullable(o.ErrorCode))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO run_operation_observations (observation_id,run_id,stage,component,operation,provider,status,duration_ms,queue_wait_ms,attempts,items,bytes,cache_status,error_code,worker_id,queued_at,started_at,finished_at,metadata_json,output_duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, o.ObservationID, runID, o.Stage, o.Component, o.Operation, nullable(o.Provider), o.Status, o.DurationMs, o.QueueWaitMs, o.Attempts, o.Items, o.Bytes, nullable(o.CacheStatus), nullable(o.ErrorCode), nullable(o.WorkerID), nullableTime(o.QueuedAt), nullableTime(o.StartedAt), nullableTime(o.FinishedAt), metadataJSON(o.MetadataJSON), o.OutputDurationMS)
 	if err != nil {
 		return r.fail(runID, "append_operation", err)
 	}
@@ -418,6 +418,12 @@ func jsonValue(v any) string {
 		return "{}"
 	}
 	return string(b)
+}
+func metadataJSON(value string) string {
+	if value == "" {
+		return "{}"
+	}
+	return value
 }
 func boolInt(v bool) int {
 	if v {

@@ -31,9 +31,10 @@ package drive
 // and human-facing metadata needed by callers (CreateDoc, ListRecentDocs,
 // UpdateDoc) — content is populated only for newly created docs.
 type Doc struct {
-	ID        string
-	Title     string
-	URL       string
-	Content   string
-	CreatedAt string
+	ID            string
+	Title         string
+	URL           string
+	Content       string
+	ContentSHA256 string
+	CreatedAt     string
 }

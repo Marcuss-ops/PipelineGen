@@ -52,11 +52,13 @@ type SceneTextTraceGenerator interface {
 // LLM continues generating later scenes — instead of buffering the whole
 // script behind one all-or-nothing return.
 //
-// Contract: emit must be called exactly once per scene, in canonical order,
-// with immutable, already-final scene text (never partial tokens). A non-nil
-// error returned by emit aborts generation and fails the run. The runner
-// falls back to the batch TextGenerator.GenerateSceneText when the generator
-// does not implement this interface.
+// Contract: emit must be called exactly once per scene, with immutable,
+// already-final scene text (never partial tokens). Completion order may differ
+// from scene order when bounded fan-out is enabled; Scene.Index is canonical
+// and consumers must preserve it for final assembly. A non-nil error returned
+// by emit aborts generation and fails the run. The runner falls back to the
+// batch TextGenerator.GenerateSceneText when the generator does not implement
+// this interface.
 type SceneTextStreamer interface {
 	GenerateSceneTextStream(ctx context.Context, request GenerateRequest, emit func(Scene) error) error
 }
@@ -280,6 +282,24 @@ type LocalizedRenderInput struct {
 	Language   Language
 	Text       string
 	Voiceover  AudioReference
+
+	// SourceLanguage / SourceText carry the source-language scene text (the
+	// transcript the localized render's source plan references). They are
+	// populated for every language so the enqueuer can persist the source
+	// transcript track alongside the translated subtitle track without
+	// re-deriving them; SourceText is empty only for a scene whose source
+	// text was never produced.
+	SourceLanguage Language `json:"source_language,omitempty"`
+	SourceText     string   `json:"source_text,omitempty"`
+
+	// ClipID / ClipAssetID / ClipSHA256 / ClipDurationMS carry the source
+	// clip the localized render burns subtitles onto. They are empty for
+	// audio-only scenes (no source clip); the enqueuer decides whether an
+	// empty reference is a no-op or a fail-closed error.
+	ClipID         string `json:"clip_id,omitempty"`
+	ClipAssetID    string `json:"clip_asset_id,omitempty"`
+	ClipSHA256     string `json:"clip_sha256,omitempty"`
+	ClipDurationMS int64  `json:"clip_duration_ms,omitempty"`
 }
 
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's

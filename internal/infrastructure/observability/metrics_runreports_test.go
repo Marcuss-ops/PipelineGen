@@ -18,7 +18,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-func newTestRunReportVectors() (duration *prometheus.HistogramVec, queueWait *prometheus.HistogramVec, retries *prometheus.CounterVec) {
+func newTestRunReportVectors() (duration, queueWait, operation, stage *prometheus.HistogramVec, retries *prometheus.CounterVec) {
 	duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "test_job_run_duration_seconds",
 		Help:    "test-only histogram",
@@ -29,6 +29,16 @@ func newTestRunReportVectors() (duration *prometheus.HistogramVec, queueWait *pr
 		Help:    "test-only histogram",
 		Buckets: []float64{1, 5, 10},
 	}, []string{"job_type"})
+	operation = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "test_job_operation_duration_seconds",
+		Help:    "test-only histogram",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10},
+	}, []string{"component", "operation", "status"})
+	stage = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "test_job_stage_duration_seconds",
+		Help:    "test-only histogram",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10},
+	}, []string{"stage", "status"})
 	retries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "test_job_run_retries_total",
 		Help: "test-only counter",
@@ -57,8 +67,8 @@ func histogramDTO(t *testing.T, obs prometheus.Observer) *dto.Histogram {
 // job_type+status), QueueWaitMs → queue-wait histogram (seconds, by
 // job_type), Counters.Retries → retries counter (by job_type).
 func TestRunReportsCollector_ObservesWallQueueWaitAndRetries(t *testing.T) {
-	duration, queueWait, retries := newTestRunReportVectors()
-	c := newRunReportsCollectorWithVectors(duration, queueWait, retries)
+	duration, queueWait, operation, stage, retries := newTestRunReportVectors()
+	c := newRunReportsCollectorWithVectors(duration, queueWait, retries, operation, stage)
 
 	if err := c.Collect(context.Background(), &kernobs.RunReport{
 		JobID: "job-1", JobType: "script.generate", Status: kernobs.StatusSucceeded,
@@ -98,8 +108,8 @@ func TestRunReportsCollector_ObservesWallQueueWaitAndRetries(t *testing.T) {
 // WallTimeMs / QueueWaitMs / Retries of zero must not create labelled
 // time-series (no metric pollution from idle runs).
 func TestRunReportsCollector_SkipsZeroValues(t *testing.T) {
-	duration, queueWait, retries := newTestRunReportVectors()
-	c := newRunReportsCollectorWithVectors(duration, queueWait, retries)
+	duration, queueWait, operation, stage, retries := newTestRunReportVectors()
+	c := newRunReportsCollectorWithVectors(duration, queueWait, retries, operation, stage)
 
 	if err := c.Collect(context.Background(), &kernobs.RunReport{
 		JobID: "job-2", JobType: "stock.run", Status: kernobs.StatusFailed,
@@ -123,8 +133,8 @@ func TestRunReportsCollector_SkipsZeroValues(t *testing.T) {
 // empty JobType is labelled "unknown" instead of leaking an empty
 // label value.
 func TestRunReportsCollector_UnknownJobType(t *testing.T) {
-	duration, queueWait, retries := newTestRunReportVectors()
-	c := newRunReportsCollectorWithVectors(duration, queueWait, retries)
+	duration, queueWait, operation, stage, retries := newTestRunReportVectors()
+	c := newRunReportsCollectorWithVectors(duration, queueWait, retries, operation, stage)
 
 	if err := c.Collect(context.Background(), &kernobs.RunReport{
 		JobID: "job-3", Status: kernobs.StatusSucceeded, WallTimeMs: 1000,
@@ -134,6 +144,76 @@ func TestRunReportsCollector_UnknownJobType(t *testing.T) {
 
 	if _, err := duration.GetMetricWithLabelValues("unknown", "SUCCEEDED"); err != nil {
 		t.Errorf("expected label fallback to 'unknown': %v", err)
+	}
+}
+
+// TestRunReportsCollector_ProjectsOperationsAndStages pins the live
+// projection of the canonical SSOT: OperationReport →
+// job_operation_duration_seconds{component,operation,status} and
+// StageReport → job_stage_duration_seconds{stage,status}, so a boundary's
+// own direct Observe() timer becomes redundant.
+func TestRunReportsCollector_ProjectsOperationsAndStages(t *testing.T) {
+	duration, queueWait, operation, stage, retries := newTestRunReportVectors()
+	c := newRunReportsCollectorWithVectors(duration, queueWait, retries, operation, stage)
+
+	if err := c.Collect(context.Background(), &kernobs.RunReport{
+		JobID: "job-4", JobType: "script.generate", Status: kernobs.StatusSucceeded,
+		Operations: []kernobs.OperationReport{
+			{Component: "ollama", Operation: "generate", Status: "completed", DurationMs: 1500},
+			{Component: "ollama", Operation: "generate", Status: "failed", DurationMs: 500},
+		},
+		Stages: []kernobs.StageReport{
+			{Name: "script_generation", Status: "completed", DurationMs: 2200},
+		},
+	}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	op, err := operation.GetMetricWithLabelValues("ollama", "generate", "completed")
+	if err != nil {
+		t.Fatalf("operation metric: %v", err)
+	}
+	if got := histogramDTO(t, op).GetSampleSum(); got != 1.5 {
+		t.Errorf("operation sum = %v, want 1.5 (1500ms / 1000)", got)
+	}
+
+	opFail, err := operation.GetMetricWithLabelValues("ollama", "generate", "failed")
+	if err != nil {
+		t.Fatalf("operation failed metric: %v", err)
+	}
+	if got := histogramDTO(t, opFail).GetSampleSum(); got != 0.5 {
+		t.Errorf("operation failed sum = %v, want 0.5 (500ms / 1000)", got)
+	}
+
+	st, err := stage.GetMetricWithLabelValues("script_generation", "completed")
+	if err != nil {
+		t.Fatalf("stage metric: %v", err)
+	}
+	if got := histogramDTO(t, st).GetSampleSum(); got != 2.2 {
+		t.Errorf("stage sum = %v, want 2.2 (2200ms / 1000)", got)
+	}
+}
+
+// TestRunReportsCollector_EmptyLabelsFallbackToUnknown pins the label
+// sanitization: empty component/operation/status/stage values are projected
+// under the stable "unknown" token instead of leaking empty label values.
+func TestRunReportsCollector_EmptyLabelsFallbackToUnknown(t *testing.T) {
+	duration, queueWait, operation, stage, retries := newTestRunReportVectors()
+	c := newRunReportsCollectorWithVectors(duration, queueWait, retries, operation, stage)
+
+	if err := c.Collect(context.Background(), &kernobs.RunReport{
+		JobID: "job-5", JobType: "stock.run", Status: kernobs.StatusSucceeded,
+		Operations: []kernobs.OperationReport{{DurationMs: 100}},
+		Stages:     []kernobs.StageReport{{DurationMs: 200}},
+	}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if _, err := operation.GetMetricWithLabelValues("unknown", "unknown", "unknown"); err != nil {
+		t.Errorf("operation fallback labels: %v", err)
+	}
+	if _, err := stage.GetMetricWithLabelValues("unknown", "unknown"); err != nil {
+		t.Errorf("stage fallback labels: %v", err)
 	}
 }
 

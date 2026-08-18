@@ -15,7 +15,12 @@ func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRe
 		return false
 	}
 
-	if !req.SaveToDB || stageSkipped(resumeIdx, StagePublishingDocuments) {
+	// Idempotent restart: a script already persisted in a prior attempt (even
+	// one that crashed before the run reached COMPLETED) must never be written
+	// again — the canonical row is reused, so a resume writes 0 duplicate DB
+	// rows regardless of which stage it restarts from.
+	alreadyPersisted := result != nil && result.ScriptID > 0
+	if !req.SaveToDB || stageSkipped(resumeIdx, StagePublishingDocuments) || alreadyPersisted {
 		if err := r.skipExecutionStep(ctx, exec, step); err != nil {
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return false

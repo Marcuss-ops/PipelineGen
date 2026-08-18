@@ -28,11 +28,11 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	brainCore "github.com/Marcuss-ops/PipelineGen/internal/application/brain/core"
 	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
-	brainRanker "github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -147,7 +147,7 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 		brainNormalizer.NewDefaultNormalizer(),
 		brainIntent.NewDefaultResolver(),
 		cascade,
-		brainRanker.NewMediaMemoryRankerAdapter(mmRanker),
+		wiring.NewMediaMemoryRankerAdapter(mmRanker),
 		brainPlanner.NewDefaultPlanner(),
 	)
 

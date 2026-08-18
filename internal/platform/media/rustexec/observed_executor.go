@@ -10,7 +10,7 @@
 //	Rust
 //
 // Every operation (probe, normalize, cut, watermark, render, mux, ...)
-// produces exactly ONE OperationMeasurement. The measurement is recorded
+// produces exactly ONE kernel MeasuredOperation. The measurement is recorded
 // here — never scattered across operation handlers. Wall time is measured in
 // Go at the boundary; CPU time, frames and authoritative byte counts come
 // from the Rust metrics block (measured in the process that owns the work,
@@ -58,6 +58,9 @@ func (o *ObservedExecutor) Execute(ctx context.Context, req request) (response, 
 	started := time.Now()
 	result, err := o.next.execute(ctx, req)
 	measurement := o.measurement(req, started, result, err)
+	// The run-bound report is the operational authority. Any configured
+	// performance recorder below is a projection sink only.
+	kernobs.RecordMeasuredOperation(ctx, measurement)
 	if o != nil && o.recorder != nil {
 		if recordErr := o.recorder.RecordOperation(ctx, measurement); recordErr != nil {
 			if o.log != nil {

@@ -58,8 +58,13 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 
 	// ── Download path ────────────────────────────────────────────
 	partialPath := stagedPath + ".partial"
-	// Remove stale partial from prior failed Prepare (left over by
-	// a previous attempt that crashed mid-fetch).
+	// Remove the closure's stale FINAL output from a prior Prepare that
+	// failed after fetch but before the atomic rename. This is NOT the
+	// resumable surface: yt-dlp's own `.part` artifacts live under the
+	// downloader's output template (e.g. {partialPath}.mp4.part) and are
+	// deliberately left in place so a job re-claimed after a graceful
+	// server restart resumes via the downloader's `--continue` flag
+	// instead of re-fetching the source from 0% (PR-STOCK-RESUME).
 	if err := os.RemoveAll(partialPath); err != nil && !os.IsNotExist(err) {
 		return nil, appacq.Wrap(appacq.ErrAcquisitionPrepareFailed,
 			fmt.Sprintf("remove stale partial %q: %v", partialPath, err))

@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // clipTagsJSON marshals the clip tag list as a JSON array string for the
@@ -48,53 +47,6 @@ func clipTagsNorm(tags []string) string {
 		b.WriteString(strings.ToLower(t))
 	}
 	return b.String()
-}
-
-func binarySHA256(asset youtubetypes.ClipAsset) string {
-	if asset.LocalPath == "" {
-		return ""
-	}
-	sha, err := files.SHA256File(asset.LocalPath)
-	if err != nil || len(sha) != 64 {
-		return ""
-	}
-	return sha
-}
-
-func canonicalClipProvenanceJSON(asset youtubetypes.ClipAsset) string {
-	payload := map[string]any{
-		"category":        asset.Metadata.Category,
-		"source_provider": asset.Metadata.SourceProvider,
-		// source_video_id is the canonical provenance key (SSOT with
-		// asset.MetadataSourceVideoID / the media_assets.source_video_id
-		// column). video_id is retained as a legacy alias for older
-		// consumers (e.g. texttracks backfill_acquire.go).
-		"source_video_id": asset.Metadata.VideoID,
-		"video_id":        asset.Metadata.VideoID,
-		"source_url":      asset.Metadata.SourceURL,
-		"source_title":    asset.Metadata.SourceTitle,
-		"source_channel":  asset.Metadata.SourceChannel,
-		// start_sec / end_sec are the canonical float-seconds metadata
-		// keys read by asset.StartSec()/EndSec(). The clip_* variants are
-		// retained as legacy aliases (no reader today; kept for history).
-		"start_sec":         float64(asset.Metadata.ClipStartSec),
-		"end_sec":           float64(asset.Metadata.ClipEndSec),
-		"clip_start_sec":    asset.Metadata.ClipStartSec,
-		"clip_end_sec":      asset.Metadata.ClipEndSec,
-		"clip_duration_sec": asset.Metadata.ClipDurationSec,
-		"title":             asset.Metadata.Title,
-	}
-	if asset.Metadata.Description != "" {
-		payload["description"] = asset.Metadata.Description
-	}
-	if len(asset.Metadata.Tags) > 0 {
-		payload["tags"] = asset.Metadata.Tags
-	}
-	if sha := binarySHA256(asset); sha != "" {
-		payload["sha256"] = sha
-	}
-	raw, _ := json.Marshal(payload)
-	return string(raw)
 }
 
 // ── Column-mapping derivation helpers (pure functions) ──────────────
@@ -131,18 +83,6 @@ func deriveFilenameFromAsset(asset youtubetypes.ClipAsset) string {
 		return filepathBase(asset.LocalPath)
 	}
 	return ""
-}
-
-// routeEmpty is the canonical "fallback-to-this-string" helper for
-// INSERT columns where an empty value would later fail a NOT NULL
-// check. Kept as a private helper because tests can construct
-// ClipAssets with empty Name and the adapter must keep the row
-// insertable.
-func routeEmpty(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
 }
 
 // derivePolicyVersion extracts the policy_version suffix from a
