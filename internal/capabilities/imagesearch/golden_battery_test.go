@@ -345,6 +345,267 @@ func goldenCases() []goldenCase {
 	}
 }
 
+// goldenCasesIT is the Italian port of the battery. The INPUT is Italian;
+// the expected queries, entities and canonical ids are IDENTICAL to the
+// English battery because canonicalization is language-invariant: "Torre
+// Eiffel" canonicalizes to landmark:eiffel-tower and queries "Eiffel Tower
+// Paris", "Arabia Saudita" to gpe:saudi-arabia, "ha sconfitto" triggers the
+// same "N1 N2 fight" event query. Only the verbatim value entities (MONEY /
+// DATE / EVENT surfaces), the important phrases and the Italian forbidden
+// surfaces differ.
+func goldenCasesIT() []goldenCase {
+	return []goldenCase{
+		// ── Gruppo 1 — facilissimo, deve fare 100% ─────────────────────
+		{
+			id: "T01", text: "Floyd Mayweather è diventato uno dei pugili più riconoscibili al mondo.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			forbidQueries: []string{"guanti", "Pacquiao", "Mayweather Boxing Club", "pugile"},
+		},
+		{
+			id: "T02", text: "Manny Pacquiao è diventato un'icona nazionale nelle Filippine.",
+			wantRequired: true, wantQueries: []string{"Manny Pacquiao", "Philippines"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"},
+				{"GPE", "Philippines", "gpe:philippines"},
+			},
+			forbidQueries: []string{"icona nazionale", "Manny Pacquiao Filippine"},
+		},
+		{
+			id: "T03", text: "Mike Tyson ha dominato la divisione dei pesi massimi alla fine degli anni '80.",
+			wantRequired: true, wantQueries: []string{"Mike Tyson boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantVisual:   []wantEntity{{"DATE", "fine degli anni '80", ""}},
+			forbidQueries: []string{"pesi massimi", "anni '80"},
+		},
+		{
+			id: "T04", text: "Muhammad Ali è diventato uno degli atleti più famosi della storia.",
+			wantRequired: true, wantQueries: []string{"Muhammad Ali"},
+			wantEntities: []wantEntity{{"PERSON", "Muhammad Ali", "person:muhammad-ali"}},
+		},
+		{
+			id: "T05", text: "Oleksandr Usyk ha vinto importanti combattimenti dei pesi massimi in Arabia Saudita.",
+			wantRequired: true, wantQueries: []string{"Oleksandr Usyk", "Saudi Arabia"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Oleksandr Usyk", "person:oleksandr-usyk"},
+				{"GPE", "Saudi Arabia", "gpe:saudi-arabia"},
+			},
+		},
+		{
+			id: "T06", text: "Tyson Fury ha costruito la sua reputazione attraverso la boxe dei pesi massimi.",
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities:    []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			forbidEntities:  []wantEntity{{"PERSON", "Mike Tyson", ""}},
+			forbidQueries:   []string{"Mike Tyson"},
+		},
+
+		// ── Gruppo 2 — due persone nella stessa frase ───────────────────
+		{
+			id: "T07", text: "Floyd Mayweather ha sconfitto Manny Pacquiao in uno dei combattimenti più grandi della boxe.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather", "Manny Pacquiao", "Floyd Mayweather Manny Pacquiao fight"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"},
+				{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"},
+			},
+			forbidQueries: []string{"Floyd Mayweather ha sconfitto Manny Pacquiao"},
+		},
+		{
+			id: "T08", text: "Oleksandr Usyk ha affrontato Tyson Fury in uno storico scontro dei pesi massimi.",
+			wantRequired: true, wantQueries: []string{"Oleksandr Usyk", "Tyson Fury", "Oleksandr Usyk Tyson Fury fight"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Oleksandr Usyk", "person:oleksandr-usyk"},
+				{"PERSON", "Tyson Fury", "person:tyson-fury"},
+			},
+			wantVisual: []wantEntity{{"EVENT", "storico scontro dei pesi massimi", ""}},
+		},
+		{
+			id: "T09", text: "Mike Tyson riceve spesso paragoni con Muhammad Ali.",
+			wantRequired: true, wantQueries: []string{"Mike Tyson", "Muhammad Ali"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Mike Tyson", "person:mike-tyson"},
+				{"PERSON", "Muhammad Ali", "person:muhammad-ali"},
+			},
+			forbidQueries: []string{"paragoni"},
+		},
+
+		// ── Gruppo 3 — persona + soldi ──────────────────────────────────
+		{
+			id: "T10", text: "Floyd Mayweather avrebbe guadagnato più di 100 milioni di dollari dai grandi combattimenti.",
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantVisual:   []wantEntity{{"MONEY", "più di 100 milioni di dollari", ""}},
+			wantPhrases:  []string{"guadagnato più di 100 milioni di dollari"},
+			forbidQueries: []string{"milioni", "dollari"},
+		},
+		{
+			id: "T11", text: "Manny Pacquiao ha guadagnato centinaia di milioni di dollari durante la sua carriera di pugile.",
+			wantRequired: true, wantQueries: []string{"Manny Pacquiao"},
+			wantEntities: []wantEntity{{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"}},
+			wantVisual:   []wantEntity{{"MONEY", "centinaia di milioni di dollari", ""}},
+			wantPhrases:  []string{"guadagnato centinaia di milioni di dollari"},
+			forbidQueries: []string{"centinaia", "milioni", "dollari", "carriera"},
+		},
+
+		// ── Gruppo 4 — luoghi ───────────────────────────────────────────
+		{
+			id: "T12", text: "La Torre Eiffel rimane uno dei monumenti più riconoscibili di Parigi.",
+			wantRequired: true, wantQueries: []string{"Eiffel Tower Paris"},
+			wantEntities: []wantEntity{
+				{"LANDMARK", "Eiffel Tower", "landmark:eiffel-tower"},
+				{"GPE", "Paris", "gpe:paris"},
+			},
+		},
+		{
+			id: "T13", text: "Buckingham Palace si trova a Londra.",
+			wantRequired: true, wantQueries: []string{"Buckingham Palace London"},
+			wantEntities: []wantEntity{
+				{"LANDMARK", "Buckingham Palace", "landmark:buckingham-palace"},
+				{"GPE", "London", "gpe:london"},
+			},
+		},
+		{
+			id: "T14", text: "Times Square attira milioni di visitatori a New York.",
+			wantRequired: true, wantQueries: []string{"Times Square New York City"},
+			wantEntities: []wantEntity{
+				{"LOCATION", "Times Square", "location:times-square"},
+				{"GPE", "New York City", "gpe:new-york-city"},
+			},
+		},
+
+		// ── Gruppo 5 — aziende/prodotti ─────────────────────────────────
+		{
+			id: "T15", text: "Apple ha introdotto il Vision Pro come nuovo dispositivo di elaborazione spaziale.",
+			wantRequired: true, wantQueries: []string{"Apple Vision Pro"},
+			wantEntities: []wantEntity{
+				{"ORG", "Apple", "org:apple"},
+				{"PRODUCT", "Apple Vision Pro", "product:apple-vision-pro"},
+			},
+			forbidQueries: []string{"apple fruit", "mela"},
+		},
+		{
+			id: "T16", text: "Tesla ha presentato il Cybertruck con uno dei design più insoliti del settore automobilistico.",
+			wantRequired: true, wantQueries: []string{"Tesla Cybertruck"},
+			wantEntities: []wantEntity{
+				{"ORG", "Tesla", "org:tesla"},
+				{"PRODUCT", "Tesla Cybertruck", "product:tesla-cybertruck"},
+			},
+			forbidQueries: []string{"Elon Musk", "Tesla model"},
+		},
+		{
+			id: "T17", text: "SpaceX ha sviluppato Starship per la sua prossima generazione di missioni spaziali.",
+			wantRequired: true, wantQueries: []string{"SpaceX Starship"},
+			wantEntities: []wantEntity{
+				{"ORG", "SpaceX", "org:spacex"},
+				{"PRODUCT", "SpaceX Starship", "product:spacex-starship"},
+			},
+		},
+
+		// ── Gruppo 6 — AMBIGUITÀ ────────────────────────────────────────
+		{
+			id: "T18", text: "Michael Jordan è diventato una leggenda del basket con i Chicago Bulls.",
+			wantRequired: true, wantQueries: []string{"Michael Jordan basketball", "Chicago Bulls"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Michael Jordan", "person:michael-jordan"},
+				{"ORG", "Chicago Bulls", "org:chicago-bulls"},
+			},
+			wantContexts:   []wantEntity{{"CONTEXT", "basketball", ""}},
+			forbidEntities: []wantEntity{{"PERSON", "Michael B. Jordan", ""}},
+			forbidQueries:  []string{"Michael B Jordan", "attore"},
+		},
+		{
+			id: "T19", text: "Michael B. Jordan ha recitato in diversi film importanti di Hollywood.",
+			wantRequired: true, wantQueries: []string{"Michael B Jordan actor"},
+			wantEntities:   []wantEntity{{"PERSON", "Michael B. Jordan", "person:michael-b-jordan"}},
+			wantContexts:   []wantEntity{{"CONTEXT", "actor", ""}},
+			forbidEntities: []wantEntity{{"PERSON", "Michael Jordan", ""}},
+			forbidQueries:  []string{"Michael Jordan", "NBA", "basketball"},
+		},
+		{
+			id: "T20", text: "Apple ha riportato una forte domanda per i suoi ultimi dispositivi.",
+			wantRequired: true, wantQueries: []string{"Apple company"},
+			wantEntities:   []wantEntity{{"ORG", "Apple", "org:apple"}},
+			forbidEntities: []wantEntity{{"OBJECT", "apple fruit", ""}},
+			forbidQueries:  []string{"apple fruit", "mela"},
+		},
+		{
+			id: "T21", text: "Il contadino ha raccolto una mela rossa dall'albero.",
+			wantRequired: true, wantQueries: []string{"red apple fruit"},
+			wantEntities:   []wantEntity{{"OBJECT", "apple fruit", "object:apple-fruit"}},
+			forbidEntities: []wantEntity{{"ORG", "Apple", ""}},
+			forbidQueries:  []string{"Apple company", "Apple Inc"},
+		},
+		{
+			id: "T22", text: "Un giaguaro si muoveva silenziosamente attraverso la foresta amazzonica.",
+			wantRequired: true, wantQueries: []string{"jaguar animal Amazon rainforest"},
+			wantEntities: []wantEntity{
+				{"ANIMAL", "jaguar", "animal:jaguar"},
+				{"LOCATION", "Amazon rainforest", "location:amazon-rainforest"},
+			},
+			forbidEntities: []wantEntity{{"ORG", "Jaguar", ""}},
+			forbidQueries:  []string{"Jaguar car"},
+		},
+		{
+			id: "T23", text: "Jaguar ha svelato un nuovo veicolo di lusso.",
+			wantRequired: true, wantQueries: []string{"Jaguar car"},
+			wantEntities:   []wantEntity{{"ORG", "Jaguar", "org:jaguar"}},
+			forbidEntities: []wantEntity{{"ANIMAL", "jaguar", ""}},
+			forbidQueries:  []string{"jaguar animal", "giaguaro"},
+		},
+
+		// ── Gruppo 7 — non deve cercare tutto ───────────────────────────
+		{
+			id: "T24", text: "Il successo richiede spesso pazienza, disciplina e costanza.",
+			wantRequired: false,
+			wantEntities: []wantEntity{},
+		},
+		{
+			id: "T25", text: "La situazione è diventata sempre più complicata nel tempo.",
+			wantRequired: false,
+			wantEntities: []wantEntity{},
+		},
+		{
+			id: "T26", text: "La sua fortuna è cambiata drasticamente nel decennio successivo.",
+			wantRequired: false, // no antecedent available → no canonical person
+			wantEntities: []wantEntity{},
+			forbidEntities: []wantEntity{{"PERSON", "Floyd Mayweather", ""}},
+		},
+
+		// ── Gruppo 9 — negazione ────────────────────────────────────────
+		{
+			id: "T27", text: "Il combattente in questa storia è Tyson Fury, non Mike Tyson.",
+			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
+			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			forbidQueries: []string{"Mike Tyson"},
+		},
+
+		// ── Gruppo 10 — entità dentro una frase lunga ───────────────────
+		{
+			id: "T28", text: "Dopo aver guadagnato enormi borse da combattimento contro Manny Pacquiao e altri avversari, Floyd Mayweather ha investito pesantemente nel settore immobiliare e ha ampliato il marchio Mayweather Promotions.",
+			wantRequired: true,
+			wantQueries:  []string{"Floyd Mayweather", "Manny Pacquiao", "Mayweather Promotions", "real estate"},
+			wantEntities: []wantEntity{
+				{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"},
+				{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"},
+				{"ORG", "Mayweather Promotions", "org:mayweather-promotions"},
+				{"CATEGORY", "real estate", "category:real-estate"},
+			},
+			wantVisual:  []wantEntity{{"MONEY", "enormi borse da combattimento", ""}},
+			wantPhrases: []string{"guadagnato enormi borse da combattimento"},
+		},
+
+		// ── Coreference scene (Gruppo 8) — pro-drop italiano ────────────
+		{
+			// "In seguito ha investito …" = "He later invested …": the
+			// subject is DROPPED and must ground on the prior person.
+			id: "SCENE", text: "In seguito ha investito parte della sua fortuna in diverse attività.",
+			prior:        []string{"Floyd Mayweather"},
+			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
+			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+		},
+	}
+}
+
 // caseMetrics accumulates one battery row.
 type caseMetrics struct {
 	id               string
@@ -369,12 +630,15 @@ func (m *caseMetrics) pass() bool {
 }
 
 // runGoldenCase runs one sentence through the real resolver and asserts every
-// expected surface, returning the metrics row.
-func runGoldenCase(t *testing.T, resolver *Resolver, gc goldenCase) caseMetrics {
+// expected surface, returning the metrics row. The language selects the
+// battery variant ("en" or "it"); the expected queries/entities/canonical
+// ids are identical across languages (canonicalization is language-
+// invariant).
+func runGoldenCase(t *testing.T, resolver *Resolver, gc goldenCase, lang string) caseMetrics {
 	t.Helper()
-	metrics := caseMetrics{id: gc.id, expected: len(gc.wantEntities) + len(gc.wantVisual) + len(gc.wantContexts) + len(gc.wantNegated)}
+	metrics := caseMetrics{id: lang + ":" + gc.id, expected: len(gc.wantEntities) + len(gc.wantVisual) + len(gc.wantContexts) + len(gc.wantNegated)}
 
-	dec := resolver.Resolve(context.Background(), Request{Text: gc.text, Language: "en", PriorPersons: gc.prior})
+	dec := resolver.Resolve(context.Background(), Request{Text: gc.text, Language: lang, PriorPersons: gc.prior})
 
 	// 1. image_search_required decision.
 	metrics.requiredOK = dec.Required == gc.wantRequired
@@ -527,16 +791,27 @@ func findDetected(detected []ResolvedEntity, typ, text string) ResolvedEntity {
 	return ResolvedEntity{}
 }
 
-// TestGoldenBattery_ImageSearch runs the whole battery, asserts the
-// certification floor, and prints the per-sentence metric table.
+// TestGoldenBattery_ImageSearch runs the English battery.
 func TestGoldenBattery_ImageSearch(t *testing.T) {
+	runBattery(t, "en", goldenCases())
+}
+
+// TestGoldenBattery_ImageSearch_IT runs the Italian battery (same canonical
+// queries/entities/ids, Italian input).
+func TestGoldenBattery_ImageSearch_IT(t *testing.T) {
+	runBattery(t, "it", goldenCasesIT())
+}
+
+// runBattery runs the whole battery for one language, asserts the
+// certification floor, and prints the per-sentence metric table.
+func runBattery(t *testing.T, lang string, cases []goldenCase) {
 	resolver := NewResolver(localnlp.NewExtractor())
 
 	var rows []caseMetrics
 	var noImageRows []caseMetrics
-	for _, gc := range goldenCases() {
-		t.Run(gc.id, func(t *testing.T) {
-			row := runGoldenCase(t, resolver, gc)
+	for _, gc := range cases {
+		t.Run(lang+":"+gc.id, func(t *testing.T) {
+			row := runGoldenCase(t, resolver, gc, lang)
 			rows = append(rows, row)
 			if !gc.wantRequired {
 				noImageRows = append(noImageRows, row)
@@ -574,14 +849,14 @@ func TestGoldenBattery_ImageSearch(t *testing.T) {
 
 	// ── Report ───────────────────────────────────────────────────────
 	var report strings.Builder
-	report.WriteString("\n===== GOLDEN BATTERY: IMAGE SEARCH =====\n")
-	report.WriteString(fmt.Sprintf("%-6s %-10s %-8s %-8s %-8s\n", "ID", "required", "entities", "queries", "verdict"))
+	report.WriteString("\n===== GOLDEN BATTERY: IMAGE SEARCH [" + lang + "] =====\n")
+	report.WriteString(fmt.Sprintf("%-10s %-10s %-8s %-8s %-8s\n", "ID", "required", "entities", "queries", "verdict"))
 	for _, row := range rows {
 		verdict := "PASS"
 		if !row.pass() {
 			verdict = "FAIL"
 		}
-		report.WriteString(fmt.Sprintf("%-6s %-10v %-8d %-8d %s\n", row.id, row.requiredOK, row.found, row.queries, verdict))
+		report.WriteString(fmt.Sprintf("%-10s %-10v %-8d %-8d %s\n", row.id, row.requiredOK, row.found, row.queries, verdict))
 	}
 	report.WriteString("\n--- metrics ---\n")
 	report.WriteString(fmt.Sprintf("entity recall                 = %.4f (%d/%d)\n", recall, totalFound, totalExpected))
@@ -605,21 +880,40 @@ func TestGoldenBattery_ImageSearch(t *testing.T) {
 	}
 }
 
-// TestGoldenBattery_FullParagraph certifies the complete paragraph the spec
-// highlights as the closest to real PipelineGen input, threading pronoun
-// coreference across sentences.
+// TestGoldenBattery_FullParagraph certifies the complete English paragraph
+// the spec highlights as the closest to real PipelineGen input, threading
+// pronoun coreference across sentences.
 func TestGoldenBattery_FullParagraph(t *testing.T) {
-	resolver := NewResolver(localnlp.NewExtractor())
-	paragraph := []string{
+	assertParagraph(t, "en", []string{
 		"Floyd Mayweather built one of boxing's most recognizable brands.",
 		"After earning enormous purses from fights against Manny Pacquiao and other opponents, he expanded Mayweather Promotions and invested in real estate.",
 		"His financial success turned him from a championship boxer into a global businessman.",
-	}
+	})
+}
+
+// TestGoldenBattery_FullParagraph_IT certifies the same paragraph in
+// Italian, where sentence 2 exercises the pro-drop subject ("ha ampliato …"
+// = "he expanded …") and sentence 3 the article+possessive opener ("Il suo
+// successo …" = "His success …").
+func TestGoldenBattery_FullParagraph_IT(t *testing.T) {
+	assertParagraph(t, "it", []string{
+		"Floyd Mayweather ha costruito uno dei marchi più riconoscibili della boxe.",
+		"Dopo aver guadagnato enormi borse da combattimento contro Manny Pacquiao e altri avversari, ha ampliato Mayweather Promotions e ha investito nel settore immobiliare.",
+		"Il suo successo finanziario lo ha trasformato da pugile campione in imprenditore globale.",
+	})
+}
+
+// assertParagraph runs a three-sentence paragraph through the resolver with
+// coreference threading and asserts the per-sentence surfaces plus the
+// aggregate semantic extraction. The expected queries and canonical ids are
+// language-invariant.
+func assertParagraph(t *testing.T, lang string, paragraph []string) {
+	resolver := NewResolver(localnlp.NewExtractor())
 
 	var prior []string
 	aggregate := map[string]bool{}
 	for i, sentence := range paragraph {
-		dec := resolver.Resolve(context.Background(), Request{Text: sentence, Language: "en", PriorPersons: prior})
+		dec := resolver.Resolve(context.Background(), Request{Text: sentence, Language: lang, PriorPersons: prior})
 		require.True(t, dec.Required, "sentence %d must require an image search", i+1)
 		require.NotNil(t, dec.Primary, "sentence %d must have a primary entity", i+1)
 
@@ -632,11 +926,11 @@ func TestGoldenBattery_FullParagraph(t *testing.T) {
 			require.Equal(t, "person:floyd-mayweather", dec.Primary.CanonicalID, "sentence 1 primary")
 			require.Equal(t, []string{"Floyd Mayweather"}, dec.Queries, "sentence 1 queries")
 		case 1:
-			// "he" must resolve to Floyd Mayweather even though the name is
-			// not in the sentence.
+			// "he" / the dropped subject must resolve to Floyd Mayweather
+			// even though the name is not in the sentence.
 			require.Equal(t, "person:floyd-mayweather", dec.Primary.CanonicalID, "sentence 2 primary must be the coreference-resolved Floyd Mayweather")
 			require.Equal(t, []string{"Floyd Mayweather", "Manny Pacquiao", "Mayweather Promotions", "real estate"}, dec.Queries, "sentence 2 queries")
-			require.Equal(t, "MONEY", dec.Visual[0].Type, "sentence 2 must carry the money visual (enormous purses)")
+			require.Equal(t, "MONEY", dec.Visual[0].Type, "sentence 2 must carry the money visual (enormous purses / enormi borse)")
 		case 2:
 			require.Equal(t, "person:floyd-mayweather", dec.Primary.CanonicalID, "sentence 3 primary")
 			require.Equal(t, []string{"Floyd Mayweather"}, dec.Queries, "sentence 3 queries")
