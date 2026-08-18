@@ -11,6 +11,7 @@ import (
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -218,6 +219,17 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	} else {
 		vidRushEntityExtractor = localnlp.NewHybridExtractor()
 	}
+
+	// ── Image Search Intent resolver (capabilities/imagesearch) ────────
+	// The deterministic editorial/visual decision layer the golden battery
+	// certifies (typed entities → canonical ids → ordered queries → no-image
+	// gate → negation → coreference). It is built over the SAME entity
+	// extractor that feeds the VidRush pipeline, so production consumes the
+	// exact path the battery certifies — never a second, ad-hoc extractor.
+	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
+	runner.SetImageSearchResolver(imageSearchResolver)
+	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
+
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	vidRushEnricher := documentadapters.NewVidRushSegmentEnricher(vidRushEntityExtractor, vidRushCache, vidRushMetrics)
 	var vidRushFanout scriptgen.SegmentProviderResolver
