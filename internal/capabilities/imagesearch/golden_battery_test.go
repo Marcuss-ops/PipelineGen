@@ -91,7 +91,7 @@ func goldenCases() []goldenCase {
 		{
 			id: "T01", text: "Floyd Mayweather became one of the most recognizable boxers in the world.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
 			forbidQueries: []string{"boxing gloves", "Pacquiao", "Mayweather Boxing Club"},
 		},
 		{
@@ -108,8 +108,8 @@ func goldenCases() []goldenCase {
 		{
 			id: "T03", text: "Mike Tyson dominated the heavyweight division during the late 1980s.",
 			wantRequired: true, wantQueries: []string{"Mike Tyson boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
-			wantVisual:   []wantEntity{{"DATE", "late 1980s", ""}},
+			wantEntities:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantVisual:    []wantEntity{{"DATE", "late 1980s", ""}},
 			forbidQueries: []string{"heavyweight division", "late 1980s"},
 		},
 		{
@@ -128,9 +128,9 @@ func goldenCases() []goldenCase {
 		{
 			id: "T06", text: "Tyson Fury built his reputation through heavyweight boxing.",
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities:    []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
-			forbidEntities:  []wantEntity{{"PERSON", "Mike Tyson", ""}},
-			forbidQueries:   []string{"Mike Tyson"},
+			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
+			forbidQueries:  []string{"Mike Tyson"},
 		},
 
 		// ── Gruppo 2 — due persone nella stessa frase ───────────────────
@@ -179,9 +179,9 @@ func goldenCases() []goldenCase {
 		{
 			id: "T11", text: "Manny Pacquiao earned hundreds of millions of dollars throughout his boxing career.",
 			wantRequired: true, wantQueries: []string{"Manny Pacquiao"},
-			wantEntities: []wantEntity{{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"}},
-			wantVisual:   []wantEntity{{"MONEY", "hundreds of millions of dollars", ""}},
-			wantPhrases:  []string{"earned hundreds of millions of dollars"},
+			wantEntities:  []wantEntity{{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"}},
+			wantVisual:    []wantEntity{{"MONEY", "hundreds of millions of dollars", ""}},
+			wantPhrases:   []string{"earned hundreds of millions of dollars"},
 			forbidQueries: []string{"hundreds", "millions", "dollars", "boxing career"},
 		},
 
@@ -305,8 +305,8 @@ func goldenCases() []goldenCase {
 		},
 		{
 			id: "T26", text: "His fortune changed dramatically over the following decade.",
-			wantRequired: false, // no antecedent available → no canonical person
-			wantEntities: []wantEntity{},
+			wantRequired:   false, // no antecedent available → no canonical person
+			wantEntities:   []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Floyd Mayweather", ""}},
 		},
 
@@ -347,22 +347,22 @@ func goldenCases() []goldenCase {
 		{
 			id: "T29", text: "The fighter in this story is Tyson Fury, instead of Mike Tyson.",
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 		{
 			id: "T30", text: "Rather than Mike Tyson, the story follows Floyd Mayweather.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 		{
 			id: "T31", text: "Unlike Mike Tyson, Floyd Mayweather avoided the spotlight.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 
@@ -371,11 +371,10 @@ func goldenCases() []goldenCase {
 			id: "T32", text: "The fighter later invested part of his fortune in several businesses.",
 			prior:        []string{"Tyson Fury"},
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
 			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
 			forbidQueries:  []string{"Mike Tyson", "fighter"},
-		},
-		{
+		},		{
 			// "The fighter" must NOT ground on a non-boxer prior: without a
 			// resolvable antecedent the alias never invents an identity.
 			id: "T33", text: "The fighter later invested part of his fortune in several businesses.",
@@ -383,6 +382,55 @@ func goldenCases() []goldenCase {
 			wantRequired: false,
 			wantEntities: []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
+		},
+
+		// ── Gruppo 13 — coppie identità (Mercurio/Giordania/Turchia) ────
+		{
+			id: "T34", text: "Mercury is the smallest planet in our solar system.",
+			wantRequired: true, wantQueries: []string{"Mercury planet"},
+			wantEntities:   []wantEntity{{"OBJECT", "Mercury", "object:mercury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Freddie Mercury", ""}},
+			forbidQueries:  []string{"Freddie Mercury", "singer"},
+		},
+		{
+			id: "T35", text: "Freddie Mercury was the lead singer of the rock band Queen.",
+			wantRequired: true, wantQueries: []string{"Freddie Mercury singer"},
+			wantEntities: []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
+			wantContexts: []wantEntity{{"CONTEXT", "singer", ""}},
+			forbidEntities: []wantEntity{{"OBJECT", "Mercury", ""}},
+			forbidQueries:  []string{"Mercury planet"},
+		},
+		{
+			id: "T36", text: "Jordan is a small country with a rich history.",
+			wantRequired: true, wantQueries: []string{"Jordan"},
+			wantEntities:   []wantEntity{{"GPE", "Jordan", "gpe:jordan"}},
+			forbidEntities: []wantEntity{{"PERSON", "Michael Jordan", ""}},
+			forbidQueries:  []string{"Michael Jordan"},
+		},
+		{
+			// "Michael Jordan" must never spawn the country entity "Jordan":
+			// the surface "Jordan" is a SUBSTRING of "Michael Jordan", so the
+			// country entry may only match under its country context gates.
+			id: "T37", text: "Michael Jordan is a basketball legend.",
+			wantRequired: true, wantQueries: []string{"Michael Jordan basketball"},
+			wantEntities: []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
+			wantContexts: []wantEntity{{"CONTEXT", "basketball", ""}},
+			forbidEntities: []wantEntity{{"GPE", "Jordan", ""}},
+			forbidQueries:  []string{"country"},
+		},
+		{
+			id: "T38", text: "Turkey is a country with a long coastline.",
+			wantRequired: true, wantQueries: []string{"Turkey"},
+			wantEntities:   []wantEntity{{"GPE", "Turkey", "gpe:turkey"}},
+			forbidEntities: []wantEntity{{"ANIMAL", "turkey", ""}},
+			forbidQueries:  []string{"turkey bird"},
+		},
+		{
+			id: "T39", text: "The turkey strutted across the barnyard at dawn.",
+			wantRequired: true, wantQueries: []string{"turkey bird"},
+			wantEntities:   []wantEntity{{"ANIMAL", "turkey", "animal:turkey"}},
+			forbidEntities: []wantEntity{{"GPE", "Turkey", ""}},
+			forbidQueries:  []string{"Turkey country", "Ankara"},
 		},
 	}
 }
@@ -401,7 +449,7 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T01", text: "Floyd Mayweather è diventato uno dei pugili più riconoscibili al mondo.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
 			forbidQueries: []string{"guanti", "Pacquiao", "Mayweather Boxing Club", "pugile"},
 		},
 		{
@@ -416,8 +464,8 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T03", text: "Mike Tyson ha dominato la divisione dei pesi massimi alla fine degli anni '80.",
 			wantRequired: true, wantQueries: []string{"Mike Tyson boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
-			wantVisual:   []wantEntity{{"DATE", "fine degli anni '80", ""}},
+			wantEntities:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantVisual:    []wantEntity{{"DATE", "fine degli anni '80", ""}},
 			forbidQueries: []string{"pesi massimi", "anni '80"},
 		},
 		{
@@ -436,9 +484,9 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T06", text: "Tyson Fury ha costruito la sua reputazione attraverso la boxe dei pesi massimi.",
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities:    []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
-			forbidEntities:  []wantEntity{{"PERSON", "Mike Tyson", ""}},
-			forbidQueries:   []string{"Mike Tyson"},
+			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
+			forbidQueries:  []string{"Mike Tyson"},
 		},
 
 		// ── Gruppo 2 — due persone nella stessa frase ───────────────────
@@ -474,17 +522,17 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T10", text: "Floyd Mayweather avrebbe guadagnato più di 100 milioni di dollari dai grandi combattimenti.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
-			wantVisual:   []wantEntity{{"MONEY", "più di 100 milioni di dollari", ""}},
-			wantPhrases:  []string{"guadagnato più di 100 milioni di dollari"},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantVisual:    []wantEntity{{"MONEY", "più di 100 milioni di dollari", ""}},
+			wantPhrases:   []string{"guadagnato più di 100 milioni di dollari"},
 			forbidQueries: []string{"milioni", "dollari"},
 		},
 		{
 			id: "T11", text: "Manny Pacquiao ha guadagnato centinaia di milioni di dollari durante la sua carriera di pugile.",
 			wantRequired: true, wantQueries: []string{"Manny Pacquiao"},
-			wantEntities: []wantEntity{{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"}},
-			wantVisual:   []wantEntity{{"MONEY", "centinaia di milioni di dollari", ""}},
-			wantPhrases:  []string{"guadagnato centinaia di milioni di dollari"},
+			wantEntities:  []wantEntity{{"PERSON", "Manny Pacquiao", "person:manny-pacquiao"}},
+			wantVisual:    []wantEntity{{"MONEY", "centinaia di milioni di dollari", ""}},
+			wantPhrases:   []string{"guadagnato centinaia di milioni di dollari"},
 			forbidQueries: []string{"centinaia", "milioni", "dollari", "carriera"},
 		},
 
@@ -607,8 +655,8 @@ func goldenCasesIT() []goldenCase {
 		},
 		{
 			id: "T26", text: "La sua fortuna è cambiata drasticamente nel decennio successivo.",
-			wantRequired: false, // no antecedent available → no canonical person
-			wantEntities: []wantEntity{},
+			wantRequired:   false, // no antecedent available → no canonical person
+			wantEntities:   []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Floyd Mayweather", ""}},
 		},
 
@@ -616,8 +664,8 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T27", text: "Il combattente in questa storia è Tyson Fury, non Mike Tyson.",
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 
@@ -640,22 +688,22 @@ func goldenCasesIT() []goldenCase {
 		{
 			id: "T29", text: "Il combattente in questa storia è Tyson Fury, invece di Mike Tyson.",
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 		{
 			id: "T30", text: "Piuttosto che Mike Tyson, la storia segue Floyd Mayweather.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 		{
 			id: "T31", text: "A differenza di Mike Tyson, Floyd Mayweather ha evitato i riflettori.",
 			wantRequired: true, wantQueries: []string{"Floyd Mayweather"},
-			wantEntities: []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
-			wantNegated:  []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
+			wantEntities:  []wantEntity{{"PERSON", "Floyd Mayweather", "person:floyd-mayweather"}},
+			wantNegated:   []wantEntity{{"PERSON", "Mike Tyson", "person:mike-tyson"}},
 			forbidQueries: []string{"Mike Tyson"},
 		},
 
@@ -664,11 +712,10 @@ func goldenCasesIT() []goldenCase {
 			id: "T32", text: "Il pugile in seguito ha investito parte della sua fortuna in diverse attività.",
 			prior:        []string{"Tyson Fury"},
 			wantRequired: true, wantQueries: []string{"Tyson Fury boxer"},
-			wantEntities: []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
+			wantEntities:   []wantEntity{{"PERSON", "Tyson Fury", "person:tyson-fury"}},
 			forbidEntities: []wantEntity{{"PERSON", "Mike Tyson", ""}},
 			forbidQueries:  []string{"Mike Tyson", "pugile"},
-		},
-		{
+		},		{
 			// "Il pugile" must NOT ground on a non-boxer prior: without a
 			// resolvable antecedent the alias never invents an identity.
 			id: "T33", text: "Il pugile in seguito ha investito parte della sua fortuna in diverse attività.",
@@ -676,6 +723,55 @@ func goldenCasesIT() []goldenCase {
 			wantRequired: false,
 			wantEntities: []wantEntity{},
 			forbidEntities: []wantEntity{{"PERSON", "Tyson Fury", ""}, {"PERSON", "Mike Tyson", ""}, {"PERSON", "Steve Jobs", ""}},
+		},
+
+		// ── Gruppo 13 — coppie identità (Mercurio/Giordania/Turchia) ────
+		{
+			id: "T34", text: "Mercurio è il pianeta più piccolo del sistema solare.",
+			wantRequired: true, wantQueries: []string{"Mercury planet"},
+			wantEntities:   []wantEntity{{"OBJECT", "Mercury", "object:mercury"}},
+			forbidEntities: []wantEntity{{"PERSON", "Freddie Mercury", ""}},
+			forbidQueries:  []string{"Freddie Mercury", "cantante"},
+		},
+		{
+			id: "T35", text: "Freddie Mercury era il cantante principale della rock band Queen.",
+			wantRequired: true, wantQueries: []string{"Freddie Mercury singer"},
+			wantEntities: []wantEntity{{"PERSON", "Freddie Mercury", "person:freddie-mercury"}},
+			wantContexts: []wantEntity{{"CONTEXT", "singer", ""}},
+			forbidEntities: []wantEntity{{"OBJECT", "Mercury", ""}},
+			forbidQueries:  []string{"Mercury planet"},
+		},
+		{
+			id: "T36", text: "La Giordania è un piccolo paese con una storia ricca.",
+			wantRequired: true, wantQueries: []string{"Jordan"},
+			wantEntities:   []wantEntity{{"GPE", "Jordan", "gpe:jordan"}},
+			forbidEntities: []wantEntity{{"PERSON", "Michael Jordan", ""}},
+			forbidQueries:  []string{"Michael Jordan"},
+		},
+		{
+			// "Michael Jordan" (IT surface invariato) non deve mai generare
+			// l'entità paese "Jordan": in italiano la superficie "Giordania"
+			// non è un substring, ma il gate di contesto deve comunque tenere.
+			id: "T37", text: "Michael Jordan è una leggenda del basket.",
+			wantRequired: true, wantQueries: []string{"Michael Jordan basketball"},
+			wantEntities: []wantEntity{{"PERSON", "Michael Jordan", "person:michael-jordan"}},
+			wantContexts: []wantEntity{{"CONTEXT", "basketball", ""}},
+			forbidEntities: []wantEntity{{"GPE", "Jordan", ""}},
+			forbidQueries:  []string{"Giordania"},
+		},
+		{
+			id: "T38", text: "La Turchia è un paese con una lunga costa.",
+			wantRequired: true, wantQueries: []string{"Turkey"},
+			wantEntities:   []wantEntity{{"GPE", "Turkey", "gpe:turkey"}},
+			forbidEntities: []wantEntity{{"ANIMAL", "turkey", ""}},
+			forbidQueries:  []string{"turkey bird"},
+		},
+		{
+			id: "T39", text: "Il tacchino faceva la ruota nel cortile della fattoria all'alba.",
+			wantRequired: true, wantQueries: []string{"turkey bird"},
+			wantEntities:   []wantEntity{{"ANIMAL", "turkey", "animal:turkey"}},
+			forbidEntities: []wantEntity{{"GPE", "Turkey", ""}},
+			forbidQueries:  []string{"Turchia", "paese"},
 		},
 
 		// ── Coreference scene (Gruppo 8) — pro-drop italiano ────────────
