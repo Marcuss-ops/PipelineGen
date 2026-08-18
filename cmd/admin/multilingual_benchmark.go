@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/multilingual"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

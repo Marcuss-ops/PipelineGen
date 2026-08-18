@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
