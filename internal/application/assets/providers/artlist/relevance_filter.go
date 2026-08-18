@@ -183,8 +183,18 @@ func DefaultRelevanceFilter(req FilterRequest, candidates []Candidate) ([]Candid
 	out := make([]Candidate, 0, len(candidates))
 
 	for _, c := range candidates {
-		// Predicate #1: term overlap. (DISABLED to prevent preview clips from being dropped)
-		// We ignore the Term filter check entirely to retain all discovered assets.
+		// Predicate #1 (targeted): drop DOM-fallback page-only placeholders.
+		// The Node scraper's buildPageOnlyClips backfills the Title with the
+		// query term itself when the relevance overfetch finds no match. A
+		// candidate whose Title is byte-identical (case-insensitive) to the
+		// query term is such a fabricated placeholder — not a real clip title
+		// (real browser-API titles carry the numeric clip ID, never the query
+		// term). Dropping it honors godlike/07 honest-zero: a no-match query
+		// returns 0 results instead of the scraper's padded catalog.
+		if isBackfilledPlaceholderTitle(c.Title, req.Term) {
+			stats.DroppedByTerm++
+			continue
+		}
 
 		// Predicate #3: category match.
 		if len(req.Categories) > 0 && !categoryMatches(c.Categories, req.Categories) {
@@ -233,6 +243,17 @@ func DefaultRelevanceFilter(req FilterRequest, candidates []Candidate) ([]Candid
 
 	stats.OutputCount = len(out)
 	return out, stats
+}
+
+// isBackfilledPlaceholderTitle reports whether a candidate's Title is the
+// fabricated placeholder the Node scraper's buildPageOnlyClips produces when
+// no clip matches the query: Title is set to the query term verbatim. Real
+// browser-API clips carry the numeric clip ID (or a descriptive title) in
+// Title, never the query term itself.
+func isBackfilledPlaceholderTitle(title, term string) bool {
+	title = strings.TrimSpace(title)
+	term = strings.TrimSpace(term)
+	return title != "" && term != "" && strings.EqualFold(title, term)
 }
 
 // tokenizeFilterQuery lowercases + NFKD-normalizes the query and
