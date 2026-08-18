@@ -65,10 +65,3 @@ func NewHandlerStrict(d Deps) (*Handler, error) {
 	}
 	return NewHandler(d), nil
 }
-
-func (h *Handler) repoForSource(source string) appclips.ClipRepositoryPort {
-	if h.search == nil {
-		return nil
-	}
-	return h.search.repoForSource(source)
-}

@@ -195,7 +195,16 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
 	if w.publisher == nil {
-		return nil, fmt.Errorf("clip.render: render publisher is not wired")
+		// Rendering and publication are separate boundaries. A local render
+		// executor may be used by benchmarks and preparation tests without a
+		// publication port; return the canonical render facts and leave the
+		// publication projection absent.
+		emit("clip.render.completed", "Rust render_clip completed without publication", map[string]any{
+			"output_path": outcome.OutputPath, "size_bytes": outcome.SizeBytes,
+			"duration_sec": outcome.DurationSec, "ffmpeg_ms": outcome.FFmpegMS,
+		})
+		progress(100, "clip.render completed")
+		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, nil), nil
 	}
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:         j.ID,

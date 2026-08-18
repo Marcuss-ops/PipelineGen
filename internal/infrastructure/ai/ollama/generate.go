@@ -223,14 +223,21 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	// The Ollama client is the owner of the inference boundary, so it emits
 	// the canonical ollama/generate operation itself (MeasureOperation). The
 	// legacy Prometheus histogram above remains the migration projection;
-	// no caller re-times the same request independently.
-	var result string
-	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+	// no caller re-times the same request independently. A parallel fan-out
+	// binds its provenance (segment_id, worker_id, queued_at) to ctx via
+	// WithOperationMeta; it is merged onto this single canonical operation so
+	// the fan-out can be reconstructed without a second timer.
+	info := kernobs.OperationInfo{
 		Stage:     kernobs.StageGenerate,
 		Component: kernobs.ComponentOllama,
 		Operation: kernobs.OperationGenerate,
 		Items:     1,
-	}, func(ctx context.Context) error {
+	}
+	if meta, ok := kernobs.OperationMetaFromContext(ctx); ok {
+		meta.Apply(&info)
+	}
+	var result string
+	err := kernobs.MeasureOperation(ctx, info, func(ctx context.Context) error {
 		out, chatErr := g.client.Chat(ctx, messages, options, req.Format)
 		result = out
 		return chatErr

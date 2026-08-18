@@ -477,7 +477,7 @@ measurements:
     current_owner: "internal/infrastructure/observability/metrics_runreports.go"
     current_writer: "RunObserver.emit collector callback"
     current_storage: "Prometheus histograms/counter"
-    current_metric: "job_run_duration_seconds, job_run_queue_wait_seconds, job_run_retries_total"
+    current_metric: "job_run_duration_seconds, job_run_queue_wait_seconds, job_run_retries_total, job_operation_duration_seconds{component,operation,status}, job_stage_duration_seconds{stage,status}"
     canonical_type: infrastructure_metric
     canonical_stage: ""
     canonical_component: "runtime"

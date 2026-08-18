@@ -1,6 +1,9 @@
 package observability
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // OperationInfo describes one external-boundary operation.
 type OperationInfo struct {
@@ -9,9 +12,14 @@ type OperationInfo struct {
 	Operation OperationName
 	Provider  string
 	// CacheStatus records the outcome of the cache lookup around the call.
-	CacheStatus string
-	Items       int64
-	Bytes       int64
+	CacheStatus  string
+	Items        int64
+	Bytes        int64
+	WorkerID     string
+	QueuedAt     time.Time
+	StartedAt    time.Time
+	FinishedAt   time.Time
+	MetadataJSON string
 }
 
 // Operation measures one external-boundary call:
@@ -33,7 +41,11 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 		}
 		return fn(ctx)
 	}
-	start := r.now()
+	started := r.now()
+	queued := info.QueuedAt
+	if queued.IsZero() {
+		queued = started
+	}
 	op := OperationReport{
 		ObservationID: NewObservationID(),
 		Stage:         string(info.Stage),
@@ -45,6 +57,10 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 		Items:         nonNegative(info.Items),
 		Bytes:         nonNegative(info.Bytes),
 		CacheStatus:   info.CacheStatus,
+		WorkerID:      info.WorkerID,
+		QueuedAt:      queued,
+		StartedAt:     started,
+		MetadataJSON:  info.MetadataJSON,
 	}
 	if fn == nil {
 		op.Status = StageStatusCompleted
@@ -56,14 +72,21 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 			if rec := recover(); rec != nil {
 				op.Status = StageStatusFailed
 				op.ErrorCode = errorCode(panicError(rec))
-				op.DurationMs = nonNegative(r.now().Sub(start).Milliseconds())
+				op.FinishedAt = r.now()
+				op.DurationMs = nonNegative(op.FinishedAt.Sub(started).Milliseconds())
+				op.QueueWaitMs = nonNegative(started.Sub(queued).Milliseconds())
 				r.recordOperation(op)
 				panic(rec)
 			}
 		}()
 		return fn(ctx)
 	}()
-	op.DurationMs = nonNegative(r.now().Sub(start).Milliseconds())
+	op.FinishedAt = r.now()
+	if !info.FinishedAt.IsZero() {
+		op.FinishedAt = info.FinishedAt
+	}
+	op.DurationMs = nonNegative(op.FinishedAt.Sub(started).Milliseconds())
+	op.QueueWaitMs = nonNegative(started.Sub(queued).Milliseconds())
 	if err != nil {
 		op.Status = StageStatusFailed
 		op.ErrorCode = errorCode(err)
@@ -109,6 +132,12 @@ func (r *Run) RecordOperation(info OperationInfo, durationMs int64) {
 		Items:         nonNegative(info.Items),
 		Bytes:         nonNegative(info.Bytes),
 		CacheStatus:   info.CacheStatus,
+		WorkerID:      info.WorkerID,
+		QueuedAt:      info.QueuedAt,
+		StartedAt:     info.StartedAt,
+		FinishedAt:    info.FinishedAt,
+		QueueWaitMs:   nonNegative(info.StartedAt.Sub(info.QueuedAt).Milliseconds()),
+		MetadataJSON:  info.MetadataJSON,
 	}
 	r.recordOperation(op)
 }

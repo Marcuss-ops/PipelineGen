@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -47,13 +46,8 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 		generator = string(d.ID)
 	} else if d, ok := asset.DefaultProviderRegistry().Match(prompt); ok && d.Origin == asset.ImageOriginGenerated {
 		generator = string(d.ID)
-	} else if imgAsset.MetadataJSON != "" && imgAsset.MetadataJSON != "{}" {
-		var meta map[string]any
-		if err := json.Unmarshal([]byte(imgAsset.MetadataJSON), &meta); err == nil {
-			if genVal, ok := meta["generator"].(string); ok && genVal != "" {
-				generator = genVal
-			}
-		}
+	} else if gen := imgAsset.ImageMetadata().Generator; gen != "" {
+		generator = gen
 	}
 
 	if strings.HasPrefix(prompt, "AI generated image") {

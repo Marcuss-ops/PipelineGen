@@ -12,7 +12,7 @@ import (
 
 // ReportSource loads the canonical inputs for one job. It is the read-only
 // seam the aggregator depends on; production wiring supplies an adapter that
-// reads the persisted RunReport, the job's AudioPipelineMetrics, and the
+// reads the persisted RunReport and its audio-operation projection, plus the
 // recorded execution steps. No implementation in this package performs I/O.
 type ReportSource interface {
 	Load(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, []scriptgeneration.ExecutionStep, error)

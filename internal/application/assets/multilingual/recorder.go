@@ -132,6 +132,24 @@ func (r *Recorder) RecordRun(ctx context.Context, m RunMetrics) {
 	if r == nil || r.registry == nil {
 		return
 	}
+	// When called from a tracked execution, the canonical RunReport owns the
+	// run identity and lifecycle timing. RunMetrics remains the compatibility
+	// payload for benchmark-only fields and is never allowed to replace those
+	// canonical facts.
+	if run := kernobs.FromContext(ctx); run != nil {
+		if report := run.Report(); report != nil {
+			if report.JobID != "" {
+				m.JobID = report.JobID
+			}
+			m.StartedAt = report.StartedAt
+			m.CompletedAt = report.FinishedAt
+			m.WallMS = report.WallTimeMs
+			m.SumOperationMS = report.AccumulatedOperationMs
+			if report.Status == kernobs.StatusFailed {
+				m.FailedCount = maxInt(m.FailedCount, 1)
+			}
+		}
+	}
 	status := "SUCCEEDED"
 	if m.FailedCount > 0 {
 		status = "FAILED"
@@ -177,12 +195,22 @@ func (r *Recorder) RecordRun(ctx context.Context, m RunMetrics) {
 	}
 }
 
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // RecordOperation persists one per-clip-language operation measurement into
 // performance_operations. Best-effort: a write failure is a logged warning.
 func (r *Recorder) RecordOperation(ctx context.Context, m kernobs.MeasuredOperation) {
 	if r == nil || r.ops == nil {
 		return
 	}
+	// The canonical run owns the observation; performance storage is only a
+	// read-model projection of the same measured fact.
+	kernobs.RecordMeasuredOperation(ctx, m)
 	if err := r.ops.RecordOperation(ctx, m); err != nil {
 		r.log.Warn("multilingual metrics: record operation", zap.String("operation", m.Operation), zap.Error(err))
 	}

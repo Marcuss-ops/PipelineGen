@@ -191,7 +191,12 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		// two items with same lang+voice but different text get different
 		// filenames, no sibling collision). cmd.Validate already gates
 		// Text/Language non-empty above, so the error path is unreachable
-		// in production; panic surfaces regressions loud-fast.
+		// in production.
+		//
+		// Graceful degradation (godlike/07 minimal-blast-radius): a
+		// filename build failure is a SECONDARY concern — it must degrade
+		// this single item to a failed fan-out entry, never panic the
+		// whole parent job/worker.
 		filename := itemSpec.Filename
 		var ferr error
 		if filename == "" {
@@ -202,8 +207,16 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			})
 		}
 		if ferr != nil {
-			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (FanoutUseCase.Execute): %v (item=%+v, parent_job_id=%s)",
-				ferr, itemSpec, parentJobID))
+			u.deps.Logger.Warn("FanoutUseCase: child filename build failed",
+				zap.String("parent_job_id", parentJobID),
+				zap.Int("item_index", idx),
+				zap.String("language", string(itemSpec.Language)),
+				zap.Error(ferr))
+			result.FailedEnqueueCount++
+			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
+			result.ChildJobIDs = append(result.ChildJobIDs, "")
+			result.OK = false
+			continue
 		}
 
 		item := voiceover.GenerateVoiceoverItemCommand{

@@ -393,12 +393,3 @@ func durableSourceIDForGroup(stageKey string, plans []ClipPlan) string {
 	}
 	return stageKey
 }
-
-// groupPlans groups ClipPlan entries by SourceID.
-func groupPlans(plans []ClipPlan) map[string][]ClipPlan {
-	grouped := make(map[string][]ClipPlan)
-	for _, plan := range plans {
-		grouped[plan.SourceID] = append(grouped[plan.SourceID], plan)
-	}
-	return grouped
-}

@@ -48,7 +48,7 @@ services:
       - artlist-scraper
       - searxng
     ports:
-      - "8000:8000"
+      - "8081:8000"
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro

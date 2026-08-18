@@ -39,10 +39,30 @@ var (
 		Name: "job_run_retries_total",
 		Help: "Total retries consumed by job runs, by job type (job.RetryCount snapshot at claim time).",
 	}, []string{"job_type"})
+
+	// Canonical operation / stage observations projected into Prometheus.
+	// These are the LIVE projection of the observability SSOT: a boundary's
+	// own direct Observe() timer is redundant once its canonical operation is
+	// recorded, because the same duration flows here with stable,
+	// low-cardinality labels (component/operation/stage/status only).
+	jobOperationDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "job_operation_duration_seconds",
+		Help:    "Duration of one canonical operation observation (external-boundary call), by component, operation and status.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300},
+	}, []string{"component", "operation", "status"})
+
+	jobStageDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "job_stage_duration_seconds",
+		Help:    "Duration of one canonical stage observation, by stage name and status.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600},
+	}, []string{"stage", "status"})
 )
 
 func init() {
-	prometheus.MustRegister(jobRunDurationSeconds, jobRunQueueWaitSeconds, jobRunRetriesTotal)
+	prometheus.MustRegister(
+		jobRunDurationSeconds, jobRunQueueWaitSeconds, jobRunRetriesTotal,
+		jobOperationDurationSeconds, jobStageDurationSeconds,
+	)
 }
 
 // RunReportsCollector implements kernobs.Collector. It holds the
@@ -53,6 +73,8 @@ type RunReportsCollector struct {
 	duration  *prometheus.HistogramVec
 	queueWait *prometheus.HistogramVec
 	retries   *prometheus.CounterVec
+	operation *prometheus.HistogramVec
+	stage     *prometheus.HistogramVec
 }
 
 // NewRunReportsCollector wires the production (default-registry)
@@ -62,6 +84,8 @@ func NewRunReportsCollector() *RunReportsCollector {
 		duration:  jobRunDurationSeconds,
 		queueWait: jobRunQueueWaitSeconds,
 		retries:   jobRunRetriesTotal,
+		operation: jobOperationDurationSeconds,
+		stage:     jobStageDurationSeconds,
 	}
 }
 
@@ -70,8 +94,10 @@ func newRunReportsCollectorWithVectors(
 	duration *prometheus.HistogramVec,
 	queueWait *prometheus.HistogramVec,
 	retries *prometheus.CounterVec,
+	operation *prometheus.HistogramVec,
+	stage *prometheus.HistogramVec,
 ) *RunReportsCollector {
-	return &RunReportsCollector{duration: duration, queueWait: queueWait, retries: retries}
+	return &RunReportsCollector{duration: duration, queueWait: queueWait, retries: retries, operation: operation, stage: stage}
 }
 
 // Collect implements kernobs.Collector. Best-effort and nil-tolerant:
@@ -98,5 +124,27 @@ func (c *RunReportsCollector) Collect(_ context.Context, report *kernobs.RunRepo
 	if report.Counters.Retries > 0 && c.retries != nil {
 		c.retries.WithLabelValues(jobType).Add(float64(report.Counters.Retries))
 	}
+	// Canonical operation + stage observations are the SSOT: project them
+	// into low-cardinality histograms so a boundary's own direct Observe()
+	// timer becomes redundant once its canonical operation is wired.
+	for _, op := range report.Operations {
+		if op.DurationMs > 0 && c.operation != nil {
+			c.operation.WithLabelValues(labelOrUnknown(op.Component), labelOrUnknown(op.Operation), labelOrUnknown(op.Status)).Observe(float64(op.DurationMs) / 1000.0)
+		}
+	}
+	for _, st := range report.Stages {
+		if st.DurationMs > 0 && c.stage != nil {
+			c.stage.WithLabelValues(labelOrUnknown(st.Name), labelOrUnknown(st.Status)).Observe(float64(st.DurationMs) / 1000.0)
+		}
+	}
 	return nil
+}
+
+// labelOrUnknown keeps an empty label value out of Prometheus by falling
+// back to the stable "unknown" token (mirrors the job-type fallback).
+func labelOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }

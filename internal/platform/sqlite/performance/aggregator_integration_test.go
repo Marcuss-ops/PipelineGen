@@ -25,6 +25,15 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 		QueueWaitMs: 1850,
 		Operations: []kernobs.OperationReport{
 			{Component: string(kernobs.ComponentOllama), Operation: string(kernobs.OperationGenerate), DurationMs: 18340, Items: 1},
+			{Stage: "voiceover", Component: string(kernobs.ComponentTTS), Operation: string(kernobs.OperationSynthesize), DurationMs: 12410, Items: 14},
+			{Stage: "audio_compile", Component: "audio", Operation: "timeline_compile", DurationMs: 900},
+			{Stage: "audio_compile", Component: "audio", Operation: "clip_audio_prepare", DurationMs: 20},
+			{Stage: "audio_compile", Component: "audio", Operation: "audio_plan_compile", DurationMs: 31},
+			{Stage: "audio_compile", Component: "audio", Operation: "mix", DurationMs: 4120},
+			{Stage: "audio_compile", Component: "audio", Operation: "aac_encode", DurationMs: 7130},
+			{Stage: "audio_compile", Component: "audio", Operation: "probe", DurationMs: 281, OutputDurationMS: 93650},
+			{Stage: "audio_compile", Component: "audio", Operation: "hash", DurationMs: 144},
+			{Stage: "audio_compile", Component: "rust", Operation: "audio_render", DurationMs: 18400},
 			{Component: string(kernobs.ComponentDrive), Stage: "audio_compile", Operation: string(kernobs.OperationUpload), DurationMs: 2380, Items: 1},
 		},
 		Waits: []kernobs.WaitReport{
@@ -99,7 +108,7 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 	if got.Waits.QueueMS != 1850 || got.Waits.CompletionMS != 340 {
 		t.Fatalf("waits = %+v", got.Waits)
 	}
-	if got.Audio.RTF != 0.2 || got.Audio.TTSCalls != 14 {
+	if got.Audio.RTF != 18400.0/93650.0 || got.Audio.TTSCalls != 14 {
 		t.Fatalf("audio = %+v", got.Audio)
 	}
 
@@ -137,7 +146,7 @@ func TestAggregatorComparesAcrossJobs(t *testing.T) {
 
 	insert := func(jobID string, wall, mix int64) {
 		t.Helper()
-		report := kernobs.RunReport{RunID: "run-" + jobID, JobID: jobID, JobType: "script.generate", Status: kernobs.StatusSucceeded, WallTimeMs: wall}
+		report := kernobs.RunReport{RunID: "run-" + jobID, JobID: jobID, JobType: "script.generate", Status: kernobs.StatusSucceeded, WallTimeMs: wall, Operations: []kernobs.OperationReport{{Stage: "audio_compile", Component: "audio", Operation: "mix", DurationMs: mix}}}
 		reportJSON, err := report.JSON()
 		if err != nil {
 			t.Fatal(err)

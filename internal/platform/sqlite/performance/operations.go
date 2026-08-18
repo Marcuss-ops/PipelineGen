@@ -1,10 +1,10 @@
 // Package performance — operations.go owns the platform adapter for
 // per-operation media performance (table performance_operations, migration
-// 217). It is the single durable sink for the ObservedExecutor's
-// OperationRecorder and the query-side OperationAnalytics (the dashboard /
+// 217). It is the analytics projection sink for the ObservedExecutor's
+// canonical kernel observation and the query-side OperationAnalytics (the dashboard /
 // benchmark comparison answer to "what does each operation cost").
 //
-// One OperationMeasurement → one performance_operations row. run_id/job_id
+// One kernel MeasuredOperation → one performance_operations row. run_id/job_id
 // are resolved from the kernobs run bound to the request context (” when the
 // operation runs outside a tracked run); step_id has no canonical context
 // spelling today and stays ”. The Real-Time Factor (elapsed / source
@@ -48,10 +48,8 @@ func (s *OperationStore) RecordOperation(ctx context.Context, m kernobs.Measured
 	if err := validateMeasurement(m); err != nil {
 		return err
 	}
-	// The run-bound report is authoritative. The performance table below is
-	// only an analytics projection of this same measurement; it is never a
-	// second timing point or a second contract.
-	kernobs.RecordMeasuredOperation(ctx, m)
+	// This adapter is projection-only. The measurement wrapper records the
+	// same fact in the run-bound report before invoking this sink.
 	runID, jobID, stepID := resolveIdentity(ctx)
 	cacheHit := 0
 	if m.CacheHit {

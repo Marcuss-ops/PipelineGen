@@ -360,6 +360,10 @@ func projectCanonicalTimings(report *kernobs.RunReport) scriptpkg.GenerationTimi
 			out.PlanBuildMs = stage.DurationMs
 		case "script.engine":
 			out.EngineMs = stage.DurationMs
+		case "script.prepare", "script.normalize", "script.validate", "script.postprocess", "audio.pipeline":
+			// These are canonical orchestration stages, not postprocessor
+			// operations. Keep them in RunReport only; PostprocessMs is a
+			// compatibility projection of actual postprocessor observations.
 		default:
 			out.PostprocessMs[stage.Name] = stage.DurationMs
 		}

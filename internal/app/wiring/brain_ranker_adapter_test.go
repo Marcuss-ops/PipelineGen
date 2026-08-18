@@ -1,4 +1,4 @@
-package ranker
+package wiring
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-func candidate(id string, score float64, mediaType string) brain.Candidate {
+func mmRankCandidate(id string, score float64, mediaType string) brain.Candidate {
 	return brain.Candidate{
 		ID:        id,
 		AssetID:   "asset-" + id,
@@ -19,12 +19,12 @@ func candidate(id string, score float64, mediaType string) brain.Candidate {
 	}
 }
 
-func TestDefaultRanker_OrdersByScore(t *testing.T) {
+func TestMediaMemoryRankerAdapter_OrdersByScore(t *testing.T) {
 	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
-		candidate("c-low", 0.3, "video"),
-		candidate("c-high", 0.9, "video"),
-		candidate("c-mid", 0.6, "video"),
+		mmRankCandidate("c-low", 0.3, "video"),
+		mmRankCandidate("c-high", 0.9, "video"),
+		mmRankCandidate("c-mid", 0.6, "video"),
 	}
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
@@ -39,16 +39,16 @@ func TestDefaultRanker_OrdersByScore(t *testing.T) {
 		t.Fatalf("expected 3 candidates, got %d", len(ranked))
 	}
 	if ranked[0].ID != "c-high" || ranked[1].ID != "c-mid" || ranked[2].ID != "c-low" {
-		t.Errorf("unexpected order: %v", idsOf(ranked))
+		t.Errorf("unexpected order: %v", mmRankCandidateIDs(ranked))
 	}
 }
 
-func TestDefaultRanker_RespectsLimit(t *testing.T) {
+func TestMediaMemoryRankerAdapter_RespectsLimit(t *testing.T) {
 	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
-		candidate("a", 0.9, "video"),
-		candidate("b", 0.8, "video"),
-		candidate("c", 0.7, "video"),
+		mmRankCandidate("a", 0.9, "video"),
+		mmRankCandidate("b", 0.8, "video"),
+		mmRankCandidate("c", 0.7, "video"),
 	}
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
@@ -63,11 +63,11 @@ func TestDefaultRanker_RespectsLimit(t *testing.T) {
 	}
 }
 
-func TestDefaultRanker_MediaTypeBonus(t *testing.T) {
+func TestMediaMemoryRankerAdapter_MediaTypeBonus(t *testing.T) {
 	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
-		candidate("img", 0.85, "image"),
-		candidate("vid", 0.80, "video"),
+		mmRankCandidate("img", 0.85, "image"),
+		mmRankCandidate("vid", 0.80, "video"),
 	}
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
@@ -81,11 +81,11 @@ func TestDefaultRanker_MediaTypeBonus(t *testing.T) {
 	// Video candidate should win despite lower base score thanks to
 	// the slot-fitness bonus.
 	if ranked[0].ID != "vid" {
-		t.Errorf("expected video candidate to win, got %v", idsOf(ranked))
+		t.Errorf("expected video candidate to win, got %v", mmRankCandidateIDs(ranked))
 	}
 }
 
-func idsOf(in []brain.Candidate) []string {
+func mmRankCandidateIDs(in []brain.Candidate) []string {
 	out := make([]string, len(in))
 	for i := range in {
 		out[i] = in[i].ID
@@ -93,11 +93,11 @@ func idsOf(in []brain.Candidate) []string {
 	return out
 }
 
-func TestDefaultRanker_TieBreakByID(t *testing.T) {
+func TestMediaMemoryRankerAdapter_TieBreakByID(t *testing.T) {
 	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
-		candidate("b", 0.5, "video"),
-		candidate("a", 0.5, "video"),
+		mmRankCandidate("b", 0.5, "video"),
+		mmRankCandidate("a", 0.5, "video"),
 	}
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
@@ -108,6 +108,6 @@ func TestDefaultRanker_TieBreakByID(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ranked[0].ID != "a" {
-		t.Errorf("expected ID tie-break to order ascending, got %v", idsOf(ranked))
+		t.Errorf("expected ID tie-break to order ascending, got %v", mmRankCandidateIDs(ranked))
 	}
 }

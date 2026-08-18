@@ -65,22 +65,6 @@ func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName st
 	return a.lifecycle.Rename(ctx, fileID, newName)
 }
 
-// zapLogAdapter adapts *zap.Logger to storage.Logger.
-type zapLogAdapter struct{ log *zap.Logger }
-
-func (a *zapLogAdapter) Info(msg string, keysAndValues ...any) {
-	a.log.Sugar().Infow(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Warn(msg string, keysAndValues ...any) {
-	a.log.Sugar().Warnw(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Error(msg string, keysAndValues ...any) {
-	a.log.Sugar().Errorw(msg, keysAndValues...)
-}
-func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
-	a.log.Sugar().Debugw(msg, keysAndValues...)
-}
-
 // MediaIngestBundle is the capability bundle for the media-ingest module.
 //
 // F2.7 (June 2026): Publisher (delivery.Publisher) added. The legacy

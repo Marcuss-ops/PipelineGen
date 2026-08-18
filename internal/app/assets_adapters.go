@@ -8,12 +8,9 @@ import (
 	"go.uber.org/zap"
 
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Diagnostics adapters ───────────────────────────────────────────────
@@ -119,77 +116,6 @@ func (a *diagAssetStatsAdapter) GetStats(ctx context.Context) (*appdiag.AssetSta
 
 // ── Search adapters ────────────────────────────────────────────────────
 
-// searchRegistryAdapter adapts *providers.Registry to search.SearchProviderRegistry.
-type searchRegistryAdapter struct {
-	registry *providers.Registry
-}
-
-func (a *searchRegistryAdapter) SearchProviders() []appsearch.SearchProviderPort {
-	if a.registry == nil {
-		return nil
-	}
-	all := a.registry.All()
-	out := make([]appsearch.SearchProviderPort, 0, len(all))
-	for _, p := range all {
-		sp, ok := p.(providers.SearchProvider)
-		if !ok {
-			continue
-		}
-		out = append(out, &searchProviderAdapter{provider: sp})
-	}
-	return out
-}
-
-// searchProviderAdapter adapts a single providers.SearchProvider to search.SearchProviderPort.
-type searchProviderAdapter struct {
-	provider providers.SearchProvider
-}
-
-func (a *searchProviderAdapter) Name() string {
-	return a.provider.Name()
-}
-
-func (a *searchProviderAdapter) Capabilities() []string {
-	caps := a.provider.Capabilities()
-	out := make([]string, len(caps))
-	for i, c := range caps {
-		out[i] = string(c)
-	}
-	return out
-}
-
-func (a *searchProviderAdapter) Search(ctx context.Context, req appsearch.SearchRequest) (*appsearch.SearchResult, error) {
-	provReq := providers.SearchRequest{
-		Query: req.Query,
-		Limit: req.Limit,
-	}
-	if req.MediaType != "" && req.MediaType != "all" {
-		provReq.Filters.MediaTypes = []asset.MediaType{asset.MediaType(req.MediaType)}
-	}
-	result, err := a.provider.Search(ctx, provReq)
-	if err != nil {
-		return nil, err
-	}
-	candidates := make([]appsearch.SearchCandidate, len(result.Candidates))
-	for i, c := range result.Candidates {
-		dur := c.Duration.Seconds()
-		candidates[i] = appsearch.SearchCandidate{
-			SourceRef:    c.SourceRef,
-			Title:        c.Title,
-			ThumbnailURL: c.ThumbnailURL,
-			PreviewURL:   c.PreviewURL,
-			Duration:     dur,
-			Score:        c.Score,
-		}
-	}
-	return &appsearch.SearchResult{
-		Candidates:    candidates,
-		NextPageToken: result.NextPageToken,
-	}, nil
-}
-
-// searchVectorAdapter was removed — Qdrant capability consolidated into mediasearch.
-
 // searchCatalogAdapter adapts *catalog.Repository to search.LocalCatalogPort.
 type searchCatalogAdapter struct {
 	catalog *catalog.Repository
@@ -210,46 +136,6 @@ func (a *searchCatalogAdapter) SearchAll(ctx context.Context, query string) ([]a
 		}
 	}
 	return out, nil
-}
-
-// searchClipAdapter adapts *catalog.Repository to search.LocalClipPort.
-type searchClipAdapter struct {
-	catalog *catalog.Repository
-}
-
-func (a *searchClipAdapter) SearchClips(ctx context.Context, source, query string) ([]appsearch.LocalClipResult, error) {
-	records, err := a.catalog.SearchClips(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]appsearch.LocalClipResult, 0, len(records))
-	for _, r := range records {
-		if source != "" && source != "all" && r.Source != source {
-			continue
-		}
-		out = append(out, appsearch.LocalClipResult{
-			ID:   r.ID,
-			Name: r.Name,
-		})
-	}
-	return out, nil
-}
-
-// searchConfigAdapter adapts *config.Config to search.ConfigPort.
-type searchConfigAdapter struct {
-	cfg *config.Config
-}
-
-func (a *searchConfigAdapter) VectorConfig() appsearch.VectorConfig {
-	// QDRANT-004 PR1 (June 2026): the previous comment claimed the
-	// VectorSearch config was removed (PG-034). It was NOT — the
-	// Qdrant capability was consolidated into mediasearch but
-	// VectorConfig remains the canonical channel-name surface that
-	// the orchestrator reads. SSOT for channel names is
-	// qdrant.DefaultV3Schema(); this adapter intentionally
-	// returns zero-value so mediasearch.Service can fall back to
-	// its canonical constants without coupling the two layers.
-	return appsearch.VectorConfig{}
 }
 
 // zapDiagLogAdapter adapts *zap.Logger to diagnostics.Logger.

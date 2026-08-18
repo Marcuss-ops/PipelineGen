@@ -68,34 +68,3 @@ func TestRecordAudioOperationNoRunIsNoop(t *testing.T) {
 	// No run bound to ctx: instrumentation must be a safe no-op, never a panic.
 	r.recordAudioOperation(context.Background(), "mix", "audio", 100)
 }
-
-func TestRecordVoiceoverOperationProjectsTTS(t *testing.T) {
-	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
-	ctx := kernobs.WithRun(context.Background(), run)
-	r := &Runner{}
-
-	r.recordVoiceoverOperation(ctx, 44000)
-	run.Finish()
-
-	ops := run.Report().Operations
-	if len(ops) != 1 {
-		t.Fatalf("operations = %d, want 1", len(ops))
-	}
-	op := ops[0]
-	if op.Stage != voiceoverStage || op.Component != string(kernobs.ComponentTTS) || op.Operation != string(kernobs.OperationSynthesize) || op.DurationMs != 44000 {
-		t.Fatalf("operation = stage=%s component=%s operation=%s ms=%d", op.Stage, op.Component, op.Operation, op.DurationMs)
-	}
-}
-
-func TestRecordVoiceoverOperationSkipUnmeasured(t *testing.T) {
-	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
-	ctx := kernobs.WithRun(context.Background(), run)
-	r := &Runner{}
-
-	r.recordVoiceoverOperation(ctx, 0)
-	run.Finish()
-
-	if got := len(run.Report().Operations); got != 0 {
-		t.Fatalf("operations = %d, want 0", got)
-	}
-}

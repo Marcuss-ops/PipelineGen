@@ -309,6 +309,32 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 		"--no-warnings must appear exactly once (BaseArgs() is the SOLE owner; no manual re-declaration)")
 }
 
+// TestDownload_FullSource_IncludesContinueFlag pins the resume contract:
+// every full-source yt-dlp download MUST carry --continue so an interrupted
+// download (e.g. killed by a graceful server restart) resumes from its
+// on-disk .part file on the next attempt instead of restarting from 0%.
+//
+// The stock pipeline's staging root (acquisition.FilesystemStager) is
+// persistent across restarts, so this flag is what lets a re-claimed job
+// continue an in-flight download rather than re-fetching the whole source.
+func TestDownload_FullSource_IncludesContinueFlag(t *testing.T) {
+	setupTestAllowlist(t)
+	d, runner := newTestDownloader(t, "")
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		OutputPath: outputPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.calls)
+
+	assert.True(t, hasFlagArg(runner.argv, "--continue"),
+		"full-source downloads must include --continue so interrupted downloads resume from .part")
+}
+
 // TestDownload_FileURL_CopiesLocalSource is the hermetic replay path
 // guard: file:// URLs MUST bypass yt-dlp and copy the local file into
 // the requested output template. This is the fast path used by the

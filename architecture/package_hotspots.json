@@ -5,13 +5,13 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 115,
+      "baseline_files": 117,
       "baseline": {
-        "files": 115,
+        "files": 117,
         "max_loc": 17092
       },
       "current": {
-        "files": 111,
+        "files": 117,
         "max_loc": 14618
       },
       "target_packages": [
@@ -45,16 +45,16 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 144,
+      "baseline_files": 153,
       "baseline": {
-        "files": 144,
+        "files": 153,
         "max_loc": 26637
       },
       "current": {
-        "files": 144,
+        "files": 153,
         "max_loc": 23098
       },
-      "note": "Composition-root adapters for the clip.render capability (cliprender_adapters.go, cliprender_transcript.go, cliprender_plan.go) registered under this hotspot; owner/deadline/targets unchanged.",
+      "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/app/workerruntime",
         "internal/app/wiring",
@@ -81,6 +81,26 @@
         "internal/application/assets/providers/stock/stockpipeline/publish",
         "internal/application/assets/providers/stock/stockpipeline/cleanup",
         "internal/application/assets/providers/stock/stockpipeline/reconcile"
+      ]
+    },
+    {
+      "path": "internal/kernel/asset",
+      "owner": "kernel asset model decomposition",
+      "deadline": "2026-09-30",
+      "baseline_files": 66,
+      "baseline": {
+        "files": 66,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 66,
+        "max_loc": 0
+      },
+      "note": "Existing asset kernel exceeds the global package cap; decomposition remains tracked as a governed hotspot.",
+      "target_packages": [
+        "internal/kernel/asset/metadata",
+        "internal/kernel/asset/render",
+        "internal/kernel/asset/texttracks"
       ]
     },
     {

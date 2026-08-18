@@ -304,6 +304,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
+		// Localized render fan-out: bridge the runner's per-(scene, language)
+		// trigger to the canonical LocalizationService (Rust render_clip) so a
+		// clip starts rendering the moment its translation + TTS are ready.
+		// Best-effort: the fan-out stays a legitimate no-op when the
+		// localization stack (asset registry + Drive + text-track store) is
+		// not available in this composition.
+		wireLocalizedRenderEnqueuer(cfg, root, log, durableRunner)
 		log.Info("wireScriptFlow: durable single-item runtime wired through canonical RenderPlan executor")
 	} else {
 		log.Warn("wireScriptFlow: Rust media executor path is empty; durable RenderPlan runtime is unavailable")

@@ -2,6 +2,8 @@ package drive
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -13,7 +15,8 @@ import (
 )
 
 const (
-	googleDocsBaseURL = "https://docs.google.com/document/d/%s/edit"
+	googleDocsBaseURL      = "https://docs.google.com/document/d/%s/edit"
+	docContentHashProperty = "pipelinegen_content_sha256"
 )
 
 func googleDocsEditURL(docID string) string {
@@ -133,7 +136,8 @@ func (d *DocClientImpl) CreateDocIdempotent(ctx context.Context, title, content,
 	}
 
 	if existing != nil {
-		if !forceRefresh {
+		contentHash := sha256Hex(content)
+		if !forceRefresh && (existing.ContentSHA256 == "" || existing.ContentSHA256 == contentHash) {
 			return existing, nil
 		}
 		if err := d.UpdateDoc(ctx, existing.ID, title, content); err != nil {
@@ -141,6 +145,10 @@ func (d *DocClientImpl) CreateDocIdempotent(ctx context.Context, title, content,
 		}
 		existing.Title = title
 		existing.Content = content
+		existing.ContentSHA256 = contentHash
+		if err := d.setAppProperty(ctx, existing.ID, docContentHashProperty, contentHash); err != nil {
+			return existing, fmt.Errorf("document updated but content hash tag failed: %w", err)
+		}
 		return existing, nil
 	}
 
@@ -154,6 +162,11 @@ func (d *DocClientImpl) CreateDocIdempotent(ctx context.Context, title, content,
 		// return the created doc so callers do not lose the link.
 		return doc, fmt.Errorf("doc created but idempotency tag failed: %w", err)
 	}
+	contentHash := sha256Hex(content)
+	if err := d.setAppProperty(ctx, doc.ID, docContentHashProperty, contentHash); err != nil {
+		return doc, fmt.Errorf("doc created but content hash tag failed: %w", err)
+	}
+	doc.ContentSHA256 = contentHash
 	return doc, nil
 }
 
@@ -171,7 +184,7 @@ func (d *DocClientImpl) findDocByIdempotencyKey(ctx context.Context, folderID, k
 	files, err := d.driveService.Files.List().
 		Q(q).
 		PageSize(1).
-		Fields("files(id, name, webViewLink)").
+		Fields("files(id, name, webViewLink, appProperties)").
 		Context(ctx).
 		Do()
 	if err != nil {
@@ -182,10 +195,16 @@ func (d *DocClientImpl) findDocByIdempotencyKey(ctx context.Context, folderID, k
 	}
 	f := files.Files[0]
 	return &Doc{
-		ID:    f.Id,
-		Title: f.Name,
-		URL:   googleDocsEditURL(f.Id),
+		ID:            f.Id,
+		Title:         f.Name,
+		URL:           googleDocsEditURL(f.Id),
+		ContentSHA256: f.AppProperties[docContentHashProperty],
 	}, nil
+}
+
+func sha256Hex(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
 }
 
 func (d *DocClientImpl) setAppProperty(ctx context.Context, docID, key, value string) error {

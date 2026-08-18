@@ -37,8 +37,6 @@ import (
 	"sync"
 	"time"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-
 	"go.uber.org/zap"
 )
 
@@ -63,41 +61,6 @@ func newLiveSearchCache() *liveSearchCache {
 	return &liveSearchCache{
 		items: make(map[string]liveSearchCacheEntry),
 	}
-}
-
-// warmFromCache asks the persistent port to bulk-load recent
-// entries into the in-memory map. Failures are logged and the
-// in-memory map proceeds empty (fail-soft, mirroring legacy).
-func (c *liveSearchCache) warmFromCache(parentCtx context.Context) {
-	if c.cache == nil {
-		return
-	}
-	concurrent.SafeGo("artlist-cache-warm", func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 15*time.Second)
-		defer cancel()
-		entries, err := c.cache.Warm(ctx)
-		if err != nil {
-			if c.log != nil {
-				c.log.Debug("persistent cache warm: no table yet", zap.Error(err))
-			}
-			return
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		for _, ent := range entries {
-			if _, exists := c.items[ent.Term]; !exists {
-				c.items[ent.Term] = liveSearchCacheEntry{
-					Clips:    ent.Clips,
-					CachedAt: ent.CachedAt,
-				}
-			}
-		}
-		if c.log != nil {
-			c.log.Info("persistent cache warmed from port",
-				zap.Int("entries", len(c.items)),
-			)
-		}
-	})
 }
 
 // get returns cached clips and whether the entry exists.

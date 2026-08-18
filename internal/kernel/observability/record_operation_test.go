@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestRunRecordOperationAppendsWithDuration(t *testing.T) {
@@ -29,6 +30,18 @@ func TestRunRecordOperationAppendsWithDuration(t *testing.T) {
 	}
 	if op.ObservationID == "" {
 		t.Error("operation observation id is empty")
+	}
+}
+
+func TestOperationSummaryUsesCanonicalLifecycle(t *testing.T) {
+	started := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	r := &RunReport{Operations: []OperationReport{
+		{Stage: "translation", Operation: "translate", DurationMs: 40, QueueWaitMs: 5, StartedAt: started, FinishedAt: started.Add(40 * time.Millisecond)},
+		{Stage: "translation", Operation: "translate", DurationMs: 60, QueueWaitMs: 10, StartedAt: started.Add(10 * time.Millisecond), FinishedAt: started.Add(70 * time.Millisecond)},
+	}}
+	s := SummarizeOperations(r, "translation", "translate")
+	if s.Calls != 2 || s.TotalMs != 100 || s.QueueMs != 15 || s.WallMs != 70 || s.MaxObserved != 2 {
+		t.Fatalf("summary = %+v", s)
 	}
 }
 

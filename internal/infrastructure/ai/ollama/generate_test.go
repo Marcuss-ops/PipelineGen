@@ -143,6 +143,68 @@ func TestGenerateScriptRecordsCanonicalOperation(t *testing.T) {
 	}
 }
 
+// TestGenerateScriptAttachesOperationMeta certifies the fan-out convergence:
+// when a caller binds OperationMeta (segment_id / worker_id / queued_at) to
+// ctx, the canonical ollama/generate operation carries those facts — so a
+// parallel fan-out is reconstructable from run_operation_observations alone,
+// without the caller re-timing the inference boundary.
+func TestGenerateScriptAttachesOperationMeta(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true}`))
+	}))
+	defer server.Close()
+
+	gen := NewGenerator(client.NewClient(server.URL, "gemma4:e4b", 5))
+
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+	ctx = kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
+		WorkerID: "seg-worker-3",
+		QueuedAt: time.Now().Add(-10 * time.Millisecond),
+		Metadata: map[string]string{"segment_id": "segment-2", "segment_index": "2"},
+	})
+
+	if _, err := gen.GenerateScript(ctx, types.TextGenerationRequest{
+		Model: "gemma2:2b", Language: "it", Title: "test", Prompt: "scrivi una frase",
+		SourceText: "testo", MaxChars: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run.Finish()
+
+	var found bool
+	for _, op := range run.Report().Operations {
+		if op.Component != string(kernobs.ComponentOllama) || op.Operation != string(kernobs.OperationGenerate) {
+			continue
+		}
+		found = true
+		if op.WorkerID != "seg-worker-3" {
+			t.Errorf("worker_id = %q, want seg-worker-3", op.WorkerID)
+		}
+		if op.QueuedAt.IsZero() {
+			t.Error("queued_at not attached")
+		}
+		if op.QueueWaitMs <= 0 {
+			t.Errorf("queue_wait_ms = %d, want > 0", op.QueueWaitMs)
+		}
+		var meta map[string]string
+		if err := json.Unmarshal([]byte(op.MetadataJSON), &meta); err != nil {
+			t.Fatalf("metadata_json %q is not a JSON object: %v", op.MetadataJSON, err)
+		}
+		if meta["segment_id"] != "segment-2" {
+			t.Errorf("metadata segment_id = %q, want segment-2", meta["segment_id"])
+		}
+		if meta["segment_index"] != "2" {
+			t.Errorf("metadata segment_index = %q, want 2", meta["segment_index"])
+		}
+	}
+	if !found {
+		t.Fatal("expected an ollama/generate operation in the run report")
+	}
+}
+
 // bytesEqualRawMessage compares two json.RawMessage values, treating
 // nil and empty []byte identically (json.RawMessage semantics: both
 // serialize to "null" on wire via omitempty).

@@ -114,7 +114,7 @@ func TestValidate_WatermarkContract(t *testing.T) {
 		t.Error("enabled watermark without asset_id must fail")
 	}
 	// invalid position fails.
-	req = &RenderRequest{SourceAssetID: "a", Watermark: &WatermarkSpec{Enabled: true, AssetID: "wm", Position: "center"}}
+	req = &RenderRequest{SourceAssetID: "a", Watermark: &WatermarkSpec{Enabled: true, AssetID: "wm", Position: "middle"}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("invalid watermark position must fail")

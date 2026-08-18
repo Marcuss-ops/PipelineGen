@@ -27,18 +27,6 @@ func (a *clipIndexerAdapter) IndexClip(ctx context.Context, id string) error {
 	return a.inner.IndexClip(ctx, id)
 }
 
-// ── ollamaClientAdapter ───────────────────────────────────────────────
-
-type ollamaClientAdapter struct {
-	inner interface {
-		SimpleGenerate(ctx context.Context, model, prompt string, timeout time.Duration, opts map[string]any) (string, error)
-	}
-}
-
-func (a *ollamaClientAdapter) SimpleGenerate(ctx context.Context, model, prompt string, timeout time.Duration, opts map[string]any) (string, error) {
-	return a.inner.SimpleGenerate(ctx, model, prompt, timeout, opts)
-}
-
 // ── youtubeIndexDispatcherAdapter ────────────────────────────────────
 // Merged from youtube_dispatcher_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 

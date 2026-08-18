@@ -87,7 +87,10 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	_, err = p.committer.CommitAsset(ctx, persistence.AssetCommitRequest{
 		AssetID: assetID, Source: "clip.render", Name: filename, Filename: filename,
 		MediaType: "video", Category: "clip-render", DurationMs: durationMS,
-		ContentHash: contentHash, LifecycleState: "ACTIVE", IndexState: "PENDING",
+		// DISCOVERED is the canonical initial index state. PENDING was retired
+		// from the media_assets enum and makes publication fail at the SQLite
+		// registry gate after the Drive upload has already succeeded.
+		ContentHash: contentHash, LifecycleState: "ACTIVE", IndexState: "DISCOVERED",
 		LocalPath: in.OutputPath, FolderID: pub.FolderID, FolderPath: pub.FolderPath,
 		SourceURL: in.SourceAssetID, AssetVersion: contentHash, Rendition: "rendered",
 		Title: filename, SourceProvider: "pipelinegen", Taxonomy: taxonomy,

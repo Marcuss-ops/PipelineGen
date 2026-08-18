@@ -354,8 +354,11 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	// E4: buildCommandFilenameForItem → canonical BuildVoiceoverFilename.
 	// Inputs are pre-validated by itemSpec via the higher-layer
 	// GenerateVoiceoversCommand.Validate / GenerateVoiceoverItemCommand.Validate
-	// gates, so the error path is unreachable in production; panic
-	// surfaces regressions loud-fast in tests.
+	// gates, so the error path is unreachable in production.
+	//
+	// Graceful degradation (godlike/07 minimal-blast-radius): a filename
+	// build failure is a SECONDARY concern — it must degrade this single
+	// item to a failed result, never panic the whole batch/worker.
 	//
 	// PR-VO-TYPED-PRIMITIVES (July 2026): same string() conversion
 	// for the FilenameSpec.TextHash field.
@@ -366,7 +369,11 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		Template: itemSpec.Filename,
 	})
 	if err != nil {
-		panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (processOneLanguage): %v (item=%+v)", err, itemSpec))
+		return VoiceoverItemResult{
+			Language: itemSpec.Language,
+			Status:   StatusFailed,
+			Error:    fmt.Sprintf("filename: %v", err),
+		}
 	}
 
 	// Derive RemoveSilence (cmd carries bool; ProcessSegmentCommand

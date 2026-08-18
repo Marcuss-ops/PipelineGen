@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
@@ -18,9 +18,18 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 		return true
 	}
 	lang := req.SourceLanguage
-	uploadStarted := time.Now()
-	published, err := r.finalAudioPublisher.PublishFinalAudio(ctx, runID, lang, *result.FinalAudio, routing.VoiceoverFolderID)
-	uploadMS := time.Since(uploadStarted).Milliseconds()
+	var published FinalAudioPublishResult
+	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: audioCompileStage, Component: "drive", Operation: "upload", Provider: "drive",
+	}, func(measureCtx context.Context) error {
+		var err error
+		published, err = r.finalAudioPublisher.PublishFinalAudio(measureCtx, runID, lang, *result.FinalAudio, routing.VoiceoverFolderID)
+		return err
+	})
+	var uploadMS int64
+	if run := kernobs.FromContext(ctx); run != nil {
+		uploadMS = kernobs.SummarizeOperations(run.Report(), audioCompileStage, "upload").TotalMs
+	}
 	if err != nil || strings.TrimSpace(published.DriveLink) == "" || strings.TrimSpace(published.AssetID) == "" {
 		if err == nil {
 			err = fmt.Errorf("publisher returned an empty Drive link or canonical asset ID")
@@ -31,7 +40,6 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	if result.AudioMetrics != nil {
 		result.AudioMetrics.UploadMS = uploadMS
 	}
-	r.recordAudioOperation(ctx, "upload", "drive", uploadMS)
 	result.FinalAudio.AssetID = strings.TrimSpace(published.AssetID)
 	result.FinalAudio.DriveLink = strings.TrimSpace(published.DriveLink)
 	// Drive correlation: the published final_audio asset is traceable to its

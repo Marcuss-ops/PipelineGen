@@ -42,7 +42,7 @@ package app
 import (
 	"fmt"
 
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrant "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -154,7 +154,7 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 	// embedder and the indexed vectors share a vector space. The schema is
 	// the single contract owner; reject a model drift before Qdrant is used.
 	if cfg.Qdrant.Enabled {
-		textSpec := qdrantschema.DefaultV3Schema().GetDense("text")
+		textSpec := qdrant.DefaultV3Schema().GetDense("text")
 		if textSpec == nil || cfg.External.OllamaEmbedModel != textSpec.Model {
 			want := "<missing>"
 			if textSpec != nil {

@@ -54,9 +54,14 @@ func TestRenderer_ColdThenWarmCache(t *testing.T) {
 	}
 	// The renderer's validation requires a non-empty .ass (burn-in present), so
 	// write a minimal valid ASS for each language before running.
-	for _, in := range inputs {
+	for i := range inputs {
+		in := &inputs[i]
 		if err := os.WriteFile(in.ASSPath, []byte(validASSForTest(in.Language)), 0o644); err != nil {
 			t.Fatalf("write ASS %s: %v", in.ASSPath, err)
+		}
+		in.ASSHash, _, err = sha256File(in.ASSPath)
+		if err != nil {
+			t.Fatalf("hash ASS %s: %v", in.ASSPath, err)
 		}
 	}
 	ctx := context.Background()
@@ -156,7 +161,7 @@ func variantForTest(clipID, lang, src string, durationSec float64, dir string) V
 		TranslationVersion:   "model-v1",
 		SubtitleStyleVersion: "vidrush-default:vidrush-ass-v2",
 		ASSPath:              filepath.Join(dir, lang+".ass"),
-		ASSHash:              "ass-hash",
+		ASSHash:              "",
 		OutputFilename:       "clip." + lang + ".mp4",
 		DriveFolderID:        "folder-1",
 		WorkDir:              filepath.Join(dir, "renders"),
@@ -188,7 +193,19 @@ func writeFakeFfmpeg(t *testing.T, dir, counterPath string, durationSec float64)
 	// single-quoting is safe here.
 	ffmpegScript := fmt.Sprintf(`#!/bin/sh
 out=""
+source_frame=0
 for a in "$@"; do out="$a"; done
+for a in "$@"; do
+  case "$a" in *scale=*) source_frame=1;; esac
+done
+if [ "$out" = "-" ]; then
+	if [ "$source_frame" = "1" ]; then
+	  dd if=/dev/zero bs=345600 count=1 2>/dev/null
+	else
+	  yes X | head -c 345600
+  fi
+  exit 0
+fi
 printf 'fake-video-bytes\n' > "$out"
 printf x >> '%s'
 `, counterPath)

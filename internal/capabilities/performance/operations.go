@@ -2,7 +2,7 @@
 // contract: ONE canonical shape for every media operation (probe, normalize,
 // cut, watermark, render, mux, ...) and ONE durable sink port. It is the
 // "ObservedExecutor" contract: the execution layer measures each operation
-// in a single point and records one OperationMeasurement, never scattered
+// in a single point and records one kernel MeasuredOperation, never scattered
 // across operation handlers.
 //
 // The measurement is the payload BEFORE persistence: run_id/job_id/step_id

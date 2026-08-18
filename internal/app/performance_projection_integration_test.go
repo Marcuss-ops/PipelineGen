@@ -250,6 +250,7 @@ func seedRunningJobWithFinalizedRun(t *testing.T, primary, obs *sql.DB, jobID, r
 		WallTimeMs: wallMS,
 		Operations: []kernobs.OperationReport{
 			{Component: string(kernobs.ComponentOllama), Operation: string(kernobs.OperationGenerate), DurationMs: 18340, Items: 1},
+			{Stage: "audio", Component: "rust", Operation: "mix", DurationMs: 4120},
 		},
 	}
 	reportJSON, err := report.JSON()
@@ -260,9 +261,7 @@ func seedRunningJobWithFinalizedRun(t *testing.T, primary, obs *sql.DB, jobID, r
 	checkpoint := struct {
 		Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
 	}{
-		Result: &scriptgeneration.GenerateResult{
-			AudioMetrics: &scriptgeneration.AudioPipelineMetrics{MixMS: 4120},
-		},
+		Result: &scriptgeneration.GenerateResult{},
 	}
 	payloadJSON, err := json.Marshal(checkpoint)
 	if err != nil {

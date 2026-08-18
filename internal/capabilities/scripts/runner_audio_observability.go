@@ -53,21 +53,3 @@ func (r *Runner) recordAudioRenderOperations(ctx context.Context, m AudioPipelin
 	r.recordAudioOperation(ctx, "probe", "audio", m.ProbeMS)
 	r.recordAudioOperation(ctx, "hash", "audio", m.HashMS)
 }
-
-// recordVoiceoverOperation projects the owner-measured TTS total under the
-// voiceover stage using the canonical TTS component and the canonical
-// synthesize operation. The duration comes from AudioPipelineMetrics.TTSMS and
-// was measured by the voiceover phase (sum of per-scene TTS intervals); it is
-// never re-timed here. It completes the same owner-measured pattern used for
-// mix/aac_encode/probe/hash/upload so TTS is also visible in the generic
-// operation metrics (synthesize.duration_ms) and not only in audio_metrics.
-func (r *Runner) recordVoiceoverOperation(ctx context.Context, durationMs int64) {
-	if durationMs <= 0 {
-		return
-	}
-	kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-		Stage:     kernobs.StageName(voiceoverStage),
-		Component: kernobs.ComponentTTS,
-		Operation: kernobs.OperationSynthesize,
-	}, durationMs)
-}

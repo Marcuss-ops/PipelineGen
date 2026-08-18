@@ -74,14 +74,15 @@ type PlanSubtitles struct {
 // PlanOutput is the resolved VeloxEditing output contract. Rust must produce
 // exactly this container/codec/pixel/resolution/fps — no codec decisions.
 type PlanOutput struct {
-	ContractID   string `json:"contract_id"`
-	Container    string `json:"container"`
-	VideoCodec   string `json:"video_codec"`
-	VideoProfile string `json:"video_profile,omitempty"`
-	PixelFormat  string `json:"pixel_format"`
-	Width        int    `json:"width"`
-	Height       int    `json:"height"`
-	FPS          int    `json:"fps"`
+	ContractID             string `json:"contract_id"`
+	Container              string `json:"container"`
+	VideoCodec             string `json:"video_codec"`
+	VideoProfile           string `json:"video_profile,omitempty"`
+	PixelFormat            string `json:"pixel_format"`
+	Width                  int    `json:"width"`
+	Height                 int    `json:"height"`
+	FPS                    int    `json:"fps"`
+	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
 }
 
 // PlanAudio is the resolved audio policy. Mode copy_if_compatible means Rust
@@ -115,16 +116,17 @@ type ClipRenderPlanV1 struct {
 // from the parallel preparation phase (+ the compiled ASS artifact); Compile
 // never resolves anything itself.
 type CompileInput struct {
-	RunID          string
-	Source         *MaterializedAsset
-	Watermark      *MaterializedAsset // nil when disabled
-	WatermarkSpec  *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
-	Background     *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
-	BackgroundMode string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
-	Subtitles      *SubtitleArtifact  // nil when disabled
-	Contract       *ResolvedContract
-	AudioMode      string
-	OutputPath     string
+	RunID                  string
+	Source                 *MaterializedAsset
+	Watermark              *MaterializedAsset // nil when disabled
+	WatermarkSpec          *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
+	Background             *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
+	BackgroundMode         string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
+	Subtitles              *SubtitleArtifact  // nil when disabled
+	Contract               *ResolvedContract
+	AudioMode              string
+	OutputPath             string
+	ForegroundScalePercent int
 }
 
 // Compile builds the sealed plan from the resolved inputs. Fail-closed: any
@@ -158,14 +160,15 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			SHA256:  in.Source.SHA256,
 		},
 		Output: PlanOutput{
-			ContractID:   in.Contract.ContractID,
-			Container:    in.Contract.Container,
-			VideoCodec:   in.Contract.VideoCodec,
-			VideoProfile: in.Contract.VideoProfile,
-			PixelFormat:  in.Contract.PixelFormat,
-			Width:        in.Contract.Width,
-			Height:       in.Contract.Height,
-			FPS:          in.Contract.FPS,
+			ContractID:             in.Contract.ContractID,
+			Container:              in.Contract.Container,
+			VideoCodec:             in.Contract.VideoCodec,
+			VideoProfile:           in.Contract.VideoProfile,
+			PixelFormat:            in.Contract.PixelFormat,
+			Width:                  in.Contract.Width,
+			Height:                 in.Contract.Height,
+			FPS:                    in.Contract.FPS,
+			ForegroundScalePercent: normalizeForegroundScale(in.ForegroundScalePercent),
 		},
 		Audio: PlanAudio{
 			Mode:       in.AudioMode,
@@ -254,6 +257,13 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 	return plan, nil
 }
 
+func normalizeForegroundScale(value int) int {
+	if value == 0 {
+		return 100
+	}
+	return value
+}
+
 // Seal computes the deterministic PlanSHA256 over the plan content.
 func (p *ClipRenderPlanV1) Seal() error {
 	if p == nil {
@@ -293,6 +303,9 @@ func (p ClipRenderPlanV1) Validate() error {
 	if p.Output.ContractID == "" || p.Output.Container == "" || p.Output.VideoCodec == "" ||
 		p.Output.PixelFormat == "" || p.Output.Width <= 0 || p.Output.Height <= 0 || p.Output.FPS <= 0 {
 		return fmt.Errorf("%w: output contract is incomplete", ErrInvalidClipPlan)
+	}
+	if p.Output.ForegroundScalePercent != 0 && (p.Output.ForegroundScalePercent < 1 || p.Output.ForegroundScalePercent > 100) {
+		return fmt.Errorf("%w: foreground_scale_percent must be within [1,100]", ErrInvalidClipPlan)
 	}
 	switch p.Audio.Mode {
 	case AudioModeCopyIfCompatible, AudioModeTranscode:

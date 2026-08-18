@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -185,6 +186,17 @@ func absInt(value int) int {
 	return value
 }
 
+// segmentIdentity returns the canonical identity label for a segment: its
+// explicit ID when set, else a deterministic "segment-<index>" fallback. The
+// label is persisted on the canonical ollama.generate operation so a fan-out
+// can be grouped per segment.
+func segmentIdentity(segment scriptpkg.ScriptSegment, index int) string {
+	if id := strings.TrimSpace(segment.ID); id != "" {
+		return id
+	}
+	return fmt.Sprintf("segment-%d", index)
+}
+
 func splitGeneratedSegmentParagraphs(text string) []string {
 	cleaned := strings.TrimSpace(SanitizeScriptOutput(text))
 	if cleaned == "" {
@@ -213,6 +225,9 @@ func (e *Engine) generateSegments(
 	plan *scriptpkg.ResolvedGenerationPlan,
 	req ports.TextGenerationRequest,
 ) (*ports.GenerationResult, error) {
+	// The Ollama generator owns the canonical ollama/generate measurement
+	// (see *ollama.Generator.GenerateScript). This closure only applies the
+	// concurrency gate; it must not re-time the same inference boundary.
 	generate := func(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
 		if e.generationGate != nil {
 			if err := e.generationGate.AcquireHigh(ctx); err != nil {
@@ -220,17 +235,7 @@ func (e *Engine) generateSegments(
 			}
 			defer e.generationGate.Release()
 		}
-		var out *ports.GenerationResult
-		err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-			Stage:     scriptgen.StageScriptEngine,
-			Component: kernobs.ComponentOllama,
-			Operation: kernobs.OperationGenerate,
-		}, func(opCtx context.Context) error {
-			var genErr error
-			out, genErr = e.ollamaGen.GenerateScript(opCtx, req)
-			return genErr
-		})
-		return out, err
+		return e.ollamaGen.GenerateScript(ctx, req)
 	}
 	if plan == nil || len(plan.Segments) == 0 {
 		return generate(ctx, req)
@@ -244,7 +249,7 @@ func (e *Engine) generateSegments(
 		result *ports.GenerationResult
 		err    error
 	}
-	generateOne := func(index int, segment scriptpkg.ScriptSegment) segmentOutput {
+	generateOne := func(index int, segment scriptpkg.ScriptSegment, workerID string, queuedAt time.Time) segmentOutput {
 		segmentPlan := *plan
 		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
 		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
@@ -265,11 +270,19 @@ func (e *Engine) generateSegments(
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+		metaCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
+			WorkerID: workerID,
+			QueuedAt: queuedAt,
+			Metadata: map[string]string{
+				"segment_id":    segmentIdentity(segment, index),
+				"segment_index": strconv.Itoa(index),
+			},
+		})
 		var result *ports.GenerationResult
 		var lastErr error
 		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
 			var genErr error
-			result, genErr = generate(ctx, segmentReq)
+			result, genErr = generate(metaCtx, segmentReq)
 			if genErr != nil {
 				lastErr = genErr
 				break
@@ -311,22 +324,27 @@ func (e *Engine) generateSegments(
 	if workers > len(plan.Segments) {
 		workers = len(plan.Segments)
 	}
-	jobs := make(chan int)
+	type segmentJob struct {
+		index    int
+		queuedAt time.Time
+	}
+	jobs := make(chan segmentJob)
 	results := make(chan segmentOutput, len(plan.Segments))
 	var wg sync.WaitGroup
 	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer wg.Done()
-			for index := range jobs {
-				results <- generateOne(index, plan.Segments[index])
+			for job := range jobs {
+				results <- generateOne(job.index, plan.Segments[job.index], fmt.Sprintf("seg-worker-%d", workerID), job.queuedAt)
 			}
-		}()
+		}(worker)
 	}
 	go func() {
 		for index := range plan.Segments {
+			job := segmentJob{index: index, queuedAt: time.Now()}
 			select {
-			case jobs <- index:
+			case jobs <- job:
 			case <-ctx.Done():
 				close(jobs)
 				wg.Wait()

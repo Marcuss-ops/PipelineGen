@@ -90,7 +90,6 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
-			started := time.Now()
 			var audioAssets capabilityaudio.ResolvedAudioAssets
 			var compileTimings AudioCompileTimings
 			// The audio intent block (BGM/SFX) is layered onto the same
@@ -262,7 +261,16 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				metrics.TTSCalls += result.AudioMetrics.TTSCalls
 				metrics.TTSScenes = append(metrics.TTSScenes, result.AudioMetrics.TTSScenes...)
 			}
-			metrics.TotalMS = time.Since(started).Milliseconds()
+			// Project the pipeline total from the canonical audio_render
+			// operation wall (owner-measured inside the Rust render boundary)
+			// — never a second time.Since timer. On the resume path the render
+			// is skipped, so the checkpointed value carried over from
+			// result.AudioMetrics is preserved.
+			if run := kernobs.FromContext(ctx); run != nil {
+				if wall := kernobs.SummarizeOperations(run.Report(), audioCompileStage, "audio_render").TotalMs; wall > 0 {
+					metrics.TotalMS = wall
+				}
+			}
 			if metrics.AudioDurationMS > 0 && metrics.TotalMS > 0 {
 				metrics.AudioRTF = float64(metrics.TotalMS) / float64(metrics.AudioDurationMS)
 				metrics.AudioSpeed = 1 / metrics.AudioRTF

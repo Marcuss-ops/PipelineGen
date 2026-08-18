@@ -138,8 +138,9 @@ type GenerationResult struct {
 	Provenance *GenerationProvenance `json:"provenance,omitempty"`
 }
 
-// GenerationTimings is a temporary read-only API projection. The authority
-// is kernel/observability.RunReport; this type contains no measurement logic.
+// GenerationTimings is a temporary read-only compatibility projection. The
+// authority is kernel/observability.RunReport; this type contains no
+// measurement logic or persistence path.
 type GenerationTimings struct {
 	SourceResolveMs       int64            `json:"source_resolve_ms,omitempty"`
 	PlanBuildMs           int64            `json:"plan_build_ms,omitempty"`

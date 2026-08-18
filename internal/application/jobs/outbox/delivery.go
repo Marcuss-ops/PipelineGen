@@ -60,7 +60,6 @@ import (
 	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hmacsign"
 )
 
@@ -204,11 +203,12 @@ type DeliveryHandler struct {
 // NewDeliveryHandler builds a DeliveryHandler.
 //
 //   - log         nil → nop.
-//   - client      nil → default 30s-timeout http.Client adapter
-//     (httpclient.NewDefaultClient). When non-nil the caller must pass
-//     a ports.Client-compatible value (production concrete is
-//     *httpclient.DefaultClient; tests inject a roundtripper-backed
-//     fake).
+//   - client      the canonical ports.Client for outbound HTTP. The
+//     composition root owns concrete-client construction (production
+//     concrete is *httpclient.DefaultClient); the application layer no
+//     longer builds a fallback default. A nil client keeps the handler
+//     constructible for validation-only callers, but any webhook POST
+//     is refused with a terminal error (no hidden I/O dependency).
 //   - db          nil → no delivery_log writes (handler still POSTs and
 //     signs).
 //   - hmacSecrets rotated secret keys; current secret FIRST, then the
@@ -235,9 +235,6 @@ func NewDeliveryHandlerWithOperations(log *zap.Logger, client ports.Client, db *
 func newDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()
-	}
-	if client == nil {
-		client = httpclient.NewDefaultClient(defaultDeliveryTimeout)
 	}
 	if len(hmacSecrets) == 0 && !insecureDev {
 		log.Warn("delivery.requested constructed WITHOUT HMAC secrets and WITHOUT insecureDev — every event will be refused with a terminal error. Check VELOX_DELIVERY_HMAC_SECRET.")
@@ -407,6 +404,18 @@ func (h *DeliveryHandler) handleAssetOperation(ctx context.Context, req *deliver
 // over the canonical string <event_timestamp>.<event_id>.<raw_body>.
 // 2xx → ok; 4xx → terminal ack; 5xx/network → retry.
 func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.Event, req *deliveryRequest) error {
+	// No hidden I/O fallback: if the composition root did not inject a
+	// client, the webhook path is refused as terminal rather than
+	// silently constructing a concrete HTTP client in the application
+	// layer.
+	if h.client == nil {
+		h.log.Error("delivery.requested has no HTTP client configured — refusing as terminal",
+			zap.String("idempotency_key", req.IdempotencyKey),
+			zap.String("endpoint", req.Destination.DestinationID),
+		)
+		return fmt.Errorf("delivery.requested: HTTP client not configured (refusing): %w", ErrSchemaVersionMismatch)
+	}
+
 	// Body defaults to {} so the receiver gets a well-formed JSON
 	// document if the producer omits body.
 	body := []byte(req.Body)
