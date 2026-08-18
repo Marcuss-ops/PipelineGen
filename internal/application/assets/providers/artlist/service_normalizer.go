@@ -87,6 +87,7 @@ func candidateToAsset(c *Candidate, clipPageURL string) *asset.Asset {
 	clip := &asset.Asset{
 		ID:           id,
 		Name:         name,
+		Filename:     name + ".mp4",
 		Source:       asset.Source("artlist"),
 		MediaType:    mediaType,
 		ProviderTags: providerTags,

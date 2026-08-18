@@ -93,10 +93,13 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 
 func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 	result := map[string]any{
+		"requested":      resp.Requested,
 		"found":          resp.Found,
 		"processed":      resp.Processed,
 		"skipped":        resp.Skipped,
 		"failed":         resp.Failed,
+		"would_process":  resp.WouldProcess,
+		"would_skip":     resp.WouldSkip,
 		"estimated_size": resp.EstimatedSize,
 		"tag_folder_id":  resp.TagFolderID,
 		"term":           resp.Term,
@@ -196,15 +199,19 @@ func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 			if v, ok := payload["root_folder_id"].(string); ok {
 				resp.RootFolderID = v
 			}
+			resp.Requested = getIntFromResult(payload, "limit")
 		}
 	}
 	if len(j.Result) > 0 {
 		var result map[string]any
 		if err := json.Unmarshal(j.Result, &result); err == nil {
+			resp.Requested = getIntFromResult(result, "requested")
 			resp.Found = getIntFromResult(result, "found")
 			resp.Processed = getIntFromResult(result, "processed")
 			resp.Skipped = getIntFromResult(result, "skipped")
 			resp.Failed = getIntFromResult(result, "failed")
+			resp.WouldProcess = getIntFromResult(result, "would_process")
+			resp.WouldSkip = getIntFromResult(result, "would_skip")
 			resp.EstimatedSize = getIntFromResult(result, "estimated_size")
 			if v, ok := result["tag_folder_id"].(string); ok {
 				resp.TagFolderID = v

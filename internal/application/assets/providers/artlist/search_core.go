@@ -111,15 +111,19 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			return nil, ErrAssetMutationDispatcherUnavailable
 		}
 		upsertErr := ss.dispatcher.SaveDiscoveredAsset(ctx, clip, asset.StateStaging, asset.StateDiscovered)
-		if upsertErr == nil {
-			if converted := toDomain(clip); converted != nil {
-				resp.Clips = append(resp.Clips, *converted)
-			}
-			if s.assetStore != nil {
-				searchText := clip.Name + " " + originalTerm
-				if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
-					s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
-				}
+		if upsertErr != nil {
+			s.log.Error("artlist discovery: SaveDiscoveredAsset failed",
+				zap.String("clip_id", clip.ID),
+				zap.Error(upsertErr))
+			return nil, fmt.Errorf("save discovered asset %s: %w", clip.ID, upsertErr)
+		}
+		if converted := toDomain(clip); converted != nil {
+			resp.Clips = append(resp.Clips, *converted)
+		}
+		if s.assetStore != nil {
+			searchText := clip.Name + " " + originalTerm
+			if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
+				s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
 			}
 		}
 	}
