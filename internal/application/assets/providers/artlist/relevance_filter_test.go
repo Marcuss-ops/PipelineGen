@@ -89,6 +89,45 @@ func TestRelevanceFilter_Predicate1_TermNotInTitleOrCategory_Fail(t *testing.T) 
 	}
 }
 
+// TestRelevanceFilter_Predicate1_BackfilledTitlePlaceholder_Fail locks the
+// godlike/07 no-fake-availability behavior for DOM-fallback page-only clips:
+// a candidate whose Title is byte-identical to the query term (the scraper
+// backfills Title with the term when no clip matches) MUST be dropped, so a
+// no-match query returns 0 results instead of a padded catalog.
+func TestRelevanceFilter_Predicate1_BackfilledTitlePlaceholder_Fail(t *testing.T) {
+	req := FilterRequest{Term: "zxqv_pipelinegen_nonexistent_948372"}
+	c := makeCandidate(
+		"337264",
+		"zxqv_pipelinegen_nonexistent_948372", // backfilled placeholder title
+		withSourceRef("https://artlist.io/stock-footage/clip/words-effects-font-cyber/337264"),
+	)
+	c.PageURL = c.SourceRef
+	out, stats := DefaultRelevanceFilter(req, []Candidate{c})
+	if len(out) != 0 {
+		t.Errorf("expected 0 survivors for backfilled-title placeholder, got %d", len(out))
+	}
+	if stats.DroppedByTerm != 1 {
+		t.Errorf("DroppedByTerm = %d, want 1", stats.DroppedByTerm)
+	}
+}
+
+// TestRelevanceFilter_Predicate1_NumericTitleSurvives locks the complementary
+// contract: a real browser-API clip whose Title is the numeric clip ID (not a
+// backfilled placeholder) must NOT be dropped by the placeholder check.
+func TestRelevanceFilter_Predicate1_NumericTitleSurvives(t *testing.T) {
+	req := FilterRequest{Term: "boxing training gym"}
+	c := makeCandidate("573043", "573043") // numeric Title from browser API
+	c.PageURL = "https://artlist.io/stock-footage/clip/gym-boxing-workout-training/573043"
+	c.SourceRef = c.PageURL
+	out, stats := DefaultRelevanceFilter(req, []Candidate{c})
+	if len(out) != 1 {
+		t.Errorf("expected 1 survivor for numeric-title real clip, got %d", len(out))
+	}
+	if stats.DroppedByTerm != 0 {
+		t.Errorf("DroppedByTerm = %d, want 0", stats.DroppedByTerm)
+	}
+}
+
 // ── Predicate #2: title overlap (DISABLED) ───────────────────────────
 
 func TestRelevanceFilter_Predicate2_TitleOverlap_Fail(t *testing.T) {
