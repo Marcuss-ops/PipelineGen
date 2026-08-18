@@ -27,6 +27,7 @@ import (
 	"time"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -100,6 +101,7 @@ func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 	if result == nil {
 		return trace
 	}
+	trace = result.SourceTrace
 	seen := make(map[string]struct{})
 	for _, scene := range result.Scenes {
 		refs := scene.Clips
@@ -150,6 +152,8 @@ type Runner struct {
 	// calls. It defaults to DefaultTTSConcurrency; SetTTSConcurrency overrides
 	// it. Docs publishing and Rust final-audio render stay single-threaded.
 	ttsConcurrency int
+	// translationConcurrency bounds concurrent scene×language translation calls.
+	translationConcurrency int
 
 	// serialMode reproduces the pre-parallel "before" chain for controlled
 	// benchmarking: the VidRush/NLP join + overlay.prepare runs blocking
@@ -191,6 +195,11 @@ type Runner struct {
 	// non-nil is fail-closed (an enqueue error fails the run).
 	overlayPrepareEnqueuer OverlayPrepareEnqueuer
 	overlayRenderEnqueuer  OverlayRenderEnqueuer
+	// localizedRenderEnqueuer is the per-(scene, language) localized render
+	// fan-out. Nil means render is not registered (no-op); non-nil is
+	// fail-closed. It is the seam the SceneTextReady fan-out fires the moment
+	// one scene's translation + TTS for a language are ready.
+	localizedRenderEnqueuer LocalizedRenderEnqueuer
 
 	// checkpoints is the optional durable per-unit checkpoint resolver. Nil
 	// keeps the legacy best-effort idempotency (restored partial result
@@ -198,6 +207,16 @@ type Runner struct {
 	// durable checkpoint — input fingerprint + artifact verification +
 	// processor version — and completed units are recorded durably.
 	checkpoints *capcheckpoint.Resolver
+
+	// imageSearchResolver is the deterministic Image Search Intent resolver
+	// (capabilities/imagesearch): the editorial/visual decision layer the
+	// golden battery certifies (entity typing + canonicalization + query
+	// order + no-image gate + negation + coreference). It consumes the SAME
+	// entity extractor the VidRush pipeline uses, so production sees the
+	// same deterministic path the battery certifies. Nil means the image
+	// search decision surface is not wired (queries fall back to the legacy
+	// ad-hoc builders).
+	imageSearchResolver *capabilityimagesearch.Resolver
 
 	log *zap.Logger
 }
@@ -228,16 +247,17 @@ func NewRunner(
 		documentRenderer = documentRenderers[0]
 	}
 	return &Runner{
-		repo:             repo,
-		textGen:          textGen,
-		translator:       translator,
-		voiceoverGen:     voiceoverGen,
-		docPublisher:     docPublisher,
-		documentRenderer: documentRenderer,
-		recorder:         noopExecutionRecorder{},
-		vidRushRuns:      make(map[string]vidRushWiring),
-		ttsConcurrency:   DefaultTTSConcurrency,
-		log:              zap.NewNop(),
+		repo:                   repo,
+		textGen:                textGen,
+		translator:             translator,
+		voiceoverGen:           voiceoverGen,
+		docPublisher:           docPublisher,
+		documentRenderer:       documentRenderer,
+		recorder:               noopExecutionRecorder{},
+		vidRushRuns:            make(map[string]vidRushWiring),
+		ttsConcurrency:         DefaultTTSConcurrency,
+		translationConcurrency: DefaultTranslationConcurrency,
+		log:                    zap.NewNop(),
 	}
 }
 
@@ -268,6 +288,10 @@ func (r *Runner) SetSerialMode(on bool) {
 	r.serialMode = on
 	if on {
 		r.ttsConcurrency = 1
+		r.translationConcurrency = 1
+	} else {
+		r.ttsConcurrency = DefaultTTSConcurrency
+		r.translationConcurrency = DefaultTranslationConcurrency
 	}
 }
 
@@ -311,6 +335,30 @@ func (r *Runner) SetOverlayRenderEnqueuer(enqueuer OverlayRenderEnqueuer) {
 	if r != nil {
 		r.overlayRenderEnqueuer = enqueuer
 	}
+}
+
+// SetLocalizedRenderEnqueuer wires the per-(scene, language) localized render
+// fan-out. A nil enqueuer disables the fan-out (render not registered); a
+// non-nil enqueuer is fail-closed (an enqueue error fails the run).
+func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
+	if r != nil {
+		r.localizedRenderEnqueuer = enqueuer
+	}
+}
+
+// enqueueLocalizedRender emits one localized render for a ready (scene,
+// language) unit. It is a no-op when the fan-out is not wired or the unit has
+// no voiceover. Callers build the input with the values they already hold
+// (under the per-unit lock when the unit's maps are shared across workers) so
+// this helper performs no map reads of its own.
+func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
+	if r == nil || r.localizedRenderEnqueuer == nil {
+		return nil
+	}
+	if input.Voiceover.ID == "" {
+		return nil
+	}
+	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
 }
 
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
@@ -407,6 +455,17 @@ func (r *Runner) SetTTSConcurrency(concurrency int) {
 	r.ttsConcurrency = concurrency
 }
 
+// SetTranslationConcurrency sets the bounded translation worker-pool size.
+func (r *Runner) SetTranslationConcurrency(concurrency int) {
+	if r == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultTranslationConcurrency
+	}
+	r.translationConcurrency = concurrency
+}
+
 // SetVidRushTimingRecorder wires the recorder that receives the scene-
 // generation wall-clock window, enabling the generation↔VidRush overlap
 // metric. A nil recorder is safe and disables timing. This is the injection
@@ -425,6 +484,17 @@ func (r *Runner) SetVidRushTimingRecorder(recorder VidRushTimingRecorder) {
 func (r *Runner) SetVidRushPipeline(pipeline *VidRushPipeline) {
 	if r != nil {
 		r.vidRushPipeline = pipeline
+	}
+}
+
+// SetImageSearchResolver wires the deterministic Image Search Intent
+// resolver (capabilities/imagesearch) into the run. It is the same resolver
+// the golden battery certifies; the composition root builds it over the same
+// entity extractor the VidRush pipeline uses. Nil keeps the legacy ad-hoc
+// query builders as the fallback.
+func (r *Runner) SetImageSearchResolver(resolver *capabilityimagesearch.Resolver) {
+	if r != nil {
+		r.imageSearchResolver = resolver
 	}
 }
 
@@ -658,7 +728,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	var result *GenerateResult
 	if !r.measurePhase(ctx, kernobs.StageGenerate, func(c context.Context) bool {
 		var ok bool
-		result, ok = r.runSceneTextPhase(c, runID, req, exec, run, resumeIdx)
+		result, ok = r.runSceneTextPhase(c, runID, req, routing, exec, run, resumeIdx)
 		return ok
 	}) {
 		return
