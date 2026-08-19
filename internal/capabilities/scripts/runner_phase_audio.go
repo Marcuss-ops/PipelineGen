@@ -360,7 +360,9 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// plan id is the run id so the RenderingGen queue job is idempotent
 		// on replay. Fail-closed like the phrase/entity projections: a scene
 		// that carried timing surfaces must project, or the run fails.
-		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, r.overlayCanvas); err != nil {
+		canvas := r.overlayCanvas
+		canvas.Background = overlayBackgroundFromPayload(req.OverlayBackground)
+		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, canvas); err != nil {
 			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)

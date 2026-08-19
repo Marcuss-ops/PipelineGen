@@ -34,9 +34,10 @@ import (
 // The runner defaults it to the validated golden canary (1280×720 @ 30 FPS)
 // via SetOverlayCanvas; a zero spec always falls back to the default.
 type OverlayCanvasSpec struct {
-	Width  int
-	Height int
-	FPS    int
+	Width      int
+	Height     int
+	FPS        int
+	Background *capabilityoverlay.OverlayBackground
 }
 
 // DefaultOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -48,6 +49,22 @@ func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 		return DefaultOverlayCanvas
 	}
 	return c
+}
+
+func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capabilityoverlay.OverlayBackground {
+	if src == nil {
+		return nil
+	}
+	bg := &capabilityoverlay.OverlayBackground{
+		Kind: src.Kind, Color: append([]float64(nil), src.Color...), Fit: src.Fit,
+		Opacity: src.Opacity, Loop: src.Loop,
+	}
+	if src.AssetID != "" || src.URL != "" || src.SHA256 != "" {
+		bg.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
+			AssetID: src.AssetID, URL: src.URL, SHA256: src.SHA256, MediaType: src.MediaType,
+		}}
+	}
+	return bg
 }
 
 // CompileOverlayPlan derives the full semantic OverlayPlan for a completed
@@ -128,7 +145,8 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		Width: canvas.Width, Height: canvas.Height, FPS: canvas.FPS,
-		Scenes: scenes,
+		Scenes:     scenes,
+		Background: canvas.Background,
 	}, capabilityoverlay.PlannerConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
@@ -176,6 +194,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Width:         canvas.Width,
 		Height:        canvas.Height,
 		FPS:           canvas.FPS,
+		Background:    canvas.Background,
 		// Overlays are composited over the master video, so they require an
 		// alpha channel. The contract travels with the plan (never re-derived
 		// downstream); the compiled chronon output derives container/codec/

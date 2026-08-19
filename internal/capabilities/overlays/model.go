@@ -37,9 +37,26 @@ type OverlayPlan struct {
 	// Empty means "renderer default". When set, it MUST resolve through
 	// ResolveMediaContract; the compiled chronon output derives its
 	// container/codec/pixel format from the resolved contract.
-	MediaContract string        `json:"media_contract,omitempty"`
-	Items         []OverlayItem `json:"items"`
-	Fingerprint   string        `json:"fingerprint,omitempty"`
+	MediaContract string `json:"media_contract,omitempty"`
+	// Background is an optional full-canvas layer rendered below every
+	// semantic overlay. When omitted, the source video remains visible below
+	// the overlays (the legacy behaviour).
+	Background  *OverlayBackground `json:"background,omitempty"`
+	Items       []OverlayItem      `json:"items"`
+	Fingerprint string             `json:"fingerprint,omitempty"`
+}
+
+// OverlayBackground is the payload contract for an optional full-canvas
+// background. Kind is "color", "image" or "video". Image/video backgrounds
+// use the same content-addressed asset refs as overlay items, so the worker
+// materializes them without a second asset protocol.
+type OverlayBackground struct {
+	Kind      string            `json:"kind"`
+	Color     []float64         `json:"color,omitempty"`
+	AssetRefs []OverlayAssetRef `json:"asset_refs,omitempty"`
+	Fit       string            `json:"fit,omitempty"`
+	Opacity   *float64          `json:"opacity,omitempty"`
+	Loop      bool              `json:"loop,omitempty"`
 }
 
 type OverlayItem struct {
@@ -207,6 +224,33 @@ func (p *OverlayPlan) Validate() error {
 	if strings.TrimSpace(p.MediaContract) != "" {
 		if _, err := ResolveMediaContract(p.MediaContract); err != nil {
 			return fmt.Errorf("overlay plan: %w", err)
+		}
+	}
+	if bg := p.Background; bg != nil {
+		switch strings.ToLower(strings.TrimSpace(bg.Kind)) {
+		case "color":
+			if len(bg.Color) != 4 {
+				return fmt.Errorf("overlay plan: background color requires RGBA[4]")
+			}
+			for _, component := range bg.Color {
+				if component < 0 || component > 1 {
+					return fmt.Errorf("overlay plan: background color components must be in [0,1]")
+				}
+			}
+			if len(bg.AssetRefs) != 0 {
+				return fmt.Errorf("overlay plan: color background cannot carry asset_refs")
+			}
+		case "image", "video":
+			if len(bg.AssetRefs) == 0 || (strings.TrimSpace(bg.AssetRefs[0].URL) == "" && strings.TrimSpace(bg.AssetRefs[0].SHA256) == "") {
+				return fmt.Errorf("overlay plan: %s background requires a resolvable asset", bg.Kind)
+			}
+		default:
+			return fmt.Errorf("overlay plan: unsupported background kind %q", bg.Kind)
+		}
+		for index, ref := range bg.AssetRefs {
+			if strings.TrimSpace(ref.AssetID) == "" {
+				return fmt.Errorf("overlay plan: background asset[%d] requires asset_id", index)
+			}
 		}
 	}
 	seenIDs := make(map[string]struct{}, len(p.Items))

@@ -328,7 +328,13 @@ type DocumentsConfig struct {
 //
 // Zero I/O in the builder.
 type GenerateRequest struct {
-	Audio capabilityaudio.AudioMode `json:"audio_mode,omitempty"`
+	// Render is the explicit per-clip reconstruction request. It is copied
+	// once at ingress and consumed by the localized render fan-out.
+	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
+	// OverlayBackground is the visual background selected by script.generate;
+	// it is transported into the sealed OverlayPlan at render time.
+	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
+	Audio             capabilityaudio.AudioMode        `json:"audio_mode,omitempty"`
 	// Timing is the canonical voiceover timing policy nested inside the
 	// audio config (wire key "timing"). nil means the pipeline applies the
 	// canonical defaults (best_effort / word / [json]) — timing capture is
@@ -512,6 +518,10 @@ type GenerateResult struct {
 	// Output is the canonical plain-text result projection. It is derived once
 	// from the ordered scenes and is never independently generated.
 	Output GenerateOutput `json:"output"`
+	// Render is the requested clip materialization contract. It is mirrored
+	// into the canonical SpecScene response so selected clip bindings and the
+	// render options travel together.
+	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
 	// SourceTrace is the durable retrieval trace. It is kept alongside the
 	// capability result so the broker/API cannot lose the accepted Qdrant
 	// clip IDs between the durable runner and the legacy job envelope.
