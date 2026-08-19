@@ -42,6 +42,22 @@ func TestCompileChrononPlanHonorsExplicitPresetID(t *testing.T) {
 	}
 }
 
+func TestCompileChrononPlanOptionalBackground(t *testing.T) {
+	plan := GoldenOverlayPlanV1()
+	plan.PlanID = "background-payload"
+	plan.Background = &OverlayBackground{Kind: "color", Color: []float64{0, 0, 0, 1}}
+	compiled, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatalf("compile background payload: %v", err)
+	}
+	if len(compiled.Plan.Layers) == 0 || compiled.Plan.Layers[0].ID != "background" || compiled.Plan.Layers[0].Type != "color" {
+		t.Fatalf("background was not emitted below overlays: %+v", compiled.Plan.Layers)
+	}
+	if got := compiled.Plan.Layers[0].DurationFrames; got != compiled.Plan.Canvas.DurationFrames {
+		t.Fatalf("background duration=%d, canvas duration=%d", got, compiled.Plan.Canvas.DurationFrames)
+	}
+}
+
 // TestCompileChrononPlanGoldenJSON matches the compiled plan against the
 // literal render_plan document carried by RenderingGen's
 // testdata/golden/golden-overlay-job-v1.json (the canonical, immutable

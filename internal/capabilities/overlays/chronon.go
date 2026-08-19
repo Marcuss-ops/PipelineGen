@@ -297,7 +297,7 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		return ChrononCompileResult{}, fmt.Errorf("overlay plan: no item has a positive end time")
 	}
 
-	layers := make([]ChrononLayer, 0, len(plan.Items))
+	layers := make([]ChrononLayer, 0, len(plan.Items)+1)
 	seenAssets := make(map[string]string) // sha256 -> logical path
 	var assets []ChrononAsset
 	needsFont := false
@@ -305,6 +305,33 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 	// string slot (not an explicit numeric position). Resolved after the
 	// loop by layoutImages with collision avoidance.
 	var layoutCandidates []imageLayoutCandidate
+	if bg := plan.Background; bg != nil {
+		kind := strings.ToLower(strings.TrimSpace(bg.Kind))
+		layer := ChrononLayer{ID: "background", Type: kind, BoxWidth: plan.Width, BoxHeight: plan.Height,
+			Fit: bg.Fit, StartFrame: 0, DurationFrames: frameAtUS(maxEndUS), Loop: bg.Loop}
+		if layer.Fit == "" && kind != "color" {
+			layer.Fit = "cover"
+		}
+		if bg.Opacity != nil {
+			layer.Opacity = *bg.Opacity
+		}
+		if kind == "color" {
+			layer.Color = append([]float64(nil), bg.Color...)
+		} else if len(bg.AssetRefs) > 0 {
+			ref := bg.AssetRefs[0]
+			logical := logicalAssetPath(ref.URL)
+			if kind == "video" {
+				layer.Source = logical
+			} else {
+				layer.Asset = logical
+			}
+			if ref.SHA256 != "" {
+				seenAssets[ref.SHA256] = logical
+				assets = append(assets, ChrononAsset{Hash: ref.SHA256, LogicalPath: logical})
+			}
+		}
+		layers = append(layers, layer)
+	}
 	for index, item := range plan.Items {
 		spec, ok := templateRegistry[item.TemplateID]
 		if !ok {

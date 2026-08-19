@@ -51,6 +51,14 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	item := env.Items[0]
+	item.Output.Render.Normalize()
+	if item.Output.Render.Watermark == nil {
+		item.Output.Render.Watermark = item.Output.Watermark
+	}
+	if item.Output.Render.Subtitles == nil {
+		item.Output.Render.Subtitles = item.Output.Subtitles
+	}
+	item.Output.Render.Normalize()
 
 	// Map SourceSpec → scriptgeneration.Source (pure field copy).
 	// Source policy fields must survive this durable-runtime boundary:
@@ -146,16 +154,18 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	return GenerateRequest{
-		IdempotencyKey:   idempotencyKey,
-		ForceRefresh:     env.ForceRefresh,
-		Source:           source,
-		ScriptParams:     item.ScriptParams,
-		MediaPlan:        item.MediaPlan.Clone(),
-		ExtractEntities:  item.Output.ExtractEntities,
-		SourceLanguage:   sourceLang,
-		Languages:        languages,
-		GenerateTimeline: generateTimeline,
-		Timing:           timing,
+		Render:            item.Output.Render,
+		OverlayBackground: item.OverlayBackground,
+		IdempotencyKey:    idempotencyKey,
+		ForceRefresh:      env.ForceRefresh,
+		Source:            source,
+		ScriptParams:      item.ScriptParams,
+		MediaPlan:         item.MediaPlan.Clone(),
+		ExtractEntities:   item.Output.ExtractEntities,
+		SourceLanguage:    sourceLang,
+		Languages:         languages,
+		GenerateTimeline:  generateTimeline,
+		Timing:            timing,
 		Docs: DocumentsConfig{
 			Enabled:   docsEnabled,
 			Languages: toLanguages(docsLanguages),

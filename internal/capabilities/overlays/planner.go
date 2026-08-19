@@ -111,7 +111,10 @@ type PlanInput struct {
 	// Callers should leave this empty unless the queue contract explicitly
 	// requires a renderer capability/version constraint.
 	RendererVersion string
-	Scenes          []SceneInput
+	// Background is copied verbatim into the sealed overlay plan when the
+	// script/render payload explicitly requests one.
+	Background *OverlayBackground
+	Scenes     []SceneInput
 }
 
 // BuildPlan selects bounded overlays from scene annotations. Candidates with
@@ -125,6 +128,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		PlanID:        input.PlanID, VideoID: input.VideoID, ProjectID: input.ProjectID,
 		Width: input.Width, Height: input.Height, FPS: input.FPS,
 		RendererVersion: input.RendererVersion,
+		Background:      input.Background,
 	}
 	// Items are appended in the canonical z-index order (bottom → top), so the
 	// compiled layer order IS the stacking order — defined and deterministic,

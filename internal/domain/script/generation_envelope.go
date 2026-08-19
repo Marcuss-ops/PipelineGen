@@ -90,6 +90,11 @@ type GenerationItemV2 struct {
 	// Every postprocessor is opt-in.
 	Output OutputSpec `json:"output,omitempty"`
 
+	// OverlayBackground optionally selects the full-canvas background used by
+	// the Chronon overlay render. It is deliberately separate from audio
+	// background_music: this is a visual pixel-layer choice.
+	OverlayBackground *OverlayBackgroundSpec `json:"overlay_background,omitempty"`
+
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
 	// sound_effects) for this generate item. Batch items may choose
@@ -111,6 +116,21 @@ type GenerationItemV2 struct {
 	// When present, these values are used directly and the metadata
 	// generator must not be called.
 	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
+}
+
+// OverlayBackgroundSpec is the script.generate payload shape for an
+// optional visual overlay background. Image/video backgrounds identify one
+// content-addressed asset; color backgrounds use RGBA components in [0,1].
+type OverlayBackgroundSpec struct {
+	Kind      string    `json:"kind"`
+	Color     []float64 `json:"color,omitempty"`
+	AssetID   string    `json:"asset_id,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	SHA256    string    `json:"sha256,omitempty"`
+	MediaType string    `json:"media_type,omitempty"`
+	Fit       string    `json:"fit,omitempty"`
+	Opacity   *float64  `json:"opacity,omitempty"`
+	Loop      bool      `json:"loop,omitempty"`
 }
 
 // DocumentsSpec is the transport-level document publication configuration.
