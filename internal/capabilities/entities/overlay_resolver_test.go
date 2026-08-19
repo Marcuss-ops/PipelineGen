@@ -122,7 +122,7 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	// duration = frame(48360) - frame(48240) = round(1450.8) - 1447 = 1451-1447 = 4.
 	tom := layerByID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "", tom.Type)
-	require.Equal(t, "lower_third_safe", tom.Preset)
+	require.Equal(t, "name_glow_typewriter", tom.Preset)
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.Equal(t, int64(1447), tom.StartFrame)
 	require.Equal(t, int64(4), tom.DurationFrames)
@@ -131,6 +131,20 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	first := layerByID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, int64(0), first.StartFrame)
 	require.Equal(t, int64(6), first.DurationFrames)
+}
+
+func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
+	for _, tc := range []struct {
+		entityType string
+		want       string
+	}{
+		{"PERSON", "name_glow_typewriter"},
+		{"ORGANIZATION", "name_glow_slide"},
+		{"LOCATION", "name_glow_pop"},
+		{"UNKNOWN", "name_glow_slide"},
+	} {
+		require.Equal(t, tc.want, specialNamePreset(tc.entityType), tc.entityType)
+	}
 }
 
 // TestResolveEntityOverlayPlan_TypeKindMapping pins the NLP-type → overlay-kind
