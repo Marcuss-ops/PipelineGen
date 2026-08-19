@@ -143,8 +143,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			images = images[:config.MaxImages]
 		}
 		for _, image := range images {
+			id := itemID(scene.ID, "image", image.AssetID)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "image", image.AssetID), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID, PresetID: selectImagePreset(input.PlanID, scene.ID, id),
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
 				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, SHA256: image.SHA256, MediaType: image.MediaType}},
@@ -211,8 +212,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			keywords = keywords[:config.MaxKeywords]
 		}
 		for _, candidate := range keywords {
+			id := itemID(scene.ID, "keyword", candidate.Text)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "keyword", candidate.Text), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
 				Kind: "keyword", TemplateID: "IMPORTANT_WORD", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "top", "style": "alert", "priority": candidate.Score},
@@ -224,8 +226,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			phrases = phrases[:config.MaxPhrases]
 		}
 		for _, candidate := range phrases {
+			id := itemID(scene.ID, "phrase", candidate.Text)
 			plan.Items = append(plan.Items, OverlayItem{
-				ID: itemID(scene.ID, "phrase", candidate.Text), SceneID: scene.ID,
+				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
