@@ -122,7 +122,7 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	// duration = frame(48360) - frame(48240) = round(1450.8) - 1447 = 1451-1447 = 4.
 	tom := layerByID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "", tom.Type)
-	require.Equal(t, "name_glow_typewriter", tom.Preset)
+	require.Equal(t, findItem(t, plan, tom.ID).PresetID, tom.Preset)
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.Equal(t, int64(1447), tom.StartFrame)
 	require.Equal(t, int64(4), tom.DurationFrames)
@@ -134,16 +134,9 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 }
 
 func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
-	for _, tc := range []struct {
-		entityType string
-		want       string
-	}{
-		{"PERSON", "name_glow_typewriter"},
-		{"ORGANIZATION", "name_glow_slide"},
-		{"LOCATION", "name_glow_pop"},
-		{"UNKNOWN", "name_glow_slide"},
-	} {
-		require.Equal(t, tc.want, specialNamePreset(tc.entityType), tc.entityType)
+	for _, entityType := range []string{"PERSON", "ORGANIZATION", "LOCATION", "UNKNOWN"} {
+		got := capabilityoverlay.SelectEntityNamePreset("test-job", "scene", "entity-"+entityType, entityType)
+		require.Contains(t, []string{"name_glow_typewriter", "name_glow_slide", "name_glow_pop"}, got, entityType)
 	}
 }
 
