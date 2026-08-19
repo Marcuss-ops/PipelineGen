@@ -40,6 +40,7 @@
   ],
   "ignorePatterns": [
     "node_modules/",
+    "data/artlist-profile/",
     "coverage/",
     ".nyc_output/"
   ]

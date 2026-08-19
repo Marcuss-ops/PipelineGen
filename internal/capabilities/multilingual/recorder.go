@@ -202,7 +202,8 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// RecordOperation persists one per-clip-language operation measurement into
+// RecordOperation promotes one per-clip-language boundary measurement into
+// the canonical OperationReport and projects that same fact into
 // performance_operations. Best-effort: a write failure is a logged warning.
 func (r *Recorder) RecordOperation(ctx context.Context, m kernobs.MeasuredOperation) {
 	if r == nil || r.ops == nil {

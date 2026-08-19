@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
+import { normalizeArtlistClip } from './normalize.js';
 
 const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_DB_PATH = process.env.ARTLIST_SEARCH_CACHE_DB || path.join(process.cwd(), 'data', 'artlist-search-cache.sqlite');
@@ -48,6 +49,7 @@ class ArtlistSearchCache {
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('busy_timeout = 5000');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS artlist_search_cache (
         cache_key TEXT PRIMARY KEY,
@@ -61,7 +63,112 @@ class ArtlistSearchCache {
       );
       CREATE INDEX IF NOT EXISTS idx_artlist_search_cache_expires_at
         ON artlist_search_cache (expires_at);
+      CREATE TABLE IF NOT EXISTS artlist_clips (
+        clip_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
+        creator TEXT NOT NULL, page_url TEXT NOT NULL, preview_url TEXT NOT NULL,
+        thumbnail_url TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0,
+        width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
+        fps REAL NOT NULL DEFAULT 0, tags_json TEXT NOT NULL,
+        categories_json TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS artlist_clips_fts USING fts5(
+        clip_id UNINDEXED, title, description, creator, tags, categories
+      );
+      CREATE INDEX IF NOT EXISTS idx_artlist_clips_duration ON artlist_clips(duration_ms);
+      CREATE INDEX IF NOT EXISTS idx_artlist_clips_resolution ON artlist_clips(width, height);
+      CREATE INDEX IF NOT EXISTS idx_artlist_clips_fps ON artlist_clips(fps);
+      CREATE INDEX IF NOT EXISTS idx_artlist_clips_creator ON artlist_clips(creator);
+      CREATE INDEX IF NOT EXISTS idx_artlist_clips_last_seen ON artlist_clips(last_seen_at);
+      CREATE TRIGGER IF NOT EXISTS artlist_clips_ai AFTER INSERT ON artlist_clips BEGIN
+        INSERT INTO artlist_clips_fts(clip_id,title,description,creator,tags,categories)
+        VALUES (new.clip_id,new.title,new.description,new.creator,new.tags_json,new.categories_json);
+      END;
+      CREATE TRIGGER IF NOT EXISTS artlist_clips_au AFTER UPDATE ON artlist_clips BEGIN
+        DELETE FROM artlist_clips_fts WHERE clip_id = old.clip_id;
+        INSERT INTO artlist_clips_fts(clip_id,title,description,creator,tags,categories)
+        VALUES (new.clip_id,new.title,new.description,new.creator,new.tags_json,new.categories_json);
+      END;
+      CREATE TRIGGER IF NOT EXISTS artlist_clips_ad AFTER DELETE ON artlist_clips BEGIN
+        DELETE FROM artlist_clips_fts WHERE clip_id = old.clip_id;
+      END;
     `);
+    this.db.exec('DELETE FROM artlist_clips_fts');
+    this.backfillCatalog();
+  }
+
+  upsertCatalog(clips) {
+    if (!Array.isArray(clips) || clips.length === 0) return;
+    const now = new Date().toISOString();
+    const upsert = this.db.prepare(`INSERT INTO artlist_clips
+      (clip_id,title,description,creator,page_url,preview_url,thumbnail_url,duration_ms,width,height,fps,tags_json,categories_json,metadata_json,first_seen_at,last_seen_at)
+      VALUES (@clip_id,@title,@description,@creator,@page_url,@preview_url,@thumbnail_url,@duration_ms,@width,@height,@fps,@tags_json,@categories_json,@metadata_json,@now,@now)
+      ON CONFLICT(clip_id) DO UPDATE SET title=excluded.title,description=excluded.description,creator=excluded.creator,page_url=excluded.page_url,preview_url=excluded.preview_url,thumbnail_url=excluded.thumbnail_url,duration_ms=excluded.duration_ms,width=excluded.width,height=excluded.height,fps=excluded.fps,tags_json=excluded.tags_json,categories_json=excluded.categories_json,metadata_json=excluded.metadata_json,last_seen_at=excluded.last_seen_at`);
+    this.db.transaction((items) => {
+      for (const raw of items) {
+        const clip = normalizeArtlistClip(raw);
+        if (!clip.clip_id) continue;
+        const tags = clip.tags || [], categories = clip.categories || [];
+        upsert.run({ clip_id: clip.clip_id, title: clip.title || clip.clip_id,
+          description: clip.description || '', creator: clip.creator || '',
+          page_url: clip.page_url || '', preview_url: clip.preview_url || clip.primary_url || '',
+          thumbnail_url: clip.thumbnail_url || '', duration_ms: clip.duration_ms || 0,
+          width: clip.width || 0, height: clip.height || 0, fps: clip.fps || 0,
+          tags_json: JSON.stringify(tags), categories_json: JSON.stringify(categories),
+          metadata_json: JSON.stringify(clip.raw_metadata || {}), now });
+      }
+    })(clips);
+  }
+
+  backfillCatalog() {
+    try {
+      const rows = this.db.prepare('SELECT response_json FROM artlist_search_cache').all();
+      const clips = [];
+      for (const row of rows) {
+        try {
+          const response = JSON.parse(row.response_json);
+          clips.push(...(Array.isArray(response?.clips) ? response.clips : response?.results || []));
+        } catch { /* ignore malformed snapshot */ }
+      }
+      this.upsertCatalog(clips);
+    } catch (err) {
+      console.warn(`[artlist-cache] catalog backfill skipped: ${err.message}`);
+    }
+  }
+
+  searchCatalog(query, limit = 24) {
+    return this.searchCatalogPage(query, limit, 1).clips;
+  }
+
+  searchCatalogPage(query, limit = 24, page = 1) {
+    const tokens = String(query || '').toLowerCase().match(/[a-z0-9]{2,}/g) || [];
+    if (!tokens.length) return { clips: [], total: 0 };
+    const match = tokens.map((token) => `${token.replaceAll('"', '')}*`).join(' OR ');
+    const pageLimit = Math.max(1, Math.min(Number(limit) || 24, 50));
+    const offset = Math.max(0, (Number(page) - 1) * pageLimit);
+    try {
+      const total = this.db.prepare(`SELECT COUNT(*) AS total FROM artlist_clips c
+        JOIN artlist_clips_fts f ON f.clip_id = c.clip_id
+        WHERE artlist_clips_fts MATCH ?`).get(match).total;
+      const rows = this.db.prepare(`SELECT c.* FROM artlist_clips c
+        JOIN artlist_clips_fts f ON f.clip_id = c.clip_id
+        WHERE artlist_clips_fts MATCH ?
+        ORDER BY bm25(artlist_clips_fts, 0, 10, 3, 2, 8, 2), c.last_seen_at DESC LIMIT ? OFFSET ?`)
+        .all(match, pageLimit, offset);
+      return { total, clips: rows.map((row) => ({ provider: 'artlist', clip_id: row.clip_id, id: row.clip_id,
+        title: row.title, name: row.title, description: row.description, creator: row.creator,
+        page_url: row.page_url, clip_page_url: row.page_url, preview_url: row.preview_url,
+        primary_url: row.preview_url, thumbnail_url: row.thumbnail_url,
+        duration_ms: row.duration_ms, width: row.width, height: row.height, fps: row.fps,
+        tags: JSON.parse(row.tags_json || '[]'), categories: JSON.parse(row.categories_json || '[]'),
+        raw_metadata: JSON.parse(row.metadata_json || '{}') })) };
+    } catch {
+      return { clips: [], total: 0 };
+    }
+  }
+
+  catalogStats() {
+    return this.db.prepare('SELECT COUNT(*) AS unique_clips FROM artlist_clips').get();
   }
 
   get(cacheKey) {
@@ -150,6 +257,12 @@ class ArtlistSearchCache {
     const expiresAt = new Date(now + ttlMs).toISOString();
     const createdAt = new Date(now).toISOString();
     const payload = JSON.stringify(response);
+
+    try {
+      this.upsertCatalog(response?.clips || response?.results || []);
+    } catch (err) {
+      console.warn(`[artlist-cache] catalog upsert skipped: ${err.message}`);
+    }
 
     this.items.set(cacheKey, {
       response,

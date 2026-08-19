@@ -105,12 +105,9 @@ func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput,
 		StreamCopy:       input.StreamCopy,
 	}
 	if len(input.DownloadSections) > 0 {
-		// Combined-first fall-through set — single canonical owner is
-		// ytdlp.DefaultYouTubeFormatSelectors. Do NOT inline the literal
-		// here; doing so would let the two -f args drift apart and
-		// reintroduce the "last -f wins" inconsistency surfaced by
-		// the dtpF3BrSOto format-not-available bug (2026-07-06).
-		dlReq.Format = ytdlp.DefaultYouTubeFormatSelectors
+		// Section downloads use the bounded selector; full-source downloads
+		// retain the canonical 1080p selector.
+		dlReq.Format = ytdlp.DefaultYouTubeSectionFormatSelectors
 		dlReq.MergeFormat = "mp4"
 		dlReq.NoPlaylist = true
 		dlReq.Timeout = 10 * time.Minute

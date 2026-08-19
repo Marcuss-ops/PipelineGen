@@ -108,8 +108,12 @@ function parseNetscapeCookies(content) {
     // value-containing-tab edge cases are handled as safely as possible.
     const parts = trimmed.split('\t');
     if (parts.length < 7) continue;
-    const [domain, flag, path, secure, expires, name, ...valueParts] = parts;
-    const value = valueParts.join('\t');
+    const domain = parts[0];
+    const path = parts[2];
+    const secure = parts[3];
+    const expires = parts[4];
+    const name = parts[5];
+    const value = parts.slice(6).join('\t');
     if (!domain || !name) continue;
     cookies.push({
       name,

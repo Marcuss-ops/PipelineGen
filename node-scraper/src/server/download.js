@@ -8,6 +8,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { importCookies } from '../driver/cookies.js';
 import { downloadHLSWithCookies } from './download-hls.js';
 import {
@@ -93,17 +95,45 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     console.log(`[download] Found video URL: ${downloadUrl.substring(0, 100)} (HLS: ${isM3u8})`);
     const ext = isM3u8 ? '.ts' : '.mp4';
     const outputPath = path.join(outputDir, `${clipId || 'clip'}${ext}`);
-    if (isM3u8) await downloadHLSWithCookies(downloadUrl, cookieHeader, outputPath);
-    else await downloadFileWithCookies(downloadUrl, cookieHeader, outputPath);
+    const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
+    if (isM3u8) await downloadHLSWithCookies(downloadUrl, cookieHeader, tempPath);
+    else await downloadFileWithCookies(downloadUrl, cookieHeader, tempPath);
 
+    let probe;
+    try {
+      probe = JSON.parse(execFileSync('ffprobe', [
+        '-v', 'error', '-show_entries',
+        'format=duration,size:stream=codec_type,codec_name,width,height,r_frame_rate',
+        '-of', 'json', tempPath,
+      ], { encoding: 'utf8' }));
+    } catch (err) {
+      fs.rmSync(tempPath, { force: true });
+      const error = new Error(`Downloaded media failed ffprobe: ${err.message}`);
+      error.code = 'MEDIA_VERIFY_FAILED';
+      throw error;
+    }
+    const stream = (probe.streams || []).find((item) => item.codec_type === 'video');
+    const duration = Number(probe.format?.duration || 0);
+    if (!stream || duration <= 0 || Number(stream.width) <= 0 || Number(stream.height) <= 0) {
+      fs.rmSync(tempPath, { force: true });
+      const error = new Error('Downloaded media has no valid video stream or dimensions');
+      error.code = 'MEDIA_VERIFY_FAILED';
+      throw error;
+    }
+    const hash = crypto.createHash('sha256');
+    hash.update(fs.readFileSync(tempPath));
+    const sha256 = hash.digest('hex');
+    fs.renameSync(tempPath, outputPath);
     const stats = fs.statSync(outputPath);
     console.log(`[download] Successfully downloaded to ${outputPath} (${stats.size} bytes)`);
     return {
       local_path: outputPath,
       file_size: stats.size,
-      duration_seconds: 0,
-      width: 0,
-      height: 0,
+      duration_seconds: duration,
+      width: Number(stream.width),
+      height: Number(stream.height),
+      codec_name: stream.codec_name || '',
+      sha256,
     };
   } finally {
     await page.close().catch(() => {});

@@ -64,7 +64,11 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		// --no-warnings, and extractor-args. Format selection is via
 		// FormatArg so the downloader doesn't inline the -f string.
 		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
-		args = append(args, d.cmdBuilder.FormatArg(true)...)
+		if len(req.DownloadSections) > 0 {
+			args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
+		} else {
+			args = append(args, d.cmdBuilder.FormatArg(true)...)
+		}
 
 		// aria2c is intentionally limited to full-source downloads. Section
 		// downloads must remain under yt-dlp/ffmpeg control so the time window
@@ -197,7 +201,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 			args = append(args, "--no-playlist")
 		}
 		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
-		args = append(args, d.cmdBuilder.FormatArg(true)...)
+		args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
 		// Do not add aria2c here. yt-dlp must retain control of the
 		// sectioned download and ffmpeg cut; an external downloader can
 		// bypass or interfere with the requested time range.
@@ -300,7 +304,7 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 				args = append(args, "--no-playlist")
 			}
 			args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
-			args = append(args, d.cmdBuilder.FormatArg(true)...)
+			args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
 			// Keep section downloads on yt-dlp/ffmpeg. aria2c is reserved
 			// for full-source downloads because it cannot own the time-range
 			// cut without risking a full or incorrectly bounded output.

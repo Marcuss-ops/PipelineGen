@@ -159,7 +159,7 @@ test('openBrowser: returns launchError naming missing binary when CHROME_EXECUTA
 
 // Sanity: the full set of helper exports remain intact after the
 // FASE 9 reshape; guard against accidental export removal that
-// would break unrelated call sites in artlist_search.js + download.js.
+// would break unrelated call sites in the detail/download path.
 test('browser.js: helper exports remain intact', () => {
   assert.equal(typeof pickChromeExecutable, 'function', 'pickChromeExecutable must be exported');
   assert.equal(typeof openBrowser, 'function', 'openBrowser must be exported');

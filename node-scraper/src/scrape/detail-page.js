@@ -1,5 +1,6 @@
 import { normalizeLinks, extractClipId } from './url.js';
 import { importCookies } from '../driver/cookies.js';
+import { applyStealthEvasions, STEALTH_HEADERS } from '../driver/browser.js';
 import { addCandidateStream, looksLikeStreamUrl } from './detail-streams.js';
 import {
   buildResult,
@@ -35,11 +36,15 @@ const DEFAULT_SETTLE_MS = 300;
  */
 export async function fetchClipDetails(browser, clipPageUrl) {
   const detailPage = await browser.newPage();
+  await applyStealthEvasions(detailPage);
   await detailPage.setViewport({ width: 1440, height: 900 });
   await detailPage.setUserAgent(
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' +
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
+  if (typeof detailPage.setExtraHTTPHeaders === 'function') {
+    await detailPage.setExtraHTTPHeaders(STEALTH_HEADERS);
+  }
 
   const cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '';
   await importCookies(detailPage, cookiePath);
@@ -119,7 +124,7 @@ export async function fetchClipDetails(browser, clipPageUrl) {
 
     const title = await detailPage.title();
     if (title.includes('Just a moment')) {
-      console.error(`[artlist] Cloudflare block detected for ${clipPageUrl}`);
+      console.error(`[artlist] upstream search/detail interstitial detected for ${clipPageUrl}`);
       return null;
     }
 

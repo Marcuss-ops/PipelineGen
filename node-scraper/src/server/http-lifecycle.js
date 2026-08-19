@@ -82,6 +82,10 @@ export function runBrowserPreflight() {
 }
 
 export async function runBootWarmup() {
+  if (process.env.ARTLIST_DISABLE_BROWSER_WARMUP === '1') {
+    console.log('[artlist-server] Boot warmup skipped (ARTLIST_DISABLE_BROWSER_WARMUP=1)');
+    return;
+  }
   console.log('[artlist-server] Boot warmup: launching Chromium before serving...');
   try {
     const browser = await getBrowser();

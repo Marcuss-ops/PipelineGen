@@ -127,6 +127,6 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fsS http://127.0.0.1:${PORT}/health || exit 1
 
 # Persistent scraper server (Level 3 caching per design docs).
-# Operators that prefer the system Playwright/Chromium route override
-# CMD to `["node", "artlist_search.js"]` (Level 2 ephemeral).
+# Discovery is handled by the direct GraphQL HTTP client; Chromium remains
+# available only for detail/download fallback operations.
 CMD ["node", "artlist_server.js"]

@@ -74,6 +74,11 @@ PROFILES = {
     "canary": RunnerProfile("canary", videos=1, clips_per_video=3),
     "full": RunnerProfile("full", videos=TARGET_VIDEOS, clips_per_video=TARGET_CLIPS_PER_VIDEO),
     "tyson_interviews_5s": RunnerProfile("tyson_interviews_5s", videos=10, clips_per_video=6, clip_duration_seconds=5),
+    # Usyk pilot: 15 distinct interview sources, two 30-second sections each
+    # (exactly 15 minutes total; the stock API caps a single clip at 30s).
+    "usyk_interviews_30s": RunnerProfile("usyk_interviews_30s", videos=15, clips_per_video=2, clip_duration_seconds=30),
+    # Final Usyk delivery: 15 interview sources × 12 clips × 5s = 15:00.
+    "usyk_interviews_5s": RunnerProfile("usyk_interviews_5s", videos=15, clips_per_video=12, clip_duration_seconds=5),
 }
 
 PREFLIGHT_MIN_DURATION_SECONDS = 64.0
@@ -431,8 +436,27 @@ def select(
     token: str,
     boxer: str,
     profile: RunnerProfile | None = None,
+    manifest_path: Path | None = None,
+    refresh_manifest: bool = False,
 ) -> list[dict[str, Any]]:
     profile = profile or PROFILES["full"]
+    if manifest_path and manifest_path.exists() and not refresh_manifest:
+        try:
+            persisted = json.loads(manifest_path.read_text(encoding="utf-8"))
+            selected = persisted.get("videos", persisted) if isinstance(persisted, dict) else persisted
+            if isinstance(selected, list) and len(selected) == profile.videos and len({item.get("video_id") for item in selected}) == profile.videos:
+                print(f"manifest=LOCKED path={manifest_path} videos={len(selected)}")
+                return selected
+        except (OSError, ValueError, TypeError):
+            pass
+    if boxer.casefold() == "usyk" and profile.name in {"usyk_interviews_30s", "usyk_interviews_5s"}:
+        candidates = search(base, token, boxer, "interview")
+        if len(candidates) < profile.videos:
+            raise RuntimeError(f"interview: only {len(candidates)} usable candidates, need {profile.videos}")
+        selected = candidates[:profile.videos]
+        if len({item["video_id"] for item in selected}) != profile.videos:
+            raise RuntimeError("Usyk interview selection is not exactly 15 unique videos")
+        return selected
     if boxer.casefold() == "mike tyson":
         if profile.name == "tyson_interviews_5s":
             return _select_manifest(MIKE_TYSON_INTERVIEW_MANIFEST, profile, "Mike Tyson interviews")
@@ -459,6 +483,42 @@ def select(
     if len(selected) != profile.videos or len({item["video_id"] for item in selected}) != profile.videos:
         raise RuntimeError(f"selection is not exactly {profile.videos} unique videos")
     return selected
+
+
+def write_manifest(path: Path, boxer: str, profile: RunnerProfile, videos: list[dict[str, Any]]) -> None:
+    """Persist source selection atomically so retries cannot rediscover different videos."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "velox.youtube-stock-manifest.v1",
+        "boxer": boxer,
+        "profile": profile.name,
+        "videos": videos,
+        "locked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    print(f"manifest=LOCKED path={path} videos={len(videos)}")
+
+
+def cleanup_stale_staging(root: Path, ttl_seconds: int = 1800) -> int:
+    """Remove only old pipeline partials; never touch completed media or databases."""
+    import shutil
+    now = time.time()
+    removed = 0
+    partial_root = root / "stock_pipeline_staging"
+    if partial_root.is_dir():
+        for item in partial_root.iterdir():
+            if item.is_file() and (item.name.endswith(".part") or ".partial." in item.name or item.name.endswith(".tmp")) and now - item.stat().st_mtime > ttl_seconds:
+                item.unlink()
+                removed += 1
+    for item in root.glob("stock_stage_*"):
+        if item.is_dir() and now - item.stat().st_mtime > ttl_seconds:
+            shutil.rmtree(item)
+            removed += 1
+    if removed:
+        print(f"staging_cleanup=removed:{removed} ttl_seconds={ttl_seconds}")
+    return removed
 
 
 def folder(base: str, token: str, root_id: str, boxer: str) -> str:
@@ -572,7 +632,11 @@ def run_source(
             "slug": f"{run_id}-{index:02d}-{video['video_id']}-{clip_index:02d}",
         })
     payload = {
-            "direct_urls": [source_url],
+            # Explicit clip specs carry the source URL and time windows. Do
+            # not also send direct_urls: that makes the stock planner stage a
+            # full 1080p source before extracting the sections, defeating the
+            # sections_only download mode and making short clips needlessly
+            # expensive.
             "clips": clip_specs,
             "total_minutes": 1,
             "target_total_duration_seconds": profile.clips_per_video * profile.clip_duration_seconds,
@@ -591,6 +655,8 @@ def run_source(
                 "tags": [boxer, video["category"]],
             },
             "async": True,
+            "no_effects": True,
+            "no_transitions": True,
         }
     request_id = f"youtube-stock-{run_id}-{boxer_slug(boxer)}-{index:02d}-{video['video_id']}"
     accepted = http(base, token, "POST", "/api/stock-pipeline/run", payload, request_id)
@@ -604,7 +670,25 @@ def run_source(
         if state in TERMINAL:
             if state not in {"SUCCEEDED", "COMPLETED"}:
                 raise RuntimeError(f"stock pipeline {job_id} ended {state}: {result.get('error', '')}")
-            print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clips {profile.clips_per_video} SUCCEEDED")
+            timing = result.get("timing") or {}
+            stages = {
+                str(stage.get("name")): int(stage.get("duration_ms") or 0)
+                for stage in timing.get("stages", [])
+                if isinstance(stage, dict)
+            }
+            drive_ms = sum(
+                int(operation.get("work_ms") or 0)
+                for operation in timing.get("operations", [])
+                if isinstance(operation, dict) and operation.get("component") == "drive"
+            )
+            wall_ms = int(timing.get("wall_ms") or 0)
+            timing_text = (
+                f"wall={wall_ms / 1000:.1f}s"
+                f" download={stages.get('stock.youtube_download', 0) / 1000:.1f}s"
+                f" extract={stages.get('stock.extract', 0) / 1000:.1f}s"
+                f" drive={drive_ms / 1000:.1f}s"
+            )
+            print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clips {profile.clips_per_video} SUCCEEDED {timing_text}")
             break
         time.sleep(5)
     else:
@@ -698,6 +782,9 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true")
     ap.add_argument("--profile", choices=sorted(PROFILES), default="full")
     ap.add_argument("--concurrency", type=int, default=MAX_CONCURRENCY)
+    ap.add_argument("--manifest", default="", help="persisted source manifest; reused unless --refresh-manifest is set")
+    ap.add_argument("--refresh-manifest", action="store_true")
+    ap.add_argument("--staging-ttl-seconds", type=int, default=1800)
     args = ap.parse_args()
     if args.preflight_auth:
         report = run_auth_preflight()
@@ -711,6 +798,8 @@ def main() -> int:
     args.boxer = canonical_boxer_name(args.boxer)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     os.environ["VELOX_STOCK_RUN_ID"] = run_id
+    manifest_path = Path(args.manifest) if args.manifest else Path("out") / boxer_slug(args.boxer) / f"{profile.name}.manifest.json"
+    cleanup_stale_staging(Path("data/tmp"), max(60, args.staging_ttl_seconds))
     token = os.environ.get("VELOX_ADMIN_TOKEN", "")
     if not token:
         raise SystemExit("VELOX_ADMIN_TOKEN is required")
@@ -732,7 +821,8 @@ def main() -> int:
             expected_source_video_ids=expected_sources,
         )
         return 0
-    selected = select(args.base, token, args.boxer, profile)
+    selected = select(args.base, token, args.boxer, profile, manifest_path, args.refresh_manifest)
+    write_manifest(manifest_path, args.boxer, profile, selected)
     if args.folder_id:
         target = args.folder_id
         upload_parent = target

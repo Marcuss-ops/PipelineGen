@@ -29,7 +29,7 @@ export function extractClipsFromApiResponses(apiResponses, term) {
   const clips = [];
   const seenIds = new Set();
 
-  for (const { url, data } of apiResponses) {
+  for (const { data } of apiResponses) {
     if (!data || typeof data !== 'object') continue;
 
     const candidates = [];

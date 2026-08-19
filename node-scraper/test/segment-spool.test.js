@@ -10,8 +10,8 @@ import {
 } from '../src/server/segment-spool.js';
 
 test('normalizeSegmentConcurrency applies fallback and cap', () => {
-  assert.equal(normalizeSegmentConcurrency(undefined), 5);
-  assert.equal(normalizeSegmentConcurrency('0'), 5);
+  assert.equal(normalizeSegmentConcurrency(undefined), 4);
+  assert.equal(normalizeSegmentConcurrency('0'), 4);
   assert.equal(normalizeSegmentConcurrency('8'), 8);
   assert.equal(normalizeSegmentConcurrency('999'), 16);
 });

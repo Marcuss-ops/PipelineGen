@@ -1,6 +1,4 @@
-import { searchArtlist as legacySearchArtlist } from './search.js';
-import { ArtlistBrowserApiClient } from './browser-api-client.js';
-import { findLargestClipArray, normalizeArtlistClip } from './normalize.js';
+import { ArtlistHttpApiClient, extractHttpClips } from './http-api-client.js';
 import { buildSearchCacheKey, getSearchCache } from './search-cache.js';
 import {
   getFootageSearchEndpoint,
@@ -32,6 +30,7 @@ function makeStableEnvelope({
   clips,
   source,
   cacheHit,
+  pagination = {},
 }) {
   return {
     ok: true,
@@ -45,99 +44,131 @@ function makeStableEnvelope({
     source,
     results: clips,
     clips,
+    count: clips.length,
+    ...pagination,
     saved: 0,
   };
 }
 
-function coerceStableClips(value) {
+export function findPagination(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return {};
   if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const seen = new Set();
-  const clips = [];
-
-  for (const item of value) {
-    const normalized = normalizeArtlistClip(item);
-    const key = normalized.clip_id || normalized.clip_page_url || normalized.primary_url || normalized.preview_url;
-    if (!key || seen.has(key)) {
-      continue;
+    const total = Number(value.total ?? value.totalCount ?? value.total_count ?? value.totalExact);
+    const hasNext = value.hasNextPage ?? value.has_next_page ?? value.hasMore ?? value.has_more;
+    const nextPage = value.nextPage ?? value.next_page;
+    const nextToken = value.nextPageToken ?? value.next_page_token ?? value.cursor;
+    if (Number.isFinite(total) || typeof hasNext === 'boolean' || nextPage != null || nextToken) {
+      return {
+        ...(Number.isFinite(total) ? { total } : {}),
+        ...(typeof hasNext === 'boolean' ? { has_next_page: hasNext } : {}),
+        ...(nextPage != null ? { next_page: nextPage } : {}),
+        ...(nextToken ? { next_page_token: String(nextToken) } : {}),
+      };
     }
-    seen.add(key);
-    clips.push(normalized);
   }
-
-  return clips;
+  for (const child of Object.values(value)) {
+    const found = findPagination(child, depth + 1);
+    if (Object.keys(found).length) return found;
+  }
+  return {};
 }
 
-async function searchViaBrowserApi({
-  browser,
-  registry,
-  query,
-  page,
-  limit,
-  filters,
-  logger,
-}) {
-  const endpoint = getFootageSearchEndpoint(registry);
-  if (!endpoint) {
-    return null;
-  }
-
-  const client = new ArtlistBrowserApiClient({
-    browser,
-    registry: { footage_search: endpoint },
-    logger,
-  });
-
-  const response = await client.searchFootage({
-    term: query,
-    page,
-    limit,
-    filters,
-  });
-
-  const clipArray = findLargestClipArray(response.data);
-  const clips = coerceStableClips(clipArray);
-  if (!clips.length) {
-    return null;
-  }
-
-  return makeStableEnvelope({
+async function searchViaHttpApi({ endpoint, query, page, limit, filters, logger }) {
+  if (!endpoint || endpoint.transport !== 'http') return null;
+  const client = new ArtlistHttpApiClient({ endpoint, logger });
+  const response = await client.searchFootage({ term: query, page, limit, filters });
+  const clips = extractHttpClips(response.data).slice(0, limit);
+  if (!clips.length) return null;
+  return {
+    ...makeStableEnvelope({
     query,
     page,
     limit,
     searchUrl: `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(query)}`,
     clips,
-    source: 'browser_api',
+    source: 'http_api',
     cacheHit: false,
-  });
+    pagination: { ...findPagination(response.data), ...(response.pagination || {}) },
+    }),
+    freshness: 'live',
+    provider_contacted: true,
+    browser_launched: false,
+  };
 }
 
-async function searchViaLegacyFallback({ query, limit, profileDir, browser }) {
-  const legacy = await legacySearchArtlist(query, limit, profileDir, browser);
-  const clips = coerceStableClips(legacy.clips || []);
-  return makeStableEnvelope({
-    query,
-    page: 1,
-    limit,
-    searchUrl: legacy.search_url || `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(query)}`,
-    clips,
-    source: 'legacy',
-    cacheHit: false,
-  });
+// Browserless full-catalog discovery. Pages are fetched with bounded
+// parallelism, then every page is persisted through the existing SQLite cache
+// so artlist_clips and its FTS5 index remain the single local catalog.
+export async function searchArtlistAllPages({
+  query,
+  filters = {},
+  concurrency = 4,
+  maxPages = 100,
+  registryPath = resolveArtlistEndpointRegistryPath(),
+  logger = console,
+} = {}) {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) throw new Error('query is required');
+  const registry = await loadArtlistEndpointRegistry(registryPath);
+  const endpoint = getFootageSearchEndpoint(registry);
+  if (!endpoint || endpoint.transport !== 'http') {
+    const error = new Error('Artlist GraphQL HTTP endpoint is not configured');
+    error.code = 'ARTLIST_HTTP_ENDPOINT_MISSING';
+    throw error;
+  }
+
+  const operationStartedAt = Date.now();
+  const client = new ArtlistHttpApiClient({ endpoint, logger, ratePerSecond: 8 });
+  const result = await client.searchAllPages({ term: normalizedQuery, filters, concurrency, maxPages });
+  const cache = getSearchCache();
+  const persistStartedAt = Date.now();
+  for (const page of result.pages) {
+    const pagePersistStartedAt = Date.now();
+    const envelope = makeStableEnvelope({
+      query: normalizedQuery,
+      page: page.page,
+      limit: 50,
+      searchUrl: `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(normalizedQuery)}`,
+      clips: page.clips,
+      source: 'http_api',
+      cacheHit: false,
+      pagination: { ...findPagination(page.response.data), ...(page.response.pagination || {}) },
+    });
+    cache.put(buildSearchCacheKey({ query: normalizedQuery, filters, page: page.page, limit: 50 }), {
+      query: normalizedQuery,
+      filters,
+      page: page.page,
+      limit: 50,
+    }, envelope);
+    page.timings.persist_ms = Date.now() - pagePersistStartedAt;
+  }
+  result.timings.persist_ms = Date.now() - persistStartedAt;
+  result.timings.total_with_persist_ms = Date.now() - operationStartedAt;
+  return {
+    ok: true,
+    provider: 'artlist',
+    query: normalizedQuery,
+    source: 'http_api',
+    browser_launched: false,
+    provider_contacted: true,
+    ...result,
+    verification: {
+      provider_total_equals_unique: result.total === result.unique_clip_ids,
+      no_missing: result.missing === 0,
+      complete: result.total === result.unique_clip_ids && result.missing === 0,
+    },
+  };
 }
 
 export async function searchArtlistGateway({
-  browser,
   query,
   page = 1,
   limit = 24,
   filters = {},
   forceRefresh = false,
-  profileDir = '',
   registryPath = resolveArtlistEndpointRegistryPath(),
   logger = console,
+  mode = 'catalog_first',
 }) {
   const normalizedQuery = String(query || '').trim();
   if (!normalizedQuery) {
@@ -315,6 +346,28 @@ export async function searchArtlistGateway({
     limit: normalizedLimit,
   });
 
+  if (mode === 'catalog_only') {
+    const catalogPage = cache.searchCatalogPage(normalizedQuery, normalizedLimit, normalizedPage);
+    const catalogClips = catalogPage.clips;
+    return {
+      ...makeStableEnvelope({
+        query: normalizedQuery,
+        page: normalizedPage,
+        limit: normalizedLimit,
+        searchUrl: `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(normalizedQuery)}`,
+        clips: catalogClips,
+        source: 'catalog',
+        cacheHit: catalogClips.length > 0,
+      }),
+      total: catalogPage.total,
+      has_next_page: normalizedPage * normalizedLimit < catalogPage.total,
+      ...(normalizedPage * normalizedLimit < catalogPage.total ? { next_page: normalizedPage + 1 } : {}),
+      freshness: 'cached',
+      provider_contacted: false,
+      browser_launched: false,
+    };
+  }
+
   if (!forceRefresh) {
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -331,6 +384,28 @@ export async function searchArtlistGateway({
       // Empty provider responses are misses, not durable availability. Drop
       // legacy negative entries so a later run can retry the provider.
       cache.delete(cacheKey);
+    }
+  }
+
+  // The local catalog is the browserless discovery path. It is populated by
+  // every successful snapshot/live response and is safe to query instantly.
+  if (mode !== 'live_required') {
+    const catalogClips = cache.searchCatalog(normalizedQuery, normalizedLimit);
+    if (catalogClips.length > 0 || mode === 'catalog_only') {
+      return {
+        ...makeStableEnvelope({
+          query: normalizedQuery,
+          page: normalizedPage,
+          limit: normalizedLimit,
+          searchUrl: `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(normalizedQuery)}`,
+          clips: catalogClips,
+          source: 'catalog',
+          cacheHit: catalogClips.length > 0,
+        }),
+        freshness: 'cached',
+        provider_contacted: false,
+        browser_launched: false,
+      };
     }
   }
 
@@ -361,44 +436,17 @@ export async function searchArtlistGateway({
 
   const registry = await loadArtlistEndpointRegistry(registryPath);
 
-  let envelope = null;
-  try {
-    envelope = await searchViaBrowserApi({
-      browser,
-      registry,
-      query: normalizedQuery,
-      page: normalizedPage,
-      limit: normalizedLimit,
-      filters,
-      logger,
-    });
-  } catch (err) {
-    if (err && err.code === 'SESSION_EXPIRED') {
-      throw err;
-    }
-    if (err && err.code === 'ARTLIST_ENDPOINT_INVALID') {
-      throw err;
-    }
-    if (err && err.code === 'ARTLIST_RATE_LIMITED') {
-      throw err;
-    }
-    if (logger && typeof logger.warn === 'function') {
-      logger.warn('artlist browser API search failed, falling back to legacy search', {
-        error: err && err.message ? err.message : String(err),
-      });
-    }
-  }
+  const endpoint = getFootageSearchEndpoint(registry);
+  let envelope = await searchViaHttpApi({
+    endpoint,
+    query: normalizedQuery,
+    page: normalizedPage,
+    limit: normalizedLimit,
+    filters,
+    logger,
+  });
 
-  if (!envelope) {
-    envelope = await searchViaLegacyFallback({
-      query: normalizedQuery,
-      limit: normalizedLimit,
-      profileDir,
-      browser,
-    });
-  }
-
-  // Cloudflare can serve the search page while suppressing the result API.
+  // An upstream interstitial can serve the search page while suppressing the result API.
   // Reuse a recent, real Artlist result with deterministic token overlap as
   // a bounded resilience path. The original query remains the caller's
   // retrieval intent and the response is explicitly marked stale-related;

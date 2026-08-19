@@ -1,0 +1,10 @@
+{
+  "footage_search": {
+    "enabled": true,
+    "transport": "http",
+    "kind": "graphql",
+    "method": "POST",
+    "url": "https://search-api.artlist.io/v1/graphql",
+    "operation_name": "ClipList"
+  }
+}

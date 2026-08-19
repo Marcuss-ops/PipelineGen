@@ -53,9 +53,15 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 	}
 	all := make([]ddgImageResult, 0, limit)
 	seen := make(map[string]struct{}, limit)
-	for attempt := 0; attempt < 5; attempt++ {
-		apiURL := fmt.Sprintf("https://duckduckgo.com/i.js?l=en-us&o=json&q=%s&vqd=%s&f=,,,&p=%d",
-			url.QueryEscape(query), vqd, attempt)
+	nextURL := fmt.Sprintf("https://duckduckgo.com/i.js?l=en-us&o=json&q=%s&vqd=%s&f=,,,&p=0",
+		url.QueryEscape(query), url.QueryEscape(vqd))
+	seenPages := make(map[string]struct{}, 5)
+	for len(all) < limit && nextURL != "" {
+		if _, seenPage := seenPages[nextURL]; seenPage {
+			break
+		}
+		seenPages[nextURL] = struct{}{}
+		apiURL := nextURL
 
 		// Retry the per-page HTTP call up to 3 times on transient errors.
 		// httpjson.GetBytes wraps transport / status / decode errors;
@@ -75,16 +81,17 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 			IsRetryable:    retry.IsTransient,
 		})
 		if err != nil {
-			if attempt == 4 {
-				break
-			}
-			continue
+			// Preserve results already collected. A transient failure on a
+			// later DDG page must not turn a valid first page into an empty
+			// search result.
+			break
 		}
 		var payload struct {
 			Results []ddgImageResult `json:"results"`
+			Next    string           `json:"next"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil || len(payload.Results) == 0 {
-			continue
+			break
 		}
 		for _, result := range payload.Results {
 			candidate := result.Image
@@ -100,8 +107,20 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 			seen[candidate] = struct{}{}
 			all = append(all, result)
 		}
-		if len(all) >= limit {
-			break
+		nextURL = ""
+		if payload.Next != "" {
+			nextURL = payload.Next
+			if !strings.HasPrefix(nextURL, "http://") && !strings.HasPrefix(nextURL, "https://") {
+				nextURL = "https://duckduckgo.com/" + strings.TrimPrefix(nextURL, "/")
+			}
+			// DDG's continuation URL intentionally omits vqd; retain the
+			// session token required by /i.js when following it.
+			if parsed, parseErr := url.Parse(nextURL); parseErr == nil && parsed.Query().Get("vqd") == "" {
+				values := parsed.Query()
+				values.Set("vqd", vqd)
+				parsed.RawQuery = values.Encode()
+				nextURL = parsed.String()
+			}
 		}
 	}
 	sort.SliceStable(all, func(i, j int) bool {

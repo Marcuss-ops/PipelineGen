@@ -10,6 +10,8 @@
 package images
 
 import (
+	"strconv"
+
 	applicationimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -42,6 +44,34 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 	var searchResult *applicationimages.SearchResult
 	var err error
 	provider := asset.ImageProvider(c.Query("provider"))
+	limit := 1
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		parsed, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil || parsed < 1 || parsed > applicationimages.MaxRetrievedImageBatch {
+			apiutil.BadRequest(c, "limit must be an integer between 1 and 100")
+			return
+		}
+		limit = parsed
+	}
+	if limit > 1 {
+		results, err := h.service.SearchAndDownloadManyDetailedFromProvider(
+			c.Request.Context(), slug, query, query, lang, nil, provider, limit,
+		)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		response := ImageSearchResults{Results: make([]ImageSearchResult, 0, len(results))}
+		for _, result := range results {
+			if result == nil || result.Asset == nil {
+				continue
+			}
+			response.Results = append(response.Results, assetToResultWithCache(result.Asset, boolPtr(result.CacheHit), result.CacheSource, result.RetrievalProvider))
+		}
+		response.Count = len(response.Results)
+		apiutil.OK(c, response)
+		return
+	}
 	if provider != "" {
 		searchResult, err = h.service.SearchAndDownloadDetailedFromProvider(
 			c.Request.Context(), slug, query, query, lang, nil, provider,

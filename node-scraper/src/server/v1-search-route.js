@@ -32,6 +32,9 @@ export async function handleV1ClipSearch(req, res, ctx) {
   const limit = Number.parseInt(payload.limit || ctx.config.DEFAULT_LIMIT, 10);
   const filters = payload.filters && typeof payload.filters === 'object' ? payload.filters : {};
   const forceRefresh = Boolean(payload.force_refresh || payload.forceRefresh);
+  const mode = ['catalog_only', 'catalog_first', 'http_first', 'live_required'].includes(payload.mode)
+    ? payload.mode
+    : 'catalog_first';
 
   const reqId = ctx.state.incRequest();
   ctx.state.setLastSearchAt(new Date().toISOString());
@@ -50,15 +53,13 @@ export async function handleV1ClipSearch(req, res, ctx) {
 
   try {
     const job = (async () => {
-      const browser = await ctx.deps.getBrowser();
       return ctx.deps.searchArtlistGateway({
-        browser,
         query,
         page,
         limit,
         filters,
         forceRefresh,
-        profileDir: ctx.config.PROFILE_DIR,
+        mode,
       });
     })();
     const result = await Promise.race([job, searchBudget]);
@@ -89,12 +90,14 @@ export async function handleV1ClipSearch(req, res, ctx) {
       return;
     }
 
-    const status = isArtlistRateLimitedError(err) ? 429 : 500;
+    const status = err?.code === 'ARTLIST_HTTP_403' ? 403 : isArtlistRateLimitedError(err) ? 429 : 500;
     const responseStatus = err && err.code === 'ARTLIST_SEARCH_TIMEOUT' ? 504 : status;
     res.writeHead(responseStatus, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       ok: false,
       error: err.code || err.message || String(err),
+      provider_contacted: mode !== 'catalog_only',
+      browser_launched: mode !== 'catalog_only',
       _meta: { request_id: reqId, elapsed_ms: elapsed },
     }));
   } finally {

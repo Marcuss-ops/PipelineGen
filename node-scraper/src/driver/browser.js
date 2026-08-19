@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import puppeteer from 'puppeteer-core';
+import puppeteerCore from 'puppeteer-core';
+import puppeteerExtra from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteerExtra.use(StealthPlugin());
 
 /**
  * Creates a temporary directory for browser profile.
@@ -111,7 +115,90 @@ export function evaluateBrowserPreflight() {
 }
 
 /**
+ * Realistic stealth headers mimicking Chrome 124 on Linux.
+ * Used both for WS-connected pages (stealth plugin doesn't apply)
+ * and as the canonical header set for Artlist detail/download requests.
+ */
+export const STEALTH_HEADERS = {
+  'accept-language': 'en-US,en;q=0.9,it;q=0.8',
+  'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Linux"',
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'none',
+  'sec-fetch-user': '?1',
+  'upgrade-insecure-requests': '1',
+};
+
+/**
+ * Applies stealth-level evasions to a puppeteer Page instance.
+ *
+ * For locally-launched browsers, the puppeteer-extra stealth plugin
+ * already handles these evasions globally. This function is needed
+ * for pages obtained from WS-connected browsers (CDP endpoints,
+ * Lightpanda, external browser farms) where the stealth plugin's
+ * `evaluateOnNewDocument` injections do not apply.
+ *
+ * @param {import('puppeteer-core').Page} page
+ */
+export async function applyStealthEvasions(page) {
+  if (typeof page.evaluateOnNewDocument === 'function') {
+    await page.evaluateOnNewDocument(() => {
+      // 1. Remove navigator.webdriver flag
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+      // 2. Realistic navigator.plugins (Chrome on Linux has 5 plugins)
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => {
+          const plugins = [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+          ];
+          plugins.length = 3;
+          return plugins;
+        },
+      });
+
+      // 3. Realistic navigator.languages
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'it'] });
+
+      // 4. Override permissions API to return 'granted' for notifications
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters);
+
+      // 5. Prevent detection of CDP via chrome.runtime
+      if (window.chrome) {
+        window.chrome.runtime = undefined;
+      }
+
+      // 6. WebGL vendor/renderer spoofing (common fingerprint vector)
+      const getParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function (param) {
+        if (param === 37445) return 'Intel Inc.';
+        if (param === 37446) return 'Intel Iris OpenGL Engine';
+        return getParameter.call(this, param);
+      };
+    });
+  }
+
+  // Set realistic headers on every navigation
+  if (typeof page.setExtraHTTPHeaders === 'function') {
+    await page.setExtraHTTPHeaders(STEALTH_HEADERS);
+  }
+}
+
+/**
  * Opens browser instance (local or remote).
+ *
+ * Local launches use puppeteer-extra with the stealth plugin to
+ * automatically evade bot detection (navigator.webdriver, headless
+ * traces, automation flags). Remote WS connections get stealth
+ * evasions applied manually via applyStealthEvasions() on each page.
  *
  * Return shape extended in FASE 9 (June 2026) to carry `launchError`
  * so the artlist-server /health endpoint can surface the underlying
@@ -126,7 +213,7 @@ export async function openBrowser(profileDir) {
   const browserWs = process.env.BROWSER_WS || process.env.LIGHTPANDA_WS || process.env.CHROME_WS || '';
   if (browserWs) {
     try {
-      const browser = await puppeteer.connect({
+      const browser = await puppeteerCore.connect({
         browserWSEndpoint: browserWs,
       });
       return { browser, connected: true, launchError: null };
@@ -154,22 +241,14 @@ export async function openBrowser(profileDir) {
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
-    // FASE 9 (June 2026): --disable-dev-shm-usage is the canonical
-    // mitigation for Chrome's failure mode in Linux containers /
-    // cgroup-bound hosts where /dev/shm is 64MB or smaller
-    // (Docker default). Without this flag Chrome silently fails
-    // IPC fallback to disk and crashes / hangs
-    // according to the surrounding load. The flag forces Chrome to
-    // use /tmp instead of /dev/shm for inter-process shared memory.
     '--disable-dev-shm-usage',
     '--disable-gpu',
-    '--disable-blink-features=AutomationControlled',
     '--no-first-run',
     '--no-default-browser-check',
   ];
   try {
     const headless = process.env.ARTLIST_HEADLESS === 'false' ? false : 'new';
-    const browser = await puppeteer.launch({
+    const browser = await puppeteerExtra.launch({
       executablePath,
       headless,
       userDataDir,
@@ -232,6 +311,14 @@ export async function createBrowserPage(profileDir) {
   }
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+
+  // For WS-connected browsers (stealth plugin doesn't inject evaluateOnNewDocument),
+  // apply evasions manually on every new page so Artlist's JS probes see a
+  // clean fingerprint (navigator.webdriver=false, realistic plugins, headers).
+  if (connected) {
+    await applyStealthEvasions(page);
+  }
+
   return {
     browser,
     connected,
