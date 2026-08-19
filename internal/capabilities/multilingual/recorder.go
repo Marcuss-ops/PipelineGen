@@ -31,14 +31,14 @@ import (
 // pipeline. Safe for a single run per process; both ports are mandatory.
 type Recorder struct {
 	registry capperformance.Registry
-	ops      kernobs.MeasuredOperationRecorder
+	ops      kernobs.OperationReportProjectionRecorder
 	log      *zap.Logger
 }
 
 // NewRecorder constructs the collector. Fail-open on nil ports is NOT allowed
 // at construction (the caller checks), but a nil port is tolerated at
 // record time (metrics are best-effort and must never fail the render).
-func NewRecorder(registry capperformance.Registry, ops kernobs.MeasuredOperationRecorder, log *zap.Logger) *Recorder {
+func NewRecorder(registry capperformance.Registry, ops kernobs.OperationReportProjectionRecorder, log *zap.Logger) *Recorder {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -210,8 +210,10 @@ func (r *Recorder) RecordOperation(ctx context.Context, m kernobs.MeasuredOperat
 	}
 	// The canonical run owns the observation; performance storage is only a
 	// read-model projection of the same measured fact.
+	report := kernobs.OperationReportFromMeasuredOperation(m)
+	m.ObservationID = report.ObservationID
 	kernobs.RecordMeasuredOperation(ctx, m)
-	if err := r.ops.RecordOperation(ctx, m); err != nil {
+	if err := r.ops.RecordOperationReport(ctx, report); err != nil {
 		r.log.Warn("multilingual metrics: record operation", zap.String("operation", m.Operation), zap.Error(err))
 	}
 }

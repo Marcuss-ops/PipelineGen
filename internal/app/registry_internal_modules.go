@@ -413,7 +413,12 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	}
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
-	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer})
+	// Render backend selection: probed host capabilities drive the resolver;
+	// there is no hardcoded CUDA path (the CUDA native backend runs only when
+	// the registry says the host satisfies its full chain).
+	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
+	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
+	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, resolver: backendResolver, probe: backendProbe})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}

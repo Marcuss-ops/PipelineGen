@@ -24,7 +24,8 @@ func baseCompileInput() CompileInput {
 			PixelFormat:  "yuv420p",
 			Width:        1080,
 			Height:       1920,
-			FPS:          60,
+			FPSNum:       60,
+			FPSDen:       1,
 			AudioCodec:   "aac",
 			SampleRate:   48000,
 			Channels:     2,
@@ -57,7 +58,7 @@ func TestCompile_SealsDeterministicPlan(t *testing.T) {
 	if p1.Watermark != nil || p1.Subtitles != nil {
 		t.Errorf("watermark/subtitles must be nil when disabled, got wm=%v sub=%v", p1.Watermark, p1.Subtitles)
 	}
-	if p1.Output.Width != 1080 || p1.Output.Height != 1920 || p1.Output.FPS != 60 {
+	if p1.Output.Width != 1080 || p1.Output.Height != 1920 || p1.Output.FPSNum != 60 || p1.Output.FPSDen != 1 {
 		t.Errorf("output contract: got %+v", p1.Output)
 	}
 	if p1.Audio.Mode != AudioModeCopyIfCompatible || p1.Audio.Codec != "aac" {

@@ -5,9 +5,9 @@
 // benchmark comparison answer to "what does each operation cost").
 //
 // One kernel MeasuredOperation → one performance_operations row. run_id/job_id
-// are resolved from the kernobs run bound to the request context (” when the
-// operation runs outside a tracked run); step_id has no canonical context
-// spelling today and stays ”. The Real-Time Factor (elapsed / source
+// are resolved from the kernobs run bound to the request context; an operation
+// outside a tracked run is rejected. step_id has no canonical context spelling
+// today and stays "". The Real-Time Factor (elapsed / source
 // duration) is DERIVED in OperationStats — never stored.
 package performance
 
@@ -36,21 +36,24 @@ func NewOperationStore(db *sql.DB) (*OperationStore, error) {
 	return &OperationStore{db: db}, nil
 }
 
-var _ kernobs.MeasuredOperationRecorder = (*OperationStore)(nil)
+var _ kernobs.OperationReportProjectionRecorder = (*OperationStore)(nil)
 var _ capperformance.OperationAnalytics = (*OperationStore)(nil)
+var _ capperformance.BenchmarkSource = (*OperationStore)(nil)
 
-// RecordOperation persists one operation measurement. Fail-closed on a
-// missing operation name (an anonymous row is useless for aggregation);
-// every other field is optional (zero = not measurable at the boundary).
-// operation_id is generated per observation (the upsert keeps a concurrent
-// re-record of the same id convergent, never duplicated).
-func (s *OperationStore) RecordOperation(ctx context.Context, m kernobs.MeasuredOperation) error {
+// RecordOperationReport projects the canonical operation fact into the
+// performance read model. It never measures time and never accepts an
+// operation without a canonical run identity.
+func (s *OperationStore) RecordOperationReport(ctx context.Context, m kernobs.OperationReport) error {
 	if err := validateMeasurement(m); err != nil {
 		return err
 	}
-	// This adapter is projection-only. The measurement wrapper records the
-	// same fact in the run-bound report before invoking this sink.
+	// This adapter is projection-only. A performance row without a canonical
+	// run observation is an orphaned second source of truth, so reject calls
+	// outside a run instead of inventing empty identity fields.
 	runID, jobID, stepID := resolveIdentity(ctx)
+	if runID == "" || jobID == "" {
+		return errors.New("performance operations: canonical run context is required")
+	}
 	cacheHit := 0
 	if m.CacheHit {
 		cacheHit = 1
@@ -71,10 +74,10 @@ func (s *OperationStore) RecordOperation(ctx context.Context, m kernobs.Measured
 			elapsed_ms=excluded.elapsed_ms, cpu_user_ms=excluded.cpu_user_ms, cpu_system_ms=excluded.cpu_system_ms,
 			output_size_bytes=excluded.output_size_bytes, cache_hit=excluded.cache_hit, strategy=excluded.strategy,
 			metadata_json=excluded.metadata_json, created_at=excluded.created_at`,
-		kernobs.NewObservationID(), runID, jobID, stepID, m.Operation,
+		m.ObservationID, runID, jobID, stepID, m.Operation,
 		m.SourceSHA256, m.SourceDurationMS, m.SourceSizeBytes,
 		m.Width, m.Height, m.FPS, m.InputCodec, m.OutputCodec,
-		m.ElapsedMS, m.CPUUserMS, m.CPUSystemMS,
+		m.DurationMs, m.CPUUserMS, m.CPUSystemMS,
 		m.OutputSizeBytes, cacheHit, m.Strategy, nonEmpty(m.MetadataJSON, "{}"), createdAt)
 	if err != nil {
 		return fmt.Errorf("record performance operation %q: %w", m.Operation, err)
@@ -130,11 +133,123 @@ func (s *OperationStore) OperationStats(ctx context.Context, since string) ([]ca
 	return stats, nil
 }
 
+// OperationSamples returns the canonical elapsed_ms samples for one operation,
+// oldest first — the benchmark baseline derived from performance_operations
+// (the ObservedExecutor's single boundary measurement). It never re-measures
+// wall time at the read boundary.
+func (s *OperationStore) OperationSamples(ctx context.Context, operation, since string) ([]int64, error) {
+	if strings.TrimSpace(operation) == "" {
+		return nil, errors.New("performance operation samples: operation is required")
+	}
+	query := `SELECT elapsed_ms FROM performance_operations WHERE operation = ?`
+	var args []any
+	args = append(args, operation)
+	if strings.TrimSpace(since) != "" {
+		query += ` AND created_at >= ?`
+		args = append(args, since)
+	}
+	// rowid is the deterministic insertion-order tiebreaker: elapsed_ms rows
+	// written by the ObservedExecutor in the same created_at second still
+	// return in sample order.
+	query += ` ORDER BY created_at, rowid`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("performance operation samples %q: %w", operation, err)
+	}
+	defer rows.Close()
+	var samples []int64
+	for rows.Next() {
+		var elapsed int64
+		if err := rows.Scan(&elapsed); err != nil {
+			return nil, fmt.Errorf("performance operation samples %q: scan: %w", operation, err)
+		}
+		samples = append(samples, elapsed)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("performance operation samples %q: iterate: %w", operation, err)
+	}
+	return samples, nil
+}
+
+// BenchmarkStats derives per-operation benchmark aggregates (sample count,
+// median elapsed, median source duration, derived median RTF, cache hits) from
+// the canonical performance_operations rows. Medians are computed in Go over
+// the canonical elapsed_ms / source_duration_ms samples — never re-measured
+// at the read boundary. MedianRTF is 0 when the operation has no measured
+// source duration.
+func (s *OperationStore) BenchmarkStats(ctx context.Context, since string) ([]capperformance.BenchmarkStats, error) {
+	query := `SELECT operation, elapsed_ms, source_duration_ms, cache_hit FROM performance_operations`
+	var args []any
+	if strings.TrimSpace(since) != "" {
+		query += ` WHERE created_at >= ?`
+		args = append(args, since)
+	}
+	query += ` ORDER BY operation, created_at`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("performance benchmark stats: query: %w", err)
+	}
+	defer rows.Close()
+
+	type accumulator struct {
+		elapsed   []int64
+		source    []int64
+		cacheHits int64
+	}
+	var order []string
+	byOperation := make(map[string]*accumulator)
+	for rows.Next() {
+		var (
+			operation string
+			elapsed   int64
+			source    int64
+			cacheHit  int64
+		)
+		if err := rows.Scan(&operation, &elapsed, &source, &cacheHit); err != nil {
+			return nil, fmt.Errorf("performance benchmark stats: scan: %w", err)
+		}
+		acc, ok := byOperation[operation]
+		if !ok {
+			acc = &accumulator{}
+			byOperation[operation] = acc
+			order = append(order, operation)
+		}
+		acc.elapsed = append(acc.elapsed, elapsed)
+		acc.source = append(acc.source, source)
+		acc.cacheHits += cacheHit
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("performance benchmark stats: iterate: %w", err)
+	}
+
+	stats := make([]capperformance.BenchmarkStats, 0, len(order))
+	for _, operation := range order {
+		acc := byOperation[operation]
+		st := capperformance.BenchmarkStats{
+			Operation:       operation,
+			Samples:         int64(len(acc.elapsed)),
+			MedianElapsedMS: capperformance.MedianInt64(acc.elapsed),
+			MedianSourceMS:  capperformance.MedianInt64(acc.source),
+			CacheHits:       acc.cacheHits,
+		}
+		if st.MedianSourceMS > 0 {
+			// Median RTF = median elapsed / median source duration (derived,
+			// never stored; < 1 means faster than realtime).
+			st.MedianRTF = st.MedianElapsedMS / st.MedianSourceMS
+		}
+		stats = append(stats, st)
+	}
+	return stats, nil
+}
+
 // validateMeasurement fails closed on an anonymous operation: aggregation is
 // meaningless without an operation name. Everything else is optional.
-func validateMeasurement(m kernobs.MeasuredOperation) error {
+func validateMeasurement(m kernobs.OperationReport) error {
 	if strings.TrimSpace(m.Operation) == "" {
 		return errors.New("performance operations: operation is required")
+	}
+	if strings.TrimSpace(m.ObservationID) == "" {
+		return errors.New("performance operations: observation id is required")
 	}
 	return nil
 }

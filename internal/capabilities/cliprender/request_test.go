@@ -38,8 +38,8 @@ func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {
 	if req.Output.Contract != OutputContractVeloxEditingClipV1 {
 		t.Errorf("Output.Contract default: got %q, want velox-editing-clip-v1", req.Output.Contract)
 	}
-	if req.Output.Width != DefaultWidth || req.Output.Height != DefaultHeight || req.Output.FPS != DefaultFPS {
-		t.Errorf("Output defaults: got %dx%d@%d, want %dx%d@%d", req.Output.Width, req.Output.Height, req.Output.FPS, DefaultWidth, DefaultHeight, DefaultFPS)
+	if req.Output.Width != DefaultWidth || req.Output.Height != DefaultHeight || req.Output.FPSNum != DefaultFPSNum || req.Output.FPSDen != DefaultFPSDen {
+		t.Errorf("Output defaults: got %dx%d@%d/%d, want %dx%d@%d/%d", req.Output.Width, req.Output.Height, req.Output.FPSNum, req.Output.FPSDen, DefaultWidth, DefaultHeight, DefaultFPSNum, DefaultFPSDen)
 	}
 	if req.Audio.Mode != AudioModeCopyIfCompatible {
 		t.Errorf("Audio.Mode default: got %q, want copy_if_compatible", req.Audio.Mode)
@@ -142,19 +142,19 @@ func TestValidate_WatermarkContract(t *testing.T) {
 // TestValidate_OutputContract verifies output resolution/fps bounds.
 func TestValidate_OutputContract(t *testing.T) {
 	// out-of-range dimensions fail.
-	req := &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 8, Height: 1920, FPS: 60}}
+	req := &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 8, Height: 1920, FPSNum: 60, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("width below MinDimension must fail")
 	}
 	// out-of-range fps fails.
-	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPS: 1000}}
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPSNum: 1000, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("fps above MaxFPS must fail")
 	}
 	// valid passes.
-	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPS: 60}}
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPSNum: 60, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		t.Errorf("valid output must validate: %v", err)

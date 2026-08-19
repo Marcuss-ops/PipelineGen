@@ -65,12 +65,12 @@ func boundRunCtx(t *testing.T) context.Context {
 func TestOperationStoreRecordsAndResolvesIdentity(t *testing.T) {
 	store := newOperationsStore(t)
 	ctx := boundRunCtx(t)
-	err := store.RecordOperation(ctx, kernobs.MeasuredOperation{
+	err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(kernobs.MeasuredOperation{
 		Operation:        "normalize",
 		ElapsedMS:        18000,
 		SourceDurationMS: 60000,
 		CreatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,30 +88,43 @@ func TestOperationStoreRecordsAndResolvesIdentity(t *testing.T) {
 	}
 }
 
+func TestOperationStoreProjectsCanonicalReportWithStableIdentity(t *testing.T) {
+	store := newOperationsStore(t)
+	ctx := boundRunCtx(t)
+	report := kernobs.OperationReport{
+		ObservationID: "obs-canonical-1", Operation: "rust.render", DurationMs: 321,
+		SourceDurationMS: 1000, OutputSizeBytes: 42, CacheHit: true,
+	}
+	if err := store.RecordOperationReport(ctx, report); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	var elapsed int64
+	if err := store.db.QueryRow(`SELECT operation_id, elapsed_ms FROM performance_operations`).Scan(&id, &elapsed); err != nil {
+		t.Fatal(err)
+	}
+	if id != report.ObservationID || elapsed != report.DurationMs {
+		t.Fatalf("projection identity/duration = %q/%d, want %q/%d", id, elapsed, report.ObservationID, report.DurationMs)
+	}
+}
+
 func TestOperationStoreRejectsAnonymousOperation(t *testing.T) {
 	store := newOperationsStore(t)
-	if err := store.RecordOperation(context.Background(), kernobs.MeasuredOperation{}); err == nil {
+	if err := store.RecordOperationReport(context.Background(), kernobs.OperationReportFromMeasuredOperation(kernobs.MeasuredOperation{})); err == nil {
 		t.Fatal("empty operation must be rejected")
 	}
 }
 
 func TestOperationStoreDefaultsIdentityOutsideRun(t *testing.T) {
 	store := newOperationsStore(t)
-	if err := store.RecordOperation(context.Background(), kernobs.MeasuredOperation{Operation: "probe"}); err != nil {
-		t.Fatal(err)
-	}
-	var runID, jobID string
-	if err := store.db.QueryRow(`SELECT run_id, job_id FROM performance_operations`).Scan(&runID, &jobID); err != nil {
-		t.Fatal(err)
-	}
-	if runID != "" || jobID != "" {
-		t.Fatalf("identity outside a run must be empty, got run=%q job=%q", runID, jobID)
+	if err := store.RecordOperationReport(context.Background(), kernobs.OperationReportFromMeasuredOperation(kernobs.MeasuredOperation{Operation: "probe"})); err == nil {
+		t.Fatal("operation outside a canonical run must be rejected")
 	}
 }
 
 func TestOperationStatsComputesRTF(t *testing.T) {
 	store := newOperationsStore(t)
-	ctx := context.Background()
+	ctx := boundRunCtx(t)
 	records := []kernobs.MeasuredOperation{
 		{Operation: "normalize", ElapsedMS: 18000, SourceDurationMS: 60000},
 		{Operation: "normalize", ElapsedMS: 18000, SourceDurationMS: 60000},
@@ -119,7 +132,7 @@ func TestOperationStatsComputesRTF(t *testing.T) {
 		{Operation: "probe", ElapsedMS: 100, SourceDurationMS: 0},
 	}
 	for _, m := range records {
-		if err := store.RecordOperation(ctx, m); err != nil {
+		if err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(m)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -144,13 +157,13 @@ func TestOperationStatsComputesRTF(t *testing.T) {
 
 func TestOperationStatsSinceFilter(t *testing.T) {
 	store := newOperationsStore(t)
-	ctx := context.Background()
+	ctx := boundRunCtx(t)
 	early := kernobs.MeasuredOperation{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-01T00:00:00Z"}
 	late := kernobs.MeasuredOperation{Operation: "normalize", ElapsedMS: 1, CreatedAt: "2026-08-18T00:00:00Z"}
-	if err := store.RecordOperation(ctx, early); err != nil {
+	if err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(early)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordOperation(ctx, late); err != nil {
+	if err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(late)); err != nil {
 		t.Fatal(err)
 	}
 	stats, err := store.OperationStats(ctx, "2026-08-10T00:00:00Z")
@@ -159,5 +172,72 @@ func TestOperationStatsSinceFilter(t *testing.T) {
 	}
 	if len(stats) != 1 || stats[0].Runs != 1 {
 		t.Fatalf("since filter must keep only the late operation, got %+v", stats)
+	}
+}
+
+func TestOperationSamplesReturnsCanonicalElapsedOrdered(t *testing.T) {
+	store := newOperationsStore(t)
+	ctx := boundRunCtx(t)
+	records := []kernobs.MeasuredOperation{
+		{Operation: "normalize", ElapsedMS: 100, CreatedAt: "2026-08-01T00:00:00Z"},
+		{Operation: "normalize", ElapsedMS: 200, CreatedAt: "2026-08-02T00:00:00Z"},
+		{Operation: "normalize", ElapsedMS: 150, CreatedAt: "2026-08-03T00:00:00Z"},
+		{Operation: "watermark", ElapsedMS: 999, CreatedAt: "2026-08-03T00:00:00Z"},
+	}
+	for _, m := range records {
+		if err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(m)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	samples, err := store.OperationSamples(ctx, "normalize", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int64{100, 200, 150}
+	if len(samples) != len(want) {
+		t.Fatalf("samples = %v, want %v", samples, want)
+	}
+	for i := range want {
+		if samples[i] != want[i] {
+			t.Fatalf("samples[%d] = %d, want %d (full: %v)", i, samples[i], want[i], samples)
+		}
+	}
+}
+
+func TestBenchmarkStatsDerivesMedianRTF(t *testing.T) {
+	store := newOperationsStore(t)
+	ctx := boundRunCtx(t)
+	// normalize: elapsed {10s, 14s, 18s} over 60s source → median elapsed 14s,
+	// median RTF = 14/60. watermark has no source duration → median RTF 0.
+	records := []kernobs.MeasuredOperation{
+		{Operation: "normalize", ElapsedMS: 10000, SourceDurationMS: 60000},
+		{Operation: "normalize", ElapsedMS: 14000, SourceDurationMS: 60000},
+		{Operation: "normalize", ElapsedMS: 18000, SourceDurationMS: 60000},
+		{Operation: "watermark", ElapsedMS: 3000, SourceDurationMS: 0},
+	}
+	for _, m := range records {
+		if err := store.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(m)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := store.BenchmarkStats(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byOp := map[string]capperformance.BenchmarkStats{}
+	for _, s := range stats {
+		byOp[s.Operation] = s
+	}
+	n := byOp["normalize"]
+	if n.Samples != 3 || n.MedianElapsedMS != 14000 || n.MedianSourceMS != 60000 {
+		t.Fatalf("normalize benchmark = %+v, want samples=3 median_elapsed=14000 median_source=60000", n)
+	}
+	wantRTF := float64(14000) / float64(60000)
+	if n.MedianRTF != wantRTF {
+		t.Fatalf("normalize median RTF = %v, want %v", n.MedianRTF, wantRTF)
+	}
+	w := byOp["watermark"]
+	if w.Samples != 1 || w.MedianRTF != 0 {
+		t.Fatalf("watermark benchmark = %+v, want samples=1 rtf=0", w)
 	}
 }

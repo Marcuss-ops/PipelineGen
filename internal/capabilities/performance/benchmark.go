@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -42,12 +43,12 @@ const RegressionThresholdPercent = 1.0
 // materialized and hashed (the benchmark input-generation step).
 func CanonicalWorkloads() []Workload {
 	return []Workload{
-		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":10}`},
-		{WorkloadID: Workload1080p60s, Version: WorkloadVersion, ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":60}`},
-		{WorkloadID: WorkloadWatermark, Version: WorkloadVersion, ParametersJSON: `{"operation":"watermark","width":1920,"height":1080,"fps":30}`},
-		{WorkloadID: WorkloadAudioMix, Version: WorkloadVersion, ParametersJSON: `{"operation":"audio_mix","codec":"aac","profile":"LC","sample_rate":48000,"channels":2}`},
-		{WorkloadID: Workload10SceneRender, Version: WorkloadVersion, ParametersJSON: `{"operation":"render_scene","scene_count":10,"width":1920,"height":1080,"fps":30}`},
-		{WorkloadID: WorkloadStreamCopy, Version: WorkloadVersion, ParametersJSON: `{"operation":"assemble_copy","codec":"h264","pixel_format":"yuv420p","fps":30}`},
+		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":10}`},
+		{WorkloadID: Workload1080p60s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":60}`},
+		{WorkloadID: WorkloadWatermark, Version: WorkloadVersion, Operation: "watermark", ParametersJSON: `{"operation":"watermark","width":1920,"height":1080,"fps":30}`},
+		{WorkloadID: WorkloadAudioMix, Version: WorkloadVersion, Operation: "audio_mix", ParametersJSON: `{"operation":"audio_mix","codec":"aac","profile":"LC","sample_rate":48000,"channels":2}`},
+		{WorkloadID: Workload10SceneRender, Version: WorkloadVersion, Operation: "render_scene", ParametersJSON: `{"operation":"render_scene","scene_count":10,"width":1920,"height":1080,"fps":30}`},
+		{WorkloadID: WorkloadStreamCopy, Version: WorkloadVersion, Operation: "assemble_copy", ParametersJSON: `{"operation":"assemble_copy","codec":"h264","pixel_format":"yuv420p","fps":30}`},
 	}
 }
 
@@ -115,8 +116,9 @@ func CompareBaseline(previousSamples, currentSamples []int64) Comparison {
 }
 
 // WorkloadExecutor runs one workload on the media boundary (the Rust
-// renderer). The suite times the execution wall clock itself; the executor
-// only reports success/failure.
+// renderer). The executor only reports success/failure; the canonical
+// duration is recorded by the ObservedExecutor inside the media boundary and
+// read back by the suite from performance_operations (never a local timer).
 type WorkloadExecutor interface {
 	RunWorkload(ctx context.Context, workload Workload) error
 }
@@ -127,25 +129,28 @@ type BaselineSource interface {
 	WorkloadSamples(ctx context.Context, workloadID string) ([]int64, error)
 }
 
-// Suite runs the fixed workloads and compares each against its baseline.
+// Suite runs the fixed workloads and compares each against its canonical
+// baseline, derived from performance_operations elapsed_ms samples. It never
+// times the execution itself: the ObservedExecutor writes the canonical
+// duration once, and the suite reads it back via the sample source.
 type Suite struct {
 	executor           WorkloadExecutor
-	baselines          BaselineSource
+	samples            OperationSampleSource
 	registry           Registry
 	samplesPerWorkload int
 	now                func() time.Time
 }
 
 // NewBenchmarkSuite builds the suite. Fail-open on registry (nil disables
-// persistence — comparisons still return); the executor and baselines are
-// required (a nil executor is a hard error at Run).
-func NewBenchmarkSuite(executor WorkloadExecutor, baselines BaselineSource, registry Registry, samplesPerWorkload int) *Suite {
+// persistence — comparisons still return); the executor and canonical sample
+// source are required (a nil executor or sample source is a hard error at Run).
+func NewBenchmarkSuite(executor WorkloadExecutor, samples OperationSampleSource, registry Registry, samplesPerWorkload int) *Suite {
 	if samplesPerWorkload <= 0 {
 		samplesPerWorkload = 5
 	}
 	return &Suite{
 		executor:           executor,
-		baselines:          baselines,
+		samples:            samples,
 		registry:           registry,
 		samplesPerWorkload: samplesPerWorkload,
 		now:                time.Now,
@@ -167,6 +172,9 @@ func (s *Suite) Run(ctx context.Context, workloads []Workload) ([]Comparison, er
 	if s == nil || s.executor == nil {
 		return nil, fmt.Errorf("performance benchmark suite: executor is required")
 	}
+	if s.samples == nil {
+		return nil, fmt.Errorf("performance benchmark suite: canonical sample source is required")
+	}
 	comparisons := make([]Comparison, 0, len(workloads))
 	for _, workload := range workloads {
 		comparison, err := s.runWorkload(ctx, workload)
@@ -179,26 +187,32 @@ func (s *Suite) Run(ctx context.Context, workloads []Workload) ([]Comparison, er
 }
 
 func (s *Suite) runWorkload(ctx context.Context, workload Workload) (Comparison, error) {
-	var samples []int64
+	if strings.TrimSpace(workload.Operation) == "" {
+		return Comparison{}, fmt.Errorf("performance benchmark workload %s: operation is required", workload.WorkloadID)
+	}
+	// Baseline = canonical elapsed_ms samples already present before this run.
+	previous, err := s.samples.OperationSamples(ctx, workload.Operation, "")
+	if err != nil {
+		return Comparison{}, fmt.Errorf("performance benchmark baseline %s: %w", workload.Operation, err)
+	}
+	// Run the workload without a local timer: each execution records its own
+	// canonical duration in performance_operations via the ObservedExecutor.
 	for i := 0; i < s.samplesPerWorkload; i++ {
-		started := time.Now()
 		if err := s.executor.RunWorkload(ctx, workload); err != nil {
 			return Comparison{}, fmt.Errorf("performance benchmark workload %s sample %d: %w", workload.WorkloadID, i+1, err)
 		}
-		samples = append(samples, time.Since(started).Milliseconds())
 	}
-	var previous []int64
-	if s.baselines != nil {
-		var err error
-		previous, err = s.baselines.WorkloadSamples(ctx, workload.WorkloadID)
-		if err != nil {
-			return Comparison{}, fmt.Errorf("performance benchmark baseline %s: %w", workload.WorkloadID, err)
-		}
+	// Current = the canonical samples appended by this run (the suffix of the
+	// ordered sample log after the pre-run baseline).
+	after, err := s.samples.OperationSamples(ctx, workload.Operation, "")
+	if err != nil {
+		return Comparison{}, fmt.Errorf("performance benchmark current samples %s: %w", workload.Operation, err)
 	}
-	comparison := CompareBaseline(previous, samples)
+	current := after[len(previous):]
+	comparison := CompareBaseline(previous, current)
 	comparison.WorkloadID = workload.WorkloadID
 	if s.registry != nil {
-		median := MedianInt64(samples)
+		median := MedianInt64(current)
 		now := s.now().UTC()
 		if err := s.registry.RecordRun(ctx, Run{
 			RunID:           benchmarkRunID(workload.WorkloadID, now),

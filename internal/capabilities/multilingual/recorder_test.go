@@ -31,8 +31,11 @@ type fakeOps struct {
 	recorded []kernobs.MeasuredOperation
 }
 
-func (f *fakeOps) RecordOperation(_ context.Context, m kernobs.MeasuredOperation) error {
-	f.recorded = append(f.recorded, m)
+func (f *fakeOps) RecordOperationReport(_ context.Context, p kernobs.OperationReport) error {
+	f.recorded = append(f.recorded, kernobs.MeasuredOperation{
+		ObservationID: p.ObservationID, Operation: p.Operation,
+		CacheHit: p.CacheHit, ElapsedMS: p.DurationMs,
+	})
 	return nil
 }
 

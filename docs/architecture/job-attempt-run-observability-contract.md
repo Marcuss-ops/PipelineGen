@@ -25,6 +25,73 @@ Capability packages may provide adapters and concrete provider wrappers, but the
 
 Compatibility is subordinate to the contract: the canonical report is the authoritative writer, while legacy surfaces are projections that may exist only until their explicit removal conditions in the measurement matrix pass. Two independent timers must never measure the same boundary.
 
+### 1.1 Data ownership — the SSOT rule
+
+Operational metrics have exactly one source of truth: the **observability database**. Every other metrics surface is a derived projection of those canonical facts, never a second measurement of the same boundary.
+
+```text
+OPERATIONAL METRICS SSOT
+= observability database
+
+CANONICAL TABLES
+= run_observability
+  run_stage_observations
+  run_operation_observations
+  run_artifact_observations
+  run_child_observations
+
+CANONICAL WRITER
+= SQLiteRecorder
+
+PERFORMANCE DATABASE / TABLES
+= derived analytics projection
+
+PROMETHEUS
+= derived live projection
+```
+
+The canonical write path is one-directional:
+
+```text
+CODE
+ ↓
+canonical measurement
+ ↓
+RunReport
+ ↓
+SQLiteRecorder
+ ↓
+OBSERVABILITY DB
+```
+
+From the SSOT, consumers project derived surfaces — they read canonical facts, they never re-measure:
+
+```text
+                SSOT
+                  │
+                  ▼
+         run_observability
+                  │
+         canonical facts
+                  │
+       ┌──────────┼───────────┐
+       ▼          ▼           ▼
+ performance_*  Prometheus    API
+       │          │           │
+ analytics    dashboards    /jobs
+ benchmark      alerts      reports
+```
+
+**Forbidden** — three independent timers measuring the same boundary into three sinks:
+
+```text
+timer A → run_observability
+timer B → performance_operations
+timer C → Prometheus
+```
+
+Only the first timer exists. The `performance_*` tables (`performance_runs`, `performance_steps`, `performance_artifacts`, `performance_operations`, `benchmark_workloads`) are analytics/benchmark projections that must not re-time elapsed work: they consume canonical `OperationReport` / `StageReport` / `RunReport` facts through the `OperationReportProjectionRecorder` seam in `internal/platform/sqlite/performance`. Prometheus is a derived live projection of the same canonical observations (the `RunReportsCollector` and the `job_run_*` / `job_stage_*` / `job_operation_*` families), never a boundary's own direct `Observe()` timer. The API (`/jobs`, reports) is a read projection of the same canonical facts.
+
 ## 2. Identity model
 
 ### 2.1 Entities

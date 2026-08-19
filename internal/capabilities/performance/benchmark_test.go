@@ -2,6 +2,7 @@ package performance
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -18,8 +19,8 @@ func TestCanonicalWorkloadsDefinesTheFixedSet(t *testing.T) {
 			t.Fatalf("duplicate workload id %q", w.WorkloadID)
 		}
 		seen[w.WorkloadID] = true
-		if w.Version != WorkloadVersion || w.ParametersJSON == "" {
-			t.Fatalf("workload %q missing version or parameters: %+v", w.WorkloadID, w)
+		if w.Version != WorkloadVersion || w.ParametersJSON == "" || w.Operation == "" {
+			t.Fatalf("workload %q missing version, parameters or operation: %+v", w.WorkloadID, w)
 		}
 	}
 	for _, id := range wantIDs {
@@ -78,7 +79,34 @@ func TestCompareBaseline(t *testing.T) {
 
 // ── Suite ────────────────────────────────────────────────────────────
 
+// fakeSampleSource is a coordinated canonical sample log: the executor
+// appends the canonical elapsed_ms it "measured", and the suite reads them
+// back through OperationSamples — so the suite never times the execution.
+type fakeSampleSource struct {
+	mu      sync.Mutex
+	samples map[string][]int64
+}
+
+func newFakeSampleSource() *fakeSampleSource {
+	return &fakeSampleSource{samples: map[string][]int64{}}
+}
+
+func (f *fakeSampleSource) OperationSamples(_ context.Context, operation, _ string) ([]int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.samples[operation]...), nil
+}
+
+func (f *fakeSampleSource) append(operation string, elapsed int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.samples[operation] = append(f.samples[operation], elapsed)
+}
+
+var _ OperationSampleSource = (*fakeSampleSource)(nil)
+
 type fakeWorkloadExecutor struct {
+	log  *fakeSampleSource
 	errs map[string]error
 }
 
@@ -86,15 +114,10 @@ func (f fakeWorkloadExecutor) RunWorkload(_ context.Context, w Workload) error {
 	if f.errs != nil {
 		return f.errs[w.WorkloadID]
 	}
-	// Non-zero wall time so samples are real (not a degenerate 0ms median).
-	time.Sleep(5 * time.Millisecond)
+	// The executor runs the workload; the canonical duration is written by
+	// the ObservedExecutor. Here we record a fixed canonical sample directly.
+	f.log.append(w.Operation, 5000)
 	return nil
-}
-
-type fakeBaselineSource struct{ samples map[string][]int64 }
-
-func (f fakeBaselineSource) WorkloadSamples(_ context.Context, workloadID string) ([]int64, error) {
-	return f.samples[workloadID], nil
 }
 
 type recordingRegistry struct{ runs []Run }
@@ -113,11 +136,14 @@ var _ Registry = (*recordingRegistry)(nil)
 
 func TestBenchmarkSuiteRunsAndCompares(t *testing.T) {
 	workloads := []Workload{
-		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, ParametersJSON: `{"operation":"normalize"}`},
+		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, Operation: "normalize"},
 	}
-	baselines := fakeBaselineSource{samples: map[string][]int64{Workload1080p10s: {20000, 21000, 19000}}}
+	source := newFakeSampleSource()
+	source.append("normalize", 20000)
+	source.append("normalize", 21000)
+	source.append("normalize", 19000)
 	registry := &recordingRegistry{}
-	suite := NewBenchmarkSuite(fakeWorkloadExecutor{}, baselines, registry, 3)
+	suite := NewBenchmarkSuite(fakeWorkloadExecutor{log: source}, source, registry, 3)
 	suite.SetClock(func() time.Time { return time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC) })
 
 	comparisons, err := suite.Run(context.Background(), workloads)
@@ -134,23 +160,24 @@ func TestBenchmarkSuiteRunsAndCompares(t *testing.T) {
 	if c.PreviousMedianMS != 20000 {
 		t.Fatalf("previous median = %v, want 20000", c.PreviousMedianMS)
 	}
-	// The fake executor returns instantly, so the current median is ~0ms:
-	// a large improvement over the 20s baseline.
+	// Current canonical samples are [5000,5000,5000] (median 5s) — a large
+	// improvement over the 20s baseline.
 	if c.Verdict != VerdictImproved {
-		t.Fatalf("verdict = %s, want IMPROVED (instant vs 20s baseline)", c.Verdict)
+		t.Fatalf("verdict = %s, want IMPROVED (5s vs 20s baseline)", c.Verdict)
 	}
 	if len(registry.runs) != 1 {
 		t.Fatalf("recorded runs = %d, want 1", len(registry.runs))
 	}
 	run := registry.runs[0]
-	if run.WorkloadID != Workload1080p10s || run.WorkloadVersion != WorkloadVersion || run.Status != "SUCCEEDED" || run.WallMS < 0 {
+	if run.WorkloadID != Workload1080p10s || run.WorkloadVersion != WorkloadVersion || run.Status != "SUCCEEDED" || run.WallMS != 5000 {
 		t.Fatalf("recorded run = %+v", run)
 	}
 }
 
 func TestBenchmarkSuiteWithoutBaselineReportsNoBaseline(t *testing.T) {
-	suite := NewBenchmarkSuite(fakeWorkloadExecutor{}, fakeBaselineSource{}, &recordingRegistry{}, 2)
-	comparisons, err := suite.Run(context.Background(), []Workload{{WorkloadID: WorkloadWatermark}})
+	source := newFakeSampleSource()
+	suite := NewBenchmarkSuite(fakeWorkloadExecutor{log: source}, source, &recordingRegistry{}, 2)
+	comparisons, err := suite.Run(context.Background(), []Workload{{WorkloadID: WorkloadWatermark, Operation: "watermark"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +194,9 @@ func TestBenchmarkSuiteRequiresExecutor(t *testing.T) {
 }
 
 func TestBenchmarkSuitePropagatesExecutorFailure(t *testing.T) {
-	suite := NewBenchmarkSuite(fakeWorkloadExecutor{errs: map[string]error{Workload1080p10s: context.DeadlineExceeded}}, fakeBaselineSource{}, nil, 2)
-	if _, err := suite.Run(context.Background(), []Workload{{WorkloadID: Workload1080p10s}}); err == nil {
+	source := newFakeSampleSource()
+	suite := NewBenchmarkSuite(fakeWorkloadExecutor{log: source, errs: map[string]error{Workload1080p10s: context.DeadlineExceeded}}, source, nil, 2)
+	if _, err := suite.Run(context.Background(), []Workload{{WorkloadID: Workload1080p10s, Operation: "normalize"}}); err == nil {
 		t.Fatal("executor failure must surface")
 	}
 }

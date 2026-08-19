@@ -88,7 +88,8 @@ func sealedClipRenderPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 			PixelFormat:  "yuv420p",
 			Width:        1080,
 			Height:       1920,
-			FPS:          60,
+			FPSNum:       60,
+			FPSDen:       1,
 			AudioCodec:   "aac",
 			SampleRate:   48000,
 			Channels:     2,
@@ -165,7 +166,7 @@ func TestRequestValidateRenderClipRequiresOutput(t *testing.T) {
 // is rejected before any Rust process starts.
 func TestRequestValidateRenderClipRejectsTamperedPlan(t *testing.T) {
 	plan := sealedClipRenderPlan(t)
-	plan.Output.FPS = 30 // mutate after seal → PlanSHA256 no longer matches
+	plan.Output.FPSNum = 30 // mutate after seal → PlanSHA256 no longer matches
 	req := request{
 		Version:    ProtocolVersion,
 		Operation:  OperationRenderClip,

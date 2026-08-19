@@ -33,14 +33,14 @@ import (
 // recorder and the single timing point.
 type ObservedExecutor struct {
 	next     *Client
-	recorder kernobs.MeasuredOperationRecorder
+	recorder kernobs.OperationReportProjectionRecorder
 	log      *zap.Logger
 }
 
 // NewObservedExecutor builds the decorator. A nil recorder disables
 // recording (the wrapper still times the operation); a nil logger is a
 // no-op logger.
-func NewObservedExecutor(next *Client, recorder kernobs.MeasuredOperationRecorder) *ObservedExecutor {
+func NewObservedExecutor(next *Client, recorder kernobs.OperationReportProjectionRecorder) *ObservedExecutor {
 	return &ObservedExecutor{next: next, recorder: recorder, log: zap.NewNop()}
 }
 
@@ -58,11 +58,12 @@ func (o *ObservedExecutor) Execute(ctx context.Context, req request) (response, 
 	started := time.Now()
 	result, err := o.next.execute(ctx, req)
 	measurement := o.measurement(req, started, result, err)
+	measurement.ObservationID = kernobs.NewObservationID()
 	// The run-bound report is the operational authority. Any configured
 	// performance recorder below is a projection sink only.
 	kernobs.RecordMeasuredOperation(ctx, measurement)
 	if o != nil && o.recorder != nil {
-		if recordErr := o.recorder.RecordOperation(ctx, measurement); recordErr != nil {
+		if recordErr := o.recorder.RecordOperationReport(ctx, kernobs.OperationReportFromMeasuredOperation(measurement)); recordErr != nil {
 			if o.log != nil {
 				o.log.Warn("operation metric write failed",
 					zap.String("operation", string(req.Operation)),

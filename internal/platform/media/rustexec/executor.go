@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultRustExecutionSlots = 4
+	defaultRustExecutionSlots = 2
 	defaultRustOutputLimit    = 64 * 1024
 	defaultRustTimeout        = 10 * time.Minute
 )
@@ -65,6 +65,7 @@ type Executor struct {
 	ffmpegPath  string
 	log         *zap.Logger
 	runner      RustProcessRunner
+	runnerPool  chan RustProcessRunner
 	limiter     *ResourceLimiter
 	outputLimit int64
 	timeout     time.Duration
@@ -81,15 +82,24 @@ func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Log
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
 	}
-	return &Executor{
+	primary := newPersistentRustProcessRunner()
+	executor := &Executor{
 		binaryPath:  binaryPath,
 		ffmpegPath:  ffmpegPath,
 		log:         log,
-		runner:      newPersistentRustProcessRunner(),
+		runner:      primary,
 		limiter:     NewResourceLimiter(slots),
 		outputLimit: defaultRustOutputLimit,
 		timeout:     defaultRustTimeout,
 	}
+	if slots > 1 {
+		executor.runnerPool = make(chan RustProcessRunner, slots)
+		executor.runnerPool <- primary
+		for i := 1; i < slots; i++ {
+			executor.runnerPool <- newPersistentRustProcessRunner()
+		}
+	}
+	return executor
 }
 
 // Run executes one line-delimited JSON request and removes deterministic .part
@@ -111,7 +121,16 @@ func (e *Executor) Run(ctx context.Context, input []byte) ([]byte, []byte, error
 		runCtx, cancel = context.WithTimeout(ctx, e.timeout)
 	}
 	defer cancel()
-	stdout, stderr, runErr := e.runner.Run(runCtx, e.binaryPath, input, e.outputLimit)
+	runner := e.runner
+	if e.runnerPool != nil {
+		select {
+		case runner = <-e.runnerPool:
+			defer func() { e.runnerPool <- runner }()
+		case <-runCtx.Done():
+			return nil, nil, fmt.Errorf("acquire Rust process runner: %w", runCtx.Err())
+		}
+	}
+	stdout, stderr, runErr := runner.Run(runCtx, e.binaryPath, input, e.outputLimit)
 	if runErr != nil {
 		cleanupPartFiles(input)
 		return stdout, stderr, fmt.Errorf("rust media executor: %w: %s", runErr, stderr)

@@ -53,8 +53,9 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if probe.Width != contract.Width || probe.Height != contract.Height {
 		return fmt.Errorf("%w: geometry %dx%d != %dx%d", ErrContractMismatch, probe.Width, probe.Height, contract.Width, contract.Height)
 	}
-	if math.Abs(probe.FPS-float64(contract.FPS)) > 0.5 {
-		return fmt.Errorf("%w: fps %.3f != %d", ErrContractMismatch, probe.FPS, contract.FPS)
+	targetFPS := float64(contract.FPSNum) / float64(contract.FPSDen)
+	if math.Abs(probe.FPS-targetFPS) > 0.5 {
+		return fmt.Errorf("%w: fps %.3f != %d/%d", ErrContractMismatch, probe.FPS, contract.FPSNum, contract.FPSDen)
 	}
 	if !probe.HasAudio {
 		return fmt.Errorf("%w: output has no audio stream (contract requires %s/%dHz/%dch)", ErrContractMismatch, contract.AudioCodec, contract.SampleRate, contract.Channels)
@@ -94,7 +95,8 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 			PixelFormat:  "yuv420p",
 			Width:        req.Output.Width,
 			Height:       req.Output.Height,
-			FPS:          req.Output.FPS,
+			FPSNum:       req.Output.FPSNum,
+			FPSDen:       req.Output.FPSDen,
 			AudioCodec:   "aac",
 			SampleRate:   48000,
 			Channels:     2,

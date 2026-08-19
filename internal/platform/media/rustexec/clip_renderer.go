@@ -27,7 +27,8 @@ type ClipRenderResult struct {
 	DurationSec       float64
 	Width             uint32
 	Height            uint32
-	FPS               uint32
+	FPSNum            uint32
+	FPSDen            uint32
 	FFmpegMS          int64
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
@@ -59,9 +60,12 @@ func NewClipRendererWithExecutor(executor *Executor, policy mediaexec.EncoderPol
 //  4. geometry is transported from the plan so the Rust side can detect any
 //     profile/plan drift;
 //  5. the output must exist and be non-empty after a successful response.
-func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (ClipRenderResult, error) {
+func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1, backend cliprender.RenderBackend) (ClipRenderResult, error) {
 	if err := plan.Validate(); err != nil {
 		return ClipRenderResult{}, fmt.Errorf("clip render plan validation failed: %w", err)
+	}
+	if !backend.IsValid() {
+		return ClipRenderResult{}, fmt.Errorf("clip render: invalid render backend %q", backend)
 	}
 	if err := verifyClipPlanArtifacts(plan); err != nil {
 		return ClipRenderResult{}, err
@@ -90,13 +94,15 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		CRF:              crf,
 		Width:            uint32(plan.Output.Width),
 		Height:           uint32(plan.Output.Height),
-		FPS:              uint32(plan.Output.FPS),
+		FPSNum:           uint32(plan.Output.FPSNum),
+		FPSDen:           uint32(plan.Output.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       plan.Audio.Codec,
 		AudioBitrate:     profile.AudioBitrate,
 		SampleRate:       uint32(plan.Audio.SampleRate),
 		Channels:         uint32(plan.Audio.Channels),
 		ClipPlan:         planJSON,
+		RenderBackend:    string(backend),
 	})
 	if err != nil {
 		return ClipRenderResult{}, fmt.Errorf("execute clip render: %w", err)
@@ -118,7 +124,8 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		DurationSec:       m.DurationSec,
 		Width:             m.Width,
 		Height:            m.Height,
-		FPS:               uint32(m.FPS),
+		FPSNum:            m.FPSNum,
+		FPSDen:            m.FPSDen,
 		FFmpegMS:          m.FFmpegMS,
 		AudioCopyEligible: m.AudioCopyEligible,
 		AudioEncodePasses: m.AudioEncodePasses,

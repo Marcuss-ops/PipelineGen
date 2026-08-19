@@ -70,6 +70,8 @@ type request struct {
 	Width            uint32    `json:"width,omitempty"`
 	Height           uint32    `json:"height,omitempty"`
 	FPS              uint32    `json:"fps,omitempty"`
+	FPSNum           uint32    `json:"fps_num,omitempty"`
+	FPSDen           uint32    `json:"fps_den,omitempty"`
 	KeyframeInterval uint32    `json:"keyframe_interval,omitempty"`
 	AudioCodec       string    `json:"audio_codec,omitempty"`
 	AudioBitrate     string    `json:"audio_bitrate,omitempty"`
@@ -111,6 +113,10 @@ type request struct {
 	// this transport (decode + drift) before Rust is invoked; Rust re-audits
 	// the same plan and verifies every referenced artifact fail-closed.
 	ClipPlan json.RawMessage `json:"clip_plan,omitempty"`
+	// RenderBackend is the backend resolved by the cliprender capability's
+	// RenderBackendResolver (cuda_native | ffmpeg_fallback). Rust executes the
+	// selected backend verbatim; it never derives the backend from the codec.
+	RenderBackend string `json:"render_backend,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required

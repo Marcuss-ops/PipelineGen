@@ -91,7 +91,7 @@ func TestRenderHandler_HappyPath_CanonicalWireShape(t *testing.T) {
 		"watermark": {"enabled": true, "asset_id": "watermark-main", "position": "top_right", "opacity": 0.85, "margin_px": 40},
 		"transcript": {"mode": "reuse_or_generate", "language": "en", "persist": true},
 		"subtitles": {"enabled": true, "mode": "burn", "style_id": "shorts-v1"},
-		"output": {"contract": "velox-editing-clip-v1", "width": 1080, "height": 1920, "fps": 60},
+		"output": {"contract": "velox-editing-clip-v1", "width": 1080, "height": 1920, "fps_num": 60, "fps_den": 1},
 		"audio": {"mode": "copy_if_compatible"},
 		"destination": {"drive_folder_id": "1Ay0swz9xkwPoJErvpE_qkYowHCf1OSwC"}
 	}`
@@ -131,7 +131,7 @@ func TestRenderHandler_HappyPath_CanonicalWireShape(t *testing.T) {
 		t.Errorf("Subtitles: got %+v", req.Subtitles)
 	}
 	if req.Output.Contract != OutputContractVeloxEditingClipV1 ||
-		req.Output.Width != 1080 || req.Output.Height != 1920 || req.Output.FPS != 60 {
+		req.Output.Width != 1080 || req.Output.Height != 1920 || req.Output.FPSNum != 60 || req.Output.FPSDen != 1 {
 		t.Errorf("Output: got %+v", req.Output)
 	}
 	if req.Audio.Mode != AudioModeCopyIfCompatible {
@@ -180,7 +180,7 @@ func TestRenderHandler_MinimalRequest_AppliesDefaults(t *testing.T) {
 		t.Error("Subtitles default: must be disabled")
 	}
 	if req.Output.Contract != OutputContractVeloxEditingClipV1 ||
-		req.Output.Width != 1080 || req.Output.Height != 1920 || req.Output.FPS != 60 {
+		req.Output.Width != 1080 || req.Output.Height != 1920 || req.Output.FPSNum != 60 || req.Output.FPSDen != 1 {
 		t.Errorf("Output defaults: got %+v", req.Output)
 	}
 	if req.Audio.Mode != AudioModeCopyIfCompatible {

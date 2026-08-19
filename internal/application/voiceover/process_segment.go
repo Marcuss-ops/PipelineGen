@@ -60,7 +60,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
+)
+
+// Canonical observability stage names for the per-item voiceover pipeline.
+// They match the structured-log stage names (stageLog) and are recorded by
+// the kernel Run via MeasureStage so each stage's duration flows into
+// run_stage_observations through the SQLiteRecorder. stageLog remains the
+// structured lifecycle log only — it never measures on its own.
+const (
+	canonicalStageTTS       kernobs.StageName = "tts"
+	canonicalStageAudioPost kernobs.StageName = "audio_post"
+	canonicalStagePublish   kernobs.StageName = "publish"
+	canonicalStageFinalize  kernobs.StageName = "finalize"
 )
 
 // BuildVoiceoverIdempotencyKey derives the deterministic retry-safe
@@ -341,17 +354,25 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if timingPolicy.Mode != audio.TimingDisabled {
 		timingEvent(log, "voiceover.timing.capture.started", cmd, "", "", 0, 0)
 	}
-	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
-		Text:          cmd.Text,
-		Language:      cmd.Language,
-		Voice:         cmd.Voice,
-		Filename:      cmd.Filename,
-		OutputDir:     cmd.Dest.FolderPath,
-		RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
-		// Timing is the canonical timing policy; nil means the provider
-		// applies the defaults. The provider only returns RAW boundaries;
-		// the canonical artifact is built later from the final audio.
-		Timing: cmd.Timing,
+	// Stage 1 timing is recorded by the canonical Run (MeasureStage), so the
+	// TTS duration flows into run_stage_observations via the SQLiteRecorder;
+	// stageLog remains the structured lifecycle log only.
+	var ttsOut TTSOutput
+	err := kernobs.MeasureStage(ctx, canonicalStageTTS, func(stageCtx context.Context) error {
+		var synthErr error
+		ttsOut, synthErr = u.deps.TTSProvider.Synthesize(stageCtx, TTSInput{
+			Text:          cmd.Text,
+			Language:      cmd.Language,
+			Voice:         cmd.Voice,
+			Filename:      cmd.Filename,
+			OutputDir:     cmd.Dest.FolderPath,
+			RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
+			// Timing is the canonical timing policy; nil means the provider
+			// applies the defaults. The provider only returns RAW boundaries;
+			// the canonical artifact is built later from the final audio.
+			Timing: cmd.Timing,
+		})
+		return synthErr
 	})
 	if err != nil {
 		emitTTS("failed")
@@ -381,10 +402,15 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	var post *AudioPostOutput
 	if cmd.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
 		emitPost := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "audio_post", string(cmd.Language))
-		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
-			LocalPath: ttsOut.LocalPath,
-			OutputDir: cmd.Dest.FolderPath,
-			Filename:  cmd.Filename,
+		var postOut AudioPostOutput
+		err = kernobs.MeasureStage(ctx, canonicalStageAudioPost, func(stageCtx context.Context) error {
+			var postErr error
+			postOut, postErr = u.deps.AudioPostProcessor.Process(stageCtx, AudioPostInput{
+				LocalPath: ttsOut.LocalPath,
+				OutputDir: cmd.Dest.FolderPath,
+				Filename:  cmd.Filename,
+			})
+			return postErr
 		})
 		if err != nil {
 			emitPost("failed")
@@ -421,7 +447,12 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// key derivation + Drive upload + the timing bundle publish (audio
 	// + timing.json + optional SRT/VTT with required/best-effort/disabled
 	// semantics).
-	pub, err := u.publishStage(ctx, cmd, out, &ttsOut, post, log)
+	var pub *publishStageResult
+	err = kernobs.MeasureStage(ctx, canonicalStagePublish, func(stageCtx context.Context) error {
+		var pubErr error
+		pub, pubErr = u.publishStage(stageCtx, cmd, out, &ttsOut, post, log)
+		return pubErr
+	})
 	if err != nil {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		var pipelineErr *PipelineError
@@ -491,7 +522,12 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		OldCleanedPath:  cmd.OldCleanedPath,
 	}
 
-	finalizeRes, err := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
+	var finalizeRes *FinalizeResult
+	err = kernobs.MeasureStage(ctx, canonicalStageFinalize, func(stageCtx context.Context) error {
+		var finalizeErr error
+		finalizeRes, finalizeErr = u.deps.Finalizer.Finalize(stageCtx, tx, finalizeCmd)
+		return finalizeErr
+	})
 	if err != nil {
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
