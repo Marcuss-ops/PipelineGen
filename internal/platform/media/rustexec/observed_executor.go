@@ -10,8 +10,8 @@
 //	Rust
 //
 // Every operation (probe, normalize, cut, watermark, render, mux, ...)
-// produces exactly ONE kernel MeasuredOperation. The measurement is recorded
-// here — never scattered across operation handlers. Wall time is measured in
+// produces exactly ONE canonical OperationReport. The boundary measurement is
+// promoted and recorded here — never scattered across operation handlers. Wall time is measured in
 // Go at the boundary; CPU time, frames and authoritative byte counts come
 // from the Rust metrics block (measured in the process that owns the work,
 // i.e. the child FFmpeg). A metric write failure never fails the operation.

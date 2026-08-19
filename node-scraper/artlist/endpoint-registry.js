@@ -52,6 +52,8 @@ export function getFootageSearchEndpoint(registry) {
     url: endpoint.url.trim(),
     kind: endpoint.kind || 'graphql',
     operationName: endpoint.operation_name || endpoint.operationName || '',
+    transport: endpoint.transport || 'browser',
+    headers: endpoint.headers && typeof endpoint.headers === 'object' ? endpoint.headers : {},
     enabled: true,
   };
 }

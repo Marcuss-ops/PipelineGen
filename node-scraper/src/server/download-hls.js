@@ -1,5 +1,6 @@
+import crypto from 'node:crypto';
 import {
-  downloadFileWithCookies,
+  downloadSegmentBuffer,
   fetchWithCookies,
   resolveUrl,
 } from './download-http.js';
@@ -8,7 +9,7 @@ import {
   spoolSegmentsToFile,
 } from './segment-spool.js';
 
-export async function downloadHLSWithCookies(m3u8Url, cookieHeader, outputPath) {
+async function downloadHLSOnce(m3u8Url, cookieHeader, outputPath) {
   console.log(`[download] Downloading HLS stream from ${m3u8Url.substring(0, 80)}...`);
   const masterPlaylist = await fetchWithCookies(m3u8Url, cookieHeader);
   const lines = masterPlaylist.split('\n');
@@ -68,14 +69,31 @@ export async function downloadHLSWithCookies(m3u8Url, cookieHeader, outputPath) 
   }
 
   const concurrency = normalizeSegmentConcurrency(process.env.ARTLIST_HLS_SEGMENT_CONCURRENCY);
+  const hash = crypto.createHash('sha256');
   console.log(`[download] Downloading ${segmentUrls.length} segments with concurrency=${concurrency}...`);
   await spoolSegmentsToFile({
     segmentUrls,
     outputPath,
     concurrency,
-    downloadSegment: async (segmentUrl, segmentPath) => {
-      await downloadFileWithCookies(segmentUrl, cookieHeader, segmentPath);
+    hash,
+    downloadSegmentBuffer: async (segmentUrl) => {
+      return downloadSegmentBuffer(segmentUrl, cookieHeader);
     },
   });
   console.log(`[download] All ${segmentUrls.length} segments concatenated to ${outputPath}`);
+  return { sha256: hash.digest('hex') };
+}
+
+export async function downloadHLSWithCookies(m3u8Url, cookieHeader, outputPath) {
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await downloadHLSOnce(m3u8Url, cookieHeader, outputPath);
+    } catch (error) {
+      lastError = error;
+      if (![403, 429, 500, 502, 503, 504].includes(error?.status) || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 200 + Math.floor(Math.random() * 300)));
+    }
+  }
+  throw lastError;
 }

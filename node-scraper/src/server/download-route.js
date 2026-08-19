@@ -25,7 +25,8 @@ export async function handleDownload(req, res, ctx) {
   }
 
   const clipUrl = (payload.clip_page_url || payload.url || '').trim();
-  if (!clipUrl) {
+  const streamUrl = (payload.stream_url || payload.preview_url || payload.primary_url || '').trim();
+  if (!clipUrl && !streamUrl) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Missing clip_page_url or url' }));
     return;
@@ -35,7 +36,7 @@ export async function handleDownload(req, res, ctx) {
   const outputDir = payload.output_dir || '/tmp/artlist_downloads';
 
   const reqId = ctx.state.incRequest();
-  console.log(`[${new Date().toISOString()}] #${reqId} DOWNLOAD clip="${clipId}" url="${clipUrl.substring(0,80)}"`);
+  console.log(`[${new Date().toISOString()}] #${reqId} DOWNLOAD clip="${clipId}" url="${(streamUrl || clipUrl).substring(0,80)}"`);
   const t0 = Date.now();
 
   try {
@@ -59,6 +60,16 @@ export async function handleDownload(req, res, ctx) {
         height: 1080
       };
       clipId = resolvedId;
+    } else if (streamUrl && typeof ctx.deps.downloadDirectClip === 'function') {
+      result = await ctx.deps.downloadDirectClip({
+        clip: {
+          clip_id: clipId,
+          primary_url: streamUrl,
+          preview_url: streamUrl,
+          stream_urls: [streamUrl],
+        },
+        outputDir,
+      });
     } else {
       const browser = await ctx.deps.getBrowser();
       result = await ctx.deps.downloadClipVideo(browser, clipUrl, clipId, outputDir);
@@ -75,13 +86,15 @@ export async function handleDownload(req, res, ctx) {
       duration_seconds: result.duration_seconds,
       width: result.width,
       height: result.height,
+      codec_name: result.codec_name || '',
+      sha256: result.sha256 || '',
       _meta: { request_id: reqId, elapsed_ms: elapsed },
     }));
   } catch (err) {
     const elapsed = Date.now() - t0;
     console.error(`[${new Date().toISOString()}] #${reqId} DOWNLOAD ERROR after ${elapsed}ms:`, err.message);
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: err.message || String(err) }));
+    res.writeHead(err?.code === 'MEDIA_VERIFY_FAILED' ? 422 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.code || err.message || String(err) }));
   }
 }
 

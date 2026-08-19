@@ -19,9 +19,9 @@ import {
   startHeartbeat,
   stopHeartbeat,
 } from './http-lifecycle.js';
-import { searchArtlist } from '../../artlist_search.js';
 import { searchArtlistGateway } from '../../artlist/gateway-search.js';
 import { downloadClipVideo } from './download.js';
+import { downloadDirectClip } from './download-direct.js';
 import { fetchClipDetails } from '../scrape/detail-page.js';
 import { computeHealthVerdict } from './health.js';
 import { dispatchRequest } from './routes.js';
@@ -41,8 +41,8 @@ function createCtx() {
     state: createStateAccessors(),
     deps: Object.freeze({
       getBrowser,
-      searchArtlist,
       downloadClipVideo,
+      downloadDirectClip,
       fetchClipDetails,
       computeHealthVerdict,
       searchArtlistGateway,

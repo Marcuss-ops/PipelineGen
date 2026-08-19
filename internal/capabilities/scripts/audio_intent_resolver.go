@@ -12,6 +12,7 @@
 package scriptgeneration
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strings"
 
@@ -57,6 +58,9 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 		if assetID == "" {
 			return nil, fmt.Errorf("resolve sound effects: sfx %d requires an asset_id", i)
 		}
+		if strings.EqualFold(assetID, "random_whoosh") {
+			assetID = randomWhooshID(timeline, i, intent)
+		}
 		startUS, err := resolveSFXStartUS(timeline.DurationUS, scenes, intent)
 		if err != nil {
 			return nil, fmt.Errorf("resolve sound effects: sfx %d (%s): %w", i, assetID, err)
@@ -81,6 +85,16 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 		})
 	}
 	return out, nil
+}
+
+// randomWhooshID selects from the nine local whoosh assets without involving
+// the renderer or filesystem. The selection is deterministic for a timeline
+// and event position, so retries remain idempotent while different events
+// normally receive different cues.
+func randomWhooshID(timeline audio.CanonicalTimeline, index int, intent scriptpkg.SoundEffectIntent) string {
+	seed := fmt.Sprintf("%d:%d:%d:%s:%d:%d", timeline.DurationUS, index, intent.AtMS, intent.SceneID, intent.OffsetMS, intent.SourceInMS)
+	digest := sha256.Sum256([]byte(seed))
+	return fmt.Sprintf("whoosh%d", int(digest[0])%9+1)
 }
 
 // resolveSFXStartUS collapses one intent's placement command into an

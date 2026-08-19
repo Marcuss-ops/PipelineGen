@@ -27,6 +27,12 @@ import (
 // is not available".
 const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
+// Section downloads only need enough resolution for the stock clip output.
+// Keeping them at 720p materially reduces the amount of media yt-dlp must
+// fetch before ffmpeg can cut a 30-second window, while preserving the
+// existing 1080p selector for full-source downloads.
+const DefaultYouTubeSectionFormatSelectors = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best"
+
 // canonicalYouTubePlayerClient is the player client used by BaseArgs for
 // the first (primary) download attempt. Alternate clients from
 // config.External.YoutubePlayerClientFallback are only tried after a
@@ -183,4 +189,14 @@ func (b *CommandBuilder) FormatArg(addFormat bool) []string {
 	return []string{
 		"-f", DefaultYouTubeFormatSelectors,
 	}
+}
+
+// SectionFormatArg returns the bounded selector used by time-windowed stock
+// downloads. It intentionally has a separate method so full downloads keep
+// the canonical 1080p contract.
+func (b *CommandBuilder) SectionFormatArg(addFormat bool) []string {
+	if !addFormat {
+		return nil
+	}
+	return []string{"-f", DefaultYouTubeSectionFormatSelectors}
 }

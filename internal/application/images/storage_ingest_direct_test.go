@@ -128,6 +128,17 @@ func testImageService(t *testing.T) *ImageStorageService {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// Image projection written after the canonical CommitAsset call.
+		// The recording committer replaces the production media commit in
+		// these tests, so provide only the columns needed by UpdateOrigin.
+		`CREATE TABLE IF NOT EXISTS media_assets (
+			id TEXT PRIMARY KEY,
+			source TEXT NOT NULL DEFAULT '',
+			file_hash TEXT NOT NULL DEFAULT '',
+			origin TEXT NOT NULL DEFAULT '',
+			provider TEXT NOT NULL DEFAULT '',
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("schema setup: %v", err)

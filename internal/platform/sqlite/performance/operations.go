@@ -4,7 +4,7 @@
 // canonical kernel observation and the query-side OperationAnalytics (the dashboard /
 // benchmark comparison answer to "what does each operation cost").
 //
-// One kernel MeasuredOperation → one performance_operations row. run_id/job_id
+// One canonical OperationReport → one performance_operations row. run_id/job_id
 // are resolved from the kernobs run bound to the request context; an operation
 // outside a tracked run is rejected. step_id has no canonical context spelling
 // today and stays "". The Real-Time Factor (elapsed / source

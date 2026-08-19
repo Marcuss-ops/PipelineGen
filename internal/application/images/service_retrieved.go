@@ -33,6 +33,12 @@ func (s *Service) SearchAndDownloadDetailedFromProvider(ctx context.Context, sub
 	return s.Store.SearchAndDownloadDetailedFromProvider(ctx, subjectSlug, displayName, query, lang, tags, provider)
 }
 
+// SearchAndDownloadManyDetailedFromProvider retrieves up to limit images from
+// an explicit provider while preserving the retrieved-image pipeline.
+func (s *Service) SearchAndDownloadManyDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider, limit int) ([]*SearchResult, error) {
+	return s.Store.SearchAndDownloadManyDetailedFromProvider(ctx, subjectSlug, displayName, query, lang, tags, provider, limit)
+}
+
 // SearchWebImage performs a web image search (retrieved territory)
 // for a given prompt and slug. Delegates to the Store sub-service.
 func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {

@@ -75,4 +75,19 @@ describe('search cache', () => {
     assert.equal(related?.query, 'maya ruins');
     assert.equal(related?.response.clips[0].clip_id, '346928');
   });
+
+  test('catalog indexes clip metadata and searches without provider access', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'artlist-catalog-'));
+    const cache = createSearchCache(path.join(dir, 'cache.sqlite'), 60_000);
+    cache.put('catalog-seed', { query: 'seed', page: 1, limit: 3 }, {
+      clips: [
+        { id: '1', title: 'Electricity pylons', description: 'High voltage grid', tags: ['power'] },
+        { id: '2', title: 'Ocean waves', tags: ['nature'] },
+      ],
+    });
+    const results = cache.searchCatalog('electricity', 50);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].clip_id, '1');
+    assert.equal(cache.catalogStats().unique_clips, 2);
+  });
 });

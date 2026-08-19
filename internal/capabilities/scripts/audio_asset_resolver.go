@@ -86,16 +86,20 @@ func (r *AudioAssetResolver) Resolve(ctx context.Context, bgm []scriptpkg.Backgr
 	}
 	assets := make(audio.ResolvedAudioAssets, 0, len(order))
 	for _, id := range order {
-		resolved, err := r.source.ResolveAudioAsset(ctx, id)
+		publicID := id
+		resolved, err := r.source.ResolveAudioAsset(ctx, audio.CanonicalAssetID(id))
 		if err != nil {
 			return nil, fmt.Errorf("resolve audio asset %q: %w", id, err)
 		}
-		if strings.TrimSpace(resolved.AssetID) != id {
+		if strings.TrimSpace(resolved.AssetID) != audio.CanonicalAssetID(id) {
 			return nil, fmt.Errorf("audio asset source returned id %q for requested id %q", resolved.AssetID, id)
 		}
 		if strings.TrimSpace(resolved.Path) == "" {
 			return nil, fmt.Errorf("audio asset %q resolved to an empty path", id)
 		}
+		// Keep the public alias in the sealed plan. This makes the plan stable
+		// and readable while the physical registry remains Drive-ID based.
+		resolved.AssetID = publicID
 		assets = append(assets, resolved)
 	}
 	return assets, nil

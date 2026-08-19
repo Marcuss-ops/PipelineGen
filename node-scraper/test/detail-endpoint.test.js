@@ -46,7 +46,7 @@ function createCtx({ clip = null, error = null } = {}) {
       async getBrowser() {
         return {};
       },
-      async fetchClipDetails(_browser, url) {
+      async fetchClipDetails(_browser, _url) {
         if (error) {
           throw error;
         }

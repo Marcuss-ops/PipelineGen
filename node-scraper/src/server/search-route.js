@@ -28,7 +28,7 @@ export async function handleSearch(req, res, ctx) {
     return;
   }
 
-  const { DEFAULT_LIMIT, MAX_LIMIT, PROFILE_DIR } = ctx.config;
+  const { DEFAULT_LIMIT, MAX_LIMIT } = ctx.config;
   const limit = Math.min(Math.max(parseInt(payload.limit || DEFAULT_LIMIT, 10), 1), MAX_LIMIT);
   const reqId = ctx.state.incRequest();
   // PR-HEALTHCHECK-FAILFAST (P2, July 2026): record every /search
@@ -53,10 +53,14 @@ export async function handleSearch(req, res, ctx) {
   });
 
   try {
-    const browser = await ctx.deps.getBrowser();
-
-    // searchArtlist accetta un browser esistente (param 4) per riusare Chromium.
-    const job = ctx.deps.searchArtlist(term, limit, PROFILE_DIR, browser);
+    const job = ctx.deps.searchArtlistGateway({
+      query: term,
+      page: 1,
+      limit,
+      mode: 'live_required',
+      forceRefresh: true,
+      logger: console,
+    });
     const result = await Promise.race([job, totalBudget]);
     const elapsed = Date.now() - t0;
     console.log(`[${new Date().toISOString()}] #${reqId} DONE ${result.clips.length} clips in ${elapsed}ms`);

@@ -287,9 +287,17 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
 	}
-	// No synchronous compatibility writes follow the canonical commit. Drive
-	// identity and delivery status are written only by the post-commit worker;
-	// provenance needed by indexing is already part of the committed metadata.
+	// The canonical committer persists the common asset envelope and the
+	// image-specific provider projection is owned by ImageRepository. Keep
+	// both columns aligned for retrieved images; otherwise API responses can
+	// report the provider from the request trace while SQLite still contains
+	// an empty media_assets.provider value.
+	if err := s.repo.UpdateOrigin(ctx, hash, string(origin), string(provider)); err != nil {
+		return nil, fmt.Errorf("image ingest: persist image origin/provider: %w", err)
+	}
+	// Drive identity and delivery status are written only by the post-commit
+	// worker; provenance needed by indexing is already part of the committed
+	// metadata and the image projection above.
 	return result, nil
 }
 

@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // UnmarshalJSON decodes AudioOutputConfig and normalizes the
@@ -80,6 +82,14 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	var tmp Alias
 	if err := json.Unmarshal(normalized, &tmp); err != nil {
 		return err
+	}
+	if audio.IsBuiltInBGM(tmp.AssetID) {
+		if _, present := raw["loop"]; !present {
+			tmp.Loop = true
+		}
+		if _, present := raw["gain_db"]; !present {
+			tmp.GainDB = -30
+		}
 	}
 	*b = BackgroundMusicIntent(tmp)
 	return nil
@@ -143,6 +153,26 @@ type SoundEffectIntent struct {
 	DurationMS int64 `json:"duration_ms,omitempty"`
 	// GainDB is the effect gain. Zero means unity (0 dB).
 	GainDB float64 `json:"gain_db,omitempty"`
+}
+
+// UnmarshalJSON applies safe defaults for the built-in one-shot catalog.
+// Explicit caller values always win, including gain_db: 0 and loop:false
+// when those keys are present on the wire.
+func (s *SoundEffectIntent) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	type Alias SoundEffectIntent
+	var tmp Alias
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+	if _, present := raw["gain_db"]; !present && (audio.IsBuiltInWhoop(tmp.AssetID) || audio.IsBuiltInWhoosh(tmp.AssetID)) {
+		tmp.GainDB = -30
+	}
+	*s = SoundEffectIntent(tmp)
+	return nil
 }
 
 // SFXAnchor is the scene reference point used for scene-relative SFX

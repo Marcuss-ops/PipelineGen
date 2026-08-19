@@ -78,6 +78,34 @@ func TestSearchDDGWideInvalidVQDResponseReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestSearchDDGWideManyFollowsContinuationURL(t *testing.T) {
+	var pages []string
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/" {
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`<script>vqd="12345-678"</script>`)), Request: req}, nil
+		}
+		if req.URL.Path != "/i.js" {
+			t.Fatalf("unexpected DDG path %q", req.URL.Path)
+		}
+		pages = append(pages, req.URL.RawQuery)
+		payload := `{"results":[{"image":"https://images.example/page-1.jpg","width":1920,"height":1080}],"next":"i.js?q=red+fox&o=json&p=1&s=100&u=bing&f=,,,&l=en-us"}`
+		if req.URL.Query().Get("s") == "100" {
+			payload = `{"results":[{"image":"https://images.example/page-2.jpg","width":1920,"height":1080}]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+			Body: io.NopCloser(strings.NewReader(payload)), Request: req}, nil
+	})}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+	got := service.searchDDGWideMany(context.Background(), "red fox", 2)
+	if len(got) != 2 || got[0] != "https://images.example/page-1.jpg" || got[1] != "https://images.example/page-2.jpg" {
+		t.Fatalf("continuation results = %#v, want two distinct pages", got)
+	}
+	if len(pages) != 2 || !strings.Contains(pages[1], "s=100") || !strings.Contains(pages[1], "vqd=12345-678") {
+		t.Fatalf("continuation query = %#v, want s=100 and vqd", pages)
+	}
+}
+
 type commonsRESTRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f commonsRESTRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
