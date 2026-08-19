@@ -88,7 +88,7 @@ func TestImageAspectFitNeverStretches(t *testing.T) {
 		t.Fatalf("background fit = %q, want cover (correct crop for a backdrop)", bg.Fit)
 	}
 
-	// Every image overlay: image_focus_in preset (Chronon resolves the
+	// Every image overlay: one of the modern image presets (Chronon resolves the
 	// aspect-preserving "contain"), and PipelineGen emits NO fit — so it can
 	// never emit "stretch" for a preset-driven image.
 	overlays := got.Plan.Layers[1:]
@@ -96,8 +96,8 @@ func TestImageAspectFitNeverStretches(t *testing.T) {
 		t.Fatalf("overlay layers = %d, want %d", len(overlays), len(aspectClasses))
 	}
 	for i, layer := range overlays {
-		if layer.Preset != "image_focus_in" {
-			t.Errorf("overlay %q (%s) preset = %q, want image_focus_in", layer.ID, aspectClasses[i].dimensions, layer.Preset)
+		if !contains(imagePresetCandidates, layer.Preset) {
+			t.Errorf("overlay %q (%s) preset = %q, want modern image preset", layer.ID, aspectClasses[i].dimensions, layer.Preset)
 		}
 		if layer.Fit != "" {
 			t.Errorf("overlay %q must not emit a fit (Chronon owns it), got %q", layer.ID, layer.Fit)
@@ -146,8 +146,8 @@ func TestImageAspectFitRejectsStretchOverride(t *testing.T) {
 	if got.Plan.Layers[0].Fit != "" {
 		t.Fatalf("default image fit = %q, want empty (Chronon owns contain, no implicit stretch)", got.Plan.Layers[0].Fit)
 	}
-	if got.Plan.Layers[0].Preset != "image_focus_in" {
-		t.Fatalf("preset-driven image preset = %q, want image_focus_in", got.Plan.Layers[0].Preset)
+	if !contains(imagePresetCandidates, got.Plan.Layers[0].Preset) {
+		t.Fatalf("preset-driven image preset = %q, want modern image preset", got.Plan.Layers[0].Preset)
 	}
 
 	// An explicit stretch override is the ONLY way to request stretch.

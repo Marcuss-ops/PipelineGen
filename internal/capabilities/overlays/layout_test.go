@@ -185,7 +185,7 @@ func TestLayoutTextNeverAutoLaidOut(t *testing.T) {
 	if layer.Position != nil {
 		t.Fatalf("text layers must not carry a layout position, got %v", layer.Position)
 	}
-	if layer.Type != "" || layer.Preset != "caption_card" {
+	if layer.Type != "" || !contains(phrasePresetCandidates, layer.Preset) {
 		t.Fatalf("unexpected layer: %s/%s", layer.Type, layer.Preset)
 	}
 }
