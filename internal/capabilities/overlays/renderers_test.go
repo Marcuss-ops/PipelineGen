@@ -43,8 +43,8 @@ func TestRenderers_CompileEntityCards(t *testing.T) {
 		if layer.Type != "" {
 			t.Errorf("%s: layer.Type = %q, want empty (Chronon derives it)", tc.name, layer.Type)
 		}
-		if layer.Preset != tc.wantPreset {
-			t.Errorf("%s: layer.Preset = %q, want %s", tc.name, layer.Preset, tc.wantPreset)
+		if layer.Preset != modernPresetFor(item, plan.PlanID) {
+			t.Errorf("%s: layer.Preset = %q, want modern preset", tc.name, layer.Preset)
 		}
 		if layer.Text != "Ada" {
 			t.Errorf("%s: layer.Text = %q, want Ada", tc.name, layer.Text)
@@ -65,8 +65,8 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lt.Type != "" || lt.Preset != "lower_third_safe" {
-		t.Fatalf("lower_third layer = %+v, want preset lower_third_safe with no type", lt)
+	if lt.Type != "" || lt.Preset != modernPresetFor(OverlayItem{ID: "lt", SceneID: "", TemplateID: "lower_third"}, plan.PlanID) {
+		t.Fatalf("lower_third layer = %+v, want modern preset with no type", lt)
 	}
 
 	popup, err := (ImagePopupRenderer{}).Compile(OverlayItem{
@@ -76,24 +76,24 @@ func TestRenderers_CompileNonEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if popup.Preset != "image_focus_in" || popup.Type != "" || popup.Fit != "" || popup.BoxWidth != 0 || popup.BoxHeight != 0 {
-		t.Fatalf("image_popup layer = %+v, want preset image_focus_in with no type/geometry", popup)
+	if popup.Preset != modernPresetFor(OverlayItem{ID: "popup", TemplateID: "image_popup"}, plan.PlanID) || popup.Type != "" || popup.Fit != "" || popup.BoxWidth != 0 || popup.BoxHeight != 0 {
+		t.Fatalf("image_popup layer = %+v, want modern preset with no type/geometry", popup)
 	}
 
 	quote, err := (QuoteRenderer{}).Compile(OverlayItem{ID: "q", Kind: "quote", TemplateID: "QUOTE", Text: "\"Cambia tutto\"", StartMs: 0, EndMs: 2000}, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quote.Type != "" || quote.Preset != "caption_card" {
-		t.Fatalf("quote layer = %+v, want preset caption_card with no type", quote)
+	if quote.Type != "" || quote.Preset != modernPresetFor(OverlayItem{ID: "q", TemplateID: "QUOTE"}, plan.PlanID) {
+		t.Fatalf("quote layer = %+v, want modern preset with no type", quote)
 	}
 
 	number, err := (NumberRenderer{}).Compile(OverlayItem{ID: "n", Kind: "number", TemplateID: "NUMBER", Text: "47%", StartMs: 0, EndMs: 2000}, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if number.Type != "" || number.Preset != "active_word_pop" {
-		t.Fatalf("number layer = %+v, want preset active_word_pop with no type", number)
+	if number.Type != "" || number.Preset != modernPresetFor(OverlayItem{ID: "n", TemplateID: "NUMBER"}, plan.PlanID) {
+		t.Fatalf("number layer = %+v, want modern preset with no type", number)
 	}
 
 	product, err := (ProductRenderer{}).Compile(OverlayItem{
@@ -166,7 +166,7 @@ func TestRenderers_RegistryResolvesToConcreteRenderer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layer.Preset != "lower_third_safe" || layer.Text != "Tom Hanks" {
+	if layer.Preset != modernPresetFor(OverlayItem{ID: "o", SceneID: "", TemplateID: entry.Template}, testRenderPlan().PlanID) || layer.Text != "Tom Hanks" {
 		t.Fatalf("resolved renderer layer = %+v", layer)
 	}
 }

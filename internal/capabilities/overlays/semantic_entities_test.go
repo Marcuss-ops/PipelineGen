@@ -58,8 +58,8 @@ func TestSemanticEntitiesTerminateInCanonicalPrimitives(t *testing.T) {
 		if layer.Type != tc.wantType {
 			t.Errorf("%s: layer.Type = %q, want %q (canonical primitive)", tc.entity, layer.Type, tc.wantType)
 		}
-		if tc.wantPreset != "" && layer.Preset != tc.wantPreset {
-			t.Errorf("%s: layer.Preset = %q, want %q", tc.entity, layer.Preset, tc.wantPreset)
+		if tc.wantPreset != "" && layer.Preset != modernPresetFor(item, entityPlan(item).PlanID) {
+			t.Errorf("%s: layer.Preset = %q, want modern preset", tc.entity, layer.Preset)
 		}
 	}
 }

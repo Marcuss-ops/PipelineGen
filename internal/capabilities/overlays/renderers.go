@@ -36,7 +36,14 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 	}
 	// The preset is resolved through the single SemanticOverlayResolver
 	// (semantic_role → Chronon preset), never from the geometry table.
-	preset, presetDriven := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+	preset := strings.TrimSpace(item.PresetID)
+	if preset == "" {
+		preset = modernPresetFor(item, plan.PlanID)
+	}
+	if preset == "" {
+		preset, _ = DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+	}
+	presetDriven := preset != ""
 	layer := ChrononLayer{
 		ID:             item.ID,
 		Preset:         preset,
@@ -76,6 +83,25 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 		layer.Preset = v
 	}
 	return layer, nil
+}
+
+// modernPresetFor is the active overlay policy. Legacy semantic defaults are
+// retained only as a compatibility fallback for externally-authored plans;
+// PipelineGen-generated items always resolve to the modern catalog here.
+func modernPresetFor(item OverlayItem, planID string) string {
+	family := strings.ToUpper(strings.TrimSpace(item.TemplateID))
+	switch family {
+	case "IMPORTANT_PHRASE", "QUOTE", "CLAIM", "CONCEPT_DEFAULT", "QUOTE_DEFAULT":
+		return selectPhrasePreset(planID, item.SceneID, item.ID)
+	case "IMPORTANT_WORD", "NUMBER", "MONEY", "PERCENTAGE", "STATISTIC", "RANKING":
+		return selectWordPreset(planID, item.SceneID, item.ID)
+	case "IMAGE_OVERLAY", "IMAGE_ENTITY", "IMAGE_POPUP":
+		return selectImagePreset(planID, item.SceneID, item.ID)
+	case "PERSON", "ORGANIZATION", "LOCATION", "DATE", "TITLE", "EVENT", "PERSON_DEFAULT", "ORG_DEFAULT", "GPE_DEFAULT", "LOWER_THIRD":
+		return SelectEntityNamePreset(planID, item.SceneID, item.ID, family)
+	default:
+		return ""
+	}
 }
 
 // rendererForTemplate resolves a template id through templateRegistry and

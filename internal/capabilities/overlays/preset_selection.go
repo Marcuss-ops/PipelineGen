@@ -11,13 +11,22 @@ var (
 		"phrase_word_reveal", "undertext_pop",
 	}
 	wordPresetCandidates = []string{
-		"active_word_pop", "phrase_fade_in", "phrase_soft_pop",
+		"snap_scale", "fast_fade_through", "phrase_word_reveal",
 	}
 	imagePresetCandidates = []string{
 		"image_fast_fade", "image_slide_left", "image_slide_right",
 		"modern_rounded_pop", "bottom_card_rise",
 	}
 )
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
 
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
 	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
