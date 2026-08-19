@@ -106,7 +106,9 @@ func runMultilingualRender(args []string) error {
 	mediaProfile := root.MediaExec.Profile.WithDefaults()
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	rustClipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, mediaProfile, log)
-	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPS)
+	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
+	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
+	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer, resolver: backendResolver, probe: backendProbe}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPS)
 	subMat := texttracks.NewSubtitleArtifactMaterializer(root.Repos.SubtitleArtifactRepo, "data/media/subtitles", root.Drive.Publisher)
 	cueRepair, err := texttracks.NewCueRepairService(root.Domains.CueWriter)
 	if err != nil {
@@ -214,6 +216,8 @@ func runMultilingualRender(args []string) error {
 // sealed render_clip boundary as the main clip-render capability.
 type adminRustRenderer struct {
 	renderer *rustexec.ClipRenderer
+	resolver *cliprender.RenderBackendResolver
+	probe    cliprender.BackendCapabilityProbe
 }
 
 type overlayAssets struct {
@@ -293,7 +297,11 @@ func resolveOverlayAssets(ctx context.Context, reader drive.Reader, backgroundID
 }
 
 func (a adminRustRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (multilingual.RustRenderResult, error) {
-	result, err := a.renderer.RenderClip(ctx, plan)
+	backend, err := cliprender.ResolveBackend(ctx, a.probe, a.resolver, plan)
+	if err != nil {
+		return multilingual.RustRenderResult{}, err
+	}
+	result, err := a.renderer.RenderClip(ctx, plan, backend)
 	if err != nil {
 		return multilingual.RustRenderResult{}, err
 	}

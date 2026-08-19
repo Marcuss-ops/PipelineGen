@@ -91,7 +91,8 @@ type ResolvedContract struct {
 	PixelFormat  string
 	Width        int
 	Height       int
-	FPS          int
+	FPSNum       int
+	FPSDen       int
 	AudioCodec   string
 	SampleRate   int
 	Channels     int

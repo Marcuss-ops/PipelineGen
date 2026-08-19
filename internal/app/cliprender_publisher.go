@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
@@ -21,6 +22,9 @@ import (
 type clipRenderPublisher struct {
 	drive     delivery.Publisher
 	committer persistence.AssetCommitter
+	// SQLite has one canonical writer. Render jobs may encode and upload in
+	// parallel, but their final asset commits must not overlap.
+	commitMu sync.Mutex
 }
 
 func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderPublishInput) (*cliprender.RenderPublishResult, error) {
@@ -84,7 +88,7 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		return nil, fmt.Errorf("resolve rendered taxonomy: %w", err)
 	}
 	durationMS := int64(in.Outcome.DurationSec * 1000)
-	_, err = p.committer.CommitAsset(ctx, persistence.AssetCommitRequest{
+	commitRequest := persistence.AssetCommitRequest{
 		AssetID: assetID, Source: "clip.render", Name: filename, Filename: filename,
 		MediaType: "video", Category: "clip-render", DurationMs: durationMS,
 		// DISCOVERED is the canonical initial index state. PENDING was retired
@@ -103,7 +107,10 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 			URI: pub.DownloadLink, WebViewLink: pub.WebViewLink, DownloadURL: pub.DownloadLink,
 			MimeType: "video/mp4", FileSizeBytes: size, FileHash: contentHash, IsPrimary: true}},
 		EmitIndexEvent: true,
-	})
+	}
+	p.commitMu.Lock()
+	_, err = p.committer.CommitAsset(ctx, commitRequest)
+	p.commitMu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("commit rendered asset: %w", err)
 	}

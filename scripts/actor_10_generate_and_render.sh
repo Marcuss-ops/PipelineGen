@@ -13,7 +13,9 @@ WATERMARK_ASSET_ID="${WATERMARK_ASSET_ID:-9cc03bef0eeefa96d5ec39a63d1d1199}"
 DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K}"
 WORK_DIR="${WORK_DIR:-$(mktemp -d /tmp/actor-10-render.XXXXXX)}"
 POLL_LIMIT="${POLL_LIMIT:-300}"
-RENDER_CONCURRENCY="${RENDER_CONCURRENCY:-2}"
+# SQLite asset publication is still single-writer. Keep the safe default at
+# one; set RENDER_CONCURRENCY=2 only after the commit path is serialized.
+RENDER_CONCURRENCY="${RENDER_CONCURRENCY:-1}"
 KEEP_WORK="${KEEP_WORK:-0}"
 
 cleanup() { [[ "$KEEP_WORK" == "1" ]] || rm -rf "$WORK_DIR"; }

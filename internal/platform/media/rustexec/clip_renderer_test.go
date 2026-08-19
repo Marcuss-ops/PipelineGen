@@ -73,7 +73,8 @@ func clipRenderPlanWithFiles(t *testing.T) (cliprender.ClipRenderPlanV1, string)
 			PixelFormat:  "yuv420p",
 			Width:        1080,
 			Height:       1920,
-			FPS:          60,
+			FPSNum:       60,
+			FPSDen:       1,
 			AudioCodec:   "aac",
 			SampleRate:   48000,
 			Channels:     2,
@@ -102,10 +103,10 @@ func newTestClipRenderer(runner commandRunner) *ClipRenderer {
 
 func TestClipRenderer_TransportsSealedPlanWithPolicy(t *testing.T) {
 	plan, sourcePath := clipRenderPlanWithFiles(t)
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"ffmpeg_ms":1250,"audio_copy_eligible":true,"audio_encode_passes":0,"subtitle_raster_cpu":true}}`)}
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"fps_num":60,"fps_den":1,"ffmpeg_ms":1250,"audio_copy_eligible":true,"audio_encode_passes":0,"subtitle_raster_cpu":true}}`)}
 	renderer := newTestClipRenderer(runner)
 
-	result, err := renderer.RenderClip(context.Background(), plan)
+	result, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err != nil {
 		t.Fatalf("RenderClip: %v", err)
 	}
@@ -127,8 +128,11 @@ func TestClipRenderer_TransportsSealedPlanWithPolicy(t *testing.T) {
 		t.Fatalf("encoder policy not transported: %+v", sent)
 	}
 	// Geometry is transported from the plan so Rust can detect drift.
-	if sent.Width != 1080 || sent.Height != 1920 || sent.FPS != 60 || sent.KeyframeInterval != 120 {
-		t.Fatalf("geometry: %dx%d@%d ki=%d", sent.Width, sent.Height, sent.FPS, sent.KeyframeInterval)
+	if sent.Width != 1080 || sent.Height != 1920 || sent.FPSNum != 60 || sent.FPSDen != 1 || sent.KeyframeInterval != 120 {
+		t.Fatalf("geometry: %dx%d@%d/%d ki=%d", sent.Width, sent.Height, sent.FPSNum, sent.FPSDen, sent.KeyframeInterval)
+	}
+	if sent.RenderBackend != string(cliprender.BackendFFmpegFallback) {
+		t.Fatalf("render_backend = %q, want ffmpeg_fallback", sent.RenderBackend)
 	}
 	if len(sent.ClipPlan) == 0 || sent.ClipPlan[0] != '{' {
 		t.Fatalf("clip_plan not transported")
@@ -170,7 +174,7 @@ func TestClipRenderer_RejectsMissingArtifact(t *testing.T) {
 	runner := &fakeRunner{}
 	renderer := newTestClipRenderer(runner)
 
-	_, err := renderer.RenderClip(context.Background(), plan)
+	_, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err == nil || !strings.Contains(err.Error(), "source") {
 		t.Fatalf("expected artifact failure, got %v", err)
 	}
@@ -187,7 +191,7 @@ func TestClipRenderer_RejectsTamperedPlan(t *testing.T) {
 	runner := &fakeRunner{}
 	renderer := newTestClipRenderer(runner)
 
-	_, err := renderer.RenderClip(context.Background(), plan)
+	_, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err == nil || !strings.Contains(err.Error(), "validation failed") {
 		t.Fatalf("expected drift rejection, got %v", err)
 	}
@@ -204,7 +208,7 @@ func TestClipRenderer_FailsClosedOnEmptyPolicy(t *testing.T) {
 	client.runner = &fakeRunner{}
 	renderer := &ClipRenderer{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
 
-	_, err := renderer.RenderClip(context.Background(), plan)
+	_, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err == nil || !strings.Contains(err.Error(), "ENCODER_POLICY_REQUIRED") {
 		t.Fatalf("expected encoder policy failure, got %v", err)
 	}
@@ -218,10 +222,10 @@ func TestClipRenderer_FailsClosedOnMissingOutput(t *testing.T) {
 	if err := os.Remove(plan.OutputPath); err != nil {
 		t.Fatal(err)
 	}
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"ffmpeg_ms":10}}`)}
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_clip","metadata":{"duration_sec":30,"width":1080,"height":1920,"fps":60,"fps_num":60,"fps_den":1,"ffmpeg_ms":10}}`)}
 	renderer := newTestClipRenderer(runner)
 
-	_, err := renderer.RenderClip(context.Background(), plan)
+	_, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err == nil || !strings.Contains(err.Error(), "output missing or empty") {
 		t.Fatalf("expected output gate failure, got %v", err)
 	}

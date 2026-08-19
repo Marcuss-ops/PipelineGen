@@ -17,11 +17,13 @@ import (
 // fakeClipRenderExecutor stands in for the rustexec.ClipRenderer (narrow
 // seam) so the mapping is tested without the Rust process.
 type fakeClipRenderExecutor struct {
-	result rustexec.ClipRenderResult
-	err    error
+	result     rustexec.ClipRenderResult
+	err        error
+	gotBackend cliprender.RenderBackend
 }
 
-func (f *fakeClipRenderExecutor) RenderClip(_ context.Context, _ cliprender.ClipRenderPlanV1) (rustexec.ClipRenderResult, error) {
+func (f *fakeClipRenderExecutor) RenderClip(_ context.Context, _ cliprender.ClipRenderPlanV1, backend cliprender.RenderBackend) (rustexec.ClipRenderResult, error) {
+	f.gotBackend = backend
 	return f.result, f.err
 }
 
@@ -35,7 +37,8 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		DurationSec:       30.5,
 		Width:             1080,
 		Height:            1920,
-		FPS:               60,
+		FPSNum:            60,
+		FPSDen:            1,
 		FFmpegMS:          1250,
 		AudioCopyEligible: &eligible,
 		AudioEncodePasses: &passes,
@@ -50,8 +53,11 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 	if outcome.OutputPath != "/scratch/run-1/rendered-clip.mp4" || outcome.SizeBytes != 1024 || outcome.DurationSec != 30.5 {
 		t.Fatalf("output facts: %+v", outcome)
 	}
-	if outcome.Width != 1080 || outcome.Height != 1920 || outcome.FPS != 60 || outcome.FFmpegMS != 1250 {
+	if outcome.Width != 1080 || outcome.Height != 1920 || outcome.FPSNum != 60 || outcome.FPSDen != 1 || outcome.FFmpegMS != 1250 {
 		t.Fatalf("media facts: %+v", outcome)
+	}
+	if outcome.Backend != cliprender.BackendFFmpegFallback {
+		t.Fatalf("backend = %q, want ffmpeg_fallback (unwired resolver/probe)", outcome.Backend)
 	}
 	if outcome.AudioCopyEligible == nil || !*outcome.AudioCopyEligible {
 		t.Fatalf("AudioCopyEligible = %v, want true", outcome.AudioCopyEligible)
@@ -61,6 +67,34 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 	}
 	if outcome.SubtitleRasterCPU == nil || !*outcome.SubtitleRasterCPU {
 		t.Fatalf("SubtitleRasterCPU = %v, want true", outcome.SubtitleRasterCPU)
+	}
+}
+
+type fullCudaProbe struct{}
+
+func (fullCudaProbe) ProbeCapabilities(context.Context) (cliprender.RendererCapabilities, error) {
+	return cliprender.RendererCapabilities{
+		NVDEC: true, NVENCH264: true, GPUScale: true, GPUBlur: true, GPUAlpha: true,
+	}, nil
+}
+
+func TestClipRenderExecutorAdapter_ResolvesCudaBackend(t *testing.T) {
+	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{OutputPath: "/out.mp4", SizeBytes: 1, DurationSec: 1}}
+	adapter := &clipRenderExecutorAdapter{
+		renderer: fake,
+		resolver: cliprender.NewRenderBackendResolver(nil),
+		probe:    fullCudaProbe{},
+	}
+
+	outcome, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if outcome.Backend != cliprender.BackendCudaNative {
+		t.Fatalf("backend = %q, want cuda_native", outcome.Backend)
+	}
+	if fake.gotBackend != cliprender.BackendCudaNative {
+		t.Fatalf("executor received backend %q, want cuda_native", fake.gotBackend)
 	}
 }
 

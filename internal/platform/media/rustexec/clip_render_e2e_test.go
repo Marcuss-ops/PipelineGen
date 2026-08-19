@@ -67,7 +67,7 @@ func TestClipRenderE2E_BlurSourceWatermarkBurnCopyAudio(t *testing.T) {
 		},
 		nil,
 	)
-	result, err := renderer.RenderClip(context.Background(), plan)
+	result, err := renderer.RenderClip(context.Background(), plan, cliprender.BackendFFmpegFallback)
 	if err != nil {
 		t.Fatalf("render_clip failed: %v", err)
 	}
@@ -207,7 +207,8 @@ func compileClipRenderE2EPlan(t *testing.T, dir, sourcePath, watermarkPath, subt
 			PixelFormat:  "yuv420p",
 			Width:        1080,
 			Height:       1920,
-			FPS:          60,
+			FPSNum:       60,
+			FPSDen:       1,
 			AudioCodec:   "aac",
 			SampleRate:   48000,
 			Channels:     2,

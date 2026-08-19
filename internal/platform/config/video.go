@@ -46,6 +46,14 @@ func (p CanonicalVideoProfile) WithDefaults() CanonicalVideoProfile {
 	return p
 }
 
+// Canonical NVENC encoder names used by capability probes and the encoder
+// resolver. These strings must exactly match the ffmpeg encoder listing
+// format; they are the single source of truth for NVENC detection tokens.
+const (
+	EncoderNVENCH264 = "h264_nvenc"
+	EncoderNVENCHEVC = "hevc_nvenc"
+)
+
 // VideoEncoderPolicy describes how a canonical video profile is encoded.
 type VideoEncoderPolicy struct {
 	Codec  string

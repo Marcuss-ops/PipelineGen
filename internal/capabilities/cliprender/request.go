@@ -65,11 +65,14 @@ const (
 	PositionBottomLeft  = "bottom_left"
 	PositionBottomRight = "bottom_right"
 
-	// Output defaults for the Shorts/vertical use case.
+	// Output defaults for the Shorts/vertical use case. Framerate is a
+	// rational num/den pair so NTSC rates (30000/1001 = 29.97) survive the
+	// contract exactly instead of being rounded/forced to an integer.
 	DefaultLanguage = "en"
 	DefaultWidth    = 1080
 	DefaultHeight   = 1920
-	DefaultFPS      = 60
+	DefaultFPSNum   = 60
+	DefaultFPSDen   = 1
 
 	// Bounds.
 	MinDimension = 16
@@ -126,7 +129,8 @@ type OutputSpec struct {
 	Contract string `json:"contract,omitempty"` // default velox-editing-clip-v1
 	Width    int    `json:"width,omitempty"`    // default 1080
 	Height   int    `json:"height,omitempty"`   // default 1920
-	FPS      int    `json:"fps,omitempty"`      // default 60
+	FPSNum   int    `json:"fps_num,omitempty"`  // default 60
+	FPSDen   int    `json:"fps_den,omitempty"`  // default 1
 }
 
 // AudioSpec selects the audio copy policy. copy_if_compatible never
@@ -138,6 +142,15 @@ type AudioSpec struct {
 // DestinationSpec routes the validated artifacts on Drive.
 type DestinationSpec struct {
 	DriveFolderID string `json:"drive_folder_id,omitempty"` // default DefaultDriveRootFolderID
+}
+
+// ExecutionSpec selects the render execution policy. It is the ONLY
+// request-level backend signal: the concrete backend is resolved by the
+// RenderBackendResolver from probed host capabilities, never hardcoded here.
+type ExecutionSpec struct {
+	// RequireGPU fails the render unless the resolved backend is the CUDA
+	// native compositor. Default false (allow the software fallback).
+	RequireGPU bool `json:"require_gpu,omitempty"`
 }
 
 // RenderRequest is the canonical clip.render wire payload. It is both
@@ -153,6 +166,7 @@ type RenderRequest struct {
 	Output        *OutputSpec      `json:"output,omitempty"`
 	Audio         *AudioSpec       `json:"audio,omitempty"`
 	Destination   *DestinationSpec `json:"destination,omitempty"`
+	Execution     *ExecutionSpec   `json:"execution,omitempty"`
 }
 
 // Normalize applies the canonical defaults. It is idempotent and
@@ -200,8 +214,11 @@ func (r *RenderRequest) Normalize() {
 	if r.Output.Height == 0 {
 		r.Output.Height = DefaultHeight
 	}
-	if r.Output.FPS == 0 {
-		r.Output.FPS = DefaultFPS
+	if r.Output.FPSNum == 0 {
+		r.Output.FPSNum = DefaultFPSNum
+		r.Output.FPSDen = DefaultFPSDen
+	} else if r.Output.FPSDen == 0 {
+		r.Output.FPSDen = 1
 	}
 	if r.Audio == nil {
 		r.Audio = &AudioSpec{}
@@ -214,6 +231,9 @@ func (r *RenderRequest) Normalize() {
 	}
 	if r.Destination.DriveFolderID == "" {
 		r.Destination.DriveFolderID = DefaultDriveRootFolderID
+	}
+	if r.Execution == nil {
+		r.Execution = &ExecutionSpec{}
 	}
 }
 
@@ -282,8 +302,12 @@ func (r *RenderRequest) Validate() error {
 	if r.Output.Height < MinDimension || r.Output.Height > MaxDimension {
 		return fmt.Errorf("%w: output.height must be within [%d,%d] (got %d)", ErrInvalidRequest, MinDimension, MaxDimension, r.Output.Height)
 	}
-	if r.Output.FPS < MinFPS || r.Output.FPS > MaxFPS {
-		return fmt.Errorf("%w: output.fps must be within [%d,%d] (got %d)", ErrInvalidRequest, MinFPS, MaxFPS, r.Output.FPS)
+	if r.Output.FPSNum <= 0 || r.Output.FPSDen <= 0 {
+		return fmt.Errorf("%w: output.fps_num/fps_den must be positive (got %d/%d)", ErrInvalidRequest, r.Output.FPSNum, r.Output.FPSDen)
+	}
+	fps := float64(r.Output.FPSNum) / float64(r.Output.FPSDen)
+	if fps < MinFPS || fps > MaxFPS {
+		return fmt.Errorf("%w: output.fps must be within [%d,%d] (got %d/%d = %.3f)", ErrInvalidRequest, MinFPS, MaxFPS, r.Output.FPSNum, r.Output.FPSDen, fps)
 	}
 
 	switch r.Audio.Mode {

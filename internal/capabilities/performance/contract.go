@@ -25,6 +25,11 @@ type Artifact struct {
 
 type Workload struct {
 	WorkloadID, Version, InputManifestSHA256, ParametersJSON, ExpectedOutputSHA256, CreatedAt string
+	// Operation is the canonical performance_operations operation name the
+	// workload exercises (e.g. "normalize", "render_scene"). The benchmark
+	// suite reads canonical elapsed_ms samples for it instead of timing the
+	// execution itself.
+	Operation string
 }
 
 type Registry interface {

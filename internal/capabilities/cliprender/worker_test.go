@@ -68,7 +68,8 @@ func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 		DurationSec: 3,
 		Width:       1080,
 		Height:      1920,
-		FPS:         60,
+		FPSNum:      60,
+		FPSDen:      1,
 		FFmpegMS:    1234,
 	}}
 	w.WithRenderExecutor(renderer)

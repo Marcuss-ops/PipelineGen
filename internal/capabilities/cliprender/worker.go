@@ -194,6 +194,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
+	// Fail-closed GPU gate: a request that demands the CUDA native compositor
+	// must never be silently served by the software fallback.
+	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative {
+		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (cuda_native required)", outcome.Backend)
+	}
 	if w.publisher == nil {
 		// Rendering and publication are separate boundaries. A local render
 		// executor may be used by benchmarks and preparation tests without a
@@ -202,6 +207,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		emit("clip.render.completed", "Rust render_clip completed without publication", map[string]any{
 			"output_path": outcome.OutputPath, "size_bytes": outcome.SizeBytes,
 			"duration_sec": outcome.DurationSec, "ffmpeg_ms": outcome.FFmpegMS,
+			"backend": outcome.Backend,
 		})
 		progress(100, "clip.render completed")
 		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, nil), nil
@@ -227,6 +233,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"size_bytes":   outcome.SizeBytes,
 		"duration_sec": outcome.DurationSec,
 		"ffmpeg_ms":    outcome.FFmpegMS,
+		"backend":      outcome.Backend,
 	})
 	progress(100, "clip.render completed")
 
@@ -246,7 +253,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		"contract": map[string]any{
 			"width":        prepared.Contract.Width,
 			"height":       prepared.Contract.Height,
-			"fps":          prepared.Contract.FPS,
+			"fps_num":      prepared.Contract.FPSNum,
+			"fps_den":      prepared.Contract.FPSDen,
 			"video_codec":  prepared.Contract.VideoCodec,
 			"audio_codec":  prepared.Contract.AudioCodec,
 			"pixel_format": prepared.Contract.PixelFormat,
@@ -306,7 +314,9 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"duration_sec":        outcome.DurationSec,
 			"width":               outcome.Width,
 			"height":              outcome.Height,
-			"fps":                 outcome.FPS,
+			"fps_num":             outcome.FPSNum,
+			"fps_den":             outcome.FPSDen,
+			"backend":             outcome.Backend,
 			"ffmpeg_ms":           outcome.FFmpegMS,
 			"audio_copy_eligible": outcome.AudioCopyEligible,
 			"audio_encode_passes": outcome.AudioEncodePasses,

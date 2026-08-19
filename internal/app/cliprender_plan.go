@@ -83,21 +83,30 @@ func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 // referenced artifact, resolves the encoder policy from the composition-root
 // media config, and refuses success without a non-empty output.
 type clipRenderExecutor interface {
-	RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1) (rustexec.ClipRenderResult, error)
+	RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1, backend cliprender.RenderBackend) (rustexec.ClipRenderResult, error)
 }
 
 // clipRenderExecutorAdapter bridges the rustexec.ClipRenderer to the
-// capability's RenderExecutor port. Fail-closed: an unwired renderer is a
-// typed error (never a silent no-op that reports a rendered clip).
+// capability's RenderExecutor port. It resolves the render backend through
+// the capability's RenderBackendResolver (probed host capabilities, never a
+// hardcoded CUDA path) and reports the resolved backend in the outcome.
+// Fail-closed: an unwired renderer is a typed error (never a silent no-op
+// that reports a rendered clip).
 type clipRenderExecutorAdapter struct {
 	renderer clipRenderExecutor
+	resolver *cliprender.RenderBackendResolver
+	probe    cliprender.BackendCapabilityProbe
 }
 
 func (a *clipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
 	if a == nil || a.renderer == nil {
 		return nil, fmt.Errorf("%w: Rust clip renderer not wired", cliprender.ErrRenderPhaseNotImplemented)
 	}
-	result, err := a.renderer.RenderClip(ctx, plan)
+	backend, err := cliprender.ResolveBackend(ctx, a.probe, a.resolver, plan)
+	if err != nil {
+		return nil, err
+	}
+	result, err := a.renderer.RenderClip(ctx, plan, backend)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +116,9 @@ func (a *clipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 		DurationSec:       result.DurationSec,
 		Width:             result.Width,
 		Height:            result.Height,
-		FPS:               result.FPS,
+		FPSNum:            result.FPSNum,
+		FPSDen:            result.FPSDen,
+		Backend:           backend,
 		FFmpegMS:          result.FFmpegMS,
 		AudioCopyEligible: result.AudioCopyEligible,
 		AudioEncodePasses: result.AudioEncodePasses,

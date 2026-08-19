@@ -61,7 +61,9 @@ type RenderOutcome struct {
 	DurationSec       float64
 	Width             uint32
 	Height            uint32
-	FPS               uint32
+	FPSNum            uint32
+	FPSDen            uint32
+	Backend           RenderBackend
 	FFmpegMS          int64
 	AudioCopyEligible *bool
 	AudioEncodePasses *int

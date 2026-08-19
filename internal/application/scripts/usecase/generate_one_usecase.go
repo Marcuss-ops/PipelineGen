@@ -289,8 +289,8 @@ func (uc *GenerateOneUseCase) Execute(
 	}
 	if plan.AudioMode == "COMBINED_TIMELINE" {
 		// audio.pipeline is a STAGE boundary; the canonical Run clock is the
-		// only wall-time source (the legacy AudioPipelineTotalMs field remains
-		// a compatibility projection populated by renderCombinedAudio).
+		// only wall-time source. AudioPipelineMetrics is derived from the
+		// completed canonical stage/operations, never timed independently.
 		if _, audioErr := kernobs.MeasureStageReport(ctx, scriptgen.StageAudioPipeline, func(stageCtx context.Context) error {
 			return uc.renderCombinedAudio(stageCtx, item, result, processed.PostResult)
 		}); audioErr != nil {
@@ -368,6 +368,16 @@ func projectCanonicalTimings(report *kernobs.RunReport) scriptpkg.GenerationTimi
 			out.PostprocessMs[stage.Name] = stage.DurationMs
 		}
 	}
+	// Regenerate the legacy VidRush named fields from the same canonical
+	// postprocessor stages (compatibility projection — no second timer).
+	vidrush := VidRushTimingFields(out.PostprocessMs)
+	out.SegmentExtractionMs = vidrush.SegmentExtractionMs
+	out.QueryGenerationMs = vidrush.QueryGenerationMs
+	out.ArtlistSearchMs = vidrush.ArtlistSearchMs
+	out.InternetImageSearchMs = vidrush.InternetImageSearchMs
+	out.ImageGenerationMs = vidrush.ImageGenerationMs
+	out.SQLiteMs = vidrush.SQLiteMs
+	out.BindingMs = vidrush.BindingMs
 	out.TotalMs = report.WallTimeMs
 	return out
 }

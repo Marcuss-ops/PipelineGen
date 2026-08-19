@@ -18,11 +18,11 @@ type LifecycleRecorder interface {
 	RecordChild(context.Context, *RunReport) error
 }
 
-// MeasuredOperationRecorder is the canonical sink for owner-measured
-// operations. Analytics packages may implement it as a projection, but the
-// measurement contract belongs to kernel observability.
-type MeasuredOperationRecorder interface {
-	RecordOperation(context.Context, MeasuredOperation) error
+// OperationReportProjectionRecorder receives the canonical operation fact.
+// All analytics/read-model sinks must implement this seam; boundary payloads
+// are promoted to OperationReport before they reach storage.
+type OperationReportProjectionRecorder interface {
+	RecordOperationReport(context.Context, OperationReport) error
 }
 
 type AbandonedRunReconciler interface {

@@ -1,6 +1,20 @@
 # PipelineGen — observability measurement classification matrix
 # Status: current-code inventory for the Job–Attempt–Run migration.
 # Authority: internal/kernel/observability for canonical types and semantics.
+#
+# SSOT (data ownership) rule — normative, see
+# docs/architecture/job-attempt-run-observability-contract.md §1.1:
+#   OPERATIONAL METRICS SSOT = observability database
+#   CANONICAL TABLES  = run_observability, run_stage_observations,
+#                       run_operation_observations, run_artifact_observations,
+#                       run_child_observations
+#   CANONICAL WRITER  = SQLiteRecorder
+#   PERFORMANCE_*     = derived analytics/benchmark projection
+#   PROMETHEUS        = derived live projection
+# A boundary is measured exactly once into the observability DB; every other
+# surface (performance_*, Prometheus, API) projects those canonical facts and
+# never re-measures time.
+#
 # This file records current implementation surfaces; it does not claim that
 # the target wrappers, persistence tables, or removal gates already exist.
 #
@@ -21,6 +35,11 @@ version: 2
 status: inventory
 last_reviewed: 2026-08-05
 source_of_truth: internal/kernel/observability
+data_authority: >-
+  observability database (run_observability + run_stage_observations +
+  run_operation_observations + run_artifact_observations +
+  run_child_observations). performance_* tables and Prometheus are derived
+  projections of those canonical facts, never a second measurement.
 inventory_scope: >-
   Static inventory of timing, latency, wait, retry, cache, artifact, byte,
   content-duration, and related metric writers found under internal plus the
@@ -222,16 +241,16 @@ measurements:
     removal_condition: "All phase observations originate from canonical Stage close and topic/cardinality review passes"
 
   - current_symbol: "VoiceoverStageDuration"
-    current_owner: "internal/infrastructure/observability/metrics_voiceover.go"
-    current_writer: "stageLog in internal/application/voiceover/process.go:52-78"
-    current_storage: "Prometheus histogram and structured stage logs"
-    current_metric: "voiceover_stage_duration_seconds{stage}"
+    current_owner: "internal/application/voiceover/process_segment.go"
+    current_writer: "kernobs.MeasureStage around the 4 ProcessSegmentUseCase stages (tts/audio_post/publish/finalize); stageLog is structured-log only"
+    current_storage: "run_stage_observations via SQLiteRecorder; structured stage logs"
+    current_metric: "job_stage_duration_seconds{stage,status} (RunReportsCollector live projection)"
     canonical_type: stage
     canonical_stage: "tts/audio_post/publish/finalize"
     canonical_component: "voiceover"
     canonical_operation: "provider call or transaction when nested"
-    migration_adapter: "Use canonical StageWith around ProcessSegmentUseCase stages; project stage close to this histogram"
-    removal_condition: "TTS/publish/finalize stage parity passes and ProcessSegmentUseCase has no duplicate local timer"
+    migration_adapter: "DONE — MeasureStage is the sole stage timer; stageLog emits lifecycle logs without measuring"
+    removal_condition: "MET — stage parity passes and ProcessSegmentUseCase has no duplicate local timer"
 
   - current_symbol: "process.Result.Duration"
     current_owner: "internal/infrastructure/process"

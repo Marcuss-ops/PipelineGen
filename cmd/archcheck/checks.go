@@ -112,6 +112,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_brain_infra_ban", scan.ScanBrainInfraBan},
 		{"percheck_brain_single_impl", scan.ScanBrainSingleImpl},
 		{"percheck_duration_probe_ssot", scan.ScanDurationProbeSSOT},
+		{"percheck_observability_operation_ssot", scan.ScanObservabilityOperationSSOT},
 		{"percheck_speech_timing_ssot", scan.ScanSpeechTimingSSOT},
 		{"percheck_project_derivation_ssot", scan.ScanProjectDerivationSSOT},
 		{"percheck_evidence_precedence_ssot", scan.ScanEvidencePrecedenceSSOT},

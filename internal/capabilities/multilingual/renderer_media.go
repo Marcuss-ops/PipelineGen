@@ -31,7 +31,7 @@ func (r *Renderer) renderRust(ctx context.Context, in VariantInput, outputPath s
 		SourceAssetID: in.SourceClipID,
 		Output: &cliprender.OutputSpec{
 			Contract: cliprender.OutputContractVeloxEditingClipV1,
-			Width:    width, Height: height, FPS: fps,
+			Width:    width, Height: height, FPSNum: fps, FPSDen: 1,
 		},
 	}
 	request.Normalize()

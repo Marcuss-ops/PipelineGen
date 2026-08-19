@@ -21,10 +21,15 @@ type recordingRecorder struct {
 	err   error
 }
 
-func (r *recordingRecorder) RecordOperation(_ context.Context, m kernobs.MeasuredOperation) error {
+func (r *recordingRecorder) RecordOperationReport(_ context.Context, p kernobs.OperationReport) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, m)
+	r.calls = append(r.calls, kernobs.MeasuredOperation{
+		ObservationID: p.ObservationID, Operation: p.Operation, Width: p.Width, Height: p.Height,
+		FPS: p.FPS, OutputCodec: p.OutputCodec, SourceSizeBytes: p.SourceSizeBytes,
+		OutputSizeBytes: p.OutputSizeBytes, CPUUserMS: p.CPUUserMS, CPUSystemMS: p.CPUSystemMS,
+		ElapsedMS: p.DurationMs, CacheHit: p.CacheHit, MetadataJSON: p.MetadataJSON, CreatedAt: p.CreatedAt,
+	})
 	return r.err
 }
 

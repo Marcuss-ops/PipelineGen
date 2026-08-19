@@ -81,7 +81,8 @@ type PlanOutput struct {
 	PixelFormat            string `json:"pixel_format"`
 	Width                  int    `json:"width"`
 	Height                 int    `json:"height"`
-	FPS                    int    `json:"fps"`
+	FPSNum                 int    `json:"fps_num"`
+	FPSDen                 int    `json:"fps_den"`
 	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
 }
 
@@ -167,7 +168,8 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			PixelFormat:            in.Contract.PixelFormat,
 			Width:                  in.Contract.Width,
 			Height:                 in.Contract.Height,
-			FPS:                    in.Contract.FPS,
+			FPSNum:                 in.Contract.FPSNum,
+			FPSDen:                 in.Contract.FPSDen,
 			ForegroundScalePercent: normalizeForegroundScale(in.ForegroundScalePercent),
 		},
 		Audio: PlanAudio{
@@ -301,7 +303,8 @@ func (p ClipRenderPlanV1) Validate() error {
 		return fmt.Errorf("%w: source must carry asset_id, path, and sha256", ErrInvalidClipPlan)
 	}
 	if p.Output.ContractID == "" || p.Output.Container == "" || p.Output.VideoCodec == "" ||
-		p.Output.PixelFormat == "" || p.Output.Width <= 0 || p.Output.Height <= 0 || p.Output.FPS <= 0 {
+		p.Output.PixelFormat == "" || p.Output.Width <= 0 || p.Output.Height <= 0 ||
+		p.Output.FPSNum <= 0 || p.Output.FPSDen <= 0 {
 		return fmt.Errorf("%w: output contract is incomplete", ErrInvalidClipPlan)
 	}
 	if p.Output.ForegroundScalePercent != 0 && (p.Output.ForegroundScalePercent < 1 || p.Output.ForegroundScalePercent > 100) {
