@@ -334,6 +334,14 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		// never from a hard-coded geometry map. Preset-less primitives
 		// (backgrounds, shapes, effects) resolve to an empty preset.
 		preset, presetDriven := DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
+		// PipelineGen may carry a concrete preset selected by its visual
+		// sampler (for example one of the special-name treatments).  Honor
+		// that sealed contract; only fall back to the semantic-role mapping
+		// when the item did not select an explicit preset.
+		if strings.TrimSpace(item.PresetID) != "" {
+			preset = item.PresetID
+			presetDriven = true
+		}
 		if spec.Primitive == PrimitiveText && !presetDriven {
 			return ChrononCompileResult{}, fmt.Errorf("overlay plan: text template %q has no semantic_role → preset mapping", item.TemplateID)
 		}

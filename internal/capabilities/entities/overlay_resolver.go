@@ -71,6 +71,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				StartUS:    occurrence.AudioStartUS,
 				DurationUS: occurrence.AudioEndUS - occurrence.AudioStartUS,
 				TemplateID: entry.Template,
+				PresetID:   specialNamePreset(occurrence.Type),
 				Text:       occurrence.Name,
 				// The plan's entity_ref: RenderingGen receives WHO the overlay is
 				// about (stable content-addressed id + type + canonical name +
@@ -102,6 +103,22 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 	}
 	return plan, nil
+}
+
+// specialNamePreset is the single PipelineGen editorial choice for entity
+// name treatments. The ids are owned by Chronon's VisualPresetRegistry and
+// are transported opaquely through the overlay contract to RenderingGen.
+func specialNamePreset(entityType string) string {
+	switch strings.ToUpper(strings.TrimSpace(entityType)) {
+	case "PERSON":
+		return "name_glow_typewriter"
+	case "ORGANIZATION":
+		return "name_glow_slide"
+	case "LOCATION":
+		return "name_glow_pop"
+	default:
+		return "name_glow_slide"
+	}
 }
 
 // allOccurrences flattens every scene's occurrences into one slice, in scene

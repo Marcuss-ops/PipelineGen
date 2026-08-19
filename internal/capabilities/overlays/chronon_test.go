@@ -26,6 +26,22 @@ func TestCompileChrononPlanGolden(t *testing.T) {
 	}
 }
 
+func TestCompileChrononPlanHonorsExplicitPresetID(t *testing.T) {
+	plan := GoldenOverlayPlanV1()
+	plan.PlanID = "explicit-special-name-preset"
+	plan.Items = []OverlayItem{{
+		ID: "person-name", TemplateID: "PERSON", Text: "Ada Lovelace",
+		StartMs: 0, EndMs: 1000, PresetID: "name_glow_typewriter",
+	}}
+	compiled, err := CompileChrononPlan(plan)
+	if err != nil {
+		t.Fatalf("compile explicit preset: %v", err)
+	}
+	if len(compiled.Plan.Layers) != 1 || compiled.Plan.Layers[0].Preset != "name_glow_typewriter" {
+		t.Fatalf("explicit preset was not transported to Chronon: %+v", compiled.Plan.Layers)
+	}
+}
+
 // TestCompileChrononPlanGoldenJSON matches the compiled plan against the
 // literal render_plan document carried by RenderingGen's
 // testdata/golden/golden-overlay-job-v1.json (the canonical, immutable
