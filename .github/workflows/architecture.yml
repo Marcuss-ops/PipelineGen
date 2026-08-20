@@ -1,18 +1,89 @@
-name: Architecture P1 Finalize
+# .github/workflows/architecture.yml
+#
+# Single source of truth for architecture governance + P1 finalize.
+#
+# Replaces (deleted in consolidation):
+#   - architecture-governance.yml  → governance  job (push+PR on main)
+#   - architecture-p1-finalize.yml → finalize    job (self-mutating push to this file)
+#
+# Two jobs, scoped permissions per job. Top-level `permissions: {}` denies
+# everything by default; each job grants only what it needs.
+#
+# finalize is guarded by an `if:` expression that matches the legacy
+# `paths: [.github/workflows/architecture-p1-finalize.yml]` filter — i.e.
+# it runs ONLY when a push to main modified this very file.
+
+name: Architecture Governance + Finalize
 
 on:
   push:
-    paths:
-      - .github/workflows/architecture-p1-finalize.yml
+    branches: [main]
+  pull_request:
+    branches: [main]
 
-permissions:
-  contents: write
-  statuses: write
+permissions: {}
 
 jobs:
+  governance:
+    name: Reproduce catalogs and commit-bound report (governance)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Regenerate active architecture catalogs
+        run: |
+          go run ./cmd/admin/regen-current-yaml
+          git diff --exit-code -- architecture/current.yaml architecture/issues.yaml
+
+      - name: Test governance schema and policy loading
+        run: go test ./pkg/architecturecatalog ./cmd/archcheck/policy ./cmd/archcheck
+
+      - name: Generate commit-bound architecture report
+        shell: bash
+        run: |
+          set +e
+          go run ./cmd/archcheck --root=. --policy=architecture/policy.yaml --phase=0 > "${RUNNER_TEMP}/archcheck-report.json"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 2 ]; then
+            echo "archcheck could not load or parse the repository"
+            exit 2
+          fi
+          jq -e --arg sha "$(git rev-parse HEAD)" '.git_commit_sha == $sha' "${RUNNER_TEMP}/archcheck-report.json"
+
+      - name: Upload full architecture report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-report-${{ github.sha }}
+          path: ${{ runner.temp }}/archcheck-report.json
+          if-no-files-found: error
+          retention-days: 30
+
   finalize:
+    name: P1 finalize (self-mutating maintainer)
+    # Mirrors the legacy `push: paths: [.github/workflows/architecture-p1-finalize.yml]`
+    # trigger: only fires when THIS file (architecture.yml) is in the modified list
+    # of a push to main. PRs do NOT trigger finalize (head_commit is undefined).
+    if: >-
+      github.event_name == 'push'
+      && contains(github.event.head_commit.modified, '.github/workflows/architecture.yml')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
+      statuses: write
     steps:
       - uses: actions/checkout@v4
         with:
