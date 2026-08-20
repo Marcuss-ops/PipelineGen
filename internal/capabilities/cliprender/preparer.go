@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,7 +119,11 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 		sourceRef = ref
 		return nil
 	})
-	if watermarkEnabled {
+	// Text watermarks are rendered directly by the compositor and do not
+	// require an asset lookup/materialization. Only asset-backed watermarks
+	// participate in the resolver waves.
+	watermarkAsset := watermarkEnabled && req.Watermark != nil && strings.TrimSpace(req.Watermark.Text) == ""
+	if watermarkAsset {
 		wave1.Go(func() error {
 			t0 := time.Now()
 			ref, err := p.assets.ResolveAsset(ctx, req.Watermark.AssetID)
@@ -187,7 +192,8 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	var sourceErr error
 
 	generateTranscript := req.Transcript.Mode == TranscriptModeGenerate ||
-		(req.Transcript.Mode == TranscriptModeReuseOrGenerate && !existingFound)
+		(req.Transcript.Mode == TranscriptModeReuseOrGenerate && (!existingFound ||
+			(req.Subtitles.Enabled && existing != nil && len(existing.Cues) == 0)))
 
 	var wave2 errgroup.Group
 	wave2.Go(func() error {
@@ -258,7 +264,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if !existingFound && req.Transcript.Mode == TranscriptModeReuse {
 		return nil, fmt.Errorf("%w: asset %q language %q", ErrTranscriptUnavailable, req.SourceAssetID, req.Transcript.Language)
 	}
-	if existingFound {
+	if existingFound && transcript == nil {
 		transcript = existing
 	}
 	if transcript == nil || !transcript.HasText() {

@@ -35,6 +35,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 	spec := scriptpkg.SpecSceneOutput{
 		Version: 1,
 		Scenes:  make([]scriptpkg.SpecScene, 0, len(result.Scenes)),
+		Render:  result.Render,
 	}
 	var allText []string
 	for _, scene := range result.Scenes {

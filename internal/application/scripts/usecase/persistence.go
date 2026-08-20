@@ -57,6 +57,17 @@ func buildGenerationResultWithCache(
 	if postResult != nil && len(postResult.FinalSpecScene.Scenes) > 0 {
 		specScene = postResult.FinalSpecScene
 	}
+	// The final response is the last contract boundary. Reproject resolved
+	// identity images from the materialized segment candidates here as well:
+	// a later annotation/synthesis postprocessor must not erase an image that
+	// has already passed download, Drive, persistence, and index validation.
+	if postResult != nil && len(postResult.VidRushSegments) > 0 {
+		specScene = adapters.ProjectEntityImageBindings(
+			specScene,
+			postResult.VidRushSegments,
+			plan.MediaPlan.Extraction.EntityImages,
+		)
+	}
 	for i := range specScene.Scenes {
 		if specScene.Scenes[i].Annotations != nil {
 			specScene.Scenes[i].Annotations = adapters.RebaseSceneAnnotations(
@@ -66,6 +77,11 @@ func buildGenerationResultWithCache(
 		}
 	}
 	specScene = sanitizeSpecSceneOutputForResponse(specScene)
+	// Preserve the caller's render contract at the final response boundary.
+	// Post-processors may replace the scene list, but must not drop the
+	// requested watermark/subtitle materialization settings.
+	specScene.Render = item.Output.Render
+	specScene.Render.Normalize()
 
 	// PR-TRANSLATION-PIPELINE-2026-07-09: prefer translated text over
 	// the engine's original output when the TranslationProcessor
@@ -157,6 +173,15 @@ func buildGenerationResultWithCache(
 				}
 				result.Cache.Segments[seg.SegmentID] = seg.Cache
 			}
+			// Reproject from the exact response segments after final binding
+			// finalization. This is the authoritative candidate surface and
+			// cannot be stale or be replaced by an intermediate postprocessor.
+			specScene = adapters.ProjectEntityImageBindings(
+				specScene,
+				result.Segments,
+				plan.MediaPlan.Extraction.EntityImages,
+			)
+			result.Output.SpecScene = sanitizeSpecSceneOutputForResponse(specScene)
 		}
 		if strings.TrimSpace(postResult.DocID) != "" || strings.TrimSpace(postResult.DocLink) != "" {
 			result.Artifacts.Document = &scriptpkg.DocumentArtifact{

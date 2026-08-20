@@ -3,11 +3,9 @@ package rustexec
 // backend_capabilities.go — the concrete ffmpeg-backed render capability
 // probe for the cliprender.BackendCapabilityProbe port. It detects the
 // hardware stages the ffmpeg binary actually exposes (NVENC encoders + the
-// CUDA hwaccel). The GPU compositor stages (gpu_scale/gpu_blur/gpu_alpha/
-// subtitle_texture) are NOT probed because the native CUDA compositor is not
-// implemented yet; they stay false, so the resolver keeps selecting the
-// ffmpeg fallback until that backend lands (fail-closed, never a silent
-// "CUDA available" claim).
+// CUDA hwaccel). GPU scale and alpha are probed from the actual filter set;
+// ASS still rasterizes on a transparent overlay layer while the full-size
+// video surface remains device-local through overlay_cuda and NVENC.
 
 import (
 	"context"
@@ -49,6 +47,12 @@ func (p *ffmpegBackendCapabilityProbe) ProbeCapabilities(ctx context.Context) (c
 		return capabilities, err
 	}
 	capabilities.NVDEC = tokenPresent(hwaccels, "cuda")
+	filters, err := p.run(ctx, "-filters")
+	if err != nil {
+		return capabilities, err
+	}
+	capabilities.GPUScale = tokenPresent(filters, "scale_cuda")
+	capabilities.GPUAlpha = tokenPresent(filters, "overlay_cuda")
 	return capabilities, nil
 }
 

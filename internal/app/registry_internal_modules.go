@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
@@ -418,13 +419,27 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// the registry says the host satisfies its full chain).
 	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
 	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, resolver: backendResolver, probe: backendProbe})
+	chrononBin := os.Getenv("CHRONON_RENDER_BIN")
+	if chrononBin == "" {
+		candidates := []string{
+			filepath.Clean(filepath.Join("..", "Chronon3d", ".tmp", "chronon-builds", "native-verify", "apps", "chronon3d_cli", "chronon3d_cli")),
+			"/opt/chronon3d/bin/chronon3d_cli",
+		}
+		for _, candidate := range candidates {
+			if st, statErr := os.Stat(candidate); statErr == nil && !st.IsDir() {
+				chrononBin = candidate
+				break
+			}
+		}
+	}
+	chrononRenderer := newChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath)
+	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, chronon: chrononRenderer, resolver: backendResolver, probe: backendProbe})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
 	var committer assetspersistence.AssetCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
 	worker.WithRenderPublisher(&clipRenderPublisher{drive: root.Drive.Publisher, committer: committer})
-	log.Info("registerClipRender: clip render boundary wired (render_clip single pass)",
+	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),
 		zap.String("ffmpeg", cfg.External.FfmpegPath),
 		zap.String("encoder", mediaConfig.Policy.Codec),

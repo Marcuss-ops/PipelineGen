@@ -522,8 +522,53 @@ func preserveSceneBindings(previous, replacement []scriptpkg.SpecScene) []script
 			}
 		}
 		out[i].Bindings = preserveBindings(previous[previousIndex].Bindings, out[i].Bindings)
+		preserveResolvedEntityImages(&out[i], previous[previousIndex])
 	}
 	return out
+}
+
+// preserveResolvedEntityImages carries identity-image bindings across a
+// later scene rewrite (for example materialization or document preparation).
+// Those processors may return a fresh annotation slice without image fields;
+// replacing it wholesale would silently turn a successfully materialized
+// person image back into an unbound entity.
+func preserveResolvedEntityImages(replacement *scriptpkg.SpecScene, previous scriptpkg.SpecScene) {
+	if replacement == nil || previous.Annotations == nil || len(previous.Annotations.PrimaryEntities) == 0 {
+		return
+	}
+	if replacement.Annotations == nil {
+		return
+	}
+	previousImages := make(map[string]scriptpkg.EntityImageBinding)
+	for _, entity := range previous.Annotations.PrimaryEntities {
+		if entity.Image == nil || strings.TrimSpace(entity.Image.Status) != "resolved" {
+			continue
+		}
+		key := normalizeEntityMatch(entity.CanonicalName)
+		if key == "" {
+			key = normalizeEntityMatch(entity.Text)
+		}
+		if key != "" {
+			previousImages[key] = *entity.Image
+		}
+	}
+	if len(previousImages) == 0 {
+		return
+	}
+	for i := range replacement.Annotations.PrimaryEntities {
+		entity := &replacement.Annotations.PrimaryEntities[i]
+		if entity.Image != nil && strings.TrimSpace(entity.Image.Status) == "resolved" {
+			continue
+		}
+		key := normalizeEntityMatch(entity.CanonicalName)
+		if key == "" {
+			key = normalizeEntityMatch(entity.Text)
+		}
+		if image, ok := previousImages[key]; ok {
+			copy := image
+			entity.Image = &copy
+		}
+	}
 }
 
 func preserveBindings(previous, replacement scriptpkg.SceneBindings) scriptpkg.SceneBindings {

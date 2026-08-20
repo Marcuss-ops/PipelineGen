@@ -3,7 +3,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { downloadHLSWithCookies } from './download-hls.js';
-import { downloadFileWithCookies } from './download-http.js';
+import { downloadFileWithCookies, httpDownloadSnapshot } from './download-http.js';
+import { segmentQueueSnapshot } from './segment-queue.js';
+import { globalProbePool, globalVideoDownloadPool, downloadPoolSnapshot } from './download-pool.js';
 
 function streamUrlForClip(clip) {
   const candidates = [
@@ -41,7 +43,7 @@ function probeMedia(filePath) {
  * Downloads a discovered Artlist preview without Chromium. The destination
  * is committed only after download and ffprobe validation succeed.
  */
-export async function downloadDirectClip({ clip, outputDir, cookieHeader = '' } = {}) {
+async function downloadDirectClipOnce({ clip, outputDir, cookieHeader = '' } = {}) {
   const startedAt = Date.now();
   const url = streamUrlForClip(clip);
   if (!url) {
@@ -59,7 +61,7 @@ export async function downloadDirectClip({ clip, outputDir, cookieHeader = '' } 
     const transfer = isHls
       ? await downloadHLSWithCookies(url, cookieHeader, tempPath)
       : await downloadFileWithCookies(url, cookieHeader, tempPath);
-    const media = probeMedia(tempPath);
+    const media = await globalProbePool.run(null, () => probeMedia(tempPath));
     const sha256 = transfer?.sha256 || '';
     fs.renameSync(tempPath, outputPath);
     const fileSize = fs.statSync(outputPath).size;
@@ -72,9 +74,21 @@ export async function downloadDirectClip({ clip, outputDir, cookieHeader = '' } 
       browser_launched: false,
       atomic_commit: true,
       elapsed_ms: Date.now() - startedAt,
+      metrics: {
+        pools: downloadPoolSnapshot(),
+        segments: segmentQueueSnapshot(),
+        http: httpDownloadSnapshot(),
+      },
     };
   } catch (error) {
     fs.rmSync(tempPath, { force: true });
     throw error;
   }
+}
+
+export async function downloadDirectClip({ clip, outputDir, cookieHeader = '' } = {}) {
+  const clipId = String(clip?.clip_id || clip?.id || '').trim();
+  const url = streamUrlForClip(clip);
+  const key = `${clipId}|${url}|${path.resolve(outputDir || '.')}`;
+  return globalVideoDownloadPool.run(key, () => downloadDirectClipOnce({ clip, outputDir, cookieHeader }));
 }

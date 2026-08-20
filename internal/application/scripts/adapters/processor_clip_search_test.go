@@ -172,6 +172,31 @@ func TestClipSearchProcessorDoesNotCacheProviderMisses(t *testing.T) {
 	}
 }
 
+func TestClipSearchProcessorCacheOnlyNeverCallsProvider(t *testing.T) {
+	searcher := &emptyArtlistSearcher{}
+	processor := NewClipSearchProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: media.MediaPlanSpec{
+			Mode:               media.MediaPlanModeCacheOnly,
+			ForceRefreshAssets: true, // cache_only must override this flag
+			ProviderPolicy:     media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+		},
+	}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "cache-only-artlist-miss",
+		TextHash:  "cache-only-artlist-hash",
+		Insights:  scriptpkg.SegmentInsights{ArtlistQueries: []string{"boxing gym"}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	require.NoError(t, err)
+	require.Len(t, result.VidRushSegments, 1)
+	require.Equal(t, "CACHE_MISS", result.VidRushSegments[0].Cache.Artlist)
+	require.Empty(t, result.VidRushSegments[0].Assets.Candidates)
+	require.Equal(t, 0, searcher.calls, "cache_only must never call Artlist, even on a miss")
+	require.NotEmpty(t, result.Warnings)
+}
+
 func TestClipSearchProcessor_HybridArtlistMissRemainsBestEffort(t *testing.T) {
 	searcher := &emptyArtlistSearcher{}
 	processor := NewClipSearchProcessor(searcher)

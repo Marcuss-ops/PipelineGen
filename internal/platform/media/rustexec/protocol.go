@@ -353,6 +353,8 @@ type mediaMetadata struct {
 	AudioCopyEligible *bool `json:"audio_copy_eligible,omitempty"`
 	AudioEncodePasses *int  `json:"audio_encode_passes,omitempty"`
 	SubtitleRasterCPU *bool `json:"subtitle_raster_cpu,omitempty"`
+	NativeMedia       *bool   `json:"native_media,omitempty"`
+	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the

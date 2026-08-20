@@ -44,7 +44,7 @@ func (a *ScriptGeneratorAdapter) GenerateScript(ctx context.Context, req scriptp
 	}
 	return &scriptports.GenerationResult{
 		Script: result.Script, WordCount: result.WordCount, EstDuration: result.EstDuration,
-		Model: result.Model, Prompt: result.Prompt,
+		Model: result.Model, Prompt: result.Prompt, GenerationSource: "ollama",
 	}, nil
 }
 

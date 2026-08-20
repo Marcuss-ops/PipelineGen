@@ -68,6 +68,8 @@ type RenderOutcome struct {
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
+	NativeMedia       *bool
+	GPUCopyBytes      *uint64
 }
 
 // RenderExecutor executes the sealed ClipRenderPlanV1 in a single render

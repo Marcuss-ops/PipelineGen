@@ -52,6 +52,7 @@ type PlanBackground struct {
 // PlanWatermark is the resolved watermark overlay. Position/opacity/margin
 // are business selections resolved here — Rust applies them verbatim.
 type PlanWatermark struct {
+	Text     string  `json:"text,omitempty"`
 	AssetID  string  `json:"asset_id"`
 	Path     string  `json:"path"`
 	SHA256   string  `json:"sha256"`
@@ -69,6 +70,7 @@ type PlanSubtitles struct {
 	StyleID string `json:"style_id,omitempty"`
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
+	Cues    []Cue  `json:"cues,omitempty"`
 }
 
 // PlanOutput is the resolved VeloxEditing output contract. Rust must produce
@@ -121,9 +123,11 @@ type CompileInput struct {
 	Source                 *MaterializedAsset
 	Watermark              *MaterializedAsset // nil when disabled
 	WatermarkSpec          *WatermarkSpec     // normalized request watermark block (position/opacity/margin); used only when Watermark != nil
+	WatermarkText          string             // optional text watermark; no materialized asset is required
 	Background             *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
 	BackgroundMode         string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
 	Subtitles              *SubtitleArtifact  // nil when disabled
+	Cues                   []Cue
 	Contract               *ResolvedContract
 	AudioMode              string
 	OutputPath             string
@@ -218,8 +222,8 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		return ClipRenderPlanV1{}, fmt.Errorf("%w: invalid background mode %q", ErrInvalidClipPlan, backgroundMode)
 	}
 
-	if in.Watermark != nil {
-		if in.Watermark.LocalPath == "" || !isSHA256Hex(in.Watermark.SHA256) {
+	if in.Watermark != nil || strings.TrimSpace(in.WatermarkText) != "" {
+		if in.Watermark != nil && in.Watermark.LocalPath == "" && strings.TrimSpace(in.WatermarkText) == "" {
 			return ClipRenderPlanV1{}, fmt.Errorf("%w: watermark asset requires path + sha256", ErrInvalidClipPlan)
 		}
 		// Rendering params are business selections resolved here — the
@@ -228,10 +232,22 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		if wm == nil {
 			wm = &WatermarkSpec{Position: PositionTopRight, Opacity: 1.0}
 		}
+		text := strings.TrimSpace(wm.Text)
+		if text == "" {
+			text = strings.TrimSpace(in.WatermarkText)
+		}
+		if text == "" && (in.Watermark == nil || !isSHA256Hex(in.Watermark.SHA256)) {
+			return ClipRenderPlanV1{}, fmt.Errorf("%w: watermark asset requires path + sha256", ErrInvalidClipPlan)
+		}
+		assetID, path, sha := "", "", ""
+		if in.Watermark != nil {
+			assetID, path, sha = in.Watermark.AssetID, in.Watermark.LocalPath, in.Watermark.SHA256
+		}
 		plan.Watermark = &PlanWatermark{
-			AssetID:  in.Watermark.AssetID,
-			Path:     in.Watermark.LocalPath,
-			SHA256:   in.Watermark.SHA256,
+			Text:     text,
+			AssetID:  assetID,
+			Path:     path,
+			SHA256:   sha,
 			Position: wm.Position,
 			Opacity:  wm.Opacity,
 			MarginPX: wm.MarginPX,
@@ -247,6 +263,7 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			StyleID: in.Subtitles.StyleID,
 			Path:    in.Subtitles.LocalPath,
 			SHA256:  in.Subtitles.SHA256,
+			Cues:    append([]Cue(nil), in.Cues...),
 		}
 	}
 
@@ -333,11 +350,11 @@ func (p ClipRenderPlanV1) Validate() error {
 	}
 
 	if p.Watermark != nil {
-		if p.Watermark.AssetID == "" || p.Watermark.Path == "" || !isSHA256Hex(p.Watermark.SHA256) {
+		if strings.TrimSpace(p.Watermark.Text) == "" && (p.Watermark.AssetID == "" || p.Watermark.Path == "" || !isSHA256Hex(p.Watermark.SHA256)) {
 			return fmt.Errorf("%w: watermark requires asset_id, path, and sha256", ErrInvalidClipPlan)
 		}
 		switch p.Watermark.Position {
-		case PositionTopLeft, PositionTopRight, PositionBottomLeft, PositionBottomRight:
+		case PositionTopLeft, PositionTopRight, PositionCenter, PositionBottomLeft, PositionBottomRight:
 		default:
 			return fmt.Errorf("%w: invalid watermark position %q", ErrInvalidClipPlan, p.Watermark.Position)
 		}

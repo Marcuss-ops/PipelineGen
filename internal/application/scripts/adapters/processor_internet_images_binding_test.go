@@ -49,6 +49,17 @@ func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
 	}
 }
 
+func TestFindEntityImageCandidate_NormalizesEnglishPossessive(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson's", Text: "Dwayne Johnson's", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("asset-dwayne", "Dwayne Johnson", "Dwayne Johnson"),
+	}}}
+	got, ok := findEntityImageCandidate(entity, seg)
+	if !ok || got.AssetID != "asset-dwayne" {
+		t.Fatalf("possessive entity did not bind canonical candidate: ok=%v asset=%q", ok, got.AssetID)
+	}
+}
+
 func entityImagePolicyForTest() (policy mediadomain.EntityImagePolicy) {
 	policy.Enabled = true
 	policy.EntityTypes = []string{"PERSON"}

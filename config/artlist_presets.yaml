@@ -2,6 +2,22 @@
 # All preset definitions belong here, not in Go code
 
 presets:
+  drive_standard_mp4_1080p24:
+    # Canonical interchange profile for Drive and downstream editing.
+    # Keep this profile stable: consumers can rely on one playable format.
+    max_duration: 7
+    container: mp4
+    video_codec: libx264
+    encoder_preset: veryfast
+    quality: crf20
+    pixel_format: yuv420p
+    width: 1920
+    height: 1080
+    fps: 24
+    audio: preserve_if_present
+    scaling: fit_pad
+    fast_start: true
+
   youtube_1080p_7s:
     clip_duration: 7
     width: 1920

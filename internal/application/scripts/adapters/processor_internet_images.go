@@ -56,6 +56,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
+	cacheOnly := plan.MediaPlan.Mode == mediadomain.MediaPlanModeCacheOnly
 	entityImagesEnabled := plan.MediaPlan.Extraction.EntityImages.Enabled
 	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && !entityImagesEnabled {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
@@ -69,7 +70,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
-	if p.searcher == nil {
+	if p.searcher == nil && !cacheOnly {
 		return &PostProcessResult{
 			Changed:  true,
 			Warnings: []string{"internet_images: InternetImageSearcher not configured"},
@@ -78,7 +79,6 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	if len(input.VidRushSegments) == 0 {
 		return &PostProcessResult{}, nil
 	}
-
 	perQueryLimit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
 		perQueryLimit = plan.MediaPlan.Planner.CandidateLimit
@@ -129,7 +129,10 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			plan.PromptVersion,
 			fmt.Sprintf("%d", perQueryLimit),
 		)
-		if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+		// cache_only is an absolute no-provider contract. A forced refresh flag
+		// must not turn it into an external search; it may only replay a warm
+		// materialized result.
+		if cacheOnly || (!plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh) {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
 				if payload, ok := cached.(internetImageCachePayload); ok {
 					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
@@ -160,6 +163,12 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				}
 				continue
 			}
+		}
+		if cacheOnly {
+			updated.Cache.InternetImages = "CACHE_MISS"
+			warnings = append(warnings, fmt.Sprintf("internet_images: cache-only miss for segment %s", updated.SegmentID))
+			updatedSegments = append(updatedSegments, updated)
+			continue
 		}
 
 		if p.metrics != nil {
@@ -404,6 +413,14 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 	return out
 }
 
+// ProjectEntityImageBindings reapplies the canonical identity-image
+// projection to a final scene envelope. It is intentionally exported for the
+// persistence boundary: later postprocessors may rebuild annotations while
+// retaining the already materialized segment candidates.
+func ProjectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scriptpkg.VidRushSegmentResult, policy mediadomain.EntityImagePolicy) scriptpkg.SpecSceneOutput {
+	return projectEntityImageBindings(spec, segments, policy)
+}
+
 // sceneIdentityIndex pre-indexes spec.Scenes by SegmentID and ID so the
 // per-segment scene lookup is O(1) instead of a full O(scenes) scan for
 // every segment. firstNoID records the first scene carrying neither
@@ -583,5 +600,8 @@ func normalizeEntityMatch(value string) string {
 		}
 		b.WriteRune(r)
 	}
-	return b.String()
+	// NER commonly emits an English possessive when the name is the subject
+	// of a sentence ("Dwayne Johnson's journey"), while image candidates are
+	// keyed by the canonical identity ("Dwayne Johnson").
+	return strings.TrimSuffix(strings.TrimSuffix(b.String(), "'s"), "’s")
 }

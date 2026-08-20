@@ -30,6 +30,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -145,6 +146,9 @@ type LocalizeInput struct {
 	// SourceLanguage overrides LocalizationConfig.SourceLanguage for this call
 	// (clips may differ in language); empty falls back to the config value.
 	SourceLanguage string
+	Watermark      *cliprender.MaterializedAsset
+	WatermarkSpec  *cliprender.WatermarkSpec
+	WatermarkText  string
 
 	// Request is the ordered language fan-out + render concurrency.
 	Request localization.LocalizationRequest
@@ -193,6 +197,9 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		OutputProfileHash: s.cfg.OutputProfileHash,
 		RendererVersion:   s.cfg.RendererVersion,
 		SubtitleStyleHash: s.cfg.SubtitleStyleHash,
+		Watermark:         in.Watermark,
+		WatermarkSpec:     in.WatermarkSpec,
+		WatermarkText:     in.WatermarkText,
 	}
 
 	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)

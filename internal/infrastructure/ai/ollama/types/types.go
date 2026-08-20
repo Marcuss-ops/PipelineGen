@@ -115,9 +115,10 @@ type RegenerationRequest struct {
 }
 
 type GenerationResult struct {
-	Script      string
-	WordCount   int
-	EstDuration int
-	Model       string
-	Prompt      string
+	Script           string
+	WordCount        int
+	EstDuration      int
+	Model            string
+	Prompt           string
+	GenerationSource string
 }

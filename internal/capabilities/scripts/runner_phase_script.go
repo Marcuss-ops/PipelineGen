@@ -176,6 +176,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		result = &GenerateResult{
 			SourceTrace:        generatedTrace,
+			Render:             req.Render,
 			Output:             output,
 			WordCount:          output.WordCount,
 			Scenes:             scenes,

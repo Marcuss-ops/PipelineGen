@@ -5,120 +5,112 @@
   "base_available": true,
   "base_fallback": false,
   "changed_files": [
-    "architecture/observability-measurement-matrix.yaml",
-    "cmd/admin/multilingual_render_command.go",
-    "docs/architecture/job-attempt-run-observability-contract.md",
-    "internal/app/cliprender_executor_adapter_test.go",
+    "config/artlist_presets.yaml",
+    "internal/app/chronon_clip_renderer.go",
     "internal/app/cliprender_plan.go",
     "internal/app/cliprender_publisher.go",
+    "internal/app/cliprender_subtitle_compiler_test.go",
+    "internal/app/cliprender_transcript.go",
     "internal/app/localization_render.go",
-    "internal/app/localization_render_test.go",
+    "internal/app/localization_service.go",
+    "internal/app/localized_render_enqueuer.go",
     "internal/app/registry_internal_modules.go",
-    "internal/application/scripts/usecase/generate_one_usecase.go",
-    "internal/application/scripts/usecase/project_canonical_timings_test.go",
-    "internal/application/voiceover/process_segment.go",
-    "internal/application/voiceover/process_segment_observability_test.go",
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go",
+    "internal/application/scripts/adapters/postprocessor_composite_merge_test.go",
+    "internal/application/scripts/adapters/processor_clip_search.go",
+    "internal/application/scripts/adapters/processor_clip_search_test.go",
+    "internal/application/scripts/adapters/processor_internet_images.go",
+    "internal/application/scripts/adapters/processor_internet_images_binding_test.go",
+    "internal/application/scripts/adapters/processor_internet_images_test.go",
+    "internal/application/scripts/ports/generation.go",
+    "internal/application/scripts/usecase/engine_prompt.go",
+    "internal/application/scripts/usecase/engine_prompt_test.go",
+    "internal/application/scripts/usecase/persistence.go",
+    "internal/application/scripts/usecase/segment_validation.go",
+    "internal/application/scripts/usecase/segment_validation_test.go",
     "internal/capabilities/cliprender/backend.go",
-    "internal/capabilities/cliprender/backend_test.go",
-    "internal/capabilities/cliprender/contract.go",
-    "internal/capabilities/cliprender/handler_test.go",
     "internal/capabilities/cliprender/plan.go",
-    "internal/capabilities/cliprender/plan_test.go",
     "internal/capabilities/cliprender/ports.go",
-    "internal/capabilities/cliprender/prepared.go",
-    "internal/capabilities/cliprender/preparer_test.go",
+    "internal/capabilities/cliprender/preparer.go",
     "internal/capabilities/cliprender/request.go",
     "internal/capabilities/cliprender/request_test.go",
     "internal/capabilities/cliprender/worker.go",
-    "internal/capabilities/cliprender/worker_test.go",
-    "internal/capabilities/multilingual/recorder.go",
-    "internal/capabilities/multilingual/recorder_test.go",
-    "internal/capabilities/multilingual/renderer_media.go",
-    "internal/capabilities/performance/benchmark.go",
-    "internal/capabilities/performance/benchmark_test.go",
-    "internal/capabilities/performance/contract.go",
-    "internal/capabilities/performance/operations.go",
-    "internal/infrastructure/observability/run_recorder.go",
-    "internal/infrastructure/observability/run_recorder_test.go",
-    "internal/kernel/observability/measured_operation.go",
-    "internal/kernel/observability/recorder.go",
-    "internal/platform/config/video.go",
+    "internal/capabilities/localization/fingerprint.go",
+    "internal/capabilities/localization/plan.go",
+    "internal/capabilities/localization/planbuilder.go",
+    "internal/capabilities/localization/renderer.go",
+    "internal/capabilities/overlays/aspect_fit_test.go",
+    "internal/capabilities/overlays/chronon.go",
+    "internal/capabilities/overlays/layout_test.go",
+    "internal/capabilities/overlays/preset_selection.go",
+    "internal/capabilities/overlays/renderers.go",
+    "internal/capabilities/overlays/renderers_test.go",
+    "internal/capabilities/overlays/semantic_entities_test.go",
+    "internal/capabilities/scripts/builder_test.go",
+    "internal/capabilities/scripts/document_model.go",
+    "internal/capabilities/scripts/durable_mapper.go",
+    "internal/capabilities/scripts/entity_annotations.go",
+    "internal/capabilities/scripts/ports.go",
+    "internal/capabilities/scripts/runner.go",
+    "internal/capabilities/scripts/runner_phase_script.go",
+    "internal/capabilities/scripts/runner_phase_voiceover.go",
+    "internal/capabilities/scripts/scene_ready_coordinator.go",
+    "internal/domain/script/output_spec.go",
+    "internal/domain/script/specscene.go",
+    "internal/domain/script/video_render_spec.go",
+    "internal/infrastructure/ai/ollama/adapters/script_generator.go",
+    "internal/infrastructure/ai/ollama/generate.go",
+    "internal/infrastructure/ai/ollama/types/types.go",
+    "internal/infrastructure/downloader/downloader.go",
+    "internal/infrastructure/downloader/downloader_ytdlp.go",
+    "internal/infrastructure/drive/doc_client.go",
+    "internal/infrastructure/drive/publisher.go",
+    "internal/infrastructure/drive/publisher_types.go",
+    "internal/infrastructure/drive/uploader_put.go",
+    "internal/platform/config/scripts.go",
     "internal/platform/media/rustexec/backend_capabilities.go",
-    "internal/platform/media/rustexec/clip_render_e2e_test.go",
     "internal/platform/media/rustexec/clip_renderer.go",
-    "internal/platform/media/rustexec/clip_renderer_test.go",
     "internal/platform/media/rustexec/executor.go",
-    "internal/platform/media/rustexec/observed_executor.go",
-    "internal/platform/media/rustexec/observed_executor_test.go",
+    "internal/platform/media/rustexec/executor_test.go",
     "internal/platform/media/rustexec/protocol.go",
-    "internal/platform/media/rustexec/protocol_test.go",
-    "internal/platform/sqlite/performance/operations.go",
-    "internal/platform/sqlite/performance/operations_test.go",
-    "migrations/sqlite/222_extend_run_operation_observations_facts.sql",
-    "researchlive",
-    "rust/pipelinegen-muscles/src/config.rs",
-    "rust/pipelinegen-muscles/src/dispatcher.rs",
+    "node-scraper/artlist/search-cache.js",
+    "node-scraper/src/server/download-direct.js",
+    "node-scraper/src/server/download-http.js",
+    "node-scraper/src/server/download-pool.js",
+    "node-scraper/src/server/segment-queue.js",
+    "node-scraper/test/search-cache.test.js",
+    "rust/pipelinegen-muscles/Cargo.toml",
+    "rust/pipelinegen-muscles/build.rs",
+    "rust/pipelinegen-muscles/native/pg_native.cpp",
+    "rust/pipelinegen-muscles/src/cut.rs",
     "rust/pipelinegen-muscles/src/encoder.rs",
+    "rust/pipelinegen-muscles/src/lib.rs",
+    "rust/pipelinegen-muscles/src/native.rs",
+    "rust/pipelinegen-muscles/src/probe.rs",
     "rust/pipelinegen-muscles/src/protocol.rs",
+    "rust/pipelinegen-muscles/src/render_audio_execution.rs",
+    "rust/pipelinegen-muscles/src/render_audio_plan.rs",
+    "rust/pipelinegen-muscles/src/render_audio_probe.rs",
     "rust/pipelinegen-muscles/src/render_clip.rs",
     "rust/pipelinegen-muscles/src/render_clip_plan.rs",
-    "scripts/actor_10_generate_and_render.sh"
+    "rust/pipelinegen-muscles/src/render_stock_canonical.rs",
+    "rust/pipelinegen-muscles/src/render_stock_canonical_executor.rs",
+    "rust/pipelinegen-muscles/src/render_stock_legacy.rs",
+    "rust/pipelinegen-muscles/src/render_stock_legacy_copy.rs",
+    "rust/pipelinegen-muscles/src/render_stock_legacy_fast.rs",
+    "rust/pipelinegen-muscles/src/render_stock_legacy_gpu.rs",
+    "rust/pipelinegen-muscles/src/render_stock_legacy_policy.rs",
+    "rust/pipelinegen-muscles/src/transform_merge.rs",
+    "rust/pipelinegen-muscles/src/transform_mux.rs",
+    "rust/pipelinegen-muscles/src/transform_operations.rs",
+    "scripts/lib/artlist_pipeline_report.sh",
+    "scripts/verify_nlp_online_images_docs_certification.sh",
+    "scripts/youtube_boxer_stock_e2e.py",
+    "start_server.sh"
   ],
   "file_components": {
-    "architecture/observability-measurement-matrix.yaml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "cmd/admin/multilingual_render_command.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "docs/architecture/job-attempt-run-observability-contract.md": [
-      "docs"
-    ],
-    "internal/app/cliprender_executor_adapter_test.go": [
+    "config/artlist_presets.yaml": [],
+    "internal/app/chronon_clip_renderer.go": [
       "script",
       "research",
       "clips",
@@ -193,6 +185,56 @@
       "rust-muscles",
       "web"
     ],
+    "internal/app/cliprender_subtitle_compiler_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/app/cliprender_transcript.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
     "internal/app/localization_render.go": [
       "script",
       "research",
@@ -218,7 +260,32 @@
       "rust-muscles",
       "web"
     ],
-    "internal/app/localization_render_test.go": [
+    "internal/app/localization_service.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/app/localized_render_enqueuer.go": [
       "script",
       "research",
       "clips",
@@ -268,98 +335,63 @@
       "rust-muscles",
       "web"
     ],
-    "internal/application/scripts/usecase/generate_one_usecase.go": [
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/postprocessor_composite_merge_test.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/processor_clip_search.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/processor_clip_search_test.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/processor_internet_images.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/processor_internet_images_binding_test.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/processor_internet_images_test.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/ports/generation.go": [
+      "script"
+    ],
+    "internal/application/scripts/usecase/engine_prompt.go": [
       "script",
       "research",
       "translation"
     ],
-    "internal/application/scripts/usecase/project_canonical_timings_test.go": [
+    "internal/application/scripts/usecase/engine_prompt_test.go": [
       "script",
       "research",
       "translation"
     ],
-    "internal/application/voiceover/process_segment.go": [
-      "voiceover"
+    "internal/application/scripts/usecase/persistence.go": [
+      "script",
+      "research",
+      "translation"
     ],
-    "internal/application/voiceover/process_segment_observability_test.go": [
-      "voiceover"
+    "internal/application/scripts/usecase/segment_validation.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/scripts/usecase/segment_validation_test.go": [
+      "script",
+      "research",
+      "translation"
     ],
     "internal/capabilities/cliprender/backend.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/capabilities/cliprender/backend_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/capabilities/cliprender/contract.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/capabilities/cliprender/handler_test.go": [
       "script",
       "research",
       "clips",
@@ -409,31 +441,6 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/cliprender/plan_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
     "internal/capabilities/cliprender/ports.go": [
       "script",
       "research",
@@ -459,32 +466,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/cliprender/prepared.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/capabilities/cliprender/preparer_test.go": [
+    "internal/capabilities/cliprender/preparer.go": [
       "script",
       "research",
       "clips",
@@ -584,7 +566,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/cliprender/worker_test.go": [
+    "internal/capabilities/localization/fingerprint.go": [
       "script",
       "research",
       "clips",
@@ -609,7 +591,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/multilingual/recorder.go": [
+    "internal/capabilities/localization/plan.go": [
       "script",
       "research",
       "clips",
@@ -634,7 +616,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/multilingual/recorder_test.go": [
+    "internal/capabilities/localization/planbuilder.go": [
       "script",
       "research",
       "clips",
@@ -659,7 +641,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/multilingual/renderer_media.go": [
+    "internal/capabilities/localization/renderer.go": [
       "script",
       "research",
       "clips",
@@ -684,7 +666,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/performance/benchmark.go": [
+    "internal/capabilities/overlays/aspect_fit_test.go": [
       "script",
       "research",
       "clips",
@@ -709,7 +691,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/performance/benchmark_test.go": [
+    "internal/capabilities/overlays/chronon.go": [
       "script",
       "research",
       "clips",
@@ -734,7 +716,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/performance/contract.go": [
+    "internal/capabilities/overlays/layout_test.go": [
       "script",
       "research",
       "clips",
@@ -759,7 +741,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/capabilities/performance/operations.go": [
+    "internal/capabilities/overlays/preset_selection.go": [
       "script",
       "research",
       "clips",
@@ -784,7 +766,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/infrastructure/observability/run_recorder.go": [
+    "internal/capabilities/overlays/renderers.go": [
       "script",
       "research",
       "clips",
@@ -809,7 +791,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/infrastructure/observability/run_recorder_test.go": [
+    "internal/capabilities/overlays/renderers_test.go": [
       "script",
       "research",
       "clips",
@@ -834,13 +816,341 @@
       "rust-muscles",
       "web"
     ],
-    "internal/kernel/observability/measured_operation.go": [
-      "kernel"
+    "internal/capabilities/overlays/semantic_entities_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
     ],
-    "internal/kernel/observability/recorder.go": [
-      "kernel"
+    "internal/capabilities/scripts/builder_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
     ],
-    "internal/platform/config/video.go": [
+    "internal/capabilities/scripts/document_model.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/durable_mapper.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/entity_annotations.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/ports.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/runner.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/runner_phase_script.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/runner_phase_voiceover.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/scripts/scene_ready_coordinator.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/domain/script/output_spec.go": [
+      "script"
+    ],
+    "internal/domain/script/specscene.go": [
+      "script"
+    ],
+    "internal/domain/script/video_render_spec.go": [
+      "script"
+    ],
+    "internal/infrastructure/ai/ollama/adapters/script_generator.go": [
+      "ollama"
+    ],
+    "internal/infrastructure/ai/ollama/generate.go": [
+      "ollama"
+    ],
+    "internal/infrastructure/ai/ollama/types/types.go": [
+      "ollama"
+    ],
+    "internal/infrastructure/downloader/downloader.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/infrastructure/downloader/downloader_ytdlp.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/infrastructure/drive/doc_client.go": [
+      "drive",
+      "storage"
+    ],
+    "internal/infrastructure/drive/publisher.go": [
+      "drive",
+      "storage"
+    ],
+    "internal/infrastructure/drive/publisher_types.go": [
+      "drive",
+      "storage"
+    ],
+    "internal/infrastructure/drive/uploader_put.go": [
+      "drive",
+      "storage"
+    ],
+    "internal/platform/config/scripts.go": [
       "script",
       "research",
       "clips",
@@ -890,57 +1200,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/platform/media/rustexec/clip_render_e2e_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
     "internal/platform/media/rustexec/clip_renderer.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/platform/media/rustexec/clip_renderer_test.go": [
       "script",
       "research",
       "clips",
@@ -990,32 +1250,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/platform/media/rustexec/observed_executor.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/platform/media/rustexec/observed_executor_test.go": [
+    "internal/platform/media/rustexec/executor_test.go": [
       "script",
       "research",
       "clips",
@@ -1065,119 +1300,58 @@
       "rust-muscles",
       "web"
     ],
-    "internal/platform/media/rustexec/protocol_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "node-scraper/artlist/search-cache.js": [
+      "node-scraper"
     ],
-    "internal/platform/sqlite/performance/operations.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "node-scraper/src/server/download-direct.js": [
+      "node-scraper"
     ],
-    "internal/platform/sqlite/performance/operations_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "node-scraper/src/server/download-http.js": [
+      "node-scraper"
     ],
-    "migrations/sqlite/222_extend_run_operation_observations_facts.sql": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "node-scraper/src/server/download-pool.js": [
+      "node-scraper"
     ],
-    "researchlive": [
-      "research"
+    "node-scraper/src/server/segment-queue.js": [
+      "node-scraper"
     ],
-    "rust/pipelinegen-muscles/src/config.rs": [
+    "node-scraper/test/search-cache.test.js": [
+      "node-scraper"
+    ],
+    "rust/pipelinegen-muscles/Cargo.toml": [
       "rust-muscles"
     ],
-    "rust/pipelinegen-muscles/src/dispatcher.rs": [
+    "rust/pipelinegen-muscles/build.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/native/pg_native.cpp": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/cut.rs": [
       "rust-muscles"
     ],
     "rust/pipelinegen-muscles/src/encoder.rs": [
       "rust-muscles"
     ],
+    "rust/pipelinegen-muscles/src/lib.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/native.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/probe.rs": [
+      "rust-muscles"
+    ],
     "rust/pipelinegen-muscles/src/protocol.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_audio_execution.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_audio_plan.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_audio_probe.rs": [
       "rust-muscles"
     ],
     "rust/pipelinegen-muscles/src/render_clip.rs": [
@@ -1186,7 +1360,46 @@
     "rust/pipelinegen-muscles/src/render_clip_plan.rs": [
       "rust-muscles"
     ],
-    "scripts/actor_10_generate_and_render.sh": [
+    "rust/pipelinegen-muscles/src/render_stock_canonical.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_canonical_executor.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_legacy.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_legacy_copy.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_legacy_fast.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_legacy_gpu.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/render_stock_legacy_policy.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/transform_merge.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/transform_mux.rs": [
+      "rust-muscles"
+    ],
+    "rust/pipelinegen-muscles/src/transform_operations.rs": [
+      "rust-muscles"
+    ],
+    "scripts/lib/artlist_pipeline_report.sh": [
+      "artlist"
+    ],
+    "scripts/verify_nlp_online_images_docs_certification.sh": [
+      "images"
+    ],
+    "scripts/youtube_boxer_stock_e2e.py": [
+      "stock"
+    ],
+    "start_server.sh": [
       "script"
     ]
   },
@@ -1215,9 +1428,12 @@
     "rust-muscles",
     "web"
   ],
-  "resolved_components": [
+  "resolved_components": [],
+  "unmapped_files": [
+    "config/artlist_presets.yaml"
+  ],
+  "skipped": [
     "script",
-    "database",
     "research",
     "clips",
     "stock",
@@ -1227,12 +1443,13 @@
     "docs",
     "voiceover",
     "images",
-    "ollama",
     "translation",
-    "storage",
     "timeline",
+    "storage",
+    "database",
     "jobs",
     "api",
+    "ollama",
     "youtube",
     "artlist",
     "node-scraper",
@@ -1240,1407 +1457,12 @@
     "rust-muscles",
     "web"
   ],
-  "unmapped_files": [],
-  "skipped": [],
-  "components": {
-    "script": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/domain/script/...",
-        "go test ./internal/application/scripts/...",
-        "go test ./internal/api/script/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "b8ff1a8cfabc64d137fdf8d14c6edc4a5b1d51ec233f15dbaa9c602c80369dfc",
-      "cache_hit": true,
-      "original_duration_ms": 14777
-    },
-    "database": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/infrastructure/database/..."
-      ],
-      "packages": 1,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "bf42fd5aa5489f2d13c65cf96c340dae04d9a35821a004a1d9536bafb394a0b4",
-      "cache_hit": true,
-      "original_duration_ms": 3643
-    },
-    "research": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/application/scripts/usecase/...",
-        "go test ./internal/infrastructure/webresearch/...",
-        "go test ./internal/infrastructure/database/sqlite/scripts/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "script"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "10aee6f18af68dc4db43d869b421f529d016bf74a3947d31467251f7ac3b7fd5",
-      "cache_hit": true,
-      "original_duration_ms": 9140
-    },
-    "clips": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/domain/clips/...",
-        "go test ./internal/application/clips/...",
-        "go test ./internal/api/assets/clips/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "711c63cbf9dc60c7fad9876e0d77b83ff0f8374f11b808a0cd00a9dc571bb7a4",
-      "cache_hit": true,
-      "original_duration_ms": 2906
-    },
-    "stock": {
-      "status": "PASS",
-      "duration_ms": 108195,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/application/assets/providers/stock/...",
-        "go test ./internal/application/assets/providers/artlist/...",
-        "go test ./internal/api/assets/stock/...",
-        "go test ./internal/api/assets/artlist/...",
-        "go test ./internal/infrastructure/artlist/..."
-      ],
-      "packages": 5,
-      "command_results": [
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 88145,
-          "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/stock/...",
-          "kind": "go",
-          "source": "./internal/application/assets/providers/stock/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 8413,
-          "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/artlist/...",
-          "kind": "go",
-          "source": "./internal/application/assets/providers/artlist/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 3905,
-          "timed_out": false,
-          "command": "go test ./internal/api/assets/stock/...",
-          "kind": "go",
-          "source": "./internal/api/assets/stock/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 3678,
-          "timed_out": false,
-          "command": "go test ./internal/api/assets/artlist/...",
-          "kind": "go",
-          "source": "./internal/api/assets/artlist/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 4050,
-          "timed_out": false,
-          "command": "go test ./internal/infrastructure/artlist/...",
-          "kind": "go",
-          "source": "./internal/infrastructure/artlist/..."
-        }
-      ],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [
-        "make verify-stock-live"
-      ],
-      "race_skipped": false,
-      "fingerprint": null,
-      "cache_hit": false
-    },
-    "qdrant": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/domain/qdrantdr/...",
-        "go test ./internal/application/qdrant/...",
-        "go test ./internal/infrastructure/qdrant/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "01fb122fadc6f05032a65fa8d38a1e70f660bbcc8832e95976dff99259bad1f6",
-      "cache_hit": true,
-      "original_duration_ms": 6570
-    },
-    "indexing": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/application/indexing/...",
-        "go test ./internal/infrastructure/indexing/..."
-      ],
-      "packages": 2,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "qdrant"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "49c6f666c24a442a6f9f5d65fe9e41693b40e65854c617c5c9526e8075446cba",
-      "cache_hit": true,
-      "original_duration_ms": 2049
-    },
-    "drive": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/domain/drive/...",
-        "go test ./internal/infrastructure/drive/...",
-        "go test ./internal/application/publish_drive/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "2b8a6c742937b0235e5a89b181c6c63c5d61d7ce3275ad0b4a359c304ff6a25e",
-      "cache_hit": true,
-      "original_duration_ms": 2008
-    },
-    "docs": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/domain/document/...",
-        "go test ./internal/application/document/...",
-        "go test ./internal/application/documents/...",
-        "go test ./internal/api/assets/document/..."
-      ],
-      "packages": 4,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "drive"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "f565fa1c6dce8fab348e43b969c1bb9337f956b768e926f7f102703743d0ae7c",
-      "cache_hit": true,
-      "original_duration_ms": 1828
-    },
-    "voiceover": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/domain/voiceover/...",
-        "go test ./internal/application/voiceover/...",
-        "go test ./internal/api/assets/voiceover/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "drive"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "6d27bd8e2963b52bc7699eaa523dff496d9d37c0ec5c72cbc35c4b85c9e6608b",
-      "cache_hit": true,
-      "original_duration_ms": 2688
-    },
-    "images": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/domain/image/...",
-        "go test ./internal/application/images/...",
-        "go test ./internal/api/images/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "drive"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "5b74fdc76b897d98fcdd1eb24dd225abb2dfc8082fba7e8c6ffa66a7d8bb071a",
-      "cache_hit": true,
-      "original_duration_ms": 3390
-    },
-    "ollama": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/infrastructure/ai/ollama/..."
-      ],
-      "packages": 1,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "9b6a7ee7b5f37790a671b5ce2836952f46a50117ec0e67e125682cb46552499c",
-      "cache_hit": true,
-      "original_duration_ms": 819
-    },
-    "translation": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/application/translation/...",
-        "go test ./internal/application/scripts/adapters/...",
-        "go test ./internal/application/scripts/usecase/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "ollama"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "43ffe71789a025c80d57007891bc39c2efa837b263d7d26c91b4a7d578ed0b70",
-      "cache_hit": true,
-      "original_duration_ms": 7678
-    },
-    "storage": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/application/assets/storage/...",
-        "go test ./internal/api/assets/storage/...",
-        "go test ./internal/infrastructure/drive/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "4f5f754d6b8c9db0f205db341972bf27cb4aa79ea5211f7edc713786183aa64d",
-      "cache_hit": true,
-      "original_duration_ms": 1186
-    },
-    "timeline": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/infrastructure/media/...",
-        "go test ./internal/api/assets/storage/..."
-      ],
-      "packages": 2,
-      "command_results": [],
-      "dependencies": [
-        "storage"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "f811077d37d505113af873e95eed8091e6003e40f3945dc65f88b15b2dde5512",
-      "cache_hit": true,
-      "original_duration_ms": 983
-    },
-    "jobs": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/application/jobs/...",
-        "go test ./internal/api/jobs/...",
-        "go test ./internal/infrastructure/jobs/...",
-        "go test ./internal/infrastructure/database/sqlite/jobs/..."
-      ],
-      "packages": 4,
-      "command_results": [],
-      "dependencies": [
-        "database"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "bb2b9e6cad9383c66e07277d33a8c874c51b2b8b930b0afefafdd2b44c9006e7",
-      "cache_hit": true,
-      "original_duration_ms": 3708
-    },
-    "api": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/api/middleware/...",
-        "go test ./internal/api/transport/..."
-      ],
-      "packages": 2,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "75eaee3a55f13f555848ff1b594366be4a5e1f21b9aba5e8f9098e9c796dd9fc",
-      "cache_hit": true,
-      "original_duration_ms": 7571
-    },
-    "youtube": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/domain/youtube/...",
-        "go test ./internal/application/youtube/...",
-        "go test ./internal/application/assets/providers/youtube/...",
-        "go test ./internal/application/assets/sourcing/youtube/...",
-        "go test ./internal/infrastructure/youtube/...",
-        "go test ./internal/api/assets/youtube/...",
-        "python3 scripts/ci/whisper-deployment-contract_test.py"
-      ],
-      "packages": 6,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "drive"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "42b24fedf548881e4ff7abea317adcc1fc1192d37e5c7d616dd94b72dbb40777",
-      "cache_hit": true,
-      "original_duration_ms": 7406
-    },
-    "artlist": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 900.0,
-      "commands": [
-        "go test ./internal/application/assets/providers/artlist/...",
-        "go test ./internal/infrastructure/artlist/...",
-        "go test ./internal/api/assets/artlist/..."
-      ],
-      "packages": 3,
-      "command_results": [],
-      "dependencies": [
-        "database",
-        "drive"
-      ],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "6762ae548082868d2a1fe31190dbfd11fbcf088e77bfdd9836efb9ec785c8b7b",
-      "cache_hit": true,
-      "original_duration_ms": 6098
-    },
-    "node-scraper": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 600.0,
-      "commands": [
-        "go test ./internal/infrastructure/artlist/scraper/...",
-        "npm --prefix node-scraper test"
-      ],
-      "packages": 1,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "6bb5b48c9d3a53e222b88c49fdc4a66679e84536a4a4abf2321785b2a7db353a",
-      "cache_hit": true,
-      "original_duration_ms": 12804
-    },
-    "kernel": {
-      "status": "PASS",
-      "duration_ms": 1670,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "go test ./internal/kernel/..."
-      ],
-      "packages": 1,
-      "command_results": [
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 1670,
-          "timed_out": false,
-          "command": "go test ./internal/kernel/...",
-          "kind": "go",
-          "source": "./internal/kernel/..."
-        }
-      ],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "741a3b9390a14b24fd1395e0ed3b581187e23cea752c5ba001f5e0608fa77d0c",
-      "cache_hit": false
-    },
-    "rust-muscles": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [],
-      "packages": 0,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "77c15b3259b9a0acac01bd7e2cfbadd2d47f7ee9ef1691f0dd7dc39538f524cf",
-      "cache_hit": true,
-      "original_duration_ms": 0
-    },
-    "web": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
-      "timeout_seconds": 300.0,
-      "commands": [
-        "npm --prefix web run build"
-      ],
-      "packages": 0,
-      "command_results": [],
-      "dependencies": [],
-      "blocked_by": [],
-      "skipped_live": [],
-      "race_skipped": false,
-      "fingerprint": "7f8ff16e61990888ad266219c575e1761f7cec7e2205a229d99a7371480a9899",
-      "cache_hit": true,
-      "original_duration_ms": 7747
-    }
-  },
-  "component_report": {
-    "schema_version": 1,
-    "cache_schema_version": "verify-fingerprint-schema-v1",
-    "mode": "fast",
-    "requested": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "requested_components": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "resolved_components": [
-      "script",
-      "database",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "ollama",
-      "translation",
-      "storage",
-      "timeline",
-      "jobs",
-      "api",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "started_at": "2026-08-19T06:42:11.397752Z",
-    "finished_at": "2026-08-19T06:43:59.598980Z",
-    "git_sha": "bcfcf6e349377fad60b7b0ee1cc1deb8cea639a2",
-    "duration_ms": 108206,
-    "components": {
-      "script": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/domain/script/...",
-          "go test ./internal/application/scripts/...",
-          "go test ./internal/api/script/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "b8ff1a8cfabc64d137fdf8d14c6edc4a5b1d51ec233f15dbaa9c602c80369dfc",
-        "cache_hit": true,
-        "original_duration_ms": 14777
-      },
-      "database": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/infrastructure/database/..."
-        ],
-        "packages": 1,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "bf42fd5aa5489f2d13c65cf96c340dae04d9a35821a004a1d9536bafb394a0b4",
-        "cache_hit": true,
-        "original_duration_ms": 3643
-      },
-      "research": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/application/scripts/usecase/...",
-          "go test ./internal/infrastructure/webresearch/...",
-          "go test ./internal/infrastructure/database/sqlite/scripts/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "script"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "10aee6f18af68dc4db43d869b421f529d016bf74a3947d31467251f7ac3b7fd5",
-        "cache_hit": true,
-        "original_duration_ms": 9140
-      },
-      "clips": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/domain/clips/...",
-          "go test ./internal/application/clips/...",
-          "go test ./internal/api/assets/clips/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "711c63cbf9dc60c7fad9876e0d77b83ff0f8374f11b808a0cd00a9dc571bb7a4",
-        "cache_hit": true,
-        "original_duration_ms": 2906
-      },
-      "stock": {
-        "status": "PASS",
-        "duration_ms": 108195,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/application/assets/providers/stock/...",
-          "go test ./internal/application/assets/providers/artlist/...",
-          "go test ./internal/api/assets/stock/...",
-          "go test ./internal/api/assets/artlist/...",
-          "go test ./internal/infrastructure/artlist/..."
-        ],
-        "packages": 5,
-        "command_results": [
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 88145,
-            "timed_out": false,
-            "command": "go test ./internal/application/assets/providers/stock/...",
-            "kind": "go",
-            "source": "./internal/application/assets/providers/stock/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 8413,
-            "timed_out": false,
-            "command": "go test ./internal/application/assets/providers/artlist/...",
-            "kind": "go",
-            "source": "./internal/application/assets/providers/artlist/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 3905,
-            "timed_out": false,
-            "command": "go test ./internal/api/assets/stock/...",
-            "kind": "go",
-            "source": "./internal/api/assets/stock/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 3678,
-            "timed_out": false,
-            "command": "go test ./internal/api/assets/artlist/...",
-            "kind": "go",
-            "source": "./internal/api/assets/artlist/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 4050,
-            "timed_out": false,
-            "command": "go test ./internal/infrastructure/artlist/...",
-            "kind": "go",
-            "source": "./internal/infrastructure/artlist/..."
-          }
-        ],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [
-          "make verify-stock-live"
-        ],
-        "race_skipped": false,
-        "fingerprint": null,
-        "cache_hit": false
-      },
-      "qdrant": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/domain/qdrantdr/...",
-          "go test ./internal/application/qdrant/...",
-          "go test ./internal/infrastructure/qdrant/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "01fb122fadc6f05032a65fa8d38a1e70f660bbcc8832e95976dff99259bad1f6",
-        "cache_hit": true,
-        "original_duration_ms": 6570
-      },
-      "indexing": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/application/indexing/...",
-          "go test ./internal/infrastructure/indexing/..."
-        ],
-        "packages": 2,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "qdrant"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "49c6f666c24a442a6f9f5d65fe9e41693b40e65854c617c5c9526e8075446cba",
-        "cache_hit": true,
-        "original_duration_ms": 2049
-      },
-      "drive": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/domain/drive/...",
-          "go test ./internal/infrastructure/drive/...",
-          "go test ./internal/application/publish_drive/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "2b8a6c742937b0235e5a89b181c6c63c5d61d7ce3275ad0b4a359c304ff6a25e",
-        "cache_hit": true,
-        "original_duration_ms": 2008
-      },
-      "docs": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/domain/document/...",
-          "go test ./internal/application/document/...",
-          "go test ./internal/application/documents/...",
-          "go test ./internal/api/assets/document/..."
-        ],
-        "packages": 4,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "drive"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "f565fa1c6dce8fab348e43b969c1bb9337f956b768e926f7f102703743d0ae7c",
-        "cache_hit": true,
-        "original_duration_ms": 1828
-      },
-      "voiceover": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/domain/voiceover/...",
-          "go test ./internal/application/voiceover/...",
-          "go test ./internal/api/assets/voiceover/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "drive"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "6d27bd8e2963b52bc7699eaa523dff496d9d37c0ec5c72cbc35c4b85c9e6608b",
-        "cache_hit": true,
-        "original_duration_ms": 2688
-      },
-      "images": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/domain/image/...",
-          "go test ./internal/application/images/...",
-          "go test ./internal/api/images/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "drive"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "5b74fdc76b897d98fcdd1eb24dd225abb2dfc8082fba7e8c6ffa66a7d8bb071a",
-        "cache_hit": true,
-        "original_duration_ms": 3390
-      },
-      "ollama": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/infrastructure/ai/ollama/..."
-        ],
-        "packages": 1,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "9b6a7ee7b5f37790a671b5ce2836952f46a50117ec0e67e125682cb46552499c",
-        "cache_hit": true,
-        "original_duration_ms": 819
-      },
-      "translation": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/application/translation/...",
-          "go test ./internal/application/scripts/adapters/...",
-          "go test ./internal/application/scripts/usecase/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "ollama"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "43ffe71789a025c80d57007891bc39c2efa837b263d7d26c91b4a7d578ed0b70",
-        "cache_hit": true,
-        "original_duration_ms": 7678
-      },
-      "storage": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/application/assets/storage/...",
-          "go test ./internal/api/assets/storage/...",
-          "go test ./internal/infrastructure/drive/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "4f5f754d6b8c9db0f205db341972bf27cb4aa79ea5211f7edc713786183aa64d",
-        "cache_hit": true,
-        "original_duration_ms": 1186
-      },
-      "timeline": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/infrastructure/media/...",
-          "go test ./internal/api/assets/storage/..."
-        ],
-        "packages": 2,
-        "command_results": [],
-        "dependencies": [
-          "storage"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "f811077d37d505113af873e95eed8091e6003e40f3945dc65f88b15b2dde5512",
-        "cache_hit": true,
-        "original_duration_ms": 983
-      },
-      "jobs": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/application/jobs/...",
-          "go test ./internal/api/jobs/...",
-          "go test ./internal/infrastructure/jobs/...",
-          "go test ./internal/infrastructure/database/sqlite/jobs/..."
-        ],
-        "packages": 4,
-        "command_results": [],
-        "dependencies": [
-          "database"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "bb2b9e6cad9383c66e07277d33a8c874c51b2b8b930b0afefafdd2b44c9006e7",
-        "cache_hit": true,
-        "original_duration_ms": 3708
-      },
-      "api": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/api/middleware/...",
-          "go test ./internal/api/transport/..."
-        ],
-        "packages": 2,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "75eaee3a55f13f555848ff1b594366be4a5e1f21b9aba5e8f9098e9c796dd9fc",
-        "cache_hit": true,
-        "original_duration_ms": 7571
-      },
-      "youtube": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/domain/youtube/...",
-          "go test ./internal/application/youtube/...",
-          "go test ./internal/application/assets/providers/youtube/...",
-          "go test ./internal/application/assets/sourcing/youtube/...",
-          "go test ./internal/infrastructure/youtube/...",
-          "go test ./internal/api/assets/youtube/...",
-          "python3 scripts/ci/whisper-deployment-contract_test.py"
-        ],
-        "packages": 6,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "drive"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "42b24fedf548881e4ff7abea317adcc1fc1192d37e5c7d616dd94b72dbb40777",
-        "cache_hit": true,
-        "original_duration_ms": 7406
-      },
-      "artlist": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 900.0,
-        "commands": [
-          "go test ./internal/application/assets/providers/artlist/...",
-          "go test ./internal/infrastructure/artlist/...",
-          "go test ./internal/api/assets/artlist/..."
-        ],
-        "packages": 3,
-        "command_results": [],
-        "dependencies": [
-          "database",
-          "drive"
-        ],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "6762ae548082868d2a1fe31190dbfd11fbcf088e77bfdd9836efb9ec785c8b7b",
-        "cache_hit": true,
-        "original_duration_ms": 6098
-      },
-      "node-scraper": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 600.0,
-        "commands": [
-          "go test ./internal/infrastructure/artlist/scraper/...",
-          "npm --prefix node-scraper test"
-        ],
-        "packages": 1,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "6bb5b48c9d3a53e222b88c49fdc4a66679e84536a4a4abf2321785b2a7db353a",
-        "cache_hit": true,
-        "original_duration_ms": 12804
-      },
-      "kernel": {
-        "status": "PASS",
-        "duration_ms": 1670,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "go test ./internal/kernel/..."
-        ],
-        "packages": 1,
-        "command_results": [
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 1670,
-            "timed_out": false,
-            "command": "go test ./internal/kernel/...",
-            "kind": "go",
-            "source": "./internal/kernel/..."
-          }
-        ],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "741a3b9390a14b24fd1395e0ed3b581187e23cea752c5ba001f5e0608fa77d0c",
-        "cache_hit": false
-      },
-      "rust-muscles": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [],
-        "packages": 0,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "77c15b3259b9a0acac01bd7e2cfbadd2d47f7ee9ef1691f0dd7dc39538f524cf",
-        "cache_hit": true,
-        "original_duration_ms": 0
-      },
-      "web": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
-        "timeout_seconds": 300.0,
-        "commands": [
-          "npm --prefix web run build"
-        ],
-        "packages": 0,
-        "command_results": [],
-        "dependencies": [],
-        "blocked_by": [],
-        "skipped_live": [],
-        "race_skipped": false,
-        "fingerprint": "7f8ff16e61990888ad266219c575e1761f7cec7e2205a229d99a7371480a9899",
-        "cache_hit": true,
-        "original_duration_ms": 7747
-      }
-    },
-    "cache_summary": {
-      "hits": 21,
-      "misses": 2,
-      "executed": 2,
-      "saved_ms": 104999,
-      "gates": [
-        {
-          "gate": "api",
-          "result": "HIT",
-          "duration_ms": 7571
-        },
-        {
-          "gate": "artlist",
-          "result": "HIT",
-          "duration_ms": 6098
-        },
-        {
-          "gate": "clips",
-          "result": "HIT",
-          "duration_ms": 2906
-        },
-        {
-          "gate": "database",
-          "result": "HIT",
-          "duration_ms": 3643
-        },
-        {
-          "gate": "docs",
-          "result": "HIT",
-          "duration_ms": 1828
-        },
-        {
-          "gate": "drive",
-          "result": "HIT",
-          "duration_ms": 2008
-        },
-        {
-          "gate": "images",
-          "result": "HIT",
-          "duration_ms": 3390
-        },
-        {
-          "gate": "indexing",
-          "result": "HIT",
-          "duration_ms": 2049
-        },
-        {
-          "gate": "jobs",
-          "result": "HIT",
-          "duration_ms": 3708
-        },
-        {
-          "gate": "kernel",
-          "result": "MISS",
-          "duration_ms": 1670
-        },
-        {
-          "gate": "node-scraper",
-          "result": "HIT",
-          "duration_ms": 12804
-        },
-        {
-          "gate": "ollama",
-          "result": "HIT",
-          "duration_ms": 819
-        },
-        {
-          "gate": "qdrant",
-          "result": "HIT",
-          "duration_ms": 6570
-        },
-        {
-          "gate": "research",
-          "result": "HIT",
-          "duration_ms": 9140
-        },
-        {
-          "gate": "rust-muscles",
-          "result": "HIT",
-          "duration_ms": 0
-        },
-        {
-          "gate": "script",
-          "result": "HIT",
-          "duration_ms": 14777
-        },
-        {
-          "gate": "stock",
-          "result": "MISS",
-          "duration_ms": 108195
-        },
-        {
-          "gate": "storage",
-          "result": "HIT",
-          "duration_ms": 1186
-        },
-        {
-          "gate": "timeline",
-          "result": "HIT",
-          "duration_ms": 983
-        },
-        {
-          "gate": "translation",
-          "result": "HIT",
-          "duration_ms": 7678
-        },
-        {
-          "gate": "voiceover",
-          "result": "HIT",
-          "duration_ms": 2688
-        },
-        {
-          "gate": "web",
-          "result": "HIT",
-          "duration_ms": 7747
-        },
-        {
-          "gate": "youtube",
-          "result": "HIT",
-          "duration_ms": 7406
-        }
-      ]
-    },
-    "skipped": [],
-    "final": "PASS",
-    "dry_run": false,
-    "include_live": false,
-    "diagnostics": [
-      "component=script status=CACHED_PASS original_duration_ms=14777",
-      "component=database status=CACHED_PASS original_duration_ms=3643",
-      "component=clips status=CACHED_PASS original_duration_ms=2906",
-      "component=research status=CACHED_PASS original_duration_ms=9140",
-      "component=qdrant status=CACHED_PASS original_duration_ms=6570",
-      "component=indexing status=CACHED_PASS original_duration_ms=2049",
-      "component=drive status=CACHED_PASS original_duration_ms=2008",
-      "component=docs status=CACHED_PASS original_duration_ms=1828",
-      "component=voiceover status=CACHED_PASS original_duration_ms=2688",
-      "component=images status=CACHED_PASS original_duration_ms=3390",
-      "component=ollama status=CACHED_PASS original_duration_ms=819",
-      "component=translation status=CACHED_PASS original_duration_ms=7678",
-      "component=storage status=CACHED_PASS original_duration_ms=1186",
-      "component=timeline status=CACHED_PASS original_duration_ms=983",
-      "component=jobs status=CACHED_PASS original_duration_ms=3708",
-      "component=api status=CACHED_PASS original_duration_ms=7571",
-      "component=artlist status=CACHED_PASS original_duration_ms=6098",
-      "component=youtube status=CACHED_PASS original_duration_ms=7406",
-      "component=node-scraper status=CACHED_PASS original_duration_ms=12804",
-      "component=rust-muscles status=CACHED_PASS original_duration_ms=0",
-      "component=web status=CACHED_PASS original_duration_ms=7747"
-    ]
-  },
-  "cache_summary": {
-    "hits": 21,
-    "misses": 2,
-    "executed": 2,
-    "saved_ms": 104999,
-    "gates": [
-      {
-        "gate": "api",
-        "result": "HIT",
-        "duration_ms": 7571
-      },
-      {
-        "gate": "artlist",
-        "result": "HIT",
-        "duration_ms": 6098
-      },
-      {
-        "gate": "clips",
-        "result": "HIT",
-        "duration_ms": 2906
-      },
-      {
-        "gate": "database",
-        "result": "HIT",
-        "duration_ms": 3643
-      },
-      {
-        "gate": "docs",
-        "result": "HIT",
-        "duration_ms": 1828
-      },
-      {
-        "gate": "drive",
-        "result": "HIT",
-        "duration_ms": 2008
-      },
-      {
-        "gate": "images",
-        "result": "HIT",
-        "duration_ms": 3390
-      },
-      {
-        "gate": "indexing",
-        "result": "HIT",
-        "duration_ms": 2049
-      },
-      {
-        "gate": "jobs",
-        "result": "HIT",
-        "duration_ms": 3708
-      },
-      {
-        "gate": "kernel",
-        "result": "MISS",
-        "duration_ms": 1670
-      },
-      {
-        "gate": "node-scraper",
-        "result": "HIT",
-        "duration_ms": 12804
-      },
-      {
-        "gate": "ollama",
-        "result": "HIT",
-        "duration_ms": 819
-      },
-      {
-        "gate": "qdrant",
-        "result": "HIT",
-        "duration_ms": 6570
-      },
-      {
-        "gate": "research",
-        "result": "HIT",
-        "duration_ms": 9140
-      },
-      {
-        "gate": "rust-muscles",
-        "result": "HIT",
-        "duration_ms": 0
-      },
-      {
-        "gate": "script",
-        "result": "HIT",
-        "duration_ms": 14777
-      },
-      {
-        "gate": "stock",
-        "result": "MISS",
-        "duration_ms": 108195
-      },
-      {
-        "gate": "storage",
-        "result": "HIT",
-        "duration_ms": 1186
-      },
-      {
-        "gate": "timeline",
-        "result": "HIT",
-        "duration_ms": 983
-      },
-      {
-        "gate": "translation",
-        "result": "HIT",
-        "duration_ms": 7678
-      },
-      {
-        "gate": "voiceover",
-        "result": "HIT",
-        "duration_ms": 2688
-      },
-      {
-        "gate": "web",
-        "result": "HIT",
-        "duration_ms": 7747
-      },
-      {
-        "gate": "youtube",
-        "result": "HIT",
-        "duration_ms": 7406
-      }
-    ]
-  },
-  "started_at": "2026-08-19T06:42:01.413442Z",
-  "finished_at": "2026-08-19T06:43:59.604341Z",
-  "git_sha": "bcfcf6e349377fad60b7b0ee1cc1deb8cea639a2",
-  "duration_ms": 108206,
+  "components": {},
+  "started_at": "2026-08-19T20:31:13.580523Z",
+  "finished_at": "2026-08-19T20:31:13.586720Z",
+  "git_sha": "ef340e3f8dd9ef9fa7becc3b093cc8286f2169dd",
+  "duration_ms": 0,
   "dry_run": false,
-  "final": "PASS"
+  "final": "FAIL",
+  "reason": "unmapped_files"
 }

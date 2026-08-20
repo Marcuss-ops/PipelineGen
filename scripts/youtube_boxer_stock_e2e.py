@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import sqlite3
+import statistics
 import subprocess
 import time
 import urllib.error
@@ -79,6 +80,10 @@ PROFILES = {
     "usyk_interviews_30s": RunnerProfile("usyk_interviews_30s", videos=15, clips_per_video=2, clip_duration_seconds=30),
     # Final Usyk delivery: 15 interview sources × 12 clips × 5s = 15:00.
     "usyk_interviews_5s": RunnerProfile("usyk_interviews_5s", videos=15, clips_per_video=12, clip_duration_seconds=5),
+    # Floyd Mayweather delivery: 15 interview sources × 12 clips × 5s = 15:00.
+    "floyd_interviews_5s": RunnerProfile("floyd_interviews_5s", videos=15, clips_per_video=12, clip_duration_seconds=5),
+    # Muhammad Ali delivery: 15 interview sources × 12 clips × 5s = 15:00.
+    "ali_interviews_5s": RunnerProfile("ali_interviews_5s", videos=15, clips_per_video=12, clip_duration_seconds=5),
 }
 
 PREFLIGHT_MIN_DURATION_SECONDS = 64.0
@@ -457,6 +462,14 @@ def select(
         if len({item["video_id"] for item in selected}) != profile.videos:
             raise RuntimeError("Usyk interview selection is not exactly 15 unique videos")
         return selected
+    if boxer.casefold() in {"floyd mayweather jr.", "muhammad ali"} and profile.name in {"floyd_interviews_5s", "ali_interviews_5s"}:
+        candidates = search(base, token, boxer, "interview")
+        if len(candidates) < profile.videos:
+            raise RuntimeError(f"interview: only {len(candidates)} usable candidates, need {profile.videos}")
+        selected = candidates[:profile.videos]
+        if len({item["video_id"] for item in selected}) != profile.videos:
+            raise RuntimeError(f"{boxer} interview selection is not exactly 15 unique videos")
+        return selected
     if boxer.casefold() == "mike tyson":
         if profile.name == "tyson_interviews_5s":
             return _select_manifest(MIKE_TYSON_INTERVIEW_MANIFEST, profile, "Mike Tyson interviews")
@@ -501,24 +514,71 @@ def write_manifest(path: Path, boxer: str, profile: RunnerProfile, videos: list[
     print(f"manifest=LOCKED path={path} videos={len(videos)}")
 
 
-def cleanup_stale_staging(root: Path, ttl_seconds: int = 1800) -> int:
-    """Remove only old pipeline partials; never touch completed media or databases."""
+def cleanup_stale_staging(root: Path, ttl_seconds: int = 1800, max_bytes: int = 0) -> int:
+    """Remove stale partials and enforce an optional bounded staging quota."""
     import shutil
     now = time.time()
     removed = 0
+    candidates: list[Path] = []
     partial_root = root / "stock_pipeline_staging"
     if partial_root.is_dir():
         for item in partial_root.iterdir():
-            if item.is_file() and (item.name.endswith(".part") or ".partial." in item.name or item.name.endswith(".tmp")) and now - item.stat().st_mtime > ttl_seconds:
-                item.unlink()
-                removed += 1
+            if item.is_file() and (item.name.endswith(".part") or ".partial." in item.name or item.name.endswith(".tmp")):
+                if now - item.stat().st_mtime > ttl_seconds:
+                    candidates.append(item)
     for item in root.glob("stock_stage_*"):
         if item.is_dir() and now - item.stat().st_mtime > ttl_seconds:
             shutil.rmtree(item)
             removed += 1
+    if max_bytes > 0 and partial_root.is_dir():
+        # Only evict files already outside the TTL. Active .part files are
+        # never deleted by the quota guard while a download may still own
+        # them.
+        live = [p for p in candidates if p.exists()]
+        total = sum(p.stat().st_size for p in live)
+        for item in sorted(live, key=lambda p: p.stat().st_mtime):
+            size = item.stat().st_size
+            if total > max_bytes:
+                item.unlink(missing_ok=True)
+                total -= size
+                removed += 1
+    for item in candidates:
+        if item.exists():
+            item.unlink(missing_ok=True)
+            removed += 1
     if removed:
-        print(f"staging_cleanup=removed:{removed} ttl_seconds={ttl_seconds}")
+        print(f"staging_cleanup=removed:{removed} ttl_seconds={ttl_seconds} max_bytes={max_bytes}")
     return removed
+
+
+def write_timing_report(path: Path, boxer: str, profile: RunnerProfile, records: list[dict[str, Any]]) -> None:
+    """Persist per-source timings and p50/p95 bottleneck summaries atomically."""
+    if not records:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def percentile(values: list[int], p: float) -> float:
+        return round(statistics.quantiles(values, n=100, method="inclusive")[int(p) - 1], 1) if len(values) > 1 else float(values[0])
+
+    fields = ("wall_ms", "download_ms", "extract_ms", "drive_ms")
+    summary: dict[str, Any] = {}
+    for field in fields:
+        values = [int(record.get(field) or 0) for record in records]
+        summary[field] = {"p50": percentile(values, 50), "p95": percentile(values, 95), "max": max(values)}
+    bottleneck = max(fields, key=lambda field: summary[field]["p95"])
+    payload = {
+        "schema": "velox.youtube-stock-timings.v1",
+        "boxer": boxer,
+        "profile": profile.name,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "sources": records,
+        "summary": summary,
+        "p95_bottleneck": bottleneck,
+    }
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    print(f"timings_report={path} p95_bottleneck={bottleneck}")
 
 
 def folder(base: str, token: str, root_id: str, boxer: str) -> str:
@@ -543,22 +603,29 @@ def resolve_boxe_folder(base: str, token: str) -> str:
 
 def segments(video: dict[str, Any], profile: RunnerProfile | None = None) -> list[dict[str, Any]]:
     profile = profile or PROFILES["full"]
-    duration = int(video["duration"])
-    # Non-overlapping windows distributed over the source, avoiding the
-    # first/last few seconds where intros/outros are commonly black.
-    usable = max(60, duration - 8)
-    step = max(profile.clip_duration_seconds, usable // (profile.clips_per_video + 1))
+    duration = max(0, int(float(video["duration"])))
+    clip_seconds = profile.clip_duration_seconds
+    max_start = max(0, duration - clip_seconds)
+    # Prefer skipping the first eight seconds, but fall back to the full
+    # source for short interviews. The old fixed-step formula could produce
+    # EndSec beyond the probed duration (e.g. a 65s source yielded 68s).
+    first_start = 8 if max_start >= 8 else 0
+    if profile.clips_per_video == 1:
+        starts = [first_start]
+    else:
+        span = max_start - first_start
+        starts = [first_start + (span * i) // (profile.clips_per_video - 1)
+                  for i in range(profile.clips_per_video)]
     def stamp(total_seconds: int) -> str:
         return f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
     return [{"start": stamp(start),
-             "end": stamp(start + profile.clip_duration_seconds),
+             "end": stamp(min(start + clip_seconds, duration)),
              "name": video.get("title", ""),
              "source_title": video.get("title", ""),
              "source_channel": video.get("channel", ""),
              "category": video["category"],
              "description": f"{video['category']} scene featuring {video.get('title') or video['video_id']}"}
-            for i in range(profile.clips_per_video)
-            for start in [8 + i * step]]
+            for start in starts]
 
 
 def latest_job(db: Path, video: dict[str, Any], segment: dict[str, Any], submitted_at: str) -> str:
@@ -612,7 +679,8 @@ def run_source(
     video: dict[str, Any],
     index: int,
     profile: RunnerProfile | None = None,
-) -> None:
+    destination_name: str | None = None,
+) -> dict[str, Any]:
     profile = profile or PROFILES["full"]
     run_id = os.environ.get("VELOX_STOCK_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     source_url = video["url"]
@@ -645,7 +713,7 @@ def run_source(
             "clip_duration_seconds": profile.clip_duration_seconds,
             "download_mode": "sections_only",
             "clip_duration": profile.clip_duration_seconds,
-            "folder_name": boxer,
+            "folder_name": destination_name or boxer,
             "drive_folder_id": folder_id,
             "subfolder": video["category"],
             "metadata": {
@@ -689,7 +757,15 @@ def run_source(
                 f" drive={drive_ms / 1000:.1f}s"
             )
             print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clips {profile.clips_per_video} SUCCEEDED {timing_text}")
-            break
+            return {
+                "video_id": video["video_id"],
+                "category": video["category"],
+                "wall_ms": wall_ms,
+                "download_ms": stages.get("stock.youtube_download", 0),
+                "extract_ms": stages.get("stock.extract", 0),
+                "drive_ms": drive_ms,
+                "job_id": job_id,
+            }
         time.sleep(5)
     else:
         raise RuntimeError(f"timeout waiting for stock pipeline {job_id}")
@@ -705,7 +781,10 @@ def verify(
     expected_run_id: str | None = None,
 ) -> None:
     profile = profile or PROFILES["full"]
-    scope = "source='youtube' AND lifecycle_state='ACTIVE'"
+    # The canonical stock publisher persists source=stock and terminal
+    # lifecycle_state=PUBLISHED. Accept ACTIVE as a compatibility state for
+    # older runs, but never mix in other providers or transient rows.
+    scope = "source='stock' AND lifecycle_state IN ('ACTIVE','PUBLISHED')"
     scope_params: list[Any] = []
     if expected_source_video_ids is not None:
         if not expected_source_video_ids:
@@ -785,6 +864,9 @@ def main() -> int:
     ap.add_argument("--manifest", default="", help="persisted source manifest; reused unless --refresh-manifest is set")
     ap.add_argument("--refresh-manifest", action="store_true")
     ap.add_argument("--staging-ttl-seconds", type=int, default=1800)
+    ap.add_argument("--staging-max-bytes", type=int, default=int(os.environ.get("VELOX_STOCK_STAGING_MAX_BYTES", "0")))
+    ap.add_argument("--timings-report", default="", help="atomic JSON report with per-source timings and p50/p95")
+    ap.add_argument("--destination-name", default="", help="Drive subfolder name; defaults to the canonical boxer name")
     args = ap.parse_args()
     if args.preflight_auth:
         report = run_auth_preflight()
@@ -799,7 +881,11 @@ def main() -> int:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     os.environ["VELOX_STOCK_RUN_ID"] = run_id
     manifest_path = Path(args.manifest) if args.manifest else Path("out") / boxer_slug(args.boxer) / f"{profile.name}.manifest.json"
-    cleanup_stale_staging(Path("data/tmp"), max(60, args.staging_ttl_seconds))
+    cleanup_stale_staging(
+        Path("data/tmp"),
+        max(60, args.staging_ttl_seconds),
+        max(0, args.staging_max_bytes),
+    )
     token = os.environ.get("VELOX_ADMIN_TOKEN", "")
     if not token:
         raise SystemExit("VELOX_ADMIN_TOKEN is required")
@@ -808,6 +894,15 @@ def main() -> int:
         if not target:
             raise SystemExit("--folder-id is required with --verify-only")
         expected_sources = expected_source_video_ids(args.boxer, profile)
+        if manifest_path.exists():
+            persisted = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if persisted.get("schema") != "velox.youtube-stock-manifest.v1":
+                raise SystemExit(f"invalid persisted manifest schema: {manifest_path}")
+            if persisted.get("boxer") != args.boxer or persisted.get("profile") != profile.name:
+                raise SystemExit(f"persisted manifest does not match boxer/profile: {manifest_path}")
+            expected_sources = {str(video.get("video_id")) for video in persisted.get("videos", []) if video.get("video_id")}
+            if len(expected_sources) != profile.videos:
+                raise SystemExit(f"persisted manifest must contain exactly {profile.videos} sources")
         if expected_sources is None:
             raise SystemExit(
                 "--verify-only requires a static manifest for the selected boxer; "
@@ -844,11 +939,12 @@ def main() -> int:
     # client fan-out at or below the safe limit for YouTube, Drive, FFmpeg,
     # and SQLite, even when a caller requests a larger value.
     workers = bounded_concurrency(args.concurrency)
+    timing_records: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="youtube-stock") as pool:
-        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, upload_parent, video, index, profile)
+        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, upload_parent, video, index, profile, args.destination_name or None)
                    for index, video in enumerate(selected, 1)]
         for future in as_completed(futures):
-            future.result()
+            timing_records.append(future.result())
     verify(
         Path(args.db),
         target,
@@ -857,6 +953,8 @@ def main() -> int:
         expected_source_video_ids={video["video_id"] for video in selected},
         expected_run_id=run_id,
     )
+    timing_path = Path(args.timings_report) if args.timings_report else Path("out") / boxer_slug(args.boxer) / f"{profile.name}.timings.json"
+    write_timing_report(timing_path, args.boxer, profile, sorted(timing_records, key=lambda item: item["video_id"]))
     return 0
 
 

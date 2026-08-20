@@ -15,6 +15,13 @@ setGlobalDispatcher(CDN_POOL);
 
 const RETRYABLE_STATUSES = new Set([403, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
+const HTTP_METRICS = {
+  segment_requests: 0,
+  segment_retries: 0,
+  segment_403: 0,
+  segment_429: 0,
+  segment_bytes: 0,
+};
 
 function retryDelay(attempt) {
   const jitter = Math.floor(Math.random() * 100);
@@ -103,6 +110,7 @@ export async function downloadSegmentBuffer(url, cookieHeader) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
       try {
+        HTTP_METRICS.segment_requests += 1;
         const response = await fetch(url, {
           signal: controller.signal,
           headers: authenticatedHeaders(cookieHeader),
@@ -110,12 +118,17 @@ export async function downloadSegmentBuffer(url, cookieHeader) {
         if (!response.ok) {
           const error = new Error(`HTTP ${response.status} downloading segment ${url}`);
           error.status = response.status;
+          if (response.status === 403) HTTP_METRICS.segment_403 += 1;
+          if (response.status === 429) HTTP_METRICS.segment_429 += 1;
           throw error;
         }
-        return Buffer.from(await response.arrayBuffer());
+        const buffer = Buffer.from(await response.arrayBuffer());
+        HTTP_METRICS.segment_bytes += buffer.length;
+        return buffer;
       } catch (error) {
         lastError = error;
         if (!RETRYABLE_STATUSES.has(error?.status) || attempt === MAX_ATTEMPTS) throw error;
+        HTTP_METRICS.segment_retries += 1;
         await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)));
       } finally {
         clearTimeout(timeoutId);
@@ -123,6 +136,10 @@ export async function downloadSegmentBuffer(url, cookieHeader) {
     }
     throw lastError;
   });
+}
+
+export function httpDownloadSnapshot() {
+  return { ...HTTP_METRICS };
 }
 
 export function resolveUrl(base, relative) {

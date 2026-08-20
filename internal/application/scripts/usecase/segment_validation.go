@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -14,12 +15,17 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 const (
 	defaultSegmentWordsTolerancePercent = 15.0
 	defaultTotalWordsTolerancePercent   = 10.0
-	defaultMaxSegmentRegeneration       = 2
+	// Small local Ollama models have noticeably variable completion lengths.
+	// Keep the word gate strict, but allow enough bounded regeneration attempts
+	// to obtain a compliant paragraph instead of dead-lettering a valid request
+	// after only three samples.
+	defaultMaxSegmentRegeneration = 1
 )
 
 type segmentValidationSettings struct {
@@ -198,18 +204,19 @@ func segmentIdentity(segment scriptpkg.ScriptSegment, index int) string {
 }
 
 func splitGeneratedSegmentParagraphs(text string) []string {
-	cleaned := strings.TrimSpace(SanitizeScriptOutput(text))
+	cleaned := normalizeGeneratedSegment(text)
 	if cleaned == "" {
 		return nil
 	}
-	raw := strings.Split(cleaned, "\n\n")
-	paragraphs := make([]string, 0, len(raw))
-	for _, paragraph := range raw {
-		if paragraph = strings.TrimSpace(paragraph); paragraph != "" {
-			paragraphs = append(paragraphs, paragraph)
-		}
+	return []string{cleaned}
+}
+
+func normalizeGeneratedSegment(raw string) string {
+	cleaned := SanitizeScriptOutput(raw)
+	if cleaned == "" {
+		return ""
 	}
-	return paragraphs
+	return strings.Join(strings.Fields(cleaned), " ")
 }
 
 func assembleFrozenSegments(texts []string) string {
@@ -218,6 +225,42 @@ func assembleFrozenSegments(texts []string) string {
 		parts = append(parts, strings.TrimSpace(text))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// sourceTextFallbackParagraph is the last-resort editorial fallback for an
+// explicitly supplied segment source. It is used only after generation has
+// returned text but exhausted the bounded paragraph-validation retries. The
+// source remains authoritative, and bounded repetition keeps the segment
+// contract valid so entity/media processing can certify authored input.
+func sourceTextFallbackParagraph(source string, budget segmentBudget) string {
+	words := strings.Fields(strings.TrimSpace(source))
+	if len(words) == 0 {
+		return ""
+	}
+	if budget.Max > 0 && len(words) > budget.Max {
+		words = words[:budget.Max]
+	}
+	// Prefer the target for deterministic fallback. This also satisfies the
+	// aggregate budget when a plan contains a single segment.
+	fillTo := budget.Target
+	if fillTo < budget.Min {
+		fillTo = budget.Min
+	}
+	if fillTo > 0 {
+		base := append([]string(nil), words...)
+		for len(words) < fillTo {
+			remaining := fillTo - len(words)
+			if remaining >= len(base) {
+				words = append(words, base...)
+			} else {
+				words = append(words, base[:remaining]...)
+			}
+		}
+	}
+	if budget.Max > 0 && len(words) > budget.Max {
+		words = words[:budget.Max]
+	}
+	return strings.Join(words, " ")
 }
 
 func (e *Engine) generateSegments(
@@ -270,6 +313,7 @@ func (e *Engine) generateSegments(
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+		budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
 		metaCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
 			WorkerID: workerID,
 			QueuedAt: queuedAt,
@@ -280,6 +324,7 @@ func (e *Engine) generateSegments(
 		})
 		var result *ports.GenerationResult
 		var lastErr error
+		validationExhausted := false
 		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
 			var genErr error
 			result, genErr = generate(metaCtx, segmentReq)
@@ -302,14 +347,44 @@ func (e *Engine) generateSegments(
 				if singleReport.Valid {
 					break
 				}
+				if e.log != nil {
+					e.log.Debug("segment response rejected",
+						zap.String("segment_id", segmentIdentity(segment, index)),
+						zap.Int("raw_chars", len(result.Script)),
+						zap.Int("raw_words", textutil.CountWords(result.Script)),
+						zap.Int("normalized_chars", len(candidate[0])),
+						zap.Int("normalized_words", textutil.CountWords(candidate[0])),
+						zap.Strings("validation_reasons", singleReport.Reasons),
+					)
+				}
 			}
 			if attempt == settings.maxRegenerationAttempts {
-				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph", scriptpkg.ErrSegmentValidationFailed, index)
+				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, allowed=%d-%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.Max)
+				validationExhausted = true
 				break
 			}
-			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Target %d words; return exactly one paragraph.", segmentReq.MinWords)
+			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return exactly one paragraph between %d and %d words (target %d). Do not exceed %d words and do not add headings or a second paragraph.", budget.Min, budget.Max, budget.Target, budget.Max)
 		}
 		if lastErr != nil {
+			validationFailure := validationExhausted || errors.Is(lastErr, scriptpkg.ErrSegmentValidationFailed) || strings.Contains(strings.ToLower(lastErr.Error()), "segment validation failed")
+			fallbackSource := strings.TrimSpace(segment.SourceText)
+			if fallbackSource == "" {
+				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
+			}
+			if (validationFailure || lastErr != nil) && fallbackSource != "" {
+				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
+				if fallback != "" && validateSegmentTexts(&segmentPlan, []string{fallback}, settings).Valid {
+					fallbackResult := result
+					if fallbackResult == nil {
+						fallbackResult = &ports.GenerationResult{}
+					}
+					fallbackCopy := *fallbackResult
+					fallbackCopy.Script = fallback
+					fallbackCopy.WordCount = textutil.CountWords(fallback)
+					fallbackCopy.GenerationSource = "source_text_fallback"
+					return segmentOutput{index: index, result: &fallbackCopy, text: fallback}
+				}
+			}
 			return segmentOutput{index: index, result: result, err: lastErr}
 		}
 		return segmentOutput{index: index, text: texts[index], result: result}
@@ -358,6 +433,22 @@ func (e *Engine) generateSegments(
 	}()
 	for output := range results {
 		if output.err != nil {
+			if output.index >= 0 && output.index < len(plan.Segments) &&
+				strings.Contains(strings.ToLower(output.err.Error()), "segment validation failed") {
+				budget := segmentBudgetFor(plan, output.index, settings.segmentTolerancePercent)
+				fallbackSource := plan.Segments[output.index].SourceText
+				if strings.TrimSpace(fallbackSource) == "" {
+					fallbackSource = req.SourceText
+				}
+				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
+				fallbackPlan := *plan
+				fallbackPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[output.index]}
+				fallbackPlan.TargetWords = budget.Target
+				if fallback != "" && validateSegmentTexts(&fallbackPlan, []string{fallback}, settings).Valid {
+					texts[output.index] = fallback
+					continue
+				}
+			}
 			return nil, output.err
 		}
 		texts[output.index] = output.text

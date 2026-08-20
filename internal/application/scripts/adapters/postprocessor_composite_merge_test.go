@@ -246,6 +246,23 @@ func TestCloneSceneBindings_PreservesMediaBindings(t *testing.T) {
 	}
 }
 
+func TestPreserveSceneBindings_KeepsResolvedEntityImage(t *testing.T) {
+	image := &scriptpkg.EntityImageBinding{Status: "resolved", AssetID: "asset-person", DriveLink: "https://drive/person"}
+	previous := scriptpkg.SpecScene{ID: "scene-0", SegmentID: "segment-0", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON", Image: image,
+		}}}}
+	replacement := scriptpkg.SpecScene{ID: "scene-0", SegmentID: "segment-0", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
+		}}}}
+	got := preserveSceneBindings([]scriptpkg.SpecScene{previous}, []scriptpkg.SpecScene{replacement})
+	gotImage := got[0].Annotations.PrimaryEntities[0].Image
+	if gotImage == nil || gotImage.Status != "resolved" || gotImage.AssetID != "asset-person" || gotImage.DriveLink == "" {
+		t.Fatalf("resolved entity image was lost during scene merge: %+v", gotImage)
+	}
+}
+
 // TestMergePostProcessResult_ImageBinding_FailClosed (Commit 7, July 2026) is the
 // canonical regression guard for the fail-closed image-bind rule.
 //

@@ -158,9 +158,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		Source:         prepared.Source,
 		Watermark:      prepared.Watermark,
 		WatermarkSpec:  req.Watermark,
+		WatermarkText:  req.Watermark.Text,
 		Background:     prepared.Background,
 		BackgroundMode: req.Background.Mode,
 		Subtitles:      subtitleArtifact,
+		Cues:           prepared.Transcript.Cues,
 		Contract:       prepared.Contract,
 		AudioMode:      req.Audio.Mode,
 		OutputPath:     filepath.Join(runDir, "rendered-clip.mp4"),
@@ -196,7 +198,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 	// Fail-closed GPU gate: a request that demands the CUDA native compositor
 	// must never be silently served by the software fallback.
-	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative {
+	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative && outcome.Backend != BackendChrononVulkan {
 		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (cuda_native required)", outcome.Backend)
 	}
 	if w.publisher == nil {
@@ -321,6 +323,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"audio_copy_eligible": outcome.AudioCopyEligible,
 			"audio_encode_passes": outcome.AudioEncodePasses,
 			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
+			"native_media":        outcome.NativeMedia,
+			"gpu_copy_bytes":      outcome.GPUCopyBytes,
 		}
 	}
 	if published != nil {

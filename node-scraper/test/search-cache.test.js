@@ -90,4 +90,26 @@ describe('search cache', () => {
     assert.equal(results[0].clip_id, '1');
     assert.equal(cache.catalogStats().unique_clips, 2);
   });
+
+  test('persists all media links and associates them with the originating query', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'artlist-query-links-'));
+    const cache = createSearchCache(path.join(dir, 'cache.sqlite'), 60_000);
+    const request = { query: 'electricity meter', filters: {}, page: 1, limit: 2 };
+    const clips = [{
+      id: '42', title: 'Electricity meter', clipPath: 'https://cdn.example/42/master.m3u8',
+      stream_urls: ['https://cdn.example/42/master.m3u8', 'https://cdn.example/42/preview.mp4'],
+      preview_url: 'https://cdn.example/42/preview.mp4',
+    }];
+    cache.put(buildSearchCacheKey(request), request, { clips, results: clips });
+
+    const links = cache.getQueryLinks(request.query, request.filters);
+    assert.equal(links.length, 1);
+    assert.equal(links[0].clip_id, '42');
+    assert.deepEqual(links[0].download_urls, [
+      'https://cdn.example/42/master.m3u8',
+      'https://cdn.example/42/preview.mp4',
+    ]);
+    const catalog = cache.searchCatalog('electricity', 10).find((clip) => clip.clip_id === '42');
+    assert.deepEqual(catalog.download_urls, links[0].download_urls);
+  });
 });

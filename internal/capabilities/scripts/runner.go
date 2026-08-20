@@ -352,7 +352,13 @@ func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 // (under the per-unit lock when the unit's maps are shared across workers) so
 // this helper performs no map reads of its own.
 func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
-	if r == nil || r.localizedRenderEnqueuer == nil {
+	if r == nil {
+		return nil
+	}
+	if input.Render.Enabled && r.localizedRenderEnqueuer == nil {
+		return fmt.Errorf("localized render requested for scene %q but render enqueuer is not wired", input.SceneID)
+	}
+	if r.localizedRenderEnqueuer == nil {
 		return nil
 	}
 	if input.Voiceover.ID == "" {
@@ -754,7 +760,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		return
 	}
 	if result == nil {
-		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
+		result = &GenerateResult{Scenes: []Scene{}, Render: req.Render, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 	}
 	// ── SCENE-TEXT-READY FAN-OUT ──────────────────────────────────────
 	// Committing the scene text during the generate phase is the canonical

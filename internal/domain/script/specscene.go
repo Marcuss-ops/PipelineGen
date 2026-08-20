@@ -64,6 +64,12 @@ type SpecSceneOutput struct {
 	// prose generation where no scene breakdown is expected.
 	Scenes []SpecScene `json:"scenes"`
 
+	// Render describes the requested materialization of the selected clips.
+	// It is kept alongside the scene bindings so a generated script is
+	// self-contained: consumers know that the referenced clips must be
+	// recreated with the requested subtitles/watermark settings.
+	Render VideoRenderSpec `json:"render,omitempty"`
+
 	// VisualAssignments contains independent intro/post-segment timeline
 	// selections alongside the per-scene bindings.
 	VisualAssignments []media.VisualAssignment `json:"visual_assignments,omitempty"`

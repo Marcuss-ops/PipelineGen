@@ -32,6 +32,8 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 		Output:        domain.ScriptOutput{Text: outputText, WordCount: wordCount},
 	}
 	out.Output.SpecScene.Version = 1
+	out.Output.SpecScene.Render = in.Render
+	out.Output.SpecScene.Render.Normalize()
 	out.Output.SpecScene.Scenes = make([]domain.SpecScene, 0, len(in.Scenes))
 	lang := string(inLanguage(in))
 	for _, scene := range in.Scenes {

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -33,6 +34,8 @@ type ClipRenderResult struct {
 	AudioCopyEligible *bool
 	AudioEncodePasses *int
 	SubtitleRasterCPU *bool
+	NativeMedia       *bool
+	GPUCopyBytes      *uint64
 }
 
 // ClipRenderer executes sealed ClipRenderPlanV1 plans through the Rust
@@ -130,6 +133,8 @@ func (r *ClipRenderer) RenderClip(ctx context.Context, plan cliprender.ClipRende
 		AudioCopyEligible: m.AudioCopyEligible,
 		AudioEncodePasses: m.AudioEncodePasses,
 		SubtitleRasterCPU: m.SubtitleRasterCPU,
+		NativeMedia:       m.NativeMedia,
+		GPUCopyBytes:      m.GPUCopyBytes,
 	}, nil
 }
 
@@ -150,7 +155,7 @@ func verifyClipPlanArtifacts(plan cliprender.ClipRenderPlanV1) error {
 			path  string
 		}{label: "background", path: plan.Background.Path})
 	}
-	if plan.Watermark != nil {
+	if plan.Watermark != nil && strings.TrimSpace(plan.Watermark.Text) == "" {
 		required = append(required, struct {
 			label string
 			path  string

@@ -242,7 +242,7 @@ func (r *clipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 				zap.String("fallback", "acquire_chain"),
 				zap.Error(err))
 		} else {
-			return r.finalizeGenerated(ctx, in, source, result), nil
+			return r.finalizeGenerated(ctx, in, source, result)
 		}
 	}
 	// Fallback: canonical Whisper chain (WAV-based helper).
@@ -271,7 +271,7 @@ func (r *clipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 	if result.Language == "" {
 		result.Language = in.Language
 	}
-	return r.finalizeGenerated(ctx, in, source, result), nil
+	return r.finalizeGenerated(ctx, in, source, result)
 }
 
 // finalizeGenerated computes the canonical text hash, persists the READY
@@ -282,7 +282,7 @@ func (r *clipRenderTranscriptResolver) finalizeGenerated(
 	in cliprender.TranscriptInput,
 	source *cliprender.MaterializedAsset,
 	result *cliprender.TranscriptResult,
-) *cliprender.TranscriptResult {
+) (*cliprender.TranscriptResult, error) {
 	if result.Language == "" {
 		result.Language = in.Language
 	}
@@ -295,6 +295,7 @@ func (r *clipRenderTranscriptResolver) finalizeGenerated(
 			r.log.Error("clip.render.transcript.persist_failed",
 				zap.String("asset_id", in.AssetID),
 				zap.Error(err))
+			return nil, fmt.Errorf("clip.render: persist transcript %q/%q: %w", in.AssetID, result.Language, err)
 		}
 		if r.log != nil {
 			r.log.Info("clip.render.transcript.persisted",
@@ -304,7 +305,7 @@ func (r *clipRenderTranscriptResolver) finalizeGenerated(
 			)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // persistResult writes the generated transcript as a READY canonical text
