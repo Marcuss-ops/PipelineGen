@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	capabilities "github.com/Marcuss-ops/PipelineGen/internal/app/capabilities"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -432,7 +433,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 			}
 		}
 	}
-	chrononRenderer := newChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath)
+	chrononRenderer := capabilities.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath)
 	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, chronon: chrononRenderer, resolver: backendResolver, probe: backendProbe})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")

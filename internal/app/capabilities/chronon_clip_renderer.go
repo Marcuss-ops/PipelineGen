@@ -1,4 +1,4 @@
-package app
+package capabilities
 
 // chronon_clip_renderer.go is the complex-render boundary. Rust continues to
 // own acquisition/probing/mux/upload; Chronon owns the Vulkan text/composite
@@ -34,7 +34,7 @@ type chrononClipRenderExecutor struct {
 // surface ownership is enabled.
 var chrononRenderMu sync.Mutex
 
-func newChrononClipRenderExecutor(binary, ffmpeg string) *chrononClipRenderExecutor {
+func NewChrononClipRenderExecutor(binary, ffmpeg string) *chrononClipRenderExecutor {
 	if strings.TrimSpace(binary) == "" {
 		return nil
 	}
