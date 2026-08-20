@@ -273,12 +273,12 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.Int64("total_ms", metrics.TotalMS),
 	)
 	return &cliprender.RenderPublishResult{
-		AssetID:      assetID,
-		DriveFileID:  pub.FileID,
-		DriveLink:    pub.WebViewLink,
-		SizeBytes:    size,
+		AssetID:       assetID,
+		DriveFileID:   pub.FileID,
+		DriveLink:     pub.WebViewLink,
+		SizeBytes:     size,
 		SidecarFileID: sidecarFileID,
-		SidecarLink:  sidecarLink,
+		SidecarLink:   sidecarLink,
 	}, nil
 }
 

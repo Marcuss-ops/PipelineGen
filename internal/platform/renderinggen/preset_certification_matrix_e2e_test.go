@@ -20,21 +20,21 @@ import (
 // matrixRow captures the per-preset certification outcome that the matrix
 // log table aggregates. Fields print cleanly in a fixed-width 16-row table.
 type matrixRow struct {
-	Family       string
-	Preset       string
-	JobID        string
-	Status       string
+	Family      string
+	Preset      string
+	JobID       string
+	Status      string
 	SHA256OfMP4 string
-	Size         int64
-	DurationUS   int64
-	AssetHash    string
-	HasArtifact  bool
-	DriveFileID  string
-	DriveLink    string
-	CompPass     bool
-	VisualPass   bool
-	DrivePass    bool
-	Cluster      int
+	Size        int64
+	DurationUS  int64
+	AssetHash   string
+	HasArtifact bool
+	DriveFileID string
+	DriveLink   string
+	CompPass    bool
+	VisualPass  bool
+	DrivePass   bool
+	Cluster     int
 }
 
 // family is the input shape of the matrix: one row per preset, four families
@@ -50,7 +50,6 @@ type family struct {
 // lives at package scope.
 type row = matrixRow
 
-
 // TestPresetCertificationMatrix is the canonical 16-mini-render certification
 // matrix that rolls up:
 //
@@ -65,12 +64,12 @@ type row = matrixRow
 // layer of the family under test, BG + fixture) and captures:
 //
 //   - PASS      : job reached state=completed on broker; artifact.sha256 +
-//                 size_bytes > 0
+//     size_bytes > 0
 //   - Visuale   : sha256 of the rendered MP4 is distinct from EVERY other
-//                 preset in the matrix (a regression in the preset
-//                 dispatcher is detected here)
+//     preset in the matrix (a regression in the preset
+//     dispatcher is detected here)
 //   - Drive     : drive_file_id + drive_link populated in the broker
-//                 artifact record (verified via additional GET /jobs/{id})
+//     artifact record (verified via additional GET /jobs/{id})
 //
 // The expected behavior after this test runs is that Visuale FAILS for any
 // preset family whose Chronon3d preset dispatcher collapses multiple
@@ -120,7 +119,7 @@ func TestPresetCertificationMatrix(t *testing.T) {
 	defer cancel()
 
 	rows := make([]row, 0, 16)
-	hashIndex := make(map[string]int) // sha256 -> first index seen
+	hashIndex := make(map[string]int)  // sha256 -> first index seen
 	famCluster := make(map[string]int) // family -> cluster id within family
 
 	for _, f := range matrix {
@@ -235,7 +234,7 @@ func buildMatrixPlan(jobID, bgHash, imgHash, family, tpl, preset, text string) c
 		plan.Items = append(plan.Items, capoverlay.OverlayItem{
 			ID: "image_" + preset, TemplateID: tpl, PresetID: preset,
 			StartMs: 500, EndMs: 4500,
-			Params: map[string]any{"box_width": 260, "box_height": 260},
+			Params:    map[string]any{"box_width": 260, "box_height": 260},
 			AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "fixture", URL: "assets/overlay_globe.png", SHA256: imgHash}},
 		})
 	default:
