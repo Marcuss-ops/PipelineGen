@@ -46,9 +46,9 @@ var (
 	// unit/teen/tens numeral and at least one scale (hundred/thousand/
 	// million/billion/trillion) must follow so the span is unambiguously a
 	// quantity, never a determiner or a fragment.
-	cardinalRE   = regexp.MustCompile(`\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?:\s+(?:hundred|thousand|million|billion|trillion)\b)+`)
-	wordRE       = regexp.MustCompile(`[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?`)
-	sentenceRE   = regexp.MustCompile(`[^.!?]+(?:[.!?]+|$)`)
+	cardinalRE = regexp.MustCompile(`\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?:\s+(?:hundred|thousand|million|billion|trillion)\b)+`)
+	wordRE     = regexp.MustCompile(`[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?`)
+	sentenceRE = regexp.MustCompile(`[^.!?]+(?:[.!?]+|$)`)
 )
 
 var knownPlaces = map[string]struct{}{

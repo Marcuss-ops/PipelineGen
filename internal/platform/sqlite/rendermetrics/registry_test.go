@@ -63,9 +63,9 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	ctx := context.Background()
 
 	a := scriptgen.RenderAttemptAnalytics{
-		AttemptID: "attempt-1",
-		JobID:     "job-1",
-		Content:   capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
+		AttemptID:         "attempt-1",
+		JobID:             "job-1",
+		Content:           capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
 		RenderMS:          100,
 		EncodeMS:          50,
 		CompletionWaitMS:  2100,
