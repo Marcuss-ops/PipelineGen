@@ -103,7 +103,7 @@ func TestImagePresetE2E(t *testing.T) {
 				{
 					ID: "image_" + preset, TemplateID: "IMAGE_OVERLAY", PresetID: preset,
 					StartMs: 500, EndMs: 5000,
-					Params: map[string]any{"box_width": 260, "box_height": 260},
+					Params:    map[string]any{"box_width": 260, "box_height": 260},
 					AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "fixture", URL: "assets/overlay_globe.png", SHA256: imageHash}},
 				},
 			},

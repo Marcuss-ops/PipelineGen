@@ -21,19 +21,19 @@ import (
 // queue / processor spec. The certification is anchored on these literals so
 // the test breaks the moment the broker drifts from the spec.
 const (
-	prepareJobType        = "overlay.prepare"
-	prepareSchemaVersion  = "renderinggen.overlay-prepare.v1"
-	timingStatePending    = "PENDING"
+	prepareJobType       = "overlay.prepare"
+	prepareSchemaVersion = "renderinggen.overlay-prepare.v1"
+	timingStatePending   = "PENDING"
 )
 
 // TestOverlayPrepareBrokerE2E certifies the overlay.prepare lifecycle on the
 // broker for the canonical timed scaffold:
 //
-//   id               = prepare-<plan_id>
-//   job_type         = overlay.prepare
-//   schema           = renderinggen.overlay-prepare.v1
-//   state            = completed
-//   asset prefetch   = SHA256 + URL keyed under the intent's asset_refs
+//	id               = prepare-<plan_id>
+//	job_type         = overlay.prepare
+//	schema           = renderinggen.overlay-prepare.v1
+//	state            = completed
+//	asset prefetch   = SHA256 + URL keyed under the intent's asset_refs
 //
 // The companion renderinggen worker (docker-worker-gpu-1 in this env)
 // prefetches the asset bytes during the prepare phase; the test then

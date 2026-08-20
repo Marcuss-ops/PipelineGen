@@ -130,9 +130,6 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 		startSec, endSec,
 	)
 	codec := c.codec
-	if codec == "" {
-		codec = "libx264"
-	}
 	preset := c.preset
 	if preset == "" {
 		preset = "medium"

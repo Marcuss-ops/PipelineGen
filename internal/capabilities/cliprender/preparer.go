@@ -147,105 +147,105 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	// participate in the resolver waves.
 	watermarkAsset := watermarkEnabled && req.Watermark != nil && strings.TrimSpace(req.Watermark.Text) == ""
 	if watermarkAsset {
-	wave1.Go(func() error {
-		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "resolve_watermark_start"),
-			zap.String("run_id", runID),
-			zap.String("asset_id", req.Watermark.AssetID),
-		)
-		ref, err := p.assets.ResolveAsset(ctx, req.Watermark.AssetID)
-		notes := map[string]any{"asset_id": req.Watermark.AssetID}
-		if ref != nil {
-			notes["media_type"] = string(ref.MediaType)
-			notes["has_local"] = ref.LocalPath != ""
-			notes["has_drive"] = ref.DriveFileID != ""
-		}
-		tracker.recordWith("resolve_watermark", time.Since(t0), notes)
-		if err != nil {
-			return fmt.Errorf("clip.render: resolve watermark %q: %w", req.Watermark.AssetID, err)
-		}
-		watermarkRef = ref
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "resolve_watermark_done"),
-			zap.String("run_id", runID),
-			zap.String("asset_id", req.Watermark.AssetID),
-			zap.String("local_path", ref.LocalPath),
-			zap.String("drive_file_id", ref.DriveFileID),
-			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
-		)
-		return nil
-	})
-}
+		wave1.Go(func() error {
+			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "resolve_watermark_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.Watermark.AssetID),
+			)
+			ref, err := p.assets.ResolveAsset(ctx, req.Watermark.AssetID)
+			notes := map[string]any{"asset_id": req.Watermark.AssetID}
+			if ref != nil {
+				notes["media_type"] = string(ref.MediaType)
+				notes["has_local"] = ref.LocalPath != ""
+				notes["has_drive"] = ref.DriveFileID != ""
+			}
+			tracker.recordWith("resolve_watermark", time.Since(t0), notes)
+			if err != nil {
+				return fmt.Errorf("clip.render: resolve watermark %q: %w", req.Watermark.AssetID, err)
+			}
+			watermarkRef = ref
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "resolve_watermark_done"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.Watermark.AssetID),
+				zap.String("local_path", ref.LocalPath),
+				zap.String("drive_file_id", ref.DriveFileID),
+				zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+			)
+			return nil
+		})
+	}
 	if backgroundAsset {
-	wave1.Go(func() error {
-		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "resolve_background_start"),
-			zap.String("run_id", runID),
-			zap.String("asset_id", req.Background.AssetID),
-		)
-		ref, err := p.assets.ResolveAsset(ctx, req.Background.AssetID)
-		notes := map[string]any{"asset_id": req.Background.AssetID}
-		if ref != nil {
-			notes["media_type"] = string(ref.MediaType)
-			notes["has_local"] = ref.LocalPath != ""
-			notes["has_drive"] = ref.DriveFileID != ""
-		}
-		tracker.recordWith("resolve_background", time.Since(t0), notes)
-		if err != nil {
-			return fmt.Errorf("clip.render: resolve background %q: %w", req.Background.AssetID, err)
-		}
-		backgroundRef = ref
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "resolve_background_done"),
-			zap.String("run_id", runID),
-			zap.String("asset_id", req.Background.AssetID),
-			zap.String("local_path", ref.LocalPath),
-			zap.String("drive_file_id", ref.DriveFileID),
-			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
-		)
-		return nil
-	})
+		wave1.Go(func() error {
+			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "resolve_background_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.Background.AssetID),
+			)
+			ref, err := p.assets.ResolveAsset(ctx, req.Background.AssetID)
+			notes := map[string]any{"asset_id": req.Background.AssetID}
+			if ref != nil {
+				notes["media_type"] = string(ref.MediaType)
+				notes["has_local"] = ref.LocalPath != ""
+				notes["has_drive"] = ref.DriveFileID != ""
+			}
+			tracker.recordWith("resolve_background", time.Since(t0), notes)
+			if err != nil {
+				return fmt.Errorf("clip.render: resolve background %q: %w", req.Background.AssetID, err)
+			}
+			backgroundRef = ref
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "resolve_background_done"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.Background.AssetID),
+				zap.String("local_path", ref.LocalPath),
+				zap.String("drive_file_id", ref.DriveFileID),
+				zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+			)
+			return nil
+		})
 	}
 	if lookupTranscript {
-	wave1.Go(func() error {
-		t0 := time.Now()
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "transcript_resolve_start"),
-			zap.String("run_id", runID),
-			zap.String("asset_id", req.SourceAssetID),
-			zap.String("language", req.Transcript.Language),
-			zap.String("mode", string(req.Transcript.Mode)),
-		)
-		res, found, err := p.transcript.Lookup(ctx, TranscriptInput{
-			AssetID:  req.SourceAssetID,
-			Language: req.Transcript.Language,
-			Mode:     req.Transcript.Mode,
-			Persist:  req.Transcript.Persist,
+		wave1.Go(func() error {
+			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "transcript_resolve_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.SourceAssetID),
+				zap.String("language", req.Transcript.Language),
+				zap.String("mode", string(req.Transcript.Mode)),
+			)
+			res, found, err := p.transcript.Lookup(ctx, TranscriptInput{
+				AssetID:  req.SourceAssetID,
+				Language: req.Transcript.Language,
+				Mode:     req.Transcript.Mode,
+				Persist:  req.Transcript.Persist,
+			})
+			tracker.recordWith("transcript_resolve", time.Since(t0), map[string]any{
+				"found":    found,
+				"language": req.Transcript.Language,
+			})
+			if err != nil {
+				return fmt.Errorf("clip.render: transcript lookup: %w", err)
+			}
+			existing, existingFound = res, found
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "transcript_resolve_done"),
+				zap.String("run_id", runID),
+				zap.Bool("found", found),
+				zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+			)
+			return nil
 		})
-		tracker.recordWith("transcript_resolve", time.Since(t0), map[string]any{
-			"found":    found,
-			"language": req.Transcript.Language,
-		})
-		if err != nil {
-			return fmt.Errorf("clip.render: transcript lookup: %w", err)
-		}
-		existing, existingFound = res, found
-		p.log.Info("clip.render.prepare.phase",
-			zap.String("subsystem", "cliprender_preparer"),
-			zap.String("phase", "transcript_resolve_done"),
-			zap.String("run_id", runID),
-			zap.Bool("found", found),
-			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
-		)
-		return nil
-	})
 	}
 	wave1.Go(func() error {
 		t0 := time.Now()
@@ -256,13 +256,13 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 		)
 		c, err := p.contract.Resolve(ctx, req)
 		tracker.recordWith("resolve_contract", time.Since(t0), map[string]any{
-			"contract_id":  c.ContractID,
-			"video_codec":  c.VideoCodec,
-			"audio_codec":  c.AudioCodec,
-			"width":        c.Width,
-			"height":       c.Height,
-			"fps_num":      c.FPSNum,
-			"fps_den":      c.FPSDen,
+			"contract_id": c.ContractID,
+			"video_codec": c.VideoCodec,
+			"audio_codec": c.AudioCodec,
+			"width":       c.Width,
+			"height":      c.Height,
+			"fps_num":     c.FPSNum,
+			"fps_den":     c.FPSDen,
 		})
 		if err != nil {
 			return fmt.Errorf("clip.render: resolve output contract: %w", err)

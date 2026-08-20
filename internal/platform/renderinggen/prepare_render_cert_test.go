@@ -20,12 +20,12 @@ import (
 // verifies the certification contract:
 //
 //   - prepare-<plan_id>  job_type=overlay.prepare
-//                        schema_version=renderinggen.overlay-prepare.v1
-//                        state=completed
-//                        assets: SHA256 + URL when an image intent is included
+//     schema_version=renderinggen.overlay-prepare.v1
+//     state=completed
+//     assets: SHA256 + URL when an image intent is included
 //
 //   - <plan_id>          job_type=overlay.render
-//                        artifact present, sha256 non-empty, size_bytes > 0
+//     artifact present, sha256 non-empty, size_bytes > 0
 //
 // Run with:
 //
@@ -65,15 +65,15 @@ func TestPrepareRenderCertification(t *testing.T) {
 		FPS:           30,
 		Intents: []capoverlay.OverlayIntent{
 			{
-				Version:      capoverlay.OverlayIntentVersion,
-				IntentID:     "intent-image-mj",
-				SceneID:      "scene-0",
-				SceneIndex:   0,
-				Entity:       capoverlay.EntityBinding{Type: "person_image", CanonicalName: "Michael Jordan"},
-				TemplateID:   "IMAGE_OVERLAY",
-				Source:       capoverlay.IntentSourceEntityImage,
-				Kind:         "person_image",
-				TimingState:  capoverlay.TimingStatePending,
+				Version:     capoverlay.OverlayIntentVersion,
+				IntentID:    "intent-image-mj",
+				SceneID:     "scene-0",
+				SceneIndex:  0,
+				Entity:      capoverlay.EntityBinding{Type: "person_image", CanonicalName: "Michael Jordan"},
+				TemplateID:  "IMAGE_OVERLAY",
+				Source:      capoverlay.IntentSourceEntityImage,
+				Kind:        "person_image",
+				TimingState: capoverlay.TimingStatePending,
 				Payload: capoverlay.IntentPayload{
 					AssetRefs: []capoverlay.OverlayAssetRef{
 						{AssetID: "mj_photo", URL: "assets/overlay_globe.png", SHA256: globeHash},
@@ -214,20 +214,20 @@ func TestPrepareRenderCertification(t *testing.T) {
 
 // minimal broker representation
 type brokerPayload struct {
-	ID            string                   `json:"id"`
-	Schema        string                   `json:"schema"`
-	Version       int                      `json:"version"`
-	JobType       string                   `json:"job_type"`
-	SchemaVersion string                   `json:"schema_version"`
-	State         string                   `json:"state"`
-	OverlaySpec   json.RawMessage          `json:"render_plan"`
+	ID            string                       `json:"id"`
+	Schema        string                       `json:"schema"`
+	Version       int                          `json:"version"`
+	JobType       string                       `json:"job_type"`
+	SchemaVersion string                       `json:"schema_version"`
+	State         string                       `json:"state"`
+	OverlaySpec   json.RawMessage              `json:"render_plan"`
 	Assets        []scriptgen.RenderQueueAsset `json:"assets"`
-	Artifact      *scriptgen.RenderArtifact `json:"artifact,omitempty"`
-	Attempts      int                      `json:"attempts"`
-	CreatedAt     string                   `json:"created_at"`
-	StartedAt     string                   `json:"started_at"`
-	CompletedAt   string                   `json:"completed_at"`
-	Worker        string                   `json:"worker"`
+	Artifact      *scriptgen.RenderArtifact    `json:"artifact,omitempty"`
+	Attempts      int                          `json:"attempts"`
+	CreatedAt     string                       `json:"created_at"`
+	StartedAt     string                       `json:"started_at"`
+	CompletedAt   string                       `json:"completed_at"`
+	Worker        string                       `json:"worker"`
 }
 
 // renderPlanSpec mirrors the nested structure the broker stores under
@@ -235,11 +235,11 @@ type brokerPayload struct {
 // prepare contract puts schema_version + plan_id + intents inside this
 // envelope, while the render contract puts canvas + layers inside.
 type renderPlanSpec struct {
-	SchemaVersion string                       `json:"schema_version"`
-	PlanID        string                       `json:"plan_id"`
-	VideoID       string                       `json:"video_id"`
-	Intents       []map[string]any             `json:"intents"`
-	Layers        []map[string]any             `json:"layers"`
+	SchemaVersion string           `json:"schema_version"`
+	PlanID        string           `json:"plan_id"`
+	VideoID       string           `json:"video_id"`
+	Intents       []map[string]any `json:"intents"`
+	Layers        []map[string]any `json:"layers"`
 }
 
 func pollBroker(t *testing.T, queueURL, jobID string, timeout time.Duration) (string, *brokerPayload, map[string]any) {
