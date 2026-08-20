@@ -7,15 +7,10 @@
 // PipelineGen decides COSA mostrare (semantic_role) and QUANDO (timing);
 // Chronon decides COME renderizzarlo. This resolver is the whole bridge:
 //
-//	IMPORTANT_PHRASE → caption_card
-//	IMPORTANT_WORD   → active_word_pop
-//	PERSON           → lower_third_safe
-//	ORGANIZATION     → organization_card
-//	LOCATION         → location_card
-//	IMAGE_ENTITY     → image_focus_in
-//	NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → active_word_pop
-//	QUOTE/CLAIM      → caption_card
-//	DATE/TITLE/EVENT → lower_third_safe
+//	IMPORTANT_PHRASE/QUOTE/CLAIM → fast_fade_through
+//	IMPORTANT_WORD/NUMBER/MONEY/PERCENTAGE/STATISTIC/RANKING → phrase_word_reveal
+//	PERSON/ORGANIZATION/LOCATION/DATE/TITLE/EVENT → name_glow_slide
+//	IMAGE_ENTITY → image_fast_fade
 //
 // The preset ids are owned by Chronon3d's VisualPresetRegistry; this package
 // only references them by string. Adding a semantic role that maps to a new
@@ -30,13 +25,10 @@ type SemanticPreset string
 // The canonical Chronon preset ids (mirror of Chronon3d's VisualPresetRegistry
 // seeds). These are the only presets a semantic role may resolve to.
 const (
-	PresetCaptionCard      SemanticPreset = "caption_card"
-	PresetActiveWordPop    SemanticPreset = "active_word_pop"
-	PresetSubtitleCard     SemanticPreset = "subtitle_card"
-	PresetLowerThirdSafe   SemanticPreset = "lower_third_safe"
-	PresetOrganizationCard SemanticPreset = "organization_card"
-	PresetLocationCard     SemanticPreset = "location_card"
-	PresetImageFocusIn     SemanticPreset = "image_focus_in"
+	PresetModernPhrase SemanticPreset = "fast_fade_through"
+	PresetModernWord   SemanticPreset = "phrase_word_reveal"
+	PresetModernName   SemanticPreset = "name_glow_slide"
+	PresetModernImage  SemanticPreset = "image_fast_fade"
 )
 
 // semanticPresetTable is the frozen semantic_role → preset table. It is the
@@ -49,39 +41,36 @@ const (
 // a Chronon visual preset.
 var semanticPresetTable = map[string]SemanticPreset{
 	// ── The canonical semantic entity vocabulary ────────────────────────
-	"IMPORTANT_PHRASE": PresetCaptionCard,
-	"IMPORTANT_WORD":   PresetActiveWordPop,
-	"NUMBER":           PresetActiveWordPop,
-	"QUOTE":            PresetCaptionCard,
-	"PERSON":           PresetLowerThirdSafe,
-	"LOCATION":         PresetLocationCard,
-	"IMAGE_OVERLAY":    PresetImageFocusIn,
+	"IMPORTANT_PHRASE": PresetModernPhrase,
+	"IMPORTANT_WORD":   PresetModernWord,
+	"NUMBER":           PresetModernWord,
+	"QUOTE":            PresetModernPhrase,
+	"PERSON":           PresetModernName,
+	"LOCATION":         PresetModernName,
+	"IMAGE_OVERLAY":    PresetModernImage,
 
 	// ── Extended SemanticItem vocabulary (the semantic index) ──────────
-	// Value and editorial-artifact roles map onto the canonical Chronon
-	// presets (ADR-029): numeric values reuse active_word_pop, statements
-	// reuse caption_card, lower-third surfaces reuse lower_third_safe, and
-	// image-bound entities reuse image_focus_in. No new Chronon preset is
-	// invented here.
-	"ORGANIZATION": PresetOrganizationCard,
-	"DATE":         PresetLowerThirdSafe,
-	"MONEY":        PresetActiveWordPop,
-	"PERCENTAGE":   PresetActiveWordPop,
-	"CLAIM":        PresetCaptionCard,
-	"STATISTIC":    PresetActiveWordPop,
-	"RANKING":      PresetActiveWordPop,
-	"TITLE":        PresetLowerThirdSafe,
-	"EVENT":        PresetLowerThirdSafe,
-	"IMAGE_ENTITY": PresetImageFocusIn,
+	// Value and editorial-artifact roles map onto the modern Chronon overlay
+	// catalog; no legacy card preset is invented or selected here.
+	"ORGANIZATION": PresetModernName,
+	"DATE":         PresetModernName,
+	"MONEY":        PresetModernWord,
+	"PERCENTAGE":   PresetModernWord,
+	"CLAIM":        PresetModernPhrase,
+	"STATISTIC":    PresetModernWord,
+	"RANKING":      PresetModernWord,
+	"TITLE":        PresetModernName,
+	"EVENT":        PresetModernName,
+	"IMAGE_ENTITY": PresetModernImage,
 
 	// ── Concrete templates referenced by the kind registry ──────────────
-	"person_default":  PresetLowerThirdSafe,
-	"org_default":     PresetOrganizationCard,
-	"gpe_default":     PresetLocationCard,
-	"concept_default": PresetCaptionCard,
-	"lower_third":     PresetLowerThirdSafe,
-	"image_popup":     PresetImageFocusIn,
-	"quote":           PresetCaptionCard,
+	"person_default":  PresetModernName,
+	"org_default":     PresetModernName,
+	"gpe_default":     PresetModernName,
+	"concept_default": PresetModernPhrase,
+	"lower_third":     PresetModernName,
+	"image_popup":     PresetModernImage,
+	"quote":           PresetModernPhrase,
 }
 
 // SemanticOverlayResolver resolves a semantic role (OverlayItem.TemplateID

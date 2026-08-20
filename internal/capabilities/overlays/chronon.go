@@ -364,9 +364,6 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		if preset == "" {
 			preset = modernPresetFor(item, plan.PlanID)
 		}
-		if preset == "" {
-			preset, _ = DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
-		}
 		presetDriven := preset != ""
 		// PipelineGen may carry a concrete preset selected by its visual
 		// sampler (for example one of the special-name treatments).  Honor
