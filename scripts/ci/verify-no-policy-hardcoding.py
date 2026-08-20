@@ -27,7 +27,7 @@ SKIP_PARTS = {
     "testdata",
     "tests",
 }
-SKIP_PREFIXES = ("scripts/ci/", "scripts/ops/", "scripts/tools/")
+SKIP_PREFIXES = ("scripts/ci/", "scripts/tools/")
 
 # Kept as fragments rather than a single permissive "map" rule: registries
 # and dispatch tables are valid code and must remain allowed.
