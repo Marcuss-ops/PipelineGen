@@ -44,11 +44,13 @@ type countingSearcher struct {
 	name    string
 	count   int
 	clips   []Candidate
-	wantErr error
+	wantErr   error
+	lastMode SearchMode
 }
 
-func (c *countingSearcher) Search(_ context.Context, _ SearchRequest) ([]Candidate, error) {
+func (c *countingSearcher) Search(_ context.Context, req SearchRequest) ([]Candidate, error) {
 	c.count++
+	c.lastMode = req.Mode
 	if c.wantErr != nil {
 		return nil, c.wantErr
 	}
@@ -60,6 +62,30 @@ func (c *countingSearcher) Search(_ context.Context, _ SearchRequest) ([]Candida
 // surfaces here as a build failure rather than as a runtime
 // assertion failure that hides behind other tests.
 var _ Searcher = (*countingSearcher)(nil)
+
+func TestSearchCatalogOnlyPropagatesExplicitMode(t *testing.T) {
+	recorder := &countingSearcher{
+		name: "scraper",
+		clips: []Candidate{{
+			ID: "catalog-only-1", Title: "Boxing catalog-only result", SourceName: "artlist",
+			SourceRef: "https://artlist.io/stock-footage/clip/boxing-catalog-only-1",
+			Keywords:  []string{"boxing"},
+		}},
+	}
+	service := &SearchService{
+		service: &Service{
+			log:             zap.NewNop(),
+			scraperSearcher: recorder,
+			searchStrategy:  StrategyArtlistOnly,
+		},
+	}
+
+	candidates, err := service.SearchCatalogOnly(context.Background(), "boxing", 5)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, "catalog-only-1", candidates[0].ID)
+	require.Equal(t, SearchModeCatalogOnly, recorder.lastMode)
+}
 
 // buildSearcherChainWithMocks is a test helper that builds a
 // SearchService wired with the minimal dependencies used by

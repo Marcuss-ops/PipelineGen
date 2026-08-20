@@ -32,8 +32,9 @@ export async function handleV1ClipSearch(req, res, ctx) {
   const limit = Number.parseInt(payload.limit || ctx.config.DEFAULT_LIMIT, 10);
   const filters = payload.filters && typeof payload.filters === 'object' ? payload.filters : {};
   const forceRefresh = Boolean(payload.force_refresh || payload.forceRefresh);
-  const mode = ['catalog_only', 'catalog_first', 'http_first', 'live_required'].includes(payload.mode)
-    ? payload.mode
+  const requestedMode = String(payload.mode || '').trim();
+  const mode = ['catalog_only', 'catalog_first', 'live_required'].includes(requestedMode)
+    ? requestedMode
     : 'catalog_first';
 
   const reqId = ctx.state.incRequest();

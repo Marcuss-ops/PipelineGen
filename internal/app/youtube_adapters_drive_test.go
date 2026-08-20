@@ -115,7 +115,8 @@ func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDrive
 // canonical GetOrCreateFolder contract for payload-selected roots:
 //
 //   - input (channelName="boxing-channels", parentFolderID="any")
-//   - lastResolveReq.Group = "boxing-channels"
+//   - lastResolveReq.Group = "youtube_subtitles"
+//   - lastResolveReq.Subject = "boxing-channels"
 //   - lastResolveReq.Destination = DestinationYouTubeClip
 //   - lastResolveReq.ParentFolderID = "any" so the folder is
 //     created under the caller-selected Drive root
@@ -139,8 +140,11 @@ func TestGetOrCreateFolder_GroupSubjectSplit_ThreadsParentRoot(t *testing.T) {
 	if pub.lastResolveReq.Destination != delivery.DestinationYouTubeClip {
 		t.Errorf("Destination = %q, want %q", pub.lastResolveReq.Destination, delivery.DestinationYouTubeClip)
 	}
-	if pub.lastResolveReq.Group != "boxing-channels" {
-		t.Errorf("Group = %q, want %q (channel name must be Group)", pub.lastResolveReq.Group, "boxing-channels")
+	if pub.lastResolveReq.Group != "youtube_subtitles" {
+		t.Errorf("Group = %q, want %q", pub.lastResolveReq.Group, "youtube_subtitles")
+	}
+	if pub.lastResolveReq.Subject != "boxing-channels" {
+		t.Errorf("Subject = %q, want %q", pub.lastResolveReq.Subject, "boxing-channels")
 	}
 	// The parent folder must be threaded through so the child folder is
 	// created under the request-selected root instead of the catalog root.

@@ -224,7 +224,7 @@ func registerAIBackedProcessors(
 		imageSearcher = newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
 	}
 	if imageSearcher != nil {
-		if !ppReg.Register(adapters.NewInternetImagesProcessorWithCache(imageSearcher, vidRushCache, vidrushMetrics)) {
+		if !ppReg.Register(adapters.NewInternetImagesProcessorWithCatalog(imageSearcher, vidRushCache, root.Repos.EntityImageCatalog, vidrushMetrics)) {
 			return fmt.Errorf("register internet_images processor: composition bug")
 		}
 		log.Info("InternetImagesProcessor wired through the VidRush provider registry")

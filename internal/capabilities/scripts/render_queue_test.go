@@ -50,7 +50,48 @@ func (c *transitioningRenderClient) Get(_ context.Context, id string) (RenderQue
 	if c.polls < 2 {
 		return RenderQueueJob{ID: id, State: "queued"}, nil
 	}
-	return RenderQueueJob{ID: id, State: "completed"}, nil
+	return RenderQueueJob{ID: id, State: "completed", Artifact: &RenderArtifact{RenderMS: 800, EncodeMS: 200}}, nil
+}
+
+// TestQueueRenderEnqueuerSeparatesChrononAndPollingWait measures the production
+// cadence directly: a render that is ready on the second status response has
+// 800ms of worker-reported Chronon work but approximately one 2s polling sleep.
+// The two durations must never be added together and reported as render_ms.
+func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
+	client := &transitioningRenderClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &fakeAttemptRecorder{}
+	enqueuer.SetRecorder(recorder)
+	enqueuer.pollInterval = 2 * time.Second
+
+	started := time.Now()
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(started)
+	if len(recorder.recorded) != 1 {
+		t.Fatalf("recorded attempts = %d, want 1", len(recorder.recorded))
+	}
+	got := recorder.recorded[0]
+	if got.RenderMS != 800 || got.EncodeMS != 200 {
+		t.Fatalf("worker durations = render=%d encode=%d, want 800/200", got.RenderMS, got.EncodeMS)
+	}
+	if got.PollCount != 2 || got.PollingIntervalMS != 2000 {
+		t.Fatalf("poll metrics = polls=%d interval=%d, want 2/2000", got.PollCount, got.PollingIntervalMS)
+	}
+	if got.PollingSleepMS < 1900 || got.PollingSleepMS > 2600 {
+		t.Fatalf("polling sleep = %dms, want approximately one 2s interval", got.PollingSleepMS)
+	}
+	if got.CompletionWaitMS < got.PollingSleepMS || got.CompletionWaitMS > 3000 {
+		t.Fatalf("completion wait = %dms, polling sleep=%dms, want ~2s", got.CompletionWaitMS, got.PollingSleepMS)
+	}
+	if elapsed < 1900*time.Millisecond || elapsed > 3200*time.Millisecond {
+		t.Fatalf("wall elapsed = %v, want approximately one 2s polling interval", elapsed)
+	}
+	t.Logf("separated metrics: render_ms=%d encode_ms=%d completion_wait_ms=%d polling_sleep_ms=%d polling_interval_ms=%d poll_count=%d wall_elapsed_ms=%d", got.RenderMS, got.EncodeMS, got.CompletionWaitMS, got.PollingSleepMS, got.PollingIntervalMS, got.PollCount, elapsed.Milliseconds())
 }
 
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes

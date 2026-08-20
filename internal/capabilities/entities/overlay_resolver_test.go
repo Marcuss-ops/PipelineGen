@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -131,6 +132,49 @@ func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	first := layerByID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, int64(0), first.StartFrame)
 	require.Equal(t, int64(6), first.DurationFrames)
+}
+
+// TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic repeats the
+// same live-job identity (job, scene and semantic item IDs) twice and compares
+// both the sealed semantic plan and the effective Chronon layers. A retry of
+// the same job must not select a different preset or render key.
+func TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic(t *testing.T) {
+	jobID := "job_1787213417635353178_0b88fd56"
+	timeline := EntityTimeline{
+		Version:    EntityTimelineVersion,
+		Language:   "en",
+		DurationUS: 18_816_000,
+		Scenes: []SceneEntityTimeline{{
+			SceneID:         "scene-0",
+			SceneIndex:      0,
+			TimelineStartUS: 0,
+			Entities: []EntityOccurrence{
+				{EntityID: StableEntityID("PERSON", "Michael Jordan"), Name: "Michael Jordan", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0, TextStart: 0, TextEnd: 14, WordStart: 0, WordEnd: 1, LocalStartUS: 50_000, LocalEndUS: 950_000, TimelineStartUS: 0, AudioStartUS: 50_000, AudioEndUS: 950_000, Confidence: 0.9},
+				{EntityID: StableEntityID("PERSON", "Air Jordan"), Name: "Air Jordan", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0, TextStart: 66, TextEnd: 76, WordStart: 11, WordEnd: 12, LocalStartUS: 4_600_000, LocalEndUS: 5_087_500, TimelineStartUS: 0, AudioStartUS: 4_600_000, AudioEndUS: 5_087_500, Confidence: 0.9},
+				{EntityID: StableEntityID("CONCEPT", "Nike"), Name: "Nike", Type: "CONCEPT", SceneID: "scene-0", SceneIndex: 0, TextStart: 27, TextEnd: 31, WordStart: 4, WordEnd: 4, LocalStartUS: 1_425_000, LocalEndUS: 1_875_000, TimelineStartUS: 0, AudioStartUS: 1_425_000, AudioEndUS: 1_875_000, Confidence: 0.95},
+				{EntityID: StableEntityID("CONCEPT", "Chicago"), Name: "Chicago", Type: "CONCEPT", SceneID: "scene-0", SceneIndex: 0, TextStart: 35, TextEnd: 42, WordStart: 6, WordEnd: 6, LocalStartUS: 2_012_500, LocalEndUS: 2_737_500, TimelineStartUS: 0, AudioStartUS: 2_012_500, AudioEndUS: 2_737_500, Confidence: 0.95},
+			},
+		}},
+	}
+
+	first, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30)
+	require.NoError(t, err)
+	second, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30)
+	require.NoError(t, err)
+	require.True(t, reflect.DeepEqual(first, second), "same job/scene/item identities must produce identical OverlayPlans")
+
+	firstChronon, err := capabilityoverlay.CompileChrononPlan(first)
+	require.NoError(t, err)
+	secondChronon, err := capabilityoverlay.CompileChrononPlan(second)
+	require.NoError(t, err)
+	require.True(t, reflect.DeepEqual(firstChronon.Plan, secondChronon.Plan), "same job/scene/item identities must produce identical Chronon plans")
+
+	for _, item := range first.Items {
+		t.Logf("PRESET_REPLAY_TABLE job=%s scene=%s item=%s preset=%s render_key=%s", jobID, item.SceneID, item.ID, item.PresetID, item.RenderKey)
+	}
+	for i, layer := range firstChronon.Plan.Layers {
+		require.Equal(t, first.Items[i].PresetID, layer.Preset, "layer %q preset must match semantic plan", layer.ID)
+	}
 }
 
 func TestSpecialNamePresetsFollowEntityType(t *testing.T) {

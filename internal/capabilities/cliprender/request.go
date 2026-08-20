@@ -155,6 +155,30 @@ type ExecutionSpec struct {
 	RequireGPU bool `json:"require_gpu,omitempty"`
 }
 
+// OverlayRefSpec carries the artifact lineage of the overlay the final video
+// composites: the overlay.render queue job id, the frozen OverlayPlan
+// fingerprint, the item render key, and the source video asset the overlay
+// was rendered over. It is the join that proves "this final video contains
+// THAT overlay" — the final video asset record carries the same identity the
+// OverlayPlan / EditingOverlaySpan declared, never a re-derived reference.
+//
+// Omitted (nil) means the final video carries no entity overlay (a plain
+// subtitles/watermark clip). When present, every field is required: a
+// partial lineage is fail-closed, never a half-proven composition.
+type OverlayRefSpec struct {
+	// RenderJobID is the overlay.render queue job id that produced the
+	// composited overlay artifact.
+	RenderJobID string `json:"render_job_id"`
+	// PlanFingerprint is the frozen OverlayPlan fingerprint the render was
+	// validated against (plan fingerprint == result fingerprint).
+	PlanFingerprint string `json:"plan_fingerprint"`
+	// RenderKey is the content-addressed render key of the plan item.
+	RenderKey string `json:"render_key"`
+	// SourceVideoAssetID is the video asset the overlay is composited over
+	// (the OverlayPlan's VideoID).
+	SourceVideoAssetID string `json:"source_video_asset_id"`
+}
+
 // RenderRequest is the canonical clip.render wire payload. It is both
 // the HTTP body of POST /api/clips/render and the job payload persisted
 // by the Master queue — one shape, no drift between transport and
@@ -169,6 +193,9 @@ type RenderRequest struct {
 	Audio         *AudioSpec       `json:"audio,omitempty"`
 	Destination   *DestinationSpec `json:"destination,omitempty"`
 	Execution     *ExecutionSpec   `json:"execution,omitempty"`
+	// Overlay is the optional entity-overlay lineage this final video
+	// composites. Nil for subtitles/watermark-only clips.
+	Overlay *OverlayRefSpec `json:"overlay,omitempty"`
 }
 
 // Normalize applies the canonical defaults. It is idempotent and
@@ -320,6 +347,19 @@ func (r *RenderRequest) Validate() error {
 
 	if r.Destination.DriveFolderID == "" {
 		return fmt.Errorf("%w: destination.drive_folder_id is required (default DefaultDriveRootFolderID)", ErrInvalidRequest)
+	}
+
+	// Overlay lineage is all-or-nothing: a final video that declares an
+	// overlay must carry the complete chain (render job id + plan
+	// fingerprint + render key + source video asset id) so the composition
+	// is provable, never a bare "an overlay was here".
+	if r.Overlay != nil {
+		if strings.TrimSpace(r.Overlay.RenderJobID) == "" ||
+			strings.TrimSpace(r.Overlay.PlanFingerprint) == "" ||
+			strings.TrimSpace(r.Overlay.RenderKey) == "" ||
+			strings.TrimSpace(r.Overlay.SourceVideoAssetID) == "" {
+			return fmt.Errorf("%w: overlay requires render_job_id, plan_fingerprint, render_key and source_video_asset_id", ErrInvalidRequest)
+		}
 	}
 
 	return nil

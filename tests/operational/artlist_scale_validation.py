@@ -63,24 +63,42 @@ def validate_assets(runner: Any, target_ids: list[str]) -> list[dict[str, Any]]:
     return rows
 
 
-def validate_drive(runner: Any, assets: list[dict[str, Any]]) -> None:
+def validate_drive(runner: Any, assets: list[dict[str, Any]]) -> dict[str, Any]:
     drive_ids = sorted({row["drive_file_id"] for row in assets if row["drive_file_id"]})
     resolved_total = 0
     invalid: list[str] = []
     responses: list[Any] = []
+    resolved_by_id: dict[str, dict[str, Any]] = {}
     for batch in chunks(drive_ids, 50):
         response = runner.http.post(f"{runner.s.base_url}/api/drive/resolve-by-id", {"ids": batch}, admin=True)
         responses.append(response)
         resolved = response.get("resolved", []) if isinstance(response, dict) else []
         resolved_total += int(response.get("resolved_count", len(resolved)))
         for entry in resolved:
-            if entry.get("trashed") is not False or int(entry.get("size", 0) or 0) <= 0:
-                invalid.append(str(entry.get("id", entry.get("file_id", "unknown"))))
+            entry_id = str(entry.get("id", entry.get("file_id", ""))).strip()
+            valid = entry.get("trashed") is False and int(entry.get("size", 0) or 0) > 0
+            if entry_id:
+                resolved_by_id[entry_id] = {
+                    "ok": valid,
+                    "trashed": entry.get("trashed"),
+                    "size": int(entry.get("size", 0) or 0),
+                    "mime_type": entry.get("mime_type", entry.get("mimeType", "")),
+                }
+            if not valid:
+                invalid.append(entry_id or "unknown")
     runner.write_json("drive/resolve.json", responses)
     if resolved_total != len(drive_ids):
         runner.fail(f"Drive resolved {resolved_total}/{len(drive_ids)} unique files")
     if invalid:
         runner.fail(f"Drive contains {len(invalid)} missing, trashed or empty target files")
+    report = {
+        "requested_ids": len(drive_ids),
+        "resolved_ids": resolved_total,
+        "invalid_ids": invalid,
+        "resolved_by_id": resolved_by_id,
+    }
+    runner.write_json("drive/validation.json", report)
+    return report
 
 
 def run_admin(runner: Any, args: list[str], output_name: str) -> None:
@@ -121,7 +139,7 @@ def validate_vlm(runner: Any, target_ids: list[str]) -> dict[str, Any]:
 
 def validate_qdrant(runner: Any, target_ids: list[str]) -> dict[str, Any]:
     if not runner.s.run_vlm:
-        report = {"skipped": True, "reason": "VLM disabled"}
+        report = {"skipped": True, "reason": "VLM disabled", "valid_ids": []}
         runner.write_json("qdrant/validation.json", report)
         return report
     if runner.s.run_qdrant_reindex:
@@ -136,7 +154,7 @@ def validate_qdrant(runner: Any, target_ids: list[str]) -> dict[str, Any]:
                 payloads.append(point["payload"])
     valid_ids = {str(payload.get("asset_id")) for payload in payloads if payload.get("source") == "artlist" and payload.get("lifecycle_state") == "PUBLISHED" and payload.get("visual_preprocessing_version") and payload.get("visual_model_name") and payload.get("visual_model_version")}
     missing = sorted(set(target_ids) - valid_ids)
-    report = {"requested_ids": len(target_ids), "valid_payloads": len(valid_ids), "missing_or_invalid_ids": missing}
+    report = {"requested_ids": len(target_ids), "valid_payloads": len(valid_ids), "valid_ids": sorted(valid_ids), "missing_or_invalid_ids": missing}
     runner.write_json("qdrant/validation.json", report)
     if missing:
         runner.fail(f"Qdrant contains valid VLM payloads for {len(valid_ids)}/{len(target_ids)} target assets")

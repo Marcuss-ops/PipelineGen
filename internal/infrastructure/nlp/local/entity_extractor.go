@@ -39,6 +39,14 @@ var (
 	singleNameRE = regexp.MustCompile(`\b[\p{Lu}][\p{L}'’-]+\b`)
 	acronymRE    = regexp.MustCompile(`\b[A-Z]{2,8}\b`)
 	yearRE       = regexp.MustCompile(`\b(?:1[89]\d{2}|20\d{2})\b`)
+	// cardinalRE matches spoken cardinal figures with an explicit scale word
+	// ("ten million", "two hundred", "one thousand"). A bare number word
+	// ("ten", "one") is deliberately NOT matched: it is too ambiguous to
+	// promote to a CARDINAL overlay on its own. The leading word is a
+	// unit/teen/tens numeral and at least one scale (hundred/thousand/
+	// million/billion/trillion) must follow so the span is unambiguously a
+	// quantity, never a determiner or a fragment.
+	cardinalRE   = regexp.MustCompile(`\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?:\s+(?:hundred|thousand|million|billion|trillion)\b)+`)
 	wordRE       = regexp.MustCompile(`[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?`)
 	sentenceRE   = regexp.MustCompile(`[^.!?]+(?:[.!?]+|$)`)
 )
@@ -90,6 +98,13 @@ func (e *Extractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtra
 	}
 	for _, match := range yearRE.FindAllString(text, -1) {
 		appendEntity(result, seen, "DATE", match, 0.99)
+	}
+	// Spoken cardinal figures are emitted as CARDINAL so the overlay chain
+	// (CARDINAL → KindNumber → NUMBER template) can render a stat card. This
+	// is the same deterministic, model-free path that already emits DATE for
+	// years: the Ollama adapter merges these values into the live result.
+	for _, match := range cardinalRE.FindAllString(text, -1) {
+		appendEntity(result, seen, "CARDINAL", match, 0.95)
 	}
 	// Single-word known places are emitted conservatively: only capitalized
 	// words present in the knownPlaces lexicon and not already covered by a

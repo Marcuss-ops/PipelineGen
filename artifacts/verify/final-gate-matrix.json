@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-08-20",
+  "overall_verdict": "NOT_CERTIFIED_END_TO_END",
+  "gates": [
+    {
+      "gate": "NLP trova le entità richieste",
+      "status": "FAIL",
+      "evidence": "Michael Jordan, Nike e Chicago sono state estratte; ten million è rimasto solo word timing e non è diventato CARDINAL/NUMBER."
+    },
+    {
+      "gate": "EntityTimeline conserva le entità estratte",
+      "status": "PARTIAL",
+      "evidence": "PASS per le entità effettivamente estratte; ten million non ha una entity timeline, solo boundary delle parole."
+    },
+    {
+      "gate": "Timing entità coincide con audio word timing",
+      "status": "PASS_PARTIAL",
+      "evidence": "I timing di Michael Jordan, Nike e Chicago derivano dai boundary audio certificati."
+    },
+    {
+      "gate": "Mapping NLP → overlay kind",
+      "status": "PASS_PARTIAL",
+      "evidence": "PERSON → entity_card e concept per Nike/Chicago verificati; NUMBER non verificato per ten million."
+    },
+    {
+      "gate": "Template corretto",
+      "status": "PASS",
+      "evidence": "person_default e concept_default presenti nell'OverlayPlan live."
+    },
+    {
+      "gate": "Preset selezionato correttamente",
+      "status": "PASS",
+      "evidence": "Replay deterministico con stessi job_id/scene_id/item_id: preset_id, render_key e Chronon plan identici."
+    },
+    {
+      "gate": "Preset realmente visibile nel video",
+      "status": "FAIL",
+      "evidence": "Showcase name_glow, phrase e immagini: artifact uguali o draw_count/text_ms/raster_ms nulli; snap_scale ha fallback software."
+    },
+    {
+      "gate": "Binding immagine PERSON corretto",
+      "status": "PARTIAL",
+      "evidence": "Regola e test SSOT PASS; nel job Michael Jordan image_generation=BYPASSED e binding live non materializzato."
+    },
+    {
+      "gate": "Nessun IMAGE_OVERLAY duplicato",
+      "status": "PASS_CODE_NOT_LIVE",
+      "evidence": "Test automatici verificano entity_card con asset e assenza di IMAGE_OVERLAY duplicato; job live non ha materializzato il piano."
+    },
+    {
+      "gate": "overlay.prepare realmente inviato",
+      "status": "FAIL_LIVE",
+      "evidence": "Contratto/enqueuer coperto dai test, ma nessun job overlay.prepare osservato nei run Michael Jordan."
+    },
+    {
+      "gate": "OverlayPlan compilato",
+      "status": "PASS_PARTIAL",
+      "evidence": "OverlayPlan renderinggen.overlay-plan.v1 prodotto con 10 item; durata di compilazione standalone non misurata."
+    },
+    {
+      "gate": "job_type overlay.render realmente inviato",
+      "status": "FAIL_LIVE",
+      "evidence": "Costante, mapping HTTP e test PASS; nessun overlay.render associato ai job live Michael Jordan."
+    },
+    {
+      "gate": "Overlay visibile nel video finale",
+      "status": "FAIL",
+      "evidence": "I run NLP source.type=text hanno prodotto audio/timeline/piano ma nessun MP4; verifica manuale impossibile."
+    },
+    {
+      "gate": "render.enabled=true propagato",
+      "status": "PASS_CONTRACT",
+      "evidence": "Test builder final payload PASS; il flag appartiene a script.generate ed è distinto dal clip.render contract."
+    },
+    {
+      "gate": "VeloxEditing output.contract",
+      "status": "PASS",
+      "evidence": "Job clip.render SUCCEEDED con contract_id=velox-editing-clip-v1, H.264/AAC, 1080x1920@30."
+    },
+    {
+      "gate": "Artifact MP4 VeloxEditing",
+      "status": "PASS",
+      "evidence": "MP4 pubblicato, 65 s, 1950 frame, backend chronon_vulkan, subtitles burn e watermark presenti."
+    },
+    {
+      "gate": "Separazione Chronon render / CompletionWait",
+      "status": "PASS_CONTRACT",
+      "evidence": "Test queue separa render_ms=800 ms da completion_wait_ms≈2001 ms con polling interval 2000 ms; nessun overlay live ha prodotto la misura."
+    },
+    {
+      "gate": "RenderingConcurrency benchmark",
+      "status": "PASS_WITH_RECOMMENDATION",
+      "evidence": "Concurrency 1: batch 99.793 s; concurrency 2: 105.760 s. Concurrency 2 riduce throughput del 5.66%."
+    },
+    {
+      "gate": "Tempi per stage raccolti",
+      "status": "PARTIAL",
+      "evidence": "NLP/TTS/audio/persistence e Velox render misurati; immagini, overlay.prepare, queue wait overlay, video encode standalone e SQLite standalone non disponibili."
+    }
+  ],
+  "optimization_priorities": [
+    {
+      "priority": 1,
+      "component": "VeloxEditing / Chronon clip renderer",
+      "reason": "È il collo dominante: ffmpeg/render boundary 438.356 s per un clip di 65 s. Concurrency 2 porta il render medio da 46.711 s a 75.785 s e un job fino a 102.881 s.",
+      "focus": ["profiling subtitle burn/libass", "GPU/encoder synchronization", "separate render_ms and encode_ms", "keep concurrency=1 until contention is isolated"]
+    },
+    {
+      "priority": 2,
+      "component": "NLP entity extraction / numeric normalization",
+      "reason": "NLP extract richiede circa 16.555 s e fallisce il gate CARDINAL/NUMBER per ten million.",
+      "focus": ["numeric span/cardinal post-processing", "entity extraction batching/cache", "measure model time separately from normalization"]
+    },
+    {
+      "priority": 3,
+      "component": "TTS e word-timing pipeline",
+      "reason": "TTS richiede 9.599 s di work per run; il word timing è corretto ma non ha una metrica standalone.",
+      "focus": ["TTS cache/reuse", "parallelism controllato", "separate synthesis_ms from word_timing_ms", "avoid regenerating identical voiceovers"]
+    }
+  ],
+  "functional_blockers_not_performance": [
+    "Collegare source.type=text o una sorgente clip valida al percorso di materializzazione video.",
+    "Inviare e osservare realmente overlay.prepare e overlay.render nel job live.",
+    "Abilitare image resolution/materialization per Michael Jordan.",
+    "Correggere l'estrazione o normalizzazione dell'entità ten million.",
+    "Aggiungere metriche standalone per overlay compile, queue wait, video encode e SQLite persistence."
+  ]
+}

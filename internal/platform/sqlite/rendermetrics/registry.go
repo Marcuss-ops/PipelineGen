@@ -45,9 +45,10 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			attempt_id, job_id,
 			phrase_count, word_count, image_count, leak_count,
 			render_ms, encode_ms,
+			completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count,
 			width, height, fps_num, fps_den, frame_count, duration_us, size_bytes,
 			sha256, drive_file_id, drive_link, recorded_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			job_id = excluded.job_id,
 			phrase_count = excluded.phrase_count,
@@ -56,6 +57,10 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			leak_count = excluded.leak_count,
 			render_ms = excluded.render_ms,
 			encode_ms = excluded.encode_ms,
+			completion_wait_ms = excluded.completion_wait_ms,
+			polling_sleep_ms = excluded.polling_sleep_ms,
+			polling_interval_ms = excluded.polling_interval_ms,
+			poll_count = excluded.poll_count,
 			width = excluded.width,
 			height = excluded.height,
 			fps_num = excluded.fps_num,
@@ -75,6 +80,10 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 		attempt.Content.Leaks,
 		attempt.RenderMS,
 		attempt.EncodeMS,
+		attempt.CompletionWaitMS,
+		attempt.PollingSleepMS,
+		attempt.PollingIntervalMS,
+		attempt.PollCount,
 		attempt.Width,
 		attempt.Height,
 		attempt.FPSNum,

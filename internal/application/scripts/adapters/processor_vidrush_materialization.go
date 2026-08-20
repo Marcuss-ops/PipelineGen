@@ -2,10 +2,13 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -21,6 +24,7 @@ type VidRushMaterializationProcessor struct {
 	providers *VidRushAssetProviderRegistry
 	finalizer scriptports.VidRushArtifactFinalizer
 	cache     scriptports.VidRushCachePort
+	catalog   entitycatalog.Repository
 	metrics   VidRushTimingMetrics
 }
 
@@ -53,15 +57,19 @@ const (
 )
 
 func NewVidRushMaterializationProcessor(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
-	return NewVidRushMaterializationProcessorWithCache(providers, finalizer, nil, metrics...)
+	return NewVidRushMaterializationProcessorWithCatalog(providers, finalizer, nil, nil, metrics...)
 }
 
 func NewVidRushMaterializationProcessorWithCache(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
+	return NewVidRushMaterializationProcessorWithCatalog(providers, finalizer, cache, nil, metrics...)
+}
+
+func NewVidRushMaterializationProcessorWithCatalog(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
 	var m VidRushTimingMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &VidRushMaterializationProcessor{providers: providers, finalizer: finalizer, cache: cache, metrics: m}
+	return &VidRushMaterializationProcessor{providers: providers, finalizer: finalizer, cache: cache, catalog: catalog, metrics: m}
 }
 
 func (p *VidRushMaterializationProcessor) Name() ProcessorName {
@@ -159,6 +167,71 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	return out.result, nil
 }
 
+func (p *VidRushMaterializationProcessor) hydrateEntityCatalogMaterialization(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptpkg.SegmentAssetCandidate, error) {
+	if p == nil || p.catalog == nil || !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+		return candidate, nil
+	}
+	if rawID := strings.TrimPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"); rawID != strings.TrimSpace(candidate.AssetID) {
+		if candidateID, err := strconv.ParseInt(rawID, 10, 64); err == nil && candidateID > 0 {
+			materialization, matErr := p.catalog.GetMaterialization(ctx, candidateID)
+			if matErr != nil && !errors.Is(matErr, entitycatalog.ErrCandidateNotFound) {
+				return candidate, matErr
+			}
+			if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
+				return hydrated, nil
+			}
+		}
+	}
+	entityName := strings.TrimSpace(candidate.Entity)
+	if entityName == "" || strings.TrimSpace(candidate.SourceURL) == "" {
+		return candidate, nil
+	}
+	identity, err := entitycatalog.CanonicalizePersonName(entityName)
+	if err != nil {
+		return candidate, nil
+	}
+	rows, err := p.catalog.ListCandidates(ctx, identity.CanonicalEntityID, 100)
+	if err != nil {
+		if errors.Is(err, entitycatalog.ErrEntityNotFound) {
+			return candidate, nil
+		}
+		return candidate, err
+	}
+	for _, row := range rows {
+		if !strings.EqualFold(strings.TrimSpace(row.SourceURL), strings.TrimSpace(candidate.SourceURL)) {
+			continue
+		}
+		materialization, matErr := p.catalog.GetMaterialization(ctx, row.ID)
+		if matErr != nil {
+			return candidate, matErr
+		}
+		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
+			return hydrated, nil
+		}
+	}
+	return candidate, nil
+}
+
+func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ctx context.Context, discovered, persisted scriptpkg.SegmentAssetCandidate) error {
+	if p == nil || p.catalog == nil || !strings.EqualFold(strings.TrimSpace(discovered.Provider), scriptpkg.VidRushProviderInternetImages) {
+		return nil
+	}
+	candidateID, err := entityImageCatalogCandidateID(ctx, p.catalog, discovered)
+	if err != nil || candidateID < 1 || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.FileHash) == "" {
+		return err
+	}
+	now := time.Now().UTC()
+	if err := p.catalog.UpsertMaterialization(ctx, entitycatalog.Materialization{
+		CandidateID: candidateID, AssetID: persisted.AssetID, FileHash: persisted.FileHash,
+		DriveLink: persisted.DriveLink, LocalPath: persisted.LocalPath,
+		Status:         entitycatalog.MaterializationStatusMaterialized,
+		MaterializedAt: now, LastVerifiedAt: now,
+	}); err != nil {
+		return err
+	}
+	return p.catalog.SetCandidateStatus(ctx, candidateID, entitycatalog.CandidateStatusFresh)
+}
+
 // materializeOne materializes one enriched segment: it acquires, verifies and
 // finalizes every candidate through the shared provider registry and common
 // finalizer, applies the generation fallback, and selects the primary video.
@@ -167,12 +240,27 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
 	updated := cloneVidRushSegmentResult(segment)
 	var warnings []string
+	newInternetImageUploads := 0
 	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) []scriptpkg.SegmentAssetCandidate {
 		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 		attempts := make(map[string]int, 3)
 		readyImages := 0
 		for _, candidate := range candidates {
 			isImage := candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration
+			catalogImage := p.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
+				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"))
+			wasReady := readyVidRushCandidate(candidate)
+			if hydrated, hydrationErr := p.hydrateEntityCatalogMaterialization(ctx, candidate); hydrationErr != nil {
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog lookup: %v", hydrationErr))
+			} else {
+				if catalogImage && !wasReady && readyVidRushCandidate(hydrated) &&
+					(strings.TrimSpace(hydrated.DriveLink) != "" || strings.TrimSpace(hydrated.FileHash) != "") {
+					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
+						catalogMetrics.IncEntityImageCatalogDriveReuse()
+					}
+				}
+				candidate = hydrated
+			}
 			if isImage && targetImages > 0 && readyImages >= targetImages {
 				// Keep the remaining remote hits for diagnostics/candidate-set
 				// hashing, but do not download or persist surplus images. This
@@ -230,6 +318,14 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
+			catalogMaterializationStarted := time.Time{}
+			if catalogImage := p.catalog != nil && providerName == scriptpkg.VidRushProviderInternetImages &&
+				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")); catalogImage {
+				if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
+					catalogMetrics.IncEntityImageCatalogNewDownload()
+					catalogMaterializationStarted = time.Now()
+				}
+			}
 			acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
 			var local scriptports.LocalArtifact
 			err = measureVidRushProvider(acquireCtx, p.metrics, kernobs.OperationInfo{
@@ -242,6 +338,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			cancelAcquire()
 			if err != nil {
 				candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
+				if catalogMaterializationStarted.IsZero() == false {
+					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
+						catalogMetrics.IncEntityImageCatalogURLBroken()
+					}
+					observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
+				}
+				if statusErr := setEntityImageCatalogCandidateStatus(ctx, p.catalog, candidate, entitycatalog.CandidateStatusBroken); statusErr != nil {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: mark broken URL: %v", statusErr))
+				}
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: acquire %s for %s: %v", providerName, segment.SegmentID, err))
 				materialized = append(materialized, candidate)
 				continue
@@ -259,6 +364,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			if err != nil {
 				candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 				candidate.VerificationStatus = scriptpkg.VidRushStatusFailed
+				if !catalogMaterializationStarted.IsZero() {
+					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
+						catalogMetrics.IncEntityImageCatalogURLBroken()
+					}
+					observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
+				}
+				if statusErr := setEntityImageCatalogCandidateStatus(ctx, p.catalog, candidate, entitycatalog.CandidateStatusBroken); statusErr != nil {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: mark broken URL: %v", statusErr))
+				}
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: verify %s for %s: %v", providerName, segment.SegmentID, err))
 				materialized = append(materialized, candidate)
 				continue
@@ -274,11 +388,19 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			})
 			if err != nil {
 				verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
+				observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))
 				materialized = append(materialized, verified.Candidate)
 				continue
 			}
 			materialized = append(materialized, persisted)
+			if providerName == scriptpkg.VidRushProviderInternetImages {
+				newInternetImageUploads++
+			}
+			observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
+			if catalogErr := p.persistEntityCatalogMaterialization(ctx, candidate, persisted); catalogErr != nil {
+				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog materialization: %v", catalogErr))
+			}
 			if isImage && readyVidRushCandidate(persisted) {
 				readyImages++
 			}
@@ -359,6 +481,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		)
 	}
 	updated.Assets.CandidateSetHash = candidateSetHash(materialized)
+	// Numeric new-upload counter: 0 when the catalog Drive materialization is
+	// reused, 1 per freshly finalized internet_images candidate otherwise.
+	updated.Cache.InternetImagesNewUploads = newInternetImageUploads
 	return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
 }
 

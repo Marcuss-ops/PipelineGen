@@ -30,6 +30,7 @@ import (
 	"time"
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -123,6 +124,32 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 			zap.Duration("backup_interval", backupInterval))
 	} else {
 		deps.log.Warn("jobs service not available, skipping scheduled maintenance/backup")
+	}
+
+	// PERSON image catalog recertification. The service validates only remote
+	// candidate URLs; it never calls the materializer and therefore cannot
+	// invalidate an already verified Drive asset.
+	if deps.root.Maint != nil && deps.root.Maint.EntityImageRecertification != nil {
+		recertifier := deps.root.Maint.EntityImageRecertification
+		steps = append(steps, StartupStep{
+			Name: "entity-image-catalog-recertification", Required: false,
+			Start: func(startCtx context.Context) error {
+				deps.log.Info("entity image catalog recertification starting")
+				concurrent.SafeGo("entity-image-catalog-recertification", func() {
+					recertifier.Run(startCtx, func(report entitycatalog.RecertificationReport, err error) {
+						if err != nil {
+							deps.log.Warn("entity image catalog recertification failed", zap.Error(err))
+							return
+						}
+						deps.log.Info("entity image catalog recertification completed",
+							zap.Int("selected", report.Selected), zap.Int("succeeded", report.Succeeded),
+							zap.Int("failed", report.Failed))
+					})
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
 	}
 
 	// 4 sweepers — call into lifecycle_sweepers.go helpers per

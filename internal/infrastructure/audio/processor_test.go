@@ -654,3 +654,10 @@ func TestGenerate_RetriesOnEmptyAudio(t *testing.T) {
 		t.Errorf("LocalPath = %q, want %q", result.LocalPath, outFile)
 	}
 }
+
+func TestNewProcessor_DefaultRequestConcurrencyMatchesBenchmark(t *testing.T) {
+	p := NewProcessor(t.TempDir(), zap.NewNop())
+	if got := cap(p.requestSlots); got != 4 {
+		t.Fatalf("default request concurrency = %d, want 4", got)
+	}
+}

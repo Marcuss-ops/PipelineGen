@@ -216,3 +216,47 @@ func TestValidate_SubtitlesMode(t *testing.T) {
 		t.Error("unknown subtitles mode must fail")
 	}
 }
+
+// TestValidate_OverlayLineageAllOrNothing verifies the overlay lineage gate:
+// a final video that declares an overlay must carry the complete chain
+// (render job id + plan fingerprint + render key + source video asset id); a
+// partial reference is rejected — a half-proven composition is never accepted.
+func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
+	full := OverlayRefSpec{
+		RenderJobID:        "render-job-001",
+		PlanFingerprint:    "fp-001",
+		RenderKey:          "key-001",
+		SourceVideoAssetID: "source-video-001",
+	}
+
+	req := &RenderRequest{SourceAssetID: "a", Overlay: &full}
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		t.Fatalf("complete overlay ref must validate: %v", err)
+	}
+
+	// Each missing field independently fails: the lineage is all-or-nothing.
+	for name, missing := range map[string]func(*OverlayRefSpec){
+		"render_job_id":         func(o *OverlayRefSpec) { o.RenderJobID = "" },
+		"plan_fingerprint":      func(o *OverlayRefSpec) { o.PlanFingerprint = "" },
+		"render_key":            func(o *OverlayRefSpec) { o.RenderKey = "" },
+		"source_video_asset_id": func(o *OverlayRefSpec) { o.SourceVideoAssetID = "" },
+	} {
+		partial := full
+		missing(&partial)
+		req := &RenderRequest{SourceAssetID: "a", Overlay: &partial}
+		req.Normalize()
+		if err := req.Validate(); err == nil {
+			t.Errorf("overlay ref missing %s must fail", name)
+		} else if !errors.Is(err, ErrInvalidRequest) {
+			t.Errorf("overlay ref missing %s must wrap ErrInvalidRequest, got %v", name, err)
+		}
+	}
+
+	// A nil overlay (plain subtitles/watermark clip) remains valid.
+	plain := &RenderRequest{SourceAssetID: "a"}
+	plain.Normalize()
+	if err := plain.Validate(); err != nil {
+		t.Errorf("plain clip without overlay must validate: %v", err)
+	}
+}

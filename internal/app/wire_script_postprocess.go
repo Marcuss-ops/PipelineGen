@@ -31,7 +31,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
@@ -252,7 +253,11 @@ func registerScriptPostProcessors(
 	// Register the processor even when concrete dependencies are unavailable:
 	// inactive plans remain compatible, while an active VidRush plan fails
 	// closed at runtime instead of becoming a successful no-op.
-	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache, ppReg.TimingMetrics())) {
+	var entityImageCatalogRepo entitycatalog.Repository
+	if root.Repos != nil {
+		entityImageCatalogRepo = root.Repos.EntityImageCatalog
+	}
+	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, ppReg.TimingMetrics())) {
 		return fmt.Errorf("register vidrush materialization processor: composition bug")
 	}
 	log.Info("VidRushMaterializationProcessor wired through the canonical provider registry")

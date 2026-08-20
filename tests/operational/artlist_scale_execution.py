@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from artlist_scale_reporting import build_summary, emit_summary
+from artlist_scale_reporting import build_per_clip_report, build_summary, emit_summary
 
 
 def execute(runner: Any) -> int:
@@ -14,6 +14,8 @@ def execute(runner: Any) -> int:
     vlm_report: dict[str, Any] = {}
     qdrant_report: dict[str, Any] = {}
     replay_report: dict[str, Any] = {}
+    drive_report: dict[str, Any] = {}
+    per_clip_report: list[dict[str, Any]] = []
     try:
         runner.validate_settings()
         runner.preflight()
@@ -33,11 +35,13 @@ def execute(runner: Any) -> int:
         if not target_ids:
             raise RuntimeError("first phase produced no target clip IDs")
         assets = runner.validate_assets(target_ids)
-        runner.validate_drive(assets)
+        drive_report = runner.validate_drive(assets)
         identity_before = runner.identity_snapshot(assets)
         runner.write_json("sqlite/identity_before.json", identity_before)
         vlm_report = runner.validate_vlm(target_ids)
         qdrant_report = runner.validate_qdrant(target_ids)
+        per_clip_report = build_per_clip_report(first_items, assets, drive_report, qdrant_report)
+        runner.write_json("metrics/per_clip.json", per_clip_report)
         replay_report = runner.replay(target_ids, identity_before)
     except Exception as exc:  # noqa: BLE001 - final operational envelope
         runner.fail(str(exc))
@@ -74,5 +78,6 @@ def execute(runner: Any) -> int:
         qdrant_report=qdrant_report,
         first_items_count=first_items_count,
         assets_per_minute=assets_per_minute,
+        per_clip_report=per_clip_report,
     )
     return emit_summary(runner, summary)

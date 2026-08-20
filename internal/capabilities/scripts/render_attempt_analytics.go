@@ -28,9 +28,19 @@ type RenderAttemptAnalytics struct {
 	// Content census (from the semantic OverlayPlan, never the item list).
 	Content capoverlay.ContentCounts `json:"content"`
 
-	// Render/encode durations (worker-measured wall time in ms).
+	// Render/encode durations (worker-measured wall time in ms). RenderMS is
+	// the actual Chronon render duration and is intentionally separate from
+	// CompletionWaitMS, which is client-side queue observation time.
 	RenderMS int64 `json:"render_ms,omitempty"`
 	EncodeMS int64 `json:"encode_ms,omitempty"`
+
+	// Queue observation metrics. PollingSleepMS is the time spent sleeping
+	// between status polls; with the production 2s cadence it quantifies the
+	// polling-induced latency directly rather than attributing it to Chronon.
+	CompletionWaitMS int64 `json:"completion_wait_ms,omitempty"`
+	PollingSleepMS   int64 `json:"polling_sleep_ms,omitempty"`
+	PollingIntervalMS int64 `json:"polling_interval_ms,omitempty"`
+	PollCount        int   `json:"poll_count,omitempty"`
 
 	// Output metrics (certified artifact facts).
 	Width      int    `json:"width,omitempty"`
@@ -61,10 +71,22 @@ type RenderAttemptRecorder interface {
 // empty artifact (no certified output yet) — the content census is still
 // recorded.
 func BuildRenderAttemptAnalytics(attemptID string, plan capoverlay.OverlayPlan, artifact *RenderArtifact) RenderAttemptAnalytics {
+	return BuildRenderAttemptAnalyticsWithWait(attemptID, plan, artifact, RenderCompletionMetrics{})
+}
+
+// BuildRenderAttemptAnalyticsWithWait projects both independent timing
+// authorities into one analytics record: RenderMS/EncodeMS come from the
+// RenderingGen artifact, while the completion/polling metrics come from the
+// PipelineGen queue observer.
+func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.OverlayPlan, artifact *RenderArtifact, wait RenderCompletionMetrics) RenderAttemptAnalytics {
 	rec := RenderAttemptAnalytics{
-		AttemptID: attemptID,
-		JobID:     plan.PlanID,
-		Content:   capoverlay.CountContent(plan),
+		AttemptID:         attemptID,
+		JobID:             plan.PlanID,
+		Content:           capoverlay.CountContent(plan),
+		CompletionWaitMS:  wait.CompletionWait.Milliseconds(),
+		PollingSleepMS:    wait.PollingSleep.Milliseconds(),
+		PollingIntervalMS: wait.PollInterval.Milliseconds(),
+		PollCount:         wait.PollCount,
 	}
 	if artifact == nil {
 		return rec

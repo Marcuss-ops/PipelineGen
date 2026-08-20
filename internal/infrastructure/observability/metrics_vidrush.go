@@ -17,6 +17,17 @@ var (
 	vidrushBindingsTotal    = prometheus.NewCounter(prometheus.CounterOpts{Name: "vidrush_bindings_total", Help: "VidRush bindings finalized."})
 	vidrushUnresolved       = prometheus.NewCounter(prometheus.CounterOpts{Name: "vidrush_unresolved_segments_total", Help: "VidRush segments without a valid asset."})
 
+	// ── Persistent PERSON entity-image catalog metrics ────────────────
+	// These metrics intentionally have no dynamic labels. Entity names,
+	// URLs and queries belong in structured logs, never in Prometheus labels.
+	entityImageCatalogHits          = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_hits_total", Help: "Persistent PERSON image-catalog lookups with a sufficient usable pool."})
+	entityImageCatalogMisses        = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_misses_total", Help: "Persistent PERSON image-catalog lookups without a sufficient usable pool."})
+	entityImageCatalogRefreshes     = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_refresh_total", Help: "PERSON image-catalog refreshes that call the image provider."})
+	entityImageCatalogBrokenURLs    = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_url_broken_total", Help: "PERSON image-catalog URLs that failed acquisition or verification."})
+	entityImageCatalogProviderCalls = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_provider_calls_total", Help: "External image-provider calls made for PERSON catalog population or refresh."})
+	entityImageCatalogDriveReuses   = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_drive_reuse_total", Help: "PERSON images reused from verified Drive materializations."})
+	entityImageCatalogNewDownloads  = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_new_download_total", Help: "PERSON image downloads performed because no verified Drive materialization was reusable."})
+
 	// ── Performance metrics (VidRush battery, July 2026) ──────────────
 	// Labels are intentionally limited: no job_id, segment_id, asset_id,
 	// query, title, or user_id. Dynamic values stay in structured logs.
@@ -44,6 +55,18 @@ var (
 		Help:    "Duration of provider calls (search, download, etc.).",
 		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
 	}, []string{"provider"})
+
+	entityImageCatalogLookupDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "entity_image_catalog_lookup_seconds",
+		Help:    "Duration of persistent PERSON image-catalog lookups.",
+		Buckets: []float64{0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2},
+	})
+
+	entityImageCatalogMaterializationDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "entity_image_catalog_materialization_seconds",
+		Help:    "Duration of PERSON image acquisition, verification and finalization.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60},
+	})
 
 	vidrushSegmentsPerJob = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "vidrush_segments_per_job",
@@ -130,6 +153,10 @@ func init() {
 		vidrushSegmentsTotal, vidrushExtractionHits, vidrushExtractionMisses,
 		vidrushAssetHits, vidrushAssetMisses, vidrushProviderRequests, vidrushProviderFailures,
 		vidrushBindingsTotal, vidrushUnresolved,
+		entityImageCatalogHits, entityImageCatalogMisses, entityImageCatalogRefreshes,
+		entityImageCatalogBrokenURLs, entityImageCatalogProviderCalls,
+		entityImageCatalogDriveReuses, entityImageCatalogNewDownloads,
+		entityImageCatalogLookupDuration, entityImageCatalogMaterializationDuration,
 		// Performance metrics
 		vidrushJobDuration, vidrushQueueWait, vidrushProcessorDuration,
 		vidrushProviderDuration, vidrushSegmentsPerJob, vidrushCandidatesPerSegment,
@@ -168,6 +195,37 @@ func (*VidRushMetricsAdapter) IncProviderFailure(provider string) {
 }
 func (*VidRushMetricsAdapter) IncBinding()           { vidrushBindingsTotal.Inc() }
 func (*VidRushMetricsAdapter) IncUnresolvedSegment() { vidrushUnresolved.Inc() }
+
+// ── Persistent PERSON entity-image catalog metrics ────────────────────
+
+func (*VidRushMetricsAdapter) IncEntityImageCatalogLookup(hit bool) {
+	if hit {
+		entityImageCatalogHits.Inc()
+		return
+	}
+	entityImageCatalogMisses.Inc()
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogRefresh() {
+	entityImageCatalogRefreshes.Inc()
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogURLBroken() {
+	entityImageCatalogBrokenURLs.Inc()
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogProviderCall() {
+	entityImageCatalogProviderCalls.Inc()
+}
+func (*VidRushMetricsAdapter) ObserveEntityImageCatalogLookup(seconds float64) {
+	entityImageCatalogLookupDuration.Observe(seconds)
+}
+func (*VidRushMetricsAdapter) ObserveEntityImageCatalogMaterialization(seconds float64) {
+	entityImageCatalogMaterializationDuration.Observe(seconds)
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogDriveReuse() {
+	entityImageCatalogDriveReuses.Inc()
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogNewDownload() {
+	entityImageCatalogNewDownloads.Inc()
+}
 
 // ── Performance metric helpers ────────────────────────────────────────
 

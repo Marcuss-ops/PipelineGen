@@ -108,8 +108,29 @@ func buildSegmentCommand(
 		KeepAudio:                      &keepAudio,
 		Strategy:                       req.Strategy,
 		Destination:                    req.Destination,
+		SubtitleFolderID:               subtitleFolderID(req),
+		SubtitleFolderPath:             subtitleFolderPath(req),
+		SubtitlePerClipSubfolders:      subtitlePerClipSubfolders(req),
 		RequireAllLanguagesBeforeVideo: req.RequireAllLanguagesBeforeVideo,
 	}
+}
+
+func subtitleFolderID(req *youtubetypes.ExtractRequest) string {
+	if req == nil || req.SubtitleDestination == nil {
+		return ""
+	}
+	return req.SubtitleDestination.FolderID
+}
+
+func subtitleFolderPath(req *youtubetypes.ExtractRequest) string {
+	if req == nil || req.SubtitleDestination == nil {
+		return ""
+	}
+	return req.SubtitleDestination.FolderPath
+}
+
+func subtitlePerClipSubfolders(req *youtubetypes.ExtractRequest) bool {
+	return req != nil && req.SubtitleDestination != nil && req.SubtitleDestination.PerClipSubfolders
 }
 
 func failedFanOutResult(

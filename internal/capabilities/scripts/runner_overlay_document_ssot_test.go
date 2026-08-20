@@ -18,7 +18,9 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +122,25 @@ func TestOverlayPlan_IsSingleSourceOfTruthForDocumentAndRender(t *testing.T) {
 	for i := range docSpec.Scenes {
 		require.Equal(t, res.Scenes[i].Annotations, docSpec.Scenes[i].Annotations,
 			"scene %q: document annotations diverged from the OverlayPlan source", res.Scenes[i].ID)
+
+		// Structural equality above catches semantic drift. This second
+		// assertion pins the stronger wire contract: the annotation JSON
+		// embedded in the document is byte-identical to the annotation JSON
+		// from which the OverlayPlan was derived.
+		planSourceBytes, err := json.Marshal(res.Scenes[i].Annotations)
+		require.NoError(t, err, "scene %q: marshal OverlayPlan source annotations", res.Scenes[i].ID)
+		documentBytes, err := json.Marshal(docSpec.Scenes[i].Annotations)
+		require.NoError(t, err, "scene %q: marshal document annotations", res.Scenes[i].ID)
+		require.True(t, bytes.Equal(planSourceBytes, documentBytes),
+			"scene %q: document annotation bytes differ from OverlayPlan source", res.Scenes[i].ID)
+
+		// Gate 1 (document live, byte-level): the document's embedded scene
+		// body text must be byte-identical to the text NLP/TTS/overlay
+		// consumed — after the single contract normalization (TrimSpace).
+		// A "contains" or word-count check is not enough: any drift here
+		// means the pipeline worked on a text variant the user never saw.
+		require.Equal(t, strings.TrimSpace(res.Scenes[i].Text["en"]), docSpec.Scenes[i].Text,
+			"scene %q: document body text diverged from the text NLP/TTS/overlay consumed", res.Scenes[i].ID)
 	}
 
 	// ── Document completeness: script text + overlay timing surfaces. ─────

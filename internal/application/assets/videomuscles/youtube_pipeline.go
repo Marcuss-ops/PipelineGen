@@ -35,6 +35,7 @@ type YouTubeCutRequest struct {
 	// the clip is cut locally from this file using ffmpeg -c copy (very fast).
 	// This enables the "download once, cut N times" optimization.
 	PreDownloadedPath string
+	SkipMetadataFetch bool
 }
 
 // Pipeline represents the core video processing muscles.
@@ -137,19 +138,13 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		}
 	}
 
-	// 2. Fetch YouTube metadata FIRST (title, description, tags, language, chapters)
-	//    This runs before the download so metadata is available even if download partially fails.
-	meta, metaErr := p.ytdlp.GetVideoMetadata(ctx, req.URL)
-	if metaErr != nil {
-		p.log.Warn("failed to fetch YouTube metadata, continuing without it",
-			zap.String("url", req.URL),
-			zap.Error(metaErr))
-	} else {
-		p.log.Info("fetched YouTube metadata",
-			zap.String("title", meta.Title),
-			zap.Int("tags", len(meta.Tags)),
-			zap.String("language", meta.Language),
-			zap.Int("chapters", len(meta.Chapters)))
+	// 2. Metadata is optional for explicit clip extraction: the segment payload
+	// already carries summary/topics/speakers and the canonical asset builder
+	// persists them. Avoid putting a second yt-dlp subprocess on the critical
+	// path when the caller explicitly opted out.
+	var meta *downloader.YouTubeMetadata
+	if !req.SkipMetadataFetch {
+		meta, _ = p.ytdlp.GetVideoMetadata(ctx, req.URL)
 	}
 
 	// 3. Get the raw video file — either from a pre-downloaded source or via yt-dlp

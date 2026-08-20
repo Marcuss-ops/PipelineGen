@@ -403,3 +403,59 @@ func TestBuildGenerateRequest_NoTimingStaysNil(t *testing.T) {
 		t.Fatalf("absent timing must stay nil, got %+v", got.Timing)
 	}
 }
+
+// TestBuildGenerateRequest_FinalPayloadEnablesNLPAndVeloxRender certifies the
+// final generation envelope used by the combined test: entity extraction is
+// explicitly enabled for the NLP/overlay path, while video reconstruction is
+// explicitly enabled on the independent output.render path.
+func TestBuildGenerateRequest_FinalPayloadEnablesNLPAndVeloxRender(t *testing.T) {
+	const raw = `{
+		"version": 2,
+		"items": [{
+			"id": "michael-jordan-overlay-cert",
+			"title": "Michael Jordan overlay certification",
+			"language": "en",
+			"source": {"type": "text", "source_text": "Michael Jordan worked with Nike in Chicago."},
+			"output": {
+				"extract_entities": true,
+				"render": {
+					"enabled": true,
+					"watermark": {"enabled": true, "asset_id": "wm-cert"},
+					"subtitles": {"enabled": true, "mode": "burn", "style_id": "shorts-v1"}
+				}
+			}
+		}]
+	}`
+
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatalf("decode final payload: %v", err)
+	}
+	if len(env.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(env.Items))
+	}
+	item := env.Items[0]
+	if item.Output.ExtractEntities != scriptpkg.ToggleEnabled {
+		t.Fatalf("output.extract_entities = %q, want enabled after boolean true decode", item.Output.ExtractEntities)
+	}
+	if !item.Output.Render.Enabled {
+		t.Fatal("output.render.enabled must be true in the final payload")
+	}
+
+	got, err := BuildGenerateRequest(&env, "michael-jordan-overlay-cert-key")
+	if err != nil {
+		t.Fatalf("build final payload: %v", err)
+	}
+	if got.ExtractEntities != scriptpkg.ToggleEnabled || got.EntityExtractionDisabled() {
+		t.Fatalf("NLP path lost extract_entities=true: %q", got.ExtractEntities)
+	}
+	if !got.Render.Enabled {
+		t.Fatalf("VeloxEditing path lost output.render.enabled=true: %+v", got.Render)
+	}
+	if got.Render.Watermark == nil || !got.Render.Watermark.Enabled || got.Render.Watermark.AssetID != "wm-cert" {
+		t.Fatalf("render watermark contract not propagated: %+v", got.Render.Watermark)
+	}
+	if got.Render.Subtitles == nil || !got.Render.Subtitles.Enabled || got.Render.Subtitles.Mode != "burn" {
+		t.Fatalf("render subtitles contract not propagated: %+v", got.Render.Subtitles)
+	}
+}

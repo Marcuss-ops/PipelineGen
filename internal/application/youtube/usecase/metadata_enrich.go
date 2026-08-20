@@ -79,8 +79,8 @@ var skipMetadataKeysForSearchText = map[string]struct{}{
 // semantic search across multiple languages and conceptual queries.
 //
 // RESILIENCE: If meta is nil (e.g., yt-dlp failed during extraction), this
-// function falls back to fetching YouTube metadata directly via the
-// metaFetcher port.
+// function builds search metadata from the caller-provided clip fields and
+// transcript. It does not start a second yt-dlp subprocess on this path.
 func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.DownloaderMetadata, force bool) {
 	if s.clips == nil {
 		return
@@ -100,19 +100,6 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 	if meta != nil {
 		ym = meta
 		s.log.Debug("enriching with pre-fetched metadata", zap.String("clip_id", clipID))
-	} else if s.metaFetcher != nil {
-		videoURL := buildVideoURL(clipID, existing)
-		if videoURL != "" {
-			s.log.Info("fetching YouTube metadata directly for enrichment",
-				zap.String("clip_id", clipID), zap.String("url", videoURL))
-			fetchedMeta, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
-			if err == nil && fetchedMeta != nil {
-				ym = fetchedMeta
-			} else {
-				s.log.Warn("failed to fetch YouTube metadata for enrichment",
-					zap.String("clip_id", clipID), zap.Error(err))
-			}
-		}
 	}
 
 	if ym == nil {

@@ -143,10 +143,15 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 		req.Limit = 50
 	}
 
+	mode := artapp.ResolveSearchMode(req.Mode, req.PreferRemote)
+	if mode == artapp.SearchModeCatalogOnly && p.cfg.ServerURL == "" {
+		return nil, fmt.Errorf("%w: catalog_only requires the Node catalog server", artapp.ErrUnavailable)
+	}
+
 	if p.cfg.ServerURL != "" {
-		resp, err := p.searchViaServer(ctx, term, req.Limit, req.ForceRefresh)
+		resp, err := p.searchViaServer(ctx, term, req.Limit, req.ForceRefresh, mode, req.PreferRemote)
 		if err != nil {
-			if errors.Is(err, artapp.ErrTransportFallback) {
+			if errors.Is(err, artapp.ErrTransportFallback) && mode != artapp.SearchModeCatalogOnly {
 				if p.log != nil {
 					p.log.Warn("artlist scraper server unreachable, falling back to exec",
 						zap.String("url", p.cfg.ServerURL), zap.Error(err))
@@ -184,7 +189,7 @@ func (p *Provider) acquireSearchSlot(ctx context.Context) (func(), error) {
 	}
 }
 
-func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, forceRefresh bool) (*Response, error) {
+func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, forceRefresh bool, requestedMode artapp.SearchMode, preferRemote bool) (*Response, error) {
 	type searchReq struct {
 		Query        string         `json:"query"`
 		Term         string         `json:"term"`
@@ -192,7 +197,9 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, 
 		Limit        int            `json:"limit"`
 		Filters      map[string]any `json:"filters"`
 		ForceRefresh bool           `json:"force_refresh"`
+		Mode         string         `json:"mode"`
 	}
+	mode := artapp.ResolveSearchMode(requestedMode, preferRemote)
 	body, err := json.Marshal(searchReq{
 		Query:        term,
 		Term:         term,
@@ -200,6 +207,7 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, 
 		Limit:        limit,
 		Filters:      map[string]any{},
 		ForceRefresh: forceRefresh,
+		Mode:         string(mode),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("artlist server: marshal request: %w", err)

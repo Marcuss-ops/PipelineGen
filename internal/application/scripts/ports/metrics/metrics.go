@@ -150,6 +150,22 @@ type VidRushMetrics interface {
 	IncUnresolvedSegment()
 }
 
+// EntityImageCatalogMetrics is the optional observability extension for the
+// persistent PERSON image catalog. It is deliberately separate from
+// VidRushMetrics so existing lightweight metrics fakes remain source
+// compatible. Implementations must keep identifiers, URLs and queries out of
+// metric labels; those values belong in structured logs.
+type EntityImageCatalogMetrics interface {
+	IncEntityImageCatalogLookup(hit bool)
+	IncEntityImageCatalogRefresh()
+	IncEntityImageCatalogURLBroken()
+	IncEntityImageCatalogProviderCall()
+	ObserveEntityImageCatalogLookup(seconds float64)
+	ObserveEntityImageCatalogMaterialization(seconds float64)
+	IncEntityImageCatalogDriveReuse()
+	IncEntityImageCatalogNewDownload()
+}
+
 // NormalizeTargetLang applies the canonical godlike/07
 // NO-FAKE-AVAILABILITY cardinality guard to a target language
 // string before it reaches the Prometheus target_lang label. The

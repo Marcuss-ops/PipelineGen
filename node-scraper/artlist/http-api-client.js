@@ -4,6 +4,10 @@ import { normalizeArtlistClip, findLargestClipArray } from './normalize.js';
 
 const endpointState = new Map();
 const GRAPHQL_PAGE_SIZE = 50;
+const DEFAULT_MAX_CATALOG_PAGES = 20_000;
+const DEFAULT_MAX_INCREMENTAL_PAGES = 2_000;
+const DEFAULT_KNOWN_STREAK = 50;
+const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
 
 const CLIP_LIST_QUERY = `
 query ClipList($filterCategories: [Int!], $searchTerms: [String], $sortType: Int, $queryType: Int, $page: Int, $durationMin: Int, $durationMax: Int, $orientation: ClipOrientation, $frameRate: ClipFPS, $includeAIContent: Boolean) {
@@ -24,6 +28,8 @@ query ClipList($filterCategories: [Int!], $searchTerms: [String], $sortType: Int
 
 function buildRequestBody(endpoint, term, page, limit, filters) {
   if (endpoint.kind === 'graphql') {
+    const normalizedTerm = String(term ?? '').trim();
+    const searchTerms = normalizedTerm ? [normalizedTerm] : []; 
     const visitorId = crypto.randomUUID();
     return {
       operationName: endpoint.operationName || 'ClipList',
@@ -32,7 +38,7 @@ function buildRequestBody(endpoint, term, page, limit, filters) {
         page,
         queryType: 1,
         filterCategories: [],
-        searchTerms: [term],
+        searchTerms,
         sortType: filters.sortType ?? 1,
         includeAIContent: filters.includeAIContent ?? true,
         ...(filters.orientation ? { orientation: filters.orientation } : {}),
@@ -68,7 +74,7 @@ async function cookieHeader(cookieFile) {
  * uses an endpoint explicitly supplied by the operator in the registry.
  */
 export class ArtlistHttpApiClient {
-  constructor({ endpoint, logger = console, cookieFile = process.env.ARTLIST_COOKIE_FILE || '', ratePerSecond = 2, circuitCooldownMs = 60_000 }) {
+  constructor({ endpoint, logger = console, cookieFile = process.env.ARTLIST_COOKIE_FILE || '', ratePerSecond = 2, circuitCooldownMs = 60_000, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
     this.endpoint = endpoint;
     this.logger = logger;
     this.cookieFile = cookieFile;
@@ -77,6 +83,7 @@ export class ArtlistHttpApiClient {
     this.state = endpointState.get(endpoint.url) || { nextRequestAt: 0, circuitOpenUntil: 0 };
     endpointState.set(endpoint.url, this.state);
     this.circuitCooldownMs = circuitCooldownMs;
+    this.requestTimeoutMs = Math.max(1_000, Number(requestTimeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   async acquireToken() {
@@ -133,7 +140,20 @@ export class ArtlistHttpApiClient {
       headers['content-type'] ||= 'application/json';
       init.body = JSON.stringify(body);
     }
-    const response = await fetch(endpoint.url, init);
+    let response;
+    try {
+      response = await fetch(endpoint.url, {
+        ...init,
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      });
+    } catch (error) {
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        const timeoutError = new Error(`Artlist HTTP API request timed out after ${this.requestTimeoutMs}ms`);
+        timeoutError.code = 'ARTLIST_API_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    }
     const text = await response.text();
     let data;
     try { data = JSON.parse(text); } catch { data = null; }
@@ -156,6 +176,12 @@ export class ArtlistHttpApiClient {
       throw error;
     }
     this.resetCircuit();
+    if (Array.isArray(data?.errors) && data.errors.length > 0) {
+      const error = new Error(`Artlist GraphQL returned ${data.errors.length} error(s)`);
+      error.code = 'ARTLIST_GRAPHQL_ERROR';
+      error.graphqlErrors = data.errors.slice(0, 5);
+      throw error;
+    }
     const clipList = data?.data?.clipList;
     const total = Number(clipList?.totalExact);
     return {
@@ -170,42 +196,262 @@ export class ArtlistHttpApiClient {
     };
   }
 
-  // Fetches the complete provider result set with bounded parallelism after
-  // the first page establishes the authoritative total. Each page retains
-  // its own timings so callers can distinguish network, normalization and
-  // persistence costs.
-  async searchAllPages({ term, filters = {}, concurrency = 4, maxPages = 100 }) {
+  // Fetches newest pages in provider order until a safety streak of clips
+  // already present in the local catalog is reached. This must remain
+  // sequential: fetching pages concurrently could cross the stop boundary.
+  async searchNewestUntilKnown({
+    term = '',
+    filters = {},
+    isKnown = null,
+    knownClipIds = [],
+    knownStreak = DEFAULT_KNOWN_STREAK,
+    maxPages = DEFAULT_MAX_INCREMENTAL_PAGES,
+    onPage = null,
+    collectPages = false,
+  } = {}) {
     const startedAt = Date.now();
-    const firstStartedAt = Date.now();
+    const normalizedTerm = String(term ?? '').trim();
+    const threshold = Math.max(1, Number(knownStreak) || DEFAULT_KNOWN_STREAK);
+    const requestedMaxPages = Math.max(1, Number(maxPages) || DEFAULT_MAX_INCREMENTAL_PAGES);
+    const knownSeed = new Set((Array.isArray(knownClipIds) ? knownClipIds : [knownClipIds])
+      .map((id) => String(id || '').trim()).filter(Boolean));
+    const currentSeen = new Set();
+    const knownSeen = new Set();
+    const newSeen = new Set();
+    const pages = [];
+    let rawResults = 0;
+    let duplicates = 0;
+    let pageRequestMs = 0;
+    let normalizeMs = 0;
+    let knownStreakCount = 0;
+    let fetchedPages = 0;
+    let stopReason = 'max_pages';
+    let providerTotal = null;
+
     const fetchPage = async (page) => {
       let lastError;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
-          return await this.searchFootage({ term, page, limit: 50, filters });
+          return await this.searchFootage({ term: normalizedTerm, page, limit: GRAPHQL_PAGE_SIZE, filters });
         } catch (error) {
           lastError = error;
-          const transient = error?.status === 429 || error?.status >= 500 || error?.code === 'ARTLIST_RATE_LIMITED';
+          error.page = page;
+          const transient = error?.status === 429
+            || error?.status >= 500
+            || error?.code === 'ARTLIST_RATE_LIMITED'
+            || error?.code === 'ARTLIST_API_TIMEOUT'
+            || error?.code === 'ECONNRESET';
           if (!transient || attempt === 3) throw error;
           await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
         }
       }
       throw lastError;
     };
+
+    for (let pageNumber = 1; pageNumber <= requestedMaxPages; pageNumber += 1) {
+      const requestStartedAt = Date.now();
+      const response = await fetchPage(pageNumber);
+      const requestMs = Date.now() - requestStartedAt;
+      const normalizeStartedAt = Date.now();
+      const clips = extractHttpClips(response.data);
+      fetchedPages += 1;
+      const pageNormalizeMs = Date.now() - normalizeStartedAt;
+      pageRequestMs += requestMs;
+      normalizeMs += pageNormalizeMs;
+      providerTotal ??= Number.isFinite(Number(response.pagination?.total))
+        ? Number(response.pagination.total)
+        : null;
+
+      if (clips.length === 0) {
+        stopReason = 'provider_empty';
+        break;
+      }
+
+      let pageKnownIds;
+      try {
+        pageKnownIds = typeof isKnown === 'function'
+          ? await isKnown(clips, pageNumber)
+          : knownSeed;
+      } catch (error) {
+        error.page = pageNumber;
+        throw error;
+      }
+      const pageKnown = new Set((Array.isArray(pageKnownIds) ? pageKnownIds : [...(pageKnownIds || [])])
+        .map((id) => String(id || '').trim()).filter(Boolean));
+      rawResults += clips.length;
+
+      for (const clip of clips) {
+        const clipId = String(clip.clip_id || '').trim();
+        if (!clipId) continue;
+        const isProviderKnown = pageKnown.has(clipId) || knownSeed.has(clipId);
+        if (isProviderKnown) {
+          knownSeen.add(clipId);
+          knownStreakCount += 1;
+        } else {
+          newSeen.add(clipId);
+          knownStreakCount = 0;
+        }
+        if (currentSeen.has(clipId)) duplicates += 1;
+        currentSeen.add(clipId);
+      }
+
+      const normalizedPage = {
+        page: pageNumber,
+        response,
+        clips,
+        known_clip_ids: [...pageKnown],
+        timings: { request_ms: requestMs, normalize_ms: pageNormalizeMs },
+      };
+      try {
+        if (typeof onPage === 'function') await onPage(normalizedPage);
+      } catch (error) {
+        error.page = pageNumber;
+        throw error;
+      }
+      if (collectPages) pages.push(normalizedPage);
+
+      if (knownStreakCount >= threshold) {
+        stopReason = 'known_streak';
+        break;
+      }
+    }
+
+    return {
+      pages,
+      clips: collectPages ? pages.flatMap((page) => page.clips) : [],
+      query: normalizedTerm,
+      total: providerTotal,
+      page_count: fetchedPages,
+      pages_fetched: fetchedPages,
+      raw_results: rawResults,
+      unique_clip_ids: currentSeen.size,
+      new_clip_ids: newSeen.size,
+      known_clip_ids: knownSeen.size,
+      duplicates,
+      known_streak: knownStreakCount,
+      stopped_on_known: stopReason === 'known_streak',
+      stop_reason: stopReason,
+      timings: {
+        total_ms: Date.now() - startedAt,
+        page_request_ms: pageRequestMs,
+        normalize_ms: normalizeMs,
+      },
+    };
+  }
+
+  // Fetches the complete provider result set with bounded parallelism after
+  // the first page establishes the authoritative total. Each page retains
+  // its own timings so callers can distinguish network, normalization and
+  // persistence costs.
+  async searchAllPages({
+    term = '',
+    filters = {},
+    concurrency = 4,
+    maxPages = DEFAULT_MAX_CATALOG_PAGES,
+    resumeFromPage = 1,
+    onPage = null,
+    collectPages = !onPage,
+  }) {
+    const startedAt = Date.now();
+    const normalizedTerm = String(term ?? '').trim();
+    const pageSize = GRAPHQL_PAGE_SIZE;
+    const requestedMaxPages = Number.isFinite(Number(maxPages)) ? Number(maxPages) : DEFAULT_MAX_CATALOG_PAGES;
+    const requestedResumePage = Math.max(1, Number(resumeFromPage) || 1);
+    const fetchPage = async (page) => {
+      let lastError;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          return await this.searchFootage({ term: normalizedTerm, page, limit: pageSize, filters });
+        } catch (error) {
+          lastError = error;
+          error.page = page;
+          const transient = error?.status === 429
+            || error?.status >= 500
+            || error?.code === 'ARTLIST_RATE_LIMITED'
+            || error?.code === 'ARTLIST_API_TIMEOUT'
+            || error?.code === 'ECONNRESET';
+          if (!transient || attempt === 3) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
+        }
+      }
+      throw lastError;
+    };
+
+    const firstStartedAt = Date.now();
     const first = await fetchPage(1);
     const firstRequestMs = Date.now() - firstStartedAt;
-    const total = Number(first.pagination?.total || 0);
-    const pageCount = Math.min(maxPages, total > 0 ? Math.ceil(total / GRAPHQL_PAGE_SIZE) : 1);
-    const firstNormalizeStartedAt = Date.now();
-    const firstClips = extractHttpClips(first.data);
-    const firstNormalizeMs = Date.now() - firstNormalizeStartedAt;
-    const pages = [{
-      page: 1,
-      response: first,
-      clips: firstClips,
-      timings: { request_ms: firstRequestMs, normalize_ms: firstNormalizeMs },
-    }];
+    const total = Number(first.pagination?.total);
+    if (!Number.isFinite(total) || total < 0) {
+      const error = new Error('Artlist provider did not return a valid totalExact for catalog sync');
+      error.code = 'ARTLIST_INVALID_PROVIDER_TOTAL';
+      throw error;
+    }
+
+    const pageCount = Math.max(1, total > 0 ? Math.ceil(total / pageSize) : 1);
+    if (pageCount > requestedMaxPages) {
+      const error = new Error(`Artlist catalog requires ${pageCount} pages, exceeding maxPages=${requestedMaxPages}`);
+      error.code = 'ARTLIST_MAX_PAGES_EXCEEDED';
+      error.providerTotal = total;
+      error.pageCount = pageCount;
+      throw error;
+    }
+
+    const normalizePage = (page, requestMs) => {
+      const normalizeStartedAt = Date.now();
+      const clips = extractHttpClips(page.response.data);
+      const normalizeMs = Date.now() - normalizeStartedAt;
+      if (page.page < pageCount && clips.length === 0) {
+        const error = new Error(`Artlist returned an empty page ${page.page} before the expected final page ${pageCount}`);
+        error.code = 'ARTLIST_EMPTY_PAGE';
+        error.page = page.page;
+        throw error;
+      }
+      return {
+        page: page.page,
+        response: page.response,
+        clips,
+        timings: { request_ms: requestMs, normalize_ms: normalizeMs },
+      };
+    };
+
+    const pages = collectPages ? [] : [];
+    const collectedClips = [];
+    let uniqueClipCount = 0;
+    const seen = new Set();
+    let rawResults = 0;
+    let duplicates = 0;
+    let pageRequestMs = 0;
+    let normalizeMs = 0;
+    const processPage = async (page) => {
+      rawResults += page.clips.length;
+      pageRequestMs += page.timings.request_ms || 0;
+      normalizeMs += page.timings.normalize_ms || 0;
+      for (const clip of page.clips) {
+        const key = String(clip.clip_id || '').trim();
+        if (!key) continue;
+        if (seen.has(key)) {
+          duplicates += 1;
+          continue;
+        }
+        seen.add(key);
+        uniqueClipCount += 1;
+        if (collectPages) collectedClips.push(clip);
+      }
+      if (collectPages) pages.push(page);
+      if (typeof onPage === 'function') await onPage(page);
+    };
+
+    const firstPage = normalizePage({ page: 1, response: first }, firstRequestMs);
+    if (requestedResumePage <= 1) {
+      try {
+        await processPage(firstPage);
+      } catch (error) {
+        error.page = 1;
+        throw error;
+      }
+    }
     const pending = [];
-    for (let page = 2; page <= pageCount; page += 1) pending.push(page);
+    for (let page = Math.max(2, requestedResumePage); page <= pageCount; page += 1) pending.push(page);
     const workerCount = Math.max(1, Math.min(Number(concurrency) || 4, pending.length || 1));
     let cursor = 0;
     const worker = async () => {
@@ -213,39 +459,35 @@ export class ArtlistHttpApiClient {
         const page = pending[cursor++];
         const pageStartedAt = Date.now();
         const response = await fetchPage(page);
-        const requestMs = Date.now() - pageStartedAt;
-        const normalizeStartedAt = Date.now();
-        const clips = extractHttpClips(response.data);
-        const normalizeMs = Date.now() - normalizeStartedAt;
-        pages.push({ page, response, clips, timings: { request_ms: requestMs, normalize_ms: normalizeMs } });
+        const normalizedPage = normalizePage({ page, response }, Date.now() - pageStartedAt);
+        try {
+          await processPage(normalizedPage);
+        } catch (error) {
+          error.page = page;
+          throw error;
+        }
       }
     };
     await Promise.all(Array.from({ length: workerCount }, worker));
-    pages.sort((left, right) => left.page - right.page);
-    const seen = new Set();
-    const clips = [];
-    for (const page of pages) {
-      for (const clip of page.clips) {
-        const key = clip.clip_id || clip.clip_page_url || clip.preview_url;
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        clips.push(clip);
-      }
-    }
+
+    if (collectPages) pages.sort((left, right) => left.page - right.page);
     return {
       pages,
-      clips,
+      clips: collectedClips,
+      query: normalizedTerm,
       total,
       page_count: pageCount,
-      raw_results: pages.reduce((sum, page) => sum + page.clips.length, 0),
-      unique_clip_ids: clips.length,
-      missing: Math.max(0, total - clips.length),
-      duplicates: Math.max(0, pages.reduce((sum, page) => sum + page.clips.length, 0) - clips.length),
+      resume_from_page: requestedResumePage,
+      raw_results: rawResults,
+      unique_clip_ids: uniqueClipCount,
+      missing: Math.max(0, total - uniqueClipCount),
+      duplicates,
+      complete: uniqueClipCount === total,
       timings: {
         total_ms: Date.now() - startedAt,
         first_request_ms: firstRequestMs,
-        page_request_ms: pages.reduce((sum, page) => sum + (page.timings.request_ms || 0), 0),
-        normalize_ms: pages.reduce((sum, page) => sum + (page.timings.normalize_ms || 0), 0),
+        page_request_ms: pageRequestMs,
+        normalize_ms: normalizeMs,
         max_concurrency: workerCount,
       },
     };

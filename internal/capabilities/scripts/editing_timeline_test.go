@@ -239,6 +239,110 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 	}
 }
 
+// TestEditingTimeline_OverlaySpansCarryFullLineage certifies Gate 7's
+// artifact lineage: the editing timeline's overlay span must carry the
+// overlay.render job id, the frozen plan fingerprint, the item render key and
+// the source video asset id, so downstream editing can prove the final video
+// contains exactly this overlay (render job → plan version → item → source
+// video → Drive artifact) without re-deriving anything.
+func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
+	plan := &capabilityoverlay.OverlayPlan{
+		SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+		PlanID:        "test-plan",
+		VideoID:       "source-video-asset-001",
+		Width:         1920,
+		Height:        1080,
+		FPS:           30,
+		MediaContract: "overlay-v1",
+		Items: []capabilityoverlay.OverlayItem{
+			{
+				ID:         "overlay-scene-01-tom-hanks",
+				SceneID:    "scene-01",
+				Kind:       "entity_card",
+				TemplateID: "person_default",
+				Text:       "Tom Hanks",
+				StartMs:    3240,
+				EndMs:      5100,
+			},
+		},
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("seal plan: %v", err)
+	}
+
+	intent := capabilityoverlay.OverlayIntent{
+		Version:     capabilityoverlay.OverlayIntentVersion,
+		IntentID:    "intent-scene-01-tom-hanks",
+		SceneID:     "scene-01",
+		SceneIndex:  0,
+		Entity:      capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+		Source:      capabilityoverlay.IntentSourceEntity,
+		Kind:        "entity_card",
+		TemplateID:  "person_default",
+		TimingState: capabilityoverlay.TimingStatePending,
+	}
+
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
+		},
+		FinalAudio: &FinalAudioReference{
+			AssetID:          "final-audio-001",
+			FinalAudioSHA256: "abc123",
+			DurationUS:       15000000,
+			DurationMS:       15000,
+		},
+		OverlayPlan:    plan,
+		OverlayIntents: []capabilityoverlay.OverlayIntent{intent},
+		OverlayRender: &RenderReference{
+			JobID:  "render-job-001",
+			Status: "COMPLETED",
+			Artifact: &RenderArtifact{
+				SHA256:      "overlay-sha256",
+				DriveLink:   "https://drive.google.com/file/d/overlay",
+				DriveFileID: "drive-overlay-1",
+			},
+		},
+	}
+
+	et, err := BuildEditingTimeline(result)
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline failed: %v", err)
+	}
+	if len(et.Overlays) != 1 {
+		t.Fatalf("expected 1 overlay, got %d", len(et.Overlays))
+	}
+	ov := et.Overlays[0]
+	if ov.RenderJobID != "render-job-001" {
+		t.Errorf("overlay render_job_id = %q, want render-job-001", ov.RenderJobID)
+	}
+	if ov.PlanFingerprint == "" || ov.PlanFingerprint != plan.Fingerprint {
+		t.Errorf("overlay plan_fingerprint = %q, want plan fingerprint %q", ov.PlanFingerprint, plan.Fingerprint)
+	}
+	if ov.RenderKey == "" || ov.RenderKey != plan.Items[0].RenderKey {
+		t.Errorf("overlay render_key = %q, want item render key %q", ov.RenderKey, plan.Items[0].RenderKey)
+	}
+	if ov.SourceVideoAssetID != "source-video-asset-001" {
+		t.Errorf("overlay source_video_asset_id = %q, want source-video-asset-001", ov.SourceVideoAssetID)
+	}
+	if ov.IntentID != intent.IntentID {
+		t.Errorf("overlay intent_id = %q, want %q", ov.IntentID, intent.IntentID)
+	}
+	if ov.IntentFingerprint == "" || ov.IntentFingerprint != intent.Fingerprint() {
+		t.Errorf("overlay intent_fingerprint = %q, want %q", ov.IntentFingerprint, intent.Fingerprint())
+	}
+	if ov.SceneID != "scene-01" || ov.ArtifactID != "overlay-scene-01-tom-hanks" {
+		t.Errorf("overlay scene/artifact lineage = %q/%q", ov.SceneID, ov.ArtifactID)
+	}
+	if ov.SHA256 != "overlay-sha256" || ov.DriveLink != "https://drive.google.com/file/d/overlay" {
+		t.Errorf("overlay Drive identity = %q/%q", ov.SHA256, ov.DriveLink)
+	}
+}
+
 func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{

@@ -80,6 +80,27 @@ func TestChunkedTTSProviderParallelismAndMergeOrder(t *testing.T) {
 	}
 }
 
+func TestChunkedTTSProviderKeepsConfiguredConcurrencyImmutable(t *testing.T) {
+	provider := &recordingTTS{delay: 5 * time.Millisecond}
+	merger := &recordingMerger{}
+	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 4}
+
+	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
+		// Three chunks exercise the per-request cap without requiring the
+		// provider to rewrite its shared configured concurrency.
+		Text: strings.Repeat("parola ", 801), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chunker.concurrency != 4 {
+		t.Fatalf("configured concurrency=%d want=4", chunker.concurrency)
+	}
+	if provider.maxActive != 3 {
+		t.Fatalf("max parallelism=%d want=3 chunks", provider.maxActive)
+	}
+}
+
 func TestChunkedTTSProviderFailureDoesNotMerge(t *testing.T) {
 	provider := &recordingTTS{failChunk: 2}
 	merger := &recordingMerger{}
