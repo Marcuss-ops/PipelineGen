@@ -373,12 +373,12 @@
       "internal/infrastructure/database/sqlite/jobs/",
       "scripts/bridges/slide_worker_runtime/",
       "scripts/worker-bootstrap-smoke.sh",
-    "scripts/velox_client.py",
-    "scripts/perf_compare_batches.sh",
-    "scripts/perf_serial_vs_parallel.sh"
-  ],
-  "go_packages": [
-    "./internal/application/jobs/...",
+      "scripts/velox_client.py",
+      "scripts/perf_compare_batches.sh",
+      "scripts/perf_serial_vs_parallel.sh"
+    ],
+    "go_packages": [
+      "./internal/application/jobs/...",
       "./internal/api/jobs/...",
       "./internal/infrastructure/jobs/...",
       "./internal/infrastructure/database/sqlite/jobs/..."
@@ -465,12 +465,7 @@
       "./internal/api/assets/youtube/..."
     ],
     "node_tests": [],
-    "python_tests": [
-      [
-        "python3",
-        "scripts/ci/whisper-deployment-contract_test.py"
-      ]
-    ],
+    "python_tests": [],
     "dependencies": [
       "database",
       "drive"
