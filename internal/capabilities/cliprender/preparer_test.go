@@ -322,9 +322,9 @@ func TestPrepare_ContractResolved(t *testing.T) {
 	p := newTestPreparer(resolver, mat, tr)
 
 	req := baseRenderRequest()
-	req.Output.Width = 1080
-	req.Output.Height = 1920
-	req.Output.FPSNum = 60
+	req.Output.Width = 1920
+	req.Output.Height = 1080
+	req.Output.FPSNum = 24
 	req.Output.FPSDen = 1
 
 	prepared, err := p.Prepare(context.Background(), req, "run-1")
@@ -335,7 +335,7 @@ func TestPrepare_ContractResolved(t *testing.T) {
 	if c == nil {
 		t.Fatal("expected resolved contract")
 	}
-	if c.ContractID != OutputContractVeloxEditingClipV1 || c.Width != 1080 || c.Height != 1920 || c.FPSNum != 60 || c.FPSDen != 1 {
+	if c.ContractID != OutputContractVeloxEditingClipV1 || c.Width != 1920 || c.Height != 1080 || c.FPSNum != 24 || c.FPSDen != 1 {
 		t.Fatalf("unexpected contract: %+v", c)
 	}
 	if c.VideoCodec != "h264" || c.PixelFormat != "yuv420p" || c.AudioCodec != "aac" {

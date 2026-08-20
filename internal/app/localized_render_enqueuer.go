@@ -180,7 +180,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if clipID == "" {
 		clipID = assetID
 	}
-	_, err := a.svc.Localize(ctx, LocalizeInput{
+	res, err := a.svc.Localize(ctx, LocalizeInput{
 		AssetID:           assetID,
 		JobID:             in.RunID,
 		SceneID:           in.SceneID,
@@ -202,6 +202,27 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	})
 	if err != nil {
 		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, targetLang, err)
+	}
+	// Project the certified produced videos back to the runner so the final
+	// MP4 (asset id, sha256, Drive link) is recorded on the run result — a
+	// video that was rendered and uploaded must never be orphaned from the
+	// run that produced it. Fail-closed: a sink error fails the enqueue.
+	if in.OnRendered != nil {
+		for _, artifact := range res.Artifacts {
+			if err := in.OnRendered(scriptgeneration.LocalizedRenderResult{
+				SceneID:     artifact.SceneID,
+				Language:    scriptgeneration.Language(artifact.Language),
+				ClipID:      artifact.ClipID,
+				AssetID:     artifact.AssetID,
+				SHA256:      artifact.SHA256,
+				DriveFileID: artifact.DriveFileID,
+				DriveLink:   artifact.DriveLink,
+				DurationMS:  artifact.DurationMS,
+				Status:      string(artifact.Status),
+			}); err != nil {
+				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, targetLang, err)
+			}
+		}
 	}
 	return nil
 }
@@ -318,8 +339,16 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 		log.Warn("wireScriptFlow: localized render fan-out not wired (localization service unavailable)", zap.Error(err))
 		return
 	}
-	resolver := &clipRenderAssetResolver{assets: root.Repos.Assets}
-	materializer := &clipRenderMaterializer{drive: root.Drive.Reader, scratchDir: filepath.Join(cfg.Storage.TempPath(), "localization")}
+	resolver, resolverErr := newClipRenderAssetResolver(root.Repos.Assets, log)
+	if resolverErr != nil {
+		log.Warn("wireScriptFlow: localized render fan-out not wired (asset resolver unavailable)", zap.Error(resolverErr))
+		return
+	}
+	materializer, materializerErr := newClipRenderMaterializer(root.Drive.Reader, filepath.Join(cfg.Storage.TempPath(), "localization"), log)
+	if materializerErr != nil {
+		log.Warn("wireScriptFlow: localized render fan-out not wired (asset materializer unavailable)", zap.Error(materializerErr))
+		return
+	}
 	adapter := newLocalizedRenderEnqueuerAdapter(svc, root.Repos.TextTrackRepo, root.Domains.CueWriter, LocalizedRenderEnqueuerConfig{
 		SourceLanguage: LocalizationConfigFromConfig(cfg).SourceLanguage,
 		FolderID:       cfg.Drive.ClipsFolder(),

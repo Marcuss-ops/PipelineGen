@@ -102,10 +102,15 @@ type ResolvedContract struct {
 // accumulated duration; WallMS is the same value for a phase that ran
 // isolated, and the Preparer's aggregate compares total wall vs accumulated
 // work to expose the parallelism win.
+//
+// Notes are optional observability hints emitted by the phase (cache hits,
+// downloaded bytes, probe facts). They flow through the same tracker so
+// downstream logging can render them without re-running the phase.
 type PhaseTiming struct {
-	Phase  string `json:"phase"`
-	WallMS int64  `json:"wall_ms"`
-	WorkMS int64  `json:"work_ms"`
+	Phase  string         `json:"phase"`
+	WallMS int64          `json:"wall_ms"`
+	WorkMS int64          `json:"work_ms"`
+	Notes  map[string]any `json:"notes,omitempty"`
 }
 
 // PreparationTimings is the canonical observability projection of the

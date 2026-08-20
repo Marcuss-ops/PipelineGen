@@ -17,7 +17,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
@@ -35,12 +37,14 @@ var ErrInvalidJobPayload = errors.New("clip.render: invalid job payload")
 // the Preparer and bound to the Master via
 // job.Service.RegisterHandler(TypeClipRender, job.HandlerFunc(worker.Handle)).
 type Worker struct {
-	preparer     *Preparer
-	workspaceDir string
-	subtitles    SubtitleCompiler // optional until the ASS-compiler step wires it
-	renderer     RenderExecutor   // optional until the render-phase step consumes it
-	publisher    RenderPublisher  // optional in unit tests; required by production wiring
-	log          *zap.Logger
+	preparer          *Preparer
+	workspaceDir      string
+	subtitles         SubtitleCompiler       // optional until the ASS-compiler step wires it
+	renderer          RenderExecutor         // optional until the render-phase step consumes it
+	publisher         RenderPublisher        // optional in unit tests; required by production wiring
+	overlayResolver   OverlaySegmentResolver // optional until overlay compositing is wired
+	overlayCompositor OverlayCompositor      // optional until overlay compositing is wired
+	log               *zap.Logger
 }
 
 // NewWorker constructs the canonical worker. Fail-closed: preparer and log
@@ -87,12 +91,42 @@ func (w *Worker) WithRenderPublisher(p RenderPublisher) *Worker {
 	return w
 }
 
+// WithOverlaySegmentResolver attaches the overlay.render artifact resolver
+// (render_job_id → materialized segment). Optional: when the request
+// declares no overlay no resolver is needed; when an overlay IS declared and
+// no resolver is wired, the worker fails closed with a typed error — a
+// phantom segment is never composited.
+func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
+	if w != nil {
+		w.overlayResolver = r
+	}
+	return w
+}
+
+// WithOverlayCompositor attaches the overlay compositing pass that blends
+// the segment onto the source at the declared window. Optional: a request
+// without an overlay skips compositing; an overlay declared without a wired
+// compositor fails closed — the final video never claims an overlay it does
+// not actually carry in its pixels.
+func (w *Worker) WithOverlayCompositor(c OverlayCompositor) *Worker {
+	if w != nil {
+		w.overlayCompositor = c
+	}
+	return w
+}
+
 // Handle is the job.Handler-shaped entry point bound to the Master.
 func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (job.Result, error) {
 	progress := safeProgress(tools)
 	emit := safeEvent(tools)
 
 	progress(0, "clip.render started")
+	jobStart := time.Now()
+	w.log.Info("clip.render.job.phase",
+		zap.String("subsystem", "clip_render_worker"),
+		zap.String("phase", "start"),
+		zap.String("job_id", j.ID),
+	)
 
 	var req RenderRequest
 	if err := json.Unmarshal(j.Payload, &req); err != nil {
@@ -104,8 +138,15 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	w.log.Info("clip.render.job.start",
+		zap.String("subsystem", "clip_render_worker"),
 		zap.String("job_id", j.ID),
 		zap.String("source_asset_id", req.SourceAssetID),
+		zap.String("destination_folder_id", req.Destination.DriveFolderID),
+		zap.Bool("subtitles_enabled", req.Subtitles.Enabled),
+		zap.Bool("watermark_requested", req.Watermark != nil),
+		zap.Bool("background_mode", req.Background.Mode != ""),
+		zap.Bool("overlay_requested", req.Overlay != nil),
+		zap.Bool("require_gpu", req.Execution.RequireGPU),
 	)
 	progress(10, "request validated; running parallel preparation")
 
@@ -125,6 +166,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 
 	// ── ASS artifact (subtitles enabled) ────────────────────────────────
 	runDir := filepath.Join(w.workspaceDir, "runs", j.ID)
+	// The run directory is a worker invariant, not an optional side effect of
+	// subtitle compilation. A render without subtitles still needs a stable
+	// output root for the sealed plan and Chronon assets.
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return nil, fmt.Errorf("clip.render: create run directory: %w", err)
+	}
 	var subtitleArtifact *SubtitleArtifact
 	if req.Subtitles.Enabled {
 		if w.subtitles == nil {
@@ -153,12 +200,18 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	// ── Seal the fully-resolved plan ───────────────────────────────────
+	var watermarkSpec *WatermarkSpec
+	var watermarkText string
+	if req.Watermark != nil && req.Watermark.Enabled {
+		watermarkSpec = req.Watermark
+		watermarkText = req.Watermark.Text
+	}
 	plan, err := Compile(CompileInput{
 		RunID:          j.ID,
 		Source:         prepared.Source,
 		Watermark:      prepared.Watermark,
-		WatermarkSpec:  req.Watermark,
-		WatermarkText:  req.Watermark.Text,
+		WatermarkSpec:  watermarkSpec,
+		WatermarkText:  watermarkText,
 		Background:     prepared.Background,
 		BackgroundMode: req.Background.Mode,
 		Subtitles:      subtitleArtifact,
@@ -181,7 +234,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"background":   plan.Background.Mode,
 	})
 	if w.renderer == nil {
-		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
+		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil, nil)
 		result["phase"] = "plan_sealed"
 		return result, fmt.Errorf(
 			"%w: job_id=%s source_asset_id=%s plan_sha256=%s",
@@ -189,10 +242,34 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}
 
 	progress(90, "plan sealed; rendering with Rust")
+	renderStart := time.Now()
+	w.log.Info("clip.render.job.phase",
+		zap.String("subsystem", "clip_render_worker"),
+		zap.String("phase", "render_start"),
+		zap.String("job_id", j.ID),
+		zap.String("plan_sha256", plan.PlanSHA256),
+		zap.String("output_path", plan.OutputPath),
+	)
 	outcome, err := w.renderer.Render(ctx, plan)
+	renderMS := time.Since(renderStart).Milliseconds()
 	if err != nil {
+		w.log.Error("clip.render.job.render_failed",
+			zap.String("job_id", j.ID),
+			zap.Int64("duration_ms", renderMS),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("clip.render: render plan: %w", err)
 	}
+	w.log.Info("clip.render.job.phase",
+		zap.String("subsystem", "clip_render_worker"),
+		zap.String("phase", "render_done"),
+		zap.String("job_id", j.ID),
+		zap.String("backend", string(outcome.Backend)),
+		zap.Int64("duration_ms", renderMS),
+		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
+		zap.Int64("size_bytes", outcome.SizeBytes),
+		zap.String("output_path", outcome.OutputPath),
+	)
 	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
@@ -201,6 +278,66 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative && outcome.Backend != BackendChrononVulkan {
 		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (cuda_native required)", outcome.Backend)
 	}
+
+	// ── Overlay compositing (entity overlays) ───────────────────────────
+	// When the request declares an overlay, the final video must contain
+	// THAT overlay in its pixels: resolve the rendered segment from the
+	// declared render_job_id, then blend it onto the source at the declared
+	// [start_us, end_us) window. Fail-closed: an overlay declared without a
+	// wired resolver/compositor, an unresolvable segment, or a failed blend
+	// is a typed error — the published video never claims an overlay it does
+	// not carry.
+	publishPath := outcome.OutputPath
+	var composite *OverlayCompositeResult
+	if req.Overlay != nil {
+		if w.overlayResolver == nil {
+			return nil, fmt.Errorf("clip.render: overlay declared but no OverlaySegmentResolver is wired (compositing step not configured)")
+		}
+		if w.overlayCompositor == nil {
+			return nil, fmt.Errorf("clip.render: overlay declared but no OverlayCompositor is wired (compositing step not configured)")
+		}
+		segment, err := w.overlayResolver.Resolve(ctx, OverlayResolveInput{
+			RenderJobID: req.Overlay.RenderJobID,
+			RenderKey:   req.Overlay.RenderKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: resolve overlay segment: %w", err)
+		}
+		if segment == nil || segment.LocalPath == "" || segment.SHA256 == "" {
+			return nil, fmt.Errorf("clip.render: overlay resolver returned an invalid segment")
+		}
+		emit("clip.render.overlay.segment_resolved", "overlay segment resolved", map[string]any{
+			"render_job_id": req.Overlay.RenderJobID,
+			"render_key":    req.Overlay.RenderKey,
+			"path":          segment.LocalPath,
+			"sha256":        segment.SHA256,
+		})
+		composite, err = w.overlayCompositor.Composite(ctx, OverlayCompositeInput{
+			RunID:      j.ID,
+			SourcePath: outcome.OutputPath,
+			Segment:    segment,
+			StartUS:    req.Overlay.StartUS,
+			EndUS:      req.Overlay.EndUS,
+			OutputPath: filepath.Join(runDir, "composited-clip.mp4"),
+			Width:      int(prepared.Contract.Width),
+			Height:     int(prepared.Contract.Height),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: composite overlay: %w", err)
+		}
+		if composite == nil || composite.OutputPath == "" || composite.SHA256 == "" {
+			return nil, fmt.Errorf("clip.render: overlay compositor returned an invalid result")
+		}
+		publishPath = composite.OutputPath
+		emit("clip.render.overlay.composited", "overlay composited onto source", map[string]any{
+			"output_path":  composite.OutputPath,
+			"sha256":       composite.SHA256,
+			"composite_ms": composite.CompositeMS,
+			"start_us":     req.Overlay.StartUS,
+			"end_us":       req.Overlay.EndUS,
+		})
+	}
+
 	if w.publisher == nil {
 		// Rendering and publication are separate boundaries. A local render
 		// executor may be used by benchmarks and preparation tests without a
@@ -212,18 +349,19 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			"backend": outcome.Backend,
 		})
 		progress(100, "clip.render completed")
-		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, nil), nil
+		return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, nil), nil
 	}
 	publication, err := w.publisher.Publish(ctx, RenderPublishInput{
 		RunID:         j.ID,
 		SourceAssetID: req.SourceAssetID,
-		OutputPath:    outcome.OutputPath,
+		OutputPath:    publishPath,
 		Outcome:       outcome,
 		Contract:      prepared.Contract,
 		Transcript:    prepared.Transcript,
 		Subtitles:     subtitleArtifact,
 		DriveFolderID: req.Destination.DriveFolderID,
 	})
+	publishMS := time.Since(renderStart).Milliseconds() - renderMS
 	if err != nil {
 		return nil, fmt.Errorf("clip.render: publish result: %w", err)
 	}
@@ -237,15 +375,31 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		"ffmpeg_ms":    outcome.FFmpegMS,
 		"backend":      outcome.Backend,
 	})
+	totalMS := time.Since(jobStart).Milliseconds()
+	w.log.Info("clip.render.job.completed",
+		zap.String("subsystem", "clip_render_worker"),
+		zap.String("job_id", j.ID),
+		zap.String("source_asset_id", req.SourceAssetID),
+		zap.String("asset_id", publication.AssetID),
+		zap.String("drive_file_id", publication.DriveFileID),
+		zap.String("drive_link", publication.DriveLink),
+		zap.String("backend", string(outcome.Backend)),
+		zap.Int64("total_ms", totalMS),
+		zap.Int64("render_ms", renderMS),
+		zap.Int64("publish_ms", publishMS),
+		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
+		zap.Int64("size_bytes", outcome.SizeBytes),
+	)
 	progress(100, "clip.render completed")
 
-	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, publication), nil
+	return renderedResult(j, &req, prepared, plan, subtitleArtifact, outcome, composite, publication), nil
 }
 
 // renderedResult projects the *Prepared + sealed plan + render outcome +
-// published derived asset into the canonical job result map. Only JSON-safe
-// values — the result envelope is persisted by the Master.
-func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, published *RenderPublishResult) job.Result {
+// composited overlay (when declared) + published derived asset into the
+// canonical job result map. Only JSON-safe values — the result envelope is
+// persisted by the Master.
+func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, composite *OverlayCompositeResult, published *RenderPublishResult) job.Result {
 	result := job.Result{
 		"job_id":          j.ID,
 		"source_asset_id": req.SourceAssetID,
@@ -328,12 +482,21 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		}
 	}
 	if req.Overlay != nil {
-		result["overlay"] = map[string]any{
+		overlayBlock := map[string]any{
 			"render_job_id":         req.Overlay.RenderJobID,
 			"plan_fingerprint":      req.Overlay.PlanFingerprint,
 			"render_key":            req.Overlay.RenderKey,
 			"source_video_asset_id": req.Overlay.SourceVideoAssetID,
+			"start_us":              req.Overlay.StartUS,
+			"end_us":                req.Overlay.EndUS,
 		}
+		if composite != nil {
+			overlayBlock["composited"] = true
+			overlayBlock["output_path"] = composite.OutputPath
+			overlayBlock["sha256"] = composite.SHA256
+			overlayBlock["composite_ms"] = composite.CompositeMS
+		}
+		result["overlay"] = overlayBlock
 	}
 	if published != nil {
 		result["asset"] = map[string]any{

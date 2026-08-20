@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -129,7 +131,7 @@ func TestLocalizationRenderPlanExecutor_ExecutesViaClipRender(t *testing.T) {
 	plan := appTestRenderPlan(t, srcPath, srcSHA, outPath)
 	subtitle := appTestSubtitle(t)
 	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: outPath, SizeBytes: info.Size(), DurationSec: 8.432}}
-	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{Width: 1920, Height: 1080, FPS: 30})
+	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{Width: 1920, Height: 1080, FPS: 30}, zap.NewNop())
 
 	facts, err := adapter.Execute(context.Background(), plan, subtitle)
 	if err != nil {
@@ -177,7 +179,7 @@ func TestLocalizationRenderPlanExecutor_NilSubtitleSkipsBurn(t *testing.T) {
 
 	plan := appTestRenderPlan(t, srcPath, srcSHA, outPath)
 	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: outPath, SizeBytes: info.Size(), DurationSec: 10}}
-	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{}, zap.NewNop())
 
 	if _, err := adapter.Execute(context.Background(), plan, nil); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -195,7 +197,7 @@ func TestLocalizationRenderPlanExecutor_RejectsInvalidPlan(t *testing.T) {
 	plan := appTestRenderPlan(t, srcPath, srcSHA, filepath.Join(dir, "out.mp4"))
 	plan.PlanSHA256 = strings.Repeat("e", 64) // tamper
 
-	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{}, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{}, mediaexec.VideoProfile{}, zap.NewNop())
 	if _, err := adapter.Execute(context.Background(), plan, nil); err == nil {
 		t.Fatal("Execute must reject a drifted render plan")
 	}
@@ -208,7 +210,7 @@ func TestLocalizationRenderPlanExecutor_RejectsIncompleteSubtitle(t *testing.T) 
 	srcSHA, _ := files.SHA256File(srcPath)
 	plan := appTestRenderPlan(t, srcPath, srcSHA, filepath.Join(dir, "out.mp4"))
 
-	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{}, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{}, mediaexec.VideoProfile{}, zap.NewNop())
 	if _, err := adapter.Execute(context.Background(), plan, &localization.SubtitleAsset{LocalPath: "/x.ass"}); err == nil {
 		t.Fatal("Execute must reject an incomplete subtitle ASS")
 	}
@@ -221,7 +223,7 @@ func TestLocalizationRenderPlanExecutor_PropagatesRenderError(t *testing.T) {
 	srcSHA, _ := files.SHA256File(srcPath)
 	plan := appTestRenderPlan(t, srcPath, srcSHA, filepath.Join(dir, "out.mp4"))
 
-	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{err: errors.New("rust down")}, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{err: errors.New("rust down")}, mediaexec.VideoProfile{}, zap.NewNop())
 	if _, err := adapter.Execute(context.Background(), plan, nil); err == nil {
 		t.Fatal("Execute must propagate a render error")
 	}
@@ -234,14 +236,14 @@ func TestLocalizationRenderPlanExecutor_RejectsEmptyOutcome(t *testing.T) {
 	srcSHA, _ := files.SHA256File(srcPath)
 	plan := appTestRenderPlan(t, srcPath, srcSHA, filepath.Join(dir, "out.mp4"))
 
-	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: ""}}, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(&fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: ""}}, mediaexec.VideoProfile{}, zap.NewNop())
 	if _, err := adapter.Execute(context.Background(), plan, nil); err == nil {
 		t.Fatal("Execute must reject an empty render outcome")
 	}
 }
 
 func TestLocalizationRenderPlanExecutor_NilRendererFailsClosed(t *testing.T) {
-	adapter := newLocalizationRenderPlanExecutor(nil, mediaexec.VideoProfile{})
+	adapter := newLocalizationRenderPlanExecutor(nil, mediaexec.VideoProfile{}, zap.NewNop())
 	if _, err := adapter.Execute(context.Background(), render.RenderPlan{}, nil); err == nil {
 		t.Fatal("Execute must fail closed on an unwired renderer")
 	}

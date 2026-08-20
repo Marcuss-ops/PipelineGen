@@ -186,6 +186,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			TranslationMetrics: streamTranslationMetrics,
 			AudioMetrics:       streamAudioMetrics,
 		}
+		// Merge the certified produced videos the streaming fan-out
+		// accumulated (the coordinator has no result pointer of its own) so
+		// the run result records the final MP4s it rendered.
+		if ready != nil {
+			result.LocalizedRenders = append(result.LocalizedRenders, ready.renderedVideos()...)
+		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {
 			if err := r.emitSceneCommits(ctx, runID, req, exec, scenes); err != nil {

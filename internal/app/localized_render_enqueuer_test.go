@@ -19,9 +19,10 @@ import (
 
 // recordingLocalizer records every LocalizeInput and returns a canned result.
 type recordingLocalizer struct {
-	mu  sync.Mutex
-	got []LocalizeInput
-	err error
+	mu     sync.Mutex
+	got    []LocalizeInput
+	err    error
+	result *localization.LocalizeResult
 }
 
 func (l *recordingLocalizer) Localize(_ context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
@@ -31,6 +32,9 @@ func (l *recordingLocalizer) Localize(_ context.Context, in LocalizeInput) (*loc
 		return nil, l.err
 	}
 	l.got = append(l.got, in)
+	if l.result != nil {
+		return l.result, nil
+	}
 	return &localization.LocalizeResult{}, nil
 }
 
@@ -231,6 +235,45 @@ func TestLocalizedRenderEnqueuer_PersistsSourceTrackForSameLanguage(t *testing.T
 	}
 }
 
+// TestLocalizedRenderEnqueuer_SameLanguageUsesCanonicalText pins the exact
+// clips-source failure: a run with language == source language (en→en) whose
+// narration lives in the canonical `Text` slot (LLM-generated scene text) and
+// whose SourceText is empty. The old persistTracks required sourceLang !=
+// targetLang on BOTH branches, so it persisted zero tracks and failed with
+// "no text to persist" — blocking the final video before any render. The
+// source track must fall back to `Text` for the source language.
+func TestLocalizedRenderEnqueuer_SameLanguageUsesCanonicalText(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+
+	in := testEnqueuerInput()
+	in.Language = "en"
+	in.SourceLanguage = "en"
+	in.Text = "Michael Jordan signed a major partnership with Nike."
+	in.SourceText = ""
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender must succeed for same-language clips text: %v", err)
+	}
+
+	tracks := tr.snapshot()
+	if len(tracks) != 1 || tracks[0].LanguageCode != "en" || tracks[0].TextContent != in.Text {
+		t.Fatalf("same-language source track must fall back to Text: %+v", tracks)
+	}
+	if !tracks[0].IsOriginal || tracks[0].Status != asset.TextTrackReady {
+		t.Fatalf("same-language source track must be a READY original transcript: %+v", tracks[0])
+	}
+	byLang := cw.last("clip-1")
+	if len(byLang["en"]) != 1 || byLang["en"][0].Text != in.Text {
+		t.Fatalf("same-language cue must use Text: %+v", byLang["en"])
+	}
+	// The fan-out must still reach Rust: Localize is called exactly once.
+	if len(l.snapshot()) != 1 {
+		t.Fatalf("Localize calls: got %d, want 1 (the render must proceed)", len(l.snapshot()))
+	}
+}
+
 func TestLocalizedRenderEnqueuer_PersistsFullSpanCues(t *testing.T) {
 	l := &recordingLocalizer{}
 	tr := &recordingTrackRepo{}
@@ -328,4 +371,74 @@ func keys(m map[string][]asset.TimedCue) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestLocalizedRenderEnqueuer_ReportsProducedVideo certifies that the adapter
+// projects the certified uploaded video artifact of a successful fan-out back
+// to the runner via OnRendered — the final MP4 (asset id, sha256, Drive link)
+// is never orphaned from the run that produced it.
+func TestLocalizedRenderEnqueuer_ReportsProducedVideo(t *testing.T) {
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{
+			{
+				SceneID:     "scene-1",
+				Language:    "es",
+				ClipID:      "clip-1",
+				AssetID:     "vid-123",
+				SHA256:      "deadbeef",
+				DriveFileID: "drive-abc",
+				DriveLink:   "https://drive.google.com/file/d/drive-abc/view",
+				DurationMS:  6500,
+				Status:      localization.LocalizedClipUploaded,
+			},
+		},
+	}}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+
+	var got scriptgeneration.LocalizedRenderResult
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		got = rendered
+		return nil
+	}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+
+	if got.AssetID != "vid-123" || got.SHA256 != "deadbeef" {
+		t.Fatalf("projected video identity = %+v", got)
+	}
+	if got.SceneID != "scene-1" || got.Language != "es" || got.ClipID != "clip-1" {
+		t.Fatalf("projected video correlation = %+v", got)
+	}
+	if got.DriveFileID != "drive-abc" || got.DriveLink != "https://drive.google.com/file/d/drive-abc/view" {
+		t.Fatalf("projected video drive identity = %+v", got)
+	}
+	if got.DurationMS != 6500 || got.Status != string(localization.LocalizedClipUploaded) {
+		t.Fatalf("projected video facts = %+v", got)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_ReportSinkErrorFailsClosed certifies that an
+// OnRendered error fails the enqueue — a failed recording is never a silent
+// success (the run must not claim a rendered video it failed to record).
+func TestLocalizedRenderEnqueuer_ReportSinkErrorFailsClosed(t *testing.T) {
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{
+			{SceneID: "scene-1", Language: "es", AssetID: "vid-123", Status: localization.LocalizedClipUploaded},
+		},
+	}}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		return errors.New("recording failed")
+	}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
+		t.Fatal("must fail closed when the video recording sink errors")
+	}
 }

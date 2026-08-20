@@ -31,6 +31,12 @@ type sceneReadyCoordinator struct {
 	started    time.Time
 	transCalls int
 	ttsCalls   int
+
+	// rendered accumulates the certified produced videos of the localized
+	// render fan-out fired from this coordinator's scene workers. The runner
+	// merges them into the run result once the stream joins (the coordinator
+	// has no result pointer of its own).
+	rendered []LocalizedRenderResult
 }
 
 func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
@@ -192,6 +198,16 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			ClipSHA256:     clipSHA256,
 			ClipDurationMS: clipDurationMS,
 			Render:         c.req.Render,
+			// Record the produced video the moment the fan-out certifies it
+			// (streaming path). The coordinator has no result pointer of its
+			// own, so it accumulates the certified videos here and the runner
+			// merges them into the run result once the stream joins.
+			OnRendered: func(rendered LocalizedRenderResult) error {
+				c.mu.Lock()
+				c.rendered = append(c.rendered, rendered)
+				c.mu.Unlock()
+				return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+			},
 		}); err != nil {
 			return Scene{}, fmt.Errorf("localized render scene %s lang %s: %w", out.ID, lang, err)
 		}
@@ -240,4 +256,14 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 		voiceover.Calls = int64(c.ttsCalls)
 	}
 	return ordered, &TranslationPipelineMetrics{Calls: int(translation.Calls), Concurrency: c.runner.translationConcurrency, WallMS: translation.WallMs}, &AudioPipelineMetrics{TTSCalls: int(voiceover.Calls), TTSMS: voiceover.TotalMs}, nil
+}
+
+// renderedVideos returns the certified produced videos accumulated from the
+// streaming fan-out, in submission order. The runner merges them into the run
+// result once the stream joins so the produced MP4s are never orphaned from
+// the run that produced them.
+func (c *sceneReadyCoordinator) renderedVideos() []LocalizedRenderResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]LocalizedRenderResult(nil), c.rendered...)
 }

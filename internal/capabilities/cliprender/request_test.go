@@ -152,22 +152,33 @@ func TestValidate_TextWatermarkContract(t *testing.T) {
 // TestValidate_OutputContract verifies output resolution/fps bounds.
 func TestValidate_OutputContract(t *testing.T) {
 	// out-of-range dimensions fail.
-	req := &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 8, Height: 1920, FPSNum: 60, FPSDen: 1}}
+	req := &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 8, Height: 1080, FPSNum: 24, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("width below MinDimension must fail")
 	}
 	// out-of-range fps fails.
-	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPSNum: 1000, FPSDen: 1}}
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1920, Height: 1080, FPSNum: 1000, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("fps above MaxFPS must fail")
 	}
 	// valid passes.
-	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1080, Height: 1920, FPSNum: 60, FPSDen: 1}}
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1}}
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		t.Errorf("valid output must validate: %v", err)
+	}
+	// Portrait and square outputs are intentionally removed from the
+	// YouTube clip contract.
+	for _, geometry := range [][2]int{{1080, 1920}, {1080, 1080}} {
+		req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{
+			Width: geometry[0], Height: geometry[1], FPSNum: 24, FPSDen: 1,
+		}}
+		req.Normalize()
+		if err := req.Validate(); err == nil {
+			t.Errorf("vertical/square geometry %dx%d must be rejected", geometry[0], geometry[1])
+		}
 	}
 }
 
@@ -219,14 +230,17 @@ func TestValidate_SubtitlesMode(t *testing.T) {
 
 // TestValidate_OverlayLineageAllOrNothing verifies the overlay lineage gate:
 // a final video that declares an overlay must carry the complete chain
-// (render job id + plan fingerprint + render key + source video asset id); a
-// partial reference is rejected — a half-proven composition is never accepted.
+// (render job id + plan fingerprint + render key + source video asset id +
+// the declared compositing window); a partial reference is rejected — a
+// half-proven composition is never accepted.
 func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 	full := OverlayRefSpec{
 		RenderJobID:        "render-job-001",
 		PlanFingerprint:    "fp-001",
 		RenderKey:          "key-001",
 		SourceVideoAssetID: "source-video-001",
+		StartUS:            50000,
+		EndUS:              950000,
 	}
 
 	req := &RenderRequest{SourceAssetID: "a", Overlay: &full}
@@ -236,11 +250,14 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 	}
 
 	// Each missing field independently fails: the lineage is all-or-nothing.
+	// start_us=0 is a legitimate window (overlay at t=0) so it is NOT in the
+	// missing set — only the window sanity gate (end_us > start_us) applies.
 	for name, missing := range map[string]func(*OverlayRefSpec){
 		"render_job_id":         func(o *OverlayRefSpec) { o.RenderJobID = "" },
 		"plan_fingerprint":      func(o *OverlayRefSpec) { o.PlanFingerprint = "" },
 		"render_key":            func(o *OverlayRefSpec) { o.RenderKey = "" },
 		"source_video_asset_id": func(o *OverlayRefSpec) { o.SourceVideoAssetID = "" },
+		"end_us":                func(o *OverlayRefSpec) { o.EndUS = 0 },
 	} {
 		partial := full
 		missing(&partial)
@@ -251,6 +268,26 @@ func TestValidate_OverlayLineageAllOrNothing(t *testing.T) {
 		} else if !errors.Is(err, ErrInvalidRequest) {
 			t.Errorf("overlay ref missing %s must wrap ErrInvalidRequest, got %v", name, err)
 		}
+	}
+
+	// An invalid window (end <= start) is rejected: an untimed blend is
+	// never composited.
+	badWindow := full
+	badWindow.StartUS = 950000
+	badWindow.EndUS = 50000
+	reqBad := &RenderRequest{SourceAssetID: "a", Overlay: &badWindow}
+	reqBad.Normalize()
+	if err := reqBad.Validate(); err == nil {
+		t.Error("overlay ref with end_us <= start_us must fail")
+	}
+
+	// A negative start is rejected: compositing windows start at t>=0.
+	negStart := full
+	negStart.StartUS = -1
+	reqNeg := &RenderRequest{SourceAssetID: "a", Overlay: &negStart}
+	reqNeg.Normalize()
+	if err := reqNeg.Validate(); err == nil {
+		t.Error("overlay ref with negative start_us must fail")
 	}
 
 	// A nil overlay (plain subtitles/watermark clip) remains valid.

@@ -251,12 +251,18 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	// Source resolution: reuse the SAME asset registry + materializer + probe
 	// adapters the clip.render preparation phase uses (no second path).
 	scratchDir := filepath.Join(cfg.Storage.TempPath(), "localization")
-	resolver := &clipRenderAssetResolver{assets: root.Repos.Assets}
+	resolver, resolverErr := newClipRenderAssetResolver(root.Repos.Assets, log)
+	if resolverErr != nil {
+		return nil, fmt.Errorf("localization service: build asset resolver: %w", resolverErr)
+	}
 	var driveReader drive.Reader
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer := &clipRenderMaterializer{drive: driveReader, scratchDir: scratchDir}
+	materializer, materializerErr := newClipRenderMaterializer(driveReader, scratchDir, log)
+	if materializerErr != nil {
+		return nil, fmt.Errorf("localization service: build asset materializer: %w", materializerErr)
+	}
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	sources := newLocalizationSourceResolver(resolver, materializer, prober)
 
@@ -269,7 +275,7 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	// that every other render flows through.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	executor := newLocalizationRenderPlanExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer}, root.MediaExec.Profile)
+	executor := newLocalizationRenderPlanExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer}, root.MediaExec.Profile, log)
 
 	uploader := &localizationDriveUploader{publisher: root.Drive.Publisher}
 	docPublisher := &localizationDocPublisher{doc: root.Drive.DocClient}

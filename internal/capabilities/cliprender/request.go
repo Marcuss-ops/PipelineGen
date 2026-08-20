@@ -66,13 +66,13 @@ const (
 	PositionBottomLeft  = "bottom_left"
 	PositionBottomRight = "bottom_right"
 
-	// Output defaults for the Shorts/vertical use case. Framerate is a
+	// Output defaults for the horizontal YouTube use case. Framerate is a
 	// rational num/den pair so NTSC rates (30000/1001 = 29.97) survive the
 	// contract exactly instead of being rounded/forced to an integer.
 	DefaultLanguage = "en"
-	DefaultWidth    = 1080
-	DefaultHeight   = 1920
-	DefaultFPSNum   = 60
+	DefaultWidth    = 1920
+	DefaultHeight   = 1080
+	DefaultFPSNum   = 24
 	DefaultFPSDen   = 1
 
 	// Bounds.
@@ -129,9 +129,9 @@ type SubtitlesSpec struct {
 // (follow-up step); the request only selects it + resolution/fps.
 type OutputSpec struct {
 	Contract string `json:"contract,omitempty"` // default velox-editing-clip-v1
-	Width    int    `json:"width,omitempty"`    // default 1080
-	Height   int    `json:"height,omitempty"`   // default 1920
-	FPSNum   int    `json:"fps_num,omitempty"`  // default 60
+	Width    int    `json:"width,omitempty"`    // default 1920 (YouTube horizontal)
+	Height   int    `json:"height,omitempty"`   // default 1080 (YouTube horizontal)
+	FPSNum   int    `json:"fps_num,omitempty"`  // default 24
 	FPSDen   int    `json:"fps_den,omitempty"`  // default 1
 }
 
@@ -157,10 +157,12 @@ type ExecutionSpec struct {
 
 // OverlayRefSpec carries the artifact lineage of the overlay the final video
 // composites: the overlay.render queue job id, the frozen OverlayPlan
-// fingerprint, the item render key, and the source video asset the overlay
-// was rendered over. It is the join that proves "this final video contains
-// THAT overlay" — the final video asset record carries the same identity the
-// OverlayPlan / EditingOverlaySpan declared, never a re-derived reference.
+// fingerprint, the item render key, the source video asset the overlay
+// was rendered over, and the declared compositing window (start_us/end_us)
+// on the final timeline. It is the join that proves "this final video
+// contains THAT overlay" — the final video asset record carries the same
+// identity the OverlayPlan / EditingOverlaySpan declared, never a re-derived
+// reference.
 //
 // Omitted (nil) means the final video carries no entity overlay (a plain
 // subtitles/watermark clip). When present, every field is required: a
@@ -177,6 +179,13 @@ type OverlayRefSpec struct {
 	// SourceVideoAssetID is the video asset the overlay is composited over
 	// (the OverlayPlan's VideoID).
 	SourceVideoAssetID string `json:"source_video_asset_id"`
+	// StartUS is the declared compositing window start on the final video
+	// timeline (integer microseconds, the EditingOverlaySpan.StartUS the
+	// request was built from).
+	StartUS int64 `json:"start_us"`
+	// EndUS is the declared compositing window end on the final video
+	// timeline (integer microseconds, the EditingOverlaySpan.EndUS).
+	EndUS int64 `json:"end_us"`
 }
 
 // RenderRequest is the canonical clip.render wire payload. It is both
@@ -331,6 +340,9 @@ func (r *RenderRequest) Validate() error {
 	if r.Output.Height < MinDimension || r.Output.Height > MaxDimension {
 		return fmt.Errorf("%w: output.height must be within [%d,%d] (got %d)", ErrInvalidRequest, MinDimension, MaxDimension, r.Output.Height)
 	}
+	if r.Output.Width <= r.Output.Height {
+		return fmt.Errorf("%w: vertical output is disabled; YouTube clips must be horizontal (width %d must be greater than height %d)", ErrInvalidRequest, r.Output.Width, r.Output.Height)
+	}
 	if r.Output.FPSNum <= 0 || r.Output.FPSDen <= 0 {
 		return fmt.Errorf("%w: output.fps_num/fps_den must be positive (got %d/%d)", ErrInvalidRequest, r.Output.FPSNum, r.Output.FPSDen)
 	}
@@ -351,14 +363,18 @@ func (r *RenderRequest) Validate() error {
 
 	// Overlay lineage is all-or-nothing: a final video that declares an
 	// overlay must carry the complete chain (render job id + plan
-	// fingerprint + render key + source video asset id) so the composition
-	// is provable, never a bare "an overlay was here".
+	// fingerprint + render key + source video asset id + the declared
+	// compositing window) so the composition is provable, never a bare "an
+	// overlay was here" and never an untimed blend.
 	if r.Overlay != nil {
 		if strings.TrimSpace(r.Overlay.RenderJobID) == "" ||
 			strings.TrimSpace(r.Overlay.PlanFingerprint) == "" ||
 			strings.TrimSpace(r.Overlay.RenderKey) == "" ||
 			strings.TrimSpace(r.Overlay.SourceVideoAssetID) == "" {
 			return fmt.Errorf("%w: overlay requires render_job_id, plan_fingerprint, render_key and source_video_asset_id", ErrInvalidRequest)
+		}
+		if r.Overlay.StartUS < 0 || r.Overlay.EndUS <= r.Overlay.StartUS {
+			return fmt.Errorf("%w: overlay requires a valid compositing window (end_us > start_us >= 0)", ErrInvalidRequest)
 		}
 	}
 
