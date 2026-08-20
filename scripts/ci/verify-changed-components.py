@@ -62,14 +62,14 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
 )
 ALL_COMPONENT_PREFIXES = (
     "make/",
-    "scripts/hooks/",
-    "scripts/systemd/",
-    "scripts/ci/",
+    "scripts/",
     "internal/",
     "cmd/",
     "pkg/",
-    "tests/",        "migrations/",
-        "architecture/",
+    "tests/",
+    "migrations/",
+    "architecture/",
+    ".archcheck/",
     ".github/workflows/",
 )
 # Generated local outputs are not component source changes. This also filters
