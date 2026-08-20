@@ -192,6 +192,17 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// is shared across a scene's language workers, so its reads
 				// must be fenced by applyMu.
 				renderText := item.scene.Text[item.lang]
+				if strings.TrimSpace(renderText) == "" {
+					renderText = item.scene.Text[req.SourceLanguage]
+				}
+				sourceText := item.scene.Text[req.SourceLanguage]
+				if strings.TrimSpace(sourceText) == "" {
+					sourceText = renderText
+				}
+				if strings.TrimSpace(sourceText) == "" {
+					sourceText = req.Source.SourceText
+					renderText = sourceText
+				}
 				r.checkpoint(ctx, runID, result)
 				applyMu.Unlock()
 
@@ -207,7 +218,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					Text:           renderText,
 					Voiceover:      audioRef,
 					SourceLanguage: req.SourceLanguage,
-					SourceText:     item.scene.Text[req.SourceLanguage],
+					SourceText:     sourceText,
 					ClipID:         clipID,
 					ClipAssetID:    clipAssetID,
 					ClipSHA256:     clipSHA256,

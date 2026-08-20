@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "michael-jordan-document-live-20260820",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "michael-jordan-document-live-20260820",
+      "title": "Michael Jordan document byte certification",
+      "project": "michael-jordan-document-byte-certification",
+      "language": "en",
+      "tone": "clear documentary",
+      "style": "Use the supplied narration faithfully. Preserve the exact named entities Michael Jordan, Nike, Chicago, ten million and Air Jordan. Do not omit or replace the number phrase.",
+      "source": {
+        "type": "text",
+        "topic": "Michael Jordan, Nike, Chicago and ten million",
+        "source_text": "Michael Jordan signed a major partnership with Nike. The company sold ten million Air Jordan products in Chicago. Michael Jordan became one of the most famous athletes in the world.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 35,
+        "min_words": 25,
+        "segment_words": 35,
+        "segments": [
+          {
+            "id": "michael-jordan-document-scene",
+            "topic": "Michael Jordan, Nike, Chicago and ten million Air Jordan products",
+            "source_text": "Michael Jordan signed a major partnership with Nike. The company sold ten million Air Jordan products in Chicago. Michael Jordan became one of the most famous athletes in the world.",
+            "target_words": 35
+          }
+        ],
+        "skip_quality_gate": true
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_scene_images": false,
+        "voiceover_enabled": true,
+        "render": {
+          "enabled": true,
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "style_id": "shorts-v1"
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["en"],
+        "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
+      },
+      "media_plan": {
+        "provider_policy": {},
+        "cache": {},
+        "extraction": {
+          "enabled": true,
+          "device": "cpu",
+          "max_entities_per_segment": 12,
+          "max_important_phrases_per_segment": 4,
+          "max_important_words_per_segment": 12,
+          "strategy": "local",
+          "entity_images": {
+            "entity_types": ["PERSON", "ORG", "GPE"],
+            "max_per_entity": 1
+          }
+        },
+        "force_refresh_extraction": true,
+        "planner": {},
+        "materialization": {}
+      }
+    }
+  ]
+}

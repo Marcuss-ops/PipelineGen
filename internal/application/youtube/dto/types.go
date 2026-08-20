@@ -72,15 +72,16 @@ type Segment struct {
 
 // ExtractRequest is the payload for a YouTube clip extraction request.
 type ExtractRequest struct {
-	URL            string              `json:"url"`
-	Segments       []Segment           `json:"segments"`
-	ForceKeyframes bool                `json:"force_keyframes"`
-	Normalize      *bool               `json:"normalize,omitempty"`
-	KeepAudio      *bool               `json:"keep_audio,omitempty"`
-	WriteSummary   *bool               `json:"write_summary,omitempty"`
-	Strategy       ExtractionStrategy  `json:"strategy,omitempty"`
-	Concurrency    int                 `json:"concurrency,omitempty"`
-	Destination    *DestinationRequest `json:"destination,omitempty"`
+	URL                 string                      `json:"url"`
+	Segments            []Segment                   `json:"segments"`
+	ForceKeyframes      bool                        `json:"force_keyframes"`
+	Normalize           *bool                       `json:"normalize,omitempty"`
+	KeepAudio           *bool                       `json:"keep_audio,omitempty"`
+	WriteSummary        *bool                       `json:"write_summary,omitempty"`
+	Strategy            ExtractionStrategy          `json:"strategy,omitempty"`
+	Concurrency         int                         `json:"concurrency,omitempty"`
+	Destination         *DestinationRequest         `json:"destination,omitempty"`
+	SubtitleDestination *SubtitleDestinationRequest `json:"subtitle_destination,omitempty"`
 	// Selection configures how segments are selected. nil (or
 	// selection.mode="explicit") uses the caller-supplied Segments;
 	// selection.mode="important" derives segments from the video
@@ -162,6 +163,17 @@ type DestinationRequest struct {
 	FolderPath      string `json:"folder_path,omitempty"`
 	SubfolderName   string `json:"subfolder_name,omitempty"`
 	CreateSubfolder bool   `json:"create_subfolder"`
+}
+
+// SubtitleDestinationRequest describes the optional Drive root used for the
+// per-clip subtitle sidecar files. It is deliberately separate from the
+// media destination: clips and subtitle artifacts may live in different
+// Drive trees while remaining part of the same atomic indexed asset.
+type SubtitleDestinationRequest struct {
+	FolderID          string `json:"folder_id,omitempty"`
+	FolderPath        string `json:"folder_path,omitempty"`
+	CreateSubfolder   bool   `json:"create_subfolder"`
+	PerClipSubfolders bool   `json:"per_clip_subfolders"`
 }
 
 // ExtractResponse is the result of a clip extraction operation.
@@ -263,8 +275,11 @@ type ProcessSegmentCommand struct {
 	// (no more string-literal typos). VideoCutRequest.Strategy
 	// is still a string; the use case casts `string(cmd.Strategy)`
 	// at the port boundary (process_segment.go::Execute).
-	Strategy    ExtractionStrategy
-	Destination *DestinationRequest
+	Strategy                  ExtractionStrategy
+	Destination               *DestinationRequest
+	SubtitleFolderID          string
+	SubtitleFolderPath        string
+	SubtitlePerClipSubfolders bool
 	// RequireAllLanguagesBeforeVideo is the per-job override propagated from
 	// ExtractRequest. nil preserves the process-wide policy.
 	RequireAllLanguagesBeforeVideo *bool

@@ -59,6 +59,17 @@ type RenderQueueClient interface {
 // concrete chronon.render-plan.v1 document and blocks until the render
 // completes, returning the certified artifact reference. The removed video
 // render enqueue path is no longer part of PipelineGen.
+// RenderCompletionMetrics separates the worker-reported Chronon duration from
+// the client-side wait used to observe the queue. PollingSleep is the time
+// deliberately spent sleeping between status requests, so it is the direct
+// measurable impact of the polling cadence (and not Chronon work).
+type RenderCompletionMetrics struct {
+	CompletionWait time.Duration
+	PollingSleep   time.Duration
+	PollInterval   time.Duration
+	PollCount      int
+}
+
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
 	pollInterval time.Duration
@@ -124,12 +135,12 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		}
 	}
 
-	done, err := e.waitForCompletion(ctx, plan.PlanID)
+	done, wait, err := e.waitForCompletion(ctx, plan.PlanID)
 	if err != nil {
 		return RenderReference{}, err
 	}
 	if e.recorder != nil {
-		attempt := BuildRenderAttemptAnalytics(plan.PlanID, plan, done.Artifact)
+		attempt := BuildRenderAttemptAnalyticsWithWait(plan.PlanID, plan, done.Artifact, wait)
 		if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
 			return RenderReference{}, fmt.Errorf("record render attempt analytics: %w", err)
 		}
@@ -209,8 +220,13 @@ func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
 // The whole blocked interval is recorded as a completion wait on the bound
 // run (RunReport.Waits), never as a stage: it is time spent waiting on the
 // render queue, not pipeline CPU work.
-func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, error) {
+func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, RenderCompletionMetrics, error) {
 	waitStarted := time.Now()
+	interval := e.pollInterval
+	if interval <= 0 {
+		interval = defaultQueuePollInterval
+	}
+	metrics := RenderCompletionMetrics{PollInterval: interval}
 	defer func() {
 		kernobs.RecordWait(ctx, kernobs.WaitInfo{
 			Kind:       kernobs.WaitCompletion,
@@ -221,28 +237,35 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 	}()
 	for {
 		job, err := e.client.Get(ctx, id)
+		metrics.PollCount++
 		if err != nil {
-			return RenderQueueJob{}, err
+			return RenderQueueJob{}, metrics, err
 		}
 		switch job.State {
 		case "completed":
-			return job, nil
+			metrics.CompletionWait = time.Since(waitStarted)
+			return job, metrics, nil
 		case "failed":
 			reason := job.FailReason
 			if reason == "" {
 				reason = "unknown failure"
 			}
-			return job, fmt.Errorf("render job %s failed: %s", id, reason)
+			metrics.CompletionWait = time.Since(waitStarted)
+			return job, metrics, fmt.Errorf("render job %s failed: %s", id, reason)
 		}
 
-		interval := e.pollInterval
-		if interval <= 0 {
-			interval = defaultQueuePollInterval
-		}
+		sleepStarted := time.Now()
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			return RenderQueueJob{}, ctx.Err()
-		case <-time.After(interval):
+			if !timer.Stop() {
+				<-timer.C
+			}
+			metrics.PollingSleep += time.Since(sleepStarted)
+			metrics.CompletionWait = time.Since(waitStarted)
+			return RenderQueueJob{}, metrics, ctx.Err()
+		case <-timer.C:
+			metrics.PollingSleep += time.Since(sleepStarted)
 		}
 	}
 }

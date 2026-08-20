@@ -59,6 +59,13 @@ type EditingSceneSpan struct {
 // EditingOverlaySpan is one overlay artifact's time span on the final
 // combined timeline. StartUS/EndUS come from the same certified surfaces
 // as the OverlayPlan items.
+//
+// The span also carries the artifact lineage that proves the final video
+// contains THIS overlay: the overlay.render queue job id, the frozen plan
+// fingerprint, the item's render key, and the source video asset the overlay
+// is composited over. Downstream editing reads this block (never a second
+// derivation) to trace one rendered overlay from its scene back to the exact
+// queue job and plan version that produced it.
 type EditingOverlaySpan struct {
 	ArtifactID string `json:"artifact_id"`
 	SceneID    string `json:"scene_id"`
@@ -73,6 +80,27 @@ type EditingOverlaySpan struct {
 	// audio_streams==0). It comes from the frozen OverlayPlan, never from a
 	// second independent derivation.
 	MediaContract string `json:"media_contract,omitempty"`
+	// RenderJobID is the overlay.render queue job id that produced the
+	// rendered artifact (the Run's OverlayRender.JobID). Empty until the
+	// render has completed.
+	RenderJobID string `json:"render_job_id,omitempty"`
+	// PlanFingerprint is the frozen OverlayPlan fingerprint the render was
+	// validated against (plan fingerprint == result fingerprint).
+	PlanFingerprint string `json:"plan_fingerprint,omitempty"`
+	// RenderKey is the item's content-addressed render key, the join key
+	// between the plan item and its rendered artifact.
+	RenderKey string `json:"render_key,omitempty"`
+	// SourceVideoAssetID is the video asset the overlay is composited over
+	// (the OverlayPlan's VideoID).
+	SourceVideoAssetID string `json:"source_video_asset_id,omitempty"`
+	// IntentID is the pre-timing OverlayIntent id this overlay materialized
+	// from (the "overlay_intent_id" hop of the artifact lineage). It is
+	// looked up from the run's own OverlayIntents by (scene, entity) — never
+	// re-derived. Empty when no intent matches the item.
+	IntentID string `json:"intent_id,omitempty"`
+	// IntentFingerprint is the content fingerprint of that OverlayIntent,
+	// proving which intent version the plan item was bound from.
+	IntentFingerprint string `json:"intent_fingerprint,omitempty"`
 }
 
 // Validate checks structural invariants on the editing timeline.
@@ -207,11 +235,17 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 	// The rendered artifact is a single certified queue artifact for the
 	// whole plan. Its Drive publication identity (DriveLink/SHA256) is the
 	// immutable reference every overlay span carries; empty when the render
-	// has not completed or was not published yet.
-	var driveLink, sha256 string
-	if result.OverlayRender != nil && result.OverlayRender.Artifact != nil {
-		driveLink = result.OverlayRender.Artifact.DriveLink
-		sha256 = result.OverlayRender.Artifact.SHA256
+	// has not completed or was not published yet. The render job id, plan
+	// fingerprint and source video id travel with it so the final-video
+	// assembly can prove which queue job and plan version produced the
+	// overlay it composites.
+	var driveLink, sha256, renderJobID string
+	if result.OverlayRender != nil {
+		renderJobID = result.OverlayRender.JobID
+		if result.OverlayRender.Artifact != nil {
+			driveLink = result.OverlayRender.Artifact.DriveLink
+			sha256 = result.OverlayRender.Artifact.SHA256
+		}
 	}
 
 	// Build entity timeline lookup for microsecond-precision timing.
@@ -230,6 +264,8 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		}
 	}
 
+	intentByKey := overlayIntentIndex(result.OverlayIntents)
+
 	overlays := make([]EditingOverlaySpan, 0, len(plan.Items))
 	for _, item := range plan.Items {
 		// Canonical integer-microsecond timing travels on the item; fall back
@@ -245,19 +281,67 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 			}
 		}
 
+		// Trace the plan item back to the pre-timing OverlayIntent it
+		// materialized from (the overlay_intent_id hop). The join key is the
+		// same (scene, canonical name) the intent and item share.
+		itemName := item.Text
+		if item.EntityRef != nil {
+			if n := strings.TrimSpace(item.EntityRef.Name); n != "" {
+				itemName = n
+			}
+		}
+		intentID, intentFingerprint := "", ""
+		if intent, ok := intentByKey[overlayIntentKey(item.SceneID, itemName)]; ok {
+			intentID = intent.IntentID
+			intentFingerprint = intent.Fingerprint()
+		}
+
 		overlays = append(overlays, EditingOverlaySpan{
-			ArtifactID:    item.ID,
-			SceneID:       item.SceneID,
-			Entity:        item.Text,
-			TemplateID:    item.TemplateID,
-			StartUS:       startUS,
-			EndUS:         endUS,
-			DriveLink:     driveLink,
-			SHA256:        sha256,
-			MediaContract: plan.MediaContract,
+			ArtifactID:        item.ID,
+			SceneID:           item.SceneID,
+			Entity:            item.Text,
+			TemplateID:        item.TemplateID,
+			StartUS:           startUS,
+			EndUS:             endUS,
+			DriveLink:         driveLink,
+			SHA256:            sha256,
+			MediaContract:     plan.MediaContract,
+			RenderJobID:       renderJobID,
+			PlanFingerprint:   plan.Fingerprint,
+			RenderKey:         item.RenderKey,
+			SourceVideoAssetID: plan.VideoID,
+			IntentID:           intentID,
+			IntentFingerprint:  intentFingerprint,
 		})
 	}
 	return overlays
+}
+
+// overlayIntentKey builds the lookup key that joins a plan item to its
+// pre-timing OverlayIntent: the normalized (scene id, entity name) pair both
+// surfaces derive from. It is a correlation key, not a display string.
+func overlayIntentKey(sceneID, name string) string {
+	return strings.ToLower(strings.TrimSpace(sceneID)) + "\x00" + strings.ToLower(strings.TrimSpace(name))
+}
+
+// overlayIntentIndex builds a lookup from the run's pre-timing OverlayIntents
+// keyed by (scene id + canonical entity name), so an overlay plan item can be
+// traced back to the exact intent it materialized from. The key uses the
+// intent's canonical name (falling back to its source text for annotation
+// intents) in the same normalized spelling the plan items carry.
+func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]capabilityoverlay.OverlayIntent {
+	index := make(map[string]capabilityoverlay.OverlayIntent, len(intents))
+	for _, intent := range intents {
+		name := strings.TrimSpace(intent.Entity.CanonicalName)
+		if name == "" {
+			name = strings.TrimSpace(intent.SourceText)
+		}
+		if name == "" {
+			continue
+		}
+		index[overlayIntentKey(intent.SceneID, name)] = intent
+	}
+	return index
 }
 
 // OverlayArtifactRef is the reference to a rendered overlay artifact

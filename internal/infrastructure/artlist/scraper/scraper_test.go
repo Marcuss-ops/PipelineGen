@@ -80,6 +80,9 @@ func TestSearchViaServerConsumesStableEnvelope(t *testing.T) {
 		if payload["force_refresh"] != false {
 			t.Fatalf("expected force_refresh false, got %#v", payload["force_refresh"])
 		}
+		if payload["mode"] != string(artapp.SearchModeCatalogFirst) {
+			t.Fatalf("expected explicit catalog_first mode, got %#v", payload["mode"])
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -149,6 +152,41 @@ func TestSearchViaServerForwardsForceRefresh(t *testing.T) {
 	}
 	if len(clips) != 1 || clips[0].ID != "fresh-1" {
 		t.Fatalf("unexpected clips: %+v", clips)
+	}
+}
+
+func TestSearchViaServerForwardsExplicitModes(t *testing.T) {
+	modes := []artapp.SearchMode{
+		artapp.SearchModeCatalogFirst,
+		artapp.SearchModeCatalogOnly,
+		artapp.SearchModeLiveRequired,
+	}
+	for _, wantMode := range modes {
+		t.Run(string(wantMode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var payload map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Fatalf("failed to decode request: %v", err)
+				}
+				if payload["mode"] != string(wantMode) {
+					t.Fatalf("mode payload = %#v, want %q", payload["mode"], wantMode)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"ok":true,"provider":"artlist","query":"mode test","clips":[{"clip_id":"mode-1","clip_page_url":"https://artlist.io/clip/mode-1"}]}`))
+			}))
+			defer server.Close()
+
+			provider := New(Config{ServerURL: server.URL, HTTPTimeout: time.Second}, zap.NewNop())
+			clips, err := provider.Search(context.Background(), artapp.SearchRequest{
+				Term: "mode test", Limit: 1, Mode: wantMode,
+			})
+			if err != nil {
+				t.Fatalf("Search returned error: %v", err)
+			}
+			if len(clips) != 1 || clips[0].ID != "mode-1" {
+				t.Fatalf("unexpected clips: %+v", clips)
+			}
+		})
 	}
 }
 

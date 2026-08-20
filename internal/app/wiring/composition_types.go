@@ -33,6 +33,7 @@ import (
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
@@ -159,15 +160,16 @@ type DriveBundle struct {
 
 // RepoBundle owns all SQLite-backed repositories.
 type RepoBundle struct {
-	ScriptsRepo      *sqlitescripts.ScriptRepository
-	ImageRepo        *imagesrepo.ImagesRepository
-	ClipsRepo        *assets.ClipsRepository
-	Assets           *asset.Service
-	MonitorsRepo     *monitors.MonitorsRepository
-	VoiceoverRepo    *assets.VoiceoversRepository
-	CatalogRepo      *catalog.Repository
-	SQRepo           *assets.SearchQueriesRepository
-	IdempotencyStore mwidem.IdempotencyStore
+	ScriptsRepo        *sqlitescripts.ScriptRepository
+	ImageRepo          *imagesrepo.ImagesRepository
+	ClipsRepo          *assets.ClipsRepository
+	Assets             *asset.Service
+	MonitorsRepo       *monitors.MonitorsRepository
+	VoiceoverRepo      *assets.VoiceoversRepository
+	CatalogRepo        *catalog.Repository
+	EntityImageCatalog entitycatalog.Repository
+	SQRepo             *assets.SearchQueriesRepository
+	IdempotencyStore   mwidem.IdempotencyStore
 	// TextTrackRepo is the canonical Fase 2.a / Fase 4
 	// TextTrackRepository used by the video pipeline
 	// (ClipSourceBuilder.ConfigureTextTrackReader) and the
@@ -347,8 +349,9 @@ type SyncBundle struct {
 
 // MaintBundle owns the periodic maintenance + deletion services.
 type MaintBundle struct {
-	MaintenanceSvc *maintenance.Service
-	DeletionSvc    *deletion.DeletionService
+	MaintenanceSvc             *maintenance.Service
+	DeletionSvc                *deletion.DeletionService
+	EntityImageRecertification *entitycatalog.RecertificationService
 }
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.

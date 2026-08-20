@@ -92,6 +92,10 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 		Normalize:      normalize,
 		Strategy:       string(cmd.Strategy),
 		OutputDir:      cmd.OutDir,
+		// Explicit segment requests already carry the authoritative summary,
+		// topics and speakers. Do not spawn a best-effort yt-dlp metadata
+		// subprocess before every clip download.
+		SkipMetadataFetch: true,
 	}
 
 	// Step 4 — retry download with exponential backoff. Pre-flight guard.

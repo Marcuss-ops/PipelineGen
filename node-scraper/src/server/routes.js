@@ -4,12 +4,13 @@ import { handleDetail } from './detail-route.js';
 import { handleDiscoverApi } from './discover-route.js';
 import { handleSearch } from './search-route.js';
 import { handleV1ClipSearch } from './v1-search-route.js';
+import { handleCatalogSync, handleCatalogSyncSchedule, handleCatalogSyncStatus } from './catalog-sync-route.js';
 import { handleDownload } from './download-route.js';
 import { handleHealth } from './health-route.js';
 import fs from 'fs';
 import { execSync } from 'child_process';
 
-export { handleDetail, handleDiscoverApi, handleSearch, handleV1ClipSearch, handleDownload, handleHealth };
+export { handleDetail, handleDiscoverApi, handleSearch, handleV1ClipSearch, handleCatalogSync, handleCatalogSyncSchedule, handleCatalogSyncStatus, handleDownload, handleHealth };
 
 export async function dispatchRequest(req, res, ctx) {
   const url = new URL(req.url, `http://localhost:${ctx.config.PORT}`);
@@ -17,6 +18,13 @@ export async function dispatchRequest(req, res, ctx) {
     await handleSearch(req, res, ctx);
   } else if (url.pathname === '/v1/clips/search') {
     await handleV1ClipSearch(req, res, ctx);
+  } else if (url.pathname === '/v1/catalog/sync') {
+    await handleCatalogSync(req, res, ctx);
+  } else if (url.pathname === '/v1/catalog/schedule') {
+    handleCatalogSyncSchedule(req, res, ctx);
+  } else if (url.pathname.startsWith('/v1/catalog/sync/')) {
+    const syncId = decodeURIComponent(url.pathname.slice('/v1/catalog/sync/'.length));
+    handleCatalogSyncStatus(req, res, ctx, syncId);
   } else if (url.pathname === '/detail') {
     await handleDetail(req, res, ctx);
   } else if (url.pathname === '/download') {

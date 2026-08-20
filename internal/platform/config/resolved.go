@@ -18,7 +18,10 @@ type VoiceoverDefaultsConfig struct {
 	DefaultLanguage         string `yaml:"default_language" env:"VELOX_VOICEOVER_LANGUAGE" default:"en"`
 	DefaultParallelism      int    `yaml:"default_parallelism" env:"VELOX_VOICEOVER_DEFAULT_PARALLELISM" default:"3"`
 	MaxParallelism          int    `yaml:"max_parallelism" env:"VELOX_VOICEOVER_MAX_PARALLELISM" default:"8"`
-	ChunkConcurrency        int    `yaml:"chunk_concurrency" env:"VELOX_VOICEOVER_CHUNK_CONCURRENCY" default:"2"`
+	// Three concurrent chunks matched the measured 1200-word throughput
+	// plateau with MaxConcurrentTTS=3; the provider still bounds this per
+	// request and the global TTS semaphore remains authoritative.
+	ChunkConcurrency int `yaml:"chunk_concurrency" env:"VELOX_VOICEOVER_CHUNK_CONCURRENCY" default:"3"`
 }
 
 // ResolvedConfig is the post-bootstrap configuration snapshot. Its embedded

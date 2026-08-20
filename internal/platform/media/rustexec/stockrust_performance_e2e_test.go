@@ -81,6 +81,9 @@ func TestStockRustPerformanceRTF(t *testing.T) {
 	inner := &persistentRustProcessRunner{}
 	timing := &timingRunner{inner: inner}
 	executor.runner = timing
+	// The timing runner is the diagnostic seam for this test; bypass pooled
+	// runners or the measured wall/ffmpeg metadata would remain zero.
+	executor.runnerPool = nil
 	t.Cleanup(inner.reset)
 
 	stock := stockrustRenderer(executor, width, height, fps)

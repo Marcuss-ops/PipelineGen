@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"testing"
+	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
@@ -32,7 +33,12 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 		DriveFileID: "file-1",
 		DriveLink:   "https://drive.google.com/file/d/file-1/view",
 	}
-	got := BuildRenderAttemptAnalytics("attempt-1", plan, artifact)
+	got := BuildRenderAttemptAnalyticsWithWait("attempt-1", plan, artifact, RenderCompletionMetrics{
+		CompletionWait: 2*time.Second + 100*time.Millisecond,
+		PollingSleep:   2 * time.Second,
+		PollInterval:   2 * time.Second,
+		PollCount:      2,
+	})
 
 	if got.AttemptID != "attempt-1" || got.JobID != "plan-1" {
 		t.Fatalf("identity = %q/%q, want attempt-1/plan-1", got.AttemptID, got.JobID)
@@ -41,6 +47,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 		t.Fatalf("content = %+v, want one of each", got.Content)
 	}
 	if got.SHA256 != "abc" || got.RenderMS != 900 || got.EncodeMS != 300 ||
+		got.CompletionWaitMS != 2100 || got.PollingSleepMS != 2000 || got.PollingIntervalMS != 2000 || got.PollCount != 2 ||
 		got.DriveFileID != "file-1" || got.DriveLink != "https://drive.google.com/file/d/file-1/view" ||
 		got.Width != 1280 || got.Height != 720 || got.FrameCount != 150 ||
 		got.DurationUS != 5_000_000 || got.SizeBytes != 1024 {
@@ -49,7 +56,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 
 	// Nil artifact: census still recorded, output metrics stay zero/empty.
 	empty := BuildRenderAttemptAnalytics("attempt-2", plan, nil)
-	if empty.AttemptID != "attempt-2" || empty.Content.Phrases != 1 || empty.SHA256 != "" || empty.RenderMS != 0 {
+	if empty.AttemptID != "attempt-2" || empty.Content.Phrases != 1 || empty.SHA256 != "" || empty.RenderMS != 0 || empty.CompletionWaitMS != 0 {
 		t.Fatalf("nil-artifact record = %+v, want census + empty output", empty)
 	}
 }

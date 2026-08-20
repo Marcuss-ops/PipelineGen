@@ -134,4 +134,8 @@ type JobsConfig struct {
 	// non-zero rate indicates a recurring bug).
 	DeletionReconcilerInterval       string `yaml:"deletion_reconciler_interval" env:"VELOX_DELETION_RECONCILER_INTERVAL" default:"15m"`
 	DeletionReconcilerStuckThreshold string `yaml:"deletion_reconciler_stuck_threshold" env:"VELOX_DELETION_RECONCILER_STUCK_THRESHOLD" default:"30m"`
+	// Entity image catalog recertification validates stale and retryable broken
+	// remote URLs without touching materialized Drive assets.
+	EntityImageRecertificationInterval  string `yaml:"entity_image_recertification_interval" env:"VELOX_ENTITY_IMAGE_RECERTIFICATION_INTERVAL" default:"24h"`
+	EntityImageRecertificationBatchSize int    `yaml:"entity_image_recertification_batch_size" env:"VELOX_ENTITY_IMAGE_RECERTIFICATION_BATCH_SIZE" default:"100"`
 }

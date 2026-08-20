@@ -164,8 +164,8 @@ class ScaleRunner:
     def validate_assets(self, target_ids: list[str]) -> list[dict[str, Any]]:
         return validate_assets(self, target_ids)
 
-    def validate_drive(self, assets: list[dict[str, Any]]) -> None:
-        validate_drive(self, assets)
+    def validate_drive(self, assets: list[dict[str, Any]]) -> dict[str, Any]:
+        return validate_drive(self, assets)
 
     def run_admin(self, args: list[str], output_name: str) -> None:
         run_admin(self, args, output_name)

@@ -125,10 +125,12 @@ func TestExtractorRanksNarrativeSentenceAndConcreteKeywords(t *testing.T) {
 // word must occur verbatim in the source text.
 //
 // Boundary note: the local extractor is deliberately conservative. Single-word
-// companies ("Tesla"), money amounts ("$10 billion") and generic-verb
-// rejection are the LLM/VidRush extraction path's responsibility, not this
-// CPU-only fallback. This test certifies the boundary this package DOES own:
-// stop-word and function-word rejection via the LexiconRegistry SSOT.
+// companies ("Tesla"), currency-denominated money amounts ("$10 billion") and
+// generic-verb rejection are the LLM/VidRush extraction path's responsibility,
+// not this CPU-only fallback. Spoken cardinal figures ("ten billion") ARE now
+// owned here deterministically (see TestExtractorCardinalNumberPhrases). This
+// test certifies the boundary this package DOES own: stop-word and
+// function-word rejection via the LexiconRegistry SSOT.
 func TestExtractorGolden02RejectsEnglishStopwords(t *testing.T) {
 	text := "Elon Musk announced that Tesla will invest ten billion dollars in artificial intelligence."
 	first, err := NewExtractor().ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
@@ -177,6 +179,39 @@ func TestExtractorGolden02RejectsEnglishStopwords(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("concrete keyword %q missing from important words: %v", want, first.ImportantWords)
+		}
+	}
+}
+
+// TestExtractorCardinalNumberPhrases certifies the deterministic CARDINAL
+// mapping for spoken figures: "ten million" must surface as a single
+// CARDINAL entity (never two KEYWORD fragments), which the overlay chain then
+// maps CARDINAL → KindNumber → NUMBER template. This is the model-free NLP
+// source for the E2E "NUMBER" gate; a bare number word ("ten", "one") is
+// deliberately left unmatched because it is too ambiguous on its own.
+func TestExtractorCardinalNumberPhrases(t *testing.T) {
+	text := "Michael Jordan signed a major partnership with Nike. The company sold ten million products in Chicago."
+	result, err := NewExtractor().ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
+		Text: text, Language: "en", EntityCount: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireCardinal := func(value string) {
+		t.Helper()
+		for _, concept := range result.Concepts {
+			if concept.Type == "CARDINAL" && strings.EqualFold(strings.TrimSpace(concept.Value), value) {
+				return
+			}
+		}
+		t.Fatalf("missing CARDINAL %q: concepts=%+v", value, result.Concepts)
+	}
+	requireCardinal("ten million")
+
+	// A bare number word is too ambiguous to become a CARDINAL overlay.
+	for _, concept := range result.Concepts {
+		if concept.Type == "CARDINAL" && strings.EqualFold(strings.TrimSpace(concept.Value), "ten") {
+			t.Fatalf("bare number word promoted to CARDINAL: %+v", concept)
 		}
 	}
 }

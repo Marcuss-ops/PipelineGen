@@ -32,6 +32,12 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int, prefer
 	return s.searchService.SearchLive(ctx, term, limit, preferRemote)
 }
 
+// SearchCatalogOnly resolves through the Node catalog without contacting the
+// provider or consulting the Go materialized-asset database.
+func (s *Service) SearchCatalogOnly(ctx context.Context, term string, limit int) ([]Candidate, error) {
+	return s.searchService.SearchCatalogOnly(ctx, term, limit)
+}
+
 // SearchLiveForceRefresh is the VidRush live-search surface. It bypasses
 // provider-side result caches while leaving legacy SearchLive semantics
 // unchanged for other callers.

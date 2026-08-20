@@ -34,6 +34,10 @@ CREATE TABLE render_attempt_analytics (
     leak_count      INTEGER NOT NULL DEFAULT 0,
     render_ms       INTEGER NOT NULL DEFAULT 0,
     encode_ms       INTEGER NOT NULL DEFAULT 0,
+    completion_wait_ms INTEGER NOT NULL DEFAULT 0,
+    polling_sleep_ms INTEGER NOT NULL DEFAULT 0,
+    polling_interval_ms INTEGER NOT NULL DEFAULT 0,
+    poll_count       INTEGER NOT NULL DEFAULT 0,
     width           INTEGER NOT NULL DEFAULT 0,
     height          INTEGER NOT NULL DEFAULT 0,
     fps_num         INTEGER NOT NULL DEFAULT 0,
@@ -62,9 +66,13 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		AttemptID: "attempt-1",
 		JobID:     "job-1",
 		Content:   capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
-		RenderMS:  100,
-		EncodeMS:  50,
-		SHA256:    "sha-1",
+		RenderMS:          100,
+		EncodeMS:          50,
+		CompletionWaitMS:  2100,
+		PollingSleepMS:    2000,
+		PollingIntervalMS: 2000,
+		PollCount:         2,
+		SHA256:            "sha-1",
 	}
 	if err := reg.RecordAttempt(ctx, a); err != nil {
 		t.Fatal(err)
@@ -83,13 +91,13 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		t.Fatalf("rows = %d, want 1 (upsert keyed by attempt_id)", count)
 	}
 	var gotSHA string
-	var phrases, words, images, leaks, renderMS, encodeMS int
-	if err := db.QueryRow(`SELECT sha256, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
-		Scan(&gotSHA, &phrases, &words, &images, &leaks, &renderMS, &encodeMS); err != nil {
+	var phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount int
+	if err := db.QueryRow(`SELECT sha256, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
+		Scan(&gotSHA, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount); err != nil {
 		t.Fatal(err)
 	}
-	if gotSHA != "sha-2" || phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 {
-		t.Fatalf("row = sha=%s counts=%d/%d/%d/%d render=%d encode=%d", gotSHA, phrases, words, images, leaks, renderMS, encodeMS)
+	if gotSHA != "sha-2" || phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 {
+		t.Fatalf("row = sha=%s counts=%d/%d/%d/%d render=%d encode=%d completion_wait=%d polling_sleep=%d interval=%d polls=%d", gotSHA, phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount)
 	}
 }
 

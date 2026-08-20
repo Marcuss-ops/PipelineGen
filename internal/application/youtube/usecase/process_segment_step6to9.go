@@ -131,6 +131,42 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 	}
 
+	// Subtitle sidecar destination. A configured subtitle root is an explicit
+	// persistence contract: never let a READY Whisper bundle disappear merely
+	// because the per-clip-folder flag was omitted or was not propagated by an
+	// older request adapter. The fan-out already bounds these uploads in
+	// parallel with the segment work; DriveFolderMgr is idempotent, so retries
+	// cannot create duplicate artifacts.
+	if bundle != nil && !bundle.IsEmpty() && cmd.SubtitleFolderID != "" {
+		if u.media.DriveFolderMgr == nil {
+			return nil, u.fail(out, NewExtractionError(
+				FailureCodeDriveUploadFailed, false,
+				"subtitle destination requested but Drive folder manager is not wired", nil))
+		}
+		subtitleFolderID := cmd.SubtitleFolderID
+		if cmd.SubtitlePerClipSubfolders {
+			var err error
+			subtitleFolderID, err = u.media.DriveFolderMgr.GetOrCreateFolder(ctx, out.Item.Name, cmd.SubtitleFolderID)
+			if err != nil || subtitleFolderID == "" {
+				if err == nil {
+					err = errors.New("Drive returned an empty subtitle folder ID")
+				}
+				return nil, u.fail(out, NewExtractionError(
+					FailureCodeDriveUploadFailed, true,
+					fmt.Sprintf("create subtitle folder: %v", err), err))
+			}
+		}
+		subtitleName := filepath.Base(txtPath)
+		if _, _, uploadErr := u.media.DriveFolderMgr.UploadFileIfChanged(
+			ctx, txtPath, subtitleFolderID, subtitleName,
+			deriveNormalizedGroup(cmd), cmd.VideoID,
+		); uploadErr != nil {
+			return nil, u.fail(out, NewExtractionError(
+				FailureCodeDriveUploadFailed, true,
+				fmt.Sprintf("upload subtitle sidecar: %v", uploadErr), uploadErr))
+		}
+	}
+
 	// Step 8 — DriveUploadFileIfChanged (unchanged, body verbatim
 	// from pre-split).
 	if u.media.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {

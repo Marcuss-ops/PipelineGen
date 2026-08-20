@@ -214,23 +214,31 @@ func (a *localizedRenderEnqueuerAdapter) persistTracks(ctx context.Context, asse
 		return fmt.Errorf("localized render: text track repository not wired")
 	}
 	var tracks []asset.TextTrack
-	if sourceLang != targetLang && strings.TrimSpace(in.SourceText) != "" {
+	// The source-language render still needs a READY transcript. When source
+	// and target language are equal, `Text` is the canonical narration and
+	// `SourceText` is its provenance; use either value, but never skip the
+	// source track entirely.
+	sourceText := strings.TrimSpace(in.SourceText)
+	if sourceText == "" && sourceLang == targetLang {
+		sourceText = strings.TrimSpace(in.Text)
+	}
+	if sourceText != "" {
 		tracks = append(tracks, asset.TextTrack{
 			AssetID:            assetID,
 			LanguageCode:       sourceLang,
 			TextKind:           asset.TextTrackTranscript,
-			TextContent:        in.SourceText,
+			TextContent:        sourceText,
 			SourceType:         asset.TextSourceProvided,
 			SourceLanguageCode: sourceLang,
 			IsOriginal:         true,
 			Provider:           "script-generation",
-			TextHash:           asset.TextHash(in.SourceText, sourceLang, asset.TextTrackTranscript),
+			TextHash:           asset.TextHash(sourceText, sourceLang, asset.TextTrackTranscript),
 			Status:             asset.TextTrackReady,
 		})
 	}
-	// The translated subtitle track. For the source language itself this IS
-	// the transcript, so we skip the duplicate row (the plan builder reuses
-	// the transcript as the subtitle for the source language).
+	// The translated subtitle track is additional only when target language
+	// differs from the source language; the source track above is reused for
+	// same-language subtitles by the plan builder.
 	if strings.TrimSpace(in.Text) != "" && targetLang != sourceLang {
 		tracks = append(tracks, asset.TextTrack{
 			AssetID:            assetID,
@@ -275,10 +283,14 @@ func (a *localizedRenderEnqueuerAdapter) persistCues(ctx context.Context, assetI
 		byLang = make(map[string][]asset.TimedCue)
 		a.cueState[assetID] = byLang
 	}
-	if sourceLang != targetLang && strings.TrimSpace(in.SourceText) != "" {
-		byLang[sourceLang] = []asset.TimedCue{{StartMs: 0, EndMs: duration, Text: in.SourceText}}
+	sourceCueText := strings.TrimSpace(in.SourceText)
+	if sourceCueText == "" && sourceLang == targetLang {
+		sourceCueText = strings.TrimSpace(in.Text)
 	}
-	if strings.TrimSpace(in.Text) != "" {
+	if sourceCueText != "" {
+		byLang[sourceLang] = []asset.TimedCue{{StartMs: 0, EndMs: duration, Text: sourceCueText}}
+	}
+	if strings.TrimSpace(in.Text) != "" && targetLang != sourceLang {
 		byLang[targetLang] = []asset.TimedCue{{StartMs: 0, EndMs: duration, Text: in.Text}}
 	}
 	if err := a.cues.ReplaceTranscriptCues(ctx, assetID, byLang); err != nil {

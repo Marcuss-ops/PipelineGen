@@ -161,17 +161,32 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		}
 		// Localized render fan-out: fire the render the moment this language's
 		// TTS is final, so Rust starts on this clip while later scenes are
-		// still being translated/voiced (never a global join).
+		// still being translated/voiced (never a global join). For the source
+		// language, the coordinator may carry the narration only in the
+		// source-text slot; use it as the render text instead of submitting
+		// an empty subtitle track.
+		renderText := out.Text[lang]
+		if strings.TrimSpace(renderText) == "" {
+			renderText = out.Text[c.req.SourceLanguage]
+		}
+		sourceText := out.Text[c.req.SourceLanguage]
+		if strings.TrimSpace(sourceText) == "" {
+			sourceText = renderText
+		}
+		if strings.TrimSpace(sourceText) == "" {
+			sourceText = c.req.Source.SourceText
+			renderText = sourceText
+		}
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 		if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
 			RunID:          c.runID,
 			SceneID:        out.ID,
 			SceneIndex:     out.Index,
 			Language:       lang,
-			Text:           out.Text[lang],
+			Text:           renderText,
 			Voiceover:      out.Voiceover[lang],
 			SourceLanguage: c.req.SourceLanguage,
-			SourceText:     out.Text[c.req.SourceLanguage],
+			SourceText:     sourceText,
 			ClipID:         clipID,
 			ClipAssetID:    clipAssetID,
 			ClipSHA256:     clipSHA256,

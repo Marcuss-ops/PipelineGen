@@ -111,8 +111,12 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 		rootOverride = parentFolderID
 	}
 	folderID, err := a.publisher.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:    delivery.DestinationYouTubeClip,
-		Group:          channelName,
+		Destination: delivery.DestinationYouTubeClip,
+		// ResolveFolder requires both logical path segments when a parent
+		// override is supplied. Keep subtitle artifacts in a dedicated
+		// namespace, with one leaf folder per clip.
+		Group:          "youtube_subtitles",
+		Subject:        channelName,
 		ParentFolderID: rootOverride,
 	})
 	if err != nil {

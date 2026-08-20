@@ -273,7 +273,37 @@ type Stats struct {
 // keep ports.go as the SINGLE canonical declaration site.
 // =============================================================
 
+// SearchMode is the canonical Go→Node catalog resolution mode.
+type SearchMode string
+
+const (
+	SearchModeCatalogFirst SearchMode = "catalog_first"
+	SearchModeCatalogOnly  SearchMode = "catalog_only"
+	SearchModeLiveRequired SearchMode = "live_required"
+)
+
+func (m SearchMode) IsValid() bool {
+	return m == SearchModeCatalogFirst || m == SearchModeCatalogOnly || m == SearchModeLiveRequired
+}
+
+// ResolveSearchMode preserves legacy callers while making the Node contract
+// explicit: remote-preferred searches are live_required; all other searches
+// default to catalog_first unless the caller explicitly requests catalog_only.
+func ResolveSearchMode(mode SearchMode, preferRemote bool) SearchMode {
+	if mode.IsValid() {
+		return mode
+	}
+	if preferRemote {
+		return SearchModeLiveRequired
+	}
+	return SearchModeCatalogFirst
+}
+
 // SearchRequest represents a search request.
+//
+// Mode is always propagated to the Node scraper by infrastructure adapters.
+// PreferRemote remains as a compatibility input for callers that predate the
+// explicit mode contract.
 //
 // PR-P2-SEARCH-LIVE (July 2026): PreferRemote is the operator-facing
 // opt-in flag that flips the canonical SearchService.searchLiveWithFallbacks
@@ -288,9 +318,10 @@ type Stats struct {
 // PreferRemote=false so existing cache-first semantics for "discover
 // fresh content" runs is preserved.
 type SearchRequest struct {
-	Term     string `json:"term"`
-	Limit    int    `json:"limit"`
-	PreferDB bool   `json:"prefer_db"`
+	Term     string     `json:"term"`
+	Limit    int        `json:"limit"`
+	Mode     SearchMode `json:"mode,omitempty"`
+	PreferDB bool       `json:"prefer_db"`
 	// ForceRefresh bypasses provider-side search caches. It is used by
 	// provider-enabled VidRush discovery so a stale stream URL cannot be
 	// promoted into the acquisition pipeline.

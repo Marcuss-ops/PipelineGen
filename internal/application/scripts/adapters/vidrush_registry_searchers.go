@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -134,19 +135,24 @@ type VidRushProviderFanout struct {
 	artlist ArtlistClipSearcher
 	images  InternetImageSearcher
 	cache   scriptports.VidRushCachePort
+	catalog entitycatalog.Repository
 	metrics VidRushMetrics
 }
 
 func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCache(artlist, images, nil, metrics...)
+	return NewVidRushProviderFanoutWithCatalog(artlist, images, nil, nil, metrics...)
 }
 
 func NewVidRushProviderFanoutWithCache(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	return NewVidRushProviderFanoutWithCatalog(artlist, images, cache, nil, metrics...)
+}
+
+func NewVidRushProviderFanoutWithCatalog(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &VidRushProviderFanout{artlist: artlist, images: images, cache: cache, metrics: m}
+	return &VidRushProviderFanout{artlist: artlist, images: images, cache: cache, catalog: catalog, metrics: m}
 }
 
 // ResolveProviders runs Artlist and internet-image discovery concurrently for
@@ -265,9 +271,49 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				// the research path where the generated scene text (and thus
 				// TextHash) is non-deterministic across runs.
 				entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
+				catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(updated, query)
+				if catalogErr != nil {
+					outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+					return
+				}
 				var results []scriptpkg.SegmentAssetCandidate
+				catalogFallback := []scriptpkg.SegmentAssetCandidate(nil)
+				catalogRefreshRequired := false
 				fromCache := false
-				if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+				var releaseCatalog func()
+				catalogMetrics := entityImageCatalogMetricsFor(f.metrics)
+				if catalogEligible && f.catalog != nil {
+					actual, _ := entityImageLocks.LoadOrStore("entity-catalog:"+catalogIdentity.CanonicalEntityID, &sync.Mutex{})
+					catalogLock := actual.(*sync.Mutex)
+					catalogLock.Lock()
+					releaseCatalog = catalogLock.Unlock
+					if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+						lookupStarted := time.Now()
+						pool, err := entityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, perQueryLimit)
+						observeEntityImageCatalogLookup(f.metrics, lookupStarted)
+						if err != nil {
+							if releaseCatalog != nil {
+								releaseCatalog()
+							}
+							outcomes <- providerOutcome{provider: "internet_images", err: err}
+							return
+						}
+						if pool.Sufficient {
+							if catalogMetrics != nil {
+								catalogMetrics.IncEntityImageCatalogLookup(true)
+							}
+							results = pool.Candidates
+							fromCache = true
+						} else {
+							if catalogMetrics != nil {
+								catalogMetrics.IncEntityImageCatalogLookup(false)
+							}
+							catalogFallback = pool.Candidates
+							catalogRefreshRequired = true
+						}
+					}
+				}
+				if !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh && !fromCache {
 					if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
 						if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
 							results = append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...)
@@ -277,6 +323,9 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					if !fromCache {
 						var persisted []scriptpkg.SegmentAssetCandidate
 						if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, &persisted); err != nil {
+							if releaseCatalog != nil {
+								releaseCatalog()
+							}
 							outcomes <- providerOutcome{provider: "internet_images", err: err}
 							return
 						} else if hit {
@@ -288,8 +337,29 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						}
 					}
 				}
+				if fromCache {
+					results = normalizeInternetImageCatalogResults(results, query)
+					if catalogEligible && f.catalog != nil {
+						results = filterPersonEntityImageCandidates(catalogIdentity, results)
+						if catalogErr := persistEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, results); catalogErr != nil {
+							if releaseCatalog != nil {
+								releaseCatalog()
+							}
+							outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+							return
+						}
+					}
+				}
 				if !fromCache {
 					allCacheHits = false
+					if catalogMetrics != nil {
+						if catalogEligible && (catalogRefreshRequired || plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh) {
+							catalogMetrics.IncEntityImageCatalogRefresh()
+						}
+						if catalogEligible {
+							catalogMetrics.IncEntityImageCatalogProviderCall()
+						}
+					}
 					if f.metrics != nil {
 						f.metrics.IncProviderRequest("internet_images")
 					}
@@ -302,10 +372,25 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						if f.metrics != nil {
 							f.metrics.IncProviderFailure("internet_images")
 						}
-						outcomes <- providerOutcome{provider: "internet_images", err: err}
+						if releaseCatalog != nil {
+							releaseCatalog()
+							releaseCatalog = nil
+						}
+						outcomes <- providerOutcome{provider: "internet_images", candidates: catalogFallback, err: err}
 						return
 					}
-					results = searched
+					providerResults := normalizeInternetImageCatalogResults(searched, query)
+					if catalogEligible && f.catalog != nil {
+						providerResults = filterPersonEntityImageCandidates(catalogIdentity, providerResults)
+						if catalogErr := persistEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, providerResults); catalogErr != nil {
+							if releaseCatalog != nil {
+								releaseCatalog()
+							}
+							outcomes <- providerOutcome{provider: "internet_images", err: catalogErr}
+							return
+						}
+					}
+					results = appendProviderCandidatesUnique(catalogFallback, providerResults)
 					if len(results) > 0 {
 						cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
 					}
@@ -313,9 +398,15 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 						results = []scriptpkg.SegmentAssetCandidate{}
 					}
 					if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+						if releaseCatalog != nil {
+							releaseCatalog()
+						}
 						outcomes <- providerOutcome{provider: "internet_images", err: cacheErr}
 						return
 					}
+				}
+				if releaseCatalog != nil {
+					releaseCatalog()
 				}
 				for _, cand := range results {
 					if strings.TrimSpace(cand.Provider) == "" {
@@ -355,13 +446,16 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	go func() { wg.Wait(); close(outcomes) }()
 
 	for outcome := range outcomes {
+		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
+		if outcome.provider == scriptpkg.VidRushProviderInternetImages {
+			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
+		}
 		if outcome.err != nil {
 			if outcome.provider == scriptpkg.VidRushProviderArtlist && vidRushArtlistOnlyPlan(plan) {
 				return updated, fmt.Errorf("vidrush provider fanout: required artlist search failed for segment %s: %w", updated.SegmentID, outcome.err)
 			}
 			continue
 		}
-		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, outcome.candidates)
 		switch outcome.provider {
 		case scriptpkg.VidRushProviderArtlist:
 			updated.Assets.PrimaryVideo = outcome.primary

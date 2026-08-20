@@ -1,0 +1,81 @@
+{
+  "certification": "PERSON entity image catalog materialization and replay",
+  "status": "PASS_WITH_PROVIDER_COUNTER_LIMIT",
+  "first_run": {
+    "job_id": "job_1787215817776814392_6ecb3494",
+    "status": "SUCCEEDED",
+    "cache": {
+      "extraction": "REFRESHED",
+      "internet_images": "REFRESHED",
+      "image_generation": "BYPASSED"
+    },
+    "canonical_entity_id": "person:michael-jordan",
+    "canonical_name": "Michael Jordan",
+    "asset_ref": {
+      "asset_id": "ed5437de0d235069bfcde97f7cbb7b94a4f8f710de42626c239f0b3f990f42b1",
+      "sha256": "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7",
+      "drive_link": "https://drive.google.com/file/d/1wftiICRH96TDDMNTxOJ9vQeBap3a0_K5/view?usp=drivesdk",
+      "source": "internet_images",
+      "verification_status": "verified",
+      "persistence_status": "persisted",
+      "index_status": "indexed",
+      "acquisition_status": "acquired"
+    },
+    "binding": {
+      "annotation_type": "PERSON",
+      "template_id": "person_default",
+      "image_status": "resolved",
+      "image_asset_id_matches_asset_ref": true,
+      "image_sha256_matches_asset_ref": true,
+      "image_drive_link_matches_asset_ref": true
+    }
+  },
+  "replay_run": {
+    "job_id": "job_1787215946578128679_3044666e",
+    "status": "SUCCEEDED",
+    "payload_refresh_flags": {
+      "force_refresh": false,
+      "force_refresh_extraction": false,
+      "force_refresh_assets": false,
+      "force_refresh_bindings": false
+    },
+    "cache": {
+      "extraction": "HIT_EXACT",
+      "internet_images": "HIT_EXACT",
+      "image_generation": "BYPASSED"
+    },
+    "asset_ref": {
+      "asset_id": "ed5437de0d235069bfcde97f7cbb7b94a4f8f710de42626c239f0b3f990f42b1",
+      "sha256": "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7",
+      "drive_link": "https://drive.google.com/file/d/1wftiICRH96TDDMNTxOJ9vQeBap3a0_K5/view?usp=drivesdk",
+      "verification_status": "verified",
+      "persistence_status": "persisted",
+      "index_status": "indexed",
+      "acquisition_status": "acquired"
+    },
+    "materialization": {
+      "upload_ms": 0,
+      "asset_id_same_as_first_run": true,
+      "sha256_same_as_first_run": true,
+      "drive_link_same_as_first_run": true,
+      "new_upload_observed": false
+    }
+  },
+  "gates": {
+    "canonical_entity_id": "PASS",
+    "catalog_candidate": "PASS",
+    "candidate_verified": "PASS",
+    "drive_persisted": "PASS",
+    "asset_ref_resolved": "PASS",
+    "person_default_binding": "PASS",
+    "catalog_replay_hit_exact": "PASS",
+    "asset_identity_reused": "PASS",
+    "new_drive_upload": "PASS_ZERO_UPLOAD_MS",
+    "provider_search_numeric_counter": "NOT_EXPOSED"
+  },
+  "artifacts": {
+    "first_run": "refactored/artifacts/verify/michael-jordan-image-refresh.full.json",
+    "replay_run": "refactored/artifacts/verify/michael-jordan-image-replay.full.json",
+    "replay_payload": "refactored/artifacts/verify/michael-jordan-image-replay.payload.json"
+  }
+}

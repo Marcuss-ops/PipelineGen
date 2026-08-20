@@ -327,6 +327,14 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"gpu_copy_bytes":      outcome.GPUCopyBytes,
 		}
 	}
+	if req.Overlay != nil {
+		result["overlay"] = map[string]any{
+			"render_job_id":         req.Overlay.RenderJobID,
+			"plan_fingerprint":      req.Overlay.PlanFingerprint,
+			"render_key":            req.Overlay.RenderKey,
+			"source_video_asset_id": req.Overlay.SourceVideoAssetID,
+		}
+	}
 	if published != nil {
 		result["asset"] = map[string]any{
 			"asset_id":      published.AssetID,

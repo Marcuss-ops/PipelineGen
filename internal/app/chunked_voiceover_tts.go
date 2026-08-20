@@ -36,11 +36,15 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 	if len(chunks) <= 1 {
 		return p.inner.Synthesize(ctx, in)
 	}
-	if p.concurrency < 1 {
-		p.concurrency = 1
+	// Keep the configured limit immutable. This provider is shared by the
+	// voiceover service, so mutating p.concurrency to fit one request would
+	// introduce a data race and could change the limit for another request.
+	effectiveConcurrency := p.concurrency
+	if effectiveConcurrency < 1 {
+		effectiveConcurrency = 1
 	}
-	if p.concurrency > len(chunks) {
-		p.concurrency = len(chunks)
+	if effectiveConcurrency > len(chunks) {
+		effectiveConcurrency = len(chunks)
 	}
 
 	type result struct {
@@ -49,7 +53,9 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 		err   error
 	}
 	results := make(chan result, len(chunks))
-	sem := make(chan struct{}, p.concurrency)
+	sem := make(chan struct{}, effectiveConcurrency)
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var wg sync.WaitGroup
 	for i, text := range chunks {
 		wg.Add(1)
@@ -58,15 +64,20 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-			case <-ctx.Done():
-				results <- result{index: index, err: ctx.Err()}
+			case <-workCtx.Done():
+				results <- result{index: index, err: workCtx.Err()}
 				return
 			}
 			chunkInput := in
 			chunkInput.Text = chunk
 			chunkInput.RemoveSilence = false
 			chunkInput.Filename = chunkFilename(in.Filename, index)
-			out, err := p.inner.Synthesize(ctx, chunkInput)
+			out, err := p.inner.Synthesize(workCtx, chunkInput)
+			if err != nil {
+				// Stop sibling chunks promptly, while still waiting for all
+				// goroutines below so their temporary files can be cleaned up.
+				cancel()
+			}
 			results <- result{index: index, out: out, err: err}
 		}(i, text)
 	}

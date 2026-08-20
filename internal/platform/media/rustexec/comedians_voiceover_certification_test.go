@@ -700,6 +700,9 @@ func TestComediansRealAudioRenderCertification(t *testing.T) {
 	executor := newRealExecutor(t, musclesPath, ffmpegPath)
 	recorder := &recordingAudioRunner{binary: musclesPath, inner: newPersistentRustProcessRunner()}
 	executor.runner = recorder
+	// This test decorates the runner directly; bypass the executor pool so
+	// the recording seam observes the request instead of a pooled runner.
+	executor.runnerPool = nil
 	processor := &VideoProcessor{client: NewClientWithExecutor(executor, nil)}
 	combinedAudio, err := NewCombinedAudioRenderer(processor)
 	if err != nil {

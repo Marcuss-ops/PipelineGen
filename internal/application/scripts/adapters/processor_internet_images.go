@@ -6,8 +6,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -32,18 +34,23 @@ type InternetImagesProcessor struct {
 	searcher InternetImageSearcher
 	metrics  VidRushMetrics
 	cache    scriptports.VidRushCachePort
+	catalog  entitycatalog.Repository
 }
 
 func NewInternetImagesProcessor(searcher InternetImageSearcher, metrics ...VidRushMetrics) *InternetImagesProcessor {
-	return NewInternetImagesProcessorWithCache(searcher, nil, metrics...)
+	return NewInternetImagesProcessorWithCatalog(searcher, nil, nil, metrics...)
 }
 
 func NewInternetImagesProcessorWithCache(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *InternetImagesProcessor {
+	return NewInternetImagesProcessorWithCatalog(searcher, cache, nil, metrics...)
+}
+
+func NewInternetImagesProcessorWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *InternetImagesProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &InternetImagesProcessor{searcher: searcher, metrics: m, cache: cache}
+	return &InternetImagesProcessor{searcher: searcher, metrics: m, cache: cache, catalog: catalog}
 }
 
 func (p *InternetImagesProcessor) Name() ProcessorName { return ProcessorInternetImages }
@@ -196,9 +203,54 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			// lets a warm replay reuse the same assets without re-calling
 			// the provider, even though entity_images binding is disabled.
 			entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
-			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+			var catalogIdentity entitycatalog.PersonIdentity
+			catalogEligible := false
+			catalogRefreshRequired := false
+			catalogFallback := []scriptpkg.SegmentAssetCandidate(nil)
+			catalogMetrics := entityImageCatalogMetricsFor(p.metrics)
+			if p.catalog != nil && entityImagesEnabled {
+				var catalogErr error
+				catalogIdentity, catalogEligible, catalogErr = personCatalogIdentityForQuery(input.SpecScene, sceneIdx, updated, query)
+				if catalogErr != nil {
+					return queryResult{}, catalogErr
+				}
+			}
+			var catalogLock *sync.Mutex
+			if catalogEligible {
+				actual, _ := entityImageLocks.LoadOrStore("entity-catalog:"+catalogIdentity.CanonicalEntityID, &sync.Mutex{})
+				catalogLock = actual.(*sync.Mutex)
+				catalogLock.Lock()
+				defer catalogLock.Unlock()
+				if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+					lookupStarted := time.Now()
+					pool, err := entityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, perQueryLimit)
+					observeEntityImageCatalogLookup(p.metrics, lookupStarted)
+					if err != nil {
+						return queryResult{}, err
+					}
+					if pool.Sufficient {
+						if catalogMetrics != nil {
+							catalogMetrics.IncEntityImageCatalogLookup(true)
+						}
+						return queryResult{candidates: pool.Candidates, query: query, fromCache: true}, nil
+					}
+					if catalogMetrics != nil {
+						catalogMetrics.IncEntityImageCatalogLookup(false)
+					}
+					catalogFallback = pool.Candidates
+					catalogRefreshRequired = true
+				}
+			}
+			if !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
 					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+						cachedCandidates = normalizeInternetImageCatalogResults(cachedCandidates, query)
+						if catalogEligible {
+							cachedCandidates = filterPersonEntityImageCandidates(catalogIdentity, cachedCandidates)
+							if err := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, cachedCandidates); err != nil {
+								return queryResult{}, err
+							}
+						}
 						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query, fromCache: true}, nil
 					}
 				}
@@ -211,19 +263,43 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					if len(persisted) > 0 {
 						cacheStore(&entityImageCache, entityCacheKey, persisted)
 					}
+					persisted = normalizeInternetImageCatalogResults(persisted, query)
+					if catalogEligible {
+						persisted = filterPersonEntityImageCandidates(catalogIdentity, persisted)
+						if err := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, persisted); err != nil {
+							return queryResult{}, err
+						}
+					}
 					return queryResult{candidates: persisted, query: query, fromCache: true}, nil
 				}
 			}
 			var entityLock *sync.Mutex
-			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+			if !catalogEligible && !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				actual, _ := entityImageLocks.LoadOrStore(entityCacheKey, &sync.Mutex{})
 				entityLock = actual.(*sync.Mutex)
 				entityLock.Lock()
 				defer entityLock.Unlock()
 				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
 					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+						cachedCandidates = normalizeInternetImageCatalogResults(cachedCandidates, query)
+						if catalogEligible {
+							cachedCandidates = filterPersonEntityImageCandidates(catalogIdentity, cachedCandidates)
+							if err := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, cachedCandidates); err != nil {
+								return queryResult{}, err
+							}
+						}
 						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query, fromCache: true}, nil
 					}
+				}
+			}
+			if catalogMetrics != nil {
+				// A force refresh bypasses the pool lookup; an insufficient pool
+				// reaches this same provider call with catalogRefreshRequired set.
+				if catalogEligible && (catalogRefreshRequired || plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh) {
+					catalogMetrics.IncEntityImageCatalogRefresh()
+				}
+				if catalogEligible {
+					catalogMetrics.IncEntityImageCatalogProviderCall()
 				}
 			}
 			if p.metrics != nil {
@@ -245,6 +321,14 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				return searchErr
 			})
 			if err == nil {
+				results = normalizeInternetImageCatalogResults(results, query)
+				if catalogEligible {
+					results = filterPersonEntityImageCandidates(catalogIdentity, results)
+					if catalogErr := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, results); catalogErr != nil {
+						return queryResult{}, catalogErr
+					}
+				}
+				results = appendProviderCandidatesUnique(catalogFallback, results)
 				// Empty results are durable-cached in L2 (TTL 48h) so a warm
 				// replay of the same query does not re-call the provider, but
 				// they are kept out of the no-TTL L1 map to avoid unbounded
@@ -259,6 +343,9 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					return queryResult{}, cacheErr
 				}
 			}
+			if err != nil && len(catalogFallback) > 0 {
+				return queryResult{candidates: catalogFallback, query: query, err: err}, nil
+			}
 			return queryResult{candidates: results, query: query, err: err}, nil
 		})
 		if mapErr != nil {
@@ -270,7 +357,6 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					p.metrics.IncProviderFailure("internet_images")
 				}
 				warnings = append(warnings, fmt.Sprintf("internet_images: search failed for segment %s: %v", updated.SegmentID, queryResult.err))
-				continue
 			}
 			for _, cand := range queryResult.candidates {
 				if cand.Provider == "" {
@@ -305,10 +391,11 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 
 		allCacheHits := mapErr == nil && len(queryResults) > 0
+		providerSearches := 0
 		for _, qr := range queryResults {
 			if !qr.fromCache {
 				allCacheHits = false
-				break
+				providerSearches++
 			}
 		}
 		updated.Cache.InternetImages = "MISS"
@@ -317,6 +404,10 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		} else if allCacheHits {
 			updated.Cache.InternetImages = "HIT_EXACT"
 		}
+		// Numeric provider-search counter: 0 on a warm catalog/cache replay,
+		// the number of provider invocations otherwise. This is the observable
+		// "provider search = N" proof the certification consumes.
+		updated.Cache.InternetImagesProviderSearches = providerSearches
 		if len(candidates) > 0 {
 			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)

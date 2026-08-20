@@ -1,0 +1,122 @@
+{
+  "report_version": 1,
+  "job_id": "render-michael-jordan-overlay-20260820-retry",
+  "job_type": "overlay.render",
+  "state": "completed",
+  "plan_id": "michael-jordan-overlay-render-20260820-retry",
+  "timing_freeze": {
+    "entity": "Michael Jordan",
+    "scene_id": "scene-0",
+    "start_us": 13125000,
+    "end_us": 13925000,
+    "start_ms": 13125,
+    "end_ms": 13925,
+    "status": "FROZEN"
+  },
+  "artifact": {
+    "id": "render-michael-jordan-overlay-20260820-retry",
+    "sha256": "2719b556d61d7fe176fced899650bf8f42791fbfab233faa013036510df18a4f",
+    "size_bytes": 47166,
+    "content_type": "video/mp4",
+    "width": 1080,
+    "height": 1920,
+    "fps_num": 30,
+    "fps_den": 1,
+    "frame_count": 418,
+    "duration_us": 13934000,
+    "codec": "h264",
+    "backend": "software"
+  },
+  "live_metrics_ms": {
+    "queue_wait_ms": {
+      "value": 582.735,
+      "source": "render_jobs.started_at - queued_at",
+      "status": "MEASURED"
+    },
+    "overlay_compile_ms": {
+      "value": null,
+      "source": "processing_metrics",
+      "status": "NOT_REPORTED"
+    },
+    "materialize_ms": {
+      "value": 27.359,
+      "source": "processing_metrics",
+      "status": "MEASURED"
+    },
+    "plan_ms": {
+      "value": 1.001,
+      "source": "processing_metrics",
+      "status": "MEASURED"
+    },
+    "render_ms": {
+      "value": 8998.289,
+      "source": "processing_metrics",
+      "status": "MEASURED",
+      "definition": "RenderingGen render phase wall time; it is not treated as encode_ms"
+    },
+    "encode_ms": {
+      "value": null,
+      "source": "Chronon timing sidecar/telemetry",
+      "status": "NOT_RECOVERABLE_FOR_THIS_RUN",
+      "reason": "The worker returned no encode_ms and did not retain an accessible timing sidecar or render_history.jsonl for this job"
+    },
+    "publish_ms": {
+      "value": 5.375,
+      "source": "processing_metrics",
+      "status": "MEASURED"
+    },
+    "total_worker_ms": {
+      "value": 10393.378,
+      "source": "processing_metrics",
+      "status": "MEASURED"
+    },
+    "job_wall_ms": {
+      "value": 10989.175,
+      "source": "render_jobs.completed_at - queued_at",
+      "status": "MEASURED"
+    }
+  },
+  "phase_sum_ms": {
+    "value": 9032.024,
+    "components": [
+      "materialize_ms",
+      "plan_ms",
+      "render_ms",
+      "publish_ms"
+    ],
+    "status": "MEASURED_PARTIAL"
+  },
+  "compile_benchmark_local_pipelinegen": {
+    "command": "go run ./cmd/overlaytimings",
+    "iterations": 3000,
+    "unit": "us",
+    "status": "MEASURED_BASELINE_NOT_LIVE_JOB",
+    "results": {
+      "content01_phrases_mean_us": 32.45,
+      "content02_words_mean_us": 45.47,
+      "content03_images_mean_us": 53.72,
+      "content04_lightleak_mean_us": 28.32,
+      "content05_mixed_mean_us": 53.37,
+      "content06_fullscene_mean_us": 92.95,
+      "content06_script_to_overlay_plan_mean_us": 441.28
+    },
+    "note": "Questo benchmark misura CompileChrononPlan/CompileOverlayPlan locale in PipelineGen; non sostituisce overlay_compile_ms persistito dal worker per il job live."
+  },
+  "evidence": {
+    "queue_job": "GET http://127.0.0.1:8081/jobs/render-michael-jordan-overlay-20260820-retry",
+    "metrics_table": "processing_metrics",
+    "metrics_attempt_id": "render-michael-jordan-overlay-20260820-retry#1",
+    "artifact_table": "render_artifacts",
+    "object_store_head": "HTTP 200"
+  },
+  "verdict": {
+    "job_type_exact_overlay_render": "PASS",
+    "timing_frozen": "PASS",
+    "queue_wait_separate": "PASS",
+    "render_ms_separate_from_queue_wait": "PASS",
+    "compile_ms_live": "NOT_CERTIFIED",
+    "encode_ms_separate": "NOT_CERTIFIED",
+    "mp4_artifact": "PASS",
+    "overall_metric_gate": "PARTIAL"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "job_id": "job_1787215543139029413_1cba03c4",
+  "status": "SUCCEEDED",
+  "payload": {
+    "docs_enabled": true,
+    "docs_folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4",
+    "extract_entities": true,
+    "generate_timeline": true,
+    "render_enabled": true
+  },
+  "script": {
+    "artifact_kind": "script_json",
+    "artifact_filename": "script.json",
+    "artifact_path": "/tmp/pipelinegen/jobs/job_1787215543139029413_1cba03c4/output/script.json",
+    "sha256": "508d7042dd994f796ed65d22c2b6c86917d19a812f7263ee70a11c60ddf1b055",
+    "size_bytes": 4473,
+    "script_id": 102,
+    "full_response": "refactored/artifacts/verify/michael-jordan-document-live.full.json"
+  },
+  "document": {
+    "language": "en",
+    "renderer": "specscene-html-v2",
+    "id": "1J3-aaYuGcUMvB3bTo6cfaGvDVl12h5Ew5krYOEkGlUc",
+    "link": "https://docs.google.com/document/d/1J3-aaYuGcUMvB3bTo6cfaGvDVl12h5Ew5krYOEkGlUc/edit",
+    "scene_count": 1,
+    "specscene_sha256": "d672483a61d2acbe75c98a9236265cd9677b3873b069a9c88a56cbcf84eee351"
+  },
+  "byte_level_annotation_check": {
+    "document_export": "Google Drive text/plain export, SpecScene JSON annotations section",
+    "document_annotations_sha256": "584e6dba8461a48c2b78b347539ec08c140eca7b3326c90f0938a141cbc9af80",
+    "generation_result_annotations_sha256": "584e6dba8461a48c2b78b347539ec08c140eca7b3326c90f0938a141cbc9af80",
+    "equal": true,
+    "status": "PASS"
+  },
+  "notes": {
+    "full_specscene_hash": "The recorded document_specscene_sha256 also matches the exported SpecScene JSON.",
+    "overlay_plan": "The same live result contains an OverlayPlan with 8 items; the document annotations are the source surface used for its traceability checks.",
+    "video": "The source is text-only, so render.enabled=true was accepted but no video artifact was materialized in this job."
+  }
+}

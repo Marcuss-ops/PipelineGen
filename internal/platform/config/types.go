@@ -93,10 +93,10 @@ type VoiceoverConcurrencyConfig struct {
 	// Default: 3.
 	MaxConcurrentDriveUploads int `yaml:"max_concurrent_drive_uploads" env:"VELOX_VOICEOVER_MAX_CONCURRENT_DRIVE_UPLOADS" default:"3"`
 
-	// MaxConcurrentTTS limits parallel text-to-speech synthesis calls.
-	// TTS is CPU-bound (ffmpeg/edge-tts spawn per-call processes). The
-	// certified default (4) matches the script-generation TTS worker pool;
-	// lower it for I/O-constrained hosts. Default: 4.
+	// MaxConcurrentTTS limits parallel text-to-speech synthesis calls sent
+	// to the persistent Edge TTS worker. The measured throughput plateau
+	// starts at 4; lower it for I/O-constrained hosts or raise it only after
+	// validating provider throttling and queue p95. Default: 4.
 	MaxConcurrentTTS int `yaml:"max_concurrent_tts" env:"VELOX_VOICEOVER_MAX_CONCURRENT_TTS" default:"4"`
 
 	// Drive retry budget.

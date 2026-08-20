@@ -149,6 +149,17 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	require.NotNil(t, res.OverlayPlan, "overlay plan must be projected on a real timed run")
 	require.NoError(t, res.OverlayPlan.Validate())
 
+	// The verbose report is intentionally emitted from the certified plan so
+	// operators can audit the exact preset and render key selected for every
+	// item, rather than only the allowed preset families.
+	for _, item := range res.OverlayPlan.Items {
+		assets := make([]string, 0, len(item.AssetRefs))
+		for _, asset := range item.AssetRefs {
+			assets = append(assets, asset.AssetID)
+		}
+		t.Logf("OVERLAY_PLAN_TABLE id=%s entity_id=%s kind=%s timing=%d+%dus template=%s preset=%s asset=%v render_key=%s text=%q", item.ID, item.EntityID, item.Kind, item.StartUS, item.DurationUS, item.TemplateID, item.PresetID, assets, item.RenderKey, item.Text)
+	}
+
 	// ── The full semantic vocabulary ────────────────────────────────
 	byID := map[string]capabilityoverlay.OverlayItem{}
 	templates := map[string]bool{}

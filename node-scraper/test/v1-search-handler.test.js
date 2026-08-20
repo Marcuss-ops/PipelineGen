@@ -118,6 +118,36 @@ describe('handleV1ClipSearch', () => {
     assert.equal(lastLaunchError, null);
   });
 
+  test('propagates the canonical catalog resolution mode to the gateway', async () => {
+    for (const mode of ['catalog_first', 'catalog_only', 'live_required']) {
+      let receivedMode;
+      const req = createReq(JSON.stringify({ query: 'mode test', mode }));
+      const res = createRes();
+      await handleV1ClipSearch(req, res, {
+        config: { DEFAULT_LIMIT: 8, PROFILE_DIR: '', SEARCH_TIMEOUT_MS: 1_000 },
+        state: {
+          incRequest: () => 1,
+          setLastSearchAt: () => {},
+        },
+        deps: {
+          searchArtlistGateway: async (input) => {
+            receivedMode = input.mode;
+            return {
+              ok: true,
+              provider: 'artlist',
+              query: 'mode test',
+              term: 'mode test',
+              clips: [{ clip_id: `clip-${mode}` }],
+              results: [{ clip_id: `clip-${mode}` }],
+            };
+          },
+        },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(receivedMode, mode);
+    }
+  });
+
   test('fails closed when the provider search exceeds its budget', async () => {
     const req = createReq(JSON.stringify({ query: 'provider hangs' }));
     const res = createRes();

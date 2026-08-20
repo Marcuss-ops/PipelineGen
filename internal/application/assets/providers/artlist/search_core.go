@@ -75,14 +75,20 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 }
 
 func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
-	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, false)
+	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, false, ResolveSearchMode("", preferRemote))
+}
+
+// SearchCatalogOnly resolves exclusively through the Node provider catalog.
+// It never consults the Go DB, in-memory provider cache, or live provider.
+func (ss *SearchService) SearchCatalogOnly(ctx context.Context, term string, limit int) ([]Candidate, error) {
+	return ss.searchLiveWithFallbacks(ctx, term, limit, false, false, SearchModeCatalogOnly)
 }
 
 // SearchLiveForceRefresh is the live-search surface used by VidRush. It
 // preserves the ordinary SearchLive behavior for legacy callers while
 // forcing the remote provider to resolve a fresh stream URL.
 func (ss *SearchService) SearchLiveForceRefresh(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
-	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, true)
+	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, true, ResolveSearchMode("", preferRemote))
 }
 
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
@@ -314,7 +320,8 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 	return toDomainPtrSlice(clips)
 }
 
-func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote, forceRefresh bool) ([]Candidate, error) {
+func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote, forceRefresh bool, mode SearchMode) ([]Candidate, error) {
+	mode = ResolveSearchMode(mode, preferRemote)
 	normalizedTerm := normalizeSearchTerm(term)
 	if normalizedTerm == "" {
 		return nil, fmt.Errorf("term is required")
@@ -329,11 +336,17 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 		limit = 50
 	}
 
-	chain := ss.buildSearcherChain(preferRemote)
+	chain := ss.buildSearcherChain(preferRemote, mode)
 	if chain == nil {
 		return nil, fmt.Errorf("no search providers configured")
 	}
-	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit, PreferRemote: preferRemote, ForceRefresh: forceRefresh})
+	candidates, err := chain.Search(ctx, SearchRequest{
+		Term:         normalizedTerm,
+		Limit:        limit,
+		Mode:         mode,
+		PreferRemote: preferRemote,
+		ForceRefresh: forceRefresh,
+	})
 	if err != nil {
 		ss.service.log.Warn("all search providers failed",
 			zap.String("term", term),
@@ -353,8 +366,19 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 	return filtered, nil
 }
 
-func (ss *SearchService) buildSearcherChain(preferRemote bool) *SearcherFallbackChain {
+func (ss *SearchService) buildSearcherChain(preferRemote bool, requestedMode ...SearchMode) *SearcherFallbackChain {
 	s := ss.service
+	mode := SearchMode("")
+	if len(requestedMode) > 0 {
+		mode = requestedMode[0]
+	}
+	mode = ResolveSearchMode(mode, preferRemote)
+	if mode == SearchModeCatalogOnly {
+		if s.scraperSearcher == nil {
+			return nil
+		}
+		return NewSearcherFallbackChain(s.scraperSearcher)
+	}
 	var searchers []Searcher
 	if !preferRemote {
 		localSearcher := s.localSearcher

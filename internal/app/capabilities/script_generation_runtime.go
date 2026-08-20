@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
@@ -237,10 +238,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	vidRushEnricher.WithImageSearchResolver(imageSearchResolver)
 	var vidRushFanout scriptgen.SegmentProviderResolver
 	if vidRushProviders != nil {
-		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithCache(
+		var entityImageCatalogRepo entitycatalog.Repository
+		if root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithCatalog(
 			&documentadapters.VidRushRegistryClipSearcher{Registry: vidRushProviders},
 			&documentadapters.VidRushRegistryImageSearcher{Registry: vidRushProviders},
 			vidRushCache,
+			entityImageCatalogRepo,
 			vidRushMetrics,
 		)
 	}
@@ -249,7 +255,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 	// coordinator reuses it under its own bounded materialization limit.
 	var vidRushMaterializer scriptgen.SegmentMaterializer
 	if vidRushProviders != nil && vidRushFinalizer != nil {
-		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache, vidRushMetrics)
+		var entityImageCatalogRepo entitycatalog.Repository
+		if root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics)
 	}
 	runner.SetVidRushPipeline(&scriptgen.VidRushPipeline{
 		Enricher:         vidRushEnricher,

@@ -67,6 +67,7 @@ func isYouTubeURL(url string) bool {
 // generic HTTP errors and invalid URLs must not trigger a fallback ladder.
 var youtubeClientRetryableRe = regexp.MustCompile(`(?i)` +
 	`sign\s+in\s+to\s+confirm|not\s+a\s+bot|` +
+	`page\s+needs\s+to\s+be\s+reloaded|` +
 	`requested\s+format\s+is\s+not\s+available|no\s+video\s+formats\s+found|` +
 	`(?:challenge|player)\s+(?:extraction|response)|` +
 	`(?:googlevideo|youtube).*(?:403|forbidden)|(?:403|forbidden).*(?:googlevideo|youtube)`)

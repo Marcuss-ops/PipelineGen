@@ -88,6 +88,9 @@ type SegmentAssetCandidate struct {
 	RightsScore           float64 `json:"rights_score,omitempty"`
 	DiversityScore        float64 `json:"diversity_score,omitempty"`
 	ProviderReliability   float64 `json:"provider_reliability,omitempty"`
+	SemanticStatus        string  `json:"semantic_status,omitempty"`
+	SemanticScore         float64 `json:"semantic_score,omitempty"`
+	QualityReason         string  `json:"quality_reason,omitempty"`
 	SourceURL             string  `json:"source_url,omitempty"`
 	SourcePageURL         string  `json:"source_page_url,omitempty"`
 	PreviewURL            string  `json:"preview_url,omitempty"`
@@ -126,6 +129,19 @@ type SegmentCacheState struct {
 	InternetImages  string `json:"internet_images,omitempty"`
 	ImageGeneration string `json:"image_generation,omitempty"`
 	Binding         string `json:"binding,omitempty"`
+
+	// InternetImagesProviderSearches is the numeric count of real
+	// internet_images provider invocations for this segment. It is 0 when
+	// every image query was satisfied by the durable catalog or the segment
+	// cache (a warm replay) — the numeric proof behind the
+	// "provider search = 0" certification gate.
+	InternetImagesProviderSearches int `json:"internet_images_provider_searches,omitempty"`
+
+	// InternetImagesNewUploads is the numeric count of new Drive uploads for
+	// internet_images candidates in this segment. It is 0 when the catalog's
+	// Drive materialization is reused (no re-download, no re-upload) — the
+	// numeric proof behind the "new upload = 0" certification gate.
+	InternetImagesNewUploads int `json:"internet_images_new_uploads,omitempty"`
 }
 
 // VidRushSegmentResult is the full per-segment output surfaced by

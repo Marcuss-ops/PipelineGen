@@ -155,6 +155,13 @@ def phase_items(runner: Any, phase: str, expected_per_job: int) -> list[dict[str
             runner.fail(f"{phase} keyword {result['term']!r} returned {len(job_items)}/{expected_per_job} items")
         for item in job_items:
             if isinstance(item, dict):
-                items.append({"term": result["term"], "run_id": result["run_id"], **item})
+                items.append({
+                    "term": result["term"],
+                    "run_id": result["run_id"],
+                    "job_status": result.get("status", "UNKNOWN"),
+                    "job_elapsed_ms": result.get("elapsed_ms", 0),
+                    "keyword_index": result.get("keyword_index", 0),
+                    **item,
+                })
     runner.write_json(f"{phase}/items.json", items)
     return items

@@ -82,6 +82,9 @@ type VideoCutRequest struct {
 	Strategy          string
 	OutputDir         string
 	PreDownloadedPath string
+	// SkipMetadataFetch avoids a best-effort yt-dlp metadata subprocess on the
+	// critical extraction path when the caller already supplied clip metadata.
+	SkipMetadataFetch bool
 }
 
 // VideoCutResult wraps the output of a video cut operation with the local file path

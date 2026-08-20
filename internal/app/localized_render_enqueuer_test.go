@@ -207,6 +207,30 @@ func TestLocalizedRenderEnqueuer_PersistsSourceAndSubtitleTracks(t *testing.T) {
 	}
 }
 
+func TestLocalizedRenderEnqueuer_PersistsSourceTrackForSameLanguage(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{}
+	cw := &recordingCueWriter{}
+	a := newTestEnqueuerAdapter(l, tr, cw)
+
+	in := testEnqueuerInput()
+	in.Language = "en"
+	in.Text = ""
+	in.SourceText = "Hello source language"
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+
+	tracks := tr.snapshot()
+	if len(tracks) != 1 || tracks[0].LanguageCode != "en" || tracks[0].TextContent != "Hello source language" {
+		t.Fatalf("same-language source track = %+v", tracks)
+	}
+	byLang := cw.last("clip-1")
+	if len(byLang["en"]) != 1 || byLang["en"][0].Text != "Hello source language" {
+		t.Fatalf("same-language cue = %+v", byLang["en"])
+	}
+}
+
 func TestLocalizedRenderEnqueuer_PersistsFullSpanCues(t *testing.T) {
 	l := &recordingLocalizer{}
 	tr := &recordingTrackRepo{}

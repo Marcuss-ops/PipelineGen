@@ -44,6 +44,7 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 		Strategy:          req.Strategy,
 		OutputDir:         req.OutputDir,
 		PreDownloadedPath: req.PreDownloadedPath,
+		SkipMetadataFetch: req.SkipMetadataFetch,
 	}
 
 	infraResult, err := a.inner.DownloadAndCutYouTubeVideo(ctx, infraReq)

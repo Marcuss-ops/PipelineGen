@@ -17,6 +17,6 @@ func DefaultVoiceoverDefaults() VoiceoverDefaultsConfig {
 		DefaultLanguage:         "en",
 		DefaultParallelism:      3,
 		MaxParallelism:          8,
-		ChunkConcurrency:        2,
+		ChunkConcurrency:        3,
 	}
 }

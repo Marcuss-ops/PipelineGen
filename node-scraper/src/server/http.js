@@ -19,7 +19,8 @@ import {
   startHeartbeat,
   stopHeartbeat,
 } from './http-lifecycle.js';
-import { searchArtlistGateway } from '../../artlist/gateway-search.js';
+import { searchArtlistAllPages, searchArtlistGateway } from '../../artlist/gateway-search.js';
+import { createCatalogSyncJobManager } from './catalog-sync-job.js';
 import { downloadClipVideo } from './download.js';
 import { downloadDirectClip } from './download-direct.js';
 import { fetchClipDetails } from '../scrape/detail-page.js';
@@ -27,6 +28,12 @@ import { computeHealthVerdict } from './health.js';
 import { dispatchRequest } from './routes.js';
 
 function createCtx() {
+  const catalogSyncJobs = createCatalogSyncJobManager({ syncCatalog: searchArtlistAllPages });
+  catalogSyncJobs.startScheduler({
+    pollIntervalMs: Number(process.env.ARTLIST_CATALOG_SCHEDULER_POLL_MS) || 60_000,
+    incrementalIntervalMs: Number(process.env.ARTLIST_INCREMENTAL_INTERVAL_MS) || 24 * 60 * 60 * 1000,
+    reconciliationIntervalMs: Number(process.env.ARTLIST_RECONCILIATION_INTERVAL_MS) || 7 * 24 * 60 * 60 * 1000,
+  });
   return {
     config: Object.freeze({
       PORT,
@@ -46,6 +53,11 @@ function createCtx() {
       fetchClipDetails,
       computeHealthVerdict,
       searchArtlistGateway,
+      syncArtlistCatalog: searchArtlistAllPages,
+      enqueueArtlistCatalogSync: (input) => catalogSyncJobs.enqueue(input),
+      getArtlistCatalogSyncStatus: (syncId) => catalogSyncJobs.getStatus(syncId),
+      getArtlistCatalogSyncSchedule: () => catalogSyncJobs.getSchedule(),
+      stopArtlistCatalogScheduler: () => catalogSyncJobs.stopScheduler(),
     }),
   };
 }
@@ -62,7 +74,7 @@ export async function startArtlistServer() {
 
   server.listen(PORT, BIND, () => {
     console.log(`[artlist-server] Listening on http://${BIND}:${PORT} (bind via ARTLIST_SCRAPER_BIND env var)`);
-    console.log('[artlist-server] Endpoints: POST /search, POST /v1/clips/search, POST /detail, POST /download, POST /discover-api, GET /health, GET /v1/health');
+    console.log('[artlist-server] Endpoints: POST /search, POST /v1/clips/search, POST /v1/catalog/sync, POST /detail, POST /download, POST /discover-api, GET /health, GET /v1/health');
     console.log('[artlist-server] Browser will warm up on first request');
   });
 
@@ -74,11 +86,13 @@ export async function startArtlistServer() {
   process.on('SIGTERM', async () => {
     console.log('[artlist-server] SIGTERM received, closing browser & shutting down...');
     stopHeartbeat();
+    ctx.deps.stopArtlistCatalogScheduler();
     await cleanupBrowser();
     server.close(() => process.exit(0));
   });
   process.on('SIGINT', async () => {
     stopHeartbeat();
+    ctx.deps.stopArtlistCatalogScheduler();
     await cleanupBrowser();
     server.close(() => process.exit(0));
   });

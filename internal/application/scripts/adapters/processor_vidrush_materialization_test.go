@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -546,5 +548,125 @@ func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
 	img := result.UpdatedSpecScene.Scenes[0].Annotations.PrimaryEntities[0].Image
 	if img == nil || img.Status != "resolved" || img.AssetID != "asset-dwayne-cert" || img.DriveLink == "" {
 		t.Fatalf("entity image binding = %+v, want resolved durable image", img)
+	}
+}
+
+type catalogReuseImageProvider struct {
+	acquireCalls atomic.Int32
+}
+
+func (p *catalogReuseImageProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (p *catalogReuseImageProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return nil, nil
+}
+func (p *catalogReuseImageProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	p.acquireCalls.Add(1)
+	return scriptports.LocalArtifact{}, errors.New("catalog reuse must not download")
+}
+func (*catalogReuseImageProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("catalog reuse must not verify a downloaded artifact")
+}
+
+type catalogReuseFinalizer struct {
+	finalizeCalls atomic.Int32
+}
+
+func (f *catalogReuseFinalizer) Finalize(context.Context, scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
+	f.finalizeCalls.Add(1)
+	return scriptpkg.SegmentAssetCandidate{}, errors.New("catalog reuse must not upload/finalize")
+}
+
+func TestVidRushMaterializationMarksCatalogURLBrokenAfterAcquireFailure(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan-broken.jpg")
+	provider := &catalogReuseImageProvider{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessorWithCatalog(registry, &catalogReuseFinalizer{}, nil, repo)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "catalog-broken",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "not-yet-materialized", Provider: scriptpkg.VidRushProviderInternetImages,
+			Entity: "Michael Jordan", SourceURL: "https://images.example/michael-jordan-broken.jpg",
+			RightsStatus: "unknown",
+		}}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, _ := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows = %d, err=%v", len(rows), err)
+	}
+	if rows[0].Status != entitycatalog.CandidateStatusBroken {
+		t.Fatalf("URL status = %q, want broken after acquire failure", rows[0].Status)
+	}
+}
+
+func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize(t *testing.T) {
+	vidrushMaterializedCache = sync.Map{}
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan.jpg")
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows = %d, err=%v", len(rows), err)
+	}
+	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
+		CandidateID:    rows[0].ID,
+		AssetID:        "drive-asset-michael-jordan",
+		FileHash:       "sha256-michael-jordan",
+		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
+		LocalPath:      "/nonexistent/local-copy-is-not-needed.jpg",
+		Status:         entitycatalog.MaterializationStatusMaterialized,
+		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &catalogReuseImageProvider{}
+	finalizer := &catalogReuseFinalizer{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessorWithCatalog(registry, finalizer, nil, repo)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "catalog-reuse",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID:      "discovered-before-catalog-hydration",
+			Provider:     scriptpkg.VidRushProviderInternetImages,
+			Entity:       "Michael Jordan",
+			Query:        "Michael Jordan",
+			SourceURL:    "https://images.example/michael-jordan.jpg",
+			RightsStatus: "unknown",
+		}}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.acquireCalls.Load(); got != 0 {
+		t.Fatalf("image acquire calls = %d, want 0 for a verified catalog materialization", got)
+	}
+	if got := finalizer.finalizeCalls.Load(); got != 0 {
+		t.Fatalf("finalizer calls = %d, want 0 because Drive asset is already persisted", got)
+	}
+	images := result.VidRushSegments[0].Assets.SecondaryImages
+	if len(images) != 1 || images[0].AssetID != "drive-asset-michael-jordan" || images[0].DriveLink == "" || images[0].FileHash == "" {
+		t.Fatalf("reused images = %+v, want the cataloged Drive/hash candidate", images)
 	}
 }

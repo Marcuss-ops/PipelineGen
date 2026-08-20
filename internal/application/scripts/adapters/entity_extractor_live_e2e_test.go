@@ -247,3 +247,83 @@ func TestLiveNLPGlobalAggregateCappedWhileSegmentsKeepAll(t *testing.T) {
 		t.Fatalf("distinct per-segment phrases = %d, want 10", len(distinct))
 	}
 }
+
+// TestLiveNLP_MichaelJordanEntitySurface runs the production local NLP path
+// against the certification sentence used by the overlay pipeline. The test
+// validates the durable contract for every entity the extractor declares:
+// non-empty type/confidence and an exact source-text occurrence. The target
+// table is logged rather than hard-coded as a perfect-NER requirement because
+// the configured CPU fallback may legitimately omit or classify optional
+// candidates differently from an external NER backend.
+func TestLiveNLP_MichaelJordanEntitySurface(t *testing.T) {
+	text := "Michael Jordan worked with Nike in Chicago. Nike sold ten million Air Jordan shoes in 1996. Michael Jordan became one of the most famous athletes in the world."
+	targets := []string{"Michael Jordan", "Nike", "Chicago", "ten million", "Air Jordan", "1996"}
+
+	extractor := localnlp.NewHybridExtractor()
+	result, err := extractor.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
+		SegmentID:  "michael-jordan-certification",
+		Text:       text,
+		Title:      "Michael Jordan and Nike",
+		Language:   "en",
+		Device:     localnlp.DeviceCPU,
+		EntityCount: 20,
+	})
+	if err != nil {
+		t.Fatalf("live NLP extraction failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("live NLP returned a nil result")
+	}
+
+	entities := make([]scriptpkg.Entity, 0, len(result.Persons)+len(result.Places)+len(result.Concepts))
+	entities = append(entities, result.Persons...)
+	entities = append(entities, result.Places...)
+	entities = append(entities, result.Concepts...)
+	if len(entities) == 0 {
+		t.Fatal("live NLP returned no entities")
+	}
+
+	found := make(map[string]scriptpkg.Entity, len(entities))
+	lowerText := strings.ToLower(text)
+	for _, entity := range entities {
+		if strings.TrimSpace(entity.Value) == "" {
+			t.Fatalf("live NLP returned an entity with an empty value: %+v", entity)
+		}
+		if strings.TrimSpace(entity.Type) == "" {
+			t.Fatalf("live NLP entity %q has no type", entity.Value)
+		}
+		if entity.Score <= 0 {
+			t.Fatalf("live NLP entity %q has invalid confidence %v", entity.Value, entity.Score)
+		}
+		// Important words are intentionally normalized to lowercase by the
+		// extractor; named entities must still be exact source spans.
+		if entity.Type == "KEYWORD" {
+			if !strings.Contains(lowerText, strings.ToLower(entity.Value)) {
+				t.Fatalf("live NLP invented keyword %q; source=%q", entity.Value, text)
+			}
+		} else if !strings.Contains(text, entity.Value) {
+			t.Fatalf("live NLP invented named entity %q; source=%q", entity.Value, text)
+		}
+		found[strings.ToLower(entity.Value)] = entity
+		t.Logf("entity=%q type=%s confidence=%.2f", entity.Value, entity.Type, entity.Score)
+	}
+
+	// Michael Jordan is the mandatory anchor for this certification. The
+	// remaining targets are reported individually so the result distinguishes
+	// an NLP omission from a downstream overlay loss.
+	if entity, ok := found[strings.ToLower("Michael Jordan")]; !ok || entity.Type != "PERSON" {
+		t.Fatalf("missing mandatory PERSON Michael Jordan: %+v", entities)
+	}
+	for _, target := range targets {
+		entity, ok := found[strings.ToLower(target)]
+		if !ok {
+			t.Logf("target=%q status=NOT_EXTRACTED", target)
+			continue
+		}
+		t.Logf("target=%q status=EXTRACTED type=%s confidence=%.2f", target, entity.Type, entity.Score)
+	}
+	if len(result.ImportantPhrases) != 1 {
+		t.Fatalf("important phrases=%v, want exactly one", result.ImportantPhrases)
+	}
+	t.Logf("important_phrase=%q important_words=%v", result.ImportantPhrases[0], result.ImportantWords)
+}

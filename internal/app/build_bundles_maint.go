@@ -10,6 +10,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
@@ -17,6 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -50,6 +54,21 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
 		jobs.Service, maintRepo,
 	)
+
+	recertificationConfig := entitycatalog.DefaultRecertificationConfig()
+	if cfg != nil {
+		if parsed, err := time.ParseDuration(cfg.Jobs.EntityImageRecertificationInterval); err == nil && parsed > 0 {
+			recertificationConfig.Interval = parsed
+		}
+		if cfg.Jobs.EntityImageRecertificationBatchSize > 0 {
+			recertificationConfig.BatchSize = cfg.Jobs.EntityImageRecertificationBatchSize
+		}
+	}
+	entityImageRecertification := entitycatalog.NewRecertificationService(
+		repos.EntityImageCatalog,
+		entitycatalog.NewHTTPImageCandidateValidator(&http.Client{Timeout: 30 * time.Second}),
+		recertificationConfig,
+	)
 	// Registries-and-SSOT (June 2026): this is the canonical site for
 	// the `system.cleanup` job-type registration. Spec §"Uniqueness"
 	// requires composition to fail on duplicate job types; the previous
@@ -63,7 +82,8 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 	}
 
 	return &wiring.MaintBundle{
-		MaintenanceSvc: maintenanceSvc,
-		DeletionSvc:    deletionSvc,
+		MaintenanceSvc:             maintenanceSvc,
+		DeletionSvc:                deletionSvc,
+		EntityImageRecertification: entityImageRecertification,
 	}, nil
 }

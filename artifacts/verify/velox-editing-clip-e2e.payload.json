@@ -1,0 +1,36 @@
+{
+  "source_asset_id": "yt_pyw_bXCaj-s_0_65_v1",
+  "background": {
+    "mode": "blur_source"
+  },
+  "watermark": {
+    "enabled": true,
+    "asset_id": "9cc03bef0eeefa96d5ec39a63d1d1199",
+    "position": "top_right",
+    "opacity": 0.85,
+    "margin_px": 40
+  },
+  "transcript": {
+    "mode": "reuse_or_generate",
+    "language": "en",
+    "persist": true
+  },
+  "subtitles": {
+    "enabled": true,
+    "mode": "burn",
+    "style_id": "shorts-v1"
+  },
+  "output": {
+    "contract": "velox-editing-clip-v1",
+    "width": 1080,
+    "height": 1920,
+    "fps_num": 30,
+    "fps_den": 1
+  },
+  "audio": {
+    "mode": "copy_if_compatible"
+  },
+  "destination": {
+    "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+  }
+}

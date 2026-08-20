@@ -104,7 +104,11 @@ func NewProcessor(
 	}
 }
 
-const DefaultTTSRequestConcurrency = 3
+// DefaultTTSRequestConcurrency is the measured saturation point for the
+// persistent Edge TTS worker. The concurrency benchmark showed that 4 is
+// already near the throughput plateau while keeping queueing low; callers
+// may still override it through voiceover.max_concurrent_tts.
+const DefaultTTSRequestConcurrency = 4
 
 // SetRequestConcurrency bounds simultaneous requests sent to the persistent
 // Edge TTS worker. It is deliberately separate from the application fan-out:

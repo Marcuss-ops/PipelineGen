@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from artlist_scale_config import Settings, chunks, env_bool, env_float, env_int
-from artlist_scale_reporting import emit_summary
+from artlist_scale_reporting import build_per_clip_report, emit_summary
 from artlist_scale_e2e import ScaleRunner
 from artlist_scale_e2e_entry import FailClosedScaleRunner
 
@@ -39,6 +39,36 @@ class ArtlistScaleModuleContractTest(unittest.TestCase):
                 run_phase_mock.side_effect = lambda *_args, **_kwargs: (runner.fail("phase failed"), [])[1]
                 with self.assertRaisesRegex(RuntimeError, "downstream quota work aborted"):
                     runner.run_phase("first")
+
+    def test_per_clip_report_joins_job_sqlite_drive_and_qdrant_status(self) -> None:
+        report = build_per_clip_report(
+            [{
+                "clip_id": "clip-1",
+                "asset_id": "asset-1",
+                "term": "business office",
+                "run_id": "run-1",
+                "job_status": "SUCCEEDED",
+                "job_elapsed_ms": 1234,
+            }],
+            [{
+                "id": "asset-1",
+                "lifecycle_state": "PUBLISHED",
+                "index_state": "INDEXED",
+                "local_path": "/tmp/asset-1.mp4",
+                "file_hash": "hash-1",
+                "drive_file_id": "drive-1",
+            }],
+            {"resolved_by_id": {"drive-1": {"ok": True, "size": 100}}},
+            {"valid_ids": ["asset-1"]},
+        )
+        self.assertEqual(len(report), 1)
+        self.assertEqual(report[0]["clip_id"], "clip-1")
+        self.assertEqual(report[0]["job_status"], "SUCCEEDED")
+        self.assertEqual(report[0]["job_elapsed_ms"], 1234)
+        self.assertTrue(report[0]["download_ok"])
+        self.assertTrue(report[0]["sqlite_ok"])
+        self.assertTrue(report[0]["drive_ok"])
+        self.assertTrue(report[0]["qdrant_ok"])
 
     def test_summary_reporting_preserves_success_output_and_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as report_dir:

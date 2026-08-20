@@ -25,8 +25,15 @@ func TestClientSubmitCreated(t *testing.T) {
 	defer srv.Close()
 
 	client := New(srv.URL)
-	if err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"}); err != nil {
+	if err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1", JobType: "overlay.render"}); err != nil {
 		t.Fatalf("submit: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(gotBody, &body); err != nil {
+		t.Fatalf("decode submitted body: %v", err)
+	}
+	if got, _ := body["job_type"].(string); got != "overlay.render" {
+		t.Fatalf("wire job_type = %q, want exactly overlay.render", got)
 	}
 }
 

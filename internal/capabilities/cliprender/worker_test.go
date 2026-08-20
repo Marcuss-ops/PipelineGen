@@ -253,6 +253,96 @@ func contains(list []string, want string) bool {
 	return false
 }
 
+// fakeRenderPublisher records the publish input and returns a deterministic
+// publication so the full worker path (render + publish + result envelope)
+// can be exercised without Drive or SQLite.
+type fakeRenderPublisher struct {
+	input RenderPublishInput
+	out   RenderPublishResult
+}
+
+func (f *fakeRenderPublisher) Publish(_ context.Context, in RenderPublishInput) (*RenderPublishResult, error) {
+	f.input = in
+	out := f.out
+	if out.AssetID == "" {
+		out = RenderPublishResult{
+			AssetID:     "final-video-asset-001",
+			DriveFileID: "drive-file-001",
+			DriveLink:   "https://drive.google.com/file/d/drive-file-001/view",
+			SizeBytes:   in.Outcome.SizeBytes,
+		}
+	}
+	return &out, nil
+}
+
+// TestWorker_OverlayLineageProjectedIntoResult certifies Gate 7's final
+// binding: a clip.render request that declares an overlay must surface the
+// complete overlay lineage (render job id + plan fingerprint + render key +
+// source video asset id) on the final video result alongside the published
+// asset (final_video_asset_id + Drive file), so the final video asset proves
+// WHICH overlay it composites.
+func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
+		OutputPath:  "/work/rendered-clip.mp4",
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Width:       1080,
+		Height:      1920,
+		FPSNum:      60,
+		FPSDen:      1,
+	}}
+	publisher := &fakeRenderPublisher{}
+	w.WithRenderExecutor(renderer)
+	w.WithRenderPublisher(publisher)
+
+	req := baseRenderRequest()
+	req.Overlay = &OverlayRefSpec{
+		RenderJobID:        "render-michael-jordan-overlay-001",
+		PlanFingerprint:    "fp-michael-jordan",
+		RenderKey:          "rk-michael-jordan",
+		SourceVideoAssetID: "source-video-asset-001",
+	}
+
+	result, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-lineage", Payload: renderJobPayload(t, req)}, nil)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	overlay, ok := result["overlay"].(map[string]any)
+	if !ok {
+		t.Fatalf("result must carry an overlay block, got %+v", result)
+	}
+	if overlay["render_job_id"] != "render-michael-jordan-overlay-001" {
+		t.Errorf("overlay render_job_id = %v", overlay["render_job_id"])
+	}
+	if overlay["plan_fingerprint"] != "fp-michael-jordan" {
+		t.Errorf("overlay plan_fingerprint = %v", overlay["plan_fingerprint"])
+	}
+	if overlay["render_key"] != "rk-michael-jordan" {
+		t.Errorf("overlay render_key = %v", overlay["render_key"])
+	}
+	if overlay["source_video_asset_id"] != "source-video-asset-001" {
+		t.Errorf("overlay source_video_asset_id = %v", overlay["source_video_asset_id"])
+	}
+
+	// The final video asset block carries the Drive identity of the derived
+	// asset: source_video_asset_id (request) → final_video_asset_id + Drive.
+	assetBlock, ok := result["asset"].(map[string]any)
+	if !ok {
+		t.Fatalf("result must carry a published asset block, got %+v", result)
+	}
+	if assetBlock["asset_id"] != "final-video-asset-001" {
+		t.Errorf("final video asset_id = %v", assetBlock["asset_id"])
+	}
+	if assetBlock["drive_file_id"] != "drive-file-001" {
+		t.Errorf("final video drive_file_id = %v", assetBlock["drive_file_id"])
+	}
+	if result["source_asset_id"] != "asset-source" {
+		t.Errorf("source_asset_id = %v", result["source_asset_id"])
+	}
+}
+
 // TestWorker_PrepareFailure_Wrapped verifies a preparation failure surfaces
 // as a wrapped error, never a silent success.
 func TestWorker_PrepareFailure_Wrapped(t *testing.T) {
