@@ -9,6 +9,7 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +33,37 @@ func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req scrip
 
 func proseResult(text string) *scriptports.GenerationResult {
 	return &scriptports.GenerationResult{Script: text, WordCount: len(strings.Fields(text)), Model: "test-model"}
+}
+
+func TestNormalizeGeneratedSegment_RemovesPresentationNoise(t *testing.T) {
+	raw := "### Segment 1\n\nTesla changed the market.\n\nElectric vehicles became more common."
+	got := normalizeGeneratedSegment(raw)
+	if got != "Tesla changed the market. Electric vehicles became more common." {
+		t.Fatalf("normalized segment = %q", got)
+	}
+	if len(splitGeneratedSegmentParagraphs(raw)) != 1 {
+		t.Fatal("presentation line breaks must not create multiple segment paragraphs")
+	}
+}
+
+func TestEngineGenerate_UsesGlobalSourceTextFallback(t *testing.T) {
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
+		proseResult(""), proseResult(""),
+	}}
+	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
+	engine.ConfigureSegmentValidation(15, 10, 1)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title: "fallback", Topic: "fallback", Language: "en", Mode: "text", TargetWords: 10,
+		SourceText: "authoritative source text for this segment",
+		Segments:   []scriptpkg.ScriptSegment{{ID: "one", Topic: "one", TargetWords: 10}},
+	}
+	result, err := engine.Generate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	if result.Output.Text == "" {
+		t.Fatal("expected deterministic source fallback")
+	}
 }
 
 func segmentPlan(target int) *scriptpkg.ResolvedGenerationPlan {
@@ -155,20 +187,21 @@ func TestEngineGenerate_PerSegmentRequestsCarryOnlyOwnedEditorialEvidence(t *tes
 	if len(gen.prompts) != 2 {
 		t.Fatalf("provider calls = %d, want one per segment", len(gen.prompts))
 	}
-	want := []struct {
-		own, other string
-	}{
-		{"PAUL_EDITORIAL_82931", "ANDREW_EDITORIAL_18372"},
-		{"ANDREW_EDITORIAL_18372", "PAUL_EDITORIAL_82931"},
-	}
 	for i, prompt := range gen.prompts {
-		if !strings.Contains(prompt, want[i].own) {
-			t.Errorf("request[%d] lost owned source sentinel %q: %s", i, want[i].own, prompt)
+		var own, other, ownClip, otherClip string
+		switch {
+		case strings.Contains(prompt, "Topic: Paul Giamatti"):
+			own, other, ownClip, otherClip = "PAUL_EDITORIAL_82931", "ANDREW_EDITORIAL_18372", "PAUL_CLIP_A_FACT_74211", "ANDREW_CLIP_B_FACT_18372"
+		case strings.Contains(prompt, "Topic: Andrew Garfield"):
+			own, other, ownClip, otherClip = "ANDREW_EDITORIAL_18372", "PAUL_EDITORIAL_82931", "ANDREW_CLIP_B_FACT_18372", "PAUL_CLIP_A_FACT_74211"
+		default:
+			t.Errorf("request[%d] has no recognized segment topic: %s", i, prompt)
+			continue
 		}
-		if !strings.Contains(prompt, []string{"PAUL_CLIP_A_FACT_74211", "ANDREW_CLIP_B_FACT_18372"}[i]) {
-			t.Errorf("request[%d] lost owned clip evidence: %s", i, prompt)
+		if !strings.Contains(prompt, own) || !strings.Contains(prompt, ownClip) {
+			t.Errorf("request[%d] lost owned evidence: %s", i, prompt)
 		}
-		if strings.Contains(prompt, want[i].other) || strings.Contains(prompt, []string{"ANDREW_CLIP_B_FACT_18372", "PAUL_CLIP_A_FACT_74211"}[i]) {
+		if strings.Contains(prompt, other) || strings.Contains(prompt, otherClip) {
 			t.Errorf("request[%d] contains evidence owned by another segment: %s", i, prompt)
 		}
 	}
@@ -195,6 +228,7 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 func TestEngineGenerate_DoesNotUseSegmentSourceAsFinalNarration(t *testing.T) {
 	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
 		proseResult("one paragraph"), proseResult("still one paragraph"),
+		proseResult("one paragraph"), proseResult("still one paragraph"),
 	}}
 	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
 	engine.ConfigureSegmentValidation(15, 10, 1)
@@ -215,5 +249,16 @@ func TestAssembleFrozenSegmentsDoesNotChangeOrder(t *testing.T) {
 	texts := []string{"first frozen text", "second frozen text", "third frozen text"}
 	if got := assembleFrozenSegments(texts); got != strings.Join(texts, "\n\n") {
 		t.Fatalf("assembled text changed order: %q", got)
+	}
+}
+
+func TestSourceTextFallbackParagraphHonorsBounds(t *testing.T) {
+	got := sourceTextFallbackParagraph("Elon Musk spoke in Texas about electric vehicles.", segmentBudget{Target: 10, Min: 8, Max: 12})
+	words := textutil.CountWords(got)
+	if words < 8 || words > 12 {
+		t.Fatalf("fallback words=%d, want 8-12: %q", words, got)
+	}
+	if !strings.Contains(got, "Elon Musk") || !strings.Contains(got, "Texas") {
+		t.Fatalf("fallback lost authored entities: %q", got)
 	}
 }

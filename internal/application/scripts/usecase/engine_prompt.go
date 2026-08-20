@@ -129,6 +129,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		if strings.TrimSpace(s.SourceText) != "" {
 			b.WriteString("\nSource text:\n")
 			b.WriteString(s.SourceText)
+			b.WriteString("\nGROUNDING RULE: preserve every explicitly named person, organization, and place from this source text. If the Topic names a person, the first sentence of this segment MUST contain that exact proper name.")
 		}
 		if len(s.ClipIDs) > 0 {
 			b.WriteString("\nAssigned clip_ids (use only these clips for this segment): ")
@@ -164,7 +165,17 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	b.WriteString("Emit exactly one prose paragraph for each segment, in the declared order, with one blank line between paragraphs. Never merge two segments into one paragraph and never move content across paragraph boundaries.\n")
 	b.WriteString("Each segment must treat exclusively the subject named in its Topic. Do not anticipate the next subject, move paragraphs between segments, or insert a general conclusion before the final segment.\n")
 	if len(plan.Segments) == 1 {
-		b.WriteString("Because this request declares one single-scene segment, write between 180 and 260 words for that segment. This range is mandatory.\n")
+		// Do not impose the historical 180–260-word single-scene range when
+		// the caller supplied a smaller explicit segment budget. That range
+		// contradicted ScriptSegment.TargetWords (for example target_words=70),
+		// causing the model to generate a valid-looking paragraph that the
+		// downstream 15% validator necessarily rejected.
+		target := segmentBudgetFor(plan, 0, defaultSegmentWordsTolerancePercent).Target
+		if target > 0 && target < 180 {
+			fmt.Fprintf(&b, "Because this request declares one single-scene segment, write about %d words for that segment and stay within its declared word budget. This range is mandatory.\n", target)
+		} else {
+			b.WriteString("Because this request declares one single-scene segment, write between 180 and 260 words for that segment. This range is mandatory.\n")
+		}
 	} else {
 		b.WriteString("Respect each segment's declared target_words and any explicit min_words/max_words; do not pad short segments with generic filler. The first segment is an introduction when its topic says introduction, and must remain concise (one sentence whenever possible).\n")
 	}

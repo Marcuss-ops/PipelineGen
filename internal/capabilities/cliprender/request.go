@@ -16,6 +16,7 @@ package cliprender
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -99,6 +100,7 @@ type BackgroundSpec struct {
 // block may be omitted entirely.
 type WatermarkSpec struct {
 	Enabled  bool    `json:"enabled,omitempty"`
+	Text     string  `json:"text,omitempty"`
 	AssetID  string  `json:"asset_id,omitempty"`  // required when enabled
 	Position string  `json:"position,omitempty"`  // default top_right
 	Opacity  float64 `json:"opacity,omitempty"`   // 0.0–1.0, default 1.0
@@ -260,8 +262,8 @@ func (r *RenderRequest) Validate() error {
 	}
 
 	if r.Watermark.Enabled {
-		if r.Watermark.AssetID == "" {
-			return fmt.Errorf("%w: watermark.enabled=true requires watermark.asset_id (a canonical watermark asset, never a raw path)", ErrInvalidRequest)
+		if strings.TrimSpace(r.Watermark.AssetID) == "" && strings.TrimSpace(r.Watermark.Text) == "" {
+			return fmt.Errorf("%w: watermark.enabled=true requires watermark.asset_id or watermark.text", ErrInvalidRequest)
 		}
 		switch r.Watermark.Position {
 		case PositionTopLeft, PositionTopRight, PositionCenter, PositionBottomLeft, PositionBottomRight:

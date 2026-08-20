@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"golang.org/x/sync/errgroup"
 )
 
 // clipRenderPublisher is the composition-root adapter for the final render
@@ -40,44 +41,60 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	}
 	assetID := "cliprender_" + contentHash[:24]
 	filename := assetID + filepath.Ext(in.OutputPath)
-	pub, err := p.drive.Publish(ctx, delivery.PublishRequest{
-		Destination:         delivery.DestinationClipMetadata,
-		DestinationFolderID: in.DriveFolderID,
-		LocalPath:           in.OutputPath,
-		Filename:            filename,
-		AssetID:             assetID,
-		SourceVersion:       1,
-		ContentHash:         contentHash,
-		IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, assetID, contentHash, 1),
-		ConflictPolicy:      delivery.ConflictSkip,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("publish rendered clip: %w", err)
-	}
-	if pub == nil || pub.FileID == "" {
-		return nil, fmt.Errorf("publish rendered clip: empty Drive result")
-	}
-
+	// The video and its deterministic ASS sidecar are independent remote
+	// artifacts. Upload them concurrently, but do not return success until
+	// both are confirmed; the SQLite commit below remains the single durable
+	// completion boundary. This removes the old video-upload -> ASS-upload
+	// serialization without weakening fail-closed publication semantics.
+	var pub *delivery.PublishResult
 	var sidecarFileID, sidecarLink string
-	if in.Subtitles != nil {
-		sidecar, sidecarErr := p.drive.Publish(ctx, delivery.PublishRequest{
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		result, publishErr := p.drive.Publish(gctx, delivery.PublishRequest{
 			Destination:         delivery.DestinationClipMetadata,
 			DestinationFolderID: in.DriveFolderID,
-			LocalPath:           in.Subtitles.LocalPath,
-			Filename:            assetID + ".ass",
+			LocalPath:           in.OutputPath,
+			Filename:            filename,
 			AssetID:             assetID,
 			SourceVersion:       1,
-			ContentHash:         in.Subtitles.SHA256,
-			IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, assetID, in.Subtitles.SHA256, 1),
-			ConflictPolicy:      delivery.ConflictOverwrite,
+			ContentHash:         contentHash,
+			IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, assetID, contentHash, 1),
+			ConflictPolicy:      delivery.ConflictSkip,
 		})
-		if sidecarErr != nil {
-			return nil, fmt.Errorf("publish subtitles sidecar: %w", sidecarErr)
+		if publishErr != nil {
+			return fmt.Errorf("publish rendered clip: %w", publishErr)
 		}
-		if sidecar == nil || sidecar.FileID == "" {
-			return nil, fmt.Errorf("publish subtitles sidecar: empty Drive result")
+		if result == nil || result.FileID == "" {
+			return fmt.Errorf("publish rendered clip: empty Drive result")
 		}
-		sidecarFileID, sidecarLink = sidecar.FileID, sidecar.WebViewLink
+		pub = result
+		return nil
+	})
+	if in.Subtitles != nil {
+		g.Go(func() error {
+			result, publishErr := p.drive.Publish(gctx, delivery.PublishRequest{
+				Destination:         delivery.DestinationClipMetadata,
+				DestinationFolderID: in.DriveFolderID,
+				LocalPath:           in.Subtitles.LocalPath,
+				Filename:            assetID + ".ass",
+				AssetID:             assetID,
+				SourceVersion:       1,
+				ContentHash:         in.Subtitles.SHA256,
+				IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, assetID, in.Subtitles.SHA256, 1),
+				ConflictPolicy:      delivery.ConflictOverwrite,
+			})
+			if publishErr != nil {
+				return fmt.Errorf("publish subtitles sidecar: %w", publishErr)
+			}
+			if result == nil || result.FileID == "" {
+				return fmt.Errorf("publish subtitles sidecar: empty Drive result")
+			}
+			sidecarFileID, sidecarLink = result.FileID, result.WebViewLink
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{

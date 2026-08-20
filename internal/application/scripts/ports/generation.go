@@ -46,9 +46,10 @@ type ScriptGenerator interface {
 
 // GenerationResult is the provider-neutral result returned by ScriptGenerator.
 type GenerationResult struct {
-	Script      string
-	WordCount   int
-	EstDuration int
-	Model       string
-	Prompt      string
+	Script           string
+	WordCount        int
+	EstDuration      int
+	Model            string
+	Prompt           string
+	GenerationSource string
 }

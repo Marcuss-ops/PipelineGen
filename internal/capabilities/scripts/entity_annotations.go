@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	"net/url"
 	"strings"
 	"unicode"
 
@@ -87,6 +88,9 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
 			Mentions: mentions,
 		}
+		if kind == "PERSON" {
+			item.Image = entityImageBindingFor(canonical, seg)
+		}
 		if kind == "PERSON" || kind == "ORG" || kind == "GPE" {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
@@ -97,6 +101,77 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		return nil
 	}
 	return ann
+}
+
+// entityImageBindingFor projects only a durable, identity-scoped internet
+// image onto a PERSON annotation. Generic scene candidates and remote-only
+// results must never become a person's image.
+func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
+	want := normalizeEntityImageName(name)
+	if want == "" {
+		return nil
+	}
+	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	for _, candidate := range all {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.FileHash) == "" ||
+			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
+			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
+			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
+			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
+			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
+			continue
+		}
+		query := normalizeEntityImageName(candidate.Query)
+		if query != want && !strings.Contains(query, want) {
+			continue
+		}
+		return &scriptpkg.EntityImageBinding{
+			Status: "resolved", AssetID: candidate.AssetID, DriveLink: candidate.DriveLink,
+			Source: candidate.Provider, License: candidate.RightsBasis,
+			PreviewURL: entityImagePreviewURL(candidate), SHA256: candidate.FileHash,
+		}
+	}
+	return nil
+}
+
+func normalizeEntityImageName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSuffix(strings.TrimSuffix(value, "'s"), "’s")
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
+	if id := driveFileID(candidate.DriveLink); id != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
+	}
+	return firstNonEmpty(candidate.SourceURL, candidate.PreviewURL)
+}
+
+func driveFileID(link string) string {
+	parsed, err := url.Parse(strings.TrimSpace(link))
+	if err != nil {
+		return ""
+	}
+	if id := parsed.Query().Get("id"); id != "" {
+		return id
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for i := range parts {
+		if (parts[i] == "d" || parts[i] == "file") && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 // maxInt returns the larger of the two integers (mirror of the legacy batch

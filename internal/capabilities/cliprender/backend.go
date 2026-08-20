@@ -24,6 +24,11 @@ import (
 type RenderBackend string
 
 const (
+	// BackendChrononVulkan delegates complex compositing/text to Chronon3d.
+	// Rust remains responsible for acquisition, probing and delivery; Chronon
+	// owns the GPU render graph and persistent glyph atlas.
+	BackendChrononVulkan RenderBackend = "chronon_vulkan"
+
 	// BackendCudaNative is the full-GPU compositor: NVDEC → GPU transform →
 	// VRAM alpha blend → NV12 → NVENC. Video frames never leave VRAM.
 	BackendCudaNative RenderBackend = "cuda_native"
@@ -36,7 +41,7 @@ const (
 
 // IsValid reports whether the backend is a known identifier.
 func (b RenderBackend) IsValid() bool {
-	return b == BackendCudaNative || b == BackendFFmpegFallback
+	return b == BackendChrononVulkan || b == BackendCudaNative || b == BackendFFmpegFallback
 }
 
 // ErrBackendUnavailable is returned when no registered backend can run on
@@ -55,6 +60,7 @@ type RendererCapabilities struct {
 	GPUBlur         bool `json:"gpu_blur"`
 	GPUAlpha        bool `json:"gpu_alpha"`
 	SubtitleTexture bool `json:"subtitle_texture"`
+	ChrononVulkan   bool `json:"chronon_vulkan"`
 }
 
 // Satisfies reports whether the host capabilities satisfy every required
@@ -81,6 +87,9 @@ func (c RendererCapabilities) Satisfies(required RendererCapabilities) bool {
 	if required.SubtitleTexture && !c.SubtitleTexture {
 		return false
 	}
+	if required.ChrononVulkan && !c.ChrononVulkan {
+		return false
+	}
 	return true
 }
 
@@ -103,7 +112,6 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 		NVDEC:     true,
 		NVENCH264: true,
 		GPUScale:  true,
-		GPUBlur:   true,
 		GPUAlpha:  true,
 	})
 	registry.Register(BackendFFmpegFallback, RendererCapabilities{})

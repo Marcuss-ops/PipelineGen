@@ -23,6 +23,69 @@ func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequest_PropagatesVideoRenderContract(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	err := json.Unmarshal([]byte(`{
+		"version":2,
+		"items":[{
+			"language":"it",
+			"source":{"type":"clips","clip_ids":["clip-a"]},
+			"output":{
+				"watermark":{"enabled":true,"asset_id":"wm-main","opacity":0.85},
+				"subtitles":{"enabled":true}
+			}
+		}]
+	}`), &env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := BuildGenerateRequest(&env, "render-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Render.Enabled || got.Render.Watermark == nil || !got.Render.Watermark.Enabled {
+		t.Fatalf("watermark render contract not propagated: %+v", got.Render)
+	}
+	if got.Render.Watermark.AssetID != "wm-main" || got.Render.Watermark.Position != "top_right" {
+		t.Fatalf("watermark defaults/asset not preserved: %+v", got.Render.Watermark)
+	}
+	if got.Render.Subtitles == nil || !got.Render.Subtitles.Enabled || got.Render.Subtitles.Mode != "burn" {
+		t.Fatalf("subtitle render contract not propagated: %+v", got.Render.Subtitles)
+	}
+}
+
+func TestBuildGenerateRequest_PreservesEnglishPerClipSourceText(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	err := json.Unmarshal([]byte(`{
+		"version":2,
+		"items":[{
+			"language":"en",
+			"source":{"type":"clips","transcript_policy":"source_text_fallback"},
+			"script_params":{"segments":[
+				{"id":"scene-0","topic":"Adam Driver interview","source_text":"Adam Driver reflects on his creative work during a thoughtful interview.","clip_ids":["clip-adam"]},
+				{"id":"scene-1","topic":"Zendaya interview","source_text":"Zendaya answers questions with confidence and spontaneous energy.","clip_ids":["clip-zendaya"]}
+			]}
+		}]
+	}`), &env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := BuildGenerateRequest(&env, "english-clips-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SourceLanguage != "en" || len(got.ScriptParams.Segments) != 2 {
+		t.Fatalf("english segment contract not preserved: language=%q segments=%d", got.SourceLanguage, len(got.ScriptParams.Segments))
+	}
+	for i, segment := range got.ScriptParams.Segments {
+		if segment.SourceText == "" || len(segment.ClipIDs) != 1 {
+			t.Fatalf("segment %d lost source_text or clip binding: %+v", i, segment)
+		}
+	}
+}
+
 func TestBuildGenerateRequest_MapsExplicitDocsConfig(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	err := json.Unmarshal([]byte(`{

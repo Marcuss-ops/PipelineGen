@@ -58,6 +58,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -238,7 +241,26 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 			return nil, verr
 		}
 	}
+	if req.PublicRead {
+		if err := u.ensurePublicRead(ctx, result.FileID); err != nil {
+			return nil, fmt.Errorf("drive public-read permission for %q: %w", result.FileID, err)
+		}
+	}
 	return result, nil
+}
+
+func (u *Uploader) ensurePublicRead(ctx context.Context, fileID string) error {
+	permissions, err := u.Service.Permissions.List(fileID).Fields("permissions(type,role)").Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	for _, permission := range permissions.Permissions {
+		if permission.Type == "anyone" && permission.Role == "reader" {
+			return nil
+		}
+	}
+	_, err = u.Service.Permissions.Create(fileID, &driveapi.Permission{Type: "anyone", Role: "reader"}).Fields("id").Context(ctx).Do()
+	return err
 }
 
 // verifyUploadedFile is the FASE 10 / Commit 1 post-upload
@@ -321,6 +343,14 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		return nil, fmt.Errorf("open local file: %w", err)
 	}
 	defer f.Close()
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat local file: %w", err)
+	}
+	mediaType := mime.TypeByExtension(filepath.Ext(req.Filename))
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
 
 	// ConflictOverwrite on existing match: drive Files.Update (which
 	// preserves the file's ID and version history when keepRevisionForever
@@ -340,11 +370,8 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 				"pipelinegen_idempotency_key": req.IdempotencyKey,
 			}
 		}
-		updated, err := u.Service.Files.Update(existing.FileID, updateFile).
-			Fields("id,webViewLink,md5Checksum").
-			Media(f).
-			Context(ctx).
-			Do()
+		updated, err := withUpdateMedia(u.Service.Files.Update(existing.FileID, updateFile).
+			Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, retry.WrapTransient(err))
 		}
@@ -391,11 +418,8 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		}
 		file.Parents = []string{req.FolderID}
 		setAppProperties(file, req.IdempotencyKey)
-		created, err := u.Service.Files.Create(file).
-			Fields("id,webViewLink,md5Checksum").
-			Media(f).
-			Context(ctx).
-			Do()
+		created, err := withCreateMedia(u.Service.Files.Create(file).
+			Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, retry.WrapTransient(err))
 		}
@@ -422,11 +446,8 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	}
 	file.Parents = []string{req.FolderID}
 	setAppProperties(file, req.IdempotencyKey)
-	created, err := u.Service.Files.Create(file).
-		Fields("id,webViewLink,md5Checksum").
-		Media(f).
-		Context(ctx).
-		Do()
+	created, err := withCreateMedia(u.Service.Files.Create(file).
+		Fields("id,webViewLink,md5Checksum"), ctx, f, fileInfo.Size(), mediaType).Do()
 	if err != nil {
 		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, retry.WrapTransient(err))
 	}
@@ -438,6 +459,22 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		MD5Checksum:  created.Md5Checksum,
 		Action:       PutActionCreated,
 	}, nil
+}
+
+const resumableUploadThreshold = 16 * 1024 * 1024
+
+func withCreateMedia(call *driveapi.FilesCreateCall, ctx context.Context, f *os.File, size int64, mediaType string) *driveapi.FilesCreateCall {
+	if size >= resumableUploadThreshold {
+		return call.ResumableMedia(ctx, f, size, mediaType)
+	}
+	return call.Media(f).Context(ctx)
+}
+
+func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, f *os.File, size int64, mediaType string) *driveapi.FilesUpdateCall {
+	if size >= resumableUploadThreshold {
+		return call.ResumableMedia(ctx, f, size, mediaType)
+	}
+	return call.Media(f).Context(ctx)
 }
 
 // renameWithTimestamp, setAppProperties, and truncate16 have moved

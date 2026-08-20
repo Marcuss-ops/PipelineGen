@@ -36,6 +36,10 @@ type YTDLPDownloader struct {
 	// NewYTDLP via cfg.External.ResolvedYouTubeSleepSeconds.
 	ytMinSleepSeconds int
 	ytMaxSleepSeconds int
+	// sectionConcurrency bounds simultaneous yt-dlp section processes for a
+	// single source. Zero keeps the conservative sequential behaviour for
+	// test fixtures; production construction sets the bounded default.
+	sectionConcurrency int
 	// runner is the Pattern 0 port for executing external processes
 	// (godlike/07 minimum-blast-radius + testability). The production
 	// default is `defaultRunner{}` which wraps process.Run; tests inject
@@ -201,6 +205,7 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		verifier:           &ytdlp.OutputVerifier{},
 		ytMinSleepSeconds:  minSleep,
 		ytMaxSleepSeconds:  maxSleep,
+		sectionConcurrency: 3,
 		runner:             defaultRunner{},
 	}
 }

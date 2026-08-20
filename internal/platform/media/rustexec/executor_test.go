@@ -50,6 +50,21 @@ func TestExecutorCleansPartFilesAfterFailedRun(t *testing.T) {
 	}
 }
 
+func TestConfiguredExecutionSlotsIsBoundedAndConfigurable(t *testing.T) {
+	t.Setenv(mediaExecutionSlotsEnv, "3")
+	if got := configuredExecutionSlots(); got != 3 {
+		t.Fatalf("configured slots: got %d, want 3", got)
+	}
+	t.Setenv(mediaExecutionSlotsEnv, "99")
+	if got := configuredExecutionSlots(); got != maxRustExecutionSlots {
+		t.Fatalf("configured slots must be capped: got %d, want %d", got, maxRustExecutionSlots)
+	}
+	t.Setenv(mediaExecutionSlotsEnv, "invalid")
+	if got := configuredExecutionSlots(); got != defaultRustExecutionSlots {
+		t.Fatalf("invalid configured slots: got %d, want %d", got, defaultRustExecutionSlots)
+	}
+}
+
 func TestClientCleansPartFilesAfterFailedRustResponse(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "clip.mp4")

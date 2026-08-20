@@ -139,6 +139,16 @@ func TestValidate_WatermarkContract(t *testing.T) {
 	}
 }
 
+func TestValidate_TextWatermarkContract(t *testing.T) {
+	req := &RenderRequest{SourceAssetID: "a", Watermark: &WatermarkSpec{
+		Enabled: true, Text: "COMEDYTODAY", Position: PositionCenter, Opacity: 0.5,
+	}}
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		t.Fatalf("text watermark must validate without asset_id: %v", err)
+	}
+}
+
 // TestValidate_OutputContract verifies output resolution/fps bounds.
 func TestValidate_OutputContract(t *testing.T) {
 	// out-of-range dimensions fail.

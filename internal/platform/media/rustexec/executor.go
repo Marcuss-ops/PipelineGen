@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,6 +21,8 @@ import (
 
 const (
 	defaultRustExecutionSlots = 2
+	maxRustExecutionSlots     = 4
+	mediaExecutionSlotsEnv    = "VELOX_MEDIA_EXECUTION_SLOTS"
 	defaultRustOutputLimit    = 64 * 1024
 	defaultRustTimeout        = 10 * time.Minute
 )
@@ -72,7 +75,27 @@ type Executor struct {
 }
 
 func NewExecutor(binaryPath, ffmpegPath string, log *zap.Logger) *Executor {
-	return NewExecutorWithLimit(binaryPath, ffmpegPath, defaultRustExecutionSlots, log)
+	return NewExecutorWithLimit(binaryPath, ffmpegPath, configuredExecutionSlots(), log)
+}
+
+// configuredExecutionSlots controls bounded media concurrency without making
+// the composition root depend on a GPU-specific config type. The ceiling is
+// deliberate: more than four simultaneous NVENC graphs generally increases
+// contention instead of throughput on the supported single-GPU workers.
+func configuredExecutionSlots() int {
+	slots := defaultRustExecutionSlots
+	if raw := strings.TrimSpace(os.Getenv(mediaExecutionSlotsEnv)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			slots = parsed
+		}
+	}
+	if slots < 1 {
+		return 1
+	}
+	if slots > maxRustExecutionSlots {
+		return maxRustExecutionSlots
+	}
+	return slots
 }
 
 func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Logger) *Executor {
@@ -176,9 +199,15 @@ func (rustProcessRunner) Run(ctx context.Context, binary string, input []byte, o
 }
 
 // persistentRustProcessRunner keeps the newline-delimited Rust dispatcher
-// alive across requests. Requests are serialized because run_stdio currently
-// has one request/response stream; the surrounding limiter still controls how
-// many media jobs may execute concurrently in the composition root.
+// alive across requests. Requests are serialized per runner because run_stdio
+// has one request/response stream; Executor's bounded runner pool provides
+// cross-request concurrency without spawning a Rust process for every job.
+//
+// FFmpeg itself remains one process per render. Keeping it alive through a raw
+// frame pipe would force host-memory frames and defeat NVDEC/CUDA zero-copy;
+// the safe optimization here is persistent Rust dispatch plus bounded CUDA
+// concurrency, while a future native libavcodec path can reuse AVCodecContext
+// directly without changing this contract.
 type persistentRustProcessRunner struct {
 	mu     sync.Mutex
 	cmd    *exec.Cmd

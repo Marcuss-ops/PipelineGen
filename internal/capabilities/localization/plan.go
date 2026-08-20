@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"strings"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -109,6 +110,10 @@ type LocalizedClipPlan struct {
 	// request and drives the deterministic report/docs order.
 	Priority int `json:"priority"`
 
+	Watermark     *cliprender.MaterializedAsset `json:"watermark,omitempty"`
+	WatermarkSpec *cliprender.WatermarkSpec     `json:"watermark_spec,omitempty"`
+	WatermarkText string                        `json:"watermark_text,omitempty"`
+
 	// ── Canonical fingerprint ────────────────────────────────────
 	// Fingerprint is the canonical plan digest, computed by the SINGLE
 	// Fingerprint(plan) function. It is persisted on the plan and re-checked
@@ -177,6 +182,17 @@ func (p LocalizedClipPlan) Validate() error {
 	}
 	if p.DurationMS <= 0 {
 		return fmt.Errorf("%w: duration_ms must be > 0 (got %d)", ErrInvalidLocalizedClipPlan, p.DurationMS)
+	}
+	if p.Watermark != nil {
+		if strings.TrimSpace(p.Watermark.AssetID) == "" || strings.TrimSpace(p.Watermark.LocalPath) == "" || !isSHA256Hex(p.Watermark.SHA256) {
+			return fmt.Errorf("%w: watermark materialized asset is incomplete", ErrInvalidLocalizedClipPlan)
+		}
+		if p.WatermarkSpec == nil || strings.TrimSpace(p.WatermarkSpec.AssetID) == "" {
+			return fmt.Errorf("%w: watermark specification is incomplete", ErrInvalidLocalizedClipPlan)
+		}
+	}
+	if strings.TrimSpace(p.WatermarkText) != "" && p.WatermarkSpec == nil {
+		return fmt.Errorf("watermark text requires watermark spec")
 	}
 	if strings.TrimSpace(p.RendererVersion) == "" {
 		return fmt.Errorf("%w: renderer_version is required", ErrInvalidLocalizedClipPlan)

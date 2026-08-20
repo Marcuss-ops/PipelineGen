@@ -212,6 +212,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					ClipAssetID:    clipAssetID,
 					ClipSHA256:     clipSHA256,
 					ClipDurationMS: clipDurationMS,
+					Render:         req.Render,
 				}); err != nil {
 					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)
 				}

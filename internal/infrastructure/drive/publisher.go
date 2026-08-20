@@ -218,6 +218,7 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		// prima della cancellazione locale".
 		ExpectedSize:   req.SizeBytes,
 		ExpectedSHA256: req.ContentHash,
+		PublicRead:     req.Destination == delivery.DestinationImage,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("delivery: publish to %q: %w", req.Destination, err)

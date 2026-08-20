@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
@@ -284,76 +285,112 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 	// "001_segment.%(ext)s" that would collide in concurrent runs.
 	basePath := strings.TrimSuffix(req.OutputPath, filepath.Ext(req.OutputPath))
 
-	var results []DownloadedSegment
+	concurrency := d.sectionConcurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	if concurrency > len(req.DownloadSections) {
+		concurrency = len(req.DownloadSections)
+	}
+	results := make([]DownloadedSegment, len(req.DownloadSections))
+	errs := make([]error, len(req.DownloadSections))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
 	for i, section := range req.DownloadSections {
-		// Validate timestamp format
-		if err := security.SanitizeTimestamp(section); err != nil {
-			return nil, fmt.Errorf("invalid section %d: %w", i, err)
-		}
-
-		var outputTemplate string
-		if len(req.DownloadSections) == 1 {
-			outputTemplate = basePath + ".%(ext)s"
-		} else {
-			outputTemplate = fmt.Sprintf("%s_%03d.%%(ext)s", basePath, i+1)
-		}
-
-		buildArgs := func(playerClient string) []string {
-			args := []string{}
-			if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
-				args = append(args, "--no-playlist")
+		i, section := i, section
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				errs[i] = ctx.Err()
+				return
 			}
-			args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
-			args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
-			// Keep section downloads on yt-dlp/ffmpeg. aria2c is reserved
-			// for full-source downloads because it cannot own the time-range
-			// cut without risking a full or incorrectly bounded output.
+			defer func() { <-sem }()
 
-			if req.Format != "" {
-				args = append(args, "-f", req.Format)
-			}
-			if req.MergeFormat != "" {
-				args = append(args, "--merge-output-format", req.MergeFormat)
+			// Validate timestamp format
+			if err := security.SanitizeTimestamp(section); err != nil {
+				errs[i] = fmt.Errorf("invalid section %d: %w", i, err)
+				return
 			}
 
-			args = append(args, "--download-sections", section)
-			if req.ForceKeyframes {
-				args = append(args, "--force-keyframes-at-cuts")
+			var outputTemplate string
+			if len(req.DownloadSections) == 1 {
+				outputTemplate = basePath + ".%(ext)s"
+			} else {
+				outputTemplate = fmt.Sprintf("%s_%03d.%%(ext)s", basePath, i+1)
 			}
-			args = append(args, "-o", outputTemplate)
 
-			args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
-			args = append(args, req.URL)
-			return args
-		}
+			buildArgs := func(playerClient string) []string {
+				args := []string{}
+				if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+					args = append(args, "--no-playlist")
+				}
+				args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
+				args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
+				// Keep section downloads on yt-dlp/ffmpeg. aria2c is reserved
+				// for full-source downloads because it cannot own the time-range
+				// cut without risking a full or incorrectly bounded output.
 
-		_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
-			return d.runWithClientFallback(ctx, req.URL, process.Options{
-				Timeout:        10 * time.Minute,
-				CombinedOutput: true,
-			}, buildArgs)
-		})
+				if req.Format != "" {
+					args = append(args, "-f", req.Format)
+				}
+				if req.MergeFormat != "" {
+					args = append(args, "--merge-output-format", req.MergeFormat)
+				}
+
+				args = append(args, "--download-sections", section)
+				if req.ForceKeyframes {
+					args = append(args, "--force-keyframes-at-cuts")
+				}
+				args = append(args, "-o", outputTemplate)
+
+				args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+				args = append(args, req.URL)
+				return args
+			}
+
+			_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+				return d.runWithClientFallback(ctx, req.URL, process.Options{
+					Timeout:        10 * time.Minute,
+					CombinedOutput: true,
+				}, buildArgs)
+			})
+			if err != nil {
+				errs[i] = fmt.Errorf("failed to download section %d: %w", i, err)
+				return
+			}
+
+			resolvedPath, pathErr := ResolveDownloadedSegmentPath(outputTemplate)
+			if pathErr != nil {
+				errs[i] = fmt.Errorf("section %d: %w", i, pathErr)
+				return
+			}
+			// Verify the downloaded section like Download does: yt-dlp can exit
+			// zero while leaving an empty/truncated file, and a bot-checked
+			// section download can write a stub container with no media data.
+			// VerifyFile catches missing/empty files; the Step 5a ffprobe gate
+			// catches zero-stream stubs downstream.
+			if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
+				errs[i] = fmt.Errorf("section %d: %w", i, verifyErr)
+				return
+			}
+			results[i] = DownloadedSegment{
+				Path:  resolvedPath,
+				Name:  fmt.Sprintf("segment_%03d", i+1),
+				Index: i,
+			}
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
 		if err != nil {
-			return results, fmt.Errorf("failed to download section %d: %w", i, err)
+			return nil, err
 		}
-
-		resolvedPath, pathErr := ResolveDownloadedSegmentPath(outputTemplate)
-		if pathErr != nil {
-			return results, fmt.Errorf("section %d: %w", i, pathErr)
+		if results[i].Path == "" {
+			return nil, fmt.Errorf("section %d completed without an output", i)
 		}
-		// Verify the downloaded section like Download does: yt-dlp can exit
-		// zero while leaving an empty/truncated file, and a bot-checked
-		// section download can write a stub container with no media data.
-		// VerifyFile catches missing/empty files; the Step 5a ffprobe gate
-		// catches zero-stream stubs downstream.
-		if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
-			return results, fmt.Errorf("section %d: %w", i, verifyErr)
-		}
-		results = append(results, DownloadedSegment{
-			Path:  resolvedPath,
-			Name:  fmt.Sprintf("segment_%03d", i+1),
-			Index: i,
-		})
 	}
 
 	return results, nil

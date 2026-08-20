@@ -176,6 +176,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			ClipAssetID:    clipAssetID,
 			ClipSHA256:     clipSHA256,
 			ClipDurationMS: clipDurationMS,
+			Render:         c.req.Render,
 		}); err != nil {
 			return Scene{}, fmt.Errorf("localized render scene %s lang %s: %w", out.ID, lang, err)
 		}

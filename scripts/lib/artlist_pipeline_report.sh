@@ -34,6 +34,16 @@ else
 fi
 NUM_ASSETS="${#ASSET_IDS[@]}"
 log "   asset_id set: ${NUM_ASSETS} unique (truncated to 100 for downstream probes)"
+# Discovery rows may remain STAGING when acquisition fails; downstream probes
+# operate only on durable published artifacts.
+mapfile -t PIPELINE_ASSET_IDS < <(sqlite3 -noheader "$DB_PATH" "
+    SELECT DISTINCT id FROM media_assets
+    WHERE source='artlist' AND lifecycle_state='PUBLISHED' AND created_at >= '${RUN_START_ISO}'
+      AND lifecycle_state='PUBLISHED' AND drive_file_id!='' AND file_hash!=''
+    ORDER BY created_at DESC LIMIT 100;
+" 2>/dev/null)
+NUM_PIPELINE_ASSETS="${#PIPELINE_ASSET_IDS[@]}"
+log "   durable published asset set: ${NUM_PIPELINE_ASSETS}"
 
 # ─── STEP 6: >= 10 valid ffprobe on the downloaded files ────────────────
 log ""
@@ -50,13 +60,12 @@ FFPROBE_CORRUPT=0
 DOWNLOADS_TMP="$OUT_DIR/step6_downloads"
 mkdir -p "$DOWNLOADS_TMP"
 IDX=0
-for AID in "${ASSET_IDS[@]}"; do
+for AID in "${PIPELINE_ASSET_IDS[@]}"; do
     IDX=$((IDX+1))
-    # Canonical Drive download: pull drive_file_id from SQLite, then
-    # fetch the file bytes via the Drive v3 API's alt=media endpoint.
-    # This is a REAL download (not a guess of a pipeline-specific route)
-    # because the artlist pipeline uploads to Drive — the file IS in
-    # Drive, and the Drive API is the canonical surface to fetch it.
+# Canonical application download: use the authenticated PipelineGen
+# publication route. Calling Google Drive v3 directly with the PipelineGen
+# admin token is invalid (it is not an OAuth token) and produces a misleading
+# 403 even when the Drive file is healthy.
     DFID=$(sqlite3 "$DB_PATH" "
         SELECT drive_file_id FROM media_assets WHERE id='$AID';
     " 2>/dev/null | tr -d ' ' || echo "")
@@ -66,11 +75,11 @@ for AID in "${ASSET_IDS[@]}"; do
         continue
     fi
     MP4_PATH="$DOWNLOADS_TMP/${AID}.mp4"
-    HTTP=$(curl -sS -L --max-redirs 5 --max-time 120 \
+    HTTP=$(curl -sS -L --max-redirs 5 --max-time 120 -X POST \
         --retry 3 --retry-delay 1 \
         -H "X-Velox-Admin-Token: $TOKEN" \
         -o "$MP4_PATH" -w '%{http_code}' \
-        "https://www.googleapis.com/drive/v3/files/${DFID}?alt=media" 2>/dev/null || echo "000")
+        "$BASE/api/media/clips/artlist/clips/${AID}/download" 2>/dev/null || echo "000")
     if [ "$HTTP" != "200" ] && [ "$HTTP" != "206" ]; then
         FFPROBE_FAIL=$((FFPROBE_FAIL+1))
         log "   asset#${IDX} ${AID}: Drive download HTTP ${HTTP} (skipped — not a corruption; will check the count below)"
@@ -120,7 +129,7 @@ FFMPEG_CORRUPT=0
 FFMPEG_TMP="$OUT_DIR/step7_ffmpeg_outputs"
 mkdir -p "$FFMPEG_TMP"
 IDX=0
-for AID in "${ASSET_IDS[@]}"; do
+for AID in "${PIPELINE_ASSET_IDS[@]}"; do
     IDX=$((IDX+1))
     SRC="$DOWNLOADS_TMP/${AID}.mp4"
     [ -f "$SRC" ] || continue
@@ -228,10 +237,10 @@ fi
 
 # ─── STEP 10: >= 10 outbox events completed ─────────────────────────────
 log ""
-log "── STEP 10/12  outbox_events status='completed' (event_type='asset.index.requested.v1') >= ${MIN_OUTBOX_COMPLETED} ──"
+log "── STEP 10/12  outbox_events status='completed' (event_type='asset.index.requested') >= ${MIN_OUTBOX_COMPLETED} ──"
 OUTBOX_COUNT=$(sqlite3 "$DB_PATH" "
     SELECT COUNT(DISTINCT aggregate_id) FROM outbox_events
-    WHERE event_type='asset.index.requested.v1'
+    WHERE event_type='asset.index.requested'
       AND status='completed'
       AND aggregate_id IN (
         SELECT id FROM media_assets
@@ -249,7 +258,7 @@ log ""
 log "── STEP 11/12  Qdrant scroll on '$QDRANT_COLLECTION' (source='artlist', asset_id in our set) >= ${MIN_QDRANT_POINTS} ──"
 if [ "$REQUIRE_QDRANT" = "1" ]; then
     # Build the asset_id set as a JSON array for the Qdrant scroll filter.
-    ASSET_IDS_JSON=$(printf '%s\n' "${ASSET_IDS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
+    ASSET_IDS_JSON=$(printf '%s\n' "${PIPELINE_ASSET_IDS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
     S11_BODY=$(jq -nc --argjson ids "$ASSET_IDS_JSON" --arg src "artlist" '{
         limit: 200,
         with_payload: true,
@@ -304,12 +313,12 @@ SEARCH_BODY=$(jq -nc --arg q "$SEARCH_QUERY" --argjson limit 50 \
     '{query: $q, sources: ["artlist"], mode: "hybrid", limit: $limit}')
 S_HTTP=$(http_post "$BASE/api/media/search" "$SEARCH_FILE" "$SEARCH_BODY")
 if [ "$S_HTTP" = "200" ]; then
-    SEARCH_FOUND_ARTLIST=$(jq -r '[.results[]? | select(.source=="artlist")] | length' "$SEARCH_FILE" 2>/dev/null || echo "0")
+    SEARCH_FOUND_ARTLIST=$(jq -r '[.items[]?] | length' "$SEARCH_FILE" 2>/dev/null || echo "0")
     # Count our asset_ids in the search response.
     SEARCH_OURS=0
-    for AID in "${ASSET_IDS[@]}"; do
+    for AID in "${PIPELINE_ASSET_IDS[@]}"; do
         [ -z "$AID" ] && continue
-        PRESENT=$(jq -r --arg a "$AID" '[.results[]? | select((.asset_id // .id // "") == $a)] | length' "$SEARCH_FILE" 2>/dev/null || echo "0")
+        PRESENT=$(jq -r --arg a "$AID" '[.items[]? | select((.asset_id // .id // "") == $a)] | length' "$SEARCH_FILE" 2>/dev/null || echo "0")
         SEARCH_OURS=$((SEARCH_OURS + PRESENT))
     done
     if [ "$SEARCH_OURS" -ge "$MIN_SEARCH_HITS" ]; then
@@ -337,7 +346,7 @@ fi
 # (b) Every media_assets row in our set has a non-empty drive_file_id.
 ORPHAN_ROWS=$(sqlite3 "$DB_PATH" "
     SELECT COUNT(*) FROM media_assets
-    WHERE source='artlist' AND created_at >= '${RUN_START_ISO}'
+    WHERE source='artlist' AND lifecycle_state='PUBLISHED' AND created_at >= '${RUN_START_ISO}'
       AND (drive_file_id IS NULL OR drive_file_id = '');
 " 2>/dev/null | tr -d ' ')
 if [ "$ORPHAN_ROWS" = "0" ]; then
@@ -349,7 +358,7 @@ fi
 # (c) Every outbox_events row for our set has a corresponding media_assets row.
 ORPHAN_OUTBOX=$(sqlite3 "$DB_PATH" "
     SELECT COUNT(*) FROM outbox_events oe
-    WHERE oe.event_type='asset.index.requested.v1'
+    WHERE oe.event_type='asset.index.requested'
       AND oe.created_at >= '${RUN_START_ISO}'
       AND NOT EXISTS (
         SELECT 1 FROM media_assets ma
@@ -366,7 +375,7 @@ fi
 # (d) Every outbox_events row for our set has a non-empty event_key (idempotency).
 ORPHAN_KEYS=$(sqlite3 "$DB_PATH" "
     SELECT COUNT(*) FROM outbox_events oe
-    WHERE oe.event_type='asset.index.requested.v1'
+    WHERE oe.event_type='asset.index.requested'
       AND oe.created_at >= '${RUN_START_ISO}'
       AND (oe.event_key IS NULL OR oe.event_key = '');
 " 2>/dev/null | tr -d ' ')
@@ -379,7 +388,7 @@ fi
 # (e) Every media_assets row has a non-empty file_hash (no fake-success content).
 NO_FAKE_ROWS=$(sqlite3 "$DB_PATH" "
     SELECT COUNT(*) FROM media_assets
-    WHERE source='artlist' AND created_at >= '${RUN_START_ISO}'
+    WHERE source='artlist' AND lifecycle_state='PUBLISHED' AND created_at >= '${RUN_START_ISO}'
       AND (file_hash IS NULL OR file_hash = '');
 " 2>/dev/null | tr -d ' ')
 if [ "$NO_FAKE_ROWS" = "0" ]; then
@@ -412,4 +421,3 @@ printf 'VERDICT pass=%s fail=%s queries=%s jobs_succeeded=%s assets_unique=%s ff
 if [ "$FAIL" -gt 0 ]; then exit 1; fi
 exit 0
 }
-

@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
 
@@ -47,6 +48,14 @@ type RenderFacts struct {
 // capability never invokes FFmpeg/ffprobe itself.
 type RenderPlanExecutor interface {
 	Execute(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset) (RenderFacts, error)
+}
+
+// WatermarkRenderPlanExecutor is the extended executor implemented by the
+// production clip-render bridge. The base interface remains source-compatible
+// with existing tests and non-watermarked callers.
+type WatermarkRenderPlanExecutor interface {
+	RenderPlanExecutor
+	ExecuteWithWatermark(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset, watermark *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (RenderFacts, error)
 }
 
 // LocalizedClipRenderer is the canonical render step. It is immutable after
@@ -102,7 +111,12 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 	}
 
 	// 3. Rust render boundary.
-	facts, err := r.executor.Execute(ctx, renderPlan, ass)
+	var facts RenderFacts
+	if executor, ok := r.executor.(WatermarkRenderPlanExecutor); ok && plan.Watermark != nil {
+		facts, err = executor.ExecuteWithWatermark(ctx, renderPlan, ass, plan.Watermark, plan.WatermarkSpec)
+	} else {
+		facts, err = r.executor.Execute(ctx, renderPlan, ass)
+	}
 	if err != nil {
 		return LocalizedClipArtifact{Status: LocalizedClipFailed}, fmt.Errorf("localization: render: execute: %w", err)
 	}

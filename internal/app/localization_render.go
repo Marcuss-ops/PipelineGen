@@ -50,6 +50,16 @@ var _ localization.RenderPlanExecutor = (*localizationRenderPlanExecutor)(nil)
 // the actual bytes on disk), the size, the duration, and the codecs pinned by
 // the output contract (Rust re-audits these before reporting success).
 func (a *localizationRenderPlanExecutor) Execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset) (localization.RenderFacts, error) {
+	return a.execute(ctx, plan, subtitle, nil, nil)
+}
+
+// ExecuteWithWatermark keeps watermarking on the same sealed render_clip
+// invocation as subtitle burn. There is no second device/encode pass.
+func (a *localizationRenderPlanExecutor) ExecuteWithWatermark(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, watermark *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (localization.RenderFacts, error) {
+	return a.execute(ctx, plan, subtitle, watermark, spec)
+}
+
+func (a *localizationRenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, watermark *cliprender.MaterializedAsset, watermarkSpec *cliprender.WatermarkSpec) (localization.RenderFacts, error) {
 	if a == nil || a.renderer == nil {
 		return localization.RenderFacts{}, fmt.Errorf("localization: render plan executor not wired")
 	}
@@ -96,8 +106,16 @@ func (a *localizationRenderPlanExecutor) Execute(ctx context.Context, plan rende
 	}
 
 	clipPlan, err := cliprender.Compile(cliprender.CompileInput{
-		RunID:      plan.Revision,
-		Source:     &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
+		RunID:         plan.Revision,
+		Source:        &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
+		Watermark:     watermark,
+		WatermarkSpec: watermarkSpec,
+		WatermarkText: func() string {
+			if watermarkSpec == nil {
+				return ""
+			}
+			return watermarkSpec.Text
+		}(),
 		Subtitles:  sub,
 		Contract:   contract,
 		AudioMode:  cliprender.AudioModeCopyIfCompatible,

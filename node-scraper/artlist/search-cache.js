@@ -31,6 +31,13 @@ export function buildSearchCacheKey({ query, filters = {}, page = 1, limit = 24 
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
+export function buildSearchQueryKey({ query, filters = {} }) {
+  return crypto.createHash('sha256').update(JSON.stringify({
+    query: String(query || '').trim().toLowerCase(),
+    filters: sortObject(filters || {}),
+  })).digest('hex');
+}
+
 class ArtlistSearchCache {
   constructor(dbPath = DEFAULT_DB_PATH, ttlMs = DEFAULT_TTL_MS) {
     this.dbPath = dbPath;
@@ -70,8 +77,19 @@ class ArtlistSearchCache {
         width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
         fps REAL NOT NULL DEFAULT 0, tags_json TEXT NOT NULL,
         categories_json TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        download_urls_json TEXT NOT NULL DEFAULT '[]',
+        download_urls_expires_at TEXT,
         first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS artlist_query_clips (
+        query_key TEXT NOT NULL, query TEXT NOT NULL, filters_json TEXT NOT NULL,
+        clip_id TEXT NOT NULL, page INTEGER NOT NULL, rank INTEGER NOT NULL,
+        discovered_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+        PRIMARY KEY (query_key, clip_id),
+        FOREIGN KEY (clip_id) REFERENCES artlist_clips(clip_id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_artlist_query_clips_lookup
+        ON artlist_query_clips(query_key, page, rank);
       CREATE VIRTUAL TABLE IF NOT EXISTS artlist_clips_fts USING fts5(
         clip_id UNINDEXED, title, description, creator, tags, categories
       );
@@ -93,31 +111,61 @@ class ArtlistSearchCache {
         DELETE FROM artlist_clips_fts WHERE clip_id = old.clip_id;
       END;
     `);
+    for (const statement of [
+      "ALTER TABLE artlist_clips ADD COLUMN download_urls_json TEXT NOT NULL DEFAULT '[]'",
+      'ALTER TABLE artlist_clips ADD COLUMN download_urls_expires_at TEXT',
+    ]) {
+      try { this.db.exec(statement); } catch (error) {
+        if (!String(error.message).includes('duplicate column name')) throw error;
+      }
+    }
     this.db.exec('DELETE FROM artlist_clips_fts');
     this.backfillCatalog();
   }
 
-  upsertCatalog(clips) {
+  upsertCatalog(clips, request = {}) {
     if (!Array.isArray(clips) || clips.length === 0) return;
     const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + this.ttlMs).toISOString();
     const upsert = this.db.prepare(`INSERT INTO artlist_clips
-      (clip_id,title,description,creator,page_url,preview_url,thumbnail_url,duration_ms,width,height,fps,tags_json,categories_json,metadata_json,first_seen_at,last_seen_at)
-      VALUES (@clip_id,@title,@description,@creator,@page_url,@preview_url,@thumbnail_url,@duration_ms,@width,@height,@fps,@tags_json,@categories_json,@metadata_json,@now,@now)
-      ON CONFLICT(clip_id) DO UPDATE SET title=excluded.title,description=excluded.description,creator=excluded.creator,page_url=excluded.page_url,preview_url=excluded.preview_url,thumbnail_url=excluded.thumbnail_url,duration_ms=excluded.duration_ms,width=excluded.width,height=excluded.height,fps=excluded.fps,tags_json=excluded.tags_json,categories_json=excluded.categories_json,metadata_json=excluded.metadata_json,last_seen_at=excluded.last_seen_at`);
+      (clip_id,title,description,creator,page_url,preview_url,thumbnail_url,duration_ms,width,height,fps,tags_json,categories_json,metadata_json,download_urls_json,download_urls_expires_at,first_seen_at,last_seen_at)
+      VALUES (@clip_id,@title,@description,@creator,@page_url,@preview_url,@thumbnail_url,@duration_ms,@width,@height,@fps,@tags_json,@categories_json,@metadata_json,@download_urls_json,@download_urls_expires_at,@now,@now)
+      ON CONFLICT(clip_id) DO UPDATE SET title=excluded.title,description=excluded.description,creator=excluded.creator,page_url=excluded.page_url,preview_url=excluded.preview_url,thumbnail_url=excluded.thumbnail_url,duration_ms=excluded.duration_ms,width=excluded.width,height=excluded.height,fps=excluded.fps,tags_json=excluded.tags_json,categories_json=excluded.categories_json,metadata_json=excluded.metadata_json,
+      download_urls_json=CASE WHEN excluded.download_urls_json != '[]' THEN excluded.download_urls_json ELSE artlist_clips.download_urls_json END,
+      download_urls_expires_at=CASE WHEN excluded.download_urls_json != '[]' THEN excluded.download_urls_expires_at ELSE artlist_clips.download_urls_expires_at END,
+      last_seen_at=excluded.last_seen_at`);
+    const linked = [];
     this.db.transaction((items) => {
-      for (const raw of items) {
+      for (const [index, raw] of items.entries()) {
         const clip = normalizeArtlistClip(raw);
         if (!clip.clip_id) continue;
         const tags = clip.tags || [], categories = clip.categories || [];
+        const downloadUrls = [...new Set([
+          ...(Array.isArray(clip.stream_urls) ? clip.stream_urls : []),
+          clip.primary_url, clip.preview_url,
+        ].map((url) => String(url || '').trim()).filter((url) => /^https?:\/\//i.test(url)))];
         upsert.run({ clip_id: clip.clip_id, title: clip.title || clip.clip_id,
           description: clip.description || '', creator: clip.creator || '',
           page_url: clip.page_url || '', preview_url: clip.preview_url || clip.primary_url || '',
           thumbnail_url: clip.thumbnail_url || '', duration_ms: clip.duration_ms || 0,
           width: clip.width || 0, height: clip.height || 0, fps: clip.fps || 0,
           tags_json: JSON.stringify(tags), categories_json: JSON.stringify(categories),
-          metadata_json: JSON.stringify(clip.raw_metadata || {}), now });
+          metadata_json: JSON.stringify(clip.raw_metadata || {}), download_urls_json: JSON.stringify(downloadUrls),
+          download_urls_expires_at: downloadUrls.length ? expiresAt : null, now });
+        linked.push({ clipId: clip.clip_id, rank: Number(request.rankOffset || 0) + index });
       }
     })(clips);
+    if (request.query && linked.length) {
+      const insert = this.db.prepare(`INSERT INTO artlist_query_clips
+        (query_key,query,filters_json,clip_id,page,rank,discovered_at,expires_at)
+        VALUES (@query_key,@query,@filters_json,@clip_id,@page,@rank,@discovered_at,@expires_at)
+        ON CONFLICT(query_key,clip_id) DO UPDATE SET page=excluded.page,rank=excluded.rank,discovered_at=excluded.discovered_at,expires_at=excluded.expires_at`);
+      this.db.transaction((rows) => rows.forEach((row) => insert.run({
+        query_key: request.query_key || buildSearchQueryKey(request), query: String(request.query),
+        filters_json: JSON.stringify(sortObject(request.filters || {})), clip_id: row.clipId,
+        page: Number(request.page || 1), rank: row.rank, discovered_at: now, expires_at: expiresAt,
+      })))(linked);
+    }
   }
 
   backfillCatalog() {
@@ -159,6 +207,8 @@ class ArtlistSearchCache {
         title: row.title, name: row.title, description: row.description, creator: row.creator,
         page_url: row.page_url, clip_page_url: row.page_url, preview_url: row.preview_url,
         primary_url: row.preview_url, thumbnail_url: row.thumbnail_url,
+        stream_urls: JSON.parse(row.download_urls_json || '[]'),
+        download_urls: JSON.parse(row.download_urls_json || '[]'),
         duration_ms: row.duration_ms, width: row.width, height: row.height, fps: row.fps,
         tags: JSON.parse(row.tags_json || '[]'), categories: JSON.parse(row.categories_json || '[]'),
         raw_metadata: JSON.parse(row.metadata_json || '{}') })) };
@@ -169,6 +219,20 @@ class ArtlistSearchCache {
 
   catalogStats() {
     return this.db.prepare('SELECT COUNT(*) AS unique_clips FROM artlist_clips').get();
+  }
+
+  getQueryLinks(query, filters = {}, { maxAgeMs = this.ttlMs } = {}) {
+    const queryKey = buildSearchQueryKey({ query, filters });
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const rows = this.db.prepare(`SELECT qc.clip_id, qc.page, qc.rank, c.download_urls_json
+      FROM artlist_query_clips qc JOIN artlist_clips c ON c.clip_id = qc.clip_id
+      WHERE qc.query_key = ? AND qc.expires_at >= ? ORDER BY qc.page, qc.rank`).all(queryKey, cutoff);
+    return rows.map((row) => ({
+      clip_id: row.clip_id,
+      page: row.page,
+      rank: row.rank,
+      download_urls: JSON.parse(row.download_urls_json || '[]'),
+    }));
   }
 
   get(cacheKey) {
@@ -259,7 +323,7 @@ class ArtlistSearchCache {
     const payload = JSON.stringify(response);
 
     try {
-      this.upsertCatalog(response?.clips || response?.results || []);
+      this.upsertCatalog(response?.clips || response?.results || [], request);
     } catch (err) {
       console.warn(`[artlist-cache] catalog upsert skipped: ${err.message}`);
     }

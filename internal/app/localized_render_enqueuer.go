@@ -21,6 +21,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -28,6 +29,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -79,11 +81,21 @@ type localizedRenderEnqueuerAdapter struct {
 	// the complete set under the lock.
 	cueMu    sync.Mutex
 	cueState map[string]map[string][]asset.TimedCue
+	assets   cliprender.AssetResolver
+	material cliprender.AssetMaterializer
 }
 
-func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger) *localizedRenderEnqueuerAdapter {
+func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
 	if cfg.Concurrency < 1 {
 		cfg.Concurrency = localization.DefaultRenderConcurrency
+	}
+	var assets cliprender.AssetResolver
+	var material cliprender.AssetMaterializer
+	if len(extras) > 0 {
+		assets, _ = extras[0].(cliprender.AssetResolver)
+	}
+	if len(extras) > 1 {
+		material, _ = extras[1].(cliprender.AssetMaterializer)
 	}
 	return &localizedRenderEnqueuerAdapter{
 		svc:      svc,
@@ -92,6 +104,8 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.Text
 		cfg:      cfg,
 		log:      log,
 		cueState: make(map[string]map[string][]asset.TimedCue),
+		assets:   assets,
+		material: material,
 	}
 }
 
@@ -135,6 +149,29 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	}
 
 	// 3. Single-language fan-out: Rust renders this clip in this language now.
+	var watermark *cliprender.MaterializedAsset
+	var watermarkSpec *cliprender.WatermarkSpec
+	if in.Render.Watermark != nil && in.Render.Watermark.Enabled {
+		if strings.TrimSpace(in.Render.Watermark.Text) == "" && (strings.TrimSpace(in.Render.Watermark.AssetID) == "" || a.assets == nil || a.material == nil) {
+			return fmt.Errorf("localized render: watermark requested but its asset resolver is not wired")
+		}
+		if strings.TrimSpace(in.Render.Watermark.AssetID) != "" {
+			ref, err := a.assets.ResolveAsset(ctx, in.Render.Watermark.AssetID)
+			if err != nil {
+				return fmt.Errorf("localized render: resolve watermark %q: %w", in.Render.Watermark.AssetID, err)
+			}
+			watermark, err = a.material.Materialize(ctx, *ref)
+			if err != nil {
+				return fmt.Errorf("localized render: materialize watermark %q: %w", in.Render.Watermark.AssetID, err)
+			}
+		}
+		watermarkSpec = &cliprender.WatermarkSpec{
+			Enabled: true, AssetID: in.Render.Watermark.AssetID,
+			Text:     in.Render.Watermark.Text,
+			Position: in.Render.Watermark.Position, Opacity: in.Render.Watermark.Opacity,
+			MarginPX: in.Render.Watermark.MarginPX,
+		}
+	}
 	req := localization.LocalizationRequest{RenderConcurrency: a.cfg.Concurrency}
 	req.Languages = []localization.LanguageRequest{{Language: targetLang, Priority: 0}}
 	req.Normalize()
@@ -154,6 +191,14 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		DocTitle:          fmt.Sprintf("Localized — %s (%s)", clipID, targetLang),
 		DocFolderID:       a.cfg.DocFolderID,
 		DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + targetLang,
+		Watermark:         watermark,
+		WatermarkSpec:     watermarkSpec,
+		WatermarkText: func() string {
+			if in.Render.Watermark == nil {
+				return ""
+			}
+			return in.Render.Watermark.Text
+		}(),
 	})
 	if err != nil {
 		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, targetLang, err)
@@ -261,11 +306,13 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 		log.Warn("wireScriptFlow: localized render fan-out not wired (localization service unavailable)", zap.Error(err))
 		return
 	}
+	resolver := &clipRenderAssetResolver{assets: root.Repos.Assets}
+	materializer := &clipRenderMaterializer{drive: root.Drive.Reader, scratchDir: filepath.Join(cfg.Storage.TempPath(), "localization")}
 	adapter := newLocalizedRenderEnqueuerAdapter(svc, root.Repos.TextTrackRepo, root.Domains.CueWriter, LocalizedRenderEnqueuerConfig{
 		SourceLanguage: LocalizationConfigFromConfig(cfg).SourceLanguage,
 		FolderID:       cfg.Drive.ClipsFolder(),
 		DocFolderID:    cfg.Scripts.ScriptDocsFolderID,
-	}, log)
+	}, log, resolver, materializer)
 	runner.SetLocalizedRenderEnqueuer(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (Rust render_clip)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),

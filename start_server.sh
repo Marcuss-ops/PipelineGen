@@ -15,6 +15,13 @@ if [[ -z "${VELOX_LEXICON_ROOT:-}" ]]; then
     VELOX_LEXICON_ROOT="$DIR/config/lexicons"
 fi
 export VELOX_FEATURE_IMAGES_ENABLED=true
+# Bounded GPU render concurrency. Three persistent Rust runners overlap
+# independent NVDEC/NVENC jobs without allowing an unbounded FFmpeg burst;
+# override this in the environment for a measured 1..4 worker canary.
+if [[ -z "${VELOX_MEDIA_EXECUTION_SLOTS:-}" ]]; then
+    VELOX_MEDIA_EXECUTION_SLOTS=3
+fi
 export VELOX_LEXICON_ROOT
+export VELOX_MEDIA_EXECUTION_SLOTS
 set +a
 exec "$DIR/bin/pipelinegen" --mode all

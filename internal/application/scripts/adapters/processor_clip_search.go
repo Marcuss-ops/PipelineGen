@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -50,6 +51,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
+	cacheOnly := plan.MediaPlan.Mode == mediadomain.MediaPlanModeCacheOnly
 	if !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
@@ -62,7 +64,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
-	if p.searcher == nil {
+	if p.searcher == nil && !cacheOnly {
 		if vidRushArtlistOnlyPlan(plan) {
 			return nil, fmt.Errorf("clip_search: Artlist is required but the searcher is unavailable")
 		}
@@ -74,7 +76,6 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	if len(input.VidRushSegments) == 0 {
 		return &PostProcessResult{}, nil
 	}
-
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	aggregated := make([]ArtlistClipMatch, 0)
 	var warnings []string
@@ -99,7 +100,11 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			plan.Model,
 			plan.PromptVersion,
 		)
-		if !plan.MediaPlan.ForceRefreshAssets {
+		// cache_only is an absolute no-provider contract. It must read a
+		// previously materialized segment result even when a caller left a
+		// force-refresh flag enabled; a miss is reported below and must never
+		// fall through to Artlist.
+		if cacheOnly || !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
 				if payload, ok := cached.(artlistSegmentCachePayload); ok {
 					payload = cloneArtlistSegmentCachePayload(payload)
@@ -132,6 +137,12 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				}
 				continue
 			}
+		}
+		if cacheOnly {
+			updated.Cache.Artlist = "CACHE_MISS"
+			warnings = append(warnings, fmt.Sprintf("clip_search: cache-only Artlist miss for segment %s", updated.SegmentID))
+			segments = append(segments, updated)
+			continue
 		}
 
 		if p.metrics != nil {

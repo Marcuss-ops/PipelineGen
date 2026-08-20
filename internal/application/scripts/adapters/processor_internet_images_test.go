@@ -91,6 +91,31 @@ func TestInternetImagesProcessorDoesNotCacheProviderMisses(t *testing.T) {
 	}
 }
 
+func TestInternetImagesProcessorCacheOnlyNeverCallsProvider(t *testing.T) {
+	searcher := &emptyInternetImageSearcher{}
+	processor := NewInternetImagesProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ForceRefresh: true,
+		MediaPlan: media.MediaPlanSpec{
+			Mode:               media.MediaPlanModeCacheOnly,
+			ForceRefreshAssets: true,
+			ProviderPolicy:     media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+		},
+	}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "cache-only-images-miss",
+		TextHash:  "cache-only-images-hash",
+		Insights:  scriptpkg.SegmentInsights{ImageQueries: []string{"Elon Musk"}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	require.NoError(t, err)
+	require.Len(t, result.VidRushSegments, 1)
+	require.Equal(t, "CACHE_MISS", result.VidRushSegments[0].Cache.InternetImages)
+	require.Equal(t, 0, searcher.calls, "cache_only must never call the image provider")
+	require.NotEmpty(t, result.Warnings)
+}
+
 type multipleInternetImageSearcher struct{}
 
 func (multipleInternetImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {

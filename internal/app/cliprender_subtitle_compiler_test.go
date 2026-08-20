@@ -127,15 +127,15 @@ func TestSubtitleCompiler_InvalidModeFailsClosed(t *testing.T) {
 	}
 }
 
-func TestSubtitleCompiler_DurationViolationFailsClosed(t *testing.T) {
+func TestSubtitleCompiler_TrimsCuesToClipDuration(t *testing.T) {
 	compiler := &clipRenderSubtitleCompiler{}
 	in := subtitleTestInput(t, cliprender.SubtitlesModeBurn)
-	in.ClipDurationMS = 4000 // last cue ends at 6000ms > 4250ms tolerance
-	_, err := compiler.Compile(context.Background(), in)
-	if err == nil {
-		t.Fatalf("expected fail-closed error for cues beyond clip duration, got nil")
+	in.ClipDurationMS = 4000 // the second cue is clipped to the media boundary
+	out, err := compiler.Compile(context.Background(), in)
+	if err != nil {
+		t.Fatalf("expected boundary trimming to produce valid ASS, got: %v", err)
 	}
-	if !errors.Is(err, cliprender.ErrSubtitleCompileUnavailable) {
-		t.Fatalf("expected ErrSubtitleCompileUnavailable, got: %v", err)
+	if err := texttracks.ValidateASSFile(out.LocalPath, 4000); err != nil {
+		t.Fatalf("trimmed ASS is invalid: %v", err)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -47,6 +48,9 @@ type SourceInput struct {
 	OutputProfileHash string
 	RendererVersion   string
 	SubtitleStyleHash string
+	Watermark         *cliprender.MaterializedAsset
+	WatermarkSpec     *cliprender.WatermarkSpec
+	WatermarkText     string
 }
 
 // TrackRef is a referenced text track: its canonical ID + content hash. The
@@ -155,6 +159,9 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			OutputProfileHash: source.OutputProfileHash,
 			RendererVersion:   source.RendererVersion,
 			Priority:          lr.Priority,
+			Watermark:         source.Watermark,
+			WatermarkSpec:     source.WatermarkSpec,
+			WatermarkText:     source.WatermarkText,
 		}
 		plan.Fingerprint = Fingerprint(plan)
 		if err := plan.Validate(); err != nil {

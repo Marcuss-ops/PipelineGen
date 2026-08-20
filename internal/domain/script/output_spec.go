@@ -7,6 +7,14 @@ import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 // Caller-explicit ToggleDisabled survives the applySafetyDefaults +
 // ApplyPreset chain. SaveToDB is a bool persistence flag.
 type OutputSpec struct {
+	// VideoRender requests reconstruction of every resolved clip with the
+	// selected subtitle/watermark layers. It is opt-in and is carried through
+	// script.generate into the localized render fan-out.
+	Render VideoRenderSpec `json:"render,omitempty"`
+	// Direct blocks are accepted as a concise compatibility form:
+	// output.watermark / output.subtitles.
+	Watermark *VideoWatermarkSpec `json:"watermark,omitempty"`
+	Subtitles *VideoSubtitlesSpec `json:"subtitles,omitempty"`
 	// Audio is the explicit audio execution mode. Empty preserves the
 	// legacy voiceover behavior and is resolved once at the capability edge.
 	Audio AudioOutputConfig `json:"audio,omitempty"`

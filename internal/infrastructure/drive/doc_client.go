@@ -254,7 +254,23 @@ func (d *DocClientImpl) insertHTMLContent(ctx context.Context, docID, content st
 		return nil
 	}
 	if _, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{Requests: reqs}).Context(ctx).Do(); err != nil {
-		return fmt.Errorf("failed to insert document html content: %w", err)
+		// Google Docs fetches inline-image URLs from Google's network, which
+		// may reject an otherwise valid locally downloaded/source image. The
+		// durable entity binding and Drive link remain authoritative; retry the
+		// document without optional inline images so publication is not lost.
+		textOnly := make([]*docs.Request, 0, len(reqs))
+		for _, request := range reqs {
+			if request != nil && request.InsertInlineImage != nil {
+				continue
+			}
+			textOnly = append(textOnly, request)
+		}
+		if len(textOnly) == len(reqs) {
+			return fmt.Errorf("failed to insert document html content: %w", err)
+		}
+		if _, retryErr := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{Requests: textOnly}).Context(ctx).Do(); retryErr != nil {
+			return fmt.Errorf("failed to insert document html content: %w (inline-image fallback: %v)", err, retryErr)
+		}
 	}
 	return nil
 }

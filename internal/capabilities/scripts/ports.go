@@ -300,6 +300,11 @@ type LocalizedRenderInput struct {
 	ClipAssetID    string `json:"clip_asset_id,omitempty"`
 	ClipSHA256     string `json:"clip_sha256,omitempty"`
 	ClipDurationMS int64  `json:"clip_duration_ms,omitempty"`
+
+	// Render carries the caller's explicit watermark/subtitle request. The
+	// adapter resolves the referenced watermark asset and passes the sealed
+	// choices to the single Rust clip-render pass.
+	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
 }
 
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's

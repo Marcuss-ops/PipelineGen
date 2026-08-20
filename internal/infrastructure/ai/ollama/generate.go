@@ -248,11 +248,12 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	genOutcome = "success"
 	wordCount := len(strings.Fields(result))
 	return &types.GenerationResult{
-		Script:      result,
-		WordCount:   wordCount,
-		EstDuration: estimateDurationSecondsWithWPM(wordCount, req.WordsPerMinute),
-		Model:       req.Model,
-		Prompt:      prompts.BuildTextPrompt(&req),
+		Script:           result,
+		WordCount:        wordCount,
+		EstDuration:      estimateDurationSecondsWithWPM(wordCount, req.WordsPerMinute),
+		Model:            req.Model,
+		Prompt:           prompts.BuildTextPrompt(&req),
+		GenerationSource: "ollama",
 	}, nil
 }
 

@@ -86,6 +86,10 @@ type PutFileRequest struct {
 	// Download round-trip, which costs bandwidth — callers
 	// that want only the cheaper size-match leave this empty.
 	ExpectedSHA256 string
+
+	// PublicRead is required for assets that Google Docs must fetch directly
+	// from Drive (for example entity images inserted as inline images).
+	PublicRead bool
 }
 
 // PutFileResult is the structured return value.

@@ -202,7 +202,7 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 		"Follow the segment order strictly",
 		"Do not skip, merge, or reorder topics",
 		"Each segment must treat exclusively the subject named in its Topic",
-		"Because this request declares one single-scene segment, write between 180 and 260 words",
+		"Because this request declares one single-scene segment, write about 80 words",
 		"Do not invent names, dates, scores, results, or events",
 		"Do not print segment titles",
 		"Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene",
@@ -211,6 +211,19 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 	// Footer MUST NOT repeat interior block directives (no duplication).
 	if strings.Count(got, "Write one continuous narrative") > 1 {
 		t.Errorf("footer MUST be emitted exactly once, got %q", got)
+	}
+}
+
+func TestEnginePrompt_SingleSegmentHonorsSmallExplicitBudget(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{{Topic: "X", TargetWords: 70}},
+	}
+	got := buildSegmentInstructions(plan)
+	if !strings.Contains(got, "write about 70 words") {
+		t.Fatalf("small explicit segment budget missing from prompt: %s", got)
+	}
+	if strings.Contains(got, "between 180 and 260 words") {
+		t.Fatalf("historical 180-260 range contradicts explicit 70-word budget: %s", got)
 	}
 }
 

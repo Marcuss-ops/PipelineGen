@@ -31,6 +31,7 @@ package localization
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -47,8 +48,27 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(plan.SubtitleStyleHash),
 		strings.TrimSpace(plan.OutputProfileHash),
 		strings.TrimSpace(plan.RendererVersion),
+		watermarkFingerprint(plan),
 		strings.TrimSpace(plan.Version),
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+func watermarkFingerprint(plan LocalizedClipPlan) string {
+	if plan.WatermarkSpec == nil {
+		return ""
+	}
+	assetID, sha := "", ""
+	if plan.Watermark != nil {
+		assetID, sha = plan.Watermark.AssetID, plan.Watermark.SHA256
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(assetID),
+		strings.TrimSpace(sha),
+		strings.TrimSpace(plan.WatermarkSpec.Text),
+		strings.TrimSpace(plan.WatermarkSpec.Position),
+		fmt.Sprintf("%.6f", plan.WatermarkSpec.Opacity),
+		fmt.Sprintf("%d", plan.WatermarkSpec.MarginPX),
+	}, "\x1f")
 }
