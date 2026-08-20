@@ -491,7 +491,8 @@
       "scripts/lib/artlist_pipeline_payload.sh",
       "scripts/lib/artlist_pipeline_polling.sh",
       "scripts/lib/artlist_pipeline_preflight.sh",
-      "scripts/lib/artlist_pipeline_report.sh"
+      "scripts/lib/artlist_pipeline_report.sh",
+      "config/artlist_presets.yaml"
     ],
     "go_packages": [
       "./internal/application/assets/providers/artlist/...",
