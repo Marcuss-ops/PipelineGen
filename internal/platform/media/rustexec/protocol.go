@@ -350,9 +350,9 @@ type mediaMetadata struct {
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
 	// render_clip audio copy policy outcome (copy verbatim vs one certified
 	// conversion) and whether the burn stage rasterized libass (CPU).
-	AudioCopyEligible *bool `json:"audio_copy_eligible,omitempty"`
-	AudioEncodePasses *int  `json:"audio_encode_passes,omitempty"`
-	SubtitleRasterCPU *bool `json:"subtitle_raster_cpu,omitempty"`
+	AudioCopyEligible *bool   `json:"audio_copy_eligible,omitempty"`
+	AudioEncodePasses *int    `json:"audio_encode_passes,omitempty"`
+	SubtitleRasterCPU *bool   `json:"subtitle_raster_cpu,omitempty"`
 	NativeMedia       *bool   `json:"native_media,omitempty"`
 	GPUCopyBytes      *uint64 `json:"gpu_copy_bytes,omitempty"`
 }
