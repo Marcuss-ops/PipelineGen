@@ -1,0 +1,254 @@
+# .github/workflows/manual.yml
+#
+# Single source of truth for manual heavy gates.
+#
+# Replaces (deleted in consolidation):
+#   - verify-full.yml    → verify-full     job
+#   - verify-race.yml    → verify-race     job
+#   - verify-release.yml → verify-release  job
+#   - preflight-ci.yml   → qdrant-preflight job
+#   - stock-live.yml::workflow_dispatch  → stock-live job (self-hosted)
+#
+# All jobs are `workflow_dispatch`. Manual gates that should NEVER fire
+# on push+PR (race detector, heavy integration, docker-compose smoke,
+# self-hosted E2E). Each job is independent; per-job concurrency groups
+# prevent overlapping certifications of the same ref.
+#
+# Top-level `permissions: {}` denies everything; each job grants only
+# what it needs.
+
+name: Manual Heavy Gates
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Audit-trail reason for this manual gate run"
+        required: false
+        default: "manual gate run"
+        type: string
+      preflight_url:
+        description: "PipelineGen server URL for qdrant-preflight job (default http://127.0.0.1:8081)"
+        required: false
+        default: "http://127.0.0.1:8081"
+        type: string
+      preflight_qdrant_url:
+        description: "Qdrant URL for qdrant-preflight job (default http://127.0.0.1:16333)"
+        required: false
+        default: "http://127.0.0.1:16333"
+        type: string
+
+permissions: {}
+
+jobs:
+  verify-full:
+    name: verify-full (complete headless gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    concurrency:
+      group: manual-verify-full-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Run `make verify-full` (fail-closed)
+        # Make is the source of truth: verify-full expands to
+        # verify-main + verify-race + verify-node-tests. Do not
+        # duplicate that dependency graph in workflow steps.
+        run: make verify-full
+
+  verify-race:
+    name: verify-race (race detector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: manual-verify-race-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Run `make verify-race` (fail-closed)
+        # This is intentionally manual and separate from verify-main.
+        # Race detector is a heavier explicit gate, with concurrency
+        # bounded by the Makefile's VERIFY_JOBS setting.
+        run: make verify-race
+
+  verify-release:
+    name: verify-release (pre-deploy gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    concurrency:
+      group: manual-verify-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Run `make verify-release` (fail-closed)
+        # Make is the source of truth: verify-release expands to
+        # verify-full + verify-integration. Do not duplicate the
+        # graph in workflow steps.
+        run: make verify-release
+
+  qdrant-preflight:
+    name: qdrant-preflight (docker-compose stack smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: manual-qdrant-preflight-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Build web console + admin binary
+        run: |
+          make web-build
+          go build -o ./bin/admin ./cmd/admin/
+          ls -la ./bin/admin
+
+      - name: Start docker-compose stack (qdrant + pipelinegen-server)
+        run: |
+          docker compose up -d qdrant pipelinegen-server
+          for i in $(seq 1 60); do
+            HTTP=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:8081/healthz 2>/dev/null || echo 000)
+            QDRANT=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:16333/healthz 2>/dev/null || echo 000)
+            if [ "$HTTP" = "200" ] && [ "$QDRANT" = "200" ]; then
+              echo "stack GREEN after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          if [ "$HTTP" != "200" ] || [ "$QDRANT" != "200" ]; then
+            echo "stack NOT GREEN: server :8081=$HTTP / qdrant :16333=$QDRANT"
+            docker compose logs --tail=100
+            exit 1
+          fi
+
+      - name: Run qdrant preflight
+        env:
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          VELOX_WORKER_TOKEN: ${{ secrets.VELOX_WORKER_TOKEN }}
+        run: |
+          ./bin/admin qdrant-preflight \
+            --url=${{ github.event.inputs.preflight_url }} \
+            --qdrant-url=${{ github.event.inputs.preflight_qdrant_url }}
+
+      - name: Tear down docker-compose stack
+        if: always()
+        run: docker compose down --volumes || true
+
+  stock-live:
+    name: Stock live battery (manual dispatch, self-hosted)
+    runs-on: [self-hosted, stock-live]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    concurrency:
+      group: manual-stock-live-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Verify stock-live runner prerequisites
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          QDRANT_BASE: ${{ vars.STOCK_LIVE_QDRANT_BASE || 'http://127.0.0.1:6333' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VELOX_ADMIN_TOKEN"
+          for tool in bash curl jq sqlite3 ffprobe openssl; do
+            command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 2; }
+          done
+          test -f "$DB_PATH" || { echo "missing canonical DB_PATH: $DB_PATH" >&2; exit 2; }
+          curl -fsS --max-time 10 "$BASE/health" >/dev/null
+          curl -fsS --max-time 10 "$BASE/ready" >/dev/null
+          BASE="$BASE" VELOX_ADMIN_TOKEN="$VELOX_ADMIN_TOKEN" make auth-check
+          curl -fsS --max-time 10 "$QDRANT_BASE/healthz" >/dev/null
+          echo "stock-live runner ready: BASE=$BASE DB_PATH=$DB_PATH QDRANT_BASE=$QDRANT_BASE"
+
+      - name: Run stock live battery
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          STOCK_E2E_RUN_ID: stock-${{ github.run_id }}
+        run: make verify-stock-live
+
+      - name: Upload stock receipt on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-stock-live-receipt-${{ github.run_id }}
+          path: /tmp/pipelinegen-stock-e2e-receipt.*.log
+          if-no-files-found: warn
+          retention-days: 14

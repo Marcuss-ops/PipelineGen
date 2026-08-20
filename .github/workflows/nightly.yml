@@ -1,0 +1,254 @@
+# .github/workflows/nightly.yml
+#
+# Single source of truth for nightly-scheduled gates.
+#
+# Replaces (deleted in consolidation):
+#   - smoke.yml::schedule (03:00 UTC)            → smoke-nightly       job
+#   - stock-live.yml::schedule (04:30 UTC)       → stock-live-nightly  job (self-hosted)
+#   - dependabot-reconcile.yml::schedule (Mon)   → dependabot-audit    job
+#
+# All push/PR triggers moved away from these files. The workflow ONLY
+# fires from `schedule` (cron). Each job keeps its original concurrency
+# group semantics so re-runs of an overlapping cron land as expected.
+#
+# Permissions are job-scoped (top-level `permissions: {}` denies all).
+
+name: Nightly Scheduled Gates
+
+on:
+  schedule:
+    # 03:00 UTC — blackbox smoke suite against the running server (catches
+    # external dependency drift: Ollama model updates, Qdrant rotation).
+    - cron: '0 3 * * *'
+    # 04:30 UTC — stock live battery on the dedicated self-hosted runner.
+    # Sits 90 minutes AFTER the smoke suite so it can run against a freshly
+    # certified environment.
+    - cron: '30 4 * * *'
+    # 08:00 UTC Monday — Dependabot PR audit (read-only drift check).
+    # Lands ~2h after Dependabot's own scheduled run at 08:00 Europe/Rome.
+    - cron: '0 8 * * 1'
+
+permissions: {}
+
+jobs:
+  smoke-nightly:
+    name: Black-box smoke suite (nightly 03:00 UTC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: nightly-smoke-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Build server binary
+        run: |
+          set -o pipefail
+          make build-server 2>&1 | tee build.log
+
+      - name: Boot server and run smoke suite
+        env:
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          VELOX_PORT: 8080
+          SMOKE_LOG_DIR: ${{ runner.temp }}/smoke-logs
+        run: |
+          set -uo pipefail
+
+          mkdir -p "$SMOKE_LOG_DIR"
+          chmod 700 "$SMOKE_LOG_DIR"
+
+          ./bin/pipelinegen --mode all > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT INT TERM
+
+          echo "::group::Waiting for server /health (60s cap)"
+          timeout 60 bash -c 'until curl -sSf http://127.0.0.1:8080/health > /dev/null; do sleep 2; done' || {
+            echo "::error::Server failed to respond to /health within 60s — see server.log below."
+            tail -n 200 server.log || true
+            exit 2
+          }
+          echo "::endgroup::"
+
+          make smoke-run-all
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-smoke-logs-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/smoke-logs/
+            build.log
+            server.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  stock-live-nightly:
+    name: Stock live battery (nightly 04:30 UTC, self-hosted)
+    runs-on: [self-hosted, stock-live]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    # cancel-in-progress: false intentionally preserved — stock-live is a
+    # 14/14 certification, never cancel an in-flight one (idle for the
+    # full window is contractually required).
+    concurrency:
+      group: nightly-stock-live-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Verify stock-live runner prerequisites
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          QDRANT_BASE: ${{ vars.STOCK_LIVE_QDRANT_BASE || 'http://127.0.0.1:6333' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VELOX_ADMIN_TOKEN"
+          for tool in bash curl jq sqlite3 ffprobe openssl; do
+            command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 2; }
+          done
+          test -f "$DB_PATH" || { echo "missing canonical DB_PATH: $DB_PATH" >&2; exit 2; }
+          curl -fsS --max-time 10 "$BASE/health" >/dev/null
+          curl -fsS --max-time 10 "$BASE/ready" >/dev/null
+          BASE="$BASE" VELOX_ADMIN_TOKEN="$VELOX_ADMIN_TOKEN" make auth-check
+          curl -fsS --max-time 10 "$QDRANT_BASE/healthz" >/dev/null
+          echo "stock-live runner ready: BASE=$BASE DB_PATH=$DB_PATH QDRANT_BASE=$QDRANT_BASE"
+
+      - name: Run stock live battery
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          STOCK_E2E_RUN_ID: stock-${{ github.run_id }}
+        run: make verify-stock-live
+
+      - name: Upload stock receipt on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-stock-live-receipt-${{ github.run_id }}
+          path: /tmp/pipelinegen-stock-e2e-receipt.*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependabot-audit:
+    name: Dependabot PR reconciliation (weekly 08:00 UTC Mon, read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Verify Go toolchain contract
+        run: make go-version-check
+
+      - name: List open Dependabot PRs
+        id: list-prs
+        run: |
+          gh pr list \
+            --app dependabot \
+            --state open \
+            --json number,title,author,createdAt,labels \
+            > dependabot-prs.json
+          echo "Open Dependabot PRs:"
+          if [ -s dependabot-prs.json ]; then
+            jq -r '.[] | "  - #\(.number) \(.title)"' dependabot-prs.json
+          else
+            echo "  (none)"
+          fi
+
+      - name: Detect unexpected semver-major PR titles
+        id: majors
+        run: |
+          MAJOR_COUNT=$(jq '[.[] | select(.title | test("major"; "i"))] | length' dependabot-prs.json)
+          echo "major_count=$MAJOR_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$MAJOR_COUNT" -gt 0 ]; then
+            echo "::warning::Found $MAJOR_COUNT open Dependabot PR(s) with semver-major in title (should normally be suppressed by the global ignore rule)"
+            jq -r '.[] | select(.title | test("major"; "i")) | "  - #\(.number) \(.title)"' dependabot-prs.json
+          else
+            echo "No open Dependabot PRs with semver-major in title"
+          fi
+
+      - name: Verify go.mod is tidy (read-only check, no commit)
+        id: tidy-check
+        run: |
+          go mod tidy
+          if git diff --exit-code -- go.mod go.sum >/dev/null; then
+            echo "tidy=clean" >> "$GITHUB_OUTPUT"
+            echo "go.mod and go.sum are tidy"
+          else
+            echo "tidy=dirty" >> "$GITHUB_OUTPUT"
+            echo "::warning::go.mod or go.sum differ after 'go mod tidy' — manual tidy PR needed"
+            git --no-pager diff -- go.mod go.sum | head -200
+          fi
+
+      - name: Open drift / unexpected-major issue
+        if: steps.tidy-check.outputs.tidy == 'dirty' || steps.majors.outputs.major_count > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const prs = JSON.parse(fs.readFileSync('dependabot-prs.json', 'utf8'));
+            const majors = prs.filter(p => /major/i.test(p.title));
+            const dirty = '${{ steps.tidy-check.outputs.tidy }}' === 'dirty';
+            const date = new Date().toISOString().slice(0, 10);
+            const lines = [
+              '## Dependabot reconciliation — ' + date,
+              '',
+              'This workflow is read-only: no commits, no lockfile changes, no reverts.',
+              'Investigate the anomaly manually and file follow-up PRs as needed.',
+              '',
+              `- Open Dependabot PRs: **${prs.length}**`,
+              `- Of which with semver-major in title: **${majors.length}**`,
+              `- go.mod tidy check: **${dirty ? 'dirty' : 'clean'}**`,
+              '',
+            ];
+            if (majors.length) {
+              lines.push('### Unexpected major PRs', '');
+              lines.push(...majors.map(p => `- #${p.number} ${p.title}`));
+              lines.push('');
+            }
+            if (dirty) {
+              lines.push('### go.mod drift', '');
+              lines.push('`git diff -- go.mod go.sum` is non-empty after `go mod tidy`. The lockfile is out of sync with go.mod. The maintainer should open a follow-up PR that runs `go mod tidy` and reviews the diff.');
+              lines.push('');
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Dependabot reconciliation drift — ' + date,
+              body: lines.join('\n'),
+              labels: ['dependencies'],
+            });

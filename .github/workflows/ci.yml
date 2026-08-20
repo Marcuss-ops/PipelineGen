@@ -246,7 +246,7 @@ jobs:
     # godlike/07 no-fake-availability cheap syntax + payload gate
     # for tests/operational/fase_b_clip_pipeline_smoke.sh on every
     # push + PR. Heavy server-boot end-to-end exercise remains in
-    # .github/workflows/smoke.yml (`make smoke-run-all`).
+    # the smoke-runtime job below in this same file (`make smoke-run-all`).
     runs-on: ubuntu-latest
     needs: verify-main
     permissions:
@@ -272,3 +272,109 @@ jobs:
         env:
           SMOKE_DRY_RUN: "1"
         run: bash tests/operational/fase_b_clip_pipeline_smoke.sh --dry
+
+  smoke-runtime:
+    name: Smoke runtime — boot server + smoke-run-all (push+PR variant)
+    # Mirror of the legacy .github/workflows/smoke.yml push+PR run, folded
+    # into the ci.yml matrix so the same trigger fires exactly one smoke
+    # gate. The nightly scheduled variant lives in .github/workflows/nightly.yml
+    # (smoke-nightly job, 03:00 UTC). Manual dispatch variants live in
+    # .github/workflows/manual.yml.
+    runs-on: ubuntu-latest
+    needs: verify-main
+    permissions:
+      contents: read
+    # 15-min headroom: server build + 60s health-wait + 3 smoke scripts
+    # (each ≤180s wall-clock) + shell-internal overhead.
+    timeout-minutes: 15
+    # Re-runs and rapid pushes cancel the previous run. Concurrency key
+    # scoped to ref so different branches run in parallel.
+    concurrency:
+      group: smoke-runtime-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
+
+      - name: Build server binary
+        # Make owns the frontend preparation and server build contract so
+        # smoke CI exercises the same path as local server smoke checks.
+        run: |
+          set -o pipefail
+          make build-server 2>&1 | tee build.log
+
+      - name: Boot server and run smoke suite
+        env:
+          # Secret is consumed only by this step. smoke_echo_safe in
+          # common.sh ensures it is never persisted to disk unredacted.
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          # Pinned to the project-default port (overridable by `VELOX_PORT`
+          # at runtime; we hard-code here so the workflow is self-documenting).
+          VELOX_PORT: 8080
+          # Burn-after-read on the runner: ephemeral temp dir, cleared at
+          # job end. Common.sh chmod 700 + chmod 600 inside this path.
+          SMOKE_LOG_DIR: ${{ runner.temp }}/smoke-logs
+        run: |
+          set -uo pipefail
+
+          # Pre-create the log directory with strict ACLs BEFORE any script
+          # runs. common.sh mkdir-chmods on first write, but creating up
+          # front avoids a 0600-creep window if a step crashes mid-write.
+          mkdir -p "$SMOKE_LOG_DIR"
+          chmod 700 "$SMOKE_LOG_DIR"
+
+          # ── Server boot (inline background + PID capture) ────────────
+          # We deliberately do NOT use `actions/*` background: true steps;
+          # those create zombie processes on runner GC teardown and leak
+          # ports across job reruns. Inline backgrounding with a trap is
+          # the canonical pattern for short-lived CI service spawning.
+          ./bin/pipelinegen --mode all > server.log 2>&1 &
+          SERVER_PID=$!
+          # Belt-and-braces cleanup: kill server even on set -e failure,
+          # signal interrupts, or normal exit. `|| true` tolerates a race
+          # where the server already exited (e.g., health-wait timed out).
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT INT TERM
+
+          # ── Readiness wait (cap 60s) ─────────────────────────────────
+          # `until curl -sSf` re-polls every 2s; `timeout 60` is the hard
+          # ceiling. Exit 124 from `timeout` propagates as a setup error.
+          echo "::group::Waiting for server /health (60s cap)"
+          timeout 60 bash -c 'until curl -sSf http://127.0.0.1:8080/health > /dev/null; do sleep 2; done' || {
+            echo "::error::Server failed to respond to /health within 60s — see server.log below."
+            tail -n 200 server.log || true
+            exit 2  # mirrors smoke lib's "setup error" exit code contract
+          }
+          echo "::endgroup::"
+          echo "Server up — invoking smoke suite."
+
+          # ── Invocation ──────────────────────────────────────────────
+          make smoke-run-all
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-runtime-logs-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/smoke-logs/
+            build.log
+            server.log
+          if-no-files-found: warn
+          retention-days: 14
