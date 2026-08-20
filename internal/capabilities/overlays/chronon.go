@@ -589,5 +589,3 @@ func (c ChrononCompileResult) Marshal() ([]byte, error) {
 	}
 	return b, nil
 }
-
-
