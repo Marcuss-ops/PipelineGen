@@ -83,21 +83,21 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
       {
         "id": "important_phrase",
         "text": "QUESTO CAMBIA TUTTO",
-        "preset": "caption_card",
+        "preset": "clean_slide_up",
         "start_frame": 20,
         "duration_frames": 41
       },
       {
         "id": "important_word",
         "text": "APPLE",
-        "preset": "active_word_pop",
+        "preset": "phrase_word_reveal",
         "start_frame": 65,
         "duration_frames": 31
       },
       {
         "id": "image_overlay",
         "asset": "assets/apple.png",
-        "preset": "image_focus_in",
+        "preset": "image_fast_fade",
         "start_frame": 90,
         "duration_frames": 46
       }

@@ -109,21 +109,21 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		{
 			ID:             "important_phrase",
 			Text:           "QUESTO CAMBIA TUTTO",
-			Preset:         "caption_card",
+			Preset:         "clean_slide_up",
 			StartFrame:     20,
 			DurationFrames: 41,
 		},
 		{
 			ID:             "important_word",
 			Text:           "APPLE",
-			Preset:         "active_word_pop",
+			Preset:         "phrase_word_reveal",
 			StartFrame:     65,
 			DurationFrames: 31,
 		},
 		{
 			ID:             "image_overlay",
 			Asset:          "assets/apple.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_fast_fade",
 			StartFrame:     90,
 			DurationFrames: 46,
 		},
@@ -320,7 +320,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "important_phrase_1",
 			Text:           "IL FUTURO È ADESSO",
-			Preset:         "caption_card",
+			Preset:         "slide_lateral",
 			StartFrame:     24,
 			DurationFrames: 84,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
@@ -328,7 +328,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "important_word_1",
 			Text:           "VELOCITÀ",
-			Preset:         "active_word_pop",
+			Preset:         "phrase_word_reveal",
 			StartFrame:     24,
 			DurationFrames: 84,
 			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
@@ -336,7 +336,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "image_overlay_1",
 			Asset:          "assets/overlay_globe.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_slide_right",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Position:       []float64{380, 0},
@@ -346,7 +346,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "important_phrase_2",
 			Text:           "CAMBIARE IL MERCATO",
-			Preset:         "caption_card",
+			Preset:         "slide_lateral",
 			StartFrame:     132,
 			DurationFrames: 84,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_shift_vertical"},
@@ -354,7 +354,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "important_word_2",
 			Text:           "POTENZA",
-			Preset:         "active_word_pop",
+			Preset:         "snap_scale",
 			StartFrame:     132,
 			DurationFrames: 84,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
@@ -362,7 +362,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		{
 			ID:             "image_overlay_2",
 			Asset:          "assets/overlay_chart.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_slide_right",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Position:       []float64{840, 380},

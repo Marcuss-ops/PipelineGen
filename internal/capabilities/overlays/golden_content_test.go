@@ -122,14 +122,14 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
       {
         "id": "important_phrase_1",
         "text": "A MAJOR CHANGE",
-        "preset": "caption_card",
+        "preset": "clean_slide_up",
         "start_frame": 24,
         "duration_frames": 48
       },
       {
         "id": "important_phrase_2",
         "text": "THIS CHANGES EVERYTHING",
-        "preset": "caption_card",
+        "preset": "slide_lateral",
         "start_frame": 90,
         "duration_frames": 54
       }
@@ -185,7 +185,7 @@ func TestCompileChrononPlanGoldenContent02Animations(t *testing.T) {
 }
 
 // TestGoldenContent03ImagesFitAndBounds certifies GOLDEN 03 image geometry:
-// every image overlay resolves to the image_focus_in preset (Chronon owns the
+// every image overlay resolves to a modern image preset (Chronon owns the
 // canonical 260×260 "contain" geometry). Explicit Params box+position stay
 // fully inside the 1280x720 canvas (no overflow, no off-canvas ink); an
 // overlay without an explicit position carries no geometry and is placed by
@@ -198,7 +198,7 @@ func TestGoldenContent03ImagesFitAndBounds(t *testing.T) {
 	}
 	imageLayers := 0
 	for _, layer := range got.Plan.Layers {
-		if layer.Preset != "image_focus_in" {
+		if !contains(imagePresetCandidates, layer.Preset) {
 			continue // background is "cover"; only overlay images carry the preset
 		}
 		imageLayers++

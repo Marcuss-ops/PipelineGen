@@ -56,7 +56,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "important_phrase_1",
         "text": "IL FUTURO È ADESSO",
-        "preset": "caption_card",
+        "preset": "slide_lateral",
         "start_frame": 24,
         "duration_frames": 84,
         "animation": { "preset": "fade_in" }
@@ -64,7 +64,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "important_word_1",
         "text": "VELOCITÀ",
-        "preset": "active_word_pop",
+        "preset": "phrase_word_reveal",
         "start_frame": 24,
         "duration_frames": 84,
         "animation": { "preset": "scale_drop" }
@@ -72,7 +72,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "image_overlay_1",
         "asset": "assets/overlay_globe.png",
-        "preset": "image_focus_in",
+        "preset": "image_slide_right",
         "box_width": 300,
         "box_height": 300,
         "position": [380, 0],
@@ -82,7 +82,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "important_phrase_2",
         "text": "CAMBIARE IL MERCATO",
-        "preset": "caption_card",
+        "preset": "slide_lateral",
         "start_frame": 132,
         "duration_frames": 84,
         "animation": { "preset": "fade_shift_vertical" }
@@ -90,7 +90,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "important_word_2",
         "text": "POTENZA",
-        "preset": "active_word_pop",
+        "preset": "snap_scale",
         "start_frame": 132,
         "duration_frames": 84,
         "animation": { "preset": "fade_in" }
@@ -98,7 +98,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       {
         "id": "image_overlay_2",
         "asset": "assets/overlay_chart.png",
-        "preset": "image_focus_in",
+        "preset": "image_slide_right",
         "box_width": 300,
         "box_height": 300,
         "position": [840, 380],
