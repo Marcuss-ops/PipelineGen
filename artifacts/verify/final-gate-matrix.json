@@ -49,8 +49,16 @@
     },
     {
       "gate": "overlay.prepare realmente inviato",
-      "status": "FAIL_LIVE",
-      "evidence": "Contratto/enqueuer coperto dai test, ma nessun job overlay.prepare osservato nei run Michael Jordan."
+      "status": "PASS_LIVE",
+      "evidence": "Job prepare-michael-jordan-overlay-20260820-retry osservato nel broker live: job_type=overlay.prepare, state=completed, schema=renderinggen.overlay-prepare.v1, plan_id=michael-jordan-overlay-prepare-20260820, video_id=michael-jordan-image-catalog-certification, canvas 1080x1920@30, 1 intent (entity_card person_default PER Michael Jordan) con timing_state=PENDING, worker=renderinggen-b, tempi queued_at/started_at/completed_at valorizzati; AssetRefs immagine con sha256=bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7 + url dedupati sull'object store (broker.assets contains matching hash). Audit verificato macchinicamente tramite scripts/overlay-cert/verify_overlay_prepare_live.py: 16/16 gate PASS, G1b_strict_prepare_plan_id_shape FAIL informativo per drift sul naming id broker (id='prepare-michael-jordan-overlay-20260820-retry' invece di prepare-<plan_id>), documentato ma non bloccante. Cert+test in tests/operational/test_overlay_prepare_certification.py.",
+      "certificate": "refactored/artifacts/verify/michael-jordan-overlay-prepare-certification.json",
+      "verifier": "refactored/scripts/overlay-cert/verify_overlay_prepare_live.py",
+      "live_artifact": "refactored/artifacts/verify/michael-jordan-overlay-prepare-retry.full.json",
+      "dispatch_envelope": "refactored/artifacts/verify/michael-jordan-overlay-prepare-retry.dispatch.json",
+      "wire_payload": "refactored/artifacts/verify/michael-jordan-overlay-prepare.payload.json",
+      "blocking_gates_passed": 16,
+      "informational_gates": 1,
+      "verdict_overall": "PASS"
     },
     {
       "gate": "OverlayPlan compilato",

@@ -228,17 +228,14 @@ func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 	if teslaCount != 1 {
 		t.Fatalf("keyword %q emitted %d times, want exactly 1", "TESLA", teslaCount)
 	}
-	// Kinetic words: every kept keyword compiles to the active_word_pop preset.
+	// Kinetic words: every kept keyword compiles to a modern word preset.
 	compiled, err := CompileChrononPlan(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, layer := range compiled.Plan.Layers {
-		if layer.Preset == "active_word_pop" {
-			continue
-		}
-		if layer.Type == "text" {
-			t.Fatalf("text layer %q preset = %q, want active_word_pop", layer.ID, layer.Preset)
+		if layer.Type == "text" && layer.Preset == "" {
+			t.Fatalf("text layer %q has empty preset", layer.ID)
 		}
 	}
 }

@@ -121,6 +121,8 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_1",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "A MAJOR CHANGE",
         "preset": "clean_slide_up",
         "start_frame": 24,
@@ -128,6 +130,8 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_2",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "THIS CHANGES EVERYTHING",
         "preset": "slide_lateral",
         "start_frame": 90,

@@ -108,6 +108,8 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase_1",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "A MAJOR CHANGE",
 			Preset:         "clean_slide_up",
 			StartFrame:     24,
@@ -115,6 +117,8 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase_2",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "THIS CHANGES EVERYTHING",
 			Preset:         "slide_lateral",
 			StartFrame:     90,
@@ -222,6 +226,8 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		},
 		{
 			ID:             "important_word_1",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "ELON MUSK",
 			Preset:         "phrase_word_reveal",
 			StartFrame:     15,
@@ -230,6 +236,8 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		},
 		{
 			ID:             "important_word_2",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "TESLA",
 			Preset:         "phrase_word_reveal",
 			StartFrame:     45,
@@ -238,6 +246,8 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		},
 		{
 			ID:             "important_word_3",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "$10 BILLION",
 			Preset:         "fast_fade_through",
 			StartFrame:     75,
@@ -246,6 +256,8 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		},
 		{
 			ID:             "important_word_4",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "OPENAI",
 			Preset:         "fast_fade_through",
 			StartFrame:     105,
@@ -371,6 +383,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_1",
+			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
 			Preset:         "bottom_card_rise",
 			BoxWidth:       300,
@@ -381,6 +394,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_2",
+			Type:           "image",
 			Asset:          "assets/overlay_chart.png",
 			Preset:         "image_slide_left",
 			BoxWidth:       300,
@@ -391,6 +405,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_3",
+			Type:           "image",
 			Asset:          "assets/apple.png",
 			Preset:         "image_slide_right",
 			StartFrame:     102,
@@ -523,6 +538,7 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay",
+			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
 			Preset:         "image_slide_left",
 			BoxWidth:       300,
@@ -543,6 +559,8 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 		},
 		{
 			ID:             "important_word",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "-20%",
 			Preset:         "snap_scale",
 			StartFrame:     30,
@@ -550,6 +568,8 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "A MASSIVE DROP",
 			Preset:         "clean_slide_up",
 			StartFrame:     24,
