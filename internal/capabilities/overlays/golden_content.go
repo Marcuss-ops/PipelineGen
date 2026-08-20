@@ -134,7 +134,7 @@ var GoldenChrononAssetsContent01Phrases = []ChrononAsset{
 // ── Content02 — Important Words ───────────────────────────────────────────
 //
 // background.jpg + four kinetic words, each carrying its canonical motion
-// preset. Every word renders at the active_word_pop preset's default size.
+// preset. Every word renders at the modern word preset's default size.
 
 // GoldenOverlayPlanContent02Words is the semantic instruction set for the
 // Important Words content scenario.

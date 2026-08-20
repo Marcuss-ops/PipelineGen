@@ -99,21 +99,21 @@ func TestSemanticEntityAliasesPinConcordance(t *testing.T) {
 // (ADR-029: no new Chronon preset is invented in Go).
 func TestSemanticResolverCoversSemanticItemVocabulary(t *testing.T) {
 	want := map[string]string{
-		"PERSON":           "lower_third_safe",
-		"ORGANIZATION":     "organization_card",
-		"LOCATION":         "location_card",
-		"DATE":             "lower_third_safe",
-		"MONEY":            "active_word_pop",
-		"NUMBER":           "active_word_pop",
-		"PERCENTAGE":       "active_word_pop",
-		"IMPORTANT_PHRASE": "caption_card",
-		"QUOTE":            "caption_card",
-		"CLAIM":            "caption_card",
-		"STATISTIC":        "active_word_pop",
-		"RANKING":          "active_word_pop",
-		"TITLE":            "lower_third_safe",
-		"EVENT":            "lower_third_safe",
-		"IMAGE_ENTITY":     "image_focus_in",
+		"PERSON":           "name_glow_slide",
+		"ORGANIZATION":     "name_glow_slide",
+		"LOCATION":         "name_glow_slide",
+		"DATE":             "name_glow_slide",
+		"MONEY":            "phrase_word_reveal",
+		"NUMBER":           "phrase_word_reveal",
+		"PERCENTAGE":       "phrase_word_reveal",
+		"IMPORTANT_PHRASE": "fast_fade_through",
+		"QUOTE":            "fast_fade_through",
+		"CLAIM":            "fast_fade_through",
+		"STATISTIC":        "phrase_word_reveal",
+		"RANKING":          "phrase_word_reveal",
+		"TITLE":            "name_glow_slide",
+		"EVENT":            "name_glow_slide",
+		"IMAGE_ENTITY":     "image_fast_fade",
 	}
 	for role, preset := range want {
 		got, ok := DefaultSemanticOverlayResolver.PresetFor(role)

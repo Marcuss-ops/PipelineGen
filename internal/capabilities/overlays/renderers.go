@@ -40,9 +40,6 @@ func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononL
 	if preset == "" {
 		preset = modernPresetFor(item, plan.PlanID)
 	}
-	if preset == "" {
-		preset, _ = DefaultSemanticOverlayResolver.PresetFor(item.TemplateID)
-	}
 	presetDriven := preset != ""
 	layer := ChrononLayer{
 		ID:             item.ID,
