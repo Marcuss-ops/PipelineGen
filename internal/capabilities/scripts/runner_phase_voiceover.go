@@ -224,6 +224,14 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					ClipSHA256:     clipSHA256,
 					ClipDurationMS: clipDurationMS,
 					Render:         req.Render,
+					// Record the produced video on the run result the moment the
+					// fan-out certifies it, so the final MP4 is never orphaned
+					// from the run that produced it. Called outside the apply
+					// lock from concurrent workers; recordLocalizedRender fences
+					// the result append itself.
+					OnRendered: func(rendered LocalizedRenderResult) error {
+						return r.recordLocalizedRender(ctx, exec, result, rendered)
+					},
 				}); err != nil {
 					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)
 				}

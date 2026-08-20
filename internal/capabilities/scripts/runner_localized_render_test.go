@@ -10,11 +10,15 @@ import (
 )
 
 // recordingLocalizedRenderEnqueuer records every enqueued localized render in
-// submission order. err makes EnqueueLocalizedRender fail closed.
+// submission order. err makes EnqueueLocalizedRender fail closed. When
+// producedVideo is non-nil, the enqueuer simulates a successful fan-out by
+// invoking the input's OnRendered sink with that certified video — proving the
+// runner records the produced MP4 on its result.
 type recordingLocalizedRenderEnqueuer struct {
-	mu     sync.Mutex
-	inputs []LocalizedRenderInput
-	err    error
+	mu            sync.Mutex
+	inputs        []LocalizedRenderInput
+	err           error
+	producedVideo *LocalizedRenderResult
 }
 
 func (e *recordingLocalizedRenderEnqueuer) EnqueueLocalizedRender(_ context.Context, in LocalizedRenderInput) error {
@@ -24,6 +28,9 @@ func (e *recordingLocalizedRenderEnqueuer) EnqueueLocalizedRender(_ context.Cont
 		return e.err
 	}
 	e.inputs = append(e.inputs, in)
+	if e.producedVideo != nil && in.OnRendered != nil {
+		return in.OnRendered(*e.producedVideo)
+	}
 	return nil
 }
 
@@ -186,5 +193,51 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 		require.Equal(t, "clip-source", in.ClipAssetID, "enqueued input must carry the media asset id")
 		require.Equal(t, "cccc", in.ClipSHA256, "enqueued input must carry the clip sha256")
 		require.Equal(t, int64(12_000), in.ClipDurationMS, "enqueued input must carry the clip duration")
+	}
+}
+
+// TestRunner_LocalizedRenderFanout_RecordsProducedVideo certifies that a
+// certified produced video of the fan-out (asset id, sha256, Drive link) is
+// recorded on the run result — the final MP4 is never orphaned from the run
+// that produced it. This is the deterministic surface the E2E visual audit
+// reads to prove "this run rendered this video".
+func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	enq := &recordingLocalizedRenderEnqueuer{
+		producedVideo: &LocalizedRenderResult{
+			SceneID:     "scene-0",
+			Language:    "en",
+			ClipID:      "clip-source",
+			AssetID:     "final-video-asset-1",
+			SHA256:      "0123456789abcdef",
+			DriveFileID: "drive-final-1",
+			DriveLink:   "https://drive.google.com/file/d/drive-final-1/view",
+			DurationMS:  12_000,
+			Status:      "UPLOADED",
+		},
+	}
+	runner.SetLocalizedRenderEnqueuer(enq)
+	runner.SetTTSConcurrency(1)
+	runner.SetTranslationConcurrency(1)
+
+	req := defaultTestRequest()
+	runID := "run-localized-render-recorded-video"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status)
+
+	require.NotNil(t, final.Result, "run result must be populated")
+	require.Len(t, final.Result.LocalizedRenders, 6, "every (scene, language) fan-out must record its produced video")
+	for _, rendered := range final.Result.LocalizedRenders {
+		require.Equal(t, "final-video-asset-1", rendered.AssetID, "produced video asset id must be recorded")
+		require.Equal(t, "0123456789abcdef", rendered.SHA256, "produced video sha256 must be recorded")
+		require.Equal(t, "drive-final-1", rendered.DriveFileID, "produced video drive file id must be recorded")
+		require.NotEmpty(t, rendered.DriveLink, "produced video drive link must be recorded")
+		require.Equal(t, int64(12_000), rendered.DurationMS)
+		require.Equal(t, "UPLOADED", rendered.Status)
 	}
 }

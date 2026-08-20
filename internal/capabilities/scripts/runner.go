@@ -208,6 +208,12 @@ type Runner struct {
 	// processor version — and completed units are recorded durably.
 	checkpoints *capcheckpoint.Resolver
 
+	// localizedRenderMu fences appends of certified localized-render videos
+	// onto the run result. The fan-out enqueues from concurrent TTS workers
+	// outside the per-phase apply lock, so the result slice needs its own
+	// fence (a data race on LocalizedRenders would corrupt the run record).
+	localizedRenderMu sync.Mutex
+
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch): the editorial/visual decision layer the
 	// golden battery certifies (entity typing + canonicalization + query
@@ -365,6 +371,34 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 		return nil
 	}
 	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
+}
+
+// recordLocalizedRender records one certified produced video of the
+// localized render fan-out onto the run result. It is the durable proof
+// that "this run produced this final MP4" (asset id, sha256, Drive link)
+// — the produced video is never orphaned from the run that produced it.
+// Fail-closed: the recorder and the result append must both succeed, and
+// concurrent fan-out workers are fenced by localizedRenderMu.
+func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+	if strings.TrimSpace(rendered.AssetID) == "" {
+		return nil
+	}
+	if result != nil {
+		r.localizedRenderMu.Lock()
+		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+		r.localizedRenderMu.Unlock()
+	}
+	// Durable lineage: the produced video is an OperationRender artifact
+	// joinable on (scene_id, language, asset_id) like every other produced
+	// artifact of the run.
+	return r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+		OperationID: artifactOperationID(exec.Attempt, OperationRender, rendered.SceneID, string(rendered.Language)),
+		Kind:        OperationRender,
+		SceneID:     rendered.SceneID,
+		Language:    rendered.Language,
+		AssetID:     rendered.AssetID,
+		Status:      "COMPLETED",
+	})
 }
 
 // localizedRenderClipFields resolves the source-clip reference a localized

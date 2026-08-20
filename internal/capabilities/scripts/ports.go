@@ -305,6 +305,32 @@ type LocalizedRenderInput struct {
 	// adapter resolves the referenced watermark asset and passes the sealed
 	// choices to the single Rust clip-render pass.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
+
+	// OnRendered, when non-nil, is invoked once per certified produced video
+	// of the fan-out (render + upload completed) with that video's identity.
+	// The runner uses it to record the final video (asset id, sha256, Drive
+	// link) on the run result so the produced MP4 is never orphaned from the
+	// run that produced it — a run that rendered a video must be able to
+	// prove it. A non-nil sink is fail-closed: a sink error fails the
+	// enqueue. Nil means the caller does not need the outcome.
+	OnRendered func(LocalizedRenderResult) error `json:"-"`
+}
+
+// LocalizedRenderResult is the certified outcome of one localized render
+// fan-out: the produced video artifact identity (asset id, sha256, Drive
+// link, duration) for the (scene, language) unit. It is projected verbatim
+// from the localization service's certified artifact — the run records the
+// produced MP4 instead of discarding it.
+type LocalizedRenderResult struct {
+	SceneID     string   `json:"scene_id"`
+	Language    Language `json:"language"`
+	ClipID      string   `json:"clip_id"`
+	AssetID     string   `json:"asset_id"`
+	SHA256      string   `json:"sha256"`
+	DriveFileID string   `json:"drive_file_id,omitempty"`
+	DriveLink   string   `json:"drive_link,omitempty"`
+	DurationMS  int64    `json:"duration_ms,omitempty"`
+	Status      string   `json:"status"`
 }
 
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's

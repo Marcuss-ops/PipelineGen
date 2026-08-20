@@ -34,6 +34,7 @@ import (
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
@@ -355,14 +356,17 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Parallel-preparation adapters (composition root owns mechanics,
 	// the capability owns the ports). Every adapter is fail-closed at
 	// call time when a dependency is missing.
-	resolver := &clipRenderAssetResolver{assets: root.Repos.Assets}
+	resolver, err := newClipRenderAssetResolver(root.Repos.Assets, log)
+	if err != nil {
+		return fmt.Errorf("registerClipRender: build asset resolver: %w", err)
+	}
 	var driveReader drivepkg.Reader
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer := &clipRenderMaterializer{
-		drive:      driveReader,
-		scratchDir: filepath.Join(cfg.Storage.TempPath(), "cliprender"),
+	materializer, err := newClipRenderMaterializer(driveReader, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
+	if err != nil {
+		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
 	transcriptResolver := &clipRenderTranscriptResolver{log: log}
 	if root.Repos != nil {
@@ -433,13 +437,40 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 			}
 		}
 	}
-	chrononRenderer := capabilities.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath)
+	chrononRenderer := capabilities.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
 	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, chronon: chrononRenderer, resolver: backendResolver, probe: backendProbe})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
 	var committer assetspersistence.AssetCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
-	worker.WithRenderPublisher(&clipRenderPublisher{drive: root.Drive.Publisher, committer: committer})
+	publisher, publisherErr := newClipRenderPublisher(root.Drive.Publisher, committer, log)
+	if publisherErr != nil {
+		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
+	}
+	worker.WithRenderPublisher(publisher)
+
+	// Overlay compositing hop (entity overlays): the segment resolver reads
+	// the SAME content cache the overlay.render handler writes (the
+	// RENDERINGGEN_CACHE_ROOT / default root BuildRenderingRuntime uses — a
+	// plain directory, so a second cache handle is harmless), and the ffmpeg
+	// compositor blends the segment onto the source at the declared window
+	// using the resolved encoder policy. Fail-closed at call time: an
+	// overlay declared without these adapters is a typed worker error.
+	cacheRoot := os.Getenv("RENDERINGGEN_CACHE_ROOT")
+	if cacheRoot == "" {
+		cacheRoot = filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "cache")
+	}
+	overlayCache, cacheErr := infraoverlays.NewCache(cacheRoot)
+	if cacheErr != nil {
+		return fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
+	}
+	worker.WithOverlaySegmentResolver(&overlaySegmentResolver{cache: overlayCache})
+	worker.WithOverlayCompositor(&ffmpegOverlayCompositor{
+		ffmpegPath: cfg.External.FfmpegPath,
+		codec:      mediaConfig.Policy.Codec,
+		preset:     mediaConfig.Policy.Preset,
+		crf:        mediaConfig.Policy.CRF,
+	})
 	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),
 		zap.String("ffmpeg", cfg.External.FfmpegPath),

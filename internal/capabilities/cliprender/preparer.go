@@ -111,12 +111,35 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	var wave1 errgroup.Group
 	wave1.Go(func() error {
 		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_source_start"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.SourceAssetID),
+		)
 		ref, err := p.assets.ResolveAsset(ctx, req.SourceAssetID)
-		tracker.record("resolve_source", time.Since(t0))
+		notes := map[string]any{"asset_id": req.SourceAssetID}
+		if ref != nil {
+			notes["media_type"] = string(ref.MediaType)
+			notes["has_local"] = ref.LocalPath != ""
+			notes["has_drive"] = ref.DriveFileID != ""
+			notes["duration_ms"] = ref.DurationMS
+		}
+		tracker.recordWith("resolve_source", time.Since(t0), notes)
 		if err != nil {
 			return fmt.Errorf("clip.render: resolve source %q: %w", req.SourceAssetID, err)
 		}
 		sourceRef = ref
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_source_done"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.SourceAssetID),
+			zap.String("local_path", ref.LocalPath),
+			zap.String("drive_file_id", ref.DriveFileID),
+			zap.Int64("duration_ms_ref", ref.DurationMS),
+			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+		)
 		return nil
 	})
 	// Text watermarks are rendered directly by the compositor and do not
@@ -124,54 +147,139 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	// participate in the resolver waves.
 	watermarkAsset := watermarkEnabled && req.Watermark != nil && strings.TrimSpace(req.Watermark.Text) == ""
 	if watermarkAsset {
-		wave1.Go(func() error {
-			t0 := time.Now()
-			ref, err := p.assets.ResolveAsset(ctx, req.Watermark.AssetID)
-			tracker.record("resolve_watermark", time.Since(t0))
-			if err != nil {
-				return fmt.Errorf("clip.render: resolve watermark %q: %w", req.Watermark.AssetID, err)
-			}
-			watermarkRef = ref
-			return nil
-		})
-	}
+	wave1.Go(func() error {
+		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_watermark_start"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.Watermark.AssetID),
+		)
+		ref, err := p.assets.ResolveAsset(ctx, req.Watermark.AssetID)
+		notes := map[string]any{"asset_id": req.Watermark.AssetID}
+		if ref != nil {
+			notes["media_type"] = string(ref.MediaType)
+			notes["has_local"] = ref.LocalPath != ""
+			notes["has_drive"] = ref.DriveFileID != ""
+		}
+		tracker.recordWith("resolve_watermark", time.Since(t0), notes)
+		if err != nil {
+			return fmt.Errorf("clip.render: resolve watermark %q: %w", req.Watermark.AssetID, err)
+		}
+		watermarkRef = ref
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_watermark_done"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.Watermark.AssetID),
+			zap.String("local_path", ref.LocalPath),
+			zap.String("drive_file_id", ref.DriveFileID),
+			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+		)
+		return nil
+	})
+}
 	if backgroundAsset {
-		wave1.Go(func() error {
-			t0 := time.Now()
-			ref, err := p.assets.ResolveAsset(ctx, req.Background.AssetID)
-			tracker.record("resolve_background", time.Since(t0))
-			if err != nil {
-				return fmt.Errorf("clip.render: resolve background %q: %w", req.Background.AssetID, err)
-			}
-			backgroundRef = ref
-			return nil
-		})
+	wave1.Go(func() error {
+		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_background_start"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.Background.AssetID),
+		)
+		ref, err := p.assets.ResolveAsset(ctx, req.Background.AssetID)
+		notes := map[string]any{"asset_id": req.Background.AssetID}
+		if ref != nil {
+			notes["media_type"] = string(ref.MediaType)
+			notes["has_local"] = ref.LocalPath != ""
+			notes["has_drive"] = ref.DriveFileID != ""
+		}
+		tracker.recordWith("resolve_background", time.Since(t0), notes)
+		if err != nil {
+			return fmt.Errorf("clip.render: resolve background %q: %w", req.Background.AssetID, err)
+		}
+		backgroundRef = ref
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_background_done"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.Background.AssetID),
+			zap.String("local_path", ref.LocalPath),
+			zap.String("drive_file_id", ref.DriveFileID),
+			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+		)
+		return nil
+	})
 	}
 	if lookupTranscript {
-		wave1.Go(func() error {
-			t0 := time.Now()
-			res, found, err := p.transcript.Lookup(ctx, TranscriptInput{
-				AssetID:  req.SourceAssetID,
-				Language: req.Transcript.Language,
-				Mode:     req.Transcript.Mode,
-				Persist:  req.Transcript.Persist,
-			})
-			tracker.record("transcript_resolve", time.Since(t0))
-			if err != nil {
-				return fmt.Errorf("clip.render: transcript lookup: %w", err)
-			}
-			existing, existingFound = res, found
-			return nil
+	wave1.Go(func() error {
+		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "transcript_resolve_start"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", req.SourceAssetID),
+			zap.String("language", req.Transcript.Language),
+			zap.String("mode", string(req.Transcript.Mode)),
+		)
+		res, found, err := p.transcript.Lookup(ctx, TranscriptInput{
+			AssetID:  req.SourceAssetID,
+			Language: req.Transcript.Language,
+			Mode:     req.Transcript.Mode,
+			Persist:  req.Transcript.Persist,
 		})
+		tracker.recordWith("transcript_resolve", time.Since(t0), map[string]any{
+			"found":    found,
+			"language": req.Transcript.Language,
+		})
+		if err != nil {
+			return fmt.Errorf("clip.render: transcript lookup: %w", err)
+		}
+		existing, existingFound = res, found
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "transcript_resolve_done"),
+			zap.String("run_id", runID),
+			zap.Bool("found", found),
+			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+		)
+		return nil
+	})
 	}
 	wave1.Go(func() error {
 		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_contract_start"),
+			zap.String("run_id", runID),
+		)
 		c, err := p.contract.Resolve(ctx, req)
-		tracker.record("resolve_contract", time.Since(t0))
+		tracker.recordWith("resolve_contract", time.Since(t0), map[string]any{
+			"contract_id":  c.ContractID,
+			"video_codec":  c.VideoCodec,
+			"audio_codec":  c.AudioCodec,
+			"width":        c.Width,
+			"height":       c.Height,
+			"fps_num":      c.FPSNum,
+			"fps_den":      c.FPSDen,
+		})
 		if err != nil {
 			return fmt.Errorf("clip.render: resolve output contract: %w", err)
 		}
 		contract = c
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "resolve_contract_done"),
+			zap.String("run_id", runID),
+			zap.String("contract_id", c.ContractID),
+			zap.Int("width", c.Width),
+			zap.Int("height", c.Height),
+			zap.Int("fps_num", c.FPSNum),
+			zap.String("video_codec", c.VideoCodec),
+			zap.String("audio_codec", c.AudioCodec),
+			zap.Int64("phase_ms", time.Since(t0).Milliseconds()),
+		)
 		return nil
 	})
 	if err := wave1.Wait(); err != nil {
@@ -198,23 +306,85 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	var wave2 errgroup.Group
 	wave2.Go(func() error {
 		t0 := time.Now()
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "materialize_source_start"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", sourceRef.AssetID),
+		)
 		mat, err := p.material.Materialize(ctx, *sourceRef)
 		sourceMat, sourceErr = mat, err
 		close(sourceReady)
-		tracker.record("materialize_source", time.Since(t0))
+		phaseMS := time.Since(t0).Milliseconds()
+		notes := map[string]any{}
+		if mat != nil {
+			notes["asset_id"] = mat.AssetID
+			notes["size_bytes"] = mat.SizeBytes
+			notes["from_cache"] = mat.FromCache
+		}
+		tracker.recordWith("materialize_source", time.Since(t0), notes)
 		if err != nil {
+			p.log.Error("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "materialize_source_failed"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", sourceRef.AssetID),
+				zap.Int64("phase_ms", phaseMS),
+				zap.Error(err),
+			)
 			return fmt.Errorf("clip.render: materialize source %q: %w", sourceRef.AssetID, err)
 		}
+		p.log.Info("clip.render.prepare.phase",
+			zap.String("subsystem", "cliprender_preparer"),
+			zap.String("phase", "materialize_source_done"),
+			zap.String("run_id", runID),
+			zap.String("asset_id", mat.AssetID),
+			zap.String("local_path", mat.LocalPath),
+			zap.Int64("size_bytes", mat.SizeBytes),
+			zap.Bool("from_cache", mat.FromCache),
+			zap.Int64("phase_ms", phaseMS),
+		)
 		return nil
 	})
 	if watermarkRef != nil {
 		wave2.Go(func() error {
 			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "materialize_watermark_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", watermarkRef.AssetID),
+			)
 			mat, err := p.material.Materialize(ctx, *watermarkRef)
-			tracker.record("materialize_watermark", time.Since(t0))
+			phaseMS := time.Since(t0).Milliseconds()
+			notes := map[string]any{}
+			if mat != nil {
+				notes["asset_id"] = mat.AssetID
+				notes["size_bytes"] = mat.SizeBytes
+				notes["from_cache"] = mat.FromCache
+			}
+			tracker.recordWith("materialize_watermark", time.Since(t0), notes)
 			if err != nil {
+				p.log.Error("clip.render.prepare.phase",
+					zap.String("subsystem", "cliprender_preparer"),
+					zap.String("phase", "materialize_watermark_failed"),
+					zap.String("run_id", runID),
+					zap.String("asset_id", watermarkRef.AssetID),
+					zap.Int64("phase_ms", phaseMS),
+					zap.Error(err),
+				)
 				return fmt.Errorf("clip.render: materialize watermark %q: %w", watermarkRef.AssetID, err)
 			}
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "materialize_watermark_done"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", mat.AssetID),
+				zap.String("local_path", mat.LocalPath),
+				zap.Int64("size_bytes", mat.SizeBytes),
+				zap.Bool("from_cache", mat.FromCache),
+				zap.Int64("phase_ms", phaseMS),
+			)
 			watermarkMat = mat
 			return nil
 		})
@@ -222,11 +392,42 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if backgroundRef != nil {
 		wave2.Go(func() error {
 			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "materialize_background_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", backgroundRef.AssetID),
+			)
 			mat, err := p.material.Materialize(ctx, *backgroundRef)
-			tracker.record("materialize_background", time.Since(t0))
+			phaseMS := time.Since(t0).Milliseconds()
+			notes := map[string]any{}
+			if mat != nil {
+				notes["asset_id"] = mat.AssetID
+				notes["size_bytes"] = mat.SizeBytes
+				notes["from_cache"] = mat.FromCache
+			}
+			tracker.recordWith("materialize_background", time.Since(t0), notes)
 			if err != nil {
+				p.log.Error("clip.render.prepare.phase",
+					zap.String("subsystem", "cliprender_preparer"),
+					zap.String("phase", "materialize_background_failed"),
+					zap.String("run_id", runID),
+					zap.String("asset_id", backgroundRef.AssetID),
+					zap.Int64("phase_ms", phaseMS),
+					zap.Error(err),
+				)
 				return fmt.Errorf("clip.render: materialize background %q: %w", backgroundRef.AssetID, err)
 			}
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "materialize_background_done"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", mat.AssetID),
+				zap.String("local_path", mat.LocalPath),
+				zap.Int64("size_bytes", mat.SizeBytes),
+				zap.Bool("from_cache", mat.FromCache),
+				zap.Int64("phase_ms", phaseMS),
+			)
 			backgroundMat = mat
 			return nil
 		})
@@ -241,6 +442,13 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				return fmt.Errorf("clip.render: transcript generation aborted: source materialization failed: %w", sourceErr)
 			}
 			t0 := time.Now()
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "transcript_generate_start"),
+				zap.String("run_id", runID),
+				zap.String("asset_id", req.SourceAssetID),
+				zap.String("language", req.Transcript.Language),
+			)
 			res, err := p.transcript.Generate(ctx, TranscriptInput{
 				AssetID:      req.SourceAssetID,
 				Language:     req.Transcript.Language,
@@ -248,10 +456,33 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 				Persist:      req.Transcript.Persist,
 				SourceSHA256: sourceMat.SHA256,
 			}, sourceMat)
-			tracker.record("transcript_generate", time.Since(t0))
+			phaseMS := time.Since(t0).Milliseconds()
+			notes := map[string]any{"language": req.Transcript.Language}
+			if res != nil {
+				notes["cue_count"] = len(res.Cues)
+				notes["text_sha256"] = res.TextSHA256
+				notes["reused"] = res.Reused
+			}
+			tracker.recordWith("transcript_generate", time.Since(t0), notes)
 			if err != nil {
+				p.log.Error("clip.render.prepare.phase",
+					zap.String("subsystem", "cliprender_preparer"),
+					zap.String("phase", "transcript_generate_failed"),
+					zap.String("run_id", runID),
+					zap.Int64("phase_ms", phaseMS),
+					zap.Error(err),
+				)
 				return fmt.Errorf("clip.render: transcript generation: %w", err)
 			}
+			p.log.Info("clip.render.prepare.phase",
+				zap.String("subsystem", "cliprender_preparer"),
+				zap.String("phase", "transcript_generate_done"),
+				zap.String("run_id", runID),
+				zap.Int("cue_count", len(res.Cues)),
+				zap.String("text_sha256", res.TextSHA256),
+				zap.Bool("reused", res.Reused),
+				zap.Int64("phase_ms", phaseMS),
+			)
 			transcript = res
 			return nil
 		})
@@ -272,7 +503,14 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	}
 
 	timings := tracker.finish(time.Since(start))
-	p.log.Info("clip.render.prepare.done",
+	// Emit one structured zap field per phase so dashboards can index them
+	// without parsing the nested array. Field names follow the phase names
+	// recorded by the tracker (e.g. resolve_source_ms, materialize_source_ms).
+	phaseFields := make([]zap.Field, 0, len(timings.Phases)+4)
+	for _, p := range timings.Phases {
+		phaseFields = append(phaseFields, zap.Int64(p.Phase+"_ms", p.WallMS))
+	}
+	phaseFields = append(phaseFields,
 		zap.String("run_id", runID),
 		zap.String("source_asset_id", req.SourceAssetID),
 		zap.Int64("total_wall_ms", timings.TotalWallMS),
@@ -280,6 +518,7 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 		zap.Bool("parallel", timings.Parallel),
 		zap.Bool("transcript_reused", transcript.Reused),
 	)
+	p.log.Info("clip.render.prepare.done", phaseFields...)
 
 	return &Prepared{
 		RunID:      runID,
@@ -311,6 +550,17 @@ func (t *timingTracker) record(phase string, work time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.phases = append(t.phases, PhaseTiming{Phase: phase, WallMS: ms, WorkMS: ms})
+	t.workMS += ms
+}
+
+// recordWith is the notes-aware variant of record. The notes map is captured
+// verbatim so the Preparer can surface phase-specific facts (cache_hit,
+// bytes_downloaded, transcript cue count, ...) without losing the timing.
+func (t *timingTracker) recordWith(phase string, work time.Duration, notes map[string]any) {
+	ms := work.Milliseconds()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.phases = append(t.phases, PhaseTiming{Phase: phase, WallMS: ms, WorkMS: ms, Notes: notes})
 	t.workMS += ms
 }
 

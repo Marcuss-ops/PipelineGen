@@ -86,11 +86,38 @@ func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 		return nil, fmt.Errorf("create subtitle output dir %q: %w", in.OutputDir, err)
 	}
 	localPath := filepath.Join(in.OutputDir, "subtitles.ass")
-	if err := os.WriteFile(localPath, []byte(content), 0o644); err != nil {
-		return nil, fmt.Errorf("write ASS artifact %q: %w", localPath, err)
-	}
 	sum := sha256.Sum256([]byte(content))
 	sha := hex.EncodeToString(sum[:])
+	// Reuse an already materialized artifact for the same canonical
+	// transcript/style. The run-local file is a hard link to the durable
+	// content-addressed cache, so repeated clip jobs do not regenerate or
+	// rewrite identical subtitle bytes. The existing file is still validated
+	// before it is accepted by the plan.
+	if existing, readErr := os.ReadFile(localPath); readErr == nil && string(existing) == content {
+		if err := texttracks.ValidateASSFile(localPath, in.ClipDurationMS); err != nil {
+			return nil, fmt.Errorf("%w: invalid existing ASS for asset %q: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
+		}
+		return &cliprender.SubtitleArtifact{LocalPath: localPath, SHA256: sha, Mode: in.Mode, StyleID: in.StyleID}, nil
+	}
+	cacheDir := filepath.Join(filepath.Dir(filepath.Dir(in.OutputDir)), "subtitle-cache")
+	cachePath := filepath.Join(cacheDir, sha+".ass")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create subtitle cache dir %q: %w", cacheDir, err)
+	}
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		if err := os.WriteFile(cachePath, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("write cached ASS artifact %q: %w", cachePath, err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("stat cached ASS artifact %q: %w", cachePath, err)
+	}
+	if err := os.Link(cachePath, localPath); err != nil {
+		// Hard links can be unavailable on a different filesystem. Preserve
+		// correctness with a copy only in that exceptional case.
+		if copyErr := os.WriteFile(localPath, []byte(content), 0o644); copyErr != nil {
+			return nil, fmt.Errorf("link/copy ASS artifact %q: link=%v copy=%w", localPath, err, copyErr)
+		}
+	}
 	if err := texttracks.ValidateASSFile(localPath, in.ClipDurationMS); err != nil {
 		return nil, fmt.Errorf("%w: invalid generated ASS for asset %q: %v", cliprender.ErrSubtitleCompileUnavailable, in.AssetID, err)
 	}

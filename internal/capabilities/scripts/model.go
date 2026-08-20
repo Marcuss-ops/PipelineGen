@@ -632,6 +632,13 @@ type GenerateResult struct {
 	FinalAudio         *FinalAudioReference                `json:"final_audio,omitempty"`
 	AudioMetrics       *AudioPipelineMetrics               `json:"audio_metrics,omitempty"`
 	TranslationMetrics *TranslationPipelineMetrics         `json:"translation_metrics,omitempty"`
+
+	// LocalizedRenders are the certified produced videos of the localized
+	// render fan-out: one entry per successfully rendered + uploaded video
+	// with its asset id, sha256, and Drive identity. A run that rendered a
+	// final MP4 must prove it — the produced video is never orphaned from
+	// the run result. Nil when the fan-out produced no certified video.
+	LocalizedRenders []LocalizedRenderResult `json:"localized_renders,omitempty"`
 }
 
 // TranslationPipelineMetrics is a read-only API projection of canonical
