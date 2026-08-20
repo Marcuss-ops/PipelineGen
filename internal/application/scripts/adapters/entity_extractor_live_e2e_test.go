@@ -261,11 +261,11 @@ func TestLiveNLP_MichaelJordanEntitySurface(t *testing.T) {
 
 	extractor := localnlp.NewHybridExtractor()
 	result, err := extractor.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{
-		SegmentID:  "michael-jordan-certification",
-		Text:       text,
-		Title:      "Michael Jordan and Nike",
-		Language:   "en",
-		Device:     localnlp.DeviceCPU,
+		SegmentID:   "michael-jordan-certification",
+		Text:        text,
+		Title:       "Michael Jordan and Nike",
+		Language:    "en",
+		Device:      localnlp.DeviceCPU,
 		EntityCount: 20,
 	})
 	if err != nil {

@@ -41,10 +41,10 @@ import (
 // count and returns canned candidates. The count is the canonical
 // observable for "was the chain actually invoke this provider?".
 type countingSearcher struct {
-	name    string
-	count   int
-	clips   []Candidate
-	wantErr   error
+	name     string
+	count    int
+	clips    []Candidate
+	wantErr  error
 	lastMode SearchMode
 }
 

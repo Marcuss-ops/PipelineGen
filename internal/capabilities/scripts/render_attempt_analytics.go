@@ -37,10 +37,10 @@ type RenderAttemptAnalytics struct {
 	// Queue observation metrics. PollingSleepMS is the time spent sleeping
 	// between status polls; with the production 2s cadence it quantifies the
 	// polling-induced latency directly rather than attributing it to Chronon.
-	CompletionWaitMS int64 `json:"completion_wait_ms,omitempty"`
-	PollingSleepMS   int64 `json:"polling_sleep_ms,omitempty"`
+	CompletionWaitMS  int64 `json:"completion_wait_ms,omitempty"`
+	PollingSleepMS    int64 `json:"polling_sleep_ms,omitempty"`
 	PollingIntervalMS int64 `json:"polling_interval_ms,omitempty"`
-	PollCount        int   `json:"poll_count,omitempty"`
+	PollCount         int   `json:"poll_count,omitempty"`
 
 	// Output metrics (certified artifact facts).
 	Width      int    `json:"width,omitempty"`
