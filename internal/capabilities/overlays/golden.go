@@ -108,6 +108,8 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "QUESTO CAMBIA TUTTO",
 			Preset:         "clean_slide_up",
 			StartFrame:     20,
@@ -115,6 +117,8 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "important_word",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "APPLE",
 			Preset:         "phrase_word_reveal",
 			StartFrame:     65,
@@ -122,6 +126,7 @@ var GoldenChrononPlanV1 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay",
+			Type:           "image",
 			Asset:          "assets/apple.png",
 			Preset:         "image_fast_fade",
 			StartFrame:     90,
@@ -319,6 +324,8 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase_1",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "IL FUTURO È ADESSO",
 			Preset:         "slide_lateral",
 			StartFrame:     24,
@@ -327,6 +334,8 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_word_1",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "VELOCITÀ",
 			Preset:         "phrase_word_reveal",
 			StartFrame:     24,
@@ -335,6 +344,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_1",
+			Type:           "image",
 			Asset:          "assets/overlay_globe.png",
 			Preset:         "image_slide_right",
 			BoxWidth:       300,
@@ -345,6 +355,8 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_phrase_2",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "CAMBIARE IL MERCATO",
 			Preset:         "slide_lateral",
 			StartFrame:     132,
@@ -353,6 +365,8 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "important_word_2",
+			Type:           "text",
+			FontAsset:      &ChrononFontAsset{Asset: CanonicalTextFontPath, Family: "DejaVu Sans", Weight: 700},
 			Text:           "POTENZA",
 			Preset:         "snap_scale",
 			StartFrame:     132,
@@ -361,6 +375,7 @@ var GoldenChrononPlanV2 = ChrononPlan{
 		},
 		{
 			ID:             "image_overlay_2",
+			Type:           "image",
 			Asset:          "assets/overlay_chart.png",
 			Preset:         "image_slide_right",
 			BoxWidth:       300,

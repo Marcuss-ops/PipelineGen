@@ -1,0 +1,176 @@
+{
+  "schema": "overlay-cert.v1",
+  "certification": "live overlay.prepare",
+  "plan_id": "michael-jordan-overlay-prepare-20260820",
+  "job_id": "prepare-michael-jordan-overlay-20260820-retry",
+  "job_type": "overlay.prepare",
+  "schema_version": "renderinggen.overlay-prepare.v1",
+  "object_store_reached": true,
+  "verdict": "PASS",
+  "gates": [
+    {
+      "gate": "G1_id_carries_prepare_discriminator",
+      "expectation": "id starts with 'prepare-' AND dispatch envelope agrees on the same id",
+      "status": "PASS",
+      "observed": {
+        "broker_id": "prepare-michael-jordan-overlay-20260820-retry",
+        "dispatch_id": "prepare-michael-jordan-overlay-20260820-retry",
+        "plan_id": "michael-jordan-overlay-prepare-20260820",
+        "expected_base": "prepare-michael-jordan-overlay-prepare-20260820",
+        "shape_drift_observed": true
+      },
+      "reason": "broker id is 'prepare-michael-jordan-overlay-20260820-retry', not 'prepare-<plan_id>' or 'prepare-<plan_id>-<suffix>'; queue-adapter signature and dispatch envelope still certify the prepare dispatch"
+    },
+    {
+      "gate": "G1b_strict_prepare_plan_id_shape",
+      "expectation": "id == 'prepare-<plan_id>' or 'prepare-<plan_id>-<suffix>'",
+      "status": "FAIL",
+      "observed": {
+        "expected": [
+          "prepare-michael-jordan-overlay-prepare-20260820",
+          "prepare-michael-jordan-overlay-prepare-20260820-<suffix>"
+        ],
+        "observed": "prepare-michael-jordan-overlay-20260820-retry"
+      },
+      "reason": "informational: this gate surfaces naming drift and is not a certification blocker"
+    },
+    {
+      "gate": "G2_job_type_overlay_prepare",
+      "expectation": "job_type == 'overlay.prepare'",
+      "status": "PASS",
+      "observed": "overlay.prepare",
+      "reason": ""
+    },
+    {
+      "gate": "G3_schema_version_renderinggen_overlay_prepare_v1",
+      "expectation": "render_plan.schema_version == 'renderinggen.overlay-prepare.v1'",
+      "status": "PASS",
+      "observed": "renderinggen.overlay-prepare.v1",
+      "reason": "payload and broker agree on schema_version"
+    },
+    {
+      "gate": "G4_plan_id_non_empty",
+      "expectation": "render_plan.plan_id != ''",
+      "status": "PASS",
+      "observed": "michael-jordan-overlay-prepare-20260820",
+      "reason": ""
+    },
+    {
+      "gate": "G5_video_id_non_empty",
+      "expectation": "render_plan.video_id != ''",
+      "status": "PASS",
+      "observed": "michael-jordan-image-catalog-certification",
+      "reason": ""
+    },
+    {
+      "gate": "G6_width_positive",
+      "expectation": "render_plan.width > 0",
+      "status": "PASS",
+      "observed": 1080,
+      "reason": ""
+    },
+    {
+      "gate": "G7_height_positive",
+      "expectation": "render_plan.height > 0",
+      "status": "PASS",
+      "observed": 1920,
+      "reason": ""
+    },
+    {
+      "gate": "G8_fps_positive",
+      "expectation": "render_plan.fps > 0",
+      "status": "PASS",
+      "observed": 30,
+      "reason": ""
+    },
+    {
+      "gate": "G9_intents_non_empty",
+      "expectation": "len(render_plan.intents) >= 1",
+      "status": "PASS",
+      "observed": 1,
+      "reason": ""
+    },
+    {
+      "gate": "G10_intents_timing_state_PENDING",
+      "expectation": "intents[*].timing_state == 'PENDING'",
+      "status": "PASS",
+      "observed": [
+        "PENDING"
+      ],
+      "reason": ""
+    },
+    {
+      "gate": "G11_state_completed",
+      "expectation": "state == 'completed'",
+      "status": "PASS",
+      "observed": "completed",
+      "reason": ""
+    },
+    {
+      "gate": "G12_worker_recorded",
+      "expectation": "worker != ''",
+      "status": "PASS",
+      "observed": "renderinggen-b",
+      "reason": ""
+    },
+    {
+      "gate": "G13_observability_timestamps",
+      "expectation": "queued_at/started_at/completed_at all set",
+      "status": "PASS",
+      "observed": {
+        "queued_at": "2026-08-20T08:56:34.093747Z",
+        "started_at": "2026-08-20T08:56:35.184011Z",
+        "completed_at": "2026-08-20T08:56:35.267871Z"
+      },
+      "reason": ""
+    },
+    {
+      "gate": "G14_payload_asset_refs_carry_sha256_and_url",
+      "expectation": "payload.intents[*].payload.asset_refs[*] has sha256 AND url",
+      "status": "PASS",
+      "observed": {
+        "asset_ref_count": 1,
+        "image_hashes": [
+          "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7"
+        ]
+      },
+      "reason": ""
+    },
+    {
+      "gate": "G15_broker_assets_dedup_by_intent_hash",
+      "expectation": "broker.assets contains every distinct intent hash",
+      "status": "PASS",
+      "observed": {
+        "intent_hashes": [
+          "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7"
+        ],
+        "broker_hashes": [
+          "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7"
+        ],
+        "matched": [
+          "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7"
+        ]
+      },
+      "reason": ""
+    },
+    {
+      "gate": "G16_objectstore_reachable_at_intent_hash",
+      "expectation": "HTTP GET objectstore/objects/<sha256> returns 200",
+      "status": "PASS",
+      "observed": [
+        {
+          "hash": "bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7",
+          "url": "http://localhost:9000/objects/bb74e49f1251c4b74740a299b85beaa99e91cc9497b6c3590afc753a70e675d7",
+          "size_bytes": 0,
+          "status": "REACHABLE"
+        }
+      ],
+      "reason": ""
+    }
+  ],
+  "artifacts": {
+    "full_json": "refactored/artifacts/verify/michael-jordan-overlay-prepare-retry.full.json",
+    "payload_json": "refactored/artifacts/verify/michael-jordan-overlay-prepare.payload.json",
+    "dispatch_json": "refactored/artifacts/verify/michael-jordan-overlay-prepare-retry.dispatch.json"
+  }
+}

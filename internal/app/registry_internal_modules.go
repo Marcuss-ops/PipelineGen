@@ -15,6 +15,8 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
+	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -517,4 +519,24 @@ func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.
 	}
 	log.Info("created Jobs module")
 	return nil
+}
+
+// applyLateBindings is retained as an orchestration name for a pure handler
+// preparation phase. Provider adapters and descriptor-owned providers have
+// already been registered and frozen before this function is called.
+func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
+	prepared := PreparedCapabilities{}
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
+	}
+	if root.Process != nil && root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
+		var searchAgg mediasearchapi.AggregatorSearcher
+		if crossStep.SearchAggregator != nil {
+			searchAgg = crossStep.SearchAggregator
+		}
+		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
+			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
+		})
+	}
+	return prepared, nil
 }

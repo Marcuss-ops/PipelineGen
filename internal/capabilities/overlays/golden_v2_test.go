@@ -55,6 +55,8 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_1",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "IL FUTURO È ADESSO",
         "preset": "slide_lateral",
         "start_frame": 24,
@@ -63,6 +65,8 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "important_word_1",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "VELOCITÀ",
         "preset": "phrase_word_reveal",
         "start_frame": 24,
@@ -71,6 +75,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "image_overlay_1",
+        "type": "image",
         "asset": "assets/overlay_globe.png",
         "preset": "image_slide_right",
         "box_width": 300,
@@ -81,6 +86,8 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "important_phrase_2",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "CAMBIARE IL MERCATO",
         "preset": "slide_lateral",
         "start_frame": 132,
@@ -89,6 +96,8 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "important_word_2",
+        "type": "text",
+        "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "POTENZA",
         "preset": "snap_scale",
         "start_frame": 132,
@@ -97,6 +106,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
       },
       {
         "id": "image_overlay_2",
+        "type": "image",
         "asset": "assets/overlay_chart.png",
         "preset": "image_slide_right",
         "box_width": 300,
