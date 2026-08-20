@@ -159,8 +159,11 @@ func TestLayoutTemplateDefaultUntouched(t *testing.T) {
 	if layer.Position != nil {
 		t.Fatalf("preset-driven image must not carry a template-default position, got %v", layer.Position)
 	}
-	if layer.Type != "" || layer.Fit != "" {
-		t.Fatalf("preset-driven image must not carry type/fit (Chronon derives them), got type=%q fit=%q", layer.Type, layer.Fit)
+	if layer.Type != "image" {
+		t.Fatalf("preset-driven image must project canonical primitive type=image, got %q (production validator requires type on every layer)", layer.Type)
+	}
+	if layer.Fit != "" {
+		t.Fatalf("preset-driven image must not carry fit (Chronon derives it), got %q", layer.Fit)
 	}
 }
 
@@ -185,7 +188,7 @@ func TestLayoutTextNeverAutoLaidOut(t *testing.T) {
 	if layer.Position != nil {
 		t.Fatalf("text layers must not carry a layout position, got %v", layer.Position)
 	}
-	if layer.Type != "" || !contains(phrasePresetCandidates, layer.Preset) {
+	if layer.Type != "text" || !contains(phrasePresetCandidates, layer.Preset) {
 		t.Fatalf("unexpected layer: %s/%s", layer.Type, layer.Preset)
 	}
 }

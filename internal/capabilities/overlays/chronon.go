@@ -71,6 +71,41 @@ const (
 	PrimitiveShape Primitive = "shape"
 )
 
+// ChrononFontAsset is the chronon.render-plan.v1 `font_asset` block that
+// pins a text layer's font bytes by logical path and family/weight. The
+// production chronon3d_cli resolves the asset by hash from the queue job's
+// assets list at materialization time; the family/weight are advisory,
+// letting the StyleResolver swap to a preset's own font when one is
+// defined but never silently dropping to an empty font name.
+//
+// Family:  DejaVu Sans (the vendored font in CanonicalTextFontPath)
+// Weight:  700 (Bold; honest default when the preset doesn't pin its own)
+// Asset:   CanonicalTextFontPath
+type ChrononFontAsset struct {
+	Asset  string `json:"asset"`
+	Family string `json:"family"`
+	Weight int    `json:"weight"`
+}
+
+// primitiveToLayerType maps the canonical Primitive (text/image/video/shape)
+// to the chronon.render-plan.v1 `type` enum (text/image/video/color). This
+// lets the compiler emit a non-empty `type` on every layer (the production
+// validator requires it regardless of preset).
+func primitiveToLayerType(p Primitive) string {
+	switch p {
+	case PrimitiveText:
+		return "text"
+	case PrimitiveImage:
+		return "image"
+	case PrimitiveVideo:
+		return "video"
+	case PrimitiveShape:
+		return "color"
+	default:
+		return string(p)
+	}
+}
+
 // TemplateSpec maps a semantic template to the concrete Chronon layer shape
 // it compiles to. OverlayItem.Params may override fit/position/box/color
 // values; the defaults below are the canonical golden shapes.
@@ -143,6 +178,12 @@ type ChrononLayer struct {
 	// present only for preset-less primitives.
 	Type  string `json:"type,omitempty"`
 	Asset string `json:"asset,omitempty"`
+	// FontAsset is the content-addressed text-layer font, projected on
+	// every text layer so the worker's materializer resolves the bytes the
+	// icon font engine falls back to. Without it, multiple production paths
+	// (text_run fallback, native_av encoder warm shell) silently drop
+	// glyphs because the resolver sees an empty `font` name.
+	FontAsset *ChrononFontAsset `json:"font_asset,omitempty"`
 	// Source is the video-source logical path for the Video primitive:
 	// Chronon "video" layers reference `source`, not `asset`.
 	Source string `json:"source,omitempty"`
@@ -379,10 +420,15 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 			DurationFrames: endFrame - startFrame,
 		}
 		// Preset-less primitives carry their bare transport shape (layer type
-		// + geometry); preset-driven layers leave both to Chronon (derived
-		// from supported_layer + the preset box/anchor). Per-item Params may
-		// still override either below.
-		if !presetDriven {
+		// + geometry); preset-driven layers historically relied on Chronon to
+		// derive the type from `supported_layer`, but the production validator
+		// (chronon.render-plan.v1) treats `type` as required for every layer
+		// regardless of preset, so we now project spec.Primitive onto every
+		// layer — preset-driven or not — and per-item Params may still
+		// override either below.
+		if presetDriven {
+			layer.Type = primitiveToLayerType(spec.Primitive)
+		} else {
 			layer.Type = spec.LayerType
 			layer.Fit = spec.Fit
 			layer.BoxWidth = spec.BoxWidth
@@ -398,11 +444,21 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 		if strings.TrimSpace(item.Text) != "" {
 			layer.Text = item.Text
 		}
-		// Text layers carry no font / font_size: Chronon's VisualPresetRegistry
-		// owns the canonical font asset (font_asset) and size via StyleResolver.
-		// PipelineGen only flags that the plan needs a text font so the queue
-		// carries the materialization dependency below (one entry per plan).
+		// Text layers emit a font_asset reference pinned to the canonical
+		// DejaVuSans bytes. Chronon's StyleResolver is meant to substitute
+		// this with each preset's own font on its own schedule, but several
+		// production paths (text_run fallback, native_av encoder path, the
+		// warm-shell daemon) still resolve against an empty font name and
+		// degrade to the "primary-only" stack with missing-glyph errors.
+		// Carrying the asset by hash on every text layer is the smallest
+		// change that guarantees the glyphs render regardless of preset
+		// registry state.
 		if spec.Primitive == PrimitiveText {
+			layer.FontAsset = &ChrononFontAsset{
+				Asset:  CanonicalTextFontPath,
+				Family: "DejaVu Sans",
+				Weight: 700,
+			}
 			needsFont = true
 		}
 		// A FullCanvas template (BACKGROUND / VIDEO_BACKGROUND) spans the

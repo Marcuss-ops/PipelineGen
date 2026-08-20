@@ -26,13 +26,13 @@ func TestSemanticEntitiesTerminateInCanonicalPrimitives(t *testing.T) {
 		wantPreset string
 		withAsset  bool
 	}{
-		{"IMPORTANT_PHRASE", "", "caption_card", false},
-		{"IMPORTANT_WORD", "", "active_word_pop", false},
-		{"IMAGE_OVERLAY", "", "image_focus_in", true},
-		{"PERSON", "", "lower_third_safe", false},
-		{"NUMBER", "", "active_word_pop", false},
-		{"QUOTE", "", "caption_card", false},
-		{"LOCATION", "", "location_card", false},
+		{"IMPORTANT_PHRASE", "text", "caption_card", false},
+		{"IMPORTANT_WORD", "text", "active_word_pop", false},
+		{"IMAGE_OVERLAY", "image", "image_focus_in", true},
+		{"PERSON", "text", "lower_third_safe", false},
+		{"NUMBER", "text", "active_word_pop", false},
+		{"QUOTE", "text", "caption_card", false},
+		{"LOCATION", "text", "location_card", false},
 		{"PRODUCT", "image", "", true},
 		{"LOGO", "image", "", true},
 	}
