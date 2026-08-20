@@ -49,16 +49,11 @@ Non cambiare obiettivo durante il test.
 
 ## 4. Poll automatico (UN solo poller)
 
-Non usare cicli manuali di `sleep` + query SQL. Usare esclusivamente:
-
-```bash
-python3 scripts/ops/wait_job.py \
-  --job-id "$JOB_ID" \
-  --interval 10 \
-  --timeout 600
-```
-
-Il poller stampa SOLO i cambi di stato:
+Non usare cicli manuali di `sleep` + query SQL. Per interrogare lo stato di un
+job usare l'endpoint canonico esposto dal servizio (es. `/api/jobs/{id}`) e
+fermarsi al primo cambio di stato osservato. Se in futuro servirà una CLI
+dedicata, vivrà in `scripts/tools/` con un contratto chiaro di stampa dei
+soli cambi di stato:
 
 ```text
 PENDING → RUNNING
