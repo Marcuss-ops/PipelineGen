@@ -109,14 +109,14 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 		{
 			ID:             "important_phrase_1",
 			Text:           "A MAJOR CHANGE",
-			Preset:         "caption_card",
+			Preset:         "clean_slide_up",
 			StartFrame:     24,
 			DurationFrames: 48,
 		},
 		{
 			ID:             "important_phrase_2",
 			Text:           "THIS CHANGES EVERYTHING",
-			Preset:         "caption_card",
+			Preset:         "slide_lateral",
 			StartFrame:     90,
 			DurationFrames: 54,
 		},
@@ -223,7 +223,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		{
 			ID:             "important_word_1",
 			Text:           "ELON MUSK",
-			Preset:         "active_word_pop",
+			Preset:         "phrase_word_reveal",
 			StartFrame:     15,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
@@ -231,7 +231,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		{
 			ID:             "important_word_2",
 			Text:           "TESLA",
-			Preset:         "active_word_pop",
+			Preset:         "phrase_word_reveal",
 			StartFrame:     45,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_in"},
@@ -239,7 +239,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		{
 			ID:             "important_word_3",
 			Text:           "$10 BILLION",
-			Preset:         "active_word_pop",
+			Preset:         "fast_fade_through",
 			StartFrame:     75,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "fade_shift_vertical"},
@@ -247,7 +247,7 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 		{
 			ID:             "important_word_4",
 			Text:           "OPENAI",
-			Preset:         "active_word_pop",
+			Preset:         "fast_fade_through",
 			StartFrame:     105,
 			DurationFrames: 30,
 			Animation:      &ChrononLayerAnimation{Preset: "scale_drop"},
@@ -372,7 +372,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		{
 			ID:             "image_overlay_1",
 			Asset:          "assets/overlay_globe.png",
-			Preset:         "image_focus_in",
+			Preset:         "bottom_card_rise",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Position:       []float64{380, 0},
@@ -382,7 +382,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		{
 			ID:             "image_overlay_2",
 			Asset:          "assets/overlay_chart.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_slide_left",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Position:       []float64{840, 380},
@@ -392,7 +392,7 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 		{
 			ID:             "image_overlay_3",
 			Asset:          "assets/apple.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_slide_right",
 			StartFrame:     102,
 			DurationFrames: 48,
 		},
@@ -524,7 +524,7 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 		{
 			ID:             "image_overlay",
 			Asset:          "assets/overlay_globe.png",
-			Preset:         "image_focus_in",
+			Preset:         "image_slide_left",
 			BoxWidth:       300,
 			BoxHeight:      300,
 			Position:       []float64{840, 380},
@@ -544,14 +544,14 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 		{
 			ID:             "important_word",
 			Text:           "-20%",
-			Preset:         "active_word_pop",
+			Preset:         "snap_scale",
 			StartFrame:     30,
 			DurationFrames: 30,
 		},
 		{
 			ID:             "important_phrase",
 			Text:           "A MASSIVE DROP",
-			Preset:         "caption_card",
+			Preset:         "clean_slide_up",
 			StartFrame:     24,
 			DurationFrames: 60,
 		},
