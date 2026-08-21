@@ -210,15 +210,21 @@ func (r *clipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 		return nil, false, err
 	}
 	if track == nil {
+		langs, listErr := r.repo.ListReadyLanguages(ctx, in.AssetID, asset.TextTrackTranscript)
+		if listErr == nil && len(langs) > 0 {
+			track, cues, _ = r.repo.FindReady(ctx, in.AssetID, langs[0], asset.TextTrackTranscript)
+		}
+	}
+	if track == nil {
 		return nil, false, nil
 	}
 	hash := track.TextHash
 	if hash == "" {
-		hash = asset.TextHash(track.TextContent, in.Language, asset.TextTrackTranscript)
+		hash = asset.TextHash(track.TextContent, track.LanguageCode, asset.TextTrackTranscript)
 	}
 	return &cliprender.TranscriptResult{
 		AssetID:           in.AssetID,
-		Language:          in.Language,
+		Language:          track.LanguageCode,
 		Text:              track.TextContent,
 		Cues:              mapTimedCues(cues),
 		TextSHA256:        hash,
