@@ -5,16 +5,10 @@
   "base_available": true,
   "base_fallback": false,
   "changed_files": [
-    "internal/platform/media/rustexec/audio_gate_differential_e2e_test.go",
-    "internal/platform/media/rustexec/audio_gate_full_mix_e2e_test.go",
-    "internal/platform/media/rustexec/audio_gate_helpers_e2e_test.go",
-    "internal/platform/media/rustexec/audio_gate_vo_bgm_e2e_test.go",
-    "internal/platform/media/rustexec/audio_gate_vo_sfx_e2e_test.go",
-    "rust/pipelinegen-muscles/src/render_audio.rs",
-    "rust/pipelinegen-muscles/src/render_audio_execution.rs"
+    "internal/app/capabilities/chronon_clip_renderer.go"
   ],
   "file_components": {
-    "internal/platform/media/rustexec/audio_gate_differential_e2e_test.go": [
+    "internal/app/capabilities/chronon_clip_renderer.go": [
       "script",
       "research",
       "clips",
@@ -38,112 +32,6 @@
       "kernel",
       "rust-muscles",
       "web"
-    ],
-    "internal/platform/media/rustexec/audio_gate_full_mix_e2e_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/platform/media/rustexec/audio_gate_helpers_e2e_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/platform/media/rustexec/audio_gate_vo_bgm_e2e_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "internal/platform/media/rustexec/audio_gate_vo_sfx_e2e_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    "rust/pipelinegen-muscles/src/render_audio.rs": [
-      "rust-muscles"
-    ],
-    "rust/pipelinegen-muscles/src/render_audio_execution.rs": [
-      "rust-muscles"
     ]
   },
   "impacted_components": [
@@ -278,7 +166,7 @@
     },
     "stock": {
       "status": "PASS",
-      "duration_ms": 47865,
+      "duration_ms": 43318,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/assets/providers/stock/...",
@@ -292,7 +180,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 44597,
+          "duration_ms": 40777,
           "timed_out": false,
           "command": "go test ./internal/application/assets/providers/stock/...",
           "kind": "go",
@@ -301,7 +189,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 979,
+          "duration_ms": 822,
           "timed_out": false,
           "command": "go test ./internal/application/assets/providers/artlist/...",
           "kind": "go",
@@ -310,7 +198,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 672,
+          "duration_ms": 520,
           "timed_out": false,
           "command": "go test ./internal/api/assets/stock/...",
           "kind": "go",
@@ -319,7 +207,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 759,
+          "duration_ms": 575,
           "timed_out": false,
           "command": "go test ./internal/api/assets/artlist/...",
           "kind": "go",
@@ -328,7 +216,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 856,
+          "duration_ms": 621,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/artlist/...",
           "kind": "go",
@@ -786,10 +674,10 @@
       "rust-muscles",
       "web"
     ],
-    "started_at": "2026-08-21T07:41:21.100975Z",
-    "finished_at": "2026-08-21T07:42:08.969725Z",
-    "git_sha": "2060526db1f45bf0beb9b124054e7615601a1697",
-    "duration_ms": 47873,
+    "started_at": "2026-08-21T08:56:59.030868Z",
+    "finished_at": "2026-08-21T08:57:42.354091Z",
+    "git_sha": "202fcc18936d09fe6e194a093add1f0793802799",
+    "duration_ms": 43327,
     "components": {
       "script": {
         "status": "CACHED_PASS",
@@ -870,7 +758,7 @@
       },
       "stock": {
         "status": "PASS",
-        "duration_ms": 47865,
+        "duration_ms": 43318,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/application/assets/providers/stock/...",
@@ -884,7 +772,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 44597,
+            "duration_ms": 40777,
             "timed_out": false,
             "command": "go test ./internal/application/assets/providers/stock/...",
             "kind": "go",
@@ -893,7 +781,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 979,
+            "duration_ms": 822,
             "timed_out": false,
             "command": "go test ./internal/application/assets/providers/artlist/...",
             "kind": "go",
@@ -902,7 +790,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 672,
+            "duration_ms": 520,
             "timed_out": false,
             "command": "go test ./internal/api/assets/stock/...",
             "kind": "go",
@@ -911,7 +799,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 759,
+            "duration_ms": 575,
             "timed_out": false,
             "command": "go test ./internal/api/assets/artlist/...",
             "kind": "go",
@@ -920,7 +808,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 856,
+            "duration_ms": 621,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/artlist/...",
             "kind": "go",
@@ -1388,7 +1276,7 @@
         {
           "gate": "stock",
           "result": "MISS",
-          "duration_ms": 47865
+          "duration_ms": 43318
         },
         {
           "gate": "storage",
@@ -1432,23 +1320,23 @@
       "component=research status=CACHED_PASS original_duration_ms=3377",
       "component=clips status=CACHED_PASS original_duration_ms=3449",
       "component=qdrant status=CACHED_PASS original_duration_ms=2927",
-      "component=drive status=CACHED_PASS original_duration_ms=2446",
-      "component=docs status=CACHED_PASS original_duration_ms=1767",
-      "component=images status=CACHED_PASS original_duration_ms=3062",
       "component=indexing status=CACHED_PASS original_duration_ms=2060",
-      "component=ollama status=CACHED_PASS original_duration_ms=788",
+      "component=drive status=CACHED_PASS original_duration_ms=2446",
       "component=voiceover status=CACHED_PASS original_duration_ms=3081",
-      "component=storage status=CACHED_PASS original_duration_ms=3792",
+      "component=images status=CACHED_PASS original_duration_ms=3062",
+      "component=docs status=CACHED_PASS original_duration_ms=1767",
+      "component=ollama status=CACHED_PASS original_duration_ms=788",
       "component=translation status=CACHED_PASS original_duration_ms=2462",
+      "component=storage status=CACHED_PASS original_duration_ms=3792",
       "component=timeline status=CACHED_PASS original_duration_ms=1038",
-      "component=jobs status=CACHED_PASS original_duration_ms=5490",
       "component=youtube status=CACHED_PASS original_duration_ms=6197",
-      "component=api status=CACHED_PASS original_duration_ms=7571",
+      "component=jobs status=CACHED_PASS original_duration_ms=5490",
       "component=artlist status=CACHED_PASS original_duration_ms=3247",
       "component=node-scraper status=CACHED_PASS original_duration_ms=12141",
+      "component=api status=CACHED_PASS original_duration_ms=7571",
       "component=rust-muscles status=CACHED_PASS original_duration_ms=0",
-      "component=web status=CACHED_PASS original_duration_ms=7747",
-      "component=kernel status=CACHED_PASS original_duration_ms=1609"
+      "component=kernel status=CACHED_PASS original_duration_ms=1609",
+      "component=web status=CACHED_PASS original_duration_ms=7747"
     ]
   },
   "cache_summary": {
@@ -1540,7 +1428,7 @@
       {
         "gate": "stock",
         "result": "MISS",
-        "duration_ms": 47865
+        "duration_ms": 43318
       },
       {
         "gate": "storage",
@@ -1574,10 +1462,10 @@
       }
     ]
   },
-  "started_at": "2026-08-21T07:41:15.859634Z",
-  "finished_at": "2026-08-21T07:42:08.974426Z",
-  "git_sha": "2060526db1f45bf0beb9b124054e7615601a1697",
-  "duration_ms": 47873,
+  "started_at": "2026-08-21T08:56:53.469872Z",
+  "finished_at": "2026-08-21T08:57:42.358879Z",
+  "git_sha": "202fcc18936d09fe6e194a093add1f0793802799",
+  "duration_ms": 43327,
   "dry_run": false,
   "final": "PASS"
 }
