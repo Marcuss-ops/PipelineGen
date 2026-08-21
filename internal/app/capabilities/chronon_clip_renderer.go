@@ -13,6 +13,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"os"
 	"os/exec"
@@ -26,6 +29,48 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
+
+func watermarkPosition(path, position string, canvasW, canvasH, margin int) []int {
+	if margin < 0 {
+		margin = 0
+	}
+	imgW, imgH := watermarkDimensions(path)
+	if imgW <= 0 || imgH <= 0 {
+		return []int{0, 0}
+	}
+	x, y := margin, margin
+	switch position {
+	case cliprender.PositionTopRight:
+		x = canvasW - margin - imgW
+	case cliprender.PositionBottomLeft:
+		y = canvasH - margin - imgH
+	case cliprender.PositionBottomRight:
+		x = canvasW - margin - imgW
+		y = canvasH - margin - imgH
+	case cliprender.PositionCenter:
+		x = (canvasW - imgW) / 2
+		y = (canvasH - imgH) / 2
+	}
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	// Chronon image positions are world-space centers, not top-left pixels.
+	return []int{x + imgW/2 - canvasW/2, y + imgH/2 - canvasH/2}
+}
+
+func watermarkDimensions(path string) (int, int) {
+	imgW, imgH := 0, 0
+	if f, err := os.Open(path); err == nil {
+		if cfg, _, err := image.DecodeConfig(f); err == nil {
+			imgW, imgH = cfg.Width, cfg.Height
+		}
+		_ = f.Close()
+	}
+	return imgW, imgH
+}
 
 type chrononClipRenderExecutor struct {
 	binary string
@@ -217,7 +262,8 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 		if plan.Watermark.Text != "" {
 			layers = append(layers, map[string]any{"id": "watermark", "type": "text", "text": plan.Watermark.Text, "font": "fonts/DejaVuSans.ttf", "font_size": 64, "color": []float64{1, 1, 1, plan.Watermark.Opacity}, "position": []int{plan.Output.Width / 2, plan.Output.Height / 2}, "start_frame": 0, "duration_frames": frames})
 		} else if plan.Watermark.Path != "" {
-			layers = append(layers, map[string]any{"id": "watermark", "type": "image", "source": "watermark" + filepath.Ext(plan.Watermark.Path), "position": []int{plan.Output.Width / 2, plan.Output.Height / 2}, "start_frame": 0, "duration_frames": frames})
+			wmW, wmH := watermarkDimensions(plan.Watermark.Path)
+			layers = append(layers, map[string]any{"id": "watermark", "type": "image", "source": "watermark" + filepath.Ext(plan.Watermark.Path), "fit": "none", "box_width": wmW, "box_height": wmH, "position": watermarkPosition(plan.Watermark.Path, plan.Watermark.Position, plan.Output.Width, plan.Output.Height, plan.Watermark.MarginPX), "start_frame": 0, "duration_frames": frames})
 		}
 	}
 	if plan.Subtitles != nil && len(plan.Subtitles.Cues) > 0 {
@@ -233,7 +279,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 			zap.Int("cue_count", len(plan.Subtitles.Cues)),
 			zap.Int("size_bytes", len(b.String())),
 		)
-		layers = append(layers, map[string]any{"id": "subtitles", "type": "subtitle_track", "source": "subtitles.srt", "format": "srt", "font": "fonts/DejaVuSans.ttf", "start_frame": 0, "duration_frames": frames})
+		layers = append(layers, map[string]any{"id": "subtitles", "type": "subtitle_track", "source": "subtitles.srt", "format": "srt", "font": "fonts/DejaVuSans.ttf", "box_width": plan.Output.Width - 2*48, "box_height": 200, "start_frame": 0, "duration_frames": frames})
 	}
 	planJSON := map[string]any{"schema": "chronon.render-plan", "version": 1, "job_id": plan.RunID, "canvas": map[string]any{"width": plan.Output.Width, "height": plan.Output.Height, "fps": fps, "duration_frames": frames}, "layers": layers, "output": map[string]any{"path": "chronon.mp4", "format": "mp4", "codec": "h264"}}
 
