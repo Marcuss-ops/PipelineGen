@@ -5,21 +5,16 @@
   "base_available": true,
   "base_fallback": false,
   "changed_files": [
-    ".github/workflows/architecture-governance.yml",
-    ".github/workflows/architecture.yml",
-    ".github/workflows/ci.yml",
-    ".github/workflows/dependabot-reconcile.yml",
-    ".github/workflows/manual.yml",
-    ".github/workflows/nightly.yml",
-    ".github/workflows/preflight-ci.yml",
-    ".github/workflows/smoke.yml",
-    ".github/workflows/stock-live.yml",
-    ".github/workflows/verify-full.yml",
-    ".github/workflows/verify-race.yml",
-    ".github/workflows/verify-release.yml"
+    "internal/platform/media/rustexec/audio_gate_differential_e2e_test.go",
+    "internal/platform/media/rustexec/audio_gate_full_mix_e2e_test.go",
+    "internal/platform/media/rustexec/audio_gate_helpers_e2e_test.go",
+    "internal/platform/media/rustexec/audio_gate_vo_bgm_e2e_test.go",
+    "internal/platform/media/rustexec/audio_gate_vo_sfx_e2e_test.go",
+    "rust/pipelinegen-muscles/src/render_audio.rs",
+    "rust/pipelinegen-muscles/src/render_audio_execution.rs"
   ],
   "file_components": {
-    ".github/workflows/architecture-governance.yml": [
+    "internal/platform/media/rustexec/audio_gate_differential_e2e_test.go": [
       "script",
       "research",
       "clips",
@@ -44,7 +39,7 @@
       "rust-muscles",
       "web"
     ],
-    ".github/workflows/architecture.yml": [
+    "internal/platform/media/rustexec/audio_gate_full_mix_e2e_test.go": [
       "script",
       "research",
       "clips",
@@ -69,7 +64,7 @@
       "rust-muscles",
       "web"
     ],
-    ".github/workflows/ci.yml": [
+    "internal/platform/media/rustexec/audio_gate_helpers_e2e_test.go": [
       "script",
       "research",
       "clips",
@@ -94,7 +89,7 @@
       "rust-muscles",
       "web"
     ],
-    ".github/workflows/dependabot-reconcile.yml": [
+    "internal/platform/media/rustexec/audio_gate_vo_bgm_e2e_test.go": [
       "script",
       "research",
       "clips",
@@ -119,7 +114,7 @@
       "rust-muscles",
       "web"
     ],
-    ".github/workflows/manual.yml": [
+    "internal/platform/media/rustexec/audio_gate_vo_sfx_e2e_test.go": [
       "script",
       "research",
       "clips",
@@ -144,180 +139,11 @@
       "rust-muscles",
       "web"
     ],
-    ".github/workflows/nightly.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "rust/pipelinegen-muscles/src/render_audio.rs": [
+      "rust-muscles"
     ],
-    ".github/workflows/preflight-ci.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    ".github/workflows/smoke.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    ".github/workflows/stock-live.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    ".github/workflows/verify-full.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    ".github/workflows/verify-race.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
-    ".github/workflows/verify-release.yml": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+    "rust/pipelinegen-muscles/src/render_audio_execution.rs": [
+      "rust-muscles"
     ]
   },
   "impacted_components": [
@@ -452,7 +278,7 @@
     },
     "stock": {
       "status": "PASS",
-      "duration_ms": 50797,
+      "duration_ms": 47865,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/assets/providers/stock/...",
@@ -466,7 +292,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 47290,
+          "duration_ms": 44597,
           "timed_out": false,
           "command": "go test ./internal/application/assets/providers/stock/...",
           "kind": "go",
@@ -475,7 +301,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 1118,
+          "duration_ms": 979,
           "timed_out": false,
           "command": "go test ./internal/application/assets/providers/artlist/...",
           "kind": "go",
@@ -484,7 +310,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 720,
+          "duration_ms": 672,
           "timed_out": false,
           "command": "go test ./internal/api/assets/stock/...",
           "kind": "go",
@@ -493,7 +319,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 838,
+          "duration_ms": 759,
           "timed_out": false,
           "command": "go test ./internal/api/assets/artlist/...",
           "kind": "go",
@@ -502,7 +328,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 828,
+          "duration_ms": 856,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/artlist/...",
           "kind": "go",
@@ -827,9 +653,9 @@
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "ef022d5d70afe193aad072117b1bea0212c2fb0751eb3a437ce0f3611f7a936a",
+      "fingerprint": "da5d73c909d7111f7fb30db7d39017e6717c314d1b86915182145ea46ccd6c43",
       "cache_hit": true,
-      "original_duration_ms": 12097
+      "original_duration_ms": 12141
     },
     "kernel": {
       "status": "CACHED_PASS",
@@ -859,7 +685,7 @@
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "41e449d7ed762d05b5279a1a81001186847a03e134308528cd744d7a39c25298",
+      "fingerprint": "f755f35a5e05d4af1a8c4b1df824b2b26e02719142c8b2cffdd1b2c4b8213cba",
       "cache_hit": true,
       "original_duration_ms": 0
     },
@@ -960,10 +786,10 @@
       "rust-muscles",
       "web"
     ],
-    "started_at": "2026-08-20T18:48:03.371222Z",
-    "finished_at": "2026-08-20T18:48:54.172976Z",
-    "git_sha": "fe260ff3690279f686da094ff883f0e14844c94b",
-    "duration_ms": 50807,
+    "started_at": "2026-08-21T07:41:21.100975Z",
+    "finished_at": "2026-08-21T07:42:08.969725Z",
+    "git_sha": "2060526db1f45bf0beb9b124054e7615601a1697",
+    "duration_ms": 47873,
     "components": {
       "script": {
         "status": "CACHED_PASS",
@@ -1044,7 +870,7 @@
       },
       "stock": {
         "status": "PASS",
-        "duration_ms": 50797,
+        "duration_ms": 47865,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/application/assets/providers/stock/...",
@@ -1058,7 +884,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 47290,
+            "duration_ms": 44597,
             "timed_out": false,
             "command": "go test ./internal/application/assets/providers/stock/...",
             "kind": "go",
@@ -1067,7 +893,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 1118,
+            "duration_ms": 979,
             "timed_out": false,
             "command": "go test ./internal/application/assets/providers/artlist/...",
             "kind": "go",
@@ -1076,7 +902,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 720,
+            "duration_ms": 672,
             "timed_out": false,
             "command": "go test ./internal/api/assets/stock/...",
             "kind": "go",
@@ -1085,7 +911,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 838,
+            "duration_ms": 759,
             "timed_out": false,
             "command": "go test ./internal/api/assets/artlist/...",
             "kind": "go",
@@ -1094,7 +920,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 828,
+            "duration_ms": 856,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/artlist/...",
             "kind": "go",
@@ -1419,9 +1245,9 @@
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "ef022d5d70afe193aad072117b1bea0212c2fb0751eb3a437ce0f3611f7a936a",
+        "fingerprint": "da5d73c909d7111f7fb30db7d39017e6717c314d1b86915182145ea46ccd6c43",
         "cache_hit": true,
-        "original_duration_ms": 12097
+        "original_duration_ms": 12141
       },
       "kernel": {
         "status": "CACHED_PASS",
@@ -1451,7 +1277,7 @@
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "41e449d7ed762d05b5279a1a81001186847a03e134308528cd744d7a39c25298",
+        "fingerprint": "f755f35a5e05d4af1a8c4b1df824b2b26e02719142c8b2cffdd1b2c4b8213cba",
         "cache_hit": true,
         "original_duration_ms": 0
       },
@@ -1477,7 +1303,7 @@
       "hits": 22,
       "misses": 1,
       "executed": 1,
-      "saved_ms": 81514,
+      "saved_ms": 81558,
       "gates": [
         {
           "gate": "api",
@@ -1532,7 +1358,7 @@
         {
           "gate": "node-scraper",
           "result": "HIT",
-          "duration_ms": 12097
+          "duration_ms": 12141
         },
         {
           "gate": "ollama",
@@ -1562,7 +1388,7 @@
         {
           "gate": "stock",
           "result": "MISS",
-          "duration_ms": 50797
+          "duration_ms": 47865
         },
         {
           "gate": "storage",
@@ -1603,33 +1429,33 @@
     "diagnostics": [
       "component=script status=CACHED_PASS original_duration_ms=3575",
       "component=database status=CACHED_PASS original_duration_ms=3732",
-      "component=qdrant status=CACHED_PASS original_duration_ms=2927",
-      "component=indexing status=CACHED_PASS original_duration_ms=2060",
-      "component=clips status=CACHED_PASS original_duration_ms=3449",
-      "component=drive status=CACHED_PASS original_duration_ms=2446",
-      "component=voiceover status=CACHED_PASS original_duration_ms=3081",
-      "component=images status=CACHED_PASS original_duration_ms=3062",
-      "component=docs status=CACHED_PASS original_duration_ms=1767",
       "component=research status=CACHED_PASS original_duration_ms=3377",
+      "component=clips status=CACHED_PASS original_duration_ms=3449",
+      "component=qdrant status=CACHED_PASS original_duration_ms=2927",
+      "component=drive status=CACHED_PASS original_duration_ms=2446",
+      "component=docs status=CACHED_PASS original_duration_ms=1767",
+      "component=images status=CACHED_PASS original_duration_ms=3062",
+      "component=indexing status=CACHED_PASS original_duration_ms=2060",
       "component=ollama status=CACHED_PASS original_duration_ms=788",
-      "component=translation status=CACHED_PASS original_duration_ms=2462",
+      "component=voiceover status=CACHED_PASS original_duration_ms=3081",
       "component=storage status=CACHED_PASS original_duration_ms=3792",
-      "component=jobs status=CACHED_PASS original_duration_ms=5490",
+      "component=translation status=CACHED_PASS original_duration_ms=2462",
       "component=timeline status=CACHED_PASS original_duration_ms=1038",
+      "component=jobs status=CACHED_PASS original_duration_ms=5490",
       "component=youtube status=CACHED_PASS original_duration_ms=6197",
-      "component=artlist status=CACHED_PASS original_duration_ms=3247",
-      "component=node-scraper status=CACHED_PASS original_duration_ms=12097",
-      "component=rust-muscles status=CACHED_PASS original_duration_ms=0",
-      "component=kernel status=CACHED_PASS original_duration_ms=1609",
       "component=api status=CACHED_PASS original_duration_ms=7571",
-      "component=web status=CACHED_PASS original_duration_ms=7747"
+      "component=artlist status=CACHED_PASS original_duration_ms=3247",
+      "component=node-scraper status=CACHED_PASS original_duration_ms=12141",
+      "component=rust-muscles status=CACHED_PASS original_duration_ms=0",
+      "component=web status=CACHED_PASS original_duration_ms=7747",
+      "component=kernel status=CACHED_PASS original_duration_ms=1609"
     ]
   },
   "cache_summary": {
     "hits": 22,
     "misses": 1,
     "executed": 1,
-    "saved_ms": 81514,
+    "saved_ms": 81558,
     "gates": [
       {
         "gate": "api",
@@ -1684,7 +1510,7 @@
       {
         "gate": "node-scraper",
         "result": "HIT",
-        "duration_ms": 12097
+        "duration_ms": 12141
       },
       {
         "gate": "ollama",
@@ -1714,7 +1540,7 @@
       {
         "gate": "stock",
         "result": "MISS",
-        "duration_ms": 50797
+        "duration_ms": 47865
       },
       {
         "gate": "storage",
@@ -1748,10 +1574,10 @@
       }
     ]
   },
-  "started_at": "2026-08-20T18:47:57.907769Z",
-  "finished_at": "2026-08-20T18:48:54.178774Z",
-  "git_sha": "fe260ff3690279f686da094ff883f0e14844c94b",
-  "duration_ms": 50807,
+  "started_at": "2026-08-21T07:41:15.859634Z",
+  "finished_at": "2026-08-21T07:42:08.974426Z",
+  "git_sha": "2060526db1f45bf0beb9b124054e7615601a1697",
+  "duration_ms": 47873,
   "dry_run": false,
   "final": "PASS"
 }
