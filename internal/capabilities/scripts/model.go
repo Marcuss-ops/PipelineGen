@@ -278,6 +278,11 @@ type AudioPipelineMetrics struct {
 	AudioSpeed         float64           `json:"audio_speed"`
 	AudioEncodePasses  int               `json:"audio_encode_passes"`
 	TTSScenes          []TTSSSceneMetric `json:"tts_scenes,omitempty"`
+	// These counters describe reuse visible to the script runner. They do not
+	// claim a DB cache hit until the voiceover repository is consulted.
+	VoiceoverRequested int `json:"voiceover_requested,omitempty"`
+	VoiceoverReused    int `json:"voiceover_reused,omitempty"`
+	VoiceoverGenerated int `json:"voiceover_generated,omitempty"`
 }
 
 type TTSSSceneMetric struct {
@@ -515,6 +520,11 @@ type GenerateOutput struct {
 // GenerateResult is the complete output of a script generation run.
 // It carries every artifact produced by the workflow.
 type GenerateResult struct {
+	// renderFirstStartedAt/renderLastFinishedAt are runtime-only aggregation
+	// state. They are deliberately not serialized; RenderMetrics exposes the
+	// derived wall/work values.
+	renderFirstStartedAt time.Time
+	renderLastFinishedAt time.Time
 	// Output is the canonical plain-text result projection. It is derived once
 	// from the ordered scenes and is never independently generated.
 	Output GenerateOutput `json:"output"`
@@ -642,13 +652,27 @@ type GenerateResult struct {
 	LocalizedRenderFailures []LocalizedRenderFailure `json:"localized_render_failures,omitempty"`
 	RenderMetrics           *RenderMetrics           `json:"render_metrics,omitempty"`
 	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`
+	FinalVideoRequired      bool                     `json:"final_video_required,omitempty"`
+	FinalVideo              *FinalVideoReference     `json:"final_video,omitempty"`
+}
+
+type FinalVideoReference struct {
+	LocalPath   string `json:"local_path,omitempty"`
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	AssetID     string `json:"asset_id,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
 }
 
 type RenderMetrics struct {
-	Expected      int   `json:"expected"`
-	Successful    int   `json:"successful"`
-	Failed        int   `json:"failed"`
-	WallMS        int64 `json:"wall_ms"`
+	Expected   int   `json:"expected"`
+	Successful int   `json:"successful"`
+	Failed     int   `json:"failed"`
+	WallMS     int64 `json:"wall_ms"`
+	// WorkMS is the sum of child localized-render durations. It may exceed
+	// WallMS when renders overlap and must not be used as wall-clock time.
+	WorkMS        int64 `json:"work_ms,omitempty"`
 	MaterializeMS int64 `json:"materialize_ms,omitempty"`
 	RenderMS      int64 `json:"render_ms,omitempty"`
 	UploadMS      int64 `json:"upload_ms,omitempty"`

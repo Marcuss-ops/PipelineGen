@@ -291,7 +291,23 @@ func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult
 		ExpectedSize:     req.ExpectedSize,
 		ExpectedSHA256:   req.ExpectedSHA256,
 	}
-	v, verr := verifier.Verify(ctx, result.FileID, params)
+	verifyCtx := ctx
+	var cancel context.CancelFunc
+	// The upload can complete just as the caller's render deadline expires.
+	// A returned Drive file ID is durable, so give the post-upload metadata
+	// check its own short window instead of turning a transient verification
+	// timeout into a false render failure. Real not-found/hash/parent errors
+	// still fail closed.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		verifyCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+	}
+	v, verr := verifier.Verify(verifyCtx, result.FileID, params)
+	if errors.Is(verr, context.DeadlineExceeded) || errors.Is(verr, context.Canceled) {
+		fallbackCtx, fallbackCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer fallbackCancel()
+		v, verr = verifier.Verify(fallbackCtx, result.FileID, params)
+	}
 	if verr != nil {
 		return fmt.Errorf("drive upload verification failed (action=%s, file_id=%s): %w",
 			result.Action, result.FileID, verr)

@@ -12,7 +12,11 @@
 // only the standard library.
 package qdrantdr
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // SnapshotDescription is the canonical DR shape for a single Qdrant
 // collection snapshot. Identical across wire (REST decode) and
@@ -26,6 +30,44 @@ type SnapshotDescription struct {
 	CreationTime time.Time `json:"creation_time"`
 	Size         int64     `json:"size"`
 	Checksum     string    `json:"checksum,omitempty"`
+}
+
+// UnmarshalJSON decodes a Qdrant snapshot descriptor, tolerating the
+// naive local-time form Qdrant actually emits
+// ("2006-01-02T15:04:05", no timezone suffix) in addition to RFC3339.
+// Go's time.Time JSON decoder only accepts RFC3339, so without this
+// hook every CreateSnapshot / ListSnapshots call failed with
+// "parsing time ... cannot parse ... as Z07:00" against real Qdrant
+// (observed 2026-08-22 on media_assets). Naive timestamps are assumed
+// to be UTC (Qdrant's snapshot service returns server-local time).
+func (s *SnapshotDescription) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Name         string `json:"name"`
+		CreationTime string `json:"creation_time"`
+		Size         int64  `json:"size"`
+		Checksum     string `json:"checksum,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.Name = raw.Name
+	s.Size = raw.Size
+	s.Checksum = raw.Checksum
+	if raw.CreationTime == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, raw.CreationTime)
+	if err != nil {
+		parsed, err = time.Parse("2006-01-02T15:04:05", raw.CreationTime)
+		if err == nil {
+			parsed = parsed.UTC()
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("parse creation_time %q: %w", raw.CreationTime, err)
+	}
+	s.CreationTime = parsed
+	return nil
 }
 
 // RetentionConfig configures a single Qdrant retention sweep.

@@ -11,6 +11,10 @@
 package hashutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
@@ -33,4 +37,18 @@ func (a *HashAdapter) MD5String(s string) string {
 // MD5File returns the MD5 hex digest of the file at path.
 func (a *HashAdapter) MD5File(path string) (string, error) {
 	return files.MD5File(path)
+}
+
+func (a *HashAdapter) SHA256String(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+func (a *HashAdapter) SHA256File(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:]), nil
 }

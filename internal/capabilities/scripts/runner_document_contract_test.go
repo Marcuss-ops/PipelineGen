@@ -114,11 +114,11 @@ func TestDocument_PhraseTimingsMatchCanonicalTiming(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Machine surface: the Scene Speech Timing JSON snapshot must be
-	// byte-faithful to the canonical scene-level projection.
-	var decoded []capabilityaudio.SceneSpeechTiming
-	require.NoError(t, json.Unmarshal([]byte(extractPhraseTimingJSON(t, out)), &decoded))
-	require.Equal(t, result.SceneSpeechTimings, decoded)
+	// Word-level timing stays in the linked timing artifacts, not in the
+	// human-readable Google Doc.
+	require.NotContains(t, out, "Scene Speech Timing JSON")
+	require.NotContains(t, out, `"start_us"`)
+	require.NotContains(t, out, `"end_us"`)
 
 	// Human surface: each phrase shows its text and local/master spans,
 	// with master = timeline_start + local (the canonical invariant).
@@ -138,19 +138,6 @@ func TestDocument_PhraseTimingsMatchCanonicalTiming(t *testing.T) {
 		require.Equal(t, p.TimelineStartUS+p.LocalEndUS, p.GlobalEndUS)
 		require.LessOrEqual(t, p.GlobalEndUS, result.CanonicalTimeline.DurationUS)
 	}
-}
-
-// extractPhraseTimingJSON isolates the embedded Scene Speech Timing JSON
-// snapshot (machine surface) and unescapes it for byte-faithful comparison.
-func extractPhraseTimingJSON(t *testing.T, output string) string {
-	t.Helper()
-	const marker = "<h2>Scene Speech Timing JSON</h2><pre><code>"
-	start := strings.Index(output, marker)
-	require.NotEqual(t, -1, start, "Scene Speech Timing JSON section missing")
-	start += len(marker)
-	end := strings.Index(output[start:], "</code></pre>")
-	require.NotEqual(t, -1, end, "Phrase Timing JSON section not closed")
-	return html.UnescapeString(output[start : start+end])
 }
 
 func TestDocumentSurfaces_TimingLinksPreserved(t *testing.T) {

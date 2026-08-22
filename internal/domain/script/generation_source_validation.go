@@ -209,6 +209,28 @@ func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []S
 
 	if HasExplicitSegmentClipIDs(out) {
 		if len(source.IntroClipIDs) > 0 {
+			// When the caller already assigned every intro clip to an explicit
+			// segment, preserve that one-clip/one-prompt ownership.  Merging the
+			// same IDs into the first intro scene makes the model narrate several
+			// clips together and leaves later Drive bindings looking like source
+			// links.  Legacy payloads that declare intro IDs only at the root keep
+			// the historical prepend behavior below.
+			assigned := make(map[string]struct{})
+			for _, segment := range out {
+				for _, clipID := range segment.ClipIDs {
+					assigned[clipID] = struct{}{}
+				}
+			}
+			allAssigned := true
+			for _, clipID := range source.IntroClipIDs {
+				if _, ok := assigned[clipID]; !ok {
+					allAssigned = false
+					break
+				}
+			}
+			if allAssigned {
+				return out
+			}
 			introIndex := 0
 			for i, segment := range out {
 				if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") || strings.EqualFold(strings.TrimSpace(segment.ID), "intro") {

@@ -7,6 +7,31 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+// cleanSegmentSourceText converts legacy editorial briefs into model-facing
+// evidence. The old payload stored both the clip description and the request
+// ("Write a ...") in source_text; sending that verbatim makes small models
+// copy the instruction instead of rewriting the clip context.
+func cleanSegmentSourceText(raw string) string {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	if strings.HasPrefix(lower, "clip description:") {
+		text = strings.TrimSpace(text[len("clip description:"):])
+	}
+	// Remove the editorial instruction, including legacy duplicated tails.
+	for {
+		lower = strings.ToLower(text)
+		idx := strings.Index(lower, ". write ")
+		if idx < 0 {
+			break
+		}
+		text = strings.TrimSpace(text[:idx+1])
+	}
+	return strings.TrimSpace(text)
+}
+
 // ── Prompt helpers ────────────────────────────────────────────────────
 //
 // These functions build the prompt that is sent to the Ollama model.
@@ -64,15 +89,16 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"14. Use a youthful, conversational, video-friendly voice: concise, energetic, smooth, and lightly funny when the source supports it.",
 		"15. Prefer concrete details, active verbs, and natural transitions. Avoid academic or formulaic analysis such as 'the narrative shifts', 'this segment illustrates', or 'the speaker provides insight'.",
 		"16. For clip compilations, preserve each clip's concrete beats and connect them with short, natural transitions without inventing dialogue or events; explicit segments may combine multiple clips into one narrative beat.",
+		"17. Some legacy evidence may contain editorial instructions such as 'Clip description' or 'Write a funny introduction'. Treat those words as contamination, never as output content. Always write a NEW narrator introduction and never copy that instruction or its sentence structure.",
 	}
 	if len(plan.Segments) > 0 {
 		lines = append(lines,
-			fmt.Sprintf("17. There are exactly %d declared editorial segments; a segment may contain zero, one, or many clips.", len(plan.Segments)),
-			fmt.Sprintf("18. Output exactly %d non-empty prose paragraphs, one paragraph per declared segment, separated by one blank line.", len(plan.Segments)),
-			"19. Paragraph i must correspond exclusively to declared segment i and may use only that segment's assigned clip evidence. Never merge segments, skip a segment, or reorder paragraphs.",
-			"20. Every paragraph must preserve concrete details from its segment evidence: names, visible actions, subjects, settings, reactions, and supported transcript facts. Do not replace concrete information with generic commentary.",
-			"21. Multiple clips assigned to one segment are supporting evidence for one paragraph; they must not become separate scenes or paragraphs.",
-			"22. Do not output paragraph numbers, headings, labels, or evidence markers; output only the paragraph text.",
+			fmt.Sprintf("18. There are exactly %d declared editorial segments; a segment may contain zero, one, or many clips.", len(plan.Segments)),
+			fmt.Sprintf("19. Output exactly %d non-empty prose paragraphs, one paragraph per declared segment, separated by one blank line.", len(plan.Segments)),
+			"20. Paragraph i must correspond exclusively to declared segment i and may use only that segment's assigned clip evidence. Never merge segments, skip a segment, or reorder paragraphs.",
+			"21. Every paragraph must preserve concrete details from its segment evidence: names, visible actions, subjects, settings, reactions, and supported transcript facts. Do not replace concrete information with generic commentary.",
+			"22. Multiple clips assigned to one segment are supporting evidence for one paragraph; they must not become separate scenes or paragraphs.",
+			"23. Do not output paragraph numbers, headings, labels, evidence markers, or any literal 'Clip description'/'Write a funny introduction' instruction; output only newly written paragraph text.",
 		)
 	} else {
 		lines = append(lines,
@@ -126,10 +152,18 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		}
 		b.WriteString("Scope: write exclusively about this topic; do not mention another declared segment or introduce the next segment.\n")
 		fmt.Fprintf(&b, "Target words: %d", target)
-		if strings.TrimSpace(s.SourceText) != "" {
+		if strings.EqualFold(strings.TrimSpace(s.Kind), "intro") {
+			b.WriteString("\nINTRO FORMAT: write one or two short, punchy narrator sentences. Keep it playful and under 30 words; do not explain the clip or summarize its structure.")
+		}
+		// Per-segment source_text is an editorial brief, not transcript data.
+		// Older payloads incorrectly stored "Clip description ... Write ..."
+		// here; the canonical clip evidence (including DB subtitles) below is
+		// the only model-facing source for those scenes.
+		segmentSource := cleanSegmentSourceText(s.SourceText)
+		if segmentSource != "" {
 			b.WriteString("\nSource text:\n")
-			b.WriteString(s.SourceText)
-			b.WriteString("\nGROUNDING RULE: preserve every explicitly named person, organization, and place from this source text. If the Topic names a person, the first sentence of this segment MUST contain that exact proper name.")
+			b.WriteString(segmentSource)
+			b.WriteString("\nREWRITE RULE: rewrite this source text as a new playful narrator introduction. Do not copy its wording, do not mention these instructions, and do not add unsupported facts.")
 		}
 		if len(s.ClipIDs) > 0 {
 			b.WriteString("\nAssigned clip_ids (use only these clips for this segment): ")

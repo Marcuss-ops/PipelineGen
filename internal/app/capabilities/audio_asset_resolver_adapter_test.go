@@ -8,6 +8,7 @@ package capabilities
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -38,6 +40,51 @@ func (f *fakeAssetStore) List(context.Context, asset.Filter) ([]*asset.Summary, 
 func (f *fakeAssetStore) Save(context.Context, *asset.Details) error { return nil }
 func (f *fakeAssetStore) Delete(context.Context, string) error       { return nil }
 
+// newTestAudioAdapter builds an adapter wired to a no-op materializer.
+// The materializer only passes through registered local paths; it fails
+// closed when no local path exists and no Drive source is available.
+func newTestAudioAdapter(t *testing.T, byID map[string]*asset.Details) *audioAssetSourceAdapter {
+	canonical, err := drive.NewCanonicalAssetMaterializer(&testDriveReader{t: t}, t.TempDir(), nil)
+	require.NoError(t, err)
+	return &audioAssetSourceAdapter{
+		assets:    asset.NewService(&fakeAssetStore{byID: byID}, nil),
+		canonical: canonical,
+	}
+}
+
+// testDriveReader is a drive.Reader stub that works for test-only
+// registered-local-path usage — the DownloadFile branch is never hit in
+// these tests.
+type testDriveReader struct{ t *testing.T }
+
+func (r *testDriveReader) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
+	r.t.Fatal("unexpected DownloadFile call in audio adapter test")
+	panic("unreachable")
+}
+func (r *testDriveReader) GetFileMD5(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (r *testDriveReader) GetFileMeta(_ context.Context, _ string) (*drive.FileMeta, error) {
+	return nil, nil
+}
+func (r *testDriveReader) ListFiles(_ context.Context, _ string) ([]drive.DriveFileInfo, error) {
+	return nil, nil
+}
+func (r *testDriveReader) FindFileByName(_ context.Context, _, _ string) (drive.ExistingFileLookup, error) {
+	return drive.ExistingFileLookup{}, nil
+}
+func (r *testDriveReader) FileIsNotTrashed(_ context.Context, _ string) (bool, error) {
+	return true, nil
+}
+func (r *testDriveReader) FileExists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+func (r *testDriveReader) SearchFiles(_ context.Context, _ string) ([]drive.DriveFileInfo, error) {
+	return nil, nil
+}
+
+var _ drive.Reader = (*testDriveReader)(nil)
+
 // TestAudioAssetSourceAdapterCarriesCertifiedDuration certifies the
 // registry's certified duration (Asset.Duration, loaded from duration_ms)
 // reaches ResolvedAudioAsset.DurationUS, alongside the verified local path.
@@ -49,16 +96,14 @@ func TestAudioAssetSourceAdapterCarriesCertifiedDuration(t *testing.T) {
 	audioAsset := &asset.Asset{ID: "bgm_20s", MediaType: asset.MediaTypeAudio, Duration: 20 * time.Second}
 	audioAsset.SetLocalPath(local)
 
-	adapter := &audioAssetSourceAdapter{assets: asset.NewService(&fakeAssetStore{byID: map[string]*asset.Details{
+	adapter := newTestAudioAdapter(t, map[string]*asset.Details{
 		"bgm_20s": {Asset: audioAsset},
-	}}, nil)}
+	})
 
 	resolved, err := adapter.ResolveAudioAsset(context.Background(), "bgm_20s")
 	require.NoError(t, err)
 	require.Equal(t, "bgm_20s", resolved.AssetID)
 	require.Equal(t, local, resolved.Path)
-	// 20s certified duration → 20_000_000 µs (the exact unit the loop
-	// expander consumes).
 	require.Equal(t, int64(20_000_000), resolved.DurationUS)
 }
 
@@ -73,9 +118,9 @@ func TestAudioAssetSourceAdapter_SoundEffectCarriesCertifiedDuration(t *testing.
 	sfxAsset := &asset.Asset{ID: "sfx_whoosh", MediaType: asset.MediaTypeSoundEffect, Duration: 2 * time.Second}
 	sfxAsset.SetLocalPath(local)
 
-	adapter := &audioAssetSourceAdapter{assets: asset.NewService(&fakeAssetStore{byID: map[string]*asset.Details{
+	adapter := newTestAudioAdapter(t, map[string]*asset.Details{
 		"sfx_whoosh": {Asset: sfxAsset},
-	}}, nil)}
+	})
 
 	resolved, err := adapter.ResolveAudioAsset(context.Background(), "sfx_whoosh")
 	require.NoError(t, err)
@@ -94,9 +139,9 @@ func TestAudioAssetSourceAdapter_ZeroDurationIsPreserved(t *testing.T) {
 	audioAsset := &asset.Asset{ID: "bgm_unknown", MediaType: asset.MediaTypeAudio}
 	audioAsset.SetLocalPath(local)
 
-	adapter := &audioAssetSourceAdapter{assets: asset.NewService(&fakeAssetStore{byID: map[string]*asset.Details{
+	adapter := newTestAudioAdapter(t, map[string]*asset.Details{
 		"bgm_unknown": {Asset: audioAsset},
-	}}, nil)}
+	})
 
 	resolved, err := adapter.ResolveAudioAsset(context.Background(), "bgm_unknown")
 	require.NoError(t, err)
@@ -114,9 +159,9 @@ func TestAudioAssetSourceAdapter_RejectsNonAudioMediaType(t *testing.T) {
 	clipAsset := &asset.Asset{ID: "clip_1", MediaType: asset.MediaTypeClip, Duration: 10 * time.Second}
 	clipAsset.SetLocalPath(local)
 
-	adapter := &audioAssetSourceAdapter{assets: asset.NewService(&fakeAssetStore{byID: map[string]*asset.Details{
+	adapter := newTestAudioAdapter(t, map[string]*asset.Details{
 		"clip_1": {Asset: clipAsset},
-	}}, nil)}
+	})
 
 	_, err := adapter.ResolveAudioAsset(context.Background(), "clip_1")
 	require.Error(t, err)

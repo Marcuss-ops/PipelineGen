@@ -49,6 +49,7 @@ func (l *recordingLocalizer) snapshot() []LocalizeInput {
 type recordingTrackRepo struct {
 	mu     sync.Mutex
 	tracks []asset.TextTrack
+	ready  map[string][]asset.TimedCue
 	err    error
 }
 
@@ -74,8 +75,14 @@ func (r *recordingTrackRepo) Find(context.Context, string, string, asset.TextTra
 func (r *recordingTrackRepo) ListByAsset(context.Context, string) ([]asset.TextTrack, error) {
 	return nil, nil
 }
-func (r *recordingTrackRepo) FindReady(context.Context, string, string, asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	return nil, nil, nil
+func (r *recordingTrackRepo) FindReady(_ context.Context, assetID, language string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cues := r.ready[language]
+	if len(cues) == 0 {
+		return nil, nil, nil
+	}
+	return &asset.TextTrack{ID: 1, AssetID: assetID, LanguageCode: language, TextKind: asset.TextTrackTranscript, TextContent: cues[0].Text, TextHash: asset.TextHash(cues[0].Text, language, asset.TextTrackTranscript), Status: asset.TextTrackReady}, append([]asset.TimedCue(nil), cues...), nil
 }
 func (r *recordingTrackRepo) ListReadyLanguages(context.Context, string, asset.TextTrackKind) ([]string, error) {
 	return nil, nil
@@ -136,6 +143,11 @@ func testEnqueuerInput() scriptgeneration.LocalizedRenderInput {
 }
 
 func newTestEnqueuerAdapter(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter) *localizedRenderEnqueuerAdapter {
+	t.ready = map[string][]asset.TimedCue{
+		"en": {{StartMs: 0, EndMs: 1200, Text: "DB English subtitle"}},
+		"es": {{StartMs: 0, EndMs: 1200, Text: "DB Spanish subtitle"}},
+		"it": {{StartMs: 0, EndMs: 1200, Text: "DB Italian subtitle"}},
+	}
 	return newLocalizedRenderEnqueuerAdapter(l, t, c, LocalizedRenderEnqueuerConfig{
 		SourceLanguage: "en",
 		FolderID:       "folder-1",
@@ -187,27 +199,8 @@ func TestLocalizedRenderEnqueuer_PersistsSourceAndSubtitleTracks(t *testing.T) {
 		t.Fatalf("EnqueueLocalizedRender: %v", err)
 	}
 
-	tracks := tr.snapshot()
-	if len(tracks) != 2 {
-		t.Fatalf("persisted tracks: got %d, want 2 (source transcript + es subtitle)", len(tracks))
-	}
-	byLang := map[string]asset.TextTrack{}
-	for _, tr := range tracks {
-		byLang[tr.LanguageCode] = tr
-	}
-	src, ok := byLang["en"]
-	if !ok || src.TextContent != "Hello world" || !src.IsOriginal || src.Status != asset.TextTrackReady {
-		t.Fatalf("source transcript = %+v", src)
-	}
-	sub, ok := byLang["es"]
-	if !ok || sub.TextContent != "Hola mundo" || sub.IsOriginal || sub.SourceType != asset.TextSourceTranslation {
-		t.Fatalf("subtitle track = %+v", sub)
-	}
-	if sub.SourceLanguageCode != "en" {
-		t.Fatalf("subtitle source language = %q, want en", sub.SourceLanguageCode)
-	}
-	if sub.TextHash != asset.TextHash("Hola mundo", "es", asset.TextTrackTranscript) {
-		t.Fatalf("subtitle text hash = %q", sub.TextHash)
+	if len(tr.snapshot()) != 0 || len(cw.last("clip-1")) != 0 {
+		t.Fatal("existing DB subtitles must not be overwritten by narration text")
 	}
 }
 
@@ -225,13 +218,8 @@ func TestLocalizedRenderEnqueuer_PersistsSourceTrackForSameLanguage(t *testing.T
 		t.Fatalf("EnqueueLocalizedRender: %v", err)
 	}
 
-	tracks := tr.snapshot()
-	if len(tracks) != 1 || tracks[0].LanguageCode != "en" || tracks[0].TextContent != "Hello source language" {
-		t.Fatalf("same-language source track = %+v", tracks)
-	}
-	byLang := cw.last("clip-1")
-	if len(byLang["en"]) != 1 || byLang["en"][0].Text != "Hello source language" {
-		t.Fatalf("same-language cue = %+v", byLang["en"])
+	if len(tr.snapshot()) != 0 || len(cw.last("clip-1")) != 0 {
+		t.Fatal("same-language render must reuse DB subtitles")
 	}
 }
 
@@ -257,16 +245,8 @@ func TestLocalizedRenderEnqueuer_SameLanguageUsesCanonicalText(t *testing.T) {
 		t.Fatalf("EnqueueLocalizedRender must succeed for same-language clips text: %v", err)
 	}
 
-	tracks := tr.snapshot()
-	if len(tracks) != 1 || tracks[0].LanguageCode != "en" || tracks[0].TextContent != in.Text {
-		t.Fatalf("same-language source track must fall back to Text: %+v", tracks)
-	}
-	if !tracks[0].IsOriginal || tracks[0].Status != asset.TextTrackReady {
-		t.Fatalf("same-language source track must be a READY original transcript: %+v", tracks[0])
-	}
-	byLang := cw.last("clip-1")
-	if len(byLang["en"]) != 1 || byLang["en"][0].Text != in.Text {
-		t.Fatalf("same-language cue must use Text: %+v", byLang["en"])
+	if len(tr.snapshot()) != 0 || len(cw.last("clip-1")) != 0 {
+		t.Fatal("scene narration must never be persisted as subtitles")
 	}
 	// The fan-out must still reach Rust: Localize is called exactly once.
 	if len(l.snapshot()) != 1 {
@@ -284,17 +264,8 @@ func TestLocalizedRenderEnqueuer_PersistsFullSpanCues(t *testing.T) {
 		t.Fatalf("EnqueueLocalizedRender: %v", err)
 	}
 
-	byLang := cw.last("clip-1")
-	if len(byLang) != 2 {
-		t.Fatalf("cue languages: got %d, want 2", len(byLang))
-	}
-	es := byLang["es"]
-	if len(es) != 1 || es[0].StartMs != 0 || es[0].EndMs != 6500 || es[0].Text != "Hola mundo" {
-		t.Fatalf("es cues = %+v", es)
-	}
-	en := byLang["en"]
-	if len(en) != 1 || en[0].EndMs != 6500 || en[0].Text != "Hello world" {
-		t.Fatalf("en cues = %+v", en)
+	if len(cw.last("clip-1")) != 0 {
+		t.Fatal("existing timed cues must not be replaced with full-span narration cues")
 	}
 }
 
@@ -357,11 +328,8 @@ func TestLocalizedRenderEnqueuer_ConcurrentLanguagesDontClobberCues(t *testing.T
 	}
 	wg.Wait()
 
-	byLang := cw.last("clip-1")
-	// The replace semantic means the final write must still carry every
-	// language seen so far (source + es + it) — never just the last one.
-	if byLang["en"] == nil || byLang["es"] == nil || byLang["it"] == nil {
-		t.Fatalf("concurrent enqueues clobbered cues: languages = %v", keys(byLang))
+	if len(cw.last("clip-1")) != 0 {
+		t.Fatal("concurrent renders must not rewrite DB cue timing")
 	}
 }
 

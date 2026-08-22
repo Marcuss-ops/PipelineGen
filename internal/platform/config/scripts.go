@@ -54,6 +54,15 @@ type ScriptsConfig struct {
 	// for one item. Default 4.
 	MaxBatchWorkers int `yaml:"max_batch_workers" env:"VELOX_SCRIPTS_MAX_BATCH_WORKERS" default:"4"`
 
+	// LocalizedRenderConcurrency bounds concurrent clip renders within one
+	// script. Start at 2: it overlaps independent FFmpeg/GPU work while
+	// avoiding the VRAM pressure of unbounded fan-out.
+	LocalizedRenderConcurrency int `yaml:"localized_render_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY" default:"2"`
+
+	// LocalizedRenderGlobalConcurrency bounds the number of render jobs allowed
+	// across the script fan-out. Keep this at 1 on hosts that show GPU OOM.
+	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"2"`
+
 	// MaxInsightEntities caps the number of important words, important phrases,
 	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`
@@ -157,7 +166,7 @@ type ScriptsConfig struct {
 	TotalWordsTolerancePercent float64 `yaml:"total_words_tolerance_percent" env:"VELOX_SCRIPTS_TOTAL_WORDS_TOLERANCE_PERCENT" default:"10"`
 	// MaxSegmentRegenerationAttempts bounds retries after the initial
 	// generation. Default 1 (at most two provider calls total).
-	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"1"`
+	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"0"`
 
 	// ScriptDocsFolderID is the canonical default Google Drive folder for
 	// script documents (env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Precedence:

@@ -127,8 +127,10 @@ func (s *stubVideoPipelinePort) DownloadAndCutYouTubeVideo(_ context.Context, _ 
 
 type stubHashServicePort struct{}
 
-func (s *stubHashServicePort) MD5String(_ string) string        { return "" }
-func (s *stubHashServicePort) MD5File(_ string) (string, error) { return "", nil }
+func (s *stubHashServicePort) SHA256File(_ string) (string, error) { return "", nil }
+func (s *stubHashServicePort) SHA256String(_ string) string        { return "" }
+func (s *stubHashServicePort) MD5String(_ string) string           { return "" }
+func (s *stubHashServicePort) MD5File(_ string) (string, error)    { return "", nil }
 
 type stubClipAtomicWriterPort struct{}
 

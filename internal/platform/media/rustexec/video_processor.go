@@ -294,6 +294,16 @@ func (p *VideoProcessor) MergeInputs(ctx context.Context, inputs []string, outpu
 	return p.run(ctx, request{Operation: OperationMergeInputs, InputPaths: inputs, OutputPath: output})
 }
 
+// AssembleFinalVideo is the script-generation assembly port. The Rust
+// merge_inputs operation uses concat demuxer and stream copy, so compatible
+// rendered clips are assembled without a second encode.
+func (p *VideoProcessor) AssembleFinalVideo(ctx context.Context, inputs []string, output string) error {
+	if len(inputs) == 0 || strings.TrimSpace(output) == "" {
+		return fmt.Errorf("final video assembly requires inputs and output")
+	}
+	return p.MergeInputs(ctx, inputs, output)
+}
+
 // MuxFinalAudioCopy is the assembler-only path. It accepts only a previously
 // certified canonical final audio asset and delegates a mux operation whose
 // Rust command uses -c:a copy. There is deliberately no encode fallback.

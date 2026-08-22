@@ -64,6 +64,8 @@ type ExtractionCallbacks interface {
 	TranscribeAudio(ctx context.Context, localPath string) (string, error)
 
 	// Hash (→ hashSvc).
+	SHA256File(path string) string
+	SHA256String(data string) string
 	MD5File(path string) string
 	MD5String(data string) string
 

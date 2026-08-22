@@ -155,12 +155,18 @@ type LocalizeInput struct {
 
 	// FolderID is the Drive folder the rendered clips upload into.
 	FolderID string
+	// SubtitleFolderID is the resolved per-clip Drive folder for the ASS.
+	SubtitleFolderID       string
+	UploadSubtitleArtifact bool
 	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
 	// localization manifest Google Doc.
 	DocTitle          string
 	DocFolderID       string
 	DocIdempotencyKey string
 	DocForce          bool
+	// SkipDocument keeps clip localization limited to MP4 render/upload. The
+	// script-generation runner publishes the single final Google Doc.
+	SkipDocument bool
 }
 
 // Localize runs the full fan-out: resolve the source facts, build the
@@ -208,13 +214,16 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 	}
 
 	return s.service.Localize(ctx, localization.LocalizeInput{
-		Concurrency:       in.Request.RenderConcurrency,
-		FolderID:          in.FolderID,
-		DocTitle:          in.DocTitle,
-		DocFolderID:       in.DocFolderID,
-		DocIdempotencyKey: in.DocIdempotencyKey,
-		DocForce:          in.DocForce,
-		Plans:             plans,
+		Concurrency:            in.Request.RenderConcurrency,
+		FolderID:               in.FolderID,
+		SubtitleFolderID:       in.SubtitleFolderID,
+		UploadSubtitleArtifact: in.UploadSubtitleArtifact,
+		DocTitle:               in.DocTitle,
+		DocFolderID:            in.DocFolderID,
+		DocIdempotencyKey:      in.DocIdempotencyKey,
+		DocForce:               in.DocForce,
+		SkipDocument:           in.SkipDocument,
+		Plans:                  plans,
 	})
 }
 

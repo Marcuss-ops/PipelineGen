@@ -43,6 +43,9 @@ func (s *Service) PrewarmHotVideoMetadataCache(ctx context.Context) error {
 // MD5File returns the MD5 hex digest of the file at path via the
 // HashPort.
 //
+// Deprecated: use SHA256File for content identity. MD5File remains only
+// for Drive upload receipt compatibility.
+//
 // PR5 Phase 3 (exported-for-ExtractionCallbacks): the ExtractionCallbacks
 // interface declares MD5File(path string) string, so the port's
 // (string, error) signature must be normalized to string. Errors are
@@ -66,6 +69,34 @@ func (s *Service) MD5File(path string) string {
 		return ""
 	}
 	return h
+}
+
+// SHA256File returns the canonical SHA-256 content identity (64 hex chars)
+// of the file at path via the HashPort. This is the canonical byte identity
+// — two files with identical bytes yield the same digest. Errors are logged
+// and return an empty string (graceful degradation).
+func (s *Service) SHA256File(path string) string {
+	if isUnavailablePort(s.hashSvc) {
+		s.log.Warn("hashSvc not wired; SHA-256 digest unavailable", zap.String("path", path))
+		return ""
+	}
+	h, err := s.hashSvc.SHA256File(path)
+	if err != nil {
+		s.log.Debug("hashSvc.SHA256File errored; returning empty digest",
+			zap.String("path", path),
+			zap.Error(err))
+		return ""
+	}
+	return h
+}
+
+// SHA256String returns the canonical SHA-256 hex digest of s via the HashPort.
+func (s *Service) SHA256String(data string) string {
+	if isUnavailablePort(s.hashSvc) {
+		s.log.Warn("hashSvc not wired; SHA-256 digest unavailable", zap.String("data_len", fmt.Sprintf("%d", len(data))))
+		return ""
+	}
+	return s.hashSvc.SHA256String(data)
 }
 
 // MD5String returns the MD5 hex digest of s via the HashPort.

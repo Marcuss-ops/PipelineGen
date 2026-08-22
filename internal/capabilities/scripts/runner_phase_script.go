@@ -93,6 +93,16 @@ func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) 
 	return nil
 }
 
+func contaminatedClipNarration(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	for _, marker := range []string{"clip description:", "write a new", "do not copy the description", "source text:"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
 	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
@@ -165,8 +175,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				words := len(strings.Fields(text))
 				lower := strings.ToLower(text)
 				placeholder := text == "" || words < minimumClipSceneWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
-				if placeholder {
-					cause := fmt.Errorf("SCRIPT_SCENE_TEXT_INVALID: scene=%d words=%d minimum=%d placeholder=%t", i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
+				if placeholder || contaminatedClipNarration(text) {
+					code := "SCRIPT_SCENE_TEXT_INVALID"
+					if contaminatedClipNarration(text) {
+						code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
+					}
+					cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
 					r.failExecutionStep(ctx, exec, scriptStep, cause)
 					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 					return result, false
@@ -194,6 +208,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		if req.Source.Type == SourceClips && req.Render.Enabled {
 			result.ExpectedRenderCount = len(scenes)
+			result.FinalVideoRequired = req.Render.AssembleFinal
 			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: 1}
 		}
 		// Explicit clip workflows may request real video reconstruction without
@@ -202,6 +217,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// and no MP4. Keep this path source-language-only and reuse the same
 		// localized renderer, watermark contract, and certified result sink.
 		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
+			renderBatchStarted := time.Now()
 			for _, scene := range scenes {
 				renderStarted := time.Now()
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
@@ -216,9 +232,15 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 					ClipDurationMS: clipDurationMS, Render: req.Render,
 					OnRendered: func(rendered LocalizedRenderResult) error {
+						r.localizedRenderMu.Lock()
+						applyLocalizedRenderLinkLocked(result, rendered)
 						result.LocalizedRenders = append(result.LocalizedRenders, rendered)
 						result.RenderMetrics.Successful = len(result.LocalizedRenders)
-						result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+						accumulateLocalizedRenderMetrics(result, rendered)
+						r.localizedRenderMu.Unlock()
+						if rendered.WallMS == 0 {
+							result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+						}
 						return nil
 					},
 					OnFailed: func(failure LocalizedRenderFailure) error {
@@ -238,12 +260,17 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 					return result, false
 				}
 			}
+			result.RenderMetrics.WallMS = time.Since(renderBatchStarted).Milliseconds()
 		}
 		// Merge the certified produced videos the streaming fan-out
 		// accumulated (the coordinator has no result pointer of its own) so
 		// the run result records the final MP4s it rendered.
 		if ready != nil {
-			result.LocalizedRenders = append(result.LocalizedRenders, ready.renderedVideos()...)
+			for _, rendered := range ready.renderedVideos() {
+				applyLocalizedRenderLinkLocked(result, rendered)
+				result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+				accumulateLocalizedRenderMetrics(result, rendered)
+			}
 			result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, ready.renderFailures()...)
 		}
 		r.checkpoint(ctx, runID, result)

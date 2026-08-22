@@ -78,6 +78,13 @@ func qdrantReadiness(ctx context.Context, db *sql.DB, cfg *config.Config, log *z
 		report.Checks["qdrant_active_collection_real"] = "fail"
 	}
 
+	// Projection parity (plan item #14, August 2026): eligible SQLite
+	// asset IDs (SearchIndexEligibilitySQL SSOT) vs the ACTIVE Qdrant
+	// projection — 0 missing, 0 orphan, complete scan. This is the
+	// semantic readiness signal; the total INDEXED count is an observed
+	// projection result, not an eligibility fact, so it never gates.
+	probeProjectionParity(ctx, deps, &report)
+
 	// Run every named readiness check.
 	for name, fn := range readinessCheck {
 		if _, already := report.Checks[name]; !already {

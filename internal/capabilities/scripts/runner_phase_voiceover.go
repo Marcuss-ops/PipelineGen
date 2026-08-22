@@ -126,6 +126,33 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// parallel with SceneAnalysis from the SceneTextReady boundary. Each
 		// item is independent; results are applied in canonical order below.
 		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
+		// Record the reuse decision before dispatch. This is intentionally
+		// labelled as scene-projection reuse: the current runner can skip an
+		// already attached voiceover, but it does not yet claim a SQLite
+		// fingerprint hit. That distinction makes the next DB-cache change
+		// auditable instead of hiding misses as successful reuse.
+		requested, reused := 0, 0
+		for _, scene := range result.Scenes {
+			for _, lang := range orderedSceneLanguages(scene.Text, req.SourceLanguage, req.Languages) {
+				if strings.TrimSpace(scene.Text[lang]) == "" {
+					continue
+				}
+				requested++
+				if ref, ok := scene.Voiceover[lang]; ok && ref.ID != "" {
+					reused++
+				}
+			}
+		}
+		result.AudioMetrics.VoiceoverRequested = requested
+		result.AudioMetrics.VoiceoverReused = reused
+		result.AudioMetrics.VoiceoverGenerated = len(work)
+		r.log.Info("voiceover cache audit",
+			zap.String("run_id", runID),
+			zap.Int("requested", requested),
+			zap.Int("scene_projection_reused", reused),
+			zap.Int("generated", len(work)),
+			zap.String("db_cache_status", "not_consulted"),
+		)
 		if len(work) > 0 {
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.

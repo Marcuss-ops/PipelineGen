@@ -151,6 +151,29 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		}
 
 		segmentPlan := *plan
+		// Isolate the model context to this segment. The resolver keeps the
+		// complete evidence pack for provenance, but a per-clip generation call
+		// must not expose other segments' transcripts or narrative text; small
+		// models otherwise merge the intro clips or drift into unrelated facts.
+		if plan.ClipEvidence != nil {
+			segmentPlan.ClipEvidence = scriptpkg.NewClipEvidence(*plan.ClipEvidence)
+			if index < len(plan.ClipEvidence.SegmentEvidence) {
+				segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
+			} else {
+				details := make(map[string]scriptpkg.ClipDetail, len(segment.ClipIDs))
+				for _, clipID := range segment.ClipIDs {
+					if detail, ok := plan.ClipEvidence.ClipDetails[clipID]; ok {
+						details[clipID] = detail
+					}
+				}
+				segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{{
+					SegmentID: segment.ID, Kind: segment.Kind, Topic: segment.Topic,
+					SourceText: segment.SourceText, ClipIDs: append([]string(nil), segment.ClipIDs...), Clips: details,
+				}}
+			}
+			segmentPlan.ClipEvidence.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
+			segmentPlan.ClipEvidence.ClipCount = len(segment.ClipIDs)
+		}
 		// Keep the segment on the Engine plan so its word-budget validator is
 		// active. The old nil value silently routed this call through the
 		// unvalidated whole-script path, which is why 500-word targets could

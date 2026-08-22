@@ -180,4 +180,9 @@ type VoiceoverRecord struct {
 	// idx_voiceovers_job_language (migration 133) ensures at most ONE
 	// voiceover row per (job_id, language) pair.
 	JobID string
+
+	// Fingerprint is the cross-run content/policy cache key. Unlike
+	// IdempotencyKey it deliberately excludes the job ID, so identical
+	// requests in different jobs can be audited for reuse.
+	Fingerprint string
 }

@@ -325,6 +325,7 @@ type LocalizedRenderInput struct {
 // produced MP4 instead of discarding it.
 type LocalizedRenderResult struct {
 	SceneID     string   `json:"scene_id"`
+	SceneIndex  int      `json:"scene_index,omitempty"`
 	Language    Language `json:"language"`
 	ClipID      string   `json:"clip_id"`
 	AssetID     string   `json:"asset_id"`
@@ -332,7 +333,13 @@ type LocalizedRenderResult struct {
 	DriveFileID string   `json:"drive_file_id,omitempty"`
 	DriveLink   string   `json:"drive_link,omitempty"`
 	DurationMS  int64    `json:"duration_ms,omitempty"`
+	LocalPath   string   `json:"local_path,omitempty"`
 	Status      string   `json:"status"`
+	// Boundary timestamps let the parent distinguish summed child work from
+	// actual fan-out wall time when localized renders overlap.
+	StartedAt  time.Time `json:"started_at,omitempty"`
+	FinishedAt time.Time `json:"finished_at,omitempty"`
+	WallMS     int64     `json:"wall_ms,omitempty"`
 }
 
 type LocalizedRenderFailure struct {
@@ -385,6 +392,17 @@ type FinalAudioPublishResult struct {
 // (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
 	PublishFinalAudio(context.Context, string, Language, FinalAudioReference, string) (FinalAudioPublishResult, error)
+}
+
+// FinalVideoAssembler concatenates the certified localized clip files in
+// scene order. It must fail when any input is missing and return the actual
+// output path only after the file has been created.
+type FinalVideoAssembler interface {
+	AssembleFinalVideo(context.Context, []string, string) error
+}
+
+type FinalVideoPublisher interface {
+	PublishFinalVideo(context.Context, string, FinalVideoReference, string) (FinalAudioPublishResult, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through

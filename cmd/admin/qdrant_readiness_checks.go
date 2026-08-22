@@ -121,6 +121,7 @@ var readinessCheck = map[string]func(context.Context, readinessDeps) checkStatus
 	"dispatcher_really_built":       checkDispatcherBuilt,
 	"legacy_cleanup_clean":          checkLegacyAudit,
 	"production_sqlite_reader":      checkSQLiteReader,
+	"projection_parity":             checkProjectionParity,
 	"qdrant_active_collection_real": checkQdrantActiveCollection,
 	"real_routes_present":           checkRoutesReal,
 	"scan_reconciler_complete":      checkReconcilerProduction,

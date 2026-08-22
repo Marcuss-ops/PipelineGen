@@ -144,7 +144,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		scriptGenerationDocumentRenderer{},
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
+	runner.SetFinalVideoAssembler(videoProcessor)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	runner.SetFinalVideoPublisher(newFinalVideoPublisher(root, committer, log))
 	// Wire the BGM/SFX asset resolver: asset_id → verified local path via
 	// the canonical asset registry (+ Drive materialization into scratch).
 	// The audio layer resolver consumes it when the run carries an audio
@@ -155,10 +157,14 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		if root.Drive != nil {
 			driveReader = root.Drive.Reader
 		}
+		scratchDir := filepath.Join(cfg.Storage.TempPath(), "audioassets")
+		canonical, matErr := drive.NewCanonicalAssetMaterializer(driveReader, scratchDir, log)
+		if matErr != nil {
+			return nil, fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
+		}
 		runner.SetAudioAssetSource(&audioAssetSourceAdapter{
-			assets:     root.Repos.Assets,
-			drive:      driveReader,
-			scratchDir: filepath.Join(cfg.Storage.TempPath(), "audioassets"),
+			assets:    root.Repos.Assets,
+			canonical: canonical,
 		})
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path)")
 	} else {

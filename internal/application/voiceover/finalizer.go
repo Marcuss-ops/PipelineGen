@@ -62,6 +62,9 @@ import (
 // inside a caller-owned transaction. Every field is populated by the
 // caller; the finalizer reads them but never mutates the command.
 type FinalizeCommand struct {
+	// Fingerprint is the cross-run content/policy cache key. It excludes
+	// JobID and is persisted separately from IdempotencyKey.
+	Fingerprint string
 	// IdempotencyKey is the deterministic retry-safe deduplication key
 	// computed by BuildVoiceoverIdempotencyKey(jobID, language, textHash, policyFingerprint).
 	// Step 0 of Finalize reads this field BEFORE the dedupe gate (Step 1)

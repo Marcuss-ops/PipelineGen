@@ -31,10 +31,15 @@ import (
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
+	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -306,6 +311,63 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 		})
 	} else {
 		deps.log.Warn("orphan-sweeper skipped: root.DB.DB or root.Drive.Lifecycle not wired (composition-root partial deploy)")
+	}
+
+	// ── Projection Reconciler (plan item #15, August 2026) ──
+	// Periodic parity ticker: eligible SQLite assets (SearchIndexEligibilitySQL
+	// SSOT) vs the ACTIVE Qdrant projection. Measures drift only — it
+	// never repairs. Emits projection_coverage_ratio / projection_orphan_count
+	// (+ supporting gauges) every tick so projection drift surfaces while
+	// it is small instead of months later. Wiring gates: cfg.Qdrant.Enabled
+	// + root.DB.DB (SQLite store). A 0/empty configured interval disables
+	// the ticker.
+	if deps.cfg.Qdrant.Enabled && deps.root.DB != nil && deps.root.DB.DB != nil {
+		projectionInterval := 15 * time.Minute
+		if deps.cfg.Jobs.ProjectionReconcilerInterval != "" {
+			if parsed, err := time.ParseDuration(deps.cfg.Jobs.ProjectionReconcilerInterval); err == nil && parsed > 0 {
+				projectionInterval = parsed
+			} else if err == nil && parsed <= 0 {
+				projectionInterval = 0 // explicitly disabled
+			}
+		}
+
+		if projectionInterval > 0 {
+			projClient := transport.NewClient(&qdrantschema.Config{
+				BaseURL: deps.cfg.Qdrant.BaseURL,
+				APIKey:  deps.cfg.Qdrant.APIKey,
+				Timeout: deps.cfg.Qdrant.Timeout,
+			}, deps.log)
+			projVerifier := verification.NewProjectionVerifier(
+				projClient,
+				indexing.NewSQLiteAssetStore(deps.root.DB.DB),
+				qdrantschema.DefaultV3Schema(),
+				deps.log,
+			)
+			projSvc := projectionreconciler.NewServiceFromDeps(projectionreconciler.ServiceDeps{
+				Checker:  verification.ProjectionParityCheckerAdapter{Verifier: projVerifier},
+				Metrics:  verification.ParityMetricsAdapter{},
+				Interval: projectionInterval,
+				Log:      deps.log,
+			})
+
+			steps = append(steps, StartupStep{
+				Name: "projection-reconciler", Required: false,
+				Start: func(startCtx context.Context) error {
+					deps.log.Info("projection-reconciler starting",
+						zap.Duration("interval", projectionInterval),
+					)
+					concurrent.SafeGo("projection-reconciler", func() {
+						projSvc.Run(startCtx)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		} else {
+			deps.log.Info("projection-reconciler disabled (projection_reconciler_interval <= 0)")
+		}
+	} else {
+		deps.log.Warn("projection-reconciler skipped: qdrant disabled or root.DB.DB not wired")
 	}
 
 	// Qdrant-ghost-sweeper step removed (see note above re:

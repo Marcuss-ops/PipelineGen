@@ -113,6 +113,7 @@ var commandRegistry = map[string]commandHandler{
 	"qdrant-enrichment-recover":      runQdrantEnrichmentRecover,
 	"qdrant-preflight":               runQdrantPreflight,
 	"qdrant-readiness":               runQdrantReadiness,
+	"reachability-graph":             runReachabilityGraph,
 	"reconcile-orphaned-runs":        runReconcileOrphanedRuns,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
 	"remove-drive-folder-recursive":  runRemoveDriveFolderRecursive,
@@ -125,7 +126,9 @@ var commandRegistry = map[string]commandHandler{
 	"reorganize-and-index-sfx":       runReorganizeAndIndexSFX,
 	"reset-video-ai":                 runResetVideoAI,
 	"search-drive":                   runSearchDrive,
+	"sqlite-audit":                   runSQLiteAudit,
 	"stock-reset":                    runResetStockDrive,
+	"storage-snapshot":               runStorageSnapshot,
 	"stock-subfolders-reset":         runResetStockSubfolders,
 	"summarize-book":                 runSummarizeBook,
 	"sync-all-drive":                 runSyncAllDrive,
@@ -141,6 +144,7 @@ var commandRegistry = map[string]commandHandler{
 	"update-sound-effect-metadata":   runUpdateSoundEffectMetadata,
 	"upload-drive-file":              runUploadDriveFile,
 	"verify-artlist-pipeline":        runVerifyArtlistPipeline,
+	"verify-projection":              runVerifyProjection,
 	"zombie-sweep":                   runZombieSweep,
 }
 

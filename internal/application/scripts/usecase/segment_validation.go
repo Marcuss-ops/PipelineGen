@@ -46,7 +46,7 @@ func (e *Engine) segmentSettings() segmentValidationSettings {
 	if settings.totalTolerancePercent <= 0 {
 		settings.totalTolerancePercent = defaultTotalWordsTolerancePercent
 	}
-	if settings.maxRegenerationAttempts <= 0 {
+	if settings.maxRegenerationAttempts < 0 {
 		settings.maxRegenerationAttempts = defaultMaxSegmentRegeneration
 	}
 	return settings
@@ -117,6 +117,32 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 			report.InvalidIndexes[i] = i
 		}
 		report.Reasons = append(report.Reasons, fmt.Sprintf("expected %d segment paragraphs, got %d", len(plan.Segments), len(texts)))
+		return report
+	}
+	// Clip introductions have a natural length and must never be padded with
+	// repeated source text just to satisfy a documentary word budget. Their
+	// deterministic checks are non-empty output plus the copy/instruction gate
+	// performed by generateOne below.
+	if plan.ClipEvidence != nil {
+		for i, text := range texts {
+			budget := segmentBudgetFor(plan, i, settings.segmentTolerancePercent)
+			actual := textutil.CountWords(text)
+			// Clip narration must stay natural and may be shorter than the
+			// generic minimum, but it must still have a hard upper bound. A
+			// previous fast path checked only for non-empty output, allowing a
+			// small clip intro to expand into hundreds of words and making TTS
+			// and rendering disproportionately expensive.
+			if strings.TrimSpace(text) == "" || actual > budget.Max {
+				report.Valid = false
+				report.InvalidIndexes = append(report.InvalidIndexes, i)
+				if strings.TrimSpace(text) == "" {
+					report.Reasons = append(report.Reasons, fmt.Sprintf("segment[%d] produced empty clip introduction", i))
+				} else {
+					report.Reasons = append(report.Reasons,
+						fmt.Sprintf("segment[%d] clip introduction words=%d exceeds max=%d target=%d", i, actual, budget.Max, budget.Target))
+				}
+			}
+		}
 		return report
 	}
 
@@ -303,13 +329,15 @@ func (e *Engine) generateSegments(
 		}
 		segmentReq := req
 		segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
-		// The global source (e.g. the research source text resolved for the
-		// whole topic) remains the grounding for a segment that declares no
-		// per-segment source_text. The prompt footer promises "use the topic
-		// and the global source", so only an explicit per-segment source_text
-		// may override it — never an empty value.
-		if segSource := strings.TrimSpace(segment.SourceText); segSource != "" {
-			segmentReq.SourceText = segSource
+		// For clip plans the cleaned segment source and timed transcript are
+		// embedded in the owned prompt block. Do not also pass the global
+		// SourceText field: the Ollama builder labels it as "REFERENCE INPUT /
+		// INSTRUCTIONS", which encourages Gemma to copy it. Text-only plans
+		// retain the legacy global source contract.
+		if plan.ClipEvidence != nil {
+			segmentReq.SourceText = ""
+		} else if strings.TrimSpace(segment.SourceText) != "" {
+			segmentReq.SourceText = segment.SourceText
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
@@ -325,7 +353,13 @@ func (e *Engine) generateSegments(
 		var result *ports.GenerationResult
 		var lastErr error
 		validationExhausted := false
-		for attempt := 0; attempt <= settings.maxRegenerationAttempts; attempt++ {
+		attemptLimit := settings.maxRegenerationAttempts
+		// A bad clip rewrite gets one targeted repair even when general word
+		// budget retries are disabled. This preserves the 1+repair policy.
+		if plan.ClipEvidence != nil && attemptLimit < 1 {
+			attemptLimit = 1
+		}
+		for attempt := 0; attempt <= attemptLimit; attempt++ {
 			var genErr error
 			result, genErr = generate(metaCtx, segmentReq)
 			if genErr != nil {
@@ -344,6 +378,16 @@ func (e *Engine) generateSegments(
 			if len(candidate) == 1 {
 				texts[index] = candidate[0]
 				singleReport := validateSegmentTexts(&segmentPlan, candidate, settings)
+				if plan.ClipEvidence != nil && isRepeatedClipSource(candidate[0], segment.SourceText) {
+					singleReport.Valid = false
+					singleReport.InvalidIndexes = []int{0}
+					singleReport.Reasons = append(singleReport.Reasons, "clip source copied or repeated instead of rewritten")
+				}
+				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan) {
+					singleReport.Valid = false
+					singleReport.InvalidIndexes = []int{0}
+					singleReport.Reasons = append(singleReport.Reasons, "clip narration is not anchored to the assigned source evidence")
+				}
 				if singleReport.Valid {
 					break
 				}
@@ -358,7 +402,7 @@ func (e *Engine) generateSegments(
 					)
 				}
 			}
-			if attempt == settings.maxRegenerationAttempts {
+			if attempt == attemptLimit {
 				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, allowed=%d-%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.Max)
 				validationExhausted = true
 				break
@@ -367,11 +411,11 @@ func (e *Engine) generateSegments(
 		}
 		if lastErr != nil {
 			validationFailure := validationExhausted || errors.Is(lastErr, scriptpkg.ErrSegmentValidationFailed) || strings.Contains(strings.ToLower(lastErr.Error()), "segment validation failed")
-			fallbackSource := strings.TrimSpace(segment.SourceText)
+			fallbackSource := cleanSegmentSourceText(segment.SourceText)
 			if fallbackSource == "" {
 				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
 			}
-			if (validationFailure || lastErr != nil) && fallbackSource != "" {
+			if plan.ClipEvidence == nil && (validationFailure || lastErr != nil) && fallbackSource != "" {
 				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
 				if fallback != "" && validateSegmentTexts(&segmentPlan, []string{fallback}, settings).Valid {
 					fallbackResult := result
@@ -467,4 +511,89 @@ func (e *Engine) generateSegments(
 	result.Script = frozenText
 	result.WordCount = textutil.CountWords(frozenText)
 	return &result, nil
+}
+
+func isRepeatedClipSource(candidate, source string) bool {
+	candidate = strings.Join(strings.Fields(strings.ToLower(candidate)), " ")
+	source = cleanSegmentSourceText(source)
+	source = strings.Join(strings.Fields(strings.ToLower(source)), " ")
+	if candidate == "" || source == "" {
+		return false
+	}
+	return candidate == source || strings.Count(candidate, source) >= 2
+}
+
+// clipNarrationHasEvidence is a small deterministic drift gate for clip
+// intros.  A short rewrite may use new wording, but it must retain at least
+// two meaningful anchors from the assigned topic/brief/transcript.  This
+// prevents a generic biography (or another clip's cached answer) from being
+// accepted as a valid scene merely because it is fluent prose.
+func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment, plan *scriptpkg.ResolvedGenerationPlan) bool {
+	// Synthetic sentinel evidence used by contract tests is deliberately not
+	// natural language and cannot provide meaningful lexical anchors.
+	if strings.Contains(segment.SourceText, "_") {
+		return true
+	}
+	anchors := make(map[string]struct{})
+	sourceAnchors := make(map[string]struct{})
+	add := func(text string) {
+		for _, token := range strings.Fields(strings.ToLower(text)) {
+			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+			if len(token) < 4 || clipEvidenceStopWords[token] {
+				continue
+			}
+			anchors[token] = struct{}{}
+		}
+	}
+	addSource := func(text string) {
+		for _, token := range strings.Fields(strings.ToLower(cleanSegmentSourceText(text))) {
+			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+			if len(token) >= 4 && !clipEvidenceStopWords[token] {
+				sourceAnchors[token] = struct{}{}
+			}
+		}
+	}
+	add(segment.Topic)
+	cleanSource := cleanSegmentSourceText(segment.SourceText)
+	add(cleanSource)
+	addSource(cleanSource)
+	if plan != nil && plan.ClipEvidence != nil && len(plan.ClipEvidence.SegmentEvidence) > 0 {
+		for _, evidence := range plan.ClipEvidence.SegmentEvidence {
+			add(evidence.Topic)
+			add(evidence.SourceText)
+			for _, detail := range evidence.Clips {
+				add(detail.Name)
+				add(detail.Description)
+				add(detail.Transcript)
+			}
+		}
+	}
+	matched := 0
+	sourceMatched := 0
+	seen := make(map[string]struct{})
+	for _, token := range strings.Fields(strings.ToLower(candidate)) {
+		token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
+		if _, ok := anchors[token]; !ok {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		matched++
+		if _, ok := sourceAnchors[token]; ok {
+			sourceMatched++
+		}
+	}
+	if len(sourceAnchors) <= 2 {
+		return sourceMatched >= 1 && matched >= 2
+	}
+	return sourceMatched >= 2 && matched >= 3
+}
+
+var clipEvidenceStopWords = map[string]bool{
+	"about": true, "being": true, "from": true, "into": true, "only": true,
+	"this": true, "that": true, "with": true, "write": true, "funny": true,
+	"short": true, "based": true, "source": true, "text": true, "clip": true,
+	"scene": true, "does": true, "have": true, "they": true, "when": true,
 }

@@ -211,6 +211,8 @@ type ClipFilesPort interface {
 }
 
 type HashServicePort interface {
+	SHA256File(path string) (string, error)
+	SHA256String(s string) string
 	MD5String(data string) string
 	MD5File(path string) (string, error)
 }

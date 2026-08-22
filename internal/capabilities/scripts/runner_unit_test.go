@@ -20,12 +20,24 @@
 package scriptgeneration
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type unitFinalAssembler struct{}
+
+func (unitFinalAssembler) AssembleFinalVideo(_ context.Context, inputs []string, output string) error {
+	if len(inputs) != 2 {
+		return fmt.Errorf("got %d inputs", len(inputs))
+	}
+	return os.WriteFile(output, []byte("final"), 0o600)
+}
 
 // TestDeriveErrorCode is the canonical table-driven test for the
 // error-code mapping. New trigger patterns MUST add a fixture here
@@ -118,6 +130,29 @@ func TestBindExplicitClipSceneTextPreservesGeneratedNarration(t *testing.T) {
 	bindExplicitClipSceneText(req, scenes)
 	assert.Equal(t, "A new funny line", scenes[0].Text["en"])
 	assert.Equal(t, "Another new funny line", scenes[1].Text["en"])
+}
+
+func TestAssembleFinalVideoRequiresCompleteLocalInputs(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.mp4")
+	second := filepath.Join(dir, "second.mp4")
+	if err := os.WriteFile(first, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{finalVideoAssembler: unitFinalAssembler{}}
+	result := &GenerateResult{ExpectedRenderCount: 2, LocalizedRenders: []LocalizedRenderResult{
+		{SceneID: "s2", SceneIndex: 1, LocalPath: second},
+		{SceneID: "s1", SceneIndex: 0, LocalPath: first},
+	}}
+	if err := runner.assembleFinalVideo(context.Background(), "unit", result); err != nil {
+		t.Fatal(err)
+	}
+	if result.FinalVideo == nil || result.FinalVideo.SHA256 == "" {
+		t.Fatal("final video was not recorded")
+	}
 }
 
 func TestModelScriptOutputForDocumentPreservesCanonicalSceneData(t *testing.T) {

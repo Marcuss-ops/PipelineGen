@@ -46,6 +46,10 @@ import (
 	"go.uber.org/zap"
 )
 
+type voiceoverFingerprintLookup interface {
+	FindByFingerprint(context.Context, string) (*persistence.VoiceoverRecord, error)
+}
+
 // ProcessVoiceoverItemDeps wires dependencies for the canonical per-item
 // pipeline (Pattern 0, AGENTS.md). All required ports are mandatory —
 // the constructor panics on nil per fail-fast WireUp pattern.
@@ -305,6 +309,33 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// TextHash envelope; buildVoiceoverID first param is raw string,
 	// so convert at the seam.
 	itemHash := item.TextHash
+
+	// Audit the cross-run cache before doing TTS. Reuse is deliberately not
+	// claimed here yet when timing artifacts are required: the row currently
+	// stores the audio artifact but not a verifiable timing bundle. This
+	// makes the run report honest (candidate/hit/miss) without risking an
+	// unsynchronised subtitle timeline.
+	fingerprint := BuildVoiceoverContentFingerprint(itemHash, item.Language, item.Voice, dest.FolderID, item.Timing, item.RemoveSilence)
+	cacheStatus := "miss"
+	cacheReason := "not_found"
+	if lookup, ok := u.deps.Pipeline.VoiceoverRepository.(voiceoverFingerprintLookup); ok {
+		cached, lookupErr := lookup.FindByFingerprint(ctx, fingerprint)
+		if lookupErr != nil {
+			cacheStatus = "lookup_error"
+			cacheReason = lookupErr.Error()
+		} else if cached != nil {
+			cacheStatus = "candidate"
+			cacheReason = "timing_artifact_not_hydrated"
+		}
+	} else {
+		cacheStatus = "unavailable"
+		cacheReason = "repository_does_not_expose_fingerprint_lookup"
+	}
+	u.deps.Logger.Info("voiceover cross-run cache audit",
+		zap.String("language", string(item.Language)),
+		zap.String("fingerprint", fingerprint),
+		zap.String("status", cacheStatus),
+		zap.String("reason", cacheReason))
 
 	// ID is derived deterministically from (textHash, language, folderID).
 	id := buildVoiceoverID(string(itemHash), item.Language, dest.FolderID)

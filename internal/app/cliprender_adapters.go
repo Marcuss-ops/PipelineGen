@@ -14,13 +14,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -104,27 +99,29 @@ func (r *clipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 // (1) the registry's local_path when the file exists, (2) a content-addressed
 // scratch copy already downloaded in a prior run, (3) a fresh Drive download
 // into scratch. A missing local copy AND missing Drive source fails closed.
+// clipRenderMaterializer is the clip.render-facing adapter that delegates
+// every asset type (video, image, watermark, background) to the single
+// CanonicalAssetMaterializer.
 type clipRenderMaterializer struct {
-	drive      drivepkg.Reader
-	scratchDir string
-	log        *zap.Logger
+	canonical *drivepkg.CanonicalAssetMaterializer
+	log       *zap.Logger
 }
 
-// newClipRenderMaterializer wires the materializer. log is required so every
-// materialize call (cache hit, scratch cache hit, fresh Drive download) is
-// logged with timing + bytes.
+// newClipRenderMaterializer wires the materializer over the canonical
+// implementation. log is required so every materialize call is observable.
 func newClipRenderMaterializer(drive drivepkg.Reader, scratchDir string, log *zap.Logger) (*clipRenderMaterializer, error) {
-	if drive == nil {
-		return nil, errors.New("clip.render: Drive reader is required for materialization")
-	}
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &clipRenderMaterializer{drive: drive, scratchDir: scratchDir, log: log}, nil
+	canonical, err := drivepkg.NewCanonicalAssetMaterializer(drive, scratchDir, log)
+	if err != nil {
+		return nil, err
+	}
+	return &clipRenderMaterializer{canonical: canonical, log: log}, nil
 }
 
 func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender.AssetRef) (*cliprender.MaterializedAsset, error) {
-	if m == nil || m.drive == nil {
+	if m == nil || m.canonical == nil {
 		return nil, errors.New("clip.render: Drive reader not wired (asset materialization requires it)")
 	}
 	t0 := time.Now()
@@ -135,167 +132,52 @@ func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 		zap.String("drive_file_id", ref.DriveFileID),
 	)
 
-	// (1) Registered local copy.
-	if ref.LocalPath != "" {
-		if info, err := os.Stat(ref.LocalPath); err == nil && !info.IsDir() {
-			hashStart := time.Now()
-			sha, size, err := hashFile(ref.LocalPath)
-			if err != nil {
-				m.log.Error("clip.render.materialize.failed",
-					zap.String("subsystem", "cliprender_materializer"),
-					zap.String("asset_id", ref.AssetID),
-					zap.String("branch", "registered_local"),
-					zap.Error(err),
-				)
-				return nil, fmt.Errorf("hash local source %q: %w", ref.LocalPath, err)
-			}
-			hashMS := time.Since(hashStart).Milliseconds()
-			m.log.Info("clip.render.materialize.done",
-				zap.String("subsystem", "cliprender_materializer"),
-				zap.String("asset_id", ref.AssetID),
-				zap.String("branch", "registered_local"),
-				zap.Bool("cache_hit", true),
-				zap.Bool("from_cache", true),
-				zap.String("local_path", ref.LocalPath),
-				zap.Int64("size_bytes", size),
-				zap.Int64("hash_ms", hashMS),
-				zap.Int64("total_ms", time.Since(t0).Milliseconds()),
-			)
-			return &cliprender.MaterializedAsset{
-				AssetID:    ref.AssetID,
-				LocalPath:  ref.LocalPath,
-				SHA256:     sha,
-				SizeBytes:  size,
-				DurationMS: ref.DurationMS,
-				FromCache:  true,
-			}, nil
-		}
+	// Derive the extension from the media type when possible.
+	ext := ".mp4"
+	switch ref.MediaType {
+	case "audio", "sound_effect":
+		ext = ".m4a"
+	case "image":
+		ext = ".jpg"
+	case "watermark":
+		ext = ".png"
 	}
 
-	// (2/3) Drive materialization into scratch.
-	if ref.DriveFileID == "" {
+	result, err := m.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
+		AssetID:        ref.AssetID,
+		DriveFileID:    ref.DriveFileID,
+		ExpectedSHA256: ref.FileHash,
+		Extension:      ext,
+		RegisteredPath: ref.LocalPath,
+	})
+	if err != nil {
 		m.log.Error("clip.render.materialize.failed",
 			zap.String("subsystem", "cliprender_materializer"),
 			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "no_drive_source"),
 			zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
+			zap.Error(err),
 		)
-		return nil, fmt.Errorf("clip.render: asset %q has neither a local copy nor a Drive source", ref.AssetID)
-	}
-	target := filepath.Join(m.scratchDir, "assets", ref.AssetID+".mp4")
-	if info, err := os.Stat(target); err == nil && !info.IsDir() {
-		hashStart := time.Now()
-		sha, size, err := hashFile(target)
-		if err != nil {
-			m.log.Error("clip.render.materialize.failed",
-				zap.String("subsystem", "cliprender_materializer"),
-				zap.String("asset_id", ref.AssetID),
-				zap.String("branch", "scratch_cache"),
-				zap.Error(err),
-			)
-			return nil, fmt.Errorf("hash cached source %q: %w", target, err)
-		}
-		hashMS := time.Since(hashStart).Milliseconds()
-		m.log.Info("clip.render.materialize.done",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "scratch_cache"),
-			zap.Bool("cache_hit", true),
-			zap.Bool("from_cache", true),
-			zap.String("local_path", target),
-			zap.Int64("size_bytes", size),
-			zap.Int64("hash_ms", hashMS),
-			zap.Int64("total_ms", time.Since(t0).Milliseconds()),
-		)
-		return &cliprender.MaterializedAsset{
-			AssetID:    ref.AssetID,
-			LocalPath:  target,
-			SHA256:     sha,
-			SizeBytes:  size,
-			DurationMS: ref.DurationMS,
-			FromCache:  true,
-		}, nil
+		return nil, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		m.log.Error("clip.render.materialize.failed",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "mkdir"),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("create scratch dir: %w", err)
-	}
-	downloadStart := time.Now()
-	m.log.Info("clip.render.materialize.drive_download_start",
-		zap.String("subsystem", "cliprender_materializer"),
-		zap.String("asset_id", ref.AssetID),
-		zap.String("drive_file_id", ref.DriveFileID),
-		zap.String("target", target),
-	)
-	rc, _, err := m.drive.DownloadFile(ctx, ref.DriveFileID)
-	if err != nil {
-		m.log.Error("clip.render.materialize.drive_download_failed",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("drive_file_id", ref.DriveFileID),
-			zap.Int64("duration_ms", time.Since(downloadStart).Milliseconds()),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("download asset %q from Drive: %w", ref.AssetID, err)
-	}
-	defer rc.Close()
-
-	out, err := os.Create(target)
-	if err != nil {
-		m.log.Error("clip.render.materialize.failed",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "create_scratch"),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("create scratch file %q: %w", target, err)
-	}
-	hasher := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(out, hasher), rc)
-	closeErr := out.Close()
-	if copyErr != nil {
-		m.log.Error("clip.render.materialize.failed",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "write_scratch"),
-			zap.Int64("bytes_written", n),
-			zap.Error(copyErr),
-		)
-		return nil, fmt.Errorf("write scratch file %q: %w", target, copyErr)
-	}
-	if closeErr != nil {
-		m.log.Error("clip.render.materialize.failed",
-			zap.String("subsystem", "cliprender_materializer"),
-			zap.String("asset_id", ref.AssetID),
-			zap.String("branch", "close_scratch"),
-			zap.Error(closeErr),
-		)
-		return nil, fmt.Errorf("close scratch file %q: %w", target, closeErr)
-	}
 	m.log.Info("clip.render.materialize.done",
 		zap.String("subsystem", "cliprender_materializer"),
 		zap.String("asset_id", ref.AssetID),
-		zap.String("branch", "drive_download"),
-		zap.Bool("cache_hit", false),
-		zap.Bool("from_cache", false),
-		zap.String("drive_file_id", ref.DriveFileID),
-		zap.String("local_path", target),
-		zap.Int64("size_bytes", n),
-		zap.Int64("download_ms", time.Since(downloadStart).Milliseconds()),
+		zap.String("branch", result.OriginTag()),
+		zap.Bool("cache_hit", result.FromCache),
+		zap.Bool("from_cache", result.FromCache),
+		zap.String("local_path", result.LocalPath),
+		zap.String("sha256", result.SHA256),
+		zap.Int64("size_bytes", result.SizeBytes),
 		zap.Int64("total_ms", time.Since(t0).Milliseconds()),
 	)
+
 	return &cliprender.MaterializedAsset{
 		AssetID:    ref.AssetID,
-		LocalPath:  target,
-		SHA256:     hex.EncodeToString(hasher.Sum(nil)),
-		SizeBytes:  n,
+		LocalPath:  result.LocalPath,
+		SHA256:     result.SHA256,
+		SizeBytes:  result.SizeBytes,
 		DurationMS: ref.DurationMS,
-		FromCache:  false,
+		FromCache:  result.FromCache,
 	}, nil
 }
