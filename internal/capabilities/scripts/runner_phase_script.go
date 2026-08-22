@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -185,6 +186,36 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			VoiceoverGroup:     req.ScriptParams.VoiceoverGroup,
 			TranslationMetrics: streamTranslationMetrics,
 			AudioMetrics:       streamAudioMetrics,
+		}
+		// Explicit clip workflows may request real video reconstruction without
+		// generating TTS. The historical fan-out was only entered after a
+		// voiceover existed, which made audio.mode=NONE silently produce a script
+		// and no MP4. Keep this path source-language-only and reuse the same
+		// localized renderer, watermark contract, and certified result sink.
+		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
+			for _, scene := range scenes {
+				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
+				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+				if text == "" {
+					text = strings.TrimSpace(req.Source.SourceText)
+				}
+				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+					RunID: runID, SceneID: scene.ID, SceneIndex: scene.Index,
+					Language: req.SourceLanguage, Text: text,
+					SourceLanguage: req.SourceLanguage, SourceText: text,
+					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+					ClipDurationMS: clipDurationMS, Render: req.Render,
+					OnRendered: func(rendered LocalizedRenderResult) error {
+						result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+						return nil
+					},
+				}); err != nil {
+					cause := fmt.Errorf("enqueue no-audio localized render: %w", err)
+					r.failExecutionStep(ctx, exec, scriptStep, cause)
+					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+					return result, false
+				}
+			}
 		}
 		// Merge the certified produced videos the streaming fan-out
 		// accumulated (the coordinator has no result pointer of its own) so

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
@@ -34,7 +35,7 @@ func runBackfillEmbeddingContract(args []string) error {
 	defer db.Close()
 
 	ctx := context.Background()
-	const searchable = `((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video')) OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic'))) AND lifecycle_state IN ('ACTIVE','PUBLISHED') AND (deleted_at IS NULL OR deleted_at = '')`
+	const searchable = capregistry.SearchIndexTaxonomySQL + ` AND lifecycle_state IN ('ACTIVE','PUBLISHED')`
 	var eligible, already, updated int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+searchable+` AND COALESCE(json_extract(metadata_json,'$.embedding_model'),'')=? AND COALESCE(json_extract(metadata_json,'$.embedding_model_version'),'')=?`, coreembedding.CanonicalText.ModelID, coreembedding.CanonicalText.ModelRevision).Scan(&eligible); err != nil {
 		return fmt.Errorf("count eligible embeddings: %w", err)

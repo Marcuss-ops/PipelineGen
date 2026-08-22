@@ -353,10 +353,11 @@ func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 }
 
 // enqueueLocalizedRender emits one localized render for a ready (scene,
-// language) unit. It is a no-op when the fan-out is not wired or the unit has
-// no voiceover. Callers build the input with the values they already hold
-// (under the per-unit lock when the unit's maps are shared across workers) so
-// this helper performs no map reads of its own.
+// language) unit. A voiceover is required only for the voiceover-driven path;
+// explicit clip renders are also valid with audio.mode=NONE. Callers build
+// the input with the values they already hold (under the per-unit lock when
+// the unit's maps are shared across workers) so this helper performs no map
+// reads of its own.
 func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
 	if r == nil {
 		return nil
@@ -367,7 +368,7 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	if r.localizedRenderEnqueuer == nil {
 		return nil
 	}
-	if input.Voiceover.ID == "" {
+	if input.Voiceover.ID == "" && strings.TrimSpace(input.ClipAssetID) == "" && strings.TrimSpace(input.ClipID) == "" {
 		return nil
 	}
 	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
