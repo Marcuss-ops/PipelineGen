@@ -298,7 +298,7 @@ func (h *Handler) handleReindex(c *gin.Context) {
 	}
 
 	a := details.Asset
-	contentHash := a.FileHash()
+	contentHash := a.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = a.ID
 	}

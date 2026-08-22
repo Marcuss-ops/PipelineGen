@@ -64,7 +64,7 @@ func (s *Service) dedupCheck(ctx context.Context, cmd sourcing.RegisterClipComma
 		Name: existingClip.Name, Filename: existingClip.Filename,
 		DurationSec: int(existingClip.Duration.Seconds()),
 		DriveLink:   existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
-		FileHash: existingClip.FileHash, Source: existingClip.Source,
+		LegacyFileMD5: existingClip.LegacyFileMD5, Source: existingClip.Source,
 		Category: existingClip.Category, Tags: existingClip.Tags,
 		LocalPath: existingClip.LocalPath, Indexed: indexed,
 		IndexingStatus: IndexStatus(indexed),
@@ -155,7 +155,7 @@ func (s *Service) uploadCumulativeMetadata(ctx context.Context, cmd sourcing.Reg
 		"clip_id": clipID, "name": md.Name, "description": md.Description,
 		"category": cmd.Category, "source": md.Source, "group": group, "tags": cmd.Tags,
 		"youtube_url": md.RawURL, "youtube_id": md.VideoID, "filename": driveFilename,
-		"file_hash": fileHash, "duration_sec": md.Duration, "created_at": time.Now().UTC().Format(time.RFC3339),
+		"legacy_file_md5": fileHash, "duration_sec": md.Duration, "created_at": time.Now().UTC().Format(time.RFC3339),
 		"drive_file_id": "", "drive_link": "",
 	}
 	if cmd.Summary != "" {
@@ -221,7 +221,7 @@ func (s *Service) saveClipToDB(ctx context.Context, cmd sourcing.RegisterClipCom
 		Tags:            cmd.Tags,
 		DurationSec:     md.Duration,
 		LocalPath:       localPath,
-		FileHash:        fileHash,
+		LegacyFileMD5:        fileHash,
 		Summary:         cmd.Summary,
 		Topics:          cmd.Topics,
 		Speakers:        cmd.Speakers,
@@ -276,7 +276,7 @@ func (s *Service) findRelated(ctx context.Context, name, category string, tags [
 type buildResultInput struct {
 	MD             *usecase.ResolvedMetadata
 	ClipID         string
-	FileHash       string
+	LegacyFileMD5       string
 	DriveFilename  string
 	LocalPath      string
 	UploadResult   *sourcing.DriveUploadResult
@@ -296,7 +296,7 @@ func (s *Service) buildResult(input buildResultInput) *sourcing.RegisterClipResu
 	res := &sourcing.RegisterClipResult{
 		OK: true, ClipID: input.ClipID, VideoID: input.MD.VideoID,
 		Name: input.MD.Name, Filename: input.DriveFilename, DurationSec: input.MD.Duration,
-		FileHash: input.FileHash, Source: input.MD.Source, Category: input.Cmd.Category,
+		LegacyFileMD5: input.LegacyFileMD5, Source: input.MD.Source, Category: input.Cmd.Category,
 		Tags: input.Cmd.Tags, LocalPath: input.LocalPath,
 		Indexed: input.Indexed, IndexingStatus: IndexStatus(input.Indexed),
 		Transcribed: input.Transcript != "", Language: input.DetectedLang,

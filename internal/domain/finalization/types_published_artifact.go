@@ -32,8 +32,8 @@ type AssetRenditionLocation struct {
 	// SizeBytes is the file size in bytes.
 	SizeBytes int64 `json:"size_bytes,omitempty"`
 
-	// FileHash is the SHA-256 digest of the rendition content.
-	FileHash string `json:"file_hash,omitempty"`
+	// LegacyFileMD5 is the SHA-256 digest of the rendition content.
+	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
 
 	// Width and Height are the pixel dimensions.
 	Width  int `json:"width,omitempty"`

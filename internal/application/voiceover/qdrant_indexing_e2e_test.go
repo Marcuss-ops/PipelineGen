@@ -220,7 +220,7 @@ func (a *e2eRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persiste
 		DriveFileID:     rec.DriveFileID,
 		DriveLink:       rec.DriveLink,
 		DownloadLink:    rec.DownloadLink,
-		FileHash:        rec.FileHash,
+		LegacyFileMD5:        rec.LegacyFileMD5,
 		DurationSeconds: 0,
 		Status:          rec.Status,
 		Error:           rec.Error,
@@ -278,7 +278,7 @@ func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*persisten
 		DriveFileID:  r.DriveFileID,
 		DriveLink:    r.DriveLink,
 		DownloadLink: r.DownloadLink,
-		FileHash:     r.FileHash,
+		LegacyFileMD5:     r.LegacyFileMD5,
 		Status:       r.Status,
 		Error:        r.Error,
 		Strategy:     r.Strategy,
@@ -302,7 +302,7 @@ func (s *e2eTTSProvider) Synthesize(_ context.Context, in TTSInput) (TTSOutput, 
 		LocalPath:   s.localPath,
 		CleanedPath: "",
 		Voice:       in.Voice,
-		FileHash:    s.fileHash,
+		LegacyFileMD5:    s.fileHash,
 	}, nil
 }
 
@@ -438,7 +438,7 @@ func (a *e2eLifecycleAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, t
 			file_hash=excluded.file_hash, metadata_json=excluded.metadata_json,
 			updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
 		in.ID, in.Name, in.Filename, in.LocalPath, in.DriveFileID, in.DriveLink,
-		in.DownloadLink, in.FileHash, in.Metadata)
+		in.DownloadLink, in.LegacyFileMD5, in.Metadata)
 	return err
 }
 

@@ -30,9 +30,11 @@ func runUnifyCatalogs(args []string) error {
 	}
 	defer mediaDB.Close()
 
-	// Ensure clip_folders table exists in media.db
-	if err := ensureClipFoldersTable(mediaDB.DB); err != nil {
-		return fmt.Errorf("failed to ensure clip_folders in media db: %w", err)
+	// Verify clip_folders table exists (created by migration 093).
+	// PR-MIGRATIONS-SSOT (August 2026): the table is owned by the
+	// migration chain; admin tools must not duplicate its definition.
+	if err := verifyClipFoldersTable(mediaDB.DB); err != nil {
+		return fmt.Errorf("clip_folders table missing in media db (migration 093): %w", err)
 	}
 
 	// Migrate stock data
@@ -58,38 +60,18 @@ func runUnifyCatalogs(args []string) error {
 	return nil
 }
 
-func ensureClipFoldersTable(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS clip_folders (
-			id TEXT PRIMARY KEY,
-			source TEXT NOT NULL DEFAULT '',
-			source_url TEXT NOT NULL DEFAULT '',
-			video_id TEXT NOT NULL DEFAULT '',
-			folder_id TEXT NOT NULL DEFAULT '',
-			folder_path TEXT NOT NULL DEFAULT '',
-			local_folder_path TEXT NOT NULL DEFAULT '',
-			group_name TEXT NOT NULL DEFAULT '',
-			manifest_txt_path TEXT NOT NULL DEFAULT '',
-			manifest_json_path TEXT NOT NULL DEFAULT '',
-			clip_count INTEGER NOT NULL DEFAULT 0,
-			processed_count INTEGER NOT NULL DEFAULT 0,
-			failed_count INTEGER NOT NULL DEFAULT 0,
-			skipped_count INTEGER NOT NULL DEFAULT 0,
-			last_error TEXT NOT NULL DEFAULT '',
-			metadata TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`)
+// verifyClipFoldersTable checks that the clip_folders table exists
+// but does NOT create it — the migration chain owns schema creation.
+func verifyClipFoldersTable(db *sql.DB) error {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='clip_folders'`).Scan(&count)
 	if err != nil {
-		return err
+		return fmt.Errorf("read sqlite_master: %w", err)
 	}
-	_, err = db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_clip_folders_source ON clip_folders(source);
-		CREATE INDEX IF NOT EXISTS idx_clip_folders_folder_id ON clip_folders(folder_id);
-		CREATE INDEX IF NOT EXISTS idx_clip_folders_folder_path ON clip_folders(folder_path);
-		CREATE INDEX IF NOT EXISTS idx_clip_folders_group_name ON clip_folders(group_name);
-	`)
-	return err
+	if count == 0 {
+		return fmt.Errorf("table clip_folders does not exist — run migration 093 first")
+	}
+	return nil
 }
 
 func migrateSource(mediaDB *sql.DB, srcPath, sourceName string, logLabel string, logFn func(string, ...any)) error {

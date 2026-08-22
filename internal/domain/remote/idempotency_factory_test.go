@@ -226,3 +226,26 @@ func TestCompleteJobIdempotencyKey_LegacyFreeFunction_StillWorks(t *testing.T) {
 		t.Errorf("legacy free function returned non-64-char hex: got len=%d key=%q", len(key), key)
 	}
 }
+
+// TestArtifactIdempotencyKey_GoldenOldNew pins the byte-identical migration
+// contract for the artifact idempotency key. The key is SHA-256 of the
+// colon-joined triple "jobID:artifactID:sha256Hex", computed through the
+// full delegation chain (ArtifactIdempotencyKey → defaultArtifactKey →
+// MakeArtifactIdempotencyKey → hashutil.SHA256String → kernel/digest). The
+// golden literal was produced by the pre-migration implementation
+// (sha256.Sum256); a drift anywhere in that chain fails loudly.
+func TestArtifactIdempotencyKey_GoldenOldNew(t *testing.T) {
+	got := remote.ArtifactIdempotencyKey("j-1", "a-1", "h-1")
+	const want = "df4da73dc8f87730c5811f3cfb1f48a982730ae1bacb5dc220bbd632a0eec10f"
+	if got != want {
+		t.Fatalf("ArtifactIdempotencyKey(j-1, a-1, h-1) = %q, want %q (old hash != new hash)", got, want)
+	}
+	if len(got) != 64 {
+		t.Fatalf("idempotency key length = %d, want 64", len(got))
+	}
+	// The injected default must match the legacy free function.
+	derive := remote.MakeArtifactIdempotencyKey(hashutil.SHA256String)
+	if injected := derive("j-1", "a-1", "h-1"); injected != got {
+		t.Fatalf("injected default = %q, legacy free function = %q; drift", injected, got)
+	}
+}

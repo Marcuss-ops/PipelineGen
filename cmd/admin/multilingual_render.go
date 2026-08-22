@@ -85,7 +85,7 @@ func processOneClip(
 	}
 	sourceSHA := item.ContentHash()
 	if sourceSHA == "" {
-		sourceSHA = item.FileHash()
+		sourceSHA = item.LegacyFileMD5()
 	}
 	if !isSHA256Hex(sourceSHA) && sourcePath != "" {
 		if calculated, hashErr := hashLocalFile(sourcePath); hashErr == nil {
@@ -235,7 +235,7 @@ func processOneClip(
 			TranslationVersion:     translationVersion,
 			SubtitleStyleVersion:   subtitleStyleVersion,
 			ASSPath:                assOut.LocalPath,
-			ASSHash:                assOut.FileHash,
+			ASSHash:                assOut.LegacyFileMD5,
 			OutputFilename:         base + "." + lang + ".mp4",
 			DriveFolderID:          folder,
 			WorkDir:                filepath.Join("data", "media", "renders"),

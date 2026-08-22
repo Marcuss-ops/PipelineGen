@@ -69,7 +69,7 @@ func registerClip(
 		UpdatedAt:      now,
 	}
 	clip.SetLocalPath(cand.LocalPath)
-	clip.SetFileHash(fileHash)
+	clip.SetLegacyFileMD5(fileHash)
 	clip.SetFolderID(targetFolderID)
 	clip.SetFolderPath(cand.Subdir)
 	if cand.Manifest != nil {

@@ -68,14 +68,14 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 		_, err = tx.ExecContext(ctx, `
 			UPDATE asset_subtitle_artifacts SET 
 				asset_id = ?, text_track_id = ?, language_code = ?, format = ?,
-				local_path = ?, drive_file_id = ?, drive_url = ?, file_hash = ?, text_hash = ?,
+				local_path = ?, drive_file_id = ?, drive_url = ?, legacy_file_md5 = ?, text_hash = ?,
 				cues_hash = ?, clip_content_hash = ?, cue_count = ?,
 				clip_duration_ms = ?, last_cue_end_ms = ?, style_version = ?,
 				generator_version = ?, status = ?, is_current = ?,
 				validation_error = ?, updated_at = ?
 			WHERE id = ?`,
 			art.AssetID, art.TextTrackID, art.LanguageCode, string(art.Format),
-			art.LocalPath, art.DriveFileID, art.DriveURL, art.FileHash, art.TextHash,
+			art.LocalPath, art.DriveFileID, art.DriveURL, art.LegacyFileMD5, art.TextHash,
 			art.CuesHash, art.ClipContentHash, art.CueCount,
 			art.ClipDurationMs, art.LastCueEndMs, art.StyleVersion,
 			art.GeneratorVersion, string(art.Status), checkBoolInt(art.IsCurrent),
@@ -95,7 +95,7 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 				validation_error, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			art.AssetID, art.TextTrackID, art.LanguageCode, string(art.Format),
-			art.LocalPath, art.DriveFileID, art.DriveURL, art.FileHash, art.TextHash,
+			art.LocalPath, art.DriveFileID, art.DriveURL, art.LegacyFileMD5, art.TextHash,
 			art.CuesHash, art.ClipContentHash, art.CueCount,
 			art.ClipDurationMs, art.LastCueEndMs, art.StyleVersion,
 			art.GeneratorVersion, string(art.Status), checkBoolInt(art.IsCurrent),
@@ -197,7 +197,7 @@ func scanSubtitleArtifact(s subtitleScanner) (*asset.SubtitleArtifact, error) {
 	)
 	err := s.Scan(
 		&art.ID, &art.AssetID, &art.TextTrackID, &art.LanguageCode, &formatStr,
-		&art.LocalPath, &art.DriveFileID, &art.DriveURL, &art.FileHash, &art.TextHash,
+		&art.LocalPath, &art.DriveFileID, &art.DriveURL, &art.LegacyFileMD5, &art.TextHash,
 		&art.CuesHash, &art.ClipContentHash, &art.CueCount,
 		&art.ClipDurationMs, &art.LastCueEndMs, &art.StyleVersion,
 		&art.GeneratorVersion, &statusStr, &isCurrentInt, &art.ValidationError,

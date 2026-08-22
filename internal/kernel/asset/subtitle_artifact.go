@@ -31,7 +31,7 @@ type SubtitleArtifact struct {
 	LocalPath        string                 `json:"local_path"`
 	DriveFileID      string                 `json:"drive_file_id"`
 	DriveURL         string                 `json:"drive_url"`
-	FileHash         string                 `json:"file_hash"`
+	LegacyFileMD5         string                 `json:"legacy_file_md5"`
 	TextHash         string                 `json:"text_hash"`
 	CuesHash         string                 `json:"cues_hash"`
 	ClipContentHash  string                 `json:"clip_content_hash"`

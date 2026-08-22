@@ -164,7 +164,7 @@ func TestFinalize_DedupeLookupErr_PropagatesAndStopsAllDownstreamWrites(t *testi
 		DriveFileID:  "drive-audit",
 		DriveLink:    "https://drive.google.com/file/d/drive-audit/view",
 		DownloadLink: "https://drive.google.com/uc?id=drive-audit",
-		FileHash:     "abc123",
+		LegacyFileMD5:     "abc123",
 		FolderID:     "folder-1",
 		FolderPath:   "/tmp/vo",
 		ShouldSwap:   true,

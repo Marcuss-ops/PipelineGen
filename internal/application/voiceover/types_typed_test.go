@@ -312,7 +312,7 @@ func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 	t.Run("ComputeTextHash_byte_stable", func(t *testing.T) {
 		// Canonical godlike/07 contract: same input → same hash.
 		// 3 invocations on the same text must produce byte-identical
-		// 16-char hex prefixes.
+		// 64-char hex digests (PR-VO-TEXTHASH-64).
 		text := "the canonical voiceover text for byte-stability check"
 		hash1 := ComputeTextHash(text)
 		hash2 := ComputeTextHash(text)
@@ -320,14 +320,14 @@ func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 		if hash1 != hash2 || hash2 != hash3 {
 			t.Fatalf("ComputeTextHash not byte-stable: %q vs %q vs %q", hash1, hash2, hash3)
 		}
-		if len(string(hash1)) != 16 {
-			t.Fatalf("ComputeTextHash length = %d; want 16 hex chars (godlike/06 SSOT canonical prefix len)", len(string(hash1)))
+		if len(string(hash1)) != 64 {
+			t.Fatalf("ComputeTextHash length = %d; want 64 hex chars (SHA-256 full digest, PR-VO-TEXTHASH-64)", len(string(hash1)))
 		}
 	})
 
 	t.Run("ComputeTextHash_empty_text_returns_EmptyTextHash", func(t *testing.T) {
 		// Defensive: empty text returns EmptyTextHash per the canonical
-		// "no collision with non-empty first-16-chars" guard.
+		// "no collision with non-empty" guard.
 		h := ComputeTextHash("")
 		if h != EmptyTextHash {
 			t.Fatalf("ComputeTextHash('') = %q; want EmptyTextHash", h)
@@ -335,8 +335,7 @@ func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 	})
 
 	t.Run("ComputeTextHash_distinct_inputs_distinct_hashes", func(t *testing.T) {
-		// Two distinct texts MUST produce distinct hashes (godlike/07
-		// collision resistance at the canonical 16-char prefix).
+		// Two distinct texts MUST produce distinct hashes.
 		hash1 := ComputeTextHash("text one")
 		hash2 := ComputeTextHash("text two")
 		if hash1 == hash2 {
@@ -345,9 +344,8 @@ func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 	})
 
 	t.Run("ComputeTextHash_lowercase_hex_only", func(t *testing.T) {
-		// The canonical textHashLen const pins 16-char prefix; the
-		// audit pin in texthash.go locks this for collision-resistance
-		// math at ~10^5 distinct texts. lowercase hex is stdlib default.
+		// PR-VO-TEXTHASH-64: full 64-char SHA-256. Lowercase hex
+		// is stdlib default.
 		h := ComputeTextHash("lowercase-hex-check")
 		hex := string(h)
 		for _, r := range hex {
@@ -358,12 +356,9 @@ func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 	})
 
 	t.Run("ComputeTextHash_collision_resistance_1000_inputs", func(t *testing.T) {
-		// At-scale collision-resistance sanity check (added per
-		// code-reviewer NICE-TO-HAVE #4): 1000 distinct texts MUST
-		// produce 1000 distinct hashes. Probability of accidental
-		// collision is ~1 in 2^64 per pair → negligible at 1000.
-		// Catches future regressions on textHashLen = 16 if the
-		// const were silently shortened.
+		// At-scale collision-resistance sanity check per code-reviewer
+		// NICE-TO-HAVE #4. PR-VO-TEXTHASH-64: full SHA-256,
+		// probability of collision ~1 in 2^256 per pair → 0 at 1000.
 		const N = 1000
 		seen := make(map[TextHash]struct{}, N)
 		for i := 0; i < N; i++ {

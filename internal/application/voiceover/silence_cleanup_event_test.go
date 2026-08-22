@@ -29,7 +29,7 @@ func TestSilenceCleanupReportEmittedAsEventAndPersistedInMetadata(t *testing.T) 
 	tts := &stubProcessTTS{cannedOut: TTSOutput{
 		LocalPath: "/tmp/vo/scene-0.mp3",
 		Voice:     "it-IT-DiegoNeural",
-		FileHash:  "abc123",
+		LegacyFileMD5:  "abc123",
 		Duration:  45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
 	}}
 	audioPost := &stubProcessAudioPost{cannedOut: AudioPostOutput{

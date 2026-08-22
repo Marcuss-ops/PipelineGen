@@ -289,13 +289,13 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 	}
 	_, err := a.db.ExecContext(ctx, `
 		INSERT INTO entity_image_catalog_materializations (
-			candidate_id, asset_id, file_hash, drive_file_id, drive_link,
+			candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
 			local_path, status, materialized_at, last_verified_at, last_error,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(candidate_id) DO UPDATE SET
 			asset_id = excluded.asset_id,
-			file_hash = excluded.file_hash,
+			legacy_file_md5 = excluded.legacy_file_md5,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			local_path = excluded.local_path,
@@ -305,7 +305,7 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 			last_error = excluded.last_error,
 			updated_at = CURRENT_TIMESTAMP
 	`, materialization.CandidateID, strings.TrimSpace(materialization.AssetID),
-		strings.TrimSpace(materialization.FileHash), strings.TrimSpace(materialization.DriveFileID),
+		strings.TrimSpace(materialization.LegacyFileMD5), strings.TrimSpace(materialization.DriveFileID),
 		strings.TrimSpace(materialization.DriveLink), strings.TrimSpace(materialization.LocalPath),
 		status, materializedAt, verifiedAt, materialization.LastError)
 	if err != nil {
@@ -340,7 +340,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		       c.quality_reason, c.first_seen_at, c.last_seen_at, c.updated_at,
 		       c.validation_attempts, c.last_validation_at, c.next_retry_at,
 		       c.last_validation_error,
-		       m.asset_id, m.file_hash, m.drive_file_id, m.drive_link,
+		       m.asset_id, m.legacy_file_md5, m.drive_file_id, m.drive_link,
 		       m.local_path, m.status, m.materialized_at, m.last_verified_at,
 		       m.last_error, m.created_at, m.updated_at
 		FROM entity_image_catalog_candidates c
@@ -387,7 +387,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		item.LastValidationAt, item.NextRetryAt = parseCatalogTime(lastValidationAt), parseCatalogTime(nextRetryAt)
 		if assetID.Valid || fileHash.Valid || driveFileID.Valid || driveLink.Valid || localPath.Valid || materializationStatus.Valid {
 			materialization.CandidateID = item.ID
-			materialization.AssetID, materialization.FileHash = assetID.String, fileHash.String
+			materialization.AssetID, materialization.LegacyFileMD5 = assetID.String, fileHash.String
 			materialization.DriveFileID, materialization.DriveLink = driveFileID.String, driveLink.String
 			materialization.LocalPath, materialization.Status = localPath.String, materializationStatus.String
 			materialization.MaterializedAt, materialization.LastVerifiedAt = parseCatalogTime(materializedAt), parseCatalogTime(verifiedAt)
@@ -461,7 +461,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 		return nil, entitycatalog.ErrCandidateNotFound
 	}
 	row := a.db.QueryRowContext(ctx, `
-		SELECT candidate_id, asset_id, file_hash, drive_file_id, drive_link,
+		SELECT candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
 		       local_path, status, materialized_at, last_verified_at, last_error,
 		       created_at, updated_at
 		FROM entity_image_catalog_materializations
@@ -470,7 +470,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 	var out entitycatalog.Materialization
 	var materializedAt, verifiedAt, createdAt, updatedAt string
 	if err := row.Scan(
-		&out.CandidateID, &out.AssetID, &out.FileHash, &out.DriveFileID,
+		&out.CandidateID, &out.AssetID, &out.LegacyFileMD5, &out.DriveFileID,
 		&out.DriveLink, &out.LocalPath, &out.Status, &materializedAt,
 		&verifiedAt, &out.LastError, &createdAt, &updatedAt,
 	); err != nil {

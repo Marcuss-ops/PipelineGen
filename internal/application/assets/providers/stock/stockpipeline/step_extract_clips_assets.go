@@ -109,7 +109,7 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 		a.SetSlug(slug)
 	}
 	a.SetLocalPath(outputPath)
-	a.SetFileHash(hash)
+	a.SetLegacyFileMD5(hash)
 	// godlike/06 SSOT: both sha256 and file_hash keys for
 	// downstream consumers that probe either key.
 	a.SetSha256(hash)

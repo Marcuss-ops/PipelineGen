@@ -192,7 +192,7 @@ func buildBenchmarkInputs(
 	}
 	sourceSHA := item.ContentHash()
 	if sourceSHA == "" {
-		sourceSHA = item.FileHash()
+		sourceSHA = item.LegacyFileMD5()
 	}
 	base := strings.TrimSuffix(filepath.Base(item.Filename), filepath.Ext(item.Filename))
 	if base == "" {
@@ -229,7 +229,7 @@ func buildBenchmarkInputs(
 			TranslationVersion:   translationVersion,
 			SubtitleStyleVersion: subtitleStyleVersion,
 			ASSPath:              art.LocalPath,
-			ASSHash:              art.FileHash,
+			ASSHash:              art.LegacyFileMD5,
 			OutputFilename:       base + "." + lang + ".mp4",
 			DriveFolderID:        folder,
 			WorkDir:              filepath.Join("data", "media", "renders"),

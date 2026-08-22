@@ -107,7 +107,7 @@ const MediaAssetColumns = `
 	COALESCE(drive_folder_id, '') AS drive_folder_id,
 	COALESCE(drive_link, '') AS drive_link,
 	COALESCE(download_link, '') AS download_link,
-	COALESCE(file_hash, '') AS file_hash,
+	COALESCE(legacy_file_md5, '') AS legacy_file_md5,
 	COALESCE(metadata_json, '{}') AS metadata_json,
 	COALESCE(visual_embedding, '[]') AS visual_embedding,
 	COALESCE(transcript_embedding, '[]') AS transcript_embedding,

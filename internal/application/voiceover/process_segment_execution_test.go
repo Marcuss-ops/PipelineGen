@@ -322,7 +322,7 @@ func TestProcessSegmentUseCase_Execute_SuccessFull4Stages(t *testing.T) {
 			LocalPath:   "/tmp/vo/run-pipeline-test.mp3",
 			CleanedPath: "",
 			Voice:       "en-US-RogerNeural",
-			FileHash:    "vp-run-pipeline-test-aabbcc",
+			LegacyFileMD5:    "vp-run-pipeline-test-aabbcc",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "dest-folder-1"}
@@ -580,7 +580,7 @@ func TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput(t *tes
 		cannedOut: TTSOutput{
 			LocalPath: "/tmp/vo/stage1-valid.mp3",
 			Voice:     "it-IT-ElsaNeural",
-			FileHash:  "hash-stage1-valid-001",
+			LegacyFileMD5:  "hash-stage1-valid-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage1-valid"}
@@ -619,7 +619,7 @@ func TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput(t *tes
 		"FASE 2 contract #1: TTS must produce a non-empty LocalPath")
 	assert.Equal(t, "/tmp/vo/stage1-valid.mp3", out.LocalPath)
 	assert.Equal(t, "it-IT-ElsaNeural", out.Voice)
-	assert.Equal(t, "hash-stage1-valid-001", out.FileHash)
+	assert.Equal(t, "hash-stage1-valid-001", out.LegacyFileMD5)
 
 	// Stage 3 (Publish) must have been invoked exactly once.
 	require.Len(t, pub.published, 1,
@@ -737,7 +737,7 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_ForwardsLanguageAndProje
 		cannedOut: TTSOutput{
 			LocalPath: "/tmp/vo/stage3-lang-proj.mp3",
 			Voice:     "it-IT-ElsaNeural",
-			FileHash:  "hash-stage3-lp-001",
+			LegacyFileMD5:  "hash-stage3-lp-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage3-lang-proj"}
@@ -899,7 +899,7 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_Propagates
 		cannedOut: TTSOutput{
 			LocalPath: "/tmp/vo/stage3-no-lang.mp3",
 			Voice:     "en-US-RogerNeural",
-			FileHash:  "hash-stage3-nolang",
+			LegacyFileMD5:  "hash-stage3-nolang",
 		},
 	}
 	pub := &stubFailingPublisher{
@@ -978,7 +978,7 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 		cannedOut: TTSOutput{
 			LocalPath:    audioPath,
 			Voice:        "en-US-RogerNeural",
-			FileHash:     "timing-forward-hash",
+			LegacyFileMD5:     "timing-forward-hash",
 			Provider:     "edge_tts",
 			BoundaryMode: audio.BoundaryWord,
 			Duration:     2500 * time.Millisecond,

@@ -8,12 +8,15 @@
 //     PRAGMA table_info(media_assets) lists the 13 columns added
 //     by migration 152 (source_provider, source_video_id,
 //     source_channel_id, source_url, start_ms, end_ms,
-//     original_language, title, binary_sha256, semantic_hash,
-//     rights_status, policy_version, lifecycle_status). Mirrors
-//     the structural pattern of the migration-099
-//     QdrantAssetColumnsPresent test; each required entry MUST
-//     be backed by a corresponding ALTER TABLE in
-//     migrations/sqlite/152_add_canonical_metadata_columns.sql.
+//     original_language, title, binary_sha256, semantic_hash,	//     rights_status, policy_version). Mirrors
+	//     the structural pattern of the migration-099
+	//     QdrantAssetColumnsPresent test; each required entry MUST
+	//     be backed by a corresponding ALTER TABLE in
+	//     migrations/sqlite/152_add_canonical_metadata_columns.sql.
+	//
+	//     lifecycle_status was included in the original migration 152
+	//     but dropped in migration 230 (shadow/compatibility column —
+	//     lifecycle_state is the sole operational SSOT).
 //   - TestMigrations_152_CanonicalConsolidationColumnsRoundTrip
 //     Migrating an empty DB is the integration-test equivalent of
 //     "FetchAsset works on fixture in-memory".
@@ -31,7 +34,7 @@ func TestMigrations_152_CanonicalConsolidationColumnsPresent(t *testing.T) {
 		"source_provider", "source_video_id", "source_channel_id",
 		"source_url", "start_ms", "end_ms", "original_language",
 		"title", "binary_sha256", "semantic_hash",
-		"rights_status", "policy_version", "lifecycle_status",
+		"rights_status", "policy_version",
 	}
 	seen := scanColumnNames(t, db, "media_assets")
 	for _, col := range required {
@@ -46,18 +49,17 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 	defer cleanup()
 
 	const assetID = "rt-canon-1"
-	_, err := db.Exec(`
-		INSERT INTO media_assets (
+	_, err := db.Exec(		`INSERT INTO media_assets (
 			id, lifecycle_state, source_provider, source_video_id, source_channel_id,
 			source_url, start_ms, end_ms, original_language, title,
 			binary_sha256, semantic_hash, rights_status,
-			policy_version, lifecycle_status
+			policy_version
 		) VALUES (
 			?, 'ACTIVE', 'youtube', 'yt-consolidate-1', 'UC_consolidate',
 			'https://www.youtube.com/watch?v=yt-consolidate-1',
 			?, ?, 'en', 'Round-Trip Canonical Title',
 			?, 'semhash-from-asset-visual-summaries-0001',
-			'permission_granted', 'v1', 'ACTIVE'
+			'permission_granted', 'v1'
 		)`,
 		assetID,
 		int64(32000), int64(37000),
@@ -71,18 +73,18 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 		sourceProvider, sourceVideoID, sourceChannelID, sourceURL string
 		startMs, endMs                                            int64
 		originalLanguage, title, binarySHA256, semanticHash       string
-		rightsStatus, policyVersion, lifecycleStatus              string
+		rightsStatus, policyVersion                               string
 	)
 	err = db.QueryRow(`
 		SELECT source_provider, source_video_id, source_channel_id,
 		       source_url, start_ms, end_ms, original_language, title,
 		       binary_sha256, semantic_hash, rights_status,
-		       policy_version, lifecycle_status
+		       policy_version
 		FROM media_assets WHERE id = ?`, assetID,
 	).Scan(&sourceProvider, &sourceVideoID, &sourceChannelID, &sourceURL,
 		&startMs, &endMs, &originalLanguage, &title,
 		&binarySHA256, &semanticHash, &rightsStatus,
-		&policyVersion, &lifecycleStatus)
+		&policyVersion)
 	if err != nil {
 		t.Fatalf("select canonical round-trip asset: %v", err)
 	}
@@ -97,7 +99,6 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 		"semantic_hash":     semanticHash,
 		"rights_status":     rightsStatus,
 		"policy_version":    policyVersion,
-		"lifecycle_status":  lifecycleStatus,
 	}
 	wants := map[string]string{
 		"source_provider":   "youtube",
@@ -110,7 +111,6 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 		"semantic_hash":     "semhash-from-asset-visual-summaries-0001",
 		"rights_status":     "permission_granted",
 		"policy_version":    "v1",
-		"lifecycle_status":  "ACTIVE",
 	}
 	for col, got := range expectations {
 		if got != wants[col] {

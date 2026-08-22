@@ -188,7 +188,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	}
 
 	ref := scriptgen.AudioReference{
-		ID:       result.FileHash,
+		ID:       result.LegacyFileMD5,
 		URL:      result.DriveLink,
 		FilePath: filePath,
 		Duration: float64(result.DurationMs) / 1000.0,
@@ -224,7 +224,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		zap.String("scene_id", input.SceneID),
 		zap.String("language", string(input.Language)),
 		zap.String("file_path", filePath),
-		zap.String("file_hash", result.FileHash),
+		zap.String("file_hash", result.LegacyFileMD5),
 		zap.Bool("timing_captured", ref.Timing != nil),
 	)
 

@@ -28,7 +28,7 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 	return nil
 }
 
-// seedFileHash pre-computes the contentHash that IndexClip will compute
+// seedLegacyFileMD5 pre-computes the contentHash that IndexClip will compute
 // when called, and writes it to media_assets.file_hash so the CAS fence
 // in setIndexedAt passes for the test fixture.
 //
@@ -49,17 +49,17 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 // Mirrors the `preSeedFileHash` helper in indexing_api_audio_test.go
 // (already shipped on origin/main, July 2026, PRE-AUDIO-CHANNEL-EXTENSION)
 // — both helpers thread (svc, clipID) and write back to the same row.
-func seedFileHash(t *testing.T, svc *Service, clipID string) {
+func seedLegacyFileMD5(t *testing.T, svc *Service, clipID string) {
 	t.Helper()
 	ctx := context.Background()
 	ch, _, err := svc.computeContentHash(ctx, clipID)
 	if err != nil {
-		t.Fatalf("seedFileHash: computeContentHash for %s failed: %v", clipID, err)
+		t.Fatalf("seedLegacyFileMD5: computeContentHash for %s failed: %v", clipID, err)
 	}
 	if _, err := svc.db.ExecContext(ctx,
 		`UPDATE media_assets SET file_hash = ? WHERE id = ?`, ch, clipID,
 	); err != nil {
-		t.Fatalf("seedFileHash: UPDATE for %s failed: %v", clipID, err)
+		t.Fatalf("seedLegacyFileMD5: UPDATE for %s failed: %v", clipID, err)
 	}
 }
 
@@ -72,10 +72,10 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// search_text column — computeContentHash errored with `no such
 	// column` and fell back to contentHash=""; the empty hash then
 	// matched row.file_hash='' (canonical default) and the test passed
-	// by accident. The fold + the seedFileHash helper (above) now exercise
+	// by accident. The fold + the seedLegacyFileMD5 helper (above) now exercise
 	// the production-shape CAS fence honestly: search_text column exists
 	// in canonical, computeContentHash succeeds, file_hash is pre-seeded
-	// with the same hash via seedFileHash, CAS matches, setIndexedAt
+	// with the same hash via seedLegacyFileMD5, CAS matches, setIndexedAt
 	// writes INDEXED. See canonical.go header's "Historical audits" block
 	// for the full exemption-archaeology context.
 	db := drive.NewTestDBWithSchema(t, drive.CanonicalMediaAssetsSchema)
@@ -144,7 +144,7 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// and setIndexedAt surfaces ErrIndexSuperseded
 	// (CAS miss for clip_1 (source_version="") — index event superseded
 	// by newer version).
-	seedFileHash(t, svc, "clip_1")
+	seedLegacyFileMD5(t, svc, "clip_1")
 
 	// 5. Index individual clip via API
 	err = svc.IndexClip(context.Background(), "clip_1")

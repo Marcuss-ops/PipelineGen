@@ -164,7 +164,7 @@ func TestSQLiteEntityImageCatalogRoundTripAndIdentitySeparation(t *testing.T) {
 	materializedAt := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	verifiedAt := materializedAt.Add(time.Minute)
 	if err := repo.UpsertMaterialization(ctx, entitycatalog.Materialization{
-		CandidateID: firstID, AssetID: "asset-mj-1", FileHash: "sha-mj-1",
+		CandidateID: firstID, AssetID: "asset-mj-1", LegacyFileMD5: "sha-mj-1",
 		DriveFileID: "drive-mj-1", DriveLink: "https://drive.google.com/file/d/drive-mj-1/view",
 		LocalPath: "/tmp/mj-1.jpg", Status: entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: materializedAt, LastVerifiedAt: verifiedAt,

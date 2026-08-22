@@ -217,12 +217,12 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 		return nil
 	}
 	candidateID, err := entityImageCatalogCandidateID(ctx, p.catalog, discovered)
-	if err != nil || candidateID < 1 || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.FileHash) == "" {
+	if err != nil || candidateID < 1 || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.LegacyFileMD5) == "" {
 		return err
 	}
 	now := time.Now().UTC()
 	if err := p.catalog.UpsertMaterialization(ctx, entitycatalog.Materialization{
-		CandidateID: candidateID, AssetID: persisted.AssetID, FileHash: persisted.FileHash,
+		CandidateID: candidateID, AssetID: persisted.AssetID, LegacyFileMD5: persisted.LegacyFileMD5,
 		DriveLink: persisted.DriveLink, LocalPath: persisted.LocalPath,
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: now, LastVerifiedAt: now,
@@ -254,7 +254,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog lookup: %v", hydrationErr))
 			} else {
 				if catalogImage && !wasReady && readyVidRushCandidate(hydrated) &&
-					(strings.TrimSpace(hydrated.DriveLink) != "" || strings.TrimSpace(hydrated.FileHash) != "") {
+					(strings.TrimSpace(hydrated.DriveLink) != "" || strings.TrimSpace(hydrated.LegacyFileMD5) != "") {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogDriveReuse()
 					}

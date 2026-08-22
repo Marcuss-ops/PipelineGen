@@ -150,10 +150,10 @@ type VoiceoverItemResult struct {
 	// failed before production.
 	CleanedPath string
 
-	// FileHash is the MD5 hex digest of the canonical artifact
+	// LegacyFileMD5 is the MD5 hex digest of the canonical artifact
 	// (LocalPath or CleanedPath, whichever Lifecycle.ProcessAsset
 	// fingerprints).
-	FileHash string
+	LegacyFileMD5 string
 
 	// Filename is the sanitised filename written to LocalPath/CleanedPath
 	// and surfaced in the voiceovers.filename SQLite column.

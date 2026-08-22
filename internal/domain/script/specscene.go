@@ -242,7 +242,7 @@ type EntityImageBinding struct {
 	// a Drive view-page link. Empty when no direct image is available.
 	PreviewURL string `json:"preview_url,omitempty"`
 	// SHA256 is the content address of the materialized asset bytes (the
-	// provider candidate's FileHash after verification). It is what lets the
+	// provider candidate's LegacyFileMD5 after verification). It is what lets the
 	// binding be promoted into the content-addressed EntityMediaIndex — a
 	// binding without it stays a plain reference and can never become a
 	// verifiable card asset.

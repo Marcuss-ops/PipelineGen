@@ -81,7 +81,7 @@ func runTrimSoundEffects(args []string) error {
 		if duration <= time.Duration(*maxSeconds*float64(time.Second)) {
 			if clip.Duration != duration && !*dryRun {
 				clip.Duration = duration
-				if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+				if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 					return fmt.Errorf("refresh metadata for %s: %w", clip.Name, err)
 				}
 				metadataUpdated++
@@ -112,7 +112,7 @@ func runTrimSoundEffects(args []string) error {
 			return fmt.Errorf("hash %s: %w", localPath, err)
 		}
 		clip.Duration = newDuration
-		clip.SetFileHash(hash)
+		clip.SetLegacyFileMD5(hash)
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
 			return fmt.Errorf("reindex trimmed effect %s: %w", clip.Name, err)
 		}

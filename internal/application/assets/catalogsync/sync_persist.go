@@ -32,8 +32,8 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	incomingParentFolderID := clip.ParentFolderID()
 	incomingFolderPath := clip.FolderPath()
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
-		if existing.FileHash() != "" {
-			clip.SetFileHash(existing.FileHash())
+		if existing.LegacyFileMD5() != "" {
+			clip.SetLegacyFileMD5(existing.LegacyFileMD5())
 		}
 		if existing.LocalPath() != "" {
 			clip.SetLocalPath(existing.LocalPath())
@@ -78,7 +78,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	// source of truth. Callers that need the asset_index view should
 	// derive it from media_assets (the canonical projection), not
 	// duplicate the write here.
-	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 		return fmt.Errorf("dispatcher.EnqueueAndIndex %s: %w", clip.ID, err)
 	}
 

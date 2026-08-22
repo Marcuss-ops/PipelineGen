@@ -3,7 +3,7 @@
 // TDD regression-guard for the 161 dead-letter outbox events caused by
 // empty source_version in the supersede gate (2026-07-09 audit).
 //
-// Root cause: mediaProcessor returned empty FileHash for some Artlist clips,
+// Root cause: mediaProcessor returned empty LegacyFileMD5 for some Artlist clips,
 // stagePersistResults dispatched with empty contentHash, and the IndexingHandler
 // dead-lettered the events (source_version="" is terminal).
 //
@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// emptyHashMediaProcessor returns ProcessResults with empty FileHash,
+// emptyHashMediaProcessor returns ProcessResults with empty LegacyFileMD5,
 // simulating the real scenario where the media processor fails to compute
 // a content hash (e.g. download step succeeded but hash step was skipped).
 type emptyHashMediaProcessor struct{}
@@ -37,7 +37,7 @@ func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.Proces
 		ID:           input.ID,
 		Filename:     input.ID + "_processed.mp4",
 		LocalPath:    input.OutputDir + "/" + input.ID + "_processed.mp4",
-		FileHash:     "", // empty SHA-256
+		LegacyFileMD5:     "", // empty SHA-256
 		DriveLink:    "https://drive.google.com/file/d/" + input.ID + "-drive/view",
 		DriveFileID:  input.ID + "-drive-id",
 		DownloadLink: input.SourceURL,
@@ -46,7 +46,7 @@ func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.Proces
 }
 
 // TestSourceVersionFix_EmptyHashRejected verifies that stagePersistResults
-// is fail-closed: when the media processor returns an empty FileHash the
+// is fail-closed: when the media processor returns an empty LegacyFileMD5 the
 // clip is marked as "hash_missing", no outbox event is emitted, and no
 // row is written to media_assets by the AssetFinalizerTx.
 func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
@@ -128,8 +128,8 @@ func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 	require.NotNil(t, resp)
 
 	// The clip is NOT processed — fail-closed on empty SHA-256.
-	assert.Equal(t, 0, resp.Processed, "clip with empty FileHash must NOT be processed")
-	assert.Equal(t, 1, resp.Failed, "clip with empty FileHash must be counted as failed")
+	assert.Equal(t, 0, resp.Processed, "clip with empty LegacyFileMD5 must NOT be processed")
+	assert.Equal(t, 1, resp.Failed, "clip with empty LegacyFileMD5 must be counted as failed")
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "hash_missing", resp.Items[0].Status,
 		"item status must be 'hash_missing' when SHA-256 is empty")

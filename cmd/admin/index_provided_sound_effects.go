@@ -233,7 +233,7 @@ func runIndexProvidedSoundEffects(args []string) error {
 		clip.SetDriveLink("https://drive.google.com/file/d/" + spec.driveID + "/view")
 		clip.SetDownloadLink("https://drive.google.com/uc?export=download&id=" + spec.driveID)
 		clip.SetLocalPath(localPath)
-		clip.SetFileHash(hash)
+		clip.SetLegacyFileMD5(hash)
 		clip.SetParentFolderID(folderID)
 		clip.SetMetadataString("mime_type", meta.MimeType)
 		clip.SetMetadataString("source_name", meta.Name)

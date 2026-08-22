@@ -1,13 +1,12 @@
 package dto
 
 import (
-	"crypto/md5"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 
 	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
 // CanonicalYouTubeURL normalizes a YouTube URL to the standard watch format.
@@ -51,20 +50,20 @@ func ValidateDownloadURL(rawURL string) error {
 	return fmt.Errorf("URL host %q is not in the allowed list", host)
 }
 
-// FallbackMD5String computes an MD5 hex digest of a string.
+// FallbackMD5String returns the MD5 hex digest of a string, delegating to
+// the canonical checksum package (compat-only — never identity/dedup).
 func FallbackMD5String(data string) string {
-	h := md5.Sum([]byte(data))
-	return fmt.Sprintf("%x", h)
+	return checksum.LegacyMD5String(data)
 }
 
-// FallbackMD5File computes an MD5 hex digest of a file's contents.
+// FallbackMD5File returns the MD5 hex digest of a file's contents,
+// delegating to the streaming checksum package (compat-only).
 func FallbackMD5File(path string) string {
-	data, err := os.ReadFile(path)
+	h, err := checksum.LegacyMD5File(path)
 	if err != nil {
 		return ""
 	}
-	h := md5.Sum(data)
-	return fmt.Sprintf("%x", h)
+	return h
 }
 
 // IsTransientDownloadError was removed in Azione 2/8 of Step 7 (July 2026):

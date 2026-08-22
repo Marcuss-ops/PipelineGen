@@ -16,7 +16,7 @@ type AssetRecord struct {
 	DriveLink    string
 	DownloadLink string
 
-	FileHash    string
+	LegacyFileMD5    string
 	ContentHash string
 
 	Status   string

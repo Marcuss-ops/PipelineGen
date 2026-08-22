@@ -137,7 +137,7 @@ type Version struct {
 	AssetID       string    `json:"asset_id"`
 	VersionNumber int       `json:"version_number"`
 	SourceURI     string    `json:"source_uri"`
-	FileHash      string    `json:"file_hash"`
+	LegacyFileMD5      string    `json:"legacy_file_md5"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
 	MimeType      string    `json:"mime_type"`
 	MetadataJSON  string    `json:"metadata_json,omitempty"`
@@ -157,7 +157,7 @@ type AssetExecutionResult struct {
 	LocalPath    string `json:"local_path,omitempty"`
 	DriveLink    string `json:"drive_link,omitempty"`
 	DownloadLink string `json:"download_link,omitempty"`
-	FileHash     string `json:"file_hash,omitempty"`
+	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
 	Status       string `json:"status,omitempty"` // e.g. "processed", "skipped_existing", "failed"
 	Error        string `json:"error,omitempty"`
 }

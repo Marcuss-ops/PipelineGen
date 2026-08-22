@@ -183,7 +183,7 @@ var ForbiddenCandidateViewJSONFields = []string{
 	// ─── Hash / content fingerprints ───
 	"hash",
 	"content_hash",
-	"file_hash",
+	"legacy_file_md5",
 	"md5",
 	"md5_checksum",
 	"sha256",

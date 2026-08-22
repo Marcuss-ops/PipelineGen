@@ -21,7 +21,7 @@ func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
 			AssetID: "asset-john-cena", Provider: scriptpkg.VidRushProviderInternetImages,
 			Query: "John Cena", SourceURL: "https://images.example/john-cena.jpg", Score: 1,
 			DriveLink: "https://drive.google.com/file/d/john-cena/view",
-			FileHash:  "hash-john-cena", RightsStatus: "unknown_allowed",
+			LegacyFileMD5:  "hash-john-cena", RightsStatus: "unknown_allowed",
 			AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
@@ -40,7 +40,7 @@ func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
 	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Describe John Cena", Type: "PERSON"}
 	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
 		{AssetID: "discovered", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/discovered.jpg", Score: 1},
-		{AssetID: "durable", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/durable.jpg", Score: 1, DriveLink: "https://drive.google.com/file/d/durable/view", FileHash: "hash", RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed},
+		{AssetID: "durable", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/durable.jpg", Score: 1, DriveLink: "https://drive.google.com/file/d/durable/view", LegacyFileMD5: "hash", RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed},
 	}}}
 
 	got, ok := findEntityImageCandidate(entity, seg)
@@ -79,7 +79,7 @@ func readyEntityImageCandidate(assetID, query, entity string) scriptpkg.SegmentA
 		Score:              1,
 		SourceURL:          "https://images.example/" + assetID + ".jpg",
 		DriveLink:          "https://drive.google.com/file/d/" + assetID + "/view",
-		FileHash:           "hash-" + assetID,
+		LegacyFileMD5:           "hash-" + assetID,
 		RightsStatus:       "unknown_allowed",
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
@@ -231,7 +231,7 @@ func TestMaterialization_UnverifiedImageCannotReachBinding(t *testing.T) {
 	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "asset-discovered", Provider: "internet_images", Query: "Dwayne Johnson",
 		SourceURL: "https://images.example/dwayne.jpg", Score: 1,
-		// No DriveLink/FileHash/lifecycle states → still unverified.
+		// No DriveLink/LegacyFileMD5/lifecycle states → still unverified.
 	}}}}
 
 	if _, ok := findEntityImageCandidate(entity, seg); ok {

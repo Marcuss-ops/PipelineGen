@@ -57,6 +57,20 @@ func TestHashFunc_DeterministicAcrossCalls(t *testing.T) {
 	}
 }
 
+// TestSHA256String_Golden pins the byte-identical delegation to the kernel
+// digest SSOT: the digest of "hello" must equal the canonical SHA-256
+// literal computed by the pre-migration implementation (crypto/sha256).
+func TestSHA256String_Golden(t *testing.T) {
+	const goldenHello = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+	if got := hashutil.SHA256String("hello"); got != goldenHello {
+		t.Fatalf("SHA256String(hello) = %q, want %q", got, goldenHello)
+	}
+	// Byte-stability for the idempotency-key shape the port serves.
+	if got := hashutil.SHA256String("j-1:a-1:h-1"); got != hashutil.SHA256String("j-1:a-1:h-1") {
+		t.Fatal("SHA256String must be deterministic")
+	}
+}
+
 // TestHashFunc_EmptyStringReturnsEmptyMarker verifies the empty-input
 // pass-through behavior of the fake (the production SHA-256 returns
 // a valid empty hash, NOT an empty marker — but the fake adds the

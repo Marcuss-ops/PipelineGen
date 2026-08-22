@@ -113,7 +113,7 @@ func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 		Name:      "Test Media",
 		DriveLink: "https://drive.google.com/file/d/abc123/view",
 		LocalPath: tmpFile,
-		FileHash:  "hash123",
+		LegacyFileMD5:  "hash123",
 		Status:    "processed",
 	}
 
@@ -180,7 +180,7 @@ func TestMediaFinalizerFailsWhenDriveFileMissing(t *testing.T) {
 		Name:      "Drive intent set, upload failed",
 		DriveLink: "", // upload attempt failed → no link produced
 		LocalPath: tmpFile,
-		FileHash:  "hash123",
+		LegacyFileMD5:  "hash123",
 		Status:    "processed",
 	}
 
@@ -229,7 +229,7 @@ func TestMediaFinalizerRequiresLocalPath(t *testing.T) {
 		Name:      "Test No Local Path",
 		DriveLink: "https://drive.google.com/file/d/abc/view",
 		// LocalPath is empty
-		FileHash: "hash123",
+		LegacyFileMD5: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -270,7 +270,7 @@ func TestMediaFinalizerRequiresFileHash(t *testing.T) {
 		ID:        "test_media_004",
 		Name:      "Test No File Hash",
 		DriveLink: "https://drive.google.com/file/d/abc/view",
-		// LocalPath is empty, FileHash is empty
+		// LocalPath is empty, LegacyFileMD5 is empty
 	}
 
 	opts := FinalizeOptions{
@@ -311,7 +311,7 @@ func TestMediaFinalizerLocalFileNotExists(t *testing.T) {
 		Name:      "Test Non-existent File",
 		DriveLink: "https://drive.google.com/file/d/abc/view",
 		LocalPath: "/tmp/nonexistent_file_12345.mp4",
-		FileHash:  "hash123",
+		LegacyFileMD5:  "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -351,7 +351,7 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 		ID:        "test_media_006",
 		Name:      "Test DB Failure",
 		LocalPath: "/tmp/test.mp4",
-		FileHash:  "hash123",
+		LegacyFileMD5:  "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -379,7 +379,7 @@ func (p testAssetIndexPort) Upsert(ctx context.Context, rec *AssetIndexRecord) e
 	return p.service.Upsert(ctx, &assetindex.AssetRecord{
 		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
 		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, FileHash: rec.FileHash,
+		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, LegacyFileMD5: rec.LegacyFileMD5,
 		ContentHash: rec.ContentHash, Status: rec.Status, Metadata: rec.Metadata,
 	})
 }
@@ -453,7 +453,7 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 		ID:          "test_asset_001",
 		Name:        "Test Asset",
 		LocalPath:   tmpFile,
-		FileHash:    "filehash123",
+		LegacyFileMD5:    "filehash123",
 		ContentHash: "contenthash123",
 		Source:      "artlist",
 		SourceID:    "clip-123",
@@ -520,7 +520,7 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 		ID:          "test_asset_002",
 		Name:        "Test Asset 2",
 		LocalPath:   tmpFile,
-		FileHash:    "filehash456",
+		LegacyFileMD5:    "filehash456",
 		ContentHash: "contenthash456",
 		Status:      "processed",
 	}
@@ -591,7 +591,7 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 		ID:        "test_verify_err_001",
 		Name:      "Drive link verify transport error",
 		LocalPath: tmpFile,
-		FileHash:  "hash_verify_err",
+		LegacyFileMD5:  "hash_verify_err",
 		DriveLink: "https://drive.google.com/file/d/abc123/view",
 		Status:    "processed",
 	}
@@ -655,7 +655,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:          "art-001",
 		Name:        "Boxing clip",
 		LocalPath:   tmpFile,
-		FileHash:    "fh-001",
+		LegacyFileMD5:    "fh-001",
 		ContentHash: "ch-001",
 		Source:      "artlist",
 		MediaType:   "video",
@@ -691,7 +691,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:          "art-001",
 		Name:        "Boxing clip republished",
 		LocalPath:   tmpFile,
-		FileHash:    "fh-002",
+		LegacyFileMD5:    "fh-002",
 		ContentHash: "ch-002",
 		Source:      "artlist",
 		MediaType:   "video",
@@ -720,12 +720,12 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		t.Errorf("metadata_json.file_hash after republish = %v, want %q", meta2["file_hash"], "fh-002")
 	}
 
-	// ContentHash fallback: when ContentHash is empty, falls back to FileHash
+	// ContentHash fallback: when ContentHash is empty, falls back to LegacyFileMD5
 	rec3 := &MediaRecord{
 		ID:        "art-002",
 		Name:      "No explicit content hash",
 		LocalPath: tmpFile,
-		FileHash:  "fh-fallback",
+		LegacyFileMD5:  "fh-fallback",
 		Source:    "artlist",
 		MediaType: "video",
 		Status:    "processed",
@@ -745,7 +745,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 
 	meta3 := parseMetadataJSON(t, rec3.Metadata)
 	if meta3["content_hash"] != "fh-fallback" {
-		t.Errorf("metadata_json.content_hash fallback = %v, want %q (empty ContentHash -> FileHash)",
+		t.Errorf("metadata_json.content_hash fallback = %v, want %q (empty ContentHash -> LegacyFileMD5)",
 			meta3["content_hash"], "fh-fallback")
 	}
 }

@@ -45,8 +45,8 @@ type VoiceoverSynthesisResult struct {
 	// Empty when no audio cleanup was performed.
 	CleanedPath string
 
-	// FileHash is the SHA-256 hash of the generated audio file.
-	FileHash string
+	// LegacyFileMD5 is the SHA-256 hash of the generated audio file.
+	LegacyFileMD5 string
 
 	// FileSize is the size of the generated audio file in bytes.
 	FileSize int64

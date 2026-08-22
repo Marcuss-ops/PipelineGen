@@ -248,7 +248,7 @@ func (w *BulkUploadWorker) processOneClip(
 	if tools != nil && tools.Event != nil {
 		tools.Event("hash_computed", fmt.Sprintf("Computed hash for %s", cand.LocalPath), map[string]any{
 			"clip_id":   clipID,
-			"file_hash": fileHash,
+			"legacy_file_md5": fileHash,
 		})
 	}
 

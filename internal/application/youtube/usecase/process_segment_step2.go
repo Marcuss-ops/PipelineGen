@@ -31,7 +31,7 @@ import (
 //     (Steps 3-5) + ffprobe (Step 5a) and continue to the
 //     enrichment/finalization gate (Steps 6-9). This method surfaces
 //     the cached binary coordinates on `out` (Item.LocalPath +
-//     Item.FileHash + Item.DriveFileID + Item.DriveLink +
+//     Item.LegacyFileMD5 + Item.DriveFileID + Item.DriveLink +
 //     Item.DownloadLink) so Execute can finalize without re-acquiring
 //     the binary. The status is NOT set here — Execute stamps
 //     "processed" after the finalization gate runs.
@@ -64,10 +64,10 @@ func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 		// rows may have a Drive ID but missing duration/hash; those must be
 		// reprocessed so a green cache response cannot preserve partial state.
 		cacheComplete := existingItem != nil && existingItem.Duration > 0 &&
-			existingItem.FileHash != "" && existingItem.DriveFileID != ""
+			existingItem.LegacyFileMD5 != "" && existingItem.DriveFileID != ""
 		if cacheErr == nil && exists && cacheComplete {
 			out.Item.LocalPath = existingItem.LocalPath
-			out.Item.FileHash = existingItem.FileHash
+			out.Item.LegacyFileMD5 = existingItem.LegacyFileMD5
 			out.Item.DriveFileID = existingItem.DriveFileID
 			out.Item.DriveLink = existingItem.DriveLink
 			out.Item.DownloadLink = existingItem.DownloadLink

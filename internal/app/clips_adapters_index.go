@@ -8,8 +8,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
 // PR-CLIPS-INDEXER-PORT-RETIRE (August 2026): clipsIndexerAdapter +
@@ -36,9 +36,9 @@ import (
 
 // ── Hash adapter ─────────────────────────────────────────────────
 
-// clipsHashAdapter wraps hashutil.MD5File behind clips.ClipHashPort
+// clipsHashAdapter wraps checksum.LegacyMD5File behind clips.ClipHashPort
 // so the bulk_upload_worker code path doesn't have to import
-// "internal/infrastructure/files" wholesale. MD5File is the only
+// "internal/platform/checksum" wholesale. MD5File is the only
 // call site; expanding the surface must land via a new port method.
 type clipsHashAdapter struct{}
 
@@ -50,7 +50,7 @@ func newClipsHashAdapter() clips.ClipHashPort {
 }
 
 func (a *clipsHashAdapter) MD5File(path string) (string, error) {
-	return files.MD5File(path)
+	return checksum.LegacyMD5File(path)
 }
 
 // ── Source resolver adapter ──────────────────────────────────────

@@ -115,7 +115,7 @@ func DeriveExternalAssetID(clipID, sourceURL string) string {
 		return sanitizeExternalAssetID(clipID)
 	}
 	if strings.TrimSpace(sourceURL) != "" {
-		return hashutil.MD5String(sourceURL)[:12]
+		return hashutil.LegacyMD5String(sourceURL)[:12]
 	}
 	return "unknown"
 }

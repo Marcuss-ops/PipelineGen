@@ -26,7 +26,7 @@ func renderAssetSHA256(a *asset.Asset) (string, error) {
 	if a == nil || strings.TrimSpace(a.LocalPath()) == "" {
 		return "", fmt.Errorf("asset has no local path")
 	}
-	if candidate := strings.TrimSpace(a.FileHash()); len(candidate) == 64 && !strings.Contains(candidate, ":") {
+	if candidate := strings.TrimSpace(a.LegacyFileMD5()); len(candidate) == 64 && !strings.Contains(candidate, ":") {
 		return candidate, nil
 	}
 	return fileutil.SHA256File(a.LocalPath())

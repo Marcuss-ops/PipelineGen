@@ -185,7 +185,7 @@ func (s *StockService) Run(ctx context.Context, req YouTubeStockRequest) (*YouTu
 			segments[i].DriveLink = resp.Items[i].DriveLink
 			segments[i].Status = resp.Items[i].Status
 			segments[i].AssetID = resp.Items[i].ID
-			segments[i].FileHash = resp.Items[i].FileHash
+			segments[i].LegacyFileMD5 = resp.Items[i].LegacyFileMD5
 		}
 		for i := range out.SelectedSegments {
 			if out.SelectedSegments[i].YouTubeVideoID != videoID {

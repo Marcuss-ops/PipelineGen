@@ -95,7 +95,7 @@ func TestBuildVoiceoverCommitRequest_PreservesSemanticMetadata(t *testing.T) {
 		ID:        "vo-semantic-projection",
 		Language:  "en",
 		RequestID: "req-semantic-projection",
-		FileHash:  "hash-semantic-projection",
+		LegacyFileMD5:  "hash-semantic-projection",
 		MetaJSON:  []byte(`{"search_text":"semantic search","semantic_tags":["boxing"],"semantic_subjects":["sport"],"semantic_mood":["dramatic"]}`),
 	}
 

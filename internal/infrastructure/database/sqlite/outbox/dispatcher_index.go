@@ -54,38 +54,10 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		})
 	}
 	if contentHash == "" {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set file_hash before dispatching)", clip.ID)
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
 	if d.canonicalCommitter != nil {
-		mediaType := string(clip.MediaType)
-		if mediaType == "" || mediaType == "clip" {
-			mediaType = "video"
-		}
-		filename := clip.Filename
-		if filename == "" {
-			filename = clip.Name
-		}
-		if filename == "" {
-			filename = clip.ID
-		}
-		lifecycle := string(clip.LifecycleState)
-		if lifecycle == "" {
-			lifecycle = "ACTIVE"
-		}
-		request := persistence.CommitRequest{
-			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name,
-			Filename: filename, MediaType: mediaType, Category: clip.Category,
-			DurationMs: clip.Duration.Milliseconds(), ContentHash: contentHash,
-			Description: clip.GetMetadataString("description"), SearchText: clip.SearchText,
-			LifecycleState: lifecycle, IndexState: clip.GetMetadataString("index_state"),
-			LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
-			ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: clip.Name,
-			SourceProvider: clip.GetMetadataString("source_provider"), SourceVideoID: clip.GetMetadataString("source_video_id"),
-			StartMs: int64(clip.GetMetadataInt("start_ms")), EndMs: int64(clip.GetMetadataInt("end_ms")),
-			Metadata:     persistence.TypedMetadata{Tags: clip.Tags, Extra: clip.Metadata},
-			AssetVersion: contentHash, EmitIndexEvent: true,
-		}
-		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, request); err != nil {
+		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequestFromAsset(clip, contentHash)); err != nil {
 			return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical commit: %w", err)
 		}
 		return nil

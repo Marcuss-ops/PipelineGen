@@ -21,7 +21,7 @@ func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *assetop.AssetRecord {
 		DriveFileID:  rec.DriveFileID,
 		DriveLink:    rec.DriveLink,
 		DownloadLink: rec.DownloadLink,
-		FileHash:     rec.FileHash,
+		LegacyFileMD5:     rec.LegacyFileMD5,
 		LocalPath:    rec.LocalPath,
 		Status:       rec.Status,
 		Error:        rec.Error,

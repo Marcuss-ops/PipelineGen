@@ -61,7 +61,7 @@ type ImageSearchResult struct {
 	Name          string
 	PreviewURL    string
 	DriveLink     string
-	FileHash      string
+	LegacyFileMD5      string
 	SourcePageURL string
 	Width         int
 	Height        int

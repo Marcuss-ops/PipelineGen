@@ -74,7 +74,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, identity, errors, observability, embedding, semanticdoc
+kernel_subzones: asset, job, script, event, identity, errors, observability, embedding, semanticdoc, digest
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -165,7 +165,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 # Expected platform adapters (target: internal/platform/<x>). platform/sqlite
 # only owns connection/transactions/migration/pragma mechanics — capability
 # repositories own SQL for their tables (per proposal §"platform/sqlite").
-platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, observability, httpserver, ollama, nvidia, youtube
+platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, observability, httpserver, ollama, nvidia, youtube, checksum
 
 # CANONICAL LAYOUT (binding): target_internal_roots
 #
@@ -475,6 +475,20 @@ hard_gates:
   - percheck_duration_probe_ssot
   - percheck_evidence_precedence_ssot
   - percheck_speech_timing_ssot
+  # Digest SSOT (August 2026): crypto/sha256 is owned by internal/kernel/digest.
+  # Any production import outside the SSOT root, the TLS/protocol exemptions
+  # (pkg/hmacsign, pkg/tlsload, internal/infrastructure/delivery) or the
+  # transitional allowlist fails closed. The allowlist ratchets to zero as
+  # files migrate to digest; each entry is removed in the same change.
+  - percheck_digest_sha256_ban
+  - percheck_digest_sha256_ban_allowlist_missing
+  # MD5 checksum SSOT (August 2026): crypto/md5 is owned by
+  # internal/platform/checksum (compatibility-only — legacy columns,
+  # legacy import, provider-supplied Drive md5Checksum). Any production
+  # import outside the SSOT root or the transitional allowlist fails
+  # closed. The allowlist ratchets to zero as files migrate.
+  - percheck_digest_md5_ban
+  - percheck_digest_md5_ban_allowlist_missing
   - percheck_upsert_points_sole_owner
   - percheck_frame_concept_projection_writer
   - percheck_control_plane_sql_writes

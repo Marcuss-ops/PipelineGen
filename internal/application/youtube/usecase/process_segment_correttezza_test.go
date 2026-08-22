@@ -330,7 +330,7 @@ func (s *stubWriterAssetRecorder) CommitClipAndIndexEvent(_ context.Context, _ s
 }
 
 // TestBuildClipAsset_CanonicalShape pins #6: the writer receives a
-// ClipAsset with ID, VideoID, LocalPath, FileHash, Drive,
+// ClipAsset with ID, VideoID, LocalPath, LegacyFileMD5, Drive,
 // Coordinates, and Metadata populated. (We can't drive the full
 // Execute path through a tmp file + download in this unit test
 // because the pipeline is too deep; the helper buildClipAsset is
@@ -343,7 +343,7 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 		ID:            "yt_abc_10_60_v1",
 		VideoID:       "abc",
 		LocalPath:     "/tmp/yt_abc_10_60_v1.mp4",
-		FileHash:      "abc123",
+		LegacyFileMD5:      "abc123",
 		PolicyVersion: "v1",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_x",
@@ -378,8 +378,8 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 	if rec.captured.VideoID != "abc" {
 		t.Errorf("VideoID: want %q got %q", "abc", rec.captured.VideoID)
 	}
-	if rec.captured.FileHash != "abc123" {
-		t.Errorf("FileHash: want %q got %q", "abc123", rec.captured.FileHash)
+	if rec.captured.LegacyFileMD5 != "abc123" {
+		t.Errorf("LegacyFileMD5: want %q got %q", "abc123", rec.captured.LegacyFileMD5)
 	}
 	if rec.captured.Drive.FileID != "drive_x" {
 		t.Errorf("Drive.FileID: want %q got %q", "drive_x", rec.captured.Drive.FileID)

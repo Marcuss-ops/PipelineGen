@@ -117,7 +117,7 @@ type RenditionSet struct {
 	ID            string
 	Filename      string
 	LocalPath     string
-	FileHash      string
+	LegacyFileMD5      string
 	ContentHash   string
 	DriveLink     string
 	DriveFileID   string
@@ -199,7 +199,7 @@ type RenditionSet struct {
 	ID              string
 	Filename        string
 	LocalPath       string
-	FileHash        string
+	LegacyFileMD5        string
 	MD5Helper       string
 	DownloadLinkURL string
 	ClipPageURLMeta string

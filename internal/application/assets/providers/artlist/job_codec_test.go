@@ -274,7 +274,7 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 				Status:       "completed",
 				DriveLink:    "https://drive.google.com/file/d/abc",
 				LocalPath:    "/tmp/city.mp4",
-				FileHash:     "hash123",
+				LegacyFileMD5:     "hash123",
 				DownloadLink: "https://example.com/dl/abc",
 			},
 		},

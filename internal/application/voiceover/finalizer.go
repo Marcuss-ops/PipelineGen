@@ -32,7 +32,7 @@
 //     "media_assets_projection: executed"
 //     is always appended on success.
 //   - Step 5 (index outbox):       REQUIRED — Outbox nil is a fatal
-//     wiring error. FileHash=="" is a
+//     wiring error. LegacyFileMD5=="" is a
 //     guard-skip (data-state reason).
 //   - Step 6 (cleanup outbox):     REQUIRED — Outbox nil is a fatal
 //     wiring error. ShouldSwap==false OR
@@ -87,15 +87,9 @@ type FinalizeCommand struct {
 	// Identity & Content
 	ID        string
 	RequestID string
-	// TextHash is raw string (NOT the typed TextHash envelope)
-	// because the finalizer is called from BOTH paths:
-	//   - Legacy per-batch path (stages.go::finalizeStage) passes
-	//     the 64-char full SHA-256 of req.Text.
-	//   - Per-item fan-out path (process_voiceover_item.go::Execute)
-	//     passes the 16-char ComputeTextHash prefix.
-	// The DB column stores whichever length the call path
-	// supplied. The typed TextHash envelope is canonical ONLY
-	// for the per-item 16-char value.
+	// TextHash is the canonical 64-char SHA-256 fingerprint
+	// (PR-VO-TEXTHASH-64, August 2026). Both the per-batch and
+	// per-item paths now supply the same 64-char hash.
 	TextHash string
 	Text     string // Full text; truncated to 100 chars for preview column
 	// Language is the typed BCP-47 envelope (voiceover.Language)
@@ -109,7 +103,7 @@ type FinalizeCommand struct {
 	// Audio Asset State
 	LocalPath       string
 	CleanedPath     string
-	FileHash        string // Index outbox skipped when empty
+	LegacyFileMD5        string // Index outbox skipped when empty
 	DurationSeconds float64
 
 	// Destination & Drive State
@@ -188,7 +182,7 @@ type FinalizeResult struct {
 	//   StateExecuted     — "media_assets_projection: executed"
 	//                       "index_outbox: executed"
 	//                       "cleanup_outbox: executed"
-	//   StateGuarded      — "index_outbox: guarded (empty FileHash)"
+	//   StateGuarded      — "index_outbox: guarded (empty LegacyFileMD5)"
 	//                       "cleanup_outbox: guarded (ShouldSwap=false)"
 	//                       "cleanup_outbox: guarded (no prior artefacts)"
 	//
@@ -269,7 +263,7 @@ type VoiceoverProjectionInput struct {
 	DriveFileID  string
 	DriveLink    string
 	DownloadLink string
-	FileHash     string
+	LegacyFileMD5     string
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES. The cross-package seam at
 	// internal/app/adapters_voiceover_use_case.go converts to
@@ -374,7 +368,7 @@ const (
 	// Execution-state markers appended to RequiredSteps on a
 	// successful Finalize. "executed" means the deps were wired AND
 	// the step ran. "guarded (...)" means the deps were wired BUT
-	// a data-state guard prevented execution (e.g. empty FileHash,
+	// a data-state guard prevented execution (e.g. empty LegacyFileMD5,
 	// ShouldSwap=false). State markers are NOT surfaced on
 	// wire-format (JSON) consumers; callers parsing internal log
 	// lines or programmatic step-state assertions should treat

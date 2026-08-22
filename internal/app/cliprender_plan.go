@@ -14,8 +14,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,7 +70,7 @@ func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 	}
 	canonicalCues := mapClipRenderCues(cues)
 	keyMaterial := fmt.Sprintf("%s\x00%s\x00%v", in.Language, in.StyleID, canonicalCues)
-	key := fmt.Sprintf("%x", sha256.Sum256([]byte(keyMaterial)))
+	key := digest.SHA256String(keyMaterial)
 	var content string
 	if cached, ok := assContentCache.Load(key); ok {
 		content = cached.(string)
@@ -86,8 +86,8 @@ func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 		return nil, fmt.Errorf("create subtitle output dir %q: %w", in.OutputDir, err)
 	}
 	localPath := filepath.Join(in.OutputDir, "subtitles.ass")
-	sum := sha256.Sum256([]byte(content))
-	sha := hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes(content)
+	sha := sum
 	// Reuse an already materialized artifact for the same canonical
 	// transcript/style. The run-local file is a hard link to the durable
 	// content-addressed cache, so repeated clip jobs do not regenerate or

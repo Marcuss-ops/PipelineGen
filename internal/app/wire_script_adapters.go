@@ -294,7 +294,7 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			AssetID: assetID, Provider: "internet_images", Query: strings.TrimSpace(req.Query),
 			Entity: strings.TrimSpace(req.Entity), SourceURL: strings.TrimSpace(r.PreviewURL),
 			SourcePageURL: strings.TrimSpace(r.SourcePageURL), PreviewURL: strings.TrimSpace(r.PreviewURL),
-			DriveLink: strings.TrimSpace(r.DriveLink), FileHash: strings.TrimSpace(r.FileHash),
+			DriveLink: strings.TrimSpace(r.DriveLink), LegacyFileMD5: strings.TrimSpace(r.LegacyFileMD5),
 			Score: r.Score, Width: r.Width, Height: r.Height,
 			RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
 		}
@@ -313,7 +313,7 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			rng.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
 			out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
 			for _, row := range cached {
-				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.FileHash) == "" {
+				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.LegacyFileMD5) == "" {
 					continue
 				}
 				candidate := toCandidate(row)

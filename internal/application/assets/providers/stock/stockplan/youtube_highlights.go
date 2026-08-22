@@ -226,7 +226,7 @@ type SelectedSegment struct {
 	CacheKey        string  `json:"cache_key"`
 	LocalPath       string  `json:"local_path,omitempty"`
 	AssetID         string  `json:"asset_id,omitempty"`
-	FileHash        string  `json:"file_hash,omitempty"`
+	LegacyFileMD5        string  `json:"legacy_file_md5,omitempty"`
 	DriveLink       string  `json:"drive_link,omitempty"`
 	QdrantPointID   string  `json:"qdrant_point_id,omitempty"`
 	Status          string  `json:"status"`

@@ -202,7 +202,7 @@ func upsertFileToDB(ctx context.Context, db *sql.DB, fileID, name, groupName, la
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO media_assets 
-			(id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_link, download_link, file_hash, embedding_json, metadata_json, created_at, updated_at)
+			(id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_link, download_link, legacy_file_md5, embedding_json, metadata_json, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source=excluded.source,

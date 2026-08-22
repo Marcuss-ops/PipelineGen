@@ -88,8 +88,8 @@ func (s *Service) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.Cl
 		if item.LocalPath != "" {
 			sb.WriteString(fmt.Sprintf("   📁 File:   %s\n", filepath.Base(item.LocalPath)))
 		}
-		if item.FileHash != "" {
-			sb.WriteString(fmt.Sprintf("   #  Hash:   %s\n", item.FileHash))
+		if item.LegacyFileMD5 != "" {
+			sb.WriteString(fmt.Sprintf("   #  Hash:   %s\n", item.LegacyFileMD5))
 		}
 		sb.WriteString("\n")
 	}

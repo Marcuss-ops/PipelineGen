@@ -67,7 +67,7 @@ func (s *AssetTxFinalizer) insertAssetVersion(
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_versions
-			(asset_id, version_number, source_uri, file_hash, file_size_bytes, mime_type, metadata_json, created_at)
+			(asset_id, version_number, source_uri, legacy_file_md5, file_size_bytes, mime_type, metadata_json, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		a.ArtifactID,

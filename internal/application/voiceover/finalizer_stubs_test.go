@@ -101,7 +101,7 @@ func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persi
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice, rec.Filename,
 		rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath, rec.DriveFileID,
-		rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.Status, rec.Error, rec.Strategy,
+		rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.Status, rec.Error, rec.Strategy,
 		rec.Metadata, rec.IdempotencyKey, rec.JobID, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err

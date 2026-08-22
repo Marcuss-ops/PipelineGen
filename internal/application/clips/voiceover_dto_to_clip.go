@@ -79,7 +79,7 @@ func VoiceoverDTOToClip(dto *ClipVoiceoverRecordDTO) *asset.Asset {
 	clip.SetDriveLink(dto.DriveLink)
 	clip.SetDriveFileID(dto.DriveFileID)
 	clip.SetDownloadLink(dto.DownloadLink)
-	clip.SetFileHash(dto.FileHash)
+	clip.SetLegacyFileMD5(dto.LegacyFileMD5)
 	clip.SetLocalPath(dto.LocalPath)
 	clip.SetMetadataJSON(dto.Metadata)
 	return clip

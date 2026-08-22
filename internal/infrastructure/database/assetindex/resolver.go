@@ -174,7 +174,7 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 		GroupName: clip.Group,
 		LocalPath: clip.LocalPath(),
 		DriveLink: clip.DriveLink(),
-		FileHash:  clip.FileHash(),
+		LegacyFileMD5:  clip.LegacyFileMD5(),
 		Status:    "", // status migrated to asset_processing
 	}
 
@@ -194,7 +194,7 @@ func voiceoverToAssetRecord(rec *assets.Record) *AssetRecord {
 		SourceID:  rec.ID,
 		LocalPath: rec.LocalPath,
 		DriveLink: rec.DriveLink,
-		FileHash:  rec.FileHash,
+		LegacyFileMD5:  rec.LegacyFileMD5,
 		Status:    rec.Status,
 		Metadata:  rec.Metadata,
 	}

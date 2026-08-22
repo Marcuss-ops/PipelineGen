@@ -41,7 +41,7 @@ import (
 // only ever supplies well-formed inputs (no path-traversal payloads
 // past cmd.Validate), so the lower-level AudioInput fields EscapeHook
 // semantics — UseStdin defaults to false. AudioResult carries
-// LocalPath + CleanedPath + Voice + FileHash which map 1-a-1 to
+// LocalPath + CleanedPath + Voice + LegacyFileMD5 which map 1-a-1 to
 // TTSOutput.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 		LocalPath:   res.LocalPath,
 		CleanedPath: res.CleanedPath,
 		Voice:       res.Voice,
-		FileHash:    res.FileHash,
+		LegacyFileMD5:    res.LegacyFileMD5,
 		Duration:    res.Duration,
 		// The canonical provider identity for the Edge TTS bridge. The
 		// bridge captures audio + WordBoundary in ONE synthesis pass, so

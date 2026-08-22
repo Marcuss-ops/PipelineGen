@@ -326,9 +326,8 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 	cmd *GenerateVoiceoversCommand,
 	itemSpec VoiceoverItem,
 	requestID string,
-	// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is the typed
-	// 16-char per-item TextHash envelope (Task.TextHash from
-	// planner.go::Plan).
+	// PR-VO-TEXTHASH-64 (August 2026): textHash is the typed
+	// 64-char TextHash envelope (Task.TextHash from planner.go::Plan).
 	textHash TextHash,
 	dest *ResolvedDestination,
 ) VoiceoverItemResult {

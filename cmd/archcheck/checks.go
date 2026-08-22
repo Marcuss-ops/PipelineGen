@@ -77,6 +77,8 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
 		{"percheck_slot_strings_ban", scan.ScanSlotStringsBan},
 		{"percheck_searchmode_forced_ban", scan.ScanSearchModeForcedBan},
+		{"percheck_digest_sha256_ban", scan.ScanDigestSHA256Ban},
+		{"percheck_digest_md5_ban", scan.ScanDigestMD5Ban},
 		{"percheck_version_strings_ban", scan.ScanVersionStringsBan},
 		{"percheck_stopword_maps_in_app", scan.ScanStopwordMapsInApp},
 		{"percheck_index_pending_writer_ban", scan.ScanIndexPendingWriterBan},

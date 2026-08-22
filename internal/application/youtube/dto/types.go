@@ -233,7 +233,7 @@ type ExtractItem struct {
 	EndSeconds      int    `json:"end_seconds,omitempty"`
 	Duration        int    `json:"duration_seconds,omitempty"`
 	Filename        string `json:"filename,omitempty"`
-	FileHash        string `json:"file_hash,omitempty"`
+	LegacyFileMD5        string `json:"legacy_file_md5,omitempty"`
 	LocalPath       string `json:"local_path,omitempty"`
 	DriveLink       string `json:"drive_link,omitempty"`
 	DriveFileID     string `json:"drive_file_id,omitempty"`
@@ -253,7 +253,7 @@ type ExtractItem struct {
 //
 // ProcessSegmentResult is the typed output. Item is the same ExtractItem the
 // existing handlers already serialize, so back-compat is preserved without
-// naming churn. The remaining fields (ID/FileHash/DriveFileID/DriveLink/
+// naming churn. The remaining fields (ID/LegacyFileMD5/DriveFileID/DriveLink/
 // IndexedRequestID) pre-populate the most-promoted clip record fields for
 // callers that want to skip the Items deserialization.
 
@@ -287,7 +287,7 @@ type ProcessSegmentCommand struct {
 
 type ProcessSegmentResult struct {
 	ID               string
-	FileHash         string
+	LegacyFileMD5         string
 	DriveFileID      string
 	DriveLink        string
 	IndexedRequestID string
@@ -400,7 +400,7 @@ type ClipAsset struct {
 	ID            string
 	VideoID       string
 	LocalPath     string
-	FileHash      string
+	LegacyFileMD5      string
 	SearchText    string
 	Drive         ClipAssetDrive
 	Coordinates   ClipAssetCoordinates

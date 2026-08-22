@@ -74,12 +74,12 @@ func (r *clipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 	}
 	a := details.Asset
 	ref := &cliprender.AssetRef{
-		AssetID:     a.ID,
-		MediaType:   string(a.MediaType),
-		LocalPath:   a.LocalPath(),
-		DriveFileID: a.DriveFileID(),
-		FileHash:    firstNonEmpty(a.Sha256(), a.FileHash(), a.ContentHash()),
-		DurationMS:  a.Duration.Milliseconds(),
+		AssetID:       a.ID,
+		MediaType:     string(a.MediaType),
+		LocalPath:     a.LocalPath(),
+		DriveFileID:   a.DriveFileID(),
+		LegacyFileMD5: firstNonEmpty(a.Sha256(), a.LegacyFileMD5(), a.ContentHash()),
+		DurationMS:    a.Duration.Milliseconds(),
 	}
 	r.log.Info("clip.render.asset_resolve.done",
 		zap.String("subsystem", "cliprender_asset_resolver"),
@@ -87,7 +87,7 @@ func (r *clipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 		zap.String("media_type", ref.MediaType),
 		zap.String("local_path", ref.LocalPath),
 		zap.String("drive_file_id", ref.DriveFileID),
-		zap.String("file_hash", ref.FileHash),
+		zap.String("file_hash", ref.LegacyFileMD5),
 		zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
 	)
 	return ref, nil
@@ -159,6 +159,7 @@ func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 		)
 		return nil, err
 	}
+
 
 	m.log.Info("clip.render.materialize.done",
 		zap.String("subsystem", "cliprender_materializer"),

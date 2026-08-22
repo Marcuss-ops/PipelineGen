@@ -148,7 +148,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	if err != nil {
 		return nil, err
 	}
-	if fetched.FileHash == "" {
+	if fetched.LegacyFileMD5 == "" {
 		s.log.Warn("file hash empty; proceeding with best-effort clip_id derivation", "video_id", md.VideoID)
 	}
 
@@ -207,7 +207,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		return nil, fmt.Errorf("%w: publisher returned %v (Drive is required but asset was not published)", ErrYouTubeDriveRequired, deliveryStatus)
 	}
 
-	clipID, fileHash := fetched.ClipID, fetched.FileHash
+	clipID, fileHash := fetched.ClipID, fetched.LegacyFileMD5
 
 	// ── 6. Transcribe (mandatory per user request) ──────────────────
 	if s.transcriber == nil {
@@ -263,7 +263,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	return s.buildResult(buildResultInput{
 		MD:             md,
 		ClipID:         clipID,
-		FileHash:       fileHash,
+		LegacyFileMD5:       fileHash,
 		DriveFilename:  driveFilename,
 		LocalPath:      fetched.LocalPath,
 		UploadResult:   uploadResult,

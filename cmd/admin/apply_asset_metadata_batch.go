@@ -63,7 +63,7 @@ func runApplyAssetMetadataBatch(args []string) error {
 		if clip == nil {
 			return fmt.Errorf("clip %s is not indexed", manifest.ClipID)
 		}
-		if strings.TrimSpace(clip.FileHash()) == "" {
+		if strings.TrimSpace(clip.LegacyFileMD5()) == "" {
 			return fmt.Errorf("clip %s has no file hash", manifest.ClipID)
 		}
 		if manifest.Name != "" {
@@ -90,7 +90,7 @@ func runApplyAssetMetadataBatch(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 			return fmt.Errorf("index asset %s: %w", manifest.ClipID, err)
 		}
 		if err := waitForAssetIndexOutbox(ctx, root, before); err != nil {

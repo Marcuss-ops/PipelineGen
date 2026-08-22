@@ -47,7 +47,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 	}
 
 	var sb strings.Builder
-	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), NULLIF(ma.thumb_url, ''), rid.source_image_url), ma.drive_link, ma.file_hash, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN retrieved_image_details rid ON ma.id = rid.asset_id LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
+	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), NULLIF(ma.thumb_url, ''), rid.source_image_url), ma.drive_link, ma.legacy_file_md5, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN retrieved_image_details rid ON ma.id = rid.asset_id LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
 	args := []any{}
 
 	if filter.SubjectID != "" {
@@ -133,7 +133,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 			Name:          name,
 			PreviewURL:    previewURL.String,
 			DriveLink:     driveLink.String,
-			FileHash:      fileHash.String,
+			LegacyFileMD5:      fileHash.String,
 			SourcePageURL: sourcePageURL.String,
 			License:       license.String,
 			Author:        author.String,

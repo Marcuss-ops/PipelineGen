@@ -108,12 +108,12 @@ func (r *SQLiteAssetRepository) GetByID(ctx context.Context, id string) (*AssetR
 		       COALESCE(source_provider, ''),
 		       COALESCE(drive_file_id, ''),
 		       COALESCE(json_extract(COALESCE(metadata_json, '{}'), '$.drive_path'), ''),
-		       COALESCE(file_hash, '')
+		       COALESCE(legacy_file_md5, '')
 		FROM media_assets
 		WHERE id = ?
 	`, id)
 	var out AssetRow
-	if err := row.Scan(&out.ID, &out.SourceURL, &out.Title, &out.Description, &out.StartSec, &out.EndSec, &out.SourceProvider, &out.DriveFileID, &out.DrivePath, &out.FileHash); err != nil {
+	if err := row.Scan(&out.ID, &out.SourceURL, &out.Title, &out.Description, &out.StartSec, &out.EndSec, &out.SourceProvider, &out.DriveFileID, &out.DrivePath, &out.LegacyFileMD5); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, WrapChunkNotFound(id)
 		}

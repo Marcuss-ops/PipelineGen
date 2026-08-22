@@ -11,8 +11,8 @@ import (
 type ExistingAssetQuery struct {
 	// ID is the asset ID
 	ID string
-	// FileHash is the MD5/SHA hash of the file
-	FileHash string
+	// LegacyFileMD5 is the MD5/SHA hash of the file
+	LegacyFileMD5 string
 	// DriveFileID is the Google Drive file ID
 	DriveFileID string
 	// Filename is the asset filename
@@ -31,7 +31,7 @@ type AssetRecord struct {
 	DriveFileID  string
 	DriveLink    string
 	DownloadLink string
-	FileHash     string
+	LegacyFileMD5     string
 	LocalPath    string
 	Status       string
 	Error        string
@@ -92,14 +92,14 @@ func (s *DedupeService) CheckDuplicate(ctx context.Context, query ExistingAssetQ
 		}
 	}
 
-	if s.policy.CheckByHash && query.FileHash != "" {
-		rec, err := s.store.FindExisting(ctx, ExistingAssetQuery{FileHash: query.FileHash})
+	if s.policy.CheckByHash && query.LegacyFileMD5 != "" {
+		rec, err := s.store.FindExisting(ctx, ExistingAssetQuery{LegacyFileMD5: query.LegacyFileMD5})
 		if err != nil {
 			return nil, err
 		} else if rec != nil {
 			s.log.Info("duplicate found by hash",
 				zap.String("id", rec.ID),
-				zap.String("hash", query.FileHash))
+				zap.String("hash", query.LegacyFileMD5))
 			return rec, nil
 		}
 	}

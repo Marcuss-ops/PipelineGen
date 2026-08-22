@@ -78,7 +78,7 @@ func (h *EnrichmentHandler) emitAssetPublishedV1(ctx context.Context, row *Asset
 	// (empty chunk_id or malformed content_hash) — terminal
 	// because the producer (the stock pipeline that wrote
 	// the media_assets row) must fix the underlying state.
-	idemKey, idemErr := EnrichmentIdempotencyKey(row.ID, row.FileHash, EnrichmentVersionV1)
+	idemKey, idemErr := EnrichmentIdempotencyKey(row.ID, row.LegacyFileMD5, EnrichmentVersionV1)
 	if idemErr != nil {
 		// godlike/07 typed-error contract: a malformed triple
 		// is a producer-side bug. Surface as a terminal sentinel

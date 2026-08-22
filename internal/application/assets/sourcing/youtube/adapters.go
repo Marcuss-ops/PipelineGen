@@ -9,7 +9,7 @@
 // Composition root adapter guarantees (PR-CLIP-DECOM-5 + 6, July 2026):
 //
 //   - fetcherAdapter   ← sourcing.FetchProviderPort ↔ usecase.Fetcher
-//   - hasherAdapter    ← hashutil.MD5File       ↔ usecase.FileHasher
+//   - hasherAdapter    ← hashutil.LegacyMD5File ↔ usecase.FileHasher
 //   - publisherAdapter ← sourcing.PublisherPort  ↔ usecase.DrivePublisher
 //   - clipIndexerAdapter ← IndexDispatcherPort   ↔ usecase.ClipIndexer
 //
@@ -25,7 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
 // ── Adapters (use case port ← service port) ──────────────────────────────────
@@ -62,11 +62,11 @@ func (a *fetcherAdapter) Fetch(ctx context.Context, req usecase.FetchRequest) (*
 	}, nil
 }
 
-// hasherAdapter wraps hashutil.MD5File for usecase.FileHasher.
+// hasherAdapter wraps checksum.LegacyMD5File for usecase.FileHasher.
 type hasherAdapter struct{}
 
 func (a *hasherAdapter) MD5File(path string) (string, error) {
-	return hashutil.MD5File(path)
+	return checksum.LegacyMD5File(path)
 }
 
 // publisherAdapter wraps sourcing.PublisherPort for usecase.DrivePublisher.
@@ -135,7 +135,7 @@ func (a *clipIndexerAdapter) EnqueueAndIndex(ctx context.Context, clip usecase.C
 		Tags:            clip.Tags,
 		Duration:        clip.Duration,
 		LocalPath:       clip.LocalPath,
-		FileHash:        clip.FileHash,
+		LegacyFileMD5:   clip.LegacyFileMD5,
 		DriveLink:       clip.DriveLink,
 		DriveFileID:     clip.DriveFileID,
 		Summary:         clip.Summary,

@@ -139,7 +139,7 @@ func validArtlistCommand(assetID string) ArtlistPublishCommand {
 		DriveFileID:   "drive-file-" + assetID,
 		DriveLink:     "https://drive.google.com/file/d/drive-file-" + assetID + "/view",
 		DownloadLink:  "https://drive.google.com/uc?export=download&id=drive-file-" + assetID,
-		FileHash:      "sha256:" + assetID + "-hash",
+		LegacyFileMD5:      "sha256:" + assetID + "-hash",
 		SourceVersion: "sha256:" + assetID + "-hash",
 	}
 }
@@ -161,7 +161,7 @@ type mediaAssetRow struct {
 	DriveFileID    string
 	DriveLink      string
 	DownloadLink   string
-	FileHash       string
+	LegacyFileMD5       string
 	SourceVersion  string
 	LifecycleState string
 	CreatedAt      string
@@ -179,7 +179,7 @@ SELECT source, asset_version, asset_location, rendition,
 FROM media_assets WHERE id = ?`, assetID).Scan(
 		&r.Source, &r.AssetVersion, &r.AssetLocation, &r.Rendition,
 		&r.DriveFileID, &r.DriveLink, &r.DownloadLink,
-		&r.FileHash, &r.SourceVersion, &r.LifecycleState,
+		&r.LegacyFileMD5, &r.SourceVersion, &r.LifecycleState,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
@@ -219,8 +219,8 @@ func TestCommitArtlistPublishTx_HappyPath_BothRowsPersist(t *testing.T) {
 	if row.DownloadLink != cmd.DownloadLink {
 		t.Errorf("download_link = %q, want %q", row.DownloadLink, cmd.DownloadLink)
 	}
-	if row.FileHash != cmd.FileHash {
-		t.Errorf("file_hash = %q, want %q", row.FileHash, cmd.FileHash)
+	if row.LegacyFileMD5 != cmd.LegacyFileMD5 {
+		t.Errorf("file_hash = %q, want %q", row.LegacyFileMD5, cmd.LegacyFileMD5)
 	}
 	if row.SourceVersion != cmd.SourceVersion {
 		t.Errorf("source_version = %q, want %q", row.SourceVersion, cmd.SourceVersion)
@@ -288,7 +288,7 @@ func TestCommitArtlistPublishTx_Validation_EmptyFieldsFailClosed(t *testing.T) {
 		{"empty DriveFileID", func(c *ArtlistPublishCommand) { c.DriveFileID = "" }, errArtlistEmptyDriveFileID},
 		{"empty DriveLink", func(c *ArtlistPublishCommand) { c.DriveLink = "" }, errArtlistEmptyDriveLink},
 		{"empty DownloadLink", func(c *ArtlistPublishCommand) { c.DownloadLink = "" }, errArtlistEmptyDownloadLink},
-		{"empty FileHash", func(c *ArtlistPublishCommand) { c.FileHash = "" }, errArtlistEmptyFileHash},
+		{"empty LegacyFileMD5", func(c *ArtlistPublishCommand) { c.LegacyFileMD5 = "" }, errArtlistEmptyLegacyFileMD5},
 		{"empty SourceVersion", func(c *ArtlistPublishCommand) { c.SourceVersion = "" }, errArtlistEmptySourceVersion},
 	}
 	for _, tc := range cases {

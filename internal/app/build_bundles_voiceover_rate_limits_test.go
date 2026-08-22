@@ -61,7 +61,7 @@ func TestRetryableTTSProvider_RetriesThenSucceeds(t *testing.T) {
 			{err: errors.New("TTS error 1")},
 			{err: errors.New("TTS error 2")},
 			{err: errors.New("TTS error 3")},
-			{out: voiceover.TTSOutput{LocalPath: "/tmp/audio.mp3", FileHash: "abc123"}},
+			{out: voiceover.TTSOutput{LocalPath: "/tmp/audio.mp3", LegacyFileMD5: "abc123"}},
 		},
 	}
 
@@ -75,7 +75,7 @@ func TestRetryableTTSProvider_RetriesThenSucceeds(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "/tmp/audio.mp3", out.LocalPath)
-	require.Equal(t, "abc123", out.FileHash)
+	require.Equal(t, "abc123", out.LegacyFileMD5)
 	require.Equal(t, 4, recorder.Calls(), "expected 4 calls: 3 failures + 1 success")
 }
 

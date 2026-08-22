@@ -65,7 +65,7 @@ func (f *fakeLocalizationMediaProber) Probe(_ context.Context, path string) (*me
 func srcTestSHA(n int) string { return strings.Repeat(string(rune('a'+n)), 64) }
 
 func srcTestRef(hash string) *cliprender.AssetRef {
-	return &cliprender.AssetRef{AssetID: "source-1", FileHash: hash}
+	return &cliprender.AssetRef{AssetID: "source-1", LegacyFileMD5: hash}
 }
 
 func srcTestMaterial(sha string) *cliprender.MaterializedAsset {
@@ -103,7 +103,7 @@ func TestLocalizationSourceResolver_ResolvesVerifiedFacts(t *testing.T) {
 	if resolve.gotID != "source-1" {
 		t.Errorf("resolver got id %q", resolve.gotID)
 	}
-	if material.gotRef.AssetID != "source-1" || material.gotRef.FileHash != sha {
+	if material.gotRef.AssetID != "source-1" || material.gotRef.LegacyFileMD5 != sha {
 		t.Errorf("materializer got ref %+v", material.gotRef)
 	}
 	if probe.gotPath != "/media/source.mp4" {

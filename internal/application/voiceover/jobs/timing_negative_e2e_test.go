@@ -52,7 +52,7 @@ func (s *noBoundaryTTS) Synthesize(_ context.Context, in voiceover.TTSInput) (vo
 	return voiceover.TTSOutput{
 		LocalPath:      path,
 		Voice:          in.Voice,
-		FileHash:       "no-boundary-hash",
+		LegacyFileMD5:       "no-boundary-hash",
 		Provider:       "edge_tts",
 		BoundaryMode:   audio.BoundaryWord,
 		Duration:       2 * time.Second,

@@ -65,7 +65,7 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, lifecycle_state, metadata_json, origin, provider, created_at, updated_at)
+		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, legacy_file_md5, local_path, relative_path, drive_file_id, lifecycle_state, metadata_json, origin, provider, created_at, updated_at)
 		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'STAGING', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
@@ -75,7 +75,7 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 			media_type=excluded.media_type,
 			width=excluded.width,
 			height=excluded.height,
-			file_hash=excluded.file_hash,
+			legacy_file_md5=excluded.legacy_file_md5,
 			local_path=excluded.local_path,
 			relative_path=excluded.relative_path,
 			drive_file_id=excluded.drive_file_id,
@@ -175,7 +175,7 @@ func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *asset.
 }
 
 // UpdateOrigin updates media_assets.origin and media_assets.provider for
-// the row keyed by file_hash. FASE 4 CUTOVER.
+// the row keyed by legacy_file_md5. FASE 4 CUTOVER.
 func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provider string) error {
 	if hash == "" {
 		return fmt.Errorf("UpdateOrigin: hash is empty")
@@ -183,7 +183,7 @@ func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provi
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
 		SET origin = ?, provider = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE source = 'image' AND file_hash = ?
+		WHERE source = 'image' AND legacy_file_md5 = ?
 	`, origin, provider, hash)
 	return err
 }
@@ -217,7 +217,7 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 			UPDATE media_assets
 			SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?),
 			    updated_at = CURRENT_TIMESTAMP
-			WHERE source = 'image' AND file_hash = ?`
+			WHERE source = 'image' AND legacy_file_md5 = ?`
 		args = []any{status, hash}
 	} else {
 		updateSQL = `
@@ -225,7 +225,7 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 			SET drive_file_id = ?, drive_link = ?, download_link = ?,
 			    metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?),
 			    updated_at = CURRENT_TIMESTAMP
-			WHERE source = 'image' AND file_hash = ?`
+			WHERE source = 'image' AND legacy_file_md5 = ?`
 		args = []any{driveFileID, driveLink, downloadLink, status, hash}
 	}
 	result, err := tx.ExecContext(ctx, updateSQL, args...)
@@ -243,21 +243,21 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 	if !preserveIdentity && driveFileID != "" {
 		var assetID string
 		if err := tx.QueryRowContext(ctx, `
-			SELECT id FROM media_assets WHERE source = 'image' AND file_hash = ?`, hash).Scan(&assetID); err != nil {
+			SELECT id FROM media_assets WHERE source = 'image' AND legacy_file_md5 = ?`, hash).Scan(&assetID); err != nil {
 			return fmt.Errorf("UpdateDriveDelivery: read asset id: %w", err)
 		}
 		now := timeutil.FormatRFC3339(time.Now())
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO asset_locations
 				(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-				 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+				 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
 			VALUES (?, 'drive', ?, ?, ?, ?, '', 0, ?, 0, ?, ?)
 			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 				uri = excluded.uri,
 				external_id = excluded.external_id,
 				web_view_link = excluded.web_view_link,
 				download_url = excluded.download_url,
-				file_hash = excluded.file_hash,
+				legacy_file_md5 = excluded.legacy_file_md5,
 				updated_at = excluded.updated_at`,
 			assetID, "drive://"+driveFileID, driveFileID, driveLink, downloadLink, hash, now, now); err != nil {
 			return fmt.Errorf("UpdateDriveDelivery: upsert Drive location: %w", err)
@@ -275,7 +275,7 @@ func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metada
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
 		SET metadata_json = ?
-		WHERE source = 'image' AND file_hash = ?
+		WHERE source = 'image' AND legacy_file_md5 = ?
 	`, metadataJSON, hash)
 	return err
 }
@@ -290,7 +290,7 @@ func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, stat
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
 		SET metadata_json = json_set(metadata_json, '$.embedding_status', ?)
-		WHERE source = 'image' AND file_hash = ?
+		WHERE source = 'image' AND legacy_file_md5 = ?
 	`, status, hash)
 	return err
 }

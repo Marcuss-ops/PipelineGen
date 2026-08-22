@@ -122,7 +122,7 @@ func voiceoverRecordToAsset(rec *assets.Record) *asset.Asset {
 	clip.SetDriveLink(rec.DriveLink)
 	clip.SetDriveFileID(rec.DriveFileID)
 	clip.SetDownloadLink(rec.DownloadLink)
-	clip.SetFileHash(rec.FileHash)
+	clip.SetLegacyFileMD5(rec.LegacyFileMD5)
 	clip.SetLocalPath(rec.LocalPath)
 	clip.SetMetadataJSON(rec.Metadata)
 	return clip
@@ -143,7 +143,7 @@ func imageAssetToAsset(item *asset.ImageAsset) *asset.Asset {
 	clip := &asset.Asset{ID: id, Name: name, Filename: filepath.Base(item.PathRel), Source: "images", MediaType: "image", Tags: item.Tags, SearchTerms: []string{item.Description}, CreatedAt: item.CreatedAt, UpdatedAt: item.CreatedAt}
 	clip.SetDriveLink(item.SourceURL)
 	clip.SetDriveFileID(item.DriveFileID)
-	clip.SetFileHash(item.Hash)
+	clip.SetLegacyFileMD5(item.Hash)
 	clip.SetLocalPath(item.PathRel)
 	return clip
 }

@@ -26,7 +26,7 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 				return nil
 			}
 			img := &asset.ImageAsset{
-				Hash:         imageRecordHash(rec.ID, rec.FileHash),
+				Hash:         imageRecordHash(rec.ID, rec.LegacyFileMD5),
 				SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 				SourceURL:    textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
 				Description:  rec.Name,
@@ -53,9 +53,9 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			m.SetDriveFileID(rec.DriveFileID)
 			m.SetDriveLink(rec.DriveLink)
 			m.SetDownloadLink(rec.DownloadLink)
-			m.SetFileHash(rec.FileHash)
+			m.SetLegacyFileMD5(rec.LegacyFileMD5)
 			m.SetContentHash(rec.ContentHash)
-			return dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash)
+			return dispatcher.EnqueueAndIndex(ctx, m, rec.LegacyFileMD5)
 		},
 		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 			img, err := repo.GetImageByHash(ctx, imageRecordHash(id, ""))
@@ -109,7 +109,7 @@ func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.Medi
 		LocalPath:   imageFullPath(imagesDir, img.PathRel),
 		DriveFileID: img.DriveFileID,
 		DriveLink:   imageMetadataString(img.MetadataJSON, "drive_link"),
-		FileHash:    img.Hash,
+		LegacyFileMD5:    img.Hash,
 		Status:      img.Status,
 		Metadata:    img.MetadataJSON,
 		Tags:        append([]string(nil), img.Tags...),
@@ -153,8 +153,8 @@ func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string)
 		if rec.DownloadLink != "" {
 			payload["download_link"] = rec.DownloadLink
 		}
-		if rec.FileHash != "" {
-			payload["hash"] = rec.FileHash
+		if rec.LegacyFileMD5 != "" {
+			payload["hash"] = rec.LegacyFileMD5
 		}
 		if rec.Status != "" {
 			payload["status"] = rec.Status

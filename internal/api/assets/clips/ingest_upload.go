@@ -20,7 +20,7 @@ type UploadVideoClipResponse struct {
 	Filename    string   `json:"filename"`
 	DriveLink   string   `json:"drive_link,omitempty"`
 	DriveFileID string   `json:"drive_file_id,omitempty"`
-	FileHash    string   `json:"file_hash"`
+	LegacyFileMD5    string   `json:"legacy_file_md5"`
 	Source      string   `json:"source"`
 	Category    string   `json:"category,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
@@ -131,7 +131,7 @@ func (ih *IngestHandler) UploadVideoClip(c *gin.Context) {
 		Filename:    result.Filename,
 		DriveLink:   result.DriveLink,
 		DriveFileID: result.DriveFileID,
-		FileHash:    result.FileHash,
+		LegacyFileMD5:    result.LegacyFileMD5,
 		Source:      result.Source,
 		Category:    result.Category,
 		Tags:        result.Tags,

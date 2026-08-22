@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -39,7 +39,7 @@ func (s *Service) materializeImage(sourcePath, filename string, req *Request) (s
 		return "", "", nil, fmt.Errorf("failed to create image dir: %w", err)
 	}
 
-	hash, err := hashutil.MD5File(sourcePath)
+	hash, err := checksum.LegacyMD5File(sourcePath)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to hash image source: %w", err)
 	}

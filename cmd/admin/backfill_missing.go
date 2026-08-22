@@ -57,7 +57,7 @@ func runBackfillMissing(args []string) error {
 	// 1. Query missing embeddings, or an explicit targeted set for metadata repair.
 	query := `
 		SELECT id, source, name,
-			COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, '') AS content_hash
+			COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), legacy_file_md5, '') AS content_hash
 		FROM media_assets
 		WHERE `
 	var queryArgs []any

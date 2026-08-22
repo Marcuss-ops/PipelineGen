@@ -26,7 +26,7 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	out.SetLocalPath(c.LocalPath)
 	out.SetDriveLink(c.DriveLink)
 	out.SetDriveFileID(c.DriveFileID)
-	out.SetFileHash(c.FileHash)
+	out.SetLegacyFileMD5(c.LegacyFileMD5)
 	out.SetFolderID(c.DriveFolderID)
 	out.SetFolderPath(c.DrivePath)
 	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026).
@@ -81,7 +81,7 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		LocalPath:   c.LocalPath(),
 		DriveLink:   c.DriveLink(),
 		DriveFileID: c.DriveFileID(),
-		FileHash:    c.FileHash(),
+		LegacyFileMD5:    c.LegacyFileMD5(),
 		// source_url convergence (godlike/06): the typed field is the
 		// canonical owner; the metadata key is a provenance mirror for
 		// legacy rows. Read field-first so a round-trip through the mapper

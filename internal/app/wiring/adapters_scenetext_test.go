@@ -107,7 +107,7 @@ func (r scenetextClipResolver) ResolveByMediaAssetID(context.Context, string) (*
 func TestSceneTextGeneratorConvertScenesEnrichesCanonicalClipFields(t *testing.T) {
 	clip := &asset.Asset{ID: "clip-1", Duration: 6500 * time.Millisecond}
 	clip.SetLocalPath("/var/lib/pipelinegen/clips/clip-1.mp4")
-	clip.SetFileHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	clip.SetLegacyFileMD5("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
 	generator := &SceneTextGenerator{ClipAssets: scenetextClipResolver{clip: clip}}
 	result := &usecase.EngineResult{Output: scriptpkg.ModelScriptOutputV1{
@@ -135,7 +135,7 @@ func TestSceneTextGeneratorConvertScenesEnrichesCanonicalClipFields(t *testing.T
 func TestSceneTextGeneratorConvertScenesPreservesAllClipBindings(t *testing.T) {
 	clip := &asset.Asset{ID: "registry-asset", Duration: 2 * time.Second}
 	clip.SetLocalPath("/var/lib/pipelinegen/clips/clip.mp4")
-	clip.SetFileHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	clip.SetLegacyFileMD5("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	generator := &SceneTextGenerator{ClipAssets: scenetextClipResolver{clip: clip}}
 	result := &usecase.EngineResult{Output: scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 		ID: "scene-1", Index: 0, Text: "multi clip",
@@ -218,7 +218,7 @@ func TestSceneTextGenerator_DriveReferenceCannotReplaceBinarySHA(t *testing.T) {
 	// Forgery A: Drive-only asset with a forged file_hash — no local path, no identity.
 	clip := &asset.Asset{ID: "clip-drive-1", Duration: 45 * time.Second}
 	clip.SetDriveLink("https://drive.google.com/file/d/clip-drive-1")
-	clip.SetFileHash("clip-drive-1")
+	clip.SetLegacyFileMD5("clip-drive-1")
 	if _, err := renderAssetSHA256(clip); err == nil || !strings.Contains(err.Error(), "asset has no local path") {
 		t.Fatalf("forged file_hash must never replace materialization: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestSceneTextGenerator_DriveReferenceCannotReplaceBinarySHA(t *testing.T) {
 	}
 
 	// Legacy Drive MD5 colon-form is never accepted as a binary identity.
-	local.SetFileHash("0123456789abcdef0123456789abcdef:drive-md5")
+	local.SetLegacyFileMD5("0123456789abcdef0123456789abcdef:drive-md5")
 	got, err = renderAssetSHA256(local)
 	if err != nil || got != want {
 		t.Fatalf("colon-form MD5 must fall back to bytes SHA-256, got %q err %v", got, err)

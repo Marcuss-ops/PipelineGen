@@ -3,7 +3,6 @@ package audioasset
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -425,11 +424,10 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	// Compute hash.
 	if result.LocalPath != "" {
-		hash, err := hashutil.HashFile(result.LocalPath, md5.New())
-		if err != nil {
-			p.log.Warn("hash computation failed", zap.Error(err))
+		if hash, hashErr := hashutil.LegacyMD5File(result.LocalPath); hashErr != nil {
+			p.log.Warn("hash computation failed", zap.Error(hashErr))
 		} else {
-			result.FileHash = hash
+			result.LegacyFileMD5 = hash
 		}
 	}
 

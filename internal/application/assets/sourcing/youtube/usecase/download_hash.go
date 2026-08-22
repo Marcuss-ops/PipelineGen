@@ -44,7 +44,7 @@ type DownloadAndHashResult struct {
 	Duration  time.Duration     // fetched video duration
 	Bytes     int64             // file size in bytes
 	Metadata  map[string]string // provider metadata (description, uploader, etc.)
-	FileHash  string            // MD5 hex digest (empty when hasher is nil or fails)
+	LegacyFileMD5  string            // MD5 hex digest (empty when hasher is nil or fails)
 	ClipID    string            // canonical yt_<videoID>_<hash8> identifier
 }
 
@@ -133,7 +133,7 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 		Duration:  fetched.Duration,
 		Bytes:     fetched.Bytes,
 		Metadata:  fetched.Metadata,
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		ClipID:    clipID,
 	}, nil
 }

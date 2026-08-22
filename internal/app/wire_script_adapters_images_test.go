@@ -40,7 +40,7 @@ func (s imageSearchFixture) Search(context.Context, routing.ImageFilter) ([]rout
 
 func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *testing.T) {
 	fixture := &imageResolverFixture{cached: []routing.ImageSearchResult{{
-		AssetID: "db-cena", Name: "John Cena", DriveLink: "https://drive.google.com/file/d/db-cena/view", FileHash: "hash-cena",
+		AssetID: "db-cena", Name: "John Cena", DriveLink: "https://drive.google.com/file/d/db-cena/view", LegacyFileMD5: "hash-cena",
 		PreviewURL: "https://images.example/cena.jpg", License: "unknown",
 	}}}
 	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())

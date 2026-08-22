@@ -437,12 +437,12 @@ func (s *Service) contentHashFor(a *asset.Asset) (string, error) {
 	if a == nil {
 		return "", fmt.Errorf("asset is nil")
 	}
-	if h := a.FileHash(); h != "" {
+	if h := a.LegacyFileMD5(); h != "" {
 		return h, nil
 	}
 	path := a.LocalPath()
 	if path == "" {
-		return "", fmt.Errorf("asset %s has no file_hash and no local_path", a.ID)
+		return "", fmt.Errorf("asset %s has no legacy_file_md5 and no local_path", a.ID)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -454,6 +454,6 @@ func (s *Service) contentHashFor(a *asset.Asset) (string, error) {
 		return "", fmt.Errorf("hash %s: %w", path, err)
 	}
 	hash := hex.EncodeToString(h.Sum(nil))
-	a.SetFileHash(hash)
+	a.SetLegacyFileMD5(hash)
 	return hash, nil
 }

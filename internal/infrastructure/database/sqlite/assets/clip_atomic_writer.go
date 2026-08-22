@@ -16,7 +16,7 @@
 // `youtubetypes.ExtractItem` (the HTTP response shape). The
 // verdict's P1 #6 mandates "il writer deve ricevere il record
 // canonico, non un DTO di risposta HTTP" — ClipAsset bundles the
-// ID/VideoID/LocalPath/FileHash/Drive/Coordinates/Metadata fields
+// ID/VideoID/LocalPath/LegacyFileMD5/Drive/Coordinates/Metadata fields
 // the writer needs in one typed struct so the DB column mapping is
 // explicit and refactor-resistant.
 //
@@ -42,7 +42,7 @@
 //	                                  source_version=deriveSourceVersion(...))
 //	BUILD  eventKey, payload = BuildReindexEnvelopeV1(
 //	          clipID, targetSchema="asset.index.requested.v1",
-//	          sourceVersion=deriveSourceVersion(clipID, asset.FileHash, asset.PolicyVersion),
+//	          sourceVersion=deriveSourceVersion(clipID, asset.LegacyFileMD5, asset.PolicyVersion),
 //	          requestedAt=now)
 //	INSERT outbox_events (...) ON CONFLICT(event_key) WHERE !='' DO NOTHING
 //	COMMIT
@@ -57,16 +57,16 @@
 //
 // Idempotency contracts (mirrored from outboxevents.BuildReindexEnvelopeV1):
 //   - eventKey shaped "reconcile:reindex:<assetID>:<schema>:<source>".
-//     Repeated calls with the same (clipID, file_hash, policy) tuple
+//     Repeated calls with the same (clipID, legacy_file_md5, policy) tuple
 //     collapse via outbox ON CONFLICT(event_key) DO NOTHING — only one
 //     outbox row exists for any (clip, content) pair.
-//   - Different file_hash on retry → new eventKey → new outbox row.
+//   - Different legacy_file_md5 on retry → new eventKey → new outbox row.
 //     The supersede gate downstream (outbox.Pool / IndexingHandler)
 //     compares payload.source_version against the current
 //     media_assets.content_hash and rejects stale events as supersede.
 //   - Empty sourceVersion is fail-closed at BuildReindexEnvelopeV1.
-//     We compute sourceVersion = asset.FileHash (the canonical
-//     ingest-time hash). On empty FileHash (the upstream
+//     We compute sourceVersion = asset.LegacyFileMD5 (the canonical
+//     ingest-time hash). On empty LegacyFileMD5 (the upstream
 //     hash.MD5File skipped path) we fall back to a deterministic
 //     MD5(clipID + policyVersion) so the event_key remains stable
 //     across retries.
@@ -262,7 +262,7 @@ func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtub
 	if policyVersion == "" {
 		policyVersion = derivePolicyVersion(clipID)
 	}
-	sourceVersion := deriveSourceVersion(clipID, asset.FileHash, policyVersion)
+	sourceVersion := deriveSourceVersion(clipID, asset.LegacyFileMD5, policyVersion)
 
 	filename := deriveFilenameFromAsset(asset)
 	if filename == "" {
@@ -286,7 +286,7 @@ func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtub
 		MediaType:      "video",
 		Category:       asset.Metadata.Category,
 		DurationMs:     int64(asset.Metadata.ClipDurationSec * 1000),
-		ContentHash:    asset.FileHash,
+		ContentHash:    asset.LegacyFileMD5,
 		SearchText:     asset.SearchText,
 		Description:    asset.Metadata.Description,
 		LifecycleState: "ACTIVE",

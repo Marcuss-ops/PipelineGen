@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // processStep normalizes/processes the video if needed.
@@ -74,11 +74,11 @@ func hashFileSHA256(path string) string {
 	if path == "" {
 		return ""
 	}
-	digest, err := fileutil.HashFile(path, sha256.New())
+	d, err := digest.SHA256File(path)
 	if err != nil {
 		return ""
 	}
-	return digest
+	return d
 }
 
 func (p *Processor) materializeCachedFile(ctx context.Context, key capcache.Key, destination string) (bool, string) {
@@ -491,8 +491,8 @@ func (p *Processor) buildRenditionOutput(ctx context.Context, kind asset.Renditi
 	if info, err := os.Stat(path); err == nil {
 		out.SizeBytes = info.Size()
 	}
-	if hash, err := fileutil.HashFile(path, sha256.New()); err == nil {
-		out.FileHash = hash
+	if hash, err := digest.SHA256File(path); err == nil {
+		out.LegacyFileMD5 = hash
 	}
 	if info, err := p.ffmpeg.Probe(ctx, path); err == nil {
 		out.Width = info.Width

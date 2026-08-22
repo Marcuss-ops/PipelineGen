@@ -21,7 +21,7 @@
 //     mirror cleanSegmentName from process_segment.go)
 //   - Filename       ← Asset.Filename (with filepath.Base(LocalPath)
 //     fallback when empty)
-//   - FileHash       ← Asset.FileHash() string accessor; "" if absent
+//   - LegacyFileMD5       ← Asset.LegacyFileMD5() string accessor; "" if absent
 //   - LocalPath      ← Asset.LocalPath() string accessor
 //   - DriveFileID    ← Asset.DriveFileID() string accessor
 //   - DriveLink      ← Asset.DriveLink() string accessor
@@ -184,7 +184,7 @@ func assetToExtractItem(a *asset.Asset) *youtubetypes.ExtractItem {
 		ID:              a.ID,
 		Name:            routeEmptyName(a.Name, a.ID),
 		Filename:        routeEmptyFilename(a.Filename, a.LocalPath()),
-		FileHash:        a.FileHash(),
+		LegacyFileMD5:        a.LegacyFileMD5(),
 		LocalPath:       a.LocalPath(),
 		DriveFileID:     a.DriveFileID(),
 		DriveLink:       a.DriveLink(),

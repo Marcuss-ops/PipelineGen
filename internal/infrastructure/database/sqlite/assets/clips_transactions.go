@@ -79,7 +79,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			created_at, updated_at, folder_id, parent_folder_id, folder_path,
 			scene_type, phash, last_used_at, quality_score, reuse_count,
 			embedding_json, visual_embedding, transcript_embedding,
-			drive_link, download_link, local_path, drive_file_id, file_hash,
+			drive_link, download_link, local_path, drive_file_id, legacy_file_md5,
 			source_provider, source_video_id, source_url, start_ms, end_ms
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -119,7 +119,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			download_link = excluded.download_link,
 			local_path = excluded.local_path,
 			drive_file_id = excluded.drive_file_id,
-			file_hash = excluded.file_hash,
+			legacy_file_md5 = excluded.legacy_file_md5,
 			source_provider = excluded.source_provider,
 			source_video_id = excluded.source_video_id,
 			source_url = excluded.source_url,
@@ -133,7 +133,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		timeutil.FormatRFC3339(clip.CreatedAt), nowStr, clip.FolderID(), clip.ParentFolderID(), clip.FolderPath(),
 		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
 		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
-		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.FileHash(),
+		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.LegacyFileMD5(),
 		sourceProvider, sourceVideoID, sourceURL, startMS, endMS,
 	)
 	return err

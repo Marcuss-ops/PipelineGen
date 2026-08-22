@@ -132,7 +132,7 @@ SELECT
     m.lifecycle_state,
     %s AS asset_state,
     m.index_state,
-    m.file_hash AS content_hash,
+    m.legacy_file_md5 AS content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.indexed_content_hash') AS indexed_content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.embedding_model_version') AS embedding_version,
     m.collection_version,

@@ -160,7 +160,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		DriveFileID:     cmd.DriveFileID,
 		DriveLink:       cmd.DriveLink,
 		DownloadLink:    cmd.DownloadLink,
-		FileHash:        cmd.FileHash,
+		LegacyFileMD5:        cmd.LegacyFileMD5,
 		DurationSeconds: cmd.DurationSeconds,
 		Status:          string(StatusGenerated),
 		Strategy:        cmd.Strategy,
@@ -189,7 +189,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// consumer of the outbox event.
 	//
 	// The canonical AssetCommitter owns the media_assets write even when the
-	// bytes are not materialized yet. Empty FileHash means REGISTERED-only:
+	// bytes are not materialized yet. Empty LegacyFileMD5 means REGISTERED-only:
 	// CommitTx persists the asset and deliberately suppresses the index event.
 	// The LifecycleService branch remains only as a migration compatibility
 	// seam for old compositions where the committer is not wired.
@@ -198,12 +198,12 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 			return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitTx (media_assets + outbox): %w", err)
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
-		// Empty FileHash is an explicit registered-only guard: no semantic
+		// Empty LegacyFileMD5 is an explicit registered-only guard: no semantic
 		// indexing event is emitted until content identity is known.
-		if cmd.FileHash != "" {
+		if cmd.LegacyFileMD5 != "" {
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
 		} else {
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty FileHash"))
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty LegacyFileMD5"))
 		}
 	} else {
 		// ── Legacy pre-Cutover path (Step 4 + Step 5 separately) ──
@@ -222,7 +222,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 			DriveFileID:  cmd.DriveFileID,
 			DriveLink:    cmd.DriveLink,
 			DownloadLink: cmd.DownloadLink,
-			FileHash:     cmd.FileHash,
+			LegacyFileMD5:     cmd.LegacyFileMD5,
 			Language:     cmd.Language,
 			Status:       string(StatusGenerated),
 			Metadata:     string(cmd.MetaJSON),
@@ -231,15 +231,15 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
 
-		// Audit P0 #2: Outbox nil is fatal (fail-fast above). FileHash
+		// Audit P0 #2: Outbox nil is fatal (fail-fast above). LegacyFileMD5
 		// empty is a data-state guard-skip with execution marker.
-		if cmd.FileHash != "" {
-			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.FileHash); err != nil {
+		if cmd.LegacyFileMD5 != "" {
+			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.LegacyFileMD5); err != nil {
 				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
 			}
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
 		} else {
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty FileHash"))
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty LegacyFileMD5"))
 		}
 	}
 
@@ -317,7 +317,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 			URI:         cmd.DriveLink,
 			WebViewLink: cmd.DriveLink,
 			DownloadURL: cmd.DownloadLink,
-			FileHash:    cmd.FileHash,
+			LegacyFileMD5:    cmd.LegacyFileMD5,
 			IsPrimary:   true,
 		})
 	}
@@ -328,7 +328,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		Name:           textPreview,
 		Filename:       cmd.Filename,
 		MediaType:      "audio",
-		ContentHash:    cmd.FileHash,
+		ContentHash:    cmd.LegacyFileMD5,
 		Description:    textPreview,
 		SearchText:     searchText,
 		LifecycleState: string(asset.StatePublished),
@@ -340,11 +340,11 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		Metadata: assetspersistence.TypedMetadata{
 			Title:         textPreview,
 			Description:   textPreview,
-			SourceVersion: cmd.FileHash,
+			SourceVersion: cmd.LegacyFileMD5,
 			Tags:          semanticMeta.Tags,
 			Extra:         extra,
 		},
 		Locations:      locations,
-		EmitIndexEvent: cmd.FileHash != "",
+		EmitIndexEvent: cmd.LegacyFileMD5 != "",
 	}
 }

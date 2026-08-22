@@ -58,7 +58,7 @@ import (
 func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_SameJobNoDuplicates(t *testing.T) {
 	repo := newStubIdempotencyVoRepo(t)
 	tts := &stubProcessTTS{
-		cannedOut: TTSOutput{LocalPath: "/tmp/vo/idem-test.mp3", Voice: "en-US-RogerNeural", FileHash: "hash-idem-001"},
+		cannedOut: TTSOutput{LocalPath: "/tmp/vo/idem-test.mp3", Voice: "en-US-RogerNeural", LegacyFileMD5: "hash-idem-001"},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-idem-001"}
 	finalizer := &stubProcessFinalizer{
@@ -140,7 +140,7 @@ func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_SameJobNoDuplicates(t *
 func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_DifferentJobsSeparate(t *testing.T) {
 	repo := newStubIdempotencyVoRepo(t)
 	tts := &stubProcessTTS{
-		cannedOut: TTSOutput{LocalPath: "/tmp/vo/diff-job.mp3", Voice: "en-US-RogerNeural", FileHash: "hash-diff-job"},
+		cannedOut: TTSOutput{LocalPath: "/tmp/vo/diff-job.mp3", Voice: "en-US-RogerNeural", LegacyFileMD5: "hash-diff-job"},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-diff-job"}
 	finalizer := &stubProcessFinalizer{
@@ -230,7 +230,7 @@ func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_DifferentJobsSeparate(t
 func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_LegacyEmptyJobID(t *testing.T) {
 	repo := newStubIdempotencyVoRepo(t)
 	tts := &stubProcessTTS{
-		cannedOut: TTSOutput{LocalPath: "/tmp/vo/legacy.mp3", Voice: "en-US-RogerNeural", FileHash: "hash-legacy"},
+		cannedOut: TTSOutput{LocalPath: "/tmp/vo/legacy.mp3", Voice: "en-US-RogerNeural", LegacyFileMD5: "hash-legacy"},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-legacy"}
 	finalizer := &stubProcessFinalizer{

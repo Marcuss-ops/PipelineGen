@@ -216,7 +216,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 		clip.SetDriveFileID(child.ID)
 		clip.SetMetadataString("mime_type", child.MimeType)
 		if child.MimeType != folderMimeType {
-			clip.SetFileHash(remoteFileFingerprint(child))
+			clip.SetLegacyFileMD5(remoteFileFingerprint(child))
 		}
 
 		if err := s.upsertPreservingExisting(ctx, repo, indexer, clip); err != nil {

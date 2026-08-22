@@ -101,7 +101,7 @@ type ClipVoiceoverRecordDTO struct {
 	DriveFileID     string
 	DriveLink       string
 	DownloadLink    string
-	FileHash        string
+	LegacyFileMD5        string
 	DurationSeconds float64
 	Status          string
 	Error           string

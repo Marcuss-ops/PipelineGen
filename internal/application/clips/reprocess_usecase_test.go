@@ -62,7 +62,7 @@ func (p *fakeReprocessProcessor) Process(ctx context.Context, input *asset.Proce
 	return &asset.ProcessResult{
 		Status:    "processed",
 		LocalPath: "out/result.mp4",
-		FileHash:  "result-hash",
+		LegacyFileMD5:  "result-hash",
 	}, nil
 }
 
@@ -166,7 +166,7 @@ func driveBackedClip(t *testing.T, id string) (*asset.Asset, string) {
 	a.SetDriveFileID("drive-file-1")
 	a.SetFolderID("folder-1")
 	a.SetLocalPath(rendition)
-	a.SetFileHash("existing-hash")
+	a.SetLegacyFileMD5("existing-hash")
 	// Canonical clip filename (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4)
 	// as persisted in media_assets.filename by the YouTube pipeline.
 	a.Filename = "yt_abc123_0_30_v1_" + id + ".mp4"
@@ -180,7 +180,7 @@ func TestReprocessExecute_UploadDriveFalse_SetsSkipPublish(t *testing.T) {
 	clip, _ := driveBackedClip(t, "clip-upfalse")
 	proc := &fakeReprocessProcessor{
 		result: &asset.ProcessResult{
-			Status: "processed", LocalPath: "out/result.mp4", FileHash: "new-hash",
+			Status: "processed", LocalPath: "out/result.mp4", LegacyFileMD5: "new-hash",
 		},
 	}
 	reader := &fakeReprocessReader{body: "staged bytes"}
@@ -302,8 +302,8 @@ func TestReprocessExecute_ForceFalse_ReusesExistingRendition(t *testing.T) {
 	if disp.calledCount != 0 {
 		t.Errorf("dispatcher called %d times, want 0 (no re-persist on short-circuit)", disp.calledCount)
 	}
-	if res.Status != "processed" || res.FileHash != "existing-hash" {
-		t.Errorf("short-circuit result = {status:%q hash:%q}, want {processed, existing-hash}", res.Status, res.FileHash)
+	if res.Status != "processed" || res.LegacyFileMD5 != "existing-hash" {
+		t.Errorf("short-circuit result = {status:%q hash:%q}, want {processed, existing-hash}", res.Status, res.LegacyFileMD5)
 	}
 	if res.LocalPath != clip.LocalPath() {
 		t.Errorf("short-circuit LocalPath = %q, want existing rendition %q", res.LocalPath, clip.LocalPath())
@@ -338,10 +338,10 @@ func TestReprocessExecute_ForceTrue_RerunsPipelineDespiteRendition(t *testing.T)
 		t.Errorf("dispatcher called %d times, want 1 (fresh rendition persisted)", disp.calledCount)
 	}
 	if disp.calledWithHash != "result-hash" {
-		t.Errorf("dispatcher contentHash = %q, want %q (result.FileHash)", disp.calledWithHash, "result-hash")
+		t.Errorf("dispatcher contentHash = %q, want %q (result.LegacyFileMD5)", disp.calledWithHash, "result-hash")
 	}
-	if res.FileHash != "result-hash" {
-		t.Errorf("result.FileHash = %q, want %q", res.FileHash, "result-hash")
+	if res.LegacyFileMD5 != "result-hash" {
+		t.Errorf("result.LegacyFileMD5 = %q, want %q", res.LegacyFileMD5, "result-hash")
 	}
 }
 
@@ -360,7 +360,7 @@ func TestReprocessExecute_PersistsDriveIdentityFromResult(t *testing.T) {
 		result: &asset.ProcessResult{
 			Status:        "processed",
 			LocalPath:     "out/result.mp4",
-			FileHash:      "result-hash",
+			LegacyFileMD5:      "result-hash",
 			DriveFileID:   "new-drive-file-id",
 			DriveLink:     "https://drive.google.com/file/d/new-drive-file-id/view",
 			DownloadLink:  "https://drive.google.com/uc?id=new-drive-file-id",
@@ -404,7 +404,7 @@ func TestReprocessExecute_EmptyDriveFieldsDoNotClobber(t *testing.T) {
 		result: &asset.ProcessResult{
 			Status:    "processed",
 			LocalPath: "out/result.mp4",
-			FileHash:  "result-hash",
+			LegacyFileMD5:  "result-hash",
 			// DriveFileID / MD5 / PublishAction intentionally empty:
 			// a nil/non-published result must not erase prior values.
 		},

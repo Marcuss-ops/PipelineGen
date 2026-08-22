@@ -138,7 +138,7 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 	return voiceover.TTSOutput{
 		LocalPath:      merged,
 		Voice:          outputs[0].Voice,
-		FileHash:       hash,
+		LegacyFileMD5:       hash,
 		Duration:       timeDuration(duration),
 		Provider:       outputs[0].Provider,
 		BoundaryMode:   outputs[0].BoundaryMode,

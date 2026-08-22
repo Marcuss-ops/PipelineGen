@@ -149,7 +149,7 @@ type stockSeed struct {
 	MediaType   string
 	Lifecycle   string
 	CreatedAt   string
-	FileHash    string
+	LegacyFileMD5    string
 	DriveFileID string
 	DriveLink   string
 	DurationMS  int
@@ -188,7 +188,7 @@ func seedStockRow(t *testing.T, db *sql.DB, s stockSeed) {
 			local_path, filename, category
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Source, s.MediaType, s.Lifecycle, s.CreatedAt,
-		s.FileHash, s.DriveFileID, s.DriveLink, s.DurationMS,
+		s.LegacyFileMD5, s.DriveFileID, s.DriveLink, s.DurationMS,
 		s.LocalPath, s.Filename, s.Category,
 	)
 	require.NoError(t, err, "seed stock row id=%s", s.ID)
@@ -286,7 +286,7 @@ func TestStockMediaAssets_Integrity_HappyPath(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-happy-1",
-		FileHash:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+		LegacyFileMD5:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 		DriveFileID: "1abcXYZ_drive_file_id_value",
 		DriveLink:   "https://drive.google.com/file/d/1abcXYZ_drive_file_id_value/view",
 		DurationMS:  4000,
@@ -315,7 +315,7 @@ func TestStockMediaAssets_Integrity_MissingFileHash(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-nohash-1",
-		FileHash:    "", // violation: file_hash must be present on PUBLISHED rows
+		LegacyFileMD5:    "", // violation: file_hash must be present on PUBLISHED rows
 		DriveFileID: "1abc_drive_file_id",
 		DurationMS:  4000,
 		LocalPath:   "data/tmp/source.mp4",
@@ -340,7 +340,7 @@ func TestStockMediaAssets_Integrity_MissingDriveFileID(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:       "stock-nodrive-1",
-		FileHash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+		LegacyFileMD5: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 		// DriveFileID: ""  // violation: drive_file_id must be present on PUBLISHED rows
 		DurationMS: 4000,
 		LocalPath:  "data/tmp/source.mp4",
@@ -364,7 +364,7 @@ func TestStockMediaAssets_Integrity_MissingDriveLink(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-nolink-1",
-		FileHash:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+		LegacyFileMD5:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 		DriveFileID: "1abc_drive_present",
 		// DriveLink: ""  // violation: drive_link must be present on PUBLISHED rows
 		DurationMS: 4000,
@@ -388,7 +388,7 @@ func TestStockMediaAssets_Integrity_ZeroDuration(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-zerodur-1",
-		FileHash:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+		LegacyFileMD5:    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 		DriveFileID: "1abc_drive",
 		DurationMS:  0, // violation: media_type=video but duration_ms=0
 		LocalPath:   "data/tmp/source.mp4",
@@ -412,14 +412,14 @@ func TestStockMediaAssets_Integrity_DuplicateFileHash(t *testing.T) {
 	// content fingerprint, the canonical duplicate boundary for stock.
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-dup-1",
-		FileHash:    "duplicate_fingerprint_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		LegacyFileMD5:    "duplicate_fingerprint_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		DriveFileID: "drive_A_id",
 		DurationMS:  4000,
 		Filename:    "stock-dup-1.mp4",
 	})
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-dup-2",
-		FileHash:    "duplicate_fingerprint_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		LegacyFileMD5:    "duplicate_fingerprint_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		DriveFileID: "drive_B_id",
 		DurationMS:  4000,
 		Filename:    "stock-dup-2.mp4",
@@ -440,7 +440,7 @@ func TestStockMediaAssets_Integrity_MultipleViolations(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-multi-1",
-		FileHash:    "", // violation 1
+		LegacyFileMD5:    "", // violation 1
 		DriveFileID: "", // violation 2
 		DurationMS:  0,  // violation 3
 		Lifecycle:   "PUBLISHED",
@@ -467,7 +467,7 @@ func TestStockMediaAssets_Integrity_NonStockRowIsIgnored(t *testing.T) {
 	seedStockRow(t, db, stockSeed{
 		ID:          "youtube-row-1",
 		Source:      "youtube",
-		FileHash:    "", // would be orphaned IF the row were stock — but it's not.
+		LegacyFileMD5:    "", // would be orphaned IF the row were stock — but it's not.
 		DriveFileID: "",
 		DurationMS:  0,
 		Filename:    "youtube-row-1.mp4",
@@ -475,7 +475,7 @@ func TestStockMediaAssets_Integrity_NonStockRowIsIgnored(t *testing.T) {
 	// Plus one valid stock row to make the filter boundary explicit.
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-good-1",
-		FileHash:    "valid_hash_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		LegacyFileMD5:    "valid_hash_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		DriveFileID: "1valid",
 		DurationMS:  4000,
 		Filename:    "stock-good-1.mp4",
@@ -535,7 +535,7 @@ func TestMediaAssetCategoryRoundTrip(t *testing.T) {
 			id := "cat-roundtrip-" + tc.name
 			seedStockRow(t, db, stockSeed{
 				ID:          id,
-				FileHash:    "hash_" + tc.name,
+				LegacyFileMD5:    "hash_" + tc.name,
 				DriveFileID: "drive_" + tc.name,
 				DurationMS:  5000,
 				Filename:    id + ".mp4",

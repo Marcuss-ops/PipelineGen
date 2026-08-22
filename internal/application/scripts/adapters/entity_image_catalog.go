@@ -192,12 +192,12 @@ func setEntityImageCatalogCandidateStatus(ctx context.Context, repo entitycatalo
 func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCandidate, materialization *entitycatalog.Materialization) (scriptpkg.SegmentAssetCandidate, bool) {
 	if materialization == nil || materialization.Status != entitycatalog.MaterializationStatusMaterialized ||
 		strings.TrimSpace(materialization.AssetID) == "" || strings.TrimSpace(materialization.DriveLink) == "" ||
-		strings.TrimSpace(materialization.FileHash) == "" {
+		strings.TrimSpace(materialization.LegacyFileMD5) == "" {
 		return candidate, false
 	}
 	candidate.AssetID = materialization.AssetID
 	candidate.DriveLink = materialization.DriveLink
-	candidate.FileHash = materialization.FileHash
+	candidate.LegacyFileMD5 = materialization.LegacyFileMD5
 	candidate.LocalPath = materialization.LocalPath
 	candidate.RightsStatus = "unknown_allowed"
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired

@@ -136,10 +136,10 @@ func resolveVoiceForLanguage(req *BatchRequest, language Language, registry asse
 func (s *Service) processLanguage(
 	ctx context.Context,
 	requestID string,
-	// PR-VO-TYPED-PRIMITIVES (July 2026): textHash is raw string
-	// (the legacy 64-char full SHA-256 of req.Text from
-	// GenerateBatch). The typed TextHash envelope is canonical ONLY
-	// for the per-item 16-char value used in the fan-out path.
+	// PR-VO-TEXTHASH-64 (August 2026): textHash is raw string
+	// (the canonical 64-char SHA-256 fingerprint from
+	// GenerateBatch). The typed TextHash envelope is the same
+	// 64-char value.
 	textHash string,
 	language Language,
 	req *BatchRequest,
@@ -278,7 +278,7 @@ func (s *Service) processLanguage(
 	item.ErrorCode = out.ErrorCode
 	item.LocalPath = out.LocalPath
 	item.CleanedPath = out.CleanedPath
-	item.FileHash = out.FileHash
+	item.LegacyFileMD5 = out.LegacyFileMD5
 	item.SearchText = out.SearchText
 	item.DriveLink = out.DriveLink
 	item.DriveFileID = out.DriveFileID

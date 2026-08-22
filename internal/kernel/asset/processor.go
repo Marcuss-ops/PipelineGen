@@ -179,13 +179,13 @@ type TransformSpec struct {
 // migration to delivery.Publisher.Publish the canonical PublishResult
 // additionally surfaces {MD5Checksum, Action} — the
 // Drive-calculated MD5 (the canonical "this is what Drive has stored"
-// checksum, distinct from the locally-computed FileHash used for
+// checksum, distinct from the locally-computed LegacyFileMD5 used for
 // pre-upload dedup) AND the PublishAction enum (created/updated/
 // skipped/renamed) so downstream consumers can tell whether a row
 // already existed on Drive.
 //
 // Both fields are net-new (no omitempty since RenditionSet DTOs are
-// not serialised). Pre-F2.8 callers that only relied on FileHash +
+// not serialised). Pre-F2.8 callers that only relied on LegacyFileMD5 +
 // DriveLink/DriveFileID/DownloadLink keep working unchanged. MD5 is
 // "string" so delivery.PublishResult.MD5Checksum maps 1-a-1;
 // PublishAction is "string" (NOT typed delivery.PublishAction) so
@@ -199,7 +199,7 @@ type RenditionSet struct {
 	ID            string
 	Filename      string
 	LocalPath     string
-	FileHash      string
+	LegacyFileMD5      string
 	ContentHash   string
 	DriveLink     string // FORBIDDEN (Drive) — removed in step 2
 	DriveFileID   string // FORBIDDEN (Drive) — removed in step 2
@@ -212,7 +212,7 @@ type RenditionSet struct {
 	// Renditions lists the generated technical variants for this asset.
 	// Empty for transformers that have not been updated to the rendition
 	// contract; callers must treat nil/empty as "only the canonical
-	// LocalPath/Filename/FileHash are available".
+	// LocalPath/Filename/LegacyFileMD5 are available".
 	Renditions []RenditionOutput
 }
 
@@ -221,7 +221,7 @@ type RenditionOutput struct {
 	Kind       RenditionKind
 	LocalPath  string
 	Filename   string
-	FileHash   string
+	LegacyFileMD5   string
 	SizeBytes  int64
 	MimeType   string
 	Width      int

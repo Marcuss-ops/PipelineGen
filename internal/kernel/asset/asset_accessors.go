@@ -16,10 +16,9 @@ func (m *Asset) DownloadLink() string       { return m.GetMetadataString("downlo
 func (m *Asset) SetDownloadLink(v string)   { m.SetMetadataString("download_link", v) }
 func (m *Asset) LocalPath() string          { return m.GetMetadataString("local_path") }
 func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", v) }
-
-// FileHash returns the legacy file hash (stored under key "file_hash").
+// LegacyFileMD5 returns the legacy file digest (stored under key "legacy_file_md5").
 //
-// Deprecated: "file_hash" is ambiguous — it may hold an MD5 digest (from a
+// Deprecated: MD5 is compatibility-only — it may hold an MD5 digest (from a
 // legacy YouTube extraction or Drive upload receipt) or a SHA-256 digest
 // (from an image ingest or a modern content-addressed path). Callers must use
 // one of the typed accessors instead:
@@ -28,8 +27,8 @@ func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", 
 //	BinarySHA256()    → binary_sha256 projection of content_sha256
 //	DriveMD5()        → google_drive_md5 (Drive provider receipt only, NOT identity)
 //	LegacyFileMD5()   → legacy_file_md5 (compatibility-only, never identity)
-func (m *Asset) FileHash() string           { return m.GetMetadataString("file_hash") }
-func (m *Asset) SetFileHash(v string)       { m.SetMetadataString("file_hash", v) }
+func (m *Asset) LegacyFileMD5() string           { return m.GetMetadataString("legacy_file_md5") }
+func (m *Asset) SetLegacyFileMD5(v string)       { m.SetMetadataString("legacy_file_md5", v) }
 
 // ContentHash returns the canonical content SHA-256 identity (key "content_hash"
 // and/or "content_sha256"). This is the primary byte-identity hash: two

@@ -23,7 +23,7 @@ import (
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"io"
@@ -50,7 +50,7 @@ type registryCrossStepState struct {
 type sourcingHashAdapter struct{}
 
 func (a *sourcingHashAdapter) MD5File(path string) (string, error) {
-	return hashutil.MD5File(path)
+	return checksum.LegacyMD5File(path)
 }
 
 var _ sourcing.HashPort = (*sourcingHashAdapter)(nil)
@@ -126,7 +126,7 @@ func (a *artifactAssetIndexAdapter) Upsert(ctx context.Context, rec *artifacts.A
 	return a.service.Upsert(ctx, &assetindex.AssetRecord{
 		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
 		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, FileHash: rec.FileHash,
+		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, LegacyFileMD5: rec.LegacyFileMD5,
 		ContentHash: rec.ContentHash, Status: rec.Status, Metadata: rec.Metadata,
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 	})

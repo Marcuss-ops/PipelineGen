@@ -100,6 +100,37 @@ func TestStableEntityID_PinsCanonicalValues(t *testing.T) {
 	require.Equal(t, "ent_"+stableHex("PERSON:tim cook"), StableEntityID("PERSON", "Tim Cook"))
 }
 
+// TestStableEntityID_GoldenOldNew pins the byte-identical migration
+// contract: the stable entity ID for each canonical entity MUST equal the
+// absolute literal computed by the pre-migration implementation (sha256 of
+// the canonical key, truncated to StableEntityIDLen hex chars). If the
+// kernel digest SSOT or the canonical key format ever drifts, these
+// literals fail loudly.
+func TestStableEntityID_GoldenOldNew(t *testing.T) {
+	cases := []struct {
+		entityType, name string
+		want             string
+	}{
+		{"PERSON", "Tom Hanks", "ent_46579c59f05f045f"},
+		{"PERSON", "Tim Cook", "ent_52fd80dd0140190c"},
+		{"GPE", "Los Angeles", "ent_6bee252f34e49fa3"},
+		{"PERSON", "Michael Jordan", "ent_8be57fefa2fac43f"},
+	}
+	for _, c := range cases {
+		got := StableEntityID(c.entityType, c.name)
+		if got != c.want {
+			t.Errorf("StableEntityID(%q, %q) = %q, want %q (old hash != new hash)", c.entityType, c.name, got, c.want)
+		}
+	}
+	// Pin the prefix shape.
+	for _, c := range cases {
+		got := StableEntityID(c.entityType, c.name)
+		if len(got) != len("ent_")+StableEntityIDLen {
+			t.Errorf("StableEntityID(%q, %q) length = %d, want %d", c.entityType, c.name, len(got), len("ent_")+StableEntityIDLen)
+		}
+	}
+}
+
 // stableHex recomputes the truncated sha256 hex of a canonical key. It is the
 // test-side twin of StableEntityID (same sha256 + same truncation), used to
 // pin exact values without repeating the production expression.

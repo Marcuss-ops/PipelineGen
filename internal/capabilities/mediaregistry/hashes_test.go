@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// TestFingerprint_GoldenOldNew pins the byte-identical migration contract:
+// Fingerprint("a","b") must equal the SHA-256 of the NUL-joined string
+// "a\x00b" (literal computed by the pre-migration implementation, which was
+// sha256.Sum256 over the same NUL join).
+func TestFingerprint_GoldenOldNew(t *testing.T) {
+	const goldenAB = "59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138"
+	if got := Fingerprint("a", "b"); got != goldenAB {
+		t.Fatalf("Fingerprint(a,b) = %q, want %q", got, goldenAB)
+	}
+	// A single NUL-containing part must hash identically to the split form.
+	if got, want := Fingerprint("a\x00b"), Fingerprint("a", "b"); got != want {
+		t.Fatalf("Fingerprint(a\\x00b) = %q, want Fingerprint(a,b) = %q", got, want)
+	}
+}
+
 func TestFingerprint_DeterministicAndCanonical(t *testing.T) {
 	if got, want := Fingerprint("a", "b", "c"), Fingerprint("a", "b", "c"); got != want {
 		t.Fatalf("Fingerprint is not deterministic: %q vs %q", got, want)

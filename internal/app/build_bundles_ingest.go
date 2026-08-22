@@ -70,7 +70,7 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 			Name:          r.Name,
 			PreviewURL:    r.PreviewURL,
 			DriveLink:     r.DriveLink,
-			FileHash:      r.FileHash,
+			LegacyFileMD5:      r.LegacyFileMD5,
 			SourcePageURL: r.SourcePageURL,
 			Author:        r.Author,
 			Width:         r.Width,

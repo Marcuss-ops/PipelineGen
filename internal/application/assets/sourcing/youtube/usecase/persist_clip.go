@@ -64,7 +64,7 @@ type PersistAndEmitCommand struct {
 	Tags           []string // user-supplied tags
 	DurationSec    int      // clip duration in whole seconds
 	LocalPath      string   // path to the downloaded .mp4 on disk
-	FileHash       string   // MD5 hex digest (content hash for supersede gate)
+	LegacyFileMD5       string   // MD5 hex digest (content hash for supersede gate)
 	DriveLink      string   // Google Drive web view link (empty when not published)
 	DriveFileID    string   // Google Drive file ID (empty when not published)
 
@@ -108,7 +108,7 @@ func PersistClipAndEmitEvent(ctx context.Context, persister ClipPersister, emitt
 			Tags:            append([]string(nil), cmd.Tags...),
 			Duration:        time.Duration(cmd.DurationSec) * time.Second,
 			LocalPath:       cmd.LocalPath,
-			FileHash:        cmd.FileHash,
+			LegacyFileMD5:        cmd.LegacyFileMD5,
 			DriveLink:       cmd.DriveLink,
 			DriveFileID:     cmd.DriveFileID,
 			Summary:         cmd.Summary,
@@ -127,7 +127,7 @@ func PersistClipAndEmitEvent(ctx context.Context, persister ClipPersister, emitt
 
 	// ── Step 2: Emit outbox event ───────────────────────────────
 	if emitter != nil {
-		if err := emitter.EmitIndexEvent(ctx, result.ClipID, cmd.FileHash); err != nil {
+		if err := emitter.EmitIndexEvent(ctx, result.ClipID, cmd.LegacyFileMD5); err != nil {
 			return result, fmt.Errorf("usecase.PersistClipAndEmitEvent: emit event: %w", err)
 		}
 		result.EventEmitted = true

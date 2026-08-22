@@ -47,7 +47,7 @@ func TestStageBuildProcessInputsVerifySkipsBeforeDownload(t *testing.T) {
 	require.Len(t, resp.Items, 1)
 	require.Equal(t, "skipped_existing", resp.Items[0].Status)
 	require.Equal(t, "drive-existing-1", resp.Items[0].DriveFileID)
-	require.Equal(t, "sha256-existing-1", resp.Items[0].FileHash)
+	require.Equal(t, "sha256-existing-1", resp.Items[0].LegacyFileMD5)
 }
 
 func TestStageBuildProcessInputsReplaceForcesProcessing(t *testing.T) {

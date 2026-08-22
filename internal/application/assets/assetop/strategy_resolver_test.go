@@ -15,7 +15,7 @@ func TestResolveExistingAssetStrategy(t *testing.T) {
 		{
 			name:     "verify skips canonical Drive asset with hash",
 			strategy: "verify",
-			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", FileHash: "sha256-1"},
+			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", LegacyFileMD5: "sha256-1"},
 			wantSkip: true,
 			wantWhy:  ExistingReasonVerifiedAsset,
 		},
@@ -27,7 +27,7 @@ func TestResolveExistingAssetStrategy(t *testing.T) {
 		{
 			name:     "verify processes hash row without Drive evidence",
 			strategy: "verify",
-			evidence: ExistingAssetEvidence{FileHash: "sha256-1"},
+			evidence: ExistingAssetEvidence{LegacyFileMD5: "sha256-1"},
 		},
 		{
 			name:     "skip accepts Drive file id",
@@ -46,17 +46,17 @@ func TestResolveExistingAssetStrategy(t *testing.T) {
 		{
 			name:     "skip processes row without Drive evidence",
 			strategy: "skip",
-			evidence: ExistingAssetEvidence{FileHash: "sha256-1"},
+			evidence: ExistingAssetEvidence{LegacyFileMD5: "sha256-1"},
 		},
 		{
 			name:     "replace always processes",
 			strategy: "replace",
-			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", DriveLink: "drive-link", FileHash: "sha256-1"},
+			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", DriveLink: "drive-link", LegacyFileMD5: "sha256-1"},
 		},
 		{
 			name:     "empty strategy defaults to verify",
 			strategy: "",
-			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", FileHash: "sha256-1"},
+			evidence: ExistingAssetEvidence{DriveFileID: "drive-1", LegacyFileMD5: "sha256-1"},
 			wantSkip: true,
 			wantWhy:  ExistingReasonVerifiedAsset,
 		},

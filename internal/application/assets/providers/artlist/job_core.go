@@ -120,7 +120,7 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 				"drive_file_id": item.DriveFileID,
 				"download_link": item.DownloadLink,
 				"local_path":    item.LocalPath,
-				"file_hash":     item.FileHash,
+				"legacy_file_md5":     item.LegacyFileMD5,
 				"error":         item.Error,
 			})
 		}
@@ -155,8 +155,8 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	if v, ok := itemMap["local_path"].(string); ok {
 		item.LocalPath = v
 	}
-	if v, ok := itemMap["file_hash"].(string); ok {
-		item.FileHash = v
+	if v, ok := itemMap["legacy_file_md5"].(string); ok {
+		item.LegacyFileMD5 = v
 	}
 	if v, ok := itemMap["error"].(string); ok {
 		item.Error = v

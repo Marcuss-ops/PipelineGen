@@ -8,7 +8,7 @@
 //  1. DriveFileID   (= pubRes.FileID)
 //  2. DriveLink     (= pubRes.WebViewLink)
 //  3. DownloadLink  (= pubRes.DownloadLink, NO reconstruction per F2.7)
-//  4. FileHash (MD5)(= pubRes.MD5Checksum)
+//  4. LegacyFileMD5 (MD5)(= pubRes.MD5Checksum)
 //  5. publish_action (recorded on Asset.Metadata["publish_action"] = string(pubRes.Action))
 //
 // The Publisher-failure audit pin verifies that a publish error
@@ -230,9 +230,9 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 	if got := dispatchedClip.DownloadLink(); got != "https://drive.google.com/uc?id=drive-file-id-fake&export=download" {
 		t.Errorf("DownloadLink = %q, want canonical pubRes.DownloadLink (no reconstruction)", got)
 	}
-	// Audit pin #4: FileHash (MD5) = pubRes.MD5Checksum
-	if got := dispatchedClip.FileHash(); got != "md5-f29-fake" {
-		t.Errorf("FileHash (MD5) = %q, want %q (canonical pubRes.MD5Checksum)", got, "md5-f29-fake")
+	// Audit pin #4: LegacyFileMD5 (MD5) = pubRes.MD5Checksum
+	if got := dispatchedClip.LegacyFileMD5(); got != "md5-f29-fake" {
+		t.Errorf("LegacyFileMD5 (MD5) = %q, want %q (canonical pubRes.MD5Checksum)", got, "md5-f29-fake")
 	}
 	// Audit pin #5: publish_action recorded on Asset.Metadata
 	if got, ok := dispatchedClip.Metadata["publish_action"]; !ok {
@@ -240,9 +240,9 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 	} else if got != string(delivery.PublishActionUpdated) {
 		t.Errorf("Asset.Metadata[publish_action] = %q, want %q", got, delivery.PublishActionUpdated)
 	}
-	// Bonus: dispatcher's contentHash = propagated FileHash (MD5)
+	// Bonus: dispatcher's contentHash = propagated LegacyFileMD5 (MD5)
 	if disp.calledWithHash != "md5-f29-fake" {
-		t.Errorf("dispatcher calledWithHash = %q, want %q (clip.FileHash)", disp.calledWithHash, "md5-f29-fake")
+		t.Errorf("dispatcher calledWithHash = %q, want %q (clip.LegacyFileMD5)", disp.calledWithHash, "md5-f29-fake")
 	}
 	// Sanity: Publisher received the canonical PublishRequest shape
 	if pub.lastPublishRequest.AssetID != "clip-f29-happy" {

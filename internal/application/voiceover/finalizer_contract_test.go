@@ -54,7 +54,7 @@ func TestFinalize_DedupeGate_ReuseToOne(t *testing.T) {
 		Filename:    "test.mp3",
 		LocalPath:   "/tmp/test.mp3",
 		DriveFileID: "drive-1",
-		FileHash:    "abc123",
+		LegacyFileMD5:    "abc123",
 		FolderID:    "folder-1",
 	})
 
@@ -94,7 +94,7 @@ func TestFinalize_DedupeGate_AmbiguousToOne(t *testing.T) {
 	res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
 		ID:          "vo-amb-001",
 		DriveFileID: "drive-amb",
-		FileHash:    "hash",
+		LegacyFileMD5:    "hash",
 		FolderID:    "folder-1",
 	})
 
@@ -140,7 +140,7 @@ func TestFinalize_DedupeGate_Continue(t *testing.T) {
 		LocalPath:      "/tmp/test.mp3",
 		DriveFileID:    "drive-1",
 		DriveLink:      "https://drive.google.com/file/d/drive-1/view",
-		FileHash:       "abc123",
+		LegacyFileMD5:       "abc123",
 		FolderID:       "folder-1",
 		FolderPath:     "/tmp/vo",
 		ShouldSwap:     true,
@@ -198,7 +198,7 @@ func TestFinalize_IdempotencyGate_ReuseShortCircuitsAllSteps(t *testing.T) {
 		ID:             "vo-new-idem-001",
 		IdempotencyKey: "sha256:job-1:en:hash-abc",
 		DriveFileID:    "drive-1",
-		FileHash:       "abc123",
+		LegacyFileMD5:       "abc123",
 		FolderID:       "folder-1",
 	})
 
@@ -252,7 +252,7 @@ func TestFinalize_MediaAssetsProjection_VerifiedInputShape(t *testing.T) {
 		DriveFileID:  "drive-proj-001",
 		DriveLink:    "https://drive.google.com/file/d/drive-proj-001/view",
 		DownloadLink: "https://drive.google.com/uc?id=drive-proj-001",
-		FileHash:     "sha256-proj-hash-001",
+		LegacyFileMD5:     "sha256-proj-hash-001",
 		Language:     "it-IT",
 		MetaJSON:     []byte(`{"style_group":"cinematic"}`),
 	}
@@ -275,7 +275,7 @@ func TestFinalize_MediaAssetsProjection_VerifiedInputShape(t *testing.T) {
 	assert.Equal(t, "drive-proj-001", in.DriveFileID, "projection.DriveFileID must equal cmd.DriveFileID")
 	assert.Equal(t, "https://drive.google.com/file/d/drive-proj-001/view", in.DriveLink)
 	assert.Equal(t, "https://drive.google.com/uc?id=drive-proj-001", in.DownloadLink)
-	assert.Equal(t, "sha256-proj-hash-001", in.FileHash)
+	assert.Equal(t, "sha256-proj-hash-001", in.LegacyFileMD5)
 	assert.Equal(t, Language("it-IT"), in.Language, "projection.Language must equal cmd.Language (typed BCP-47)")
 	assert.Equal(t, "generated", in.Status, "projection.Status must be 'generated' (canonical StatusGenerated)")
 	assert.Contains(t, in.Name, "This is a test voiceover",
@@ -291,9 +291,9 @@ func TestFinalize_MediaAssetsProjection_VerifiedInputShape(t *testing.T) {
 // TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads pins the
 // FASE 2 outbox-event contract:
 //
-//	Step 5 (index outbox): EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.FileHash)
+//	Step 5 (index outbox): EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.LegacyFileMD5)
 //	  — the assetID is the voiceover's canonical ID; contentHash is
-//	    cmd.FileHash for the Qdrant supersede gate.
+//	    cmd.LegacyFileMD5 for the Qdrant supersede gate.
 //
 //	Step 6 (cleanup outbox): EnqueueCleanupEvent(ctx, tx,
 //	  cmd.ID, cmd.OldDriveFileID, cmd.DriveFileID, oldLocalPaths)
@@ -317,7 +317,7 @@ func TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads(t *testing.T) {
 
 	cmd := &FinalizeCommand{
 		ID:             "vo-outbox-001",
-		FileHash:       "abc123hash",
+		LegacyFileMD5:       "abc123hash",
 		DriveFileID:    "new-drive-id",
 		ShouldSwap:     true,
 		OldDriveFileID: "old-drive-id",
@@ -336,7 +336,7 @@ func TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads(t *testing.T) {
 	assert.Equal(t, "vo-outbox-001", idx.assetID,
 		"index outbox: assetID must equal cmd.ID (canonical voiceover identifier)")
 	assert.Equal(t, "abc123hash", idx.contentHash,
-		"index outbox: contentHash must equal cmd.FileHash (Qdrant supersede gate input)")
+		"index outbox: contentHash must equal cmd.LegacyFileMD5 (Qdrant supersede gate input)")
 
 	// ── Step 6 (cleanup outbox) assertions ──
 	require.Len(t, outbox.cleanupCalls, 1, "FASE 2: cleanup outbox MUST be emitted when ShouldSwap=true + OldDriveFileID non-empty")
@@ -353,7 +353,7 @@ func TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads(t *testing.T) {
 }
 
 // TestFinalize_IndexOutbox_GuardedEmptyFileHash pins the guard-skip
-// contract: when cmd.FileHash is empty, Step 5 is guard-skipped
+// contract: when cmd.LegacyFileMD5 is empty, Step 5 is guard-skipped
 // (RequiredSteps marker, not error). This test also verifies that
 // the cleanup outbox (Step 6) still executes independently.
 func TestFinalize_IndexOutbox_GuardedEmptyFileHash(t *testing.T) {
@@ -375,7 +375,7 @@ func TestFinalize_IndexOutbox_GuardedEmptyFileHash(t *testing.T) {
 
 	cmd := &FinalizeCommand{
 		ID:             "vo-empty-hash-001",
-		FileHash:       "", // empty → Step 5 guard-skipped
+		LegacyFileMD5:       "", // empty → Step 5 guard-skipped
 		DriveFileID:    "drive-empty-hash",
 		ShouldSwap:     true,
 		OldDriveFileID: "old-drive-empty",
@@ -389,15 +389,15 @@ func TestFinalize_IndexOutbox_GuardedEmptyFileHash(t *testing.T) {
 	// Guard-skip marker must be in RequiredSteps.
 	foundGuard := false
 	for _, s := range res.RequiredSteps {
-		if s == "index_outbox: guarded (empty FileHash)" {
+		if s == "index_outbox: guarded (empty LegacyFileMD5)" {
 			foundGuard = true
 			break
 		}
 	}
-	assert.True(t, foundGuard, "FASE 2: empty FileHash MUST surface guard-skip marker in RequiredSteps")
+	assert.True(t, foundGuard, "FASE 2: empty LegacyFileMD5 MUST surface guard-skip marker in RequiredSteps")
 
 	// Index outbox must NOT have been emitted.
-	assert.Empty(t, outbox.indexCalls, "empty FileHash → no EnqueueIndexEvent call")
+	assert.Empty(t, outbox.indexCalls, "empty LegacyFileMD5 → no EnqueueIndexEvent call")
 
 	// Cleanup outbox (Step 6) MUST still execute independently.
 	require.Len(t, outbox.cleanupCalls, 1, "cleanup outbox MUST execute even when index outbox guard-skipped")

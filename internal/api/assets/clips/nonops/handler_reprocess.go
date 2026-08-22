@@ -48,7 +48,7 @@ func (h *NonOpsHandler) ReprocessClip(c *gin.Context) {
 		"clip_id":       result.ClipID,
 		"status":        result.Status,
 		"local_path":    result.LocalPath,
-		"file_hash":     result.FileHash,
+		"legacy_file_md5":     result.LegacyFileMD5,
 		"drive_link":    result.DriveLink,
 		"download_link": result.DownloadLink,
 		"processed_at":  result.ProcessedAt,

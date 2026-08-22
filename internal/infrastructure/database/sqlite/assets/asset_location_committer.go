@@ -118,7 +118,7 @@ func (c *SQLiteAssetLocationCommitter) commitAssetLocationsTx(ctx context.Contex
 		var source, mediaType, sourceVersion, fileHash, existingFileID, existingLink, lifecycleState string
 		err := tx.QueryRowContext(ctx, `
 			SELECT COALESCE(source, ''), COALESCE(media_type, ''),
-			       COALESCE(source_version, ''), COALESCE(file_hash, ''),
+			       COALESCE(source_version, ''), COALESCE(legacy_file_md5, ''),
 			       COALESCE(drive_file_id, ''), COALESCE(drive_link, ''),
 			       COALESCE(lifecycle_state, 'ACTIVE')
 			FROM media_assets WHERE id = ?`, change.AssetID).
@@ -133,7 +133,7 @@ func (c *SQLiteAssetLocationCommitter) commitAssetLocationsTx(ctx context.Contex
 			sourceVersion = fileHash
 		}
 		if sourceVersion == "" {
-			return AssetLocationCommitResult{}, fmt.Errorf("asset location committer: asset %q has no source_version or file_hash", change.AssetID)
+			return AssetLocationCommitResult{}, fmt.Errorf("asset location committer: asset %q has no source_version or legacy_file_md5", change.AssetID)
 		}
 
 		var existingLocationFileID, existingLocationLink string
@@ -242,7 +242,7 @@ func hasOtherUsableLocation(ctx context.Context, tx *sql.Tx, assetID string) (bo
 		SELECT COUNT(*) FROM asset_locations
 		WHERE asset_id = ? AND location_kind IN ('local', 'object_storage')
 		  AND TRIM(COALESCE(uri, '')) <> ''
-		  AND TRIM(COALESCE(file_hash, '')) <> ''
+		  AND TRIM(COALESCE(legacy_file_md5, '')) <> ''
 		  AND COALESCE(file_size_bytes, 0) > 0`, assetID).Scan(&count)
 	return count > 0, err
 }
@@ -263,7 +263,7 @@ func (c *SQLiteAssetLocationCommitter) upsertDriveLocation(ctx context.Context, 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
 		VALUES (?, 'drive', ?, ?, ?, '', '', 0, '', ?, ?, ?)
 		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 			uri = excluded.uri,

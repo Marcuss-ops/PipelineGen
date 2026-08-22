@@ -49,7 +49,7 @@ type LocalHit struct {
 	SourceRef      string
 	DurationMs     int64
 	Title          string
-	FileHash       string
+	LegacyFileMD5       string
 	DriveFileID    string
 	SourceURL      string
 	YouTubeID      string

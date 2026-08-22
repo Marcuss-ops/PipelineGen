@@ -582,7 +582,7 @@ func TestStockExtractClips_OutOfRange_FailsClosed(t *testing.T) {
 //  12. Metadata["local_path"] == cutter OutputPath
 //  13. Metadata["sha256"] non-empty + matches writer.fileHash
 //  14. Metadata["file_hash"] also populated (godlike/06 SSOT
-//     SetFileHash accessor populates BOTH the explicit "sha256"
+//     SetLegacyFileMD5 accessor populates BOTH the explicit "sha256"
 //     key + the typed-accessor "file_hash" key)
 //  15. SearchText contains all 7 expected segments
 func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
@@ -735,12 +735,12 @@ func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
 		t.Errorf("writer.fileHash = %q, Metadata[sha256] = %q — godlike/06 SSOT: read-back must mirror write-side", writer.fileHash, sha256)
 	}
 
-	// Assert 14: Metadata["file_hash"] ALSO populated by SetFileHash
-	// (godlike/06 SSOT: SetFileHash accessor populates BOTH the
+	// Assert 14: Metadata["file_hash"] ALSO populated by SetLegacyFileMD5
+	// (godlike/06 SSOT: SetLegacyFileMD5 accessor populates BOTH the
 	// explicit "sha256" key + the typed-accessor "file_hash" key
 	// for legacy/canonical compat).
 	if got := writer.clip.Metadata["file_hash"]; got != sha256 {
-		t.Errorf("Metadata[file_hash] = %q, want %q (must mirror sha256 — SetFileHash populates both)", got, sha256)
+		t.Errorf("Metadata[file_hash] = %q, want %q (must mirror sha256 — SetLegacyFileMD5 populates both)", got, sha256)
 	}
 
 	// Assert 15: SearchText contains all 7 expected segments.

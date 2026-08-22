@@ -33,7 +33,7 @@ import (
 //   - GetByID returns the canonical media_assets row needed
 //     to build the EnrichmentRequest (SourceURL / Title /
 //     Description / StartSec / EndSec / SourceProvider / DriveFileID /
-//     DrivePath / FileHash — the 3 drive fields are required for
+//     DrivePath / LegacyFileMD5 — the 3 drive fields are required for
 //     PR-011C's asset.published v1 envelope construction).
 //   - UpdateEnrichedMetadata persists the EnrichedFields into
 //     media_assets.metadata_json (PR-011B will call this).
@@ -77,7 +77,7 @@ type AssetMetadataUpdater interface {
 // Future LLM-driven enrichment passes MUST extend this struct (NOT
 // introduce a parallel envelope).
 //
-// PR-011C added 3 drive fields (DriveFileID + DrivePath + FileHash)
+// PR-011C added 3 drive fields (DriveFileID + DrivePath + LegacyFileMD5)
 // so the asset.published v1 envelope can carry the canonical
 // drive_file_id + drive_path (consumer ComposeSearchText uses
 // them) + the file_hash (idempotency_key derivation per
@@ -92,7 +92,7 @@ type AssetRow struct {
 	SourceProvider string
 	DriveFileID    string
 	DrivePath      string
-	FileHash       string
+	LegacyFileMD5       string
 }
 
 // EnrichmentHandler is the canonical broker entry-point for the

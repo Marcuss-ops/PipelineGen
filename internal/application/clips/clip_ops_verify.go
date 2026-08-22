@@ -60,7 +60,7 @@ func (s *ClipOpsService) Verify(ctx context.Context, source, clipID string) *Ver
 // source) and a clip.
 //
 // S1c (June 2026) — verifyClip is now strictly read-only.
-// When the local clip row has no FileHash but Drive supplies a
+// When the local clip row has no LegacyFileMD5 but Drive supplies a
 // matching MD5, the report exposes the candidate via
 // (HashRecoverable, HashRecoverableValue) but DOES NOT mutate
 // the row.
@@ -115,8 +115,8 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 	}
 
 	// Check hash (read-only S1c path)
-	if clip.FileHash() != "" {
-		report.Hash = clip.FileHash()
+	if clip.LegacyFileMD5() != "" {
+		report.Hash = clip.LegacyFileMD5()
 		report.HasHash = true
 		if hasLocalFile {
 			report.HashVerified = false

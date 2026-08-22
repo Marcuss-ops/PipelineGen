@@ -86,7 +86,7 @@ func (r *localizationSourceResolver) ResolveSource(ctx context.Context, assetID 
 	// recorded hash. A non-clean registry hash (empty, prefixed, or non-hex)
 	// is skipped — the computed digest is still returned and the compiler's
 	// plan.SourceSHA256 gate remains the authoritative check.
-	if reg := cleanSHA256(ref.FileHash); reg != "" && reg != mat.SHA256 {
+	if reg := cleanSHA256(ref.LegacyFileMD5); reg != "" && reg != mat.SHA256 {
 		return localization.SourceFacts{}, fmt.Errorf("localization: source asset %q hash mismatch: registry %q, local %q", assetID, reg, mat.SHA256)
 	}
 

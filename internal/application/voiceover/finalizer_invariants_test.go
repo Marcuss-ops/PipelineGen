@@ -25,7 +25,7 @@ func TestFinalizer_NilConstructorPanic(t *testing.T) {
 		t, "voiceover.NewProcessSegmentUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)",
 		func() {
 			_ = NewProcessSegmentUseCase(ProcessSegmentDeps{
-				TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
+				TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", LegacyFileMD5: "h"}},
 				Publisher:           &stubProcessPublisher{fileID: "x"},
 				VoiceoverRepository: &finalizerTestRepo{db: db},
 				Finalizer:           nil, // KEY: nil Finalizer — must panic with typed message
@@ -88,7 +88,7 @@ func TestFinalizerDelegation_UsesProcessSegmentExecute(t *testing.T) {
 				cannedOut: TTSOutput{
 					LocalPath: "/tmp/vo/migrated-" + c.name + ".mp3",
 					Voice:     "en_female",
-					FileHash:  "migrated-hash-" + c.name,
+					LegacyFileMD5:  "migrated-hash-" + c.name,
 				},
 			}
 			dest := &stubProcessDestResolver{
@@ -185,7 +185,7 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 	db := openFinalizerTestDB(t)
 	repo := &finalizerTestRepo{db: db}
 
-	t.Run("all wired with DriveFileID and FileHash", func(t *testing.T) {
+	t.Run("all wired with DriveFileID and LegacyFileMD5", func(t *testing.T) {
 		// Full wiring: all required steps execute, optional Steps empty.
 		f := newVoiceoverFinalizer(voiceoverFinalizerDeps{
 			VoiceoverRepo:    repo,
@@ -210,7 +210,7 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			DriveFileID:    "drive-1",
 			DriveLink:      "https://drive.google.com/file/d/drive-1/view",
 			DownloadLink:   "https://drive.google.com/uc?id=drive-1",
-			FileHash:       "abc123",
+			LegacyFileMD5:       "abc123",
 			FolderID:       "folder-1",
 			FolderPath:     "/tmp/vo",
 			ShouldSwap:     true,
@@ -251,7 +251,7 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "", // empty → Step 1 guard-skipped
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			FolderID:    "folder-1",
 		})
 		require.NoError(t, err)
@@ -265,8 +265,8 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			"all required steps execute OR guard-skip with reason; no Step 1 / dedupe here")
 	})
 
-	t.Run("empty FileHash guard-skips index outbox", func(t *testing.T) {
-		// RequiredStep data-state guard (FileHash empty) — recordable
+	t.Run("empty LegacyFileMD5 guard-skips index outbox", func(t *testing.T) {
+		// RequiredStep data-state guard (LegacyFileMD5 empty) — recordable
 		// as a RequiredSteps guard marker, NOT an optional skip.
 		f := newVoiceoverFinalizer(voiceoverFinalizerDeps{
 			VoiceoverRepo:    repo,
@@ -289,14 +289,14 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "drive-2",
-			FileHash:    "", // empty → Step 5 guard-skipped
+			LegacyFileMD5:    "", // empty → Step 5 guard-skipped
 			FolderID:    "folder-1",
 		})
 		require.NoError(t, err)
 		assert.Empty(t, res.OptionalSteps)
 		assert.Equal(t, []string{
 			"media_assets_projection: executed",
-			"index_outbox: guarded (empty FileHash)",
+			"index_outbox: guarded (empty LegacyFileMD5)",
 			"cleanup_outbox: guarded (ShouldSwap=false)",
 		}, res.RequiredSteps,
 			"Step 5 guard-skipped for data-state reason → RequiredSteps marker, not OptionalSteps entry")
@@ -327,7 +327,7 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "drive-5",
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			FolderID:    "folder-1",
 			ShouldSwap:  true, // no old artefacts → Step 6 guard-skipped
 			// OldDriveFileID, OldLocalPath, OldCleanedPath all empty.
@@ -391,7 +391,7 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "drive-1",
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			FolderID:    "folder-1",
 			ShouldSwap:  true,
 		})
@@ -435,7 +435,7 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "drive-2",
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			FolderID:    "folder-1",
 			ShouldSwap:  true,
 		})
@@ -474,7 +474,7 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 			Filename:    "test.mp3",
 			LocalPath:   "/tmp/test.mp3",
 			DriveFileID: "drive-aw",
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			FolderID:    "folder-1",
 			ShouldSwap:  true,
 		})
