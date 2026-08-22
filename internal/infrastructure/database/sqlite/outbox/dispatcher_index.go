@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
@@ -55,6 +56,40 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if contentHash == "" {
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set file_hash before dispatching)", clip.ID)
 	}
+	if d.canonicalCommitter != nil {
+		mediaType := string(clip.MediaType)
+		if mediaType == "" || mediaType == "clip" {
+			mediaType = "video"
+		}
+		filename := clip.Filename
+		if filename == "" {
+			filename = clip.Name
+		}
+		if filename == "" {
+			filename = clip.ID
+		}
+		lifecycle := string(clip.LifecycleState)
+		if lifecycle == "" {
+			lifecycle = "ACTIVE"
+		}
+		request := persistence.CommitRequest{
+			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name,
+			Filename: filename, MediaType: mediaType, Category: clip.Category,
+			DurationMs: clip.Duration.Milliseconds(), ContentHash: contentHash,
+			Description: clip.GetMetadataString("description"), SearchText: clip.SearchText,
+			LifecycleState: lifecycle, IndexState: clip.GetMetadataString("index_state"),
+			LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
+			ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: clip.Name,
+			SourceProvider: clip.GetMetadataString("source_provider"), SourceVideoID: clip.GetMetadataString("source_video_id"),
+			StartMs: int64(clip.GetMetadataInt("start_ms")), EndMs: int64(clip.GetMetadataInt("end_ms")),
+			Metadata:     persistence.TypedMetadata{Tags: clip.Tags, Extra: clip.Metadata},
+			AssetVersion: contentHash, EmitIndexEvent: true,
+		}
+		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, request); err != nil {
+			return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical commit: %w", err)
+		}
+		return nil
+	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
 		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
@@ -66,12 +101,11 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			tx,
 			d.outboxEventsRepo,
 			sqliteassets.IndexRequest{
-				AssetID:                  clip.ID,
-				Source:                   string(clip.Source),
-				SourceVersion:            contentHash,
-				RequestedAt:              time.Now(),
-				UseProviderEventKey:      true,
-				IncludeEmbeddingMetadata: true,
+				AssetID:       clip.ID,
+				Source:        string(clip.Source),
+				SourceVersion: contentHash,
+				RequestedAt:   time.Now(),
+				MediaType:     string(clip.MediaType),
 			},
 		)
 		if err != nil {
@@ -86,41 +120,6 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 				zap.String("source", string(clip.Source)),
 				zap.String("source_version", contentHash),
 				zap.String("content_hash_prefix", shortHashPrefix(contentHash)),
-			)
-		}
-		return nil
-	})
-}
-
-// UpsertClipNoIndex upserts the clip row in a transaction WITHOUT
-// emitting an asset.index.requested event. Producer-side guard for
-// bulk-folder-sync: when the existing row is already INDEXED with
-// unchanged content (verified by the caller via
-// *assets.ClipsRepository.GetIndexState), re-enqueueing the index
-// request would be a wasted round-trip that the outbox event_key dedup
-// would otherwise suppress. The metadata refresh (drive links, names,
-// timestamps) still commits atomically; only the redundant index
-// request is skipped.
-func (d *Dispatcher) UpsertClipNoIndex(ctx context.Context, clip *asset.Asset) error {
-	if d == nil {
-		return errors.New("outbox.Dispatcher is nil")
-	}
-	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
-	}
-	if d.clips == nil {
-		return errors.New("outbox.Dispatcher: clips repo not configured")
-	}
-	if clip == nil || clip.ID == "" {
-		return errors.New("clip with non-empty ID is required")
-	}
-	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
-			return fmt.Errorf("dispatcher upsert clip (no index) %s: %w", clip.ID, err)
-		}
-		if d.log != nil {
-			d.log.Debug("dispatcher skipped redundant index request (already indexed, unchanged content)",
-				zap.String("asset_id", clip.ID),
 			)
 		}
 		return nil
@@ -203,12 +202,11 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 		tx,
 		d.outboxEventsRepo,
 		sqliteassets.IndexRequest{
-			AssetID:                  assetID,
-			Source:                   source,
-			SourceVersion:            contentHash,
-			RequestedAt:              time.Now(),
-			UseProviderEventKey:      true,
-			IncludeEmbeddingMetadata: true,
+			AssetID:       assetID,
+			Source:        source,
+			SourceVersion: contentHash,
+			RequestedAt:   time.Now(),
+			MediaType:     "video",
 		},
 	)
 	if err != nil {

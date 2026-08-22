@@ -193,8 +193,9 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	)
 	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
 	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
+	canonicalCommitter := newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log)
 	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log,
-		newCanonicalAssetCommitter(dbs.DualPool.Writer, outboxEventsRepo, log))
+		canonicalCommitter, canonicalCommitter)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
 	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps

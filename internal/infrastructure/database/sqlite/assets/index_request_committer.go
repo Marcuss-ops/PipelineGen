@@ -39,14 +39,13 @@ type priorityIndexRequestOutbox interface {
 // IndexRequest describes one canonical indexing request emitted after the
 // corresponding media_assets write has succeeded in the same transaction.
 type IndexRequest struct {
-	AssetID                  string
-	Source                   string
-	MediaType                string
-	SourceVersion            string
-	RequestedAt              time.Time
-	UseProviderEventKey      bool
-	IncludeSourceMetadata    bool
-	IncludeEmbeddingMetadata bool
+	AssetID       string
+	Source        string
+	MediaType     string
+	SourceVersion string
+	RequestedAt   time.Time
+	// Source and embedding metadata are always part of the canonical
+	// envelope; producers cannot select a second event shape.
 	// EventKeySuffix differentiates deterministic reindex requests that
 	// share the same asset source_version but represent a changed
 	// projection input, such as a repaired Drive location. It is appended
@@ -105,56 +104,35 @@ func CommitIndexRequestTx(
 		err      error
 	)
 
-	if req.UseProviderEventKey {
-		eventID = uuid.NewString()
-		eventKey, err = idempotency.OutboxKey(
-			outboxevents.EventAssetIndexRequested,
-			req.Source,
-			req.AssetID,
-			req.SourceVersion,
-		)
-		if err != nil {
-			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
-		}
-
-		payloadMap := map[string]any{
-			"schema_version": outboxevents.ReindexEnvelopeV1Schema,
-			"event_id":       eventID,
-			"asset_id":       req.AssetID,
-			"operation":      indexRequestOperationUpsert,
-			"source_version": req.SourceVersion,
-			// index_revision is the canonical supersede fingerprint the
-			// worker compares against the current asset index_revision.
-			"index_revision":       req.SourceVersion,
-			"target_index_version": clipindexer.CollectionVersion(),
-			"requested_vectors":    []string{"text", "transcript"},
-			"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
-			"idempotency_key":      eventKey,
-		}
-		if req.IncludeSourceMetadata {
-			payloadMap["source"] = req.Source
-			payloadMap["media_type"] = req.MediaType
-		}
-		if req.IncludeEmbeddingMetadata {
-			payloadMap["embedding_model"] = clipindexer.EmbeddingModel()
-			payloadMap["embedding_version"] = clipindexer.EmbeddingModelVersion()
-		}
-		payload, err = json.Marshal(payloadMap)
-		if err != nil {
-			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
-		}
-	} else {
-		var payloadString string
-		eventKey, payloadString, err = outboxevents.BuildReindexEnvelopeV1(
-			req.AssetID,
-			clipindexer.CollectionVersion(),
-			req.SourceVersion,
-			req.RequestedAt,
-		)
-		if err != nil {
-			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
-		}
-		payload = []byte(payloadString)
+	eventID = uuid.NewString()
+	eventKey, err = idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested,
+		req.Source,
+		req.AssetID,
+		req.SourceVersion,
+	)
+	if err != nil {
+		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
+	}
+	payloadMap := map[string]any{
+		"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
+		"event_id":             eventID,
+		"asset_id":             req.AssetID,
+		"operation":            indexRequestOperationUpsert,
+		"source_version":       req.SourceVersion,
+		"index_revision":       req.SourceVersion,
+		"target_index_version": clipindexer.CollectionVersion(),
+		"requested_vectors":    []string{"text", "transcript"},
+		"requested_at":         req.RequestedAt.UTC().Format(time.RFC3339Nano),
+		"idempotency_key":      eventKey,
+		"source":               req.Source,
+		"media_type":           req.MediaType,
+		"embedding_model":      clipindexer.EmbeddingModel(),
+		"embedding_version":    clipindexer.EmbeddingModelVersion(),
+	}
+	payload, err = json.Marshal(payloadMap)
+	if err != nil {
+		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
 	}
 
 	if suffix := strings.TrimSpace(req.EventKeySuffix); suffix != "" {

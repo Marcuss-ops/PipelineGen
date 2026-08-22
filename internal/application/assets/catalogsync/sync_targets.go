@@ -96,7 +96,7 @@ func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, medi
 		name = folderID
 	}
 	if mediaType == "" {
-		mediaType = "clip"
+		mediaType = "video"
 	}
 
 	target := Target{

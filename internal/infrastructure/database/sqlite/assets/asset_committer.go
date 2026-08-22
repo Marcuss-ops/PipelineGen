@@ -456,10 +456,7 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 			// envelope. The producer must never choose a different idempotency
 			// scheme based on its source; that belongs to this infrastructure
 			// boundary.
-			UseProviderEventKey:      true,
-			IncludeSourceMetadata:    true,
-			IncludeEmbeddingMetadata: true,
-			Priority:                 req.IndexPriority,
+			Priority: req.IndexPriority,
 		})
 		if err != nil {
 			return persistence.CommitResult{}, err
