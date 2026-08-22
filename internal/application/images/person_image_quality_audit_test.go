@@ -86,8 +86,8 @@ func TestPersonImageQualityAudit(t *testing.T) {
 	t.Logf("")
 
 	type personAudit struct {
-		person string
-		cands  []auditCandidate
+		person         string
+		cands          []auditCandidate
 		firstValidRank int // 1-indexed; 0 if none
 	}
 
@@ -250,12 +250,12 @@ func inspectCatalogTables(t *testing.T, ctx context.Context, client *http.Client
 		t.Fatalf("query candidates: %v", err)
 	}
 	type candRow struct {
-		rank           int
-		url, status    string
-		semStatus      string
-		semScore       float64
-		techScore      float64
-		reason         string
+		rank        int
+		url, status string
+		semStatus   string
+		semScore    float64
+		techScore   float64
+		reason      string
 	}
 	var cands []candRow
 	for cRows.Next() {
