@@ -219,15 +219,12 @@ func (c *SQLiteMediaCommitter) commitTx(ctx context.Context, tx *sql.Tx, req med
 	if req.IndexPolicy.Indexable {
 		sourceVersion := firstNonEmpty(req.Source.SourceVersion, req.Asset.ContentHash)
 		indexResult, err = sqassets.CommitIndexRequestTx(ctx, tx, c.box, sqassets.IndexRequest{
-			AssetID:                  assetID,
-			Source:                   req.Asset.Source,
-			MediaType:                req.Asset.MediaType,
-			SourceVersion:            sourceVersion,
-			RequestedAt:              time.Now(),
-			UseProviderEventKey:      true,
-			IncludeSourceMetadata:    true,
-			IncludeEmbeddingMetadata: true,
-			Priority:                 req.IndexPolicy.Priority,
+			AssetID:       assetID,
+			Source:        req.Asset.Source,
+			MediaType:     req.Asset.MediaType,
+			SourceVersion: sourceVersion,
+			RequestedAt:   time.Now(),
+			Priority:      req.IndexPolicy.Priority,
 		})
 		if err != nil {
 			return mediacommit.CommitMediaAssetResult{}, fmt.Errorf("media committer: emit index request: %w", err)

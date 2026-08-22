@@ -15,8 +15,9 @@ type CatalogRepository interface {
 	DeleteFolder(ctx context.Context, id string) error
 }
 
-// AssetIndexer exposes the index projection state needed to avoid emitting a
-// duplicate indexing request for an unchanged, already-indexed asset.
+// AssetIndexer is a read-side capability used by the synchronizer's job
+// wiring. It is not proof that the Qdrant projection is current; the
+// dispatcher always emits the canonical idempotent index intent.
 type AssetIndexer interface {
 	GetIndexState(ctx context.Context, id string) (asset.IndexState, error)
 }
@@ -25,7 +26,6 @@ type AssetIndexer interface {
 // event enqueue. The implementation is supplied by infrastructure at the
 // composition root; catalogsync only knows this narrow application port.
 type ProjectionDispatcher interface {
-	UpsertClipNoIndex(ctx context.Context, clip *asset.Asset) error
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
 }
 

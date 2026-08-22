@@ -40,14 +40,11 @@ func TestCommitIndexRequestTx_ProviderEnvelopeUsesCanonicalContract(t *testing.T
 		new(sql.Tx),
 		box,
 		IndexRequest{
-			AssetID:                  "yt_video_10_20_v1",
-			Source:                   "youtube",
-			MediaType:                "video",
-			SourceVersion:            "sha256:abc123",
-			RequestedAt:              requestedAt,
-			UseProviderEventKey:      true,
-			IncludeSourceMetadata:    true,
-			IncludeEmbeddingMetadata: true,
+			AssetID:       "yt_video_10_20_v1",
+			Source:        "youtube",
+			MediaType:     "video",
+			SourceVersion: "sha256:abc123",
+			RequestedAt:   requestedAt,
 		},
 	)
 	if err != nil {
@@ -88,7 +85,7 @@ func TestCommitIndexRequestTx_RejectsMissingSourceVersion(t *testing.T) {
 		context.Background(),
 		new(sql.Tx),
 		&indexRequestOutboxCapture{},
-		IndexRequest{AssetID: "asset-1", UseProviderEventKey: true, Source: "youtube"},
+		IndexRequest{AssetID: "asset-1", Source: "youtube"},
 	)
 	if err == nil {
 		t.Fatal("expected missing source_version error")

@@ -14,6 +14,8 @@ package outbox
 import (
 	"context"
 	"database/sql"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -42,6 +44,7 @@ type Dispatcher struct {
 	txmgr              TxManager
 	log                *zap.Logger
 	discoveryCommitter DiscoveryCommitter
+	canonicalCommitter persistence.AssetCommitter
 }
 
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
@@ -56,11 +59,21 @@ func NewDispatcher(
 	outboxEventsRepo outboxEnqueuer,
 	txmgr TxManager,
 	log *zap.Logger,
-	discovery ...DiscoveryCommitter,
+	extra ...any,
 ) *Dispatcher {
 	var discoveryCommitter DiscoveryCommitter
-	if len(discovery) > 0 {
-		discoveryCommitter = discovery[0]
+	var canonicalCommitter persistence.AssetCommitter
+	for _, value := range extra {
+		if discoveryCommitter == nil {
+			if candidate, ok := value.(DiscoveryCommitter); ok {
+				discoveryCommitter = candidate
+			}
+		}
+		if canonicalCommitter == nil {
+			if candidate, ok := value.(persistence.AssetCommitter); ok {
+				canonicalCommitter = candidate
+			}
+		}
 	}
 	return &Dispatcher{
 		clips:              clips,
@@ -69,5 +82,6 @@ func NewDispatcher(
 		txmgr:              txmgr,
 		log:                log,
 		discoveryCommitter: discoveryCommitter,
+		canonicalCommitter: canonicalCommitter,
 	}
 }

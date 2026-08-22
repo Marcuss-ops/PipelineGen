@@ -67,11 +67,10 @@ func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state as
 // the column is empty (the migration DEFAULT sentinel) so producers can
 // branch on "already indexed" without error-handling ceremony.
 //
-// Producer-side guard (July 2026): catalogsync uses this to skip
-// re-emitting asset.index.requested for assets that are already
-// INDEXED with unchanged content — the outbox event_key dedup would
-// suppress the duplicate anyway, but the producer-side check avoids
-// the wasted upsert+enqueue round-trip on every bulk folder re-sync.
+// Index-state reads are diagnostic only. They must not suppress a new
+// index intent: SQLite INDEXED does not prove that the active Qdrant
+// projection contains the asset. Exact retries are deduplicated by the
+// canonical outbox event key.
 func (r *ClipsRepository) GetIndexState(ctx context.Context, id string) (asset.IndexState, error) {
 	if id == "" {
 		return asset.StateDiscovered, fmt.Errorf("clips.GetIndexState: id is required")
