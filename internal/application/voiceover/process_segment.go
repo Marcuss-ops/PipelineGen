@@ -134,6 +134,16 @@ func TimingPolicyFingerprint(timing *audio.TimingRequest, removeSilence bool) st
 	return fmt.Sprintf("mode=%s;boundary=%s;schema=%d;silence=%t", policy.Mode, policy.BoundaryMode, schema, removeSilence)
 }
 
+// BuildVoiceoverContentFingerprint identifies reusable audio across jobs.
+// The destination is included because the persisted artifact and its Drive
+// ownership are part of the delivery contract. JobID is intentionally not
+// included; retry isolation belongs to BuildVoiceoverIdempotencyKey.
+func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
+	h := sha256.New()
+	h.Write([]byte("voiceover-content-v1:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence)))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // ProcessSegmentCommand — neutral DTO consumed by ProcessSegmentUseCase
 // ────────────────────────────────────────────────────────────────────────
@@ -496,6 +506,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
 	finalizeCmd := &FinalizeCommand{
+		Fingerprint:     BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence),
 		IdempotencyKey:  pub.IdemKey,
 		JobID:           cmd.JobID,
 		ID:              cmd.ID,

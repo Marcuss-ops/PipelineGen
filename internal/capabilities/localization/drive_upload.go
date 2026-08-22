@@ -18,6 +18,7 @@ package localization
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -34,10 +35,23 @@ type DriveUploadInput struct {
 	SizeBytes   int64
 }
 
+type SubtitleUploadInput struct {
+	LocalPath   string
+	Filename    string
+	FolderID    string
+	ContentHash string
+	Language    string
+	SizeBytes   int64
+}
+
 // DriveUploadResult is the certified upload outcome.
 type DriveUploadResult struct {
 	FileID string
 	Link   string
+}
+
+type SubtitleDriveUploader interface {
+	UploadSubtitle(ctx context.Context, in SubtitleUploadInput) (*DriveUploadResult, error)
 }
 
 // DriveUploader uploads a rendered localized clip to Drive. The concrete
@@ -104,6 +118,33 @@ func (p *DrivePublisher) Publish(ctx context.Context, artifact LocalizedClipArti
 	out.DriveFileID = result.FileID
 	out.DriveLink = result.Link
 	out.Status = LocalizedClipUploaded
+	subtitleFolderID := artifact.SubtitleFolderID
+	if strings.TrimSpace(artifact.SubtitlePath) != "" && strings.TrimSpace(subtitleFolderID) != "" {
+		if su, ok := p.uploader.(SubtitleDriveUploader); ok {
+			var subtitleSize int64
+			if info, statErr := os.Stat(artifact.SubtitlePath); statErr == nil {
+				subtitleSize = info.Size()
+			}
+			subtitleHash := artifact.SubtitleSHA256
+			if subtitleHash == "" {
+				subtitleHash = artifact.SHA256
+			}
+			sub, err := su.UploadSubtitle(ctx, SubtitleUploadInput{
+				LocalPath:   artifact.SubtitlePath,
+				Filename:    artifact.ClipID + "." + artifact.Language + ".ass",
+				FolderID:    subtitleFolderID,
+				ContentHash: subtitleHash,
+				Language:    artifact.Language,
+				SizeBytes:   subtitleSize,
+			})
+			if err != nil {
+				return artifact, fmt.Errorf("localization: drive upload subtitle: %w", err)
+			}
+			if sub == nil || sub.FileID == "" {
+				return artifact, fmt.Errorf("localization: drive upload subtitle: empty result")
+			}
+		}
+	}
 	return out, nil
 }
 

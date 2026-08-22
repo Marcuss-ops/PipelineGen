@@ -210,10 +210,12 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	}
 	if u.core.Hash != nil {
 		var hashErr error
-		fileHash, hashErr = u.core.Hash.MD5File(localPath)
+		// Canonical content identity: SHA-256 of the actual byte stream.
+		// MD5File (Google Drive receipt) is a separate concern — never identity.
+		fileHash, hashErr = u.core.Hash.SHA256File(localPath)
 		if hashErr != nil || fileHash == "" {
 			typed := NewExtractionError(FailureCodeHashFailed, false,
-				fmt.Sprintf("hash.MD5File failed for %q (err=%v)", localPath, hashErr),
+				fmt.Sprintf("hash.SHA256File failed for %q (err=%v)", localPath, hashErr),
 				hashErr)
 			return "", "", u.fail(out, typed)
 		}

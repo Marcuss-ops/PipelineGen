@@ -252,6 +252,7 @@ func TestReadinessCheck_HasAllKeys(t *testing.T) {
 		"dispatcher_really_built",
 		"legacy_cleanup_clean",
 		"production_sqlite_reader",
+		"projection_parity",
 		"qdrant_active_collection_real",
 		"real_routes_present",
 		"scan_reconciler_complete",

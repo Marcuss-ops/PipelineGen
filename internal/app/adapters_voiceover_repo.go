@@ -173,6 +173,7 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *persistence.VoiceoverRecord) *sq
 		// key and the producing job ID through to the SQLite row.
 		IdempotencyKey: rec.IdempotencyKey,
 		JobID:          rec.JobID,
+		Fingerprint:    rec.Fingerprint,
 		CreatedAt:      parseRFC3339OrNow(rec.CreatedAt),
 		UpdatedAt:      parseRFC3339OrNow(rec.UpdatedAt),
 	}
@@ -222,9 +223,25 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.Vo
 		// FASE 3 (July 2026): round-trip through the infra layer.
 		IdempotencyKey: r.IdempotencyKey,
 		JobID:          r.JobID,
+		Fingerprint:    r.Fingerprint,
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
 	}
+}
+
+// FindByFingerprint is intentionally an optional read surface: the
+// application Repository port remains stable for test doubles and legacy
+// callers, while the production adapter exposes the SQLite projection for
+// cross-run cache auditing.
+func (a *useCaseRepoAdapter) FindByFingerprint(ctx context.Context, fingerprint string) (*persistence.VoiceoverRecord, error) {
+	if a == nil || a.repo == nil {
+		return nil, fmt.Errorf("useCaseRepoAdapter.FindByFingerprint: repository not wired")
+	}
+	rec, err := a.repo.FindByFingerprint(ctx, fingerprint)
+	if err != nil || rec == nil {
+		return nil, err
+	}
+	return a.fromInfraRecord(rec), nil
 }
 
 // parseRFC3339OrNow parses an RFC3339 timestamp string into time.Time,

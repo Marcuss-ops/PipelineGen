@@ -134,6 +134,8 @@ type Runner struct {
 	documentRenderer      DocumentRenderer
 	combinedAudioRenderer CombinedAudioRenderer
 	finalAudioPublisher   FinalAudioPublisher
+	finalVideoAssembler   FinalVideoAssembler
+	finalVideoPublisher   FinalVideoPublisher
 	// audioAssetSource turns the run's BGM/SFX asset_ids into verified
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
@@ -381,12 +383,21 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 // Fail-closed: the recorder and the result append must both succeed, and
 // concurrent fan-out workers are fenced by localizedRenderMu.
 func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
-	if strings.TrimSpace(rendered.AssetID) == "" {
+	// The localization artifact is certified by its Drive identity, while
+	// older clip-render paths also provide a registry AssetID. Do not discard
+	// a successfully uploaded MP4 merely because the localization adapter did
+	// not mint a second registry id.
+	if strings.TrimSpace(rendered.AssetID) == "" && strings.TrimSpace(rendered.DriveFileID) == "" && strings.TrimSpace(rendered.DriveLink) == "" {
 		return nil
+	}
+	if strings.TrimSpace(rendered.AssetID) == "" {
+		rendered.AssetID = "drive:" + strings.TrimSpace(rendered.DriveFileID)
 	}
 	if result != nil {
 		r.localizedRenderMu.Lock()
+		applyLocalizedRenderLinkLocked(result, rendered)
 		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+		accumulateLocalizedRenderMetrics(result, rendered)
 		r.localizedRenderMu.Unlock()
 	}
 	// Durable lineage: the produced video is an OperationRender artifact
@@ -400,6 +411,48 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 		AssetID:     rendered.AssetID,
 		Status:      "COMPLETED",
 	})
+}
+
+// accumulateLocalizedRenderMetrics records both child work and the enclosing
+// fan-out wall span. Child durations are summed as WorkMS; the parent wall is
+// first-start to last-finish and therefore remains correct under concurrency.
+func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered LocalizedRenderResult) {
+	if result == nil || result.RenderMetrics == nil {
+		return
+	}
+	if rendered.WallMS > 0 {
+		result.RenderMetrics.WorkMS += rendered.WallMS
+	}
+	if !rendered.StartedAt.IsZero() && (result.renderFirstStartedAt.IsZero() || rendered.StartedAt.Before(result.renderFirstStartedAt)) {
+		result.renderFirstStartedAt = rendered.StartedAt
+	}
+	if !rendered.FinishedAt.IsZero() && rendered.FinishedAt.After(result.renderLastFinishedAt) {
+		result.renderLastFinishedAt = rendered.FinishedAt
+	}
+	if !result.renderFirstStartedAt.IsZero() && !result.renderLastFinishedAt.IsZero() {
+		result.RenderMetrics.WallMS = result.renderLastFinishedAt.Sub(result.renderFirstStartedAt).Milliseconds()
+	}
+}
+
+// applyLocalizedRenderLinkLocked replaces the source Drive link in the
+// document-facing clip reference with the certified rendered artifact link.
+// The source link is still retained by the asset registry; a generated script
+// must point at the output produced by this run.
+func applyLocalizedRenderLinkLocked(result *GenerateResult, rendered LocalizedRenderResult) {
+	if result == nil || strings.TrimSpace(rendered.DriveLink) == "" {
+		return
+	}
+	for _, scene := range result.Scenes {
+		// A scene can contain several intro clips, while the renderer reports
+		// one certified artifact per clip on its own scene.  Match by canonical
+		// clip ID across the whole script so every occurrence in the document
+		// points at the regenerated MP4, including repeated intro bindings.
+		for _, clip := range append(append([]*ClipReference{}, scene.Clips...), scene.Clip) {
+			if clip != nil && clip.ID == rendered.ClipID {
+				clip.DriveLink = rendered.DriveLink
+			}
+		}
+	}
 }
 
 // localizedRenderClipFields resolves the source-clip reference a localized
@@ -451,6 +504,18 @@ func (r *Runner) SetAudioAssetSource(source AudioAssetSource) {
 func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 	if r != nil {
 		r.finalAudioPublisher = publisher
+	}
+}
+
+func (r *Runner) SetFinalVideoAssembler(assembler FinalVideoAssembler) {
+	if r != nil {
+		r.finalVideoAssembler = assembler
+	}
+}
+
+func (r *Runner) SetFinalVideoPublisher(publisher FinalVideoPublisher) {
+	if r != nil {
+		r.finalVideoPublisher = publisher
 	}
 }
 
@@ -886,6 +951,25 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		return
 	}
 	if !r.measurePhase(ctx, kernobs.StageName(stagePersistence), func(c context.Context) bool {
+		if result.FinalVideoRequired {
+			if err := r.assembleFinalVideo(c, runID, result); err != nil {
+				r.failRunWithRetry(c, runID, StagePublishingDocuments, err)
+				return false
+			}
+		}
+		if result.FinalVideoRequired && r.finalVideoPublisher != nil {
+			published, err := r.finalVideoPublisher.PublishFinalVideo(c, runID, *result.FinalVideo, req.Render.DriveFolderID)
+			if err != nil {
+				r.failRunWithRetry(c, runID, StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: %w", err))
+				return false
+			}
+			result.FinalVideo.AssetID = published.AssetID
+			result.FinalVideo.DriveLink = published.DriveLink
+		} else if result.FinalVideoRequired {
+			r.failRunWithRetry(c, runID, StagePublishingDocuments, fmt.Errorf("FINAL_VIDEO_UPLOAD_FAILED: final video publisher is not wired"))
+			return false
+		}
+		r.checkpoint(c, runID, result)
 		return r.persistScript(c, runID, req, exec, resumeIdx, result)
 	}) {
 		return

@@ -16,10 +16,53 @@ func (m *Asset) DownloadLink() string       { return m.GetMetadataString("downlo
 func (m *Asset) SetDownloadLink(v string)   { m.SetMetadataString("download_link", v) }
 func (m *Asset) LocalPath() string          { return m.GetMetadataString("local_path") }
 func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", v) }
+
+// FileHash returns the legacy file hash (stored under key "file_hash").
+//
+// Deprecated: "file_hash" is ambiguous — it may hold an MD5 digest (from a
+// legacy YouTube extraction or Drive upload receipt) or a SHA-256 digest
+// (from an image ingest or a modern content-addressed path). Callers must use
+// one of the typed accessors instead:
+//
+//	ContentHash()     → canonical content_sha256 (byte identity, always SHA-256)
+//	BinarySHA256()    → binary_sha256 projection of content_sha256
+//	DriveMD5()        → google_drive_md5 (Drive provider receipt only, NOT identity)
+//	LegacyFileMD5()   → legacy_file_md5 (compatibility-only, never identity)
 func (m *Asset) FileHash() string           { return m.GetMetadataString("file_hash") }
 func (m *Asset) SetFileHash(v string)       { m.SetMetadataString("file_hash", v) }
+
+// ContentHash returns the canonical content SHA-256 identity (key "content_hash"
+// and/or "content_sha256"). This is the primary byte-identity hash: two
+// logical assets with identical bytes share ONE content hash (CAS invariant).
 func (m *Asset) ContentHash() string        { return m.GetMetadataString("content_hash") }
 func (m *Asset) SetContentHash(v string)    { m.SetMetadataString("content_hash", v) }
+
+// BinarySHA256 returns the binary SHA-256 projection of the content identity.
+// It reads the dedicated "binary_sha256" key first; if absent, it falls back
+// to ContentHash() (which is always SHA-256 when known). This is the accessor
+// callers should use when they need canonical byte identity.
+func (m *Asset) BinarySHA256() string {
+	if v := m.GetMetadataString("binary_sha256"); v != "" {
+		return v
+	}
+	// Fall back to content_hash (canonical content_sha256), which is always
+	// a 64-hex SHA-256 when known.
+	return m.ContentHash()
+}
+func (m *Asset) SetBinarySHA256(v string) { m.SetMetadataString("binary_sha256", v) }
+
+// DriveMD5 returns the Google Drive provider MD5 checksum (key
+// "google_drive_md5"). This is a provider receipt ONLY — never used for
+// identity or deduplication. Empty when the asset was not uploaded via
+// Google Drive or when the receipt was not recorded.
+func (m *Asset) DriveMD5() string     { return m.GetMetadataString("google_drive_md5") }
+func (m *Asset) SetDriveMD5(v string) { m.SetMetadataString("google_drive_md5", v) }
+
+// LegacyFileMD5 returns the legacy MD5 hash (key "legacy_file_md5") from
+// pre-SHA-256 code paths (e.g. old YouTube extractions). This exists for
+// compatibility only — it is NEVER used for identity or deduplication.
+func (m *Asset) LegacyFileMD5() string     { return m.GetMetadataString("legacy_file_md5") }
+func (m *Asset) SetLegacyFileMD5(v string) { m.SetMetadataString("legacy_file_md5", v) }
 func (m *Asset) FolderID() string           { return m.GetMetadataString("folder_id") }
 func (m *Asset) SetFolderID(v string)       { m.SetMetadataString("folder_id", v) }
 func (m *Asset) FolderPath() string         { return m.GetMetadataString("folder_path") }

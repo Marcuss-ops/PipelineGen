@@ -84,6 +84,12 @@ const (
 	// (the sidecar's overwrite policy is a separate concern from
 	// the clip's immutable skip policy).
 	DestinationClipMetadata DestinationKey = "clip_metadata"
+	// DestinationRenderedClip (P0 pub-outbox, August 2026): canonical
+	// destination for clip.render output (the final rendered MP4).
+	// Distinct from DestinationClipMetadata (which is for per-folder
+	// metadata.json sidecars): the rendered clip is an immutable asset
+	// with ConflictSkip, while the metadata sidecar uses ConflictOverwrite.
+	DestinationRenderedClip DestinationKey = "rendered_clip"
 	DestinationAdmin        DestinationKey = "admin"
 )
 

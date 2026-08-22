@@ -135,10 +135,11 @@ func (o *OutputSpec) HasAnyPostprocessor() bool {
 // narration contract: generation decides the scenes, while the localized
 // render fan-out materializes each selected clip.
 type VideoRenderSpec struct {
-	Enabled   bool                `json:"enabled,omitempty"`
-	Watermark *VideoWatermarkSpec `json:"watermark,omitempty"`
-	Subtitles *VideoSubtitlesSpec `json:"subtitles,omitempty"`
-	OutputDir string              `json:"output_dir,omitempty"`
+	Enabled       bool                `json:"enabled,omitempty"`
+	AssembleFinal bool                `json:"assemble_final,omitempty"`
+	Watermark     *VideoWatermarkSpec `json:"watermark,omitempty"`
+	Subtitles     *VideoSubtitlesSpec `json:"subtitles,omitempty"`
+	OutputDir     string              `json:"output_dir,omitempty"`
 	// DriveFolderID is the parent Drive folder for rendered clips. When
 	// DriveSubfolderName is set, the renderer creates/reuses that child.
 	DriveFolderID      string `json:"drive_folder_id,omitempty"`

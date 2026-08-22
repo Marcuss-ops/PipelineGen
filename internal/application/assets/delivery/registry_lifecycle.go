@@ -59,7 +59,7 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			RootFolderID:   cfg.Drive.ArtlistFolder(),
 			Namespace:      "artlist",
 			PathBuilder:    maybeWrapNamespace(cfg, "artlist", cfg.Drive.ArtlistRootFolder, ArtlistPath),
-			RequireSubpath: true,
+			RequireSubpath: false,
 			ConflictPolicy: ConflictSkip, // curated artlist asset
 		},
 		// DestinationBook: regenerable book-processing outputs.
@@ -90,6 +90,19 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			PathBuilder:    ClipMetadataPath, // returns [] to signal "use DestinationFolderID verbatim"
 			RequireSubpath: false,            // DestinationFolderID IS the destination folder
 			ConflictPolicy: ConflictOverwrite,
+		},
+		// DestinationRenderedClip (P0 pub-outbox, August 2026):
+		// canonical destination for clip.render final rendered MP4.
+		// Uses the ClipsFolder root (same as YouTubeClip); the
+		// outbox worker caller threads the resolved folder via
+		// DestinationFolderID. ConflictSkip ensures an
+		// already-published clip is never silently overwritten.
+		DestinationRenderedClip: {
+			RootFolderID:   cfg.Drive.ClipsFolder(),
+			Namespace:      "rendered_clips",
+			PathBuilder:    maybeWrapNamespace(cfg, "rendered_clips", cfg.Drive.ClipsRootFolder, RenderedClipPath),
+			RequireSubpath: true,
+			ConflictPolicy: ConflictSkip, // immutable rendered artifact
 		},
 		// DestinationDocument: regenerable PDF/DOCX outputs. Latest
 		// version wins.

@@ -135,7 +135,6 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 	writeDocumentAudioCertificationSummary(&after, model, opts)
 	writeDocumentSpecSceneJSON(&after, model)
 	writeDocumentTimelineJSON(&after, opts)
-	writeDocumentSceneSpeechTimingJSON(&after, opts)
 	writeDocumentFinalAudioJSON(&after, opts)
 	writeDocumentOverlayJSON(&after, opts)
 	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
@@ -187,17 +186,6 @@ func writeDocumentTimelineJSON(b *strings.Builder, opts DocumentRenderOptions) {
 	}
 	if raw, err := json.MarshalIndent(opts.AudioTimeline, "", "  "); err == nil {
 		b.WriteString("<h2>Audio Timeline JSON</h2><pre><code>")
-		b.WriteString(html.EscapeString(string(raw)))
-		b.WriteString("</code></pre>")
-	}
-}
-
-func writeDocumentSceneSpeechTimingJSON(b *strings.Builder, opts DocumentRenderOptions) {
-	if len(opts.SceneSpeechTimings) == 0 {
-		return
-	}
-	if raw, err := json.MarshalIndent(opts.SceneSpeechTimings, "", "  "); err == nil {
-		b.WriteString("<h2>Scene Speech Timing JSON</h2><pre><code>")
 		b.WriteString(html.EscapeString(string(raw)))
 		b.WriteString("</code></pre>")
 	}

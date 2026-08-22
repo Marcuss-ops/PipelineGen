@@ -169,6 +169,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		UpdatedAt:       now,
 		IdempotencyKey:  cmd.IdempotencyKey,
 		JobID:           cmd.JobID,
+		Fingerprint:     cmd.Fingerprint,
 	}
 	if err := f.deps.VoiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
 		return nil, fmt.Errorf("voiceoverFinalizer: InsertTx: %w", err)

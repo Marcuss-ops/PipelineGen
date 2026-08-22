@@ -1,9 +1,6 @@
 package scriptgeneration_test
 
 import (
-	"encoding/json"
-	"html"
-	"strings"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -63,11 +60,11 @@ func TestDocument_PhraseTimingsProjectedInHumanAndMachineSurface(t *testing.T) {
 	require.NotContains(t, human, "word_start")
 	require.NotContains(t, human, "word_end")
 
-	// Machine surface: a byte-faithful Scene Speech Timing JSON snapshot.
-	raw := extractSectionJSON(t, out, "<h2>Scene Speech Timing JSON</h2><pre><code>")
-	var decoded []capabilityaudio.SceneSpeechTiming
-	require.NoError(t, json.Unmarshal([]byte(raw), &decoded))
-	require.Equal(t, phraseTimingDocProjection(), decoded)
+	// Word-level timing is available through the linked timing artifacts, but
+	// is intentionally not embedded as a huge JSON block in the Doc.
+	require.NotContains(t, out, "Scene Speech Timing JSON")
+	require.NotContains(t, out, `"start_us"`)
+	require.NotContains(t, out, `"end_us"`)
 }
 
 func TestDocument_OmitsPhraseTimingWithoutProjection(t *testing.T) {
@@ -146,16 +143,4 @@ func TestDocument_OmitsTimingLinksForWrongLanguage(t *testing.T) {
 	human := humanDocumentHTML(t, out)
 	require.NotContains(t, human, "Timing JSON")
 	require.NotContains(t, human, "timing-en/view")
-}
-
-// extractSectionJSON isolates the embedded JSON snapshot immediately after
-// the given section marker and unescapes it for byte-faithful comparison.
-func extractSectionJSON(t *testing.T, output, marker string) string {
-	t.Helper()
-	pos := strings.Index(output, marker)
-	require.NotEqual(t, -1, pos, "section marker missing: %s", marker)
-	pos += len(marker)
-	end := strings.Index(output[pos:], "</code></pre>")
-	require.NotEqual(t, -1, end, "section closing marker missing")
-	return html.UnescapeString(output[pos : pos+end])
 }

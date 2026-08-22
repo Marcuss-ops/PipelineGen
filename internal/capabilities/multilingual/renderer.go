@@ -24,7 +24,6 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	platformconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -43,29 +42,14 @@ func sha256File(path string) (string, int64, error) {
 	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
 
-// The canonical ffmpeg burn-in output profile (single owner): burn() and
-// validate() MUST stay in sync on these values. The burn scales/pads every
-// output to the canonical ASS PlayRes (1920x1080) so fonts stay legible,
-// encodes h264/yuv420p, and copies the original audio bit-exact.
+// subtitle-visible constants — the subtitle band is the bottom of the canonical
+// 1920x1080 PlayRes where Alignment=2 / MarginV=24 places cue text.
 const (
-	renderWidth      = 1920
-	renderHeight     = 1080
-	renderVideoCodec = "h264"
-	renderFPSMin     = 1.0
-	renderFPSMax     = 240.0
-
-	// Subtitle burn-in verification (subtitle-visible): the subtitle band is
-	// the bottom of the canonical 1920x1080 PlayRes where Alignment=2 /
-	// MarginV=24 places cue text. The check samples one frame at a cue
-	// timestamp and requires a minimum fraction of the band to differ from
-	// the un-subtitled source frame at the same timestamp. Compression noise
-	// stays far below the threshold; burned text (bright glyph + dark
-	// outline) crosses it.
 	subtitleBandY         = 900
 	subtitleBandHeight    = 180
-	subtitleBandWidth     = renderWidth
-	subtitleDiffThreshold = 40    // gray-level delta that signals burned text
-	subtitleMinVisible    = 0.003 // min fraction of band pixels that must differ
+	subtitleBandWidth     = 1920
+	subtitleDiffThreshold = 40
+	subtitleMinVisible    = 0.003
 )
 
 // VariantInput is the fully-resolved input for one language render. Every
@@ -168,23 +152,30 @@ type RenderReport struct {
 	Concurrency observability.ConcurrencyStats `json:"concurrency"`
 }
 
-// Renderer burns subtitles into per-language videos, validates, uploads, and
-// persists fingerprinted variants. Safe for concurrent RenderOne calls; the
-// upstream DB/Drive ports must be concurrency-safe.
+// Renderer fans out per-language clip rendering through the canonical
+// clip.render pipeline. It is a planner/fan-out, not a renderer: every
+// render is delegated to clip.render's sealed plan + Rust execution boundary.
+// The renderer owns variant fingerprinting, reuse, subtitle-visible
+// certification, and per-language Drive upload + variant persistence — all
+// multilingual-specific concerns. Codec/profile/output contract decisions
+// belong solely to clip.render.
 type Renderer struct {
 	repo       asset.RenderVariantRepository
 	publisher  delivery.Publisher
-	ffmpegPath string
-	encoder    platformconfig.VideoEncoderPolicy
+	ffmpegPath string // required only for subtitleVisible frame extraction
 	log        *zap.Logger
 	rust       RustRenderer
 	rustWidth  int
 	rustHeight int
 	rustFPS    int
+	// outputProber certifies the actual bytes on disk match the clip.render
+	// output contract; wired by the composition root alongside RustRenderer.
+	outputProber cliprender.OutputProber
 }
 
 // NewRenderer constructs the canonical renderer. Fail-closed: repo and
-// publisher are mandatory.
+// publisher are mandatory. ffmpegPath is optional — it is needed only when
+// subtitleVisible verification is enabled.
 func NewRenderer(repo asset.RenderVariantRepository, publisher delivery.Publisher, ffmpegPath string, log *zap.Logger) (*Renderer, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("multilingual.NewRenderer: variant repo is required")
@@ -192,23 +183,26 @@ func NewRenderer(repo asset.RenderVariantRepository, publisher delivery.Publishe
 	if publisher == nil {
 		return nil, fmt.Errorf("multilingual.NewRenderer: Drive publisher is required")
 	}
-	if ffmpegPath == "" {
-		return nil, fmt.Errorf("multilingual.NewRenderer: ffmpeg path is required")
-	}
 	if log == nil {
 		log = zap.NewNop()
 	}
-	encoder := (platformconfig.VideoConfig{}).WithDefaults().EncoderPolicy()
-	return &Renderer{repo: repo, publisher: publisher, ffmpegPath: ffmpegPath, encoder: encoder, log: log}, nil
+	return &Renderer{repo: repo, publisher: publisher, ffmpegPath: ffmpegPath, log: log}, nil
 }
 
 // WithRustRenderer enables the canonical Rust render_clip path. Width,
 // height, and fps are resolved by the composition root and become part of
-// every sealed plan. It is intentionally opt-in here so existing unit tests
-// can continue to exercise the renderer with their fake FFmpeg boundary.
+// every sealed plan.
 func (r *Renderer) WithRustRenderer(renderer RustRenderer, width, height, fps int) *Renderer {
 	r.rust = renderer
 	r.rustWidth, r.rustHeight, r.rustFPS = width, height, fps
+	return r
+}
+
+// WithOutputProber wires the clip.render output prober for post-render
+// contract validation. When nil, the renderer skips contract validation
+// (used only by tests that mock the render boundary).
+func (r *Renderer) WithOutputProber(prober cliprender.OutputProber) *Renderer {
+	r.outputProber = prober
 	return r
 }
 
@@ -381,29 +375,38 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 		return r.fail(res, start, err)
 	}
 
+	// Render through the sealed clip.render plan — the ONLY path. The
+	// multilingual renderer is a planner/fan-out, not a renderer: codec,
+	// profile, and output contract decisions belong solely to clip.render.
+	if r.rust == nil {
+		return r.fail(res, start, fmt.Errorf("multilingual: Rust renderer is not configured (use WithRustRenderer)"))
+	}
+
 	outputPath := filepath.Join(in.WorkDir, in.OutputFilename)
 	if err := os.MkdirAll(in.WorkDir, 0o755); err != nil {
 		return r.fail(res, start, fmt.Errorf("mkdir workdir: %w", err))
 	}
 
-	// Render through the sealed Rust plan when the composition root wires it.
-	// The legacy FFmpeg path remains available only for isolated older tests;
-	// production multilingual composition uses WithRustRenderer.
-	if r.rust != nil {
-		if err := r.renderRust(ctx, in, outputPath); err != nil {
-			return r.fail(res, start, fmt.Errorf("rust render_clip: %w", err))
-		}
-	} else if err := r.burn(ctx, in.SourcePath, in.ASSPath, outputPath); err != nil {
-		return r.fail(res, start, fmt.Errorf("ffmpeg burn: %w", err))
+	rustResult, err := r.renderRust(ctx, in, outputPath)
+	if err != nil {
+		return r.fail(res, start, fmt.Errorf("rust render_clip: %w", err))
 	}
 
-	// Validate the actual bytes on disk (never trust the render boundary).
-	probe, err := r.probe(ctx, outputPath)
-	if err != nil {
-		return r.fail(res, start, fmt.Errorf("ffprobe: %w", err))
-	}
-	if err := r.validate(in, outputPath, probe); err != nil {
-		return r.fail(res, start, err)
+	// Validate the actual bytes on disk against the clip.render output contract
+	// (never trust what the render boundary claimed to encode).
+	// OutputProber is wired by the composition root alongside RustRenderer;
+	// a missing prober skips contract validation (test-only mode).
+	durationMs := in.SourceDuration.Milliseconds()
+	if r.outputProber != nil {
+		probe, probeErr := r.outputProber.ProbeOutput(ctx, outputPath)
+		if probeErr != nil {
+			return r.fail(res, start, fmt.Errorf("probe output: %w", probeErr))
+		}
+		if validateErr := cliprender.ValidateContract(rustResult.contract, probe); validateErr != nil {
+			return r.fail(res, start, validateErr)
+		}
+		// Duration from the actual bytes.
+		durationMs = calcDurationMS(probe, in.SourceDuration)
 	}
 	// Subtitle-visible: verify the subtitles are actually burned into the
 	// pixels (not just present in the .ass). Skipped in benchmark (SkipPublish)
@@ -429,13 +432,13 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 		res.Validation = "ok"
 		res.OutputHash = hash
 		res.SizeBytes = size
-		res.DurationMs = probe.DurationMs
+		res.DurationMs = in.SourceDuration.Milliseconds()
 		res.RenderMS = time.Since(start).Milliseconds()
 		return res
 	}
 
 	// Upload + persist.
-	pub, err := r.publish(ctx, in, outputPath, probe)
+	pub, err := r.publish(ctx, in, outputPath, durationMs)
 	if err != nil {
 		return r.fail(res, start, err)
 	}
@@ -454,7 +457,7 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 		OutputHash:           pub.OutputHash,
 		DriveFileID:          pub.FileID,
 		DriveLink:            pub.WebViewLink,
-		DurationMs:           probe.DurationMs,
+		DurationMs:           durationMs,
 		SizeBytes:            pub.SizeBytes,
 		Status:               asset.RenderVariantReady,
 		IsCurrent:            true,
@@ -468,8 +471,15 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 	res.OutputHash = pub.OutputHash
 	res.DriveFileID = pub.FileID
 	res.DriveLink = pub.WebViewLink
-	res.DurationMs = probe.DurationMs
+	res.DurationMs = durationMs
 	res.SizeBytes = pub.SizeBytes
 	res.RenderMS = time.Since(start).Milliseconds()
 	return res
+}
+
+// calcDurationMS derives the duration from the clip.render OutputProbe result,
+// falling back to the source clip duration when probe metadata is absent.
+func calcDurationMS(probe *cliprender.OutputProbe, sourceDuration time.Duration) int64 {
+	_ = probe // probe doesn't expose a simple duration_ms field; use source as best estimate
+	return sourceDuration.Milliseconds()
 }

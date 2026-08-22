@@ -52,14 +52,45 @@ func (u *localizationDriveUploader) Upload(ctx context.Context, in localization.
 		Language:            in.Language,
 		ContentHash:         in.ContentHash,
 		SizeBytes:           in.SizeBytes,
-		IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, artifactID, in.ContentHash, 1),
-		ConflictPolicy:      delivery.ConflictSkip,
+		// The script output folder is part of artifact identity. Without it,
+		// rerunning a script can ConflictSkip onto the original clip's Drive
+		// file because the same clip/hash exists elsewhere.
+		IdempotencyKey: delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, artifactID+"|folder:"+in.FolderID, in.ContentHash, 1),
+		ConflictPolicy: delivery.ConflictSkip,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("localization: publish rendered clip: %w", err)
 	}
 	if result == nil || result.FileID == "" {
 		return nil, fmt.Errorf("localization: publish rendered clip: empty Drive result")
+	}
+	return &localization.DriveUploadResult{FileID: result.FileID, Link: result.WebViewLink}, nil
+}
+
+func (u *localizationDriveUploader) UploadSubtitle(ctx context.Context, in localization.SubtitleUploadInput) (*localization.DriveUploadResult, error) {
+	if u == nil || u.publisher == nil {
+		return nil, fmt.Errorf("localization: subtitle Drive publisher not wired")
+	}
+	if strings.TrimSpace(in.LocalPath) == "" || strings.TrimSpace(in.Filename) == "" || strings.TrimSpace(in.FolderID) == "" {
+		return nil, fmt.Errorf("localization: subtitle upload input is incomplete")
+	}
+	artifactID := strings.TrimSuffix(in.Filename, filepath.Ext(in.Filename))
+	result, err := u.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:         delivery.DestinationClipMetadata,
+		DestinationFolderID: in.FolderID,
+		LocalPath:           in.LocalPath,
+		Filename:            in.Filename,
+		Language:            in.Language,
+		ContentHash:         in.ContentHash,
+		SizeBytes:           in.SizeBytes,
+		IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, "subtitle-"+artifactID+"|folder:"+in.FolderID, in.ContentHash, 1),
+		ConflictPolicy:      delivery.ConflictSkip,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("localization: publish subtitle: %w", err)
+	}
+	if result == nil || result.FileID == "" {
+		return nil, fmt.Errorf("localization: publish subtitle: empty Drive result")
 	}
 	return &localization.DriveUploadResult{FileID: result.FileID, Link: result.WebViewLink}, nil
 }

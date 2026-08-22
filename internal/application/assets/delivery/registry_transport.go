@@ -353,3 +353,10 @@ func AdminPath(_ PublishRequest) ([]string, error) {
 func ClipMetadataPath(_ PublishRequest) ([]string, error) {
 	return nil, nil
 }
+
+// RenderedClipPath keeps a caller-resolved rendered-clip folder as the final
+// destination. The outbox publisher supplies DestinationFolderID explicitly;
+// no additional guessed hierarchy is allowed here.
+func RenderedClipPath(_ PublishRequest) ([]string, error) {
+	return nil, nil
+}

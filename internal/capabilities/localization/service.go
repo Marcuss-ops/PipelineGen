@@ -33,12 +33,19 @@ type LocalizeInput struct {
 	Concurrency int
 	// FolderID is the Drive folder the rendered clips upload into.
 	FolderID string
+	// SubtitleFolderID is the per-clip Drive folder for the compiled ASS.
+	SubtitleFolderID string
+	UploadSubtitleArtifact bool
 	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
 	// localization manifest Google Doc.
 	DocTitle          string
 	DocFolderID       string
 	DocIdempotencyKey string
 	DocForce          bool
+	// SkipDocument disables the per-localized-clip manifest. Script
+	// generation owns the single final Google Doc; clip localization must
+	// only render/upload the MP4 and never create a Doc as a side effect.
+	SkipDocument bool
 
 	// Plans are the fingerprinted plans, in priority (editorial) order.
 	Plans []LocalizedClipPlan
@@ -103,6 +110,12 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 		if err != nil {
 			return rendered, err
 		}
+		if in.UploadSubtitleArtifact {
+			rendered.SubtitleFolderID = in.SubtitleFolderID
+		} else {
+			rendered.SubtitlePath = ""
+			rendered.SubtitleSHA256 = ""
+		}
 		return s.uploader.Publish(ctx, rendered, folderID)
 	}
 
@@ -138,6 +151,10 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 			DurationMS:   r.Artifact.DurationMS,
 			SHA256:       r.Artifact.SHA256,
 		})
+	}
+
+	if in.SkipDocument {
+		return &LocalizeResult{Artifacts: artifacts, Failures: failures}, nil
 	}
 
 	ref, err := s.assembler.Assemble(ctx, AssembleInput{

@@ -163,6 +163,13 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+	// Audio-only narration runs may be compiled before clip materialization.
+	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
+	// audio path: the master is narration + optional BGM, while the rendered
+	// MP4 clips keep their own source audio contract independently.
+	if policy == audio.MixVoiceoverOnly {
+		result = resultWithoutClipAudioIntents(result)
+	}
 	timeline, primaryAssets, timings, err := buildCanonicalTimelineAndPrimaryAssets(result, language, false)
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
@@ -174,6 +181,25 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
 	}
 	return timeline, compiled.Plan, mergeResolvedAudioAssets(primaryAssets, compiled.Assets), timings, nil
+}
+
+func resultWithoutClipAudioIntents(result GenerateResult) GenerateResult {
+	result.ResolvedScenes = nil
+	result.Scenes = append([]Scene(nil), result.Scenes...)
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		intents := make([]audio.AudioIntent, 0, len(scene.AudioIntents))
+		for _, intent := range scene.AudioIntents {
+			if intent.Mode != audio.AudioClip {
+				intents = append(intents, intent)
+			}
+		}
+		scene.AudioIntents = intents
+		if scene.Audio.Mode == audio.AudioClip {
+			scene.Audio.Mode = audio.AudioVoiceover
+		}
+	}
+	return result
 }
 
 // mergeResolvedAudioAssets merges the primary (voiceover/original-clip) asset

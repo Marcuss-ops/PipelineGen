@@ -256,6 +256,25 @@ func TestLocalize_RejectsInvalidRequest(t *testing.T) {
 	}
 }
 
+func TestLocalize_SkipDocumentOnlyUploadsClips(t *testing.T) {
+	svc, _, docs := newTestLocalizationService(t)
+	result, err := svc.Localize(context.Background(), LocalizeInput{
+		AssetID:      "source-asset-1",
+		Request:      localizationRequestFor("en"),
+		FolderID:     "clip-folder",
+		SkipDocument: true,
+	})
+	if err != nil {
+		t.Fatalf("Localize: %v", err)
+	}
+	if len(result.Artifacts) != 1 || result.Ref != nil {
+		t.Fatalf("clip-only localization result = %+v", result)
+	}
+	if docs.got.Title != "" {
+		t.Fatalf("clip localization must not publish a Google Doc: %+v", docs.got)
+	}
+}
+
 func TestLocalize_PropagatesSourceResolutionError(t *testing.T) {
 	svc, _, _ := newTestLocalizationService(t)
 	svc.sources = fakeServiceSourceResolver{err: errors.New("asset not found")}

@@ -140,6 +140,8 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		Language:        plan.TargetLanguage,
 		PlanFingerprint: plan.Fingerprint,
 		LocalPath:       facts.LocalPath,
+		SubtitlePath:    ass.LocalPath,
+		SubtitleSHA256:  ass.SHA256,
 		SHA256:          facts.SHA256,
 		SizeBytes:       facts.SizeBytes,
 		DurationMS:      facts.DurationMS,

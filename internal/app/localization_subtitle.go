@@ -113,7 +113,14 @@ func (c *localizationSubtitleCompiler) Compile(_ context.Context, in localizatio
 	if len(in.Cues) == 0 {
 		return nil, errors.New("localization: subtitle compile: zero cues — subtitles cannot be compiled without timing (speech recognition is never regenerated for subtitles)")
 	}
-	content, err := texttracks.CompileASSContent(in.Cues, in.StyleHash)
+	// A transcript can contain a final cue from the original source timeline
+	// beyond the extracted clip boundary. Keep the transcript in the DB, but
+	// clip only the rendered interval so ASS validation matches the media.
+	cues := trimLocalizationCues(in.Cues, in.ClipDurationMS)
+	if len(cues) == 0 {
+		return nil, errors.New("localization: subtitle compile: no cues remain inside clip duration")
+	}
+	content, err := texttracks.CompileASSContent(cues, in.StyleHash)
 	if err != nil {
 		return nil, fmt.Errorf("localization: subtitle compile: %w", err)
 	}
@@ -146,4 +153,23 @@ func (c *localizationSubtitleCompiler) Compile(_ context.Context, in localizatio
 		StyleHash: in.StyleHash,
 		TrackID:   in.TrackID,
 	}, nil
+}
+
+func trimLocalizationCues(in []asset.TimedCue, durationMS int64) []asset.TimedCue {
+	if durationMS <= 0 {
+		return append([]asset.TimedCue(nil), in...)
+	}
+	out := make([]asset.TimedCue, 0, len(in))
+	for _, cue := range in {
+		if cue.StartMs >= durationMS {
+			continue
+		}
+		if cue.EndMs > durationMS {
+			cue.EndMs = durationMS
+		}
+		if cue.EndMs > cue.StartMs {
+			out = append(out, cue)
+		}
+	}
+	return out
 }

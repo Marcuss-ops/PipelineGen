@@ -390,13 +390,25 @@ func buildCanonicalTimelineAndPrimaryAssets(result GenerateResult, language Lang
 			}
 			if intent.Mode == audio.AudioClip {
 				clipPath := ""
+				// When ResolveScenes has already sealed the result, the
+				// authoritative clip paths live in the resolved projection. The
+				// original Scene may only contain the semantic binding, so do not
+				// lose the materialized local path here.
+				if i < len(resolved) {
+					clipPath = resolved[i].ClipAudioPaths[intent.ClipAssetID]
+				}
 				clips := scene.Clips
 				if len(clips) == 0 && scene.Clip != nil {
 					clips = []*ClipReference{scene.Clip}
 				}
 				for _, clip := range clips {
 					if clip != nil && clip.ID == intent.ClipAssetID {
-						clipPath = clip.AudioPath
+						if strings.TrimSpace(clip.AudioPath) != "" {
+							clipPath = clip.AudioPath
+						}
+						if strings.TrimSpace(clipPath) == "" {
+							clipPath = clip.Path
+						}
 						break
 					}
 				}

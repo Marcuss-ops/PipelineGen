@@ -107,6 +107,12 @@ func (c *ClipSourceBuilder) resolveTranscript(
 			MissingKind:        asset.TextTrackTranscript,
 		}
 	}
+	// A previous render path could persist the editorial clip brief as if it
+	// were a transcript. Never expose that contamination to the model.
+	text := strings.ToLower(strings.TrimSpace(track.TextContent))
+	if strings.Contains(text, "clip description:") || strings.Contains(text, "write a ") || strings.Contains(text, "source text:") {
+		return "", nil, &ErrTextTrackNotReady{AssetID: assetID, RequestedLanguage: lang, MissingKind: asset.TextTrackTranscript}
+	}
 
 	// Track found and READY. Return both the track (for
 	// fingerprint field population) and the flat text content

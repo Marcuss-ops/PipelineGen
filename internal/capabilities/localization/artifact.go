@@ -82,7 +82,10 @@ type LocalizedClipArtifact struct {
 	// ── Bytes ────────────────────────────────────────────────────
 	// LocalPath is the local filesystem path of the rendered file. Omitted
 	// once the bytes are no longer staged locally (uploaded / Docs-only).
-	LocalPath string `json:"local_path,omitempty"`
+	LocalPath        string `json:"local_path,omitempty"`
+	SubtitlePath     string `json:"subtitle_path,omitempty"`
+	SubtitleSHA256   string `json:"subtitle_sha256,omitempty"`
+	SubtitleFolderID string `json:"subtitle_folder_id,omitempty"`
 	// SHA256 is the content hash of the rendered bytes.
 	SHA256 string `json:"sha256"`
 	// SizeBytes is the rendered file size in bytes.
