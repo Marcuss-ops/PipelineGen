@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // checkSemanticSearchReal is the production-shaped semantic-search canary.
@@ -153,11 +154,7 @@ func findSemanticCanary(ctx context.Context, db *sql.DB) (semanticCanary, error)
 	}
 	if columns["index_state"] && columns["media_type"] && columns["asset_kind"] && columns["namespace"] && columns["source_type"] {
 		query += `
-		  AND index_state = 'INDEXED'
-		  AND ((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
-		       OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
-		  AND COALESCE(namespace, '') != ''
-		  AND COALESCE(source_type, '') != ''
+		  AND ` + capregistry.SearchIndexEligibilitySQL + `
 		ORDER BY CASE WHEN media_type IN ('video', 'image') THEN 0 ELSE 1 END, id
 		LIMIT 1
 		`

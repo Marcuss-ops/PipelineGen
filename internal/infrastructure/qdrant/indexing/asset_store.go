@@ -65,6 +65,8 @@ package indexing
 import (
 	"database/sql"
 	"encoding/json"
+
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // indexableAssetWhereClause is the canonical SQLite predicate for rows that
@@ -77,14 +79,7 @@ import (
 // boundary, so this clause also excludes soft-deleted rows and rows without
 // a populated text embedding. Legacy rows with embedding_json = '[]' or '{}'
 // are treated the same as empty.
-const indexableAssetWhereClause = `
-	((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
-	 OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
-	AND COALESCE(namespace, '') != ''
-	AND COALESCE(source_type, '') != ''
-	AND (deleted_at IS NULL OR deleted_at = '')
-	AND COALESCE(embedding_json, '') NOT IN ('', '[]', '{}')
-`
+const indexableAssetWhereClause = capregistry.SearchIndexEligibilitySQL
 
 // SQLiteAssetStore implements AssetStore backed by the media_assets table.
 type SQLiteAssetStore struct {

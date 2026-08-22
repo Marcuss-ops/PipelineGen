@@ -55,17 +55,13 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // searchableMediaAssetWhere is the taxonomy SSOT for embedding backfill.
 // Registered audio/document/text assets are real registry rows but must not
 // be sent through semantic embedding or Qdrant projection.
-const searchableMediaAssetWhere = `
-	((media_type = 'video' AND asset_kind IN ('clip','stock_video','generated_video','rendered_video'))
-	 OR (media_type = 'image' AND asset_kind IN ('stock_image','web_image','ai_image','graphic')))
-	AND COALESCE(namespace, '') != ''
-	AND COALESCE(source_type, '') != ''
-	AND (deleted_at IS NULL OR deleted_at = '')`
+const searchableMediaAssetWhere = capregistry.SearchIndexTaxonomySQL
 
 // fetchEmbeddingCandidates queries media_assets for assets that need
 // embedding backfill. In --only-missing mode, only returns assets with
