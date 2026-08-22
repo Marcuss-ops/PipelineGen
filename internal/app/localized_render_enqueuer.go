@@ -32,6 +32,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -53,6 +54,8 @@ type LocalizedRenderEnqueuerConfig struct {
 	SourceLanguage string
 	// FolderID is the Drive folder the rendered localized clips upload into.
 	FolderID string
+	// FolderAdmin creates/reuses a per-script child under FolderID.
+	FolderAdmin drive.Admin
 	// DocFolderID is the Drive folder the localization manifest doc publishes
 	// into. Empty disables doc assembly routing (Localize still runs render +
 	// upload; the doc publish fails closed if the localization service is
@@ -180,6 +183,20 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if clipID == "" {
 		clipID = assetID
 	}
+	destinationFolderID := strings.TrimSpace(a.cfg.FolderID)
+	if strings.TrimSpace(in.Render.DriveFolderID) != "" {
+		destinationFolderID = strings.TrimSpace(in.Render.DriveFolderID)
+	}
+	if subfolder := strings.TrimSpace(in.Render.DriveSubfolderName); subfolder != "" {
+		if a.cfg.FolderAdmin == nil {
+			return fmt.Errorf("localized render: Drive folder admin is not wired for subfolder %q", subfolder)
+		}
+		var err error
+		destinationFolderID, err = a.cfg.FolderAdmin.GetOrCreateFolder(ctx, subfolder, destinationFolderID)
+		if err != nil {
+			return fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
+		}
+	}
 	res, err := a.svc.Localize(ctx, LocalizeInput{
 		AssetID:           assetID,
 		JobID:             in.RunID,
@@ -187,7 +204,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		ClipID:            clipID,
 		SourceLanguage:    sourceLang,
 		Request:           req,
-		FolderID:          a.cfg.FolderID,
+		FolderID:          destinationFolderID,
 		DocTitle:          fmt.Sprintf("Localized — %s (%s)", clipID, targetLang),
 		DocFolderID:       a.cfg.DocFolderID,
 		DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + targetLang,
@@ -352,6 +369,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 	adapter := newLocalizedRenderEnqueuerAdapter(svc, root.Repos.TextTrackRepo, root.Domains.CueWriter, LocalizedRenderEnqueuerConfig{
 		SourceLanguage: LocalizationConfigFromConfig(cfg).SourceLanguage,
 		FolderID:       cfg.Drive.ClipsFolder(),
+		FolderAdmin:    root.Drive.Admin,
 		DocFolderID:    cfg.Scripts.ScriptDocsFolderID,
 	}, log, resolver, materializer)
 	runner.SetLocalizedRenderEnqueuer(adapter)

@@ -68,37 +68,37 @@ type personImageBenchCandidate struct {
 // ── Per-person benchmark result ──────────────────────────────────────────
 
 type personImageBenchResult struct {
-	Person              string
-	Query               string
-	CatalogLookupMs     int64 // 0 in search-only
-	ProviderSearchMs    int64
-	CandidateCount      int
-	FirstCandidateMs    int64
-	FirstHTTPValidMs    int64
-	FirstDecodableMs    int64
-	FirstValidImageMs   int64
-	ValidCandidates     int
-	BrokenCandidates    int
-	WebPSkipped         int
-	TotalSearchMs       int64
-	Candidates          []personImageBenchCandidate
+	Person            string
+	Query             string
+	CatalogLookupMs   int64 // 0 in search-only
+	ProviderSearchMs  int64
+	CandidateCount    int
+	FirstCandidateMs  int64
+	FirstHTTPValidMs  int64
+	FirstDecodableMs  int64
+	FirstValidImageMs int64
+	ValidCandidates   int
+	BrokenCandidates  int
+	WebPSkipped       int
+	TotalSearchMs     int64
+	Candidates        []personImageBenchCandidate
 }
 
 // ── Concurrent run summary ───────────────────────────────────────────────
 
 type personImageBenchConcurrencyRun struct {
-	Concurrency     int
-	WallTimeMs      int64
+	Concurrency      int
+	WallTimeMs       int64
 	PersonsCompleted int
-	PersonsPerMin   float64
-	ProviderP50     int64
-	ProviderP95     int64
-	FirstValidP50   int64
-	FirstValidP95   int64
-	HTTPFailures    int64
-	Timeouts        int64
-	HTTP429         int64
-	OtherErrors     int64
+	PersonsPerMin    float64
+	ProviderP50      int64
+	ProviderP95      int64
+	FirstValidP50    int64
+	FirstValidP95    int64
+	HTTPFailures     int64
+	Timeouts         int64
+	HTTP429          int64
+	OtherErrors      int64
 	CorrectImageRate float64
 }
 
@@ -132,22 +132,22 @@ func runPersonImageBenchSearch(ctx context.Context, client *http.Client, query s
 	for _, rawURL := range urls {
 		dlWg.Add(1)
 		go func(rawURL string) {
-		defer dlWg.Done()
-		dlSem <- struct{}{}
-		defer func() { <-dlSem }()
+			defer dlWg.Done()
+			dlSem <- struct{}{}
+			defer func() { <-dlSem }()
 
-		raw := downloadAndDecodeOneLiveDDGURL(ctx, client, rawURL)
-		cand := personImageBenchCandidate{
-			URL:         raw.URL,
-			StatusCode:  raw.StatusCode,
-			ContentType: raw.ContentType,
-			Bytes:       raw.Bytes,
-			Decoded:     raw.Decoded,
-			Width:       raw.Width,
-			Height:      raw.Height,
-			DownloadMs:  time.Since(firstCandidateTime).Milliseconds(),
-			Error:       raw.Error,
-		}
+			raw := downloadAndDecodeOneLiveDDGURL(ctx, client, rawURL)
+			cand := personImageBenchCandidate{
+				URL:         raw.URL,
+				StatusCode:  raw.StatusCode,
+				ContentType: raw.ContentType,
+				Bytes:       raw.Bytes,
+				Decoded:     raw.Decoded,
+				Width:       raw.Width,
+				Height:      raw.Height,
+				DownloadMs:  time.Since(firstCandidateTime).Milliseconds(),
+				Error:       raw.Error,
+			}
 
 			mu.Lock()
 			result.Candidates = append(result.Candidates, cand)
@@ -206,13 +206,13 @@ func runPersonImageBenchSerial(ctx context.Context, client *http.Client, persons
 func runPersonImageBenchConcurrent(ctx context.Context, client *http.Client, persons []string, concurrency int) ([]personImageBenchResult, personImageBenchConcurrencyRun) {
 	sem := make(chan struct{}, concurrency)
 	var (
-		mu            sync.Mutex
-		results       []personImageBenchResult
-		httpFailures  atomic.Int64
-		timeouts      atomic.Int64
-		http429       atomic.Int64
-		otherErrors   atomic.Int64
-		correctFirst  atomic.Int64
+		mu           sync.Mutex
+		results      []personImageBenchResult
+		httpFailures atomic.Int64
+		timeouts     atomic.Int64
+		http429      atomic.Int64
+		otherErrors  atomic.Int64
+		correctFirst atomic.Int64
 	)
 
 	wallStart := time.Now()

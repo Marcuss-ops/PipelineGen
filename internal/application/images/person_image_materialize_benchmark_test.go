@@ -30,18 +30,18 @@ import (
 //     -run TestPersonImageMaterializeBenchmarkRounds_9_10 -v -count=1 -timeout 10m
 
 type materializeStageResult struct {
-	Person              string
-	URL                 string
-	DownloadMs          int64
-	DecodeVerifyMs      int64
-	HashMs              int64
-	TotalMs             int64
-	Bytes               int
-	ContentType         string
-	Width               int
-	Height              int
-	SHA256              string
-	Error               string
+	Person         string
+	URL            string
+	DownloadMs     int64
+	DecodeVerifyMs int64
+	HashMs         int64
+	TotalMs        int64
+	Bytes          int
+	ContentType    string
+	Width          int
+	Height         int
+	SHA256         string
+	Error          string
 }
 
 func TestPersonImageMaterializeBenchmarkRounds_9_10(t *testing.T) {

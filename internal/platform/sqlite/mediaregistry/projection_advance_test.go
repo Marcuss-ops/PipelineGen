@@ -30,6 +30,9 @@ func newAdvanceDB(t *testing.T) (*sql.DB, *Ledger) {
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			media_type TEXT NOT NULL DEFAULT '',
+			asset_kind TEXT NOT NULL DEFAULT '',
+			namespace TEXT NOT NULL DEFAULT '',
+			source_type TEXT NOT NULL DEFAULT '',
 			deleted_at TEXT NOT NULL DEFAULT '',
 			embedding_json TEXT NOT NULL DEFAULT ''
 		);
@@ -46,6 +49,17 @@ func newAdvanceDB(t *testing.T) (*sql.DB, *Ledger) {
 		t.Fatal(err)
 	}
 	return db, ledger
+}
+
+// insertIndexableAsset seeds a row that satisfies the canonical
+// SearchIndexEligibilitySQL boundary (video/clip taxonomy + namespace +
+// source_type + populated embedding), so its registry event advances the
+// qdrant projection sequence.
+func insertIndexableAsset(t *testing.T, db *sql.DB, id string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, asset_kind, namespace, source_type, embedding_json) VALUES (?, 'video', 'clip', 'stock', 'youtube', '[1.0]')`, id); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func insertEvent(t *testing.T, db *sql.DB, assetID string) int64 {
@@ -67,9 +81,7 @@ func TestAdvanceActiveProjectionSequence(t *testing.T) {
 
 	// Two indexable assets: their registry events are qdrant-eligible.
 	for _, id := range []string{"asset-1", "asset-2"} {
-		if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES (?, 'video', '[1.0,2.0]')`, id); err != nil {
-			t.Fatal(err)
-		}
+		insertIndexableAsset(t, db, id)
 	}
 	insertEvent(t, db, "asset-1")
 	latest := insertEvent(t, db, "asset-2")
@@ -94,9 +106,7 @@ func TestAdvanceActiveProjectionSequenceIsMonotonic(t *testing.T) {
 	db, ledger := newAdvanceDB(t)
 	ctx := context.Background()
 
-	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('asset-1', 'video', '[1.0]')`); err != nil {
-		t.Fatal(err)
-	}
+	insertIndexableAsset(t, db, "asset-1")
 	insertEvent(t, db, "asset-1")
 
 	if _, err := db.Exec(`INSERT INTO projection_registry (projection_id, status, source_registry_seq) VALUES ('proj-active', 'ACTIVE', 100)`); err != nil {
@@ -121,9 +131,7 @@ func TestAdvanceActiveProjectionSequenceIgnoresNonActive(t *testing.T) {
 	db, ledger := newAdvanceDB(t)
 	ctx := context.Background()
 
-	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('asset-1', 'video', '[1.0]')`); err != nil {
-		t.Fatal(err)
-	}
+	insertIndexableAsset(t, db, "asset-1")
 	latest := insertEvent(t, db, "asset-1")
 
 	for _, row := range []struct{ id, status string }{
@@ -170,7 +178,7 @@ func TestAdvanceActiveProjectionSequenceExcludesNonIndexable(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('folder-1', 'folder', '[1.0]')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, deleted_at, embedding_json) VALUES ('deleted-1', 'video', '2026-01-01', '[1.0]')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, asset_kind, namespace, source_type, deleted_at, embedding_json) VALUES ('deleted-1', 'video', 'clip', 'stock', 'youtube', '2026-01-01', '[1.0]')`); err != nil {
 		t.Fatal(err)
 	}
 	insertEvent(t, db, "folder-1")
@@ -189,5 +197,42 @@ func TestAdvanceActiveProjectionSequenceExcludesNonIndexable(t *testing.T) {
 	}
 	if seq != 0 {
 		t.Fatalf("non-indexable events must not advance the checkpoint: got %d, want 0", seq)
+	}
+}
+
+// TestAdvanceActiveProjectionSequenceExcludesIneligibleTaxonomy pins the
+// canonical eligibility boundary (SearchIndexEligibilitySQL): events for
+// REGISTERED-but-not-SEARCHABLE assets (audio) and rows with incomplete
+// taxonomy (legacy media_type=video without asset_kind/namespace/source_type)
+// must NOT advance the qdrant projection sequence.
+func TestAdvanceActiveProjectionSequenceExcludesIneligibleTaxonomy(t *testing.T) {
+	db, ledger := newAdvanceDB(t)
+	ctx := context.Background()
+
+	// Audio assets are REGISTERED but not SEARCHABLE (no Qdrant point).
+	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, asset_kind, namespace, source_type, embedding_json) VALUES ('audio-1', 'audio', 'sfx', 'audio', 'artlist', '[1.0]')`); err != nil {
+		t.Fatal(err)
+	}
+	// A legacy video row with empty asset_kind/namespace/source_type is not
+	// Qdrant-eligible even though embedding_json is populated.
+	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('legacy-1', 'video', '[1.0]')`); err != nil {
+		t.Fatal(err)
+	}
+	insertEvent(t, db, "audio-1")
+	insertEvent(t, db, "legacy-1")
+
+	if _, err := db.Exec(`INSERT INTO projection_registry (projection_id, status, source_registry_seq) VALUES ('proj-active', 'ACTIVE', 0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ledger.AdvanceActiveProjectionSequence(ctx); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	var seq int64
+	if err := db.QueryRowContext(ctx, `SELECT source_registry_seq FROM projection_registry WHERE projection_id='proj-active'`).Scan(&seq); err != nil {
+		t.Fatal(err)
+	}
+	if seq != 0 {
+		t.Fatalf("ineligible-taxonomy events must not advance the checkpoint: got %d, want 0", seq)
 	}
 }

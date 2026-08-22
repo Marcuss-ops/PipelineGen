@@ -263,6 +263,14 @@ func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
 		return 0, ErrNotWired
 	}
 	var seq sql.NullInt64
+	// SSOT (godlike/06): the EXISTS predicate IS the canonical
+	// capregistry.SearchIndexEligibilitySQL — the same eligibility boundary
+	// the Qdrant asset projection uses (indexing.IndexWriter / asset_store).
+	// An event only advances the sequence when its asset is Qdrant-eligible;
+	// audio/document artifacts and rows with incomplete taxonomy must not
+	// make an otherwise current projection appear stale. The predicate's
+	// unqualified columns resolve to media_assets (aliased a), the only
+	// table in this subquery's scope.
 	err := l.db.QueryRowContext(ctx, `
 		SELECT MAX(e.seq)
 		FROM registry_events e
@@ -270,9 +278,7 @@ func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
 		   OR EXISTS (
 			SELECT 1 FROM media_assets a
 			WHERE a.id = e.asset_id
-			  AND a.media_type != 'folder'
-			  AND (a.deleted_at IS NULL OR a.deleted_at = '')
-			  AND COALESCE(a.embedding_json, '') NOT IN ('', '[]', '{}')
+			  AND (`+capregistry.SearchIndexEligibilitySQL+`)
 		   )`).Scan(&seq)
 	if err != nil {
 		return 0, fmt.Errorf("latest qdrant registry event sequence: %w", err)
