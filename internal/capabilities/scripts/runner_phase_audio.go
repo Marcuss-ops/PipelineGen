@@ -92,6 +92,22 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 			var audioAssets capabilityaudio.ResolvedAudioAssets
 			var compileTimings AudioCompileTimings
+			policy := req.MixPolicy
+			if policy == "" {
+				policy = capabilityaudio.MixVoiceoverWithDuckedClip
+			}
+			var clipAudioSource ClipAudioAssetSource
+			if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
+				clipAudioSource = candidate
+			}
+			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
+			if prepareErr != nil {
+				cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
+			}
+			compileTimings.ClipAudioPrepareMS = clipPrepareMS
 			// The audio intent block (BGM/SFX) is layered onto the same
 			// VO-governed timeline: asset resolution → BGM windows → loop
 			// expansion → SFX placement → automation, all compiled into the
@@ -103,10 +119,6 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					r.failExecutionStep(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
-				}
-				policy := req.MixPolicy
-				if policy == "" {
-					policy = capabilityaudio.MixVoiceoverWithDuckedClip
 				}
 				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, *result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), r.audioAssetSource, policy, req.BackgroundMusic, req.SoundEffects)
 			} else {

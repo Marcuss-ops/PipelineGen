@@ -377,6 +377,13 @@ type AudioAssetSource interface {
 	ResolveAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
 }
 
+// ClipAudioAssetSource is the optional production resolver for original clip
+// audio. It is deliberately separate from AudioAssetSource because BGM/SFX
+// resolution and clip-source materialization have different contracts.
+type ClipAudioAssetSource interface {
+	ResolveClipAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
+}
+
 // FinalAudioPublishResult is the canonical publication outcome: the canonical
 // MediaRegistry asset ID plus the public Drive link. It never carries a local
 // filesystem path.

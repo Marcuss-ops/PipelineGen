@@ -177,6 +177,24 @@ func TestPhraseLocator_PossessiveTrailingApostrophe(t *testing.T) {
 	require.Equal(t, 2, results[0].WordEnd)
 }
 
+func TestPhraseLocator_StripsQuoteApostrophesAtTokenEdges(t *testing.T) {
+	timing := SpeechTimingArtifact{
+		Version: SpeechTimingVersion, BoundaryMode: BoundaryWord,
+		TextSHA256: "text-hash", AudioSHA256: "audio-hash", DurationUS: 200_000,
+		Words: []SpeechWordTiming{
+			{Index: 0, Text: "establishing", StartUS: 0, EndUS: 100_000},
+			{Index: 1, Text: "a", StartUS: 100_000, EndUS: 150_000},
+			{Index: 2, Text: "pink", StartUS: 150_000, EndUS: 180_000},
+			{Index: 3, Text: "day", StartUS: 180_000, EndUS: 200_000},
+		},
+	}
+	got, err := LocatePhrase(timing, "establishing a 'pink day")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, 0, got[0].WordStart)
+	require.Equal(t, 3, got[0].WordEnd)
+}
+
 func TestPhraseLocator_AccentedText(t *testing.T) {
 	// NFC precomposed "cambiò" in the artifact; NFD decomposed query.
 	results, err := LocatePhrase(phraseLocatorArtifact(), "cambio\u0300")
