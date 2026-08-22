@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -422,6 +424,17 @@ func (cm *CollectionManager) ReconcileProjection(ctx context.Context) error {
 		return err
 	}
 	if err := capregistry.ValidateProjectionSequence(projection.SourceRegistrySeq, latestSequence); err != nil {
+		if errors.Is(err, capregistry.ErrProjectionSequenceAhead) {
+			// Qdrant is a rebuildable projection. A projection ahead of the
+			// SQLite registry is drift, not a reason to stop unrelated
+			// PipelineGen capabilities at startup. Keep the live alias and
+			// let reconciliation/rebuild repair it asynchronously.
+			cm.log.Warn("projection ahead of canonical registry; continuing startup in DIRTY mode",
+				zap.String("projection_id", projectionID),
+				zap.Int64("projection_seq", projection.SourceRegistrySeq),
+				zap.Int64("registry_seq", latestSequence))
+			return nil
+		}
 		return fmt.Errorf("reconcile projection %q: %w", projectionID, err)
 	}
 	info, err := cm.client.GetCollection(ctx, target)

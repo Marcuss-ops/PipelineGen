@@ -276,12 +276,13 @@ type OverlayRenderEnqueuer interface {
 // language) trigger of the localized render fan-out — the runner emits it the
 // moment that unit's TTS completes, never after a global join.
 type LocalizedRenderInput struct {
-	RunID      string
-	SceneID    string
-	SceneIndex int
-	Language   Language
-	Text       string
-	Voiceover  AudioReference
+	RunID       string
+	ParentJobID string `json:"parent_job_id,omitempty"`
+	SceneID     string
+	SceneIndex  int
+	Language    Language
+	Text        string
+	Voiceover   AudioReference
 
 	// SourceLanguage / SourceText carry the source-language scene text (the
 	// transcript the localized render's source plan references). They are
@@ -313,7 +314,8 @@ type LocalizedRenderInput struct {
 	// run that produced it — a run that rendered a video must be able to
 	// prove it. A non-nil sink is fail-closed: a sink error fails the
 	// enqueue. Nil means the caller does not need the outcome.
-	OnRendered func(LocalizedRenderResult) error `json:"-"`
+	OnRendered func(LocalizedRenderResult) error  `json:"-"`
+	OnFailed   func(LocalizedRenderFailure) error `json:"-"`
 }
 
 // LocalizedRenderResult is the certified outcome of one localized render
@@ -331,6 +333,14 @@ type LocalizedRenderResult struct {
 	DriveLink   string   `json:"drive_link,omitempty"`
 	DurationMS  int64    `json:"duration_ms,omitempty"`
 	Status      string   `json:"status"`
+}
+
+type LocalizedRenderFailure struct {
+	SceneID   string   `json:"scene_id"`
+	Language  Language `json:"language"`
+	ClipID    string   `json:"clip_id,omitempty"`
+	ErrorCode string   `json:"error_code"`
+	Error     string   `json:"error"`
 }
 
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's

@@ -20,10 +20,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -34,7 +36,9 @@ import (
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/google/uuid"
 )
 
 // localizedLocalizer is the narrow seam the adapter needs from the
@@ -56,6 +60,7 @@ type LocalizedRenderEnqueuerConfig struct {
 	FolderID string
 	// FolderAdmin creates/reuses a per-script child under FolderID.
 	FolderAdmin drive.Admin
+	JobBroker   job.JobBroker
 	// DocFolderID is the Drive folder the localization manifest doc publishes
 	// into. Empty disables doc assembly routing (Localize still runs render +
 	// upload; the doc publish fails closed if the localization service is
@@ -65,6 +70,59 @@ type LocalizedRenderEnqueuerConfig struct {
 	// single-language call needs only one slot). <1 is clamped to
 	// localization.DefaultRenderConcurrency.
 	Concurrency int
+	// GlobalConcurrency bounds Localize calls across the runner. GPU rendering
+	// starts at one slot until VRAM peak usage has been measured safely.
+	GlobalConcurrency int
+}
+
+const inlineRenderChildJobType = "script.render.child"
+
+type inlineRenderChild struct {
+	broker   job.JobBroker
+	id       string
+	worker   string
+	lease    string
+	revision int
+}
+
+func (a *localizedRenderEnqueuerAdapter) beginChild(ctx context.Context, in scriptgeneration.LocalizedRenderInput, clipID string) (*inlineRenderChild, error) {
+	if a.cfg.JobBroker == nil {
+		return nil, nil
+	}
+	id := "job_" + uuid.NewString()
+	payload, _ := json.Marshal(map[string]any{
+		"parent_job_id": in.ParentJobID, "run_id": in.RunID, "scene_id": in.SceneID,
+		"scene_index": in.SceneIndex, "clip_id": clipID, "language": in.Language,
+		"source_text": in.SourceText, "watermark": in.Render.Watermark,
+	})
+	now := time.Now().UTC()
+	if err := a.cfg.JobBroker.Create(ctx, &job.Job{ID: id, Type: inlineRenderChildJobType,
+		Status: job.StatusQueued, Payload: payload, ParentJobID: in.ParentJobID,
+		RootJobID: in.ParentJobID, CorrelationID: id, MaxRetries: 0,
+		CreatedAt: now, UpdatedAt: now}); err != nil {
+		return nil, fmt.Errorf("create render child job: %w", err)
+	}
+	worker := "inline-render-" + uuid.NewString()
+	claimed, err := a.cfg.JobBroker.ClaimNext(ctx, worker, 30*time.Minute, []string{inlineRenderChildJobType})
+	if err != nil || claimed == nil {
+		if err == nil {
+			err = fmt.Errorf("child job was not claimable after creation")
+		}
+		return nil, fmt.Errorf("claim render child job %q: %w", id, err)
+	}
+	return &inlineRenderChild{broker: a.cfg.JobBroker, id: claimed.ID, worker: worker, lease: claimed.LeaseID, revision: claimed.Revision}, nil
+}
+
+func (c *inlineRenderChild) finish(ctx context.Context, result any, renderErr error) {
+	if c == nil || c.broker == nil {
+		return
+	}
+	if renderErr != nil {
+		_ = c.broker.Fail(ctx, c.id, c.worker, c.lease, c.revision, renderErr.Error())
+		return
+	}
+	data, _ := json.Marshal(result)
+	_ = c.broker.Complete(ctx, c.id, c.worker, c.lease, c.revision, data)
 }
 
 // localizedRenderEnqueuerAdapter implements scriptgeneration.LocalizedRenderEnqueuer
@@ -82,15 +140,21 @@ type localizedRenderEnqueuerAdapter struct {
 	// insert), so two languages of the same scene (same source clip) must not
 	// race: the adapter accumulates every language's full-span cue and re-writes
 	// the complete set under the lock.
-	cueMu    sync.Mutex
-	cueState map[string]map[string][]asset.TimedCue
-	assets   cliprender.AssetResolver
-	material cliprender.AssetMaterializer
+	cueMu       sync.Mutex
+	cueState    map[string]map[string][]asset.TimedCue
+	assets      cliprender.AssetResolver
+	material    cliprender.AssetMaterializer
+	folderMu    sync.Mutex
+	folderCache map[string]string
+	renderGate  chan struct{}
 }
 
 func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
 	if cfg.Concurrency < 1 {
 		cfg.Concurrency = localization.DefaultRenderConcurrency
+	}
+	if cfg.GlobalConcurrency < 1 {
+		cfg.GlobalConcurrency = 1
 	}
 	var assets cliprender.AssetResolver
 	var material cliprender.AssetMaterializer
@@ -101,14 +165,16 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks asset.Text
 		material, _ = extras[1].(cliprender.AssetMaterializer)
 	}
 	return &localizedRenderEnqueuerAdapter{
-		svc:      svc,
-		tracks:   tracks,
-		cues:     cues,
-		cfg:      cfg,
-		log:      log,
-		cueState: make(map[string]map[string][]asset.TimedCue),
-		assets:   assets,
-		material: material,
+		svc:         svc,
+		tracks:      tracks,
+		cues:        cues,
+		cfg:         cfg,
+		log:         log,
+		cueState:    make(map[string]map[string][]asset.TimedCue),
+		assets:      assets,
+		material:    material,
+		folderCache: make(map[string]string),
+		renderGate:  make(chan struct{}, cfg.GlobalConcurrency),
 	}
 }
 
@@ -116,7 +182,7 @@ var _ scriptgeneration.LocalizedRenderEnqueuer = (*localizedRenderEnqueuerAdapte
 
 // EnqueueLocalizedRender persists the source transcript + translated subtitle
 // text tracks (with full-span cues), then runs a single-language Localize.
-func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Context, in scriptgeneration.LocalizedRenderInput) error {
+func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (err error) {
 	if a == nil || a.svc == nil {
 		return nil // render not registered: legitimate no-op
 	}
@@ -124,6 +190,15 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if assetID == "" {
 		assetID = strings.TrimSpace(in.ClipID)
 	}
+	clipIDForChild := strings.TrimSpace(in.ClipID)
+	if clipIDForChild == "" {
+		clipIDForChild = assetID
+	}
+	child, childErr := a.beginChild(ctx, in, clipIDForChild)
+	if childErr != nil {
+		return childErr
+	}
+	defer func() { child.finish(ctx, map[string]any{"scene_id": in.SceneID, "clip_id": clipIDForChild}, err) }()
 	if assetID == "" {
 		// Audio-only scene: no source clip to burn subtitles onto.
 		return nil
@@ -191,12 +266,27 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		if a.cfg.FolderAdmin == nil {
 			return fmt.Errorf("localized render: Drive folder admin is not wired for subfolder %q", subfolder)
 		}
-		var err error
-		destinationFolderID, err = a.cfg.FolderAdmin.GetOrCreateFolder(ctx, subfolder, destinationFolderID)
-		if err != nil {
-			return fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
+		cacheKey := destinationFolderID + "\x00" + subfolder
+		a.folderMu.Lock()
+		cached := a.folderCache[cacheKey]
+		a.folderMu.Unlock()
+		if cached != "" {
+			destinationFolderID = cached
+		} else {
+			var err error
+			destinationFolderID, err = a.cfg.FolderAdmin.GetOrCreateFolder(ctx, subfolder, destinationFolderID)
+			if err == nil {
+				a.folderMu.Lock()
+				a.folderCache[cacheKey] = destinationFolderID
+				a.folderMu.Unlock()
+			}
+			if err != nil {
+				return fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
+			}
 		}
 	}
+	a.renderGate <- struct{}{}
+	defer func() { <-a.renderGate }()
 	res, err := a.svc.Localize(ctx, LocalizeInput{
 		AssetID:           assetID,
 		JobID:             in.RunID,
@@ -219,6 +309,28 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	})
 	if err != nil {
 		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, targetLang, err)
+	}
+	if len(res.Failures) > 0 {
+		for _, failure := range res.Failures {
+			failureText := ""
+			if failure.Err != nil {
+				failureText = failure.Err.Error()
+			}
+			code := "LOCALIZED_RENDER_FAILED"
+			upper := strings.ToUpper(failureText)
+			if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+				code = "CUDA_OUT_OF_MEMORY"
+			}
+			if in.OnFailed != nil {
+				if sinkErr := in.OnFailed(scriptgeneration.LocalizedRenderFailure{
+					SceneID: in.SceneID, Language: scriptgeneration.Language(targetLang), ClipID: clipID,
+					ErrorCode: code, Error: failureText,
+				}); sinkErr != nil {
+					return fmt.Errorf("localized render: record failure for scene %q: %w", in.SceneID, sinkErr)
+				}
+			}
+		}
+		return fmt.Errorf("localized render: scene %q lang %q produced %d failure(s)", in.SceneID, targetLang, len(res.Failures))
 	}
 	// Project the certified produced videos back to the runner so the final
 	// MP4 (asset id, sha256, Drive link) is recorded on the run result — a
@@ -370,6 +482,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 		SourceLanguage: LocalizationConfigFromConfig(cfg).SourceLanguage,
 		FolderID:       cfg.Drive.ClipsFolder(),
 		FolderAdmin:    root.Drive.Admin,
+		JobBroker:      root.Jobs.Repo,
 		DocFolderID:    cfg.Scripts.ScriptDocsFolderID,
 	}, log, resolver, materializer)
 	runner.SetLocalizedRenderEnqueuer(adapter)

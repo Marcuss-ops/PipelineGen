@@ -72,12 +72,10 @@ type (
 // ── 4. PR 3 + QDRANT-CHAIN-VERIFY fail-closed invariants ──────────────
 
 // TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired
-// pins the RED-POINT-direction B fail-closed contract (PR-QDRANT-CONFIG-
-// MISMATCH-GATE, arch/current.yaml#QDRANT-CHAIN-VERIFY-2026-07-04.linked_issues[0]):
-// with cfg.Qdrant.Enabled=true AND cfg.ClipIndexer.Enabled=false,
-// buildQdrantDeps MUST abort boot with a terminal error rather than
-// silently constructing a QdrantRuntime that the outbox IndexingHandler
-// cannot drive (IndexClip short-circuits when ClipIndexer is disabled).
+// pins the independent-capability contract: with Qdrant enabled and the
+// optional ClipIndexer disabled, buildQdrantDeps still wires the Qdrant
+// runtime for projection reads/deletes. Index writes remain disabled and
+// must not report success without a vector.
 //
 // Prior: PR 3 (#3 from verdict Qdrant, June 2026) wrote this test to pin
 // the OPPOSITE behaviour — "buildQdrantDeps must return a non-nil
@@ -88,18 +86,8 @@ type (
 // Qdrant stack: QDRANT runtime was constructed (delete-path was valid)
 // but IndexWrite was unwired on the sidecar (the AI indexing chain).
 //
-// Now: PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026) promotes the godlike/07
-// no-fake-availability contract: a Qdrant+ClipIndexer mismatch is a
-// misconfiguration that MUST be surface at boot, NOT absorbed as a
-// half-built capability that silently degrades at first
-// asset.index.requested event. The half-built shape (PR 3 #3) is the
-// false-success path; the QDRANT-CHAIN-VERIFY-2026-07-04 audit closed
-// it. This test pins the new contract: buildQdrantDeps returns
-// (nil, error) so the operator's cfg is rejected loudly with
-// actionable env-var hints. Direction A (ClipIndexer=true +
-// Qdrant=false) is covered by TestComposition_ClipIndexerEnabledNoQdrant_FailClosed
-// below — both directions fail-closed through the SAME canonical helper
-// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
+// The indexer handler itself remains fail-closed when disabled. Direction A
+// (ClipIndexer=true + Qdrant=false) is covered by the companion test below.
 func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing.T) {
 	chdirToProjectRoot(t)
 
@@ -120,28 +108,11 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
 
-	// Note: buildQdrantDeps is expected to return a terminal error
-	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE reading the repos
-	// argument; the repos construction is required by the new
-	// signature but is not semantically used in the fail-closed path.
 	var qd *wiring.QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
-	require.Error(t, err,
-		"PR-QDRANT-CONFIG-MISMATCH-GATE: cfg.Qdrant.Enabled=true + cfg.ClipIndexer.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root; godlike/07 no-fake-availability)")
-	require.Nil(t, qd,
-		"PR-QDRANT-CONFIG-MISMATCH-GATE: buildQdrantDeps must return nil QdrantDeps alongside the error (fail-closed, no partial-bundle shape that the QDRANT-CHAIN-VERIFY-2026-07-04 audit identified as false-success)")
-
-	// 5-substring canonical contract (godlike/07 fail-closed coupling).
-	require.Contains(t, err.Error(), "QdrantEnabled=true",
-		"error must name the failing condition (the Qdrant feature flag was on)")
-	require.Contains(t, err.Error(), "ClipIndexerEnabled=false",
-		"error must name the failing field (the ClipIndexer sidecar was off)")
-	require.Contains(t, err.Error(), "QDRANT-CHAIN-VERIFY-2026-07-04 P0",
-		"error must cite the wave-tracker anchor for audit traceability")
-	require.Contains(t, err.Error(), "VELOX_FEATURE_CLIP_INDEXER_ENABLED=true",
-		"error must name the env-var fix hint (start the AI sidecar)")
-	require.Contains(t, err.Error(), "VELOX_FEATURE_QDRANT_ENABLED=false",
-		"error must name the alternative env-var fix hint (disable the vector store)")
+	require.NoError(t, err)
+	require.NotNil(t, qd)
+	require.NotNil(t, qd.Runtime)
 }
 
 // TestComposition_ClipIndexerEnabledNoQdrant_FailClosed pins
@@ -153,7 +124,7 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 // The previous code merely logged a warning and continued, which produced
 // a false-success path (asset marked INDEXED but never actually written
 // to Qdrant). Fail-closed at composition time per godlike/07.
-func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
+func TestComposition_ClipIndexerEnabledNoQdrant_UsesDisabledProjectionMode(t *testing.T) {
 	chdirToProjectRoot(t)
 
 	dataDir := t.TempDir()
@@ -173,32 +144,11 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
 
-	// Note: buildQdrantDeps is expected to return a terminal error
-	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE using the repos argument;
-	// the repos construction is required by the new signature but not
-	// semantically used in the fail-closed path.
 	var qd *wiring.QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
-	require.Error(t, err,
-		"PR-QDRANT-CONFIG-MISMATCH-GATE (Direction A): cfg.ClipIndexer.Enabled=true + cfg.Qdrant.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root)")
-	require.Nil(t, qd,
-		"PR-QDRANT-CONFIG-MISMATCH-GATE: buildQdrantDeps must return nil QdrantDeps alongside the error (fail-closed, no partial bundle)")
-	// Substring contract (godlike/07 fail-closed coupling). The substring
-	// names follow the canonical camelCase format from
-	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility
-	// — operators can grep `QDRANT-CHAIN-VERIFY-2026-07-04 P0` in the boot
-	// log to identify the failing path. Per godlike/06 SSOT one-owner-per-
-	// fact: the helper is the SOLE canonical source of this error envelope.
-	require.Contains(t, err.Error(), "ClipIndexerEnabled=true",
-		"error must name the offending flag so operators can grep the boot log and correct config:\n\tgot: %v", err)
-	require.Contains(t, err.Error(), "QdrantEnabled=false",
-		"error must name the missing flag so operators can grep the boot log and correct config:\n\tgot: %v", err)
-	require.Contains(t, err.Error(), "QDRANT-CHAIN-VERIFY-2026-07-04 P0",
-		"error must cite the wave-tracker anchor for audit traceability:\n\tgot: %v", err)
-	require.Contains(t, err.Error(), "VELOX_FEATURE_QDRANT_ENABLED=true",
-		"error must name the env-var fix hint (start the vector store) so operators can copy/paste:\n\tgot: %v", err)
-	require.Contains(t, err.Error(), "VELOX_FEATURE_CLIP_INDEXER_ENABLED=false",
-		"error must name the alternative env-var fix hint (disable the sidecar) so operators can copy/paste:\n\tgot: %v", err)
+	require.NoError(t, err)
+	require.NotNil(t, qd)
+	require.Nil(t, qd.Runtime, "Qdrant-disabled mode must not create a vector projection")
 }
 
 // TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed pins

@@ -150,8 +150,8 @@ type DestinationSpec struct {
 // request-level backend signal: the concrete backend is resolved by the
 // RenderBackendResolver from probed host capabilities, never hardcoded here.
 type ExecutionSpec struct {
-	// RequireGPU fails the render unless the resolved backend is the CUDA
-	// native compositor. Default false (allow the software fallback).
+	// RequireGPU fails the render unless the resolved backend is any registered
+	// GPU backend (CUDA or Chronon Vulkan). Default false allows software.
 	RequireGPU bool `json:"require_gpu,omitempty"`
 }
 

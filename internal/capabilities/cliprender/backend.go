@@ -114,6 +114,7 @@ func NewRenderBackendRegistry() *RenderBackendRegistry {
 		GPUScale:  true,
 		GPUAlpha:  true,
 	})
+	registry.Register(BackendChrononVulkan, RendererCapabilities{ChrononVulkan: true})
 	registry.Register(BackendFFmpegFallback, RendererCapabilities{})
 	return registry
 }

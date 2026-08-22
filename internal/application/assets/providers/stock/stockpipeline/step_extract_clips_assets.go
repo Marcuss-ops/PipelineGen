@@ -84,6 +84,14 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 		LifecycleState: lifecycleState,
 		CreatedAt:      time.Now().UTC(),
 	}
+	// The YouTube-stock workflow is a stock usage intent even though the
+	// physical provenance remains YouTube. Keep source_type=youtube while
+	// making the searchable taxonomy distinguish stock acquisition from
+	// ordinary YouTube discovery clips.
+	if provider == SourceProviderYouTube {
+		a.Metadata["asset_kind"] = "stock_video"
+		a.Metadata["semantic_role"] = "stock"
+	}
 
 	// Populate rich Metadata.
 	if plan.Title != "" {

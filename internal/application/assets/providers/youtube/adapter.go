@@ -46,9 +46,8 @@ var (
 var ErrSourceNotWired = errors.New("youtube adapter: source not wired")
 
 // youtubeMediaType is the canonical MediaType assigned to every
-// YouTube search candidate. YouTube live search returns video
-// content only.
-var youtubeMediaType = asset.MediaType("clip")
+// YouTube search candidate. "clip" is an asset kind, never a media type.
+var youtubeMediaType = asset.MediaType("video")
 
 // searcher is the minimal internal interface the adapter depends on
 // for Search. Defining it private to this package lets the unit tests

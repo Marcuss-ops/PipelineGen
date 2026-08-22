@@ -24,6 +24,7 @@ package localization
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
@@ -112,7 +113,11 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 
 	// 3. Rust render boundary.
 	var facts RenderFacts
-	if executor, ok := r.executor.(WatermarkRenderPlanExecutor); ok && plan.Watermark != nil {
+	// Text watermarks do not require a materialized image asset. The executor
+	// still needs the extended path so the sealed WatermarkSpec reaches the
+	// renderer; checking only plan.Watermark silently dropped text overlays.
+	if executor, ok := r.executor.(WatermarkRenderPlanExecutor); ok &&
+		(plan.Watermark != nil || (plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "")) {
 		facts, err = executor.ExecuteWithWatermark(ctx, renderPlan, ass, plan.Watermark, plan.WatermarkSpec)
 	} else {
 		facts, err = r.executor.Execute(ctx, renderPlan, ass)

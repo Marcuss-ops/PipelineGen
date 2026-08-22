@@ -178,10 +178,12 @@ func (a *clipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.
 	}
 	if a.chronon != nil && (plan.Watermark != nil || plan.Subtitles != nil || plan.Background != nil && plan.Background.Mode != cliprender.BackgroundModeNone) {
 		result, err := a.chronon.RenderClip(ctx, plan, cliprender.BackendChrononVulkan)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return &cliprender.RenderOutcome{OutputPath: result.OutputPath, SizeBytes: result.SizeBytes, DurationSec: result.DurationSec, Width: result.Width, Height: result.Height, FPSNum: result.FPSNum, FPSDen: result.FPSDen, Backend: cliprender.BackendChrononVulkan, FFmpegMS: result.FFmpegMS, AudioCopyEligible: result.AudioCopyEligible, AudioEncodePasses: result.AudioEncodePasses, SubtitleRasterCPU: result.SubtitleRasterCPU, NativeMedia: result.NativeMedia, GPUCopyBytes: result.GPUCopyBytes}, nil
 		}
-		return &cliprender.RenderOutcome{OutputPath: result.OutputPath, SizeBytes: result.SizeBytes, DurationSec: result.DurationSec, Width: result.Width, Height: result.Height, FPSNum: result.FPSNum, FPSDen: result.FPSDen, Backend: cliprender.BackendChrononVulkan, FFmpegMS: result.FFmpegMS, AudioCopyEligible: result.AudioCopyEligible, AudioEncodePasses: result.AudioEncodePasses, SubtitleRasterCPU: result.SubtitleRasterCPU, NativeMedia: result.NativeMedia, GPUCopyBytes: result.GPUCopyBytes}, nil
+		// Chronon is preferred for overlays, but a transient CUDA/VRAM failure
+		// must not discard an otherwise valid clip. Continue through the
+		// canonical software backend below.
 	}
 	if a.renderer == nil {
 		return nil, fmt.Errorf("%w: Rust clip renderer not wired", cliprender.ErrRenderPhaseNotImplemented)
