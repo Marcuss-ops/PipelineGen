@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -34,11 +33,10 @@ func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID,
 	if _, err := tx.ExecContext(ctx, `UPDATE media_assets SET folder_path=?,updated_at=? WHERE id=?`, folderPath, time.Now().UTC().Format(time.RFC3339), assetID); err != nil {
 		return err
 	}
-	key, payload, err := outboxevents.BuildReindexEnvelopeV1(assetID, outboxevents.ReindexEnvelopeV1Schema, sourceVersion, time.Now().UTC())
-	if err != nil {
-		return err
-	}
-	if _, err := w.box.Enqueue(ctx, tx, outboxevents.EventAssetIndexRequested, assetID, "media_asset", payload, key); err != nil {
+	if _, err := CommitIndexRequestTx(ctx, tx, w.box, IndexRequest{
+		AssetID: assetID, Source: "youtube", MediaType: "video",
+		SourceVersion: sourceVersion, RequestedAt: time.Now().UTC(),
+	}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
