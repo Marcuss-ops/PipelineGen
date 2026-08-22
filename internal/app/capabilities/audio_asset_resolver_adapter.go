@@ -96,3 +96,35 @@ func (r *audioAssetSourceAdapter) ResolveAudioAsset(ctx context.Context, assetID
 		DurationUS: a.Duration.Microseconds(),
 	}, nil
 }
+
+// ResolveClipAudioAsset materializes a registered video clip for use as an
+// audio source. MP4 is intentionally preserved: the audio renderer can read
+// its embedded audio stream, so no lossy/intermediate extraction is needed.
+func (r *audioAssetSourceAdapter) ResolveClipAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error) {
+	if r == nil || r.assets == nil || r.canonical == nil {
+		return audio.ResolvedAudioAsset{}, errors.New("clip audio resolution: registry/materializer not wired")
+	}
+	details, err := r.assets.Get(ctx, assetID)
+	if err != nil {
+		return audio.ResolvedAudioAsset{}, fmt.Errorf("load clip asset %q: %w", assetID, err)
+	}
+	if details == nil || details.Asset == nil {
+		return audio.ResolvedAudioAsset{}, fmt.Errorf("clip asset %q not found", assetID)
+	}
+	a := details.Asset
+	ext := filepath.Ext(a.Filename)
+	if ext == "" {
+		ext = ".mp4"
+	}
+	result, err := r.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
+		AssetID:        assetID,
+		DriveFileID:    a.DriveFileID(),
+		ExpectedSHA256: a.Sha256(),
+		Extension:      ext,
+		RegisteredPath: strings.TrimSpace(a.LocalPath()),
+	})
+	if err != nil {
+		return audio.ResolvedAudioAsset{}, fmt.Errorf("materialize clip %q: %w", assetID, err)
+	}
+	return audio.ResolvedAudioAsset{AssetID: a.ID, Path: result.LocalPath, DurationUS: a.Duration.Microseconds()}, nil
+}

@@ -263,7 +263,7 @@ func (r *chrononClipRenderExecutor) RenderClip(ctx context.Context, plan clipren
 			layers = append(layers, map[string]any{"id": "watermark", "type": "text", "text": plan.Watermark.Text, "font": "fonts/DejaVuSans.ttf", "font_size": 64, "color": []float64{1, 1, 1, plan.Watermark.Opacity}, "position": []int{plan.Output.Width / 2, plan.Output.Height / 2}, "start_frame": 0, "duration_frames": frames})
 		} else if plan.Watermark.Path != "" {
 			wmW, wmH := watermarkDimensions(plan.Watermark.Path)
-			layers = append(layers, map[string]any{"id": "watermark", "type": "image", "source": "watermark" + filepath.Ext(plan.Watermark.Path), "fit": "none", "box_width": wmW, "box_height": wmH, "position": watermarkPosition(plan.Watermark.Path, plan.Watermark.Position, plan.Output.Width, plan.Output.Height, plan.Watermark.MarginPX), "start_frame": 0, "duration_frames": frames})
+			layers = append(layers, map[string]any{"id": "watermark", "type": "image", "source": "watermark" + filepath.Ext(plan.Watermark.Path), "fit": "none", "box_width": wmW, "box_height": wmH, "position": watermarkPosition(plan.Watermark.Path, plan.Watermark.Position, plan.Output.Width, plan.Output.Height, plan.Watermark.MarginPX), "opacity": plan.Watermark.Opacity, "start_frame": 0, "duration_frames": frames})
 		}
 	}
 	if plan.Subtitles != nil && len(plan.Subtitles.Cues) > 0 {

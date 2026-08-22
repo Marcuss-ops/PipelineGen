@@ -183,8 +183,8 @@ func isDashSeparator(r rune) bool {
 // normalizePhraseToken applies the canonical matching normalization:
 // Unicode NFC (composed vs decomposed accents compare equal), lowercase
 // case folding, apostrophe variants folded to ASCII ', and punctuation
-// stripped from the token edges (never the apostrophe — contractions like
-// "l'Italia" keep it internal).
+// stripped from the token edges (including quote apostrophes; contractions
+// like "l'Italia" keep their internal apostrophe).
 func normalizePhraseToken(token string) string {
 	token = norm.NFC.String(token)
 	token = strings.ToLower(token)
@@ -197,9 +197,7 @@ func normalizePhraseToken(token string) string {
 		b.WriteRune(r)
 	}
 	token = b.String()
-	token = strings.TrimFunc(token, func(r rune) bool {
-		return r != '\'' && unicode.IsPunct(r)
-	})
+	token = strings.TrimFunc(token, unicode.IsPunct)
 	// Possessive suffix: a TRAILING apostrophe is grammar ("States'"), not part
 	// of the token, so strip it — this lets the entity "United States" anchor
 	// to a spoken "United States'" without inventing a timestamp. Internal
