@@ -18,6 +18,8 @@ func deriveErrorCode(err error, stage Stage) string {
 	// This is a lightweight heuristic; a future improvement could
 	// use typed error interfaces (e.g. RetryableError, TransientError).
 	switch {
+	case containsAny(errStr, "INCOMPLETE_RENDER_SET"):
+		return "INCOMPLETE_RENDER_SET"
 	case containsAny(errStr, "timeout", "deadline exceeded", "context deadline"):
 		return "PROVIDER_TIMEOUT"
 	case containsAny(errStr, "unavailable", "not configured", "not initialized", "not found", "connection refused"):

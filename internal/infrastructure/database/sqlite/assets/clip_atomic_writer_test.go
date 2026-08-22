@@ -268,8 +268,8 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	if !strings.Contains(gotPayloadJSON, `"schema_version":"asset.index.requested.v1"`) {
 		t.Errorf("payload JSON must contain schema_version literal; got %.200s", gotPayloadJSON)
 	}
-	if !strings.HasPrefix(gotEventKey, "reconcile:reindex:"+clipID+":") {
-		t.Errorf("event_key shape: want reconcile:reindex:%s:..., got %q", clipID, gotEventKey)
+	if !strings.HasPrefix(gotEventKey, "asset.index.requested:youtube:"+clipID+":") {
+		t.Errorf("event_key shape: want asset.index.requested:youtube:%s:..., got %q", clipID, gotEventKey)
 	}
 }
 

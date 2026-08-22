@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -131,6 +132,10 @@ func TestCommitAsset_OnlyCanonicalProducerOfAllFourWrites(t *testing.T) {
 			},
 		},
 		EmitIndexEvent: true,
+		Taxonomy: mediaregistry.AssetTaxonomy{
+			AssetID: "ssot-asset-001", Namespace: "audio", MediaType: mediaregistry.MediaAudio,
+			AssetKind: mediaregistry.AssetSFX, SourceType: "ssot", SemanticRole: "production",
+		},
 	}
 
 	res, err := committer.CommitAsset(context.Background(), req)

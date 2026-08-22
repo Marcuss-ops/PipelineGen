@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -35,6 +36,13 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 // dispatcher's tx alongside the outbox_events INSERT. Callers outside
 // the dispatcher MUST supply their own outbox event in the same tx.
 func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
+	if clip == nil {
+		return fmt.Errorf("upsert clip: asset is required")
+	}
+	taxonomy, err := resolveClipTaxonomy(clip)
+	if err != nil {
+		return err
+	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	// source_url convergence (godlike/06): the typed SourceURL field is the
 	// canonical owner of the source URL; the legacy metadata key is a
@@ -62,9 +70,10 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 	if clip.DeletedAt != nil {
 		deletedAtStr = timeutil.FormatRFC3339(*clip.DeletedAt)
 	}
-	_, err := tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type, category, group_name,
+			namespace, asset_kind, source_type, semantic_role,
 			url, clip_page_url, thumbnail_url, duration_ms, tags, search_terms,
 			search_text, lifecycle_state, deleted_at, metadata_json,
 			created_at, updated_at, folder_id, parent_folder_id, folder_path,
@@ -72,7 +81,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			embedding_json, visual_embedding, transcript_embedding,
 			drive_link, download_link, local_path, drive_file_id, file_hash,
 			source_provider, source_video_id, source_url, start_ms, end_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -80,6 +89,10 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			media_type = excluded.media_type,
 			category = excluded.category,
 			group_name = excluded.group_name,
+			namespace = excluded.namespace,
+			asset_kind = excluded.asset_kind,
+			source_type = excluded.source_type,
+			semantic_role = excluded.semantic_role,
 			url = excluded.url,
 			clip_page_url = excluded.clip_page_url,
 			thumbnail_url = excluded.thumbnail_url,
@@ -114,6 +127,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			end_ms = excluded.end_ms
 	`,
 		clip.ID, string(clip.Source), clip.Name, clip.Filename, string(clip.MediaType), clip.Category, clip.Group,
+		taxonomy.Namespace, string(taxonomy.AssetKind), taxonomy.SourceType, taxonomy.SemanticRole,
 		clip.SourceURL, clip.ClipPageURL, clip.ThumbnailURL, clip.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
 		clip.SearchText, string(clip.LifecycleState), deletedAtStr, string(metadataJSON),
 		timeutil.FormatRFC3339(clip.CreatedAt), nowStr, clip.FolderID(), clip.ParentFolderID(), clip.FolderPath(),
@@ -123,6 +137,24 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		sourceProvider, sourceVideoID, sourceURL, startMS, endMS,
 	)
 	return err
+}
+
+func resolveClipTaxonomy(clip *asset.Asset) (mediaregistry.AssetTaxonomy, error) {
+	mediaType := mediaregistry.MediaType(string(clip.MediaType))
+	if mediaType == "" || mediaType == "clip" {
+		mediaType = mediaregistry.MediaVideo
+		clip.MediaType = asset.MediaType(mediaType)
+	}
+	kind := mediaregistry.AssetKind(asset.MetadataString(clip.Metadata, "asset_kind"))
+	role := asset.MetadataString(clip.Metadata, "semantic_role")
+	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
+		AssetID: clip.ID, Provider: string(clip.Source), MediaType: mediaType,
+		AssetKind: kind, SemanticRole: role,
+	})
+	if err != nil {
+		return mediaregistry.AssetTaxonomy{}, fmt.Errorf("upsert clip %s: resolve taxonomy: %w", clip.ID, err)
+	}
+	return taxonomy, nil
 }
 
 // SetIndexStateTx is the tx-scoped mirror of SetIndexState added in

@@ -115,13 +115,28 @@ func defaultSemanticRole(provider string) string {
 }
 
 // defaultAssetKind derives the canonical asset_kind from the provider and
-// media type when the producer does not supply an explicit kind.
+// media type when the producer does not supply an explicit kind. Every
+// media_type has a derivable kind so ResolveTaxonomy can be the single
+// decision point for producers that only know provider + media type.
 func defaultAssetKind(provider string, mediaType MediaType) AssetKind {
 	switch mediaType {
 	case MediaImage:
 		return AssetWebImage
 	case MediaAudio:
-		return AssetClipAudio
+		switch provider {
+		case "voiceover":
+			return AssetVoiceover
+		case "bgm":
+			return AssetBGM
+		case "sfx", "sound_effect", "soundeffects":
+			return AssetSFX
+		default:
+			return AssetClipAudio
+		}
+	case MediaText:
+		return AssetMetadata
+	case MediaDocument:
+		return AssetDocument
 	default:
 		switch provider {
 		case "artlist", "stock":

@@ -119,36 +119,18 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 	// outbox marks asset.index.requested as COMPLETED without writing to
 	// Qdrant. Operators seeing this in boot logs must choose one of the
 	// two escape hatches listed in the message.
-	if cfg.Qdrant.Enabled && !cfg.ClipIndexer.Enabled {
-		return fmt.Errorf(
-			"validateQdrantIndexerCompatibility: cfg.QdrantEnabled=true " +
-				"but cfg.ClipIndexerEnabled=false " +
-				"(QDRANT-CHAIN-VERIFY-2026-07-04 P0 fail-closed; " +
-				"the Qdrant vector store is configured but the AI sidecar is OFF, " +
-				"so outbox asset.index.requested events will silently mark COMPLETED " +
-				"without writing to Qdrant). " +
-				"To fix: set VELOX_FEATURE_CLIP_INDEXER_ENABLED=true (start the AI sidecar), " +
-				"OR set VELOX_FEATURE_QDRANT_ENABLED=false (disable the vector store)",
-		)
-	}
+	// Qdrant and the indexer are independent capabilities. When the indexer
+	// is off, its event handler returns the typed retry sentinel; startup must
+	// remain available for script/video workflows that do not need indexing.
 
 	// Direction A (pre-existing inline check, July 2026): ClipIndexer
 	// enabled, Qdrant disabled. UpsertVectorStore would no-op (no target
 	// store) and the clipindexer would report INDEXED despite no Qdrant
 	// write — same false-success class as Direction B but on the
 	// sidecar->vector channel rather than the outbox vector-write.
-	if cfg.ClipIndexer.Enabled && !cfg.Qdrant.Enabled {
-		return fmt.Errorf(
-			"validateQdrantIndexerCompatibility: cfg.QdrantEnabled=false " +
-				"but cfg.ClipIndexerEnabled=true " +
-				"(QDRANT-CHAIN-VERIFY-2026-07-04 P0 fail-closed; " +
-				"the AI sidecar is configured but the Qdrant vector store is OFF, " +
-				"so clipindexer.IndexClip would silently no-op and report INDEXED " +
-				"without writing to Qdrant). " +
-				"To fix: set VELOX_FEATURE_QDRANT_ENABLED=true (start the vector store), " +
-				"OR set VELOX_FEATURE_CLIP_INDEXER_ENABLED=false (disable the sidecar)",
-		)
-	}
+	// With Qdrant disabled the indexer is allowed to enter registry-only /
+	// disabled-projection mode. It must never report INDEXED without a vector;
+	// the clipindexer service enforces that invariant at event time.
 
 	// Dimension equality is not enough to prove that the runtime query
 	// embedder and the indexed vectors share a vector space. The schema is

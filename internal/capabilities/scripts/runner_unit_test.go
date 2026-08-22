@@ -91,6 +91,12 @@ func TestDeriveErrorCode(t *testing.T) {
 			stage:    StagePublishingDocuments,
 			wantCode: "PUBLISHING_DOCUMENTS_FAILED",
 		},
+		{
+			name:     "incomplete render set",
+			err:      errors.New("INCOMPLETE_RENDER_SET: expected=20 successful=19 failed=1"),
+			stage:    StagePublishingDocuments,
+			wantCode: "INCOMPLETE_RENDER_SET",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,6 +104,20 @@ func TestDeriveErrorCode(t *testing.T) {
 			assert.Equal(t, tt.wantCode, got, "deriveErrorCode(%v, %s)", tt.err, tt.stage)
 		})
 	}
+}
+
+func TestBindExplicitClipSceneTextPreservesGeneratedNarration(t *testing.T) {
+	req := GenerateRequest{
+		Source:         Source{Type: SourceClips, ClipIDs: []string{"c1", "c2"}, SourceText: "SCENE 1: source fact one\nSCENE 2: source fact two"},
+		SourceLanguage: "en",
+	}
+	scenes := []Scene{
+		{Text: map[Language]string{"en": "A new funny line"}},
+		{Text: map[Language]string{"en": "Another new funny line"}},
+	}
+	bindExplicitClipSceneText(req, scenes)
+	assert.Equal(t, "A new funny line", scenes[0].Text["en"])
+	assert.Equal(t, "Another new funny line", scenes[1].Text["en"])
 }
 
 func TestModelScriptOutputForDocumentPreservesCanonicalSceneData(t *testing.T) {

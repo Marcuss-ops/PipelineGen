@@ -23,6 +23,7 @@ package mediacommit
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
@@ -139,12 +140,13 @@ type MediaCommitter interface {
 // ── Validation ─────────────────────────────────────────────────────────
 
 var (
-	ErrAssetIDRequired   = errors.New("media commit: Asset.AssetID is required")
-	ErrSourceRequired    = errors.New("media commit: Asset.Source is required")
-	ErrFilenameRequired  = errors.New("media commit: Asset.Filename is required")
-	ErrMediaTypeRequired = errors.New("media commit: Asset.MediaType is required")
-	ErrLifecycleRequired = errors.New("media commit: Asset.LifecycleState is required")
-	ErrTaxonomyInvalid   = errors.New("media commit: Taxonomy is invalid")
+	ErrAssetIDRequired       = errors.New("media commit: Asset.AssetID is required")
+	ErrSourceRequired        = errors.New("media commit: Asset.Source is required")
+	ErrFilenameRequired      = errors.New("media commit: Asset.Filename is required")
+	ErrMediaTypeRequired     = errors.New("media commit: Asset.MediaType is required")
+	ErrLifecycleRequired     = errors.New("media commit: Asset.LifecycleState is required")
+	ErrTaxonomyInvalid       = errors.New("media commit: Taxonomy is invalid")
+	ErrIndexTaxonomyRequired = errors.New("media commit: indexable assets require complete valid taxonomy")
 )
 
 // Validate performs the pre-flight validation shared by all adapters.
@@ -166,6 +168,18 @@ func (r CommitMediaAssetRequest) Validate() error {
 	}
 	if r.Taxonomy.AssetID != "" && r.Taxonomy.AssetID != r.Asset.AssetID {
 		return errors.New("media commit: Taxonomy.AssetID must be empty or match Asset.AssetID")
+	}
+	if r.IndexPolicy.Indexable {
+		taxonomy := r.Taxonomy
+		if taxonomy.AssetID == "" {
+			taxonomy.AssetID = r.Asset.AssetID
+		}
+		if taxonomy.IsZero() || taxonomy.Namespace == "" || taxonomy.SourceType == "" || taxonomy.MediaType == "" || taxonomy.AssetKind == "" || taxonomy.MediaType != mediaregistry.MediaType(r.Asset.MediaType) {
+			return ErrIndexTaxonomyRequired
+		}
+		if err := taxonomy.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrIndexTaxonomyRequired, err)
+		}
 	}
 	return nil
 }

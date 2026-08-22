@@ -153,6 +153,9 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 }
 
 func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if err := normalizeIndexTaxonomy(&req); err != nil {
+		return persistence.CommitResult{}, err
+	}
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
 	}
@@ -193,6 +196,9 @@ func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx pe
 }
 
 func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if err := normalizeIndexTaxonomy(&req); err != nil {
+		return persistence.CommitResult{}, err
+	}
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
 	}
@@ -284,6 +290,9 @@ func buildAssetMutationOutboxEvent(req persistence.CommitRequest) (capcontrol.Ou
 }
 
 func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if err := normalizeIndexTaxonomy(&req); err != nil {
+		return persistence.CommitResult{}, err
+	}
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
 	}
@@ -438,14 +447,19 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 	result := persistence.CommitResult{AssetRowsAffected: rowsAffected}
 	if req.EmitIndexEvent {
 		indexResult, err := CommitIndexRequestTx(ctx, sqlTx, c.box, IndexRequest{
-			AssetID:               req.AssetID,
-			Source:                req.Source,
-			MediaType:             req.MediaType,
-			SourceVersion:         sourceVersion,
-			RequestedAt:           requestedAt,
-			UseProviderEventKey:   req.Source == "artlist",
-			IncludeSourceMetadata: req.Source == "artlist",
-			Priority:              req.IndexPriority,
+			AssetID:       req.AssetID,
+			Source:        req.Source,
+			MediaType:     req.MediaType,
+			SourceVersion: sourceVersion,
+			RequestedAt:   requestedAt,
+			// All producers use the same provider-scoped canonical key and
+			// envelope. The producer must never choose a different idempotency
+			// scheme based on its source; that belongs to this infrastructure
+			// boundary.
+			UseProviderEventKey:      true,
+			IncludeSourceMetadata:    true,
+			IncludeEmbeddingMetadata: true,
+			Priority:                 req.IndexPriority,
 		})
 		if err != nil {
 			return persistence.CommitResult{}, err
@@ -482,6 +496,26 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 		)
 	}
 	return result, nil
+}
+
+// normalizeIndexTaxonomy is the compatibility bridge for legacy producers:
+// an indexing commit may omit taxonomy at the call site, but the canonical
+// writer derives and persists it before validation. No indexed row can leave
+// this boundary with an empty taxonomy.
+func normalizeIndexTaxonomy(req *persistence.CommitRequest) error {
+	if req == nil || !req.EmitIndexEvent || !req.Taxonomy.IsZero() {
+		return nil
+	}
+	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
+		AssetID:   req.AssetID,
+		Provider:  req.Source,
+		MediaType: mediaregistry.MediaType(req.MediaType),
+	})
+	if err != nil {
+		return fmt.Errorf("asset committer: derive index taxonomy: %w", err)
+	}
+	req.Taxonomy = taxonomy
+	return nil
 }
 
 // upsertLocations writes the asset_locations rows inside the tx.

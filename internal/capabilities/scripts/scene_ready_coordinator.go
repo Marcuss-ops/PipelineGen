@@ -37,6 +37,7 @@ type sceneReadyCoordinator struct {
 	// merges them into the run result once the stream joins (the coordinator
 	// has no result pointer of its own).
 	rendered []LocalizedRenderResult
+	failures []LocalizedRenderFailure
 }
 
 func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
@@ -186,6 +187,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 		if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
 			RunID:          c.runID,
+			ParentJobID:    c.exec.JobID,
 			SceneID:        out.ID,
 			SceneIndex:     out.Index,
 			Language:       lang,
@@ -207,6 +209,12 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 				c.rendered = append(c.rendered, rendered)
 				c.mu.Unlock()
 				return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+			},
+			OnFailed: func(failure LocalizedRenderFailure) error {
+				c.mu.Lock()
+				c.failures = append(c.failures, failure)
+				c.mu.Unlock()
+				return nil
 			},
 		}); err != nil {
 			return Scene{}, fmt.Errorf("localized render scene %s lang %s: %w", out.ID, lang, err)
@@ -266,4 +274,10 @@ func (c *sceneReadyCoordinator) renderedVideos() []LocalizedRenderResult {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]LocalizedRenderResult(nil), c.rendered...)
+}
+
+func (c *sceneReadyCoordinator) renderFailures() []LocalizedRenderFailure {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]LocalizedRenderFailure(nil), c.failures...)
 }

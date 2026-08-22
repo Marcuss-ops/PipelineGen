@@ -75,7 +75,12 @@ func bindExplicitClipSceneText(req GenerateRequest, scenes []Scene) {
 		if scenes[i].Text == nil {
 			scenes[i].Text = make(map[Language]string)
 		}
-		scenes[i].Text[req.SourceLanguage] = lines[i]
+		// The per-clip source line is evidence/instructions, not the final
+		// narration. Preserve a non-empty model answer; only use the supplied
+		// line as a recovery value when generation left the scene empty.
+		if strings.TrimSpace(scenes[i].Text[req.SourceLanguage]) == "" {
+			scenes[i].Text[req.SourceLanguage] = lines[i]
+		}
 	}
 }
 
@@ -187,6 +192,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			TranslationMetrics: streamTranslationMetrics,
 			AudioMetrics:       streamAudioMetrics,
 		}
+		if req.Source.Type == SourceClips && req.Render.Enabled {
+			result.ExpectedRenderCount = len(scenes)
+			result.RenderMetrics = &RenderMetrics{Expected: len(scenes), Concurrency: 1}
+		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a
 		// voiceover existed, which made audio.mode=NONE silently produce a script
@@ -194,19 +203,32 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// localized renderer, watermark contract, and certified result sink.
 		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
 			for _, scene := range scenes {
+				renderStarted := time.Now()
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(scene)
 				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
 				if text == "" {
 					text = strings.TrimSpace(req.Source.SourceText)
 				}
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-					RunID: runID, SceneID: scene.ID, SceneIndex: scene.Index,
+					RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
 					Language: req.SourceLanguage, Text: text,
 					SourceLanguage: req.SourceLanguage, SourceText: text,
 					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 					ClipDurationMS: clipDurationMS, Render: req.Render,
 					OnRendered: func(rendered LocalizedRenderResult) error {
 						result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+						result.RenderMetrics.Successful = len(result.LocalizedRenders)
+						result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+						return nil
+					},
+					OnFailed: func(failure LocalizedRenderFailure) error {
+						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+						result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
+						result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+						upper := strings.ToUpper(failure.Error)
+						if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+							result.RenderMetrics.GPUOOMs++
+						}
 						return nil
 					},
 				}); err != nil {
@@ -222,6 +244,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// the run result records the final MP4s it rendered.
 		if ready != nil {
 			result.LocalizedRenders = append(result.LocalizedRenders, ready.renderedVideos()...)
+			result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, ready.renderFailures()...)
 		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {

@@ -362,46 +362,69 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 	return report, nil
 }
 
+// legacyTaxonomy resolves the canonical taxonomy for a legacy media_assets
+// row via the SINGLE canonical resolver (capregistry.ResolveTaxonomy). The
+// legacy source values map onto TaxonomyInput; the historical namespace /
+// asset_kind / source_type choices are supplied as explicit overrides so the
+// backfill preserves the exact values old rows were created with. The
+// resolver owns every derivation + validation — no taxonomy decision is made
+// here (godlike/06 SSOT). The second return is the canonical media_type
+// replacement when the legacy row used a retired value ('clip' → 'video',
+// 'metadata' → 'text').
 func legacyTaxonomy(id, source, mediaType, filename string) (capregistry.AssetTaxonomy, string, bool) {
 	source = strings.ToLower(strings.TrimSpace(source))
 	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
-	tax := capregistry.AssetTaxonomy{AssetID: id, SourceType: "manual"}
+
+	// Normalize retired media_type values onto the canonical MediaType enum.
+	canonicalType := capregistry.MediaType(mediaType)
+	replacementType := ""
+	switch mediaType {
+	case "clip":
+		canonicalType, replacementType = capregistry.MediaVideo, string(capregistry.MediaVideo)
+	case "metadata":
+		canonicalType, replacementType = capregistry.MediaText, string(capregistry.MediaText)
+	}
+
+	input := capregistry.TaxonomyInput{
+		AssetID:   id,
+		Provider:  source,
+		MediaType: canonicalType,
+	}
+	// Historical overrides for legacy rows. New ingest derives its own
+	// defaults from the provider via ResolveTaxonomy; these pin the exact
+	// values old rows carried so the backfill does not rewrite history.
 	switch {
 	case source == "voiceover" && mediaType == "audio":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "audio", capregistry.MediaAudio, capregistry.AssetVoiceover, capregistry.SourceIdentityDrive
+		input.Namespace, input.AssetKind, input.SourceType = "audio", capregistry.AssetVoiceover, capregistry.SourceIdentityDrive
 	case source == "created" && mediaType == "audio":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "audio", capregistry.MediaAudio, capregistry.AssetVoiceover, "pipelinegen"
+		input.Namespace, input.AssetKind, input.SourceType = "audio", capregistry.AssetVoiceover, "pipelinegen"
 	case (source == "created" || source == "script") && mediaType == "text":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "text", capregistry.MediaText, capregistry.AssetMetadata, "pipelinegen"
+		input.Namespace, input.AssetKind, input.SourceType = "text", capregistry.AssetMetadata, "pipelinegen"
 	case source == "stock" && mediaType == "metadata":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "metadata", capregistry.MediaText, capregistry.AssetMetadata, "stock"
+		input.Namespace, input.AssetKind, input.SourceType = "metadata", capregistry.AssetMetadata, "stock"
 	case source == "stock" && mediaType == "video":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "stock", capregistry.MediaVideo, capregistry.AssetStockVideo, "stock"
+		input.Namespace, input.AssetKind, input.SourceType = "stock", capregistry.AssetStockVideo, "stock"
 	case source == "youtube" && (mediaType == "clip" || mediaType == "video"):
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityYouTube
+		input.Namespace, input.AssetKind, input.SourceType = "clips", capregistry.AssetClip, capregistry.SourceIdentityYouTube
 	case source == "clip_drive" && mediaType == "clip":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityDrive
+		input.Namespace, input.AssetKind, input.SourceType = "clips", capregistry.AssetClip, capregistry.SourceIdentityDrive
 	case source == "local" && mediaType == "video":
 		// Local/manual ingestion is still a canonical clip asset. The
 		// binary origin is local, while the durable semantic taxonomy is
 		// the same clips projection used by Drive-backed clips.
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "clips", capregistry.MediaVideo, capregistry.AssetClip, capregistry.SourceIdentityManual
+		input.Namespace, input.AssetKind, input.SourceType = "clips", capregistry.AssetClip, capregistry.SourceIdentityManual
 	case (source == "created" || source == "document") && mediaType == "document":
-		tax.Namespace, tax.MediaType, tax.AssetKind, tax.SourceType = "outputs", capregistry.MediaDocument, capregistry.AssetDocument, "pipelinegen"
+		input.Namespace, input.AssetKind, input.SourceType = "outputs", capregistry.AssetDocument, "pipelinegen"
 	default:
 		return capregistry.AssetTaxonomy{}, "", false
 	}
-	if err := tax.Validate(); err != nil {
+
+	tax, err := capregistry.ResolveTaxonomy(input)
+	if err != nil {
 		return capregistry.AssetTaxonomy{}, "", false
 	}
-	if mediaType == "metadata" {
-		return tax, string(capregistry.MediaText), true
-	}
-	if mediaType == "clip" {
-		return tax, string(capregistry.MediaVideo), true
-	}
 	_ = filename
-	return tax, "", true
+	return tax, replacementType, true
 }
 
 type identityQueryer interface {

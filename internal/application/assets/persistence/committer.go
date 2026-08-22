@@ -339,13 +339,14 @@ type AssetCommitter interface {
 // ── Typed sentinels ──────────────────────────────────────────────────
 
 var (
-	ErrAssetCommitAssetIDRequired     = errors.New("asset commit: AssetID is required")
-	ErrAssetCommitSourceRequired      = errors.New("asset commit: Source is required")
-	ErrAssetCommitFilenameRequired    = errors.New("asset commit: Filename is required")
-	ErrAssetCommitMediaTypeRequired   = errors.New("asset commit: MediaType is required")
-	ErrAssetCommitContentHashRequired = errors.New("asset commit: ContentHash is required")
-	ErrAssetCommitLifecycleRequired   = errors.New("asset commit: LifecycleState is required")
-	ErrAssetCommitOutboxTerminal      = errors.New("asset commit: outbox event suppressed by existing terminal row")
+	ErrAssetCommitAssetIDRequired       = errors.New("asset commit: AssetID is required")
+	ErrAssetCommitSourceRequired        = errors.New("asset commit: Source is required")
+	ErrAssetCommitFilenameRequired      = errors.New("asset commit: Filename is required")
+	ErrAssetCommitMediaTypeRequired     = errors.New("asset commit: MediaType is required")
+	ErrAssetCommitContentHashRequired   = errors.New("asset commit: ContentHash is required")
+	ErrAssetCommitLifecycleRequired     = errors.New("asset commit: LifecycleState is required")
+	ErrAssetCommitIndexTaxonomyRequired = errors.New("asset commit: indexable assets require complete valid taxonomy")
+	ErrAssetCommitOutboxTerminal        = errors.New("asset commit: outbox event suppressed by existing terminal row")
 )
 
 // Validate performs the pre-flight validation shared by all adapters.
@@ -364,6 +365,18 @@ func (r CommitRequest) Validate() error {
 	}
 	if r.EmitIndexEvent && r.ContentHash == "" {
 		return ErrAssetCommitContentHashRequired
+	}
+	if r.EmitIndexEvent {
+		taxonomy := r.Taxonomy
+		if taxonomy.AssetID == "" {
+			taxonomy.AssetID = r.AssetID
+		}
+		if taxonomy.IsZero() || taxonomy.Namespace == "" || taxonomy.SourceType == "" || taxonomy.MediaType == "" || taxonomy.AssetKind == "" || taxonomy.MediaType != mediaregistry.MediaType(r.MediaType) {
+			return ErrAssetCommitIndexTaxonomyRequired
+		}
+		if err := taxonomy.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrAssetCommitIndexTaxonomyRequired, err)
+		}
 	}
 	if r.LifecycleState == "" {
 		return ErrAssetCommitLifecycleRequired

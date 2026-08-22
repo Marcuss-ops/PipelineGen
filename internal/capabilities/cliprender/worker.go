@@ -273,10 +273,10 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if outcome == nil || outcome.OutputPath == "" || outcome.SizeBytes <= 0 {
 		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
-	// Fail-closed GPU gate: a request that demands the CUDA native compositor
-	// must never be silently served by the software fallback.
+	// Fail-closed GPU gate: a request that demands GPU must never be silently
+	// served by the software fallback.
 	if req.Execution.RequireGPU && outcome.Backend != BackendCudaNative && outcome.Backend != BackendChrononVulkan {
-		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (cuda_native required)", outcome.Backend)
+		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (a GPU backend is required)", outcome.Backend)
 	}
 
 	// ── Overlay compositing (entity overlays) ───────────────────────────

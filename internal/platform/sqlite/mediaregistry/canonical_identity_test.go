@@ -207,6 +207,57 @@ func TestBackfill_Idempotent(t *testing.T) {
 	}
 }
 
+// TestLegacyTaxonomy_ResolvesViaCanonicalResolver pins that the admin
+// taxonomy backfill routes every legacy (source, media_type) row through the
+// SINGLE canonical resolver (capregistry.ResolveTaxonomy), preserving the
+// exact historical namespace / asset_kind / source_type values and the
+// retired-media_type replacement.
+func TestLegacyTaxonomy_ResolvesViaCanonicalResolver(t *testing.T) {
+	cases := []struct {
+		name        string
+		source      string
+		mediaType   string
+		wantNS      string
+		wantKind    capregistry.AssetKind
+		wantSource  string
+		wantMedia   capregistry.MediaType
+		wantReplace string
+		wantOK      bool
+	}{
+		{"voiceover audio", "voiceover", "audio", "audio", capregistry.AssetVoiceover, capregistry.SourceIdentityDrive, capregistry.MediaAudio, "", true},
+		{"created audio", "created", "audio", "audio", capregistry.AssetVoiceover, "pipelinegen", capregistry.MediaAudio, "", true},
+		{"created text", "created", "text", "text", capregistry.AssetMetadata, "pipelinegen", capregistry.MediaText, "", true},
+		{"script text", "script", "text", "text", capregistry.AssetMetadata, "pipelinegen", capregistry.MediaText, "", true},
+		{"stock metadata", "stock", "metadata", "metadata", capregistry.AssetMetadata, "stock", capregistry.MediaText, "text", true},
+		{"stock video", "stock", "video", "stock", capregistry.AssetStockVideo, "stock", capregistry.MediaVideo, "", true},
+		{"youtube clip", "youtube", "clip", "clips", capregistry.AssetClip, capregistry.SourceIdentityYouTube, capregistry.MediaVideo, "video", true},
+		{"youtube video", "youtube", "video", "clips", capregistry.AssetClip, capregistry.SourceIdentityYouTube, capregistry.MediaVideo, "", true},
+		{"clip_drive clip", "clip_drive", "clip", "clips", capregistry.AssetClip, capregistry.SourceIdentityDrive, capregistry.MediaVideo, "video", true},
+		{"local video", "local", "video", "clips", capregistry.AssetClip, capregistry.SourceIdentityManual, capregistry.MediaVideo, "", true},
+		{"created document", "created", "document", "outputs", capregistry.AssetDocument, "pipelinegen", capregistry.MediaDocument, "", true},
+		{"document document", "document", "document", "outputs", capregistry.AssetDocument, "pipelinegen", capregistry.MediaDocument, "", true},
+		{"unknown source", "mystery", "video", "", "", "", "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tax, replacement, ok := legacyTaxonomy("asset-1", tc.source, tc.mediaType, "file.mp4")
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if !tc.wantOK {
+				return
+			}
+			if tax.Namespace != tc.wantNS || tax.AssetKind != tc.wantKind || tax.SourceType != tc.wantSource || tax.MediaType != tc.wantMedia {
+				t.Fatalf("legacyTaxonomy(%q, %q) = %+v, want ns=%q kind=%q source=%q media=%q",
+					tc.source, tc.mediaType, tax, tc.wantNS, tc.wantKind, tc.wantSource, tc.wantMedia)
+			}
+			if replacement != tc.wantReplace {
+				t.Fatalf("replacement = %q, want %q", replacement, tc.wantReplace)
+			}
+		})
+	}
+}
+
 func TestBackfill_SourceCollisionFailsClosed(t *testing.T) {
 	r, db := newCanonicalIdentityResolver(t)
 	if _, err := db.Exec(`

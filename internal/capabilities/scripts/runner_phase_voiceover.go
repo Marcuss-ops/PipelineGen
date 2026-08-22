@@ -212,6 +212,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 					RunID:          runID,
+					ParentJobID:    exec.JobID,
 					SceneID:        item.sceneID,
 					SceneIndex:     item.scene.Index,
 					Language:       item.lang,
@@ -231,6 +232,12 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					// the result append itself.
 					OnRendered: func(rendered LocalizedRenderResult) error {
 						return r.recordLocalizedRender(ctx, exec, result, rendered)
+					},
+					OnFailed: func(failure LocalizedRenderFailure) error {
+						r.localizedRenderMu.Lock()
+						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+						r.localizedRenderMu.Unlock()
+						return nil
 					},
 				}); err != nil {
 					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)

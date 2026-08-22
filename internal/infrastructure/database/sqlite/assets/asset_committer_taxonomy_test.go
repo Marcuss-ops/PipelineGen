@@ -122,9 +122,9 @@ func TestSQLiteAssetCommitter_RejectsInvalidTaxonomyKind(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid for media_type")
 }
 
-// TestSQLiteAssetCommitter_ZeroTaxonomyStillCommitsLegacy proves the
-// incremental-convergence contract: a zero taxonomy is accepted (legacy
-// producers) and leaves the taxonomy columns at their empty default.
+// TestSQLiteAssetCommitter_ZeroTaxonomyIsNormalized proves the compatibility
+// bridge: a legacy producer may omit taxonomy at the call site, but the
+// canonical writer derives and persists it before emitting an index event.
 func TestSQLiteAssetCommitter_ZeroTaxonomyStillCommitsLegacy(t *testing.T) {
 	db := newAtomicWriterDB(t)
 	box := outboxevents.NewRepository(db)
@@ -140,7 +140,7 @@ func TestSQLiteAssetCommitter_ZeroTaxonomyStillCommitsLegacy(t *testing.T) {
 	err := db.QueryRow(`SELECT namespace, asset_kind, source_type FROM media_assets WHERE id = ?`, req.AssetID).
 		Scan(&namespace, &assetKind, &sourceType)
 	require.NoError(t, err)
-	require.Equal(t, "", namespace)
-	require.Equal(t, "", assetKind)
-	require.Equal(t, "", sourceType)
+	require.Equal(t, "youtube", namespace)
+	require.Equal(t, "clip", assetKind)
+	require.Equal(t, "youtube", sourceType)
 }

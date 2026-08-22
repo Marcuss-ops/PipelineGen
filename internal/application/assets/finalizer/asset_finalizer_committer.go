@@ -181,6 +181,10 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	}
 
 	_, initIndex := asset.NewIndexableAssetState()
+	searchIndexable := mediaType == "video" || mediaType == "image"
+	if !searchIndexable {
+		initIndex = ""
+	}
 	lifecycleState := string(asset.StatePublished)
 	if source == "youtube" {
 		lifecycleState = string(asset.StateActive)
@@ -227,7 +231,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		EndMs:          int64(metadata.EndSec * 1000),
 		Metadata:       metadata,
 		Locations:      locations,
-		EmitIndexEvent: true,
+		EmitIndexEvent: searchIndexable,
 		RequestedAt:    time.Now(),
 		IndexPriority:  indexPriority,
 	}

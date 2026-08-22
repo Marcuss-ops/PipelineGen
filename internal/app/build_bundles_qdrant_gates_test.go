@@ -119,7 +119,7 @@ func TestValidateQdrantIndexerCompatibility_EmbeddingModelMismatchFailsClosed(t 
 // for godlike/07 fail-closed composition gates. If a future refactor
 // weakens any of the substrings, this test fails and the regression is
 // caught at unit-test time rather than at first operator boot.
-func TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_FailsClosed(t *testing.T) {
+func TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_AllowsIndependentStartup(t *testing.T) {
 	cfg := &config.Config{
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
 		Qdrant:      config.QdrantConfig{Enabled: true},
@@ -129,18 +129,6 @@ func TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_FailsClos
 		External: config.ExternalConfig{OllamaEmbedModel: "intfloat/multilingual-e5-base"},
 	}
 	err := validateQdrantIndexerCompatibility(cfg)
-	require.Error(t, err,
-		"PR-QDRANT-CONFIG-MISMATCH-GATE: Qdrant=true + ClipIndexer=false must fail-closed (godlike/07 no-fake-availability; the RED POINT surfaced by QDRANT-CHAIN-VERIFY-2026-07-04 audit)")
-
-	// 5-substring contract assertion (godlike/07 fail-closed coupling).
-	assert.Contains(t, err.Error(), "QdrantEnabled=true",
-		"error must name the failing condition (the Qdrant feature flag was on)")
-	assert.Contains(t, err.Error(), "ClipIndexerEnabled=false",
-		"error must name the failing field (the ClipIndexer sidecar was off)")
-	assert.Contains(t, err.Error(), "QDRANT-CHAIN-VERIFY-2026-07-04 P0",
-		"error must cite the wave-tracker anchor for audit traceability")
-	assert.Contains(t, err.Error(), "VELOX_FEATURE_CLIP_INDEXER_ENABLED=true",
-		"error must name the env-var fix hint (start the AI sidecar)")
-	assert.Contains(t, err.Error(), "VELOX_FEATURE_QDRANT_ENABLED=false",
-		"error must name the alternative env-var fix hint (disable the vector store)")
+	require.NoError(t, err,
+		"Qdrant and ClipIndexer are independent; indexing events must retry or remain disabled without blocking script/video startup")
 }

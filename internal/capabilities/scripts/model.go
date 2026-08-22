@@ -638,7 +638,23 @@ type GenerateResult struct {
 	// with its asset id, sha256, and Drive identity. A run that rendered a
 	// final MP4 must prove it — the produced video is never orphaned from
 	// the run result. Nil when the fan-out produced no certified video.
-	LocalizedRenders []LocalizedRenderResult `json:"localized_renders,omitempty"`
+	LocalizedRenders        []LocalizedRenderResult  `json:"localized_renders,omitempty"`
+	LocalizedRenderFailures []LocalizedRenderFailure `json:"localized_render_failures,omitempty"`
+	RenderMetrics           *RenderMetrics           `json:"render_metrics,omitempty"`
+	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`
+}
+
+type RenderMetrics struct {
+	Expected      int   `json:"expected"`
+	Successful    int   `json:"successful"`
+	Failed        int   `json:"failed"`
+	WallMS        int64 `json:"wall_ms"`
+	MaterializeMS int64 `json:"materialize_ms,omitempty"`
+	RenderMS      int64 `json:"render_ms,omitempty"`
+	UploadMS      int64 `json:"upload_ms,omitempty"`
+	CPUFallbacks  int   `json:"cpu_fallbacks,omitempty"`
+	GPUOOMs       int   `json:"gpu_ooms,omitempty"`
+	Concurrency   int   `json:"concurrency,omitempty"`
 }
 
 // TranslationPipelineMetrics is a read-only API projection of canonical

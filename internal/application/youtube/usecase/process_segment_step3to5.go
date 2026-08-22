@@ -114,14 +114,14 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	// staged file).
 	//
 	// Graceful degradation: stager.StageSource failure is logged Warn and the
-	// cutReq keeps PreDownloadedPath=""; the legacy DownloadAndCut path
-	// downloads itself per attempt. No call site is locked-out.
+	// cutReq keeps PreDownloadedPath=""; the pipeline may retry acquisition.
+	// All strategies, including YouTube Stock partial, use this same boundary.
 	//
 	// NIT-1 from the verification thinker: the `defer` fires at the end of
 	// this method (after the typed error check on retry.Do) — SAFE because
 	// the staged source file is consumed by the cut within Step 4 and is
 	// unused by Steps 5a-10 which only touch the cut clip via localPath.
-	if u.media.Stager != nil && cmd.VideoURL != "" && cmd.Strategy != youtubetypes.StrategyYouTubeStockPartial {
+	if u.media.Stager != nil && cmd.VideoURL != "" {
 		source := acquisition.SourceRef{URL: cmd.VideoURL, PolicyVersion: ProcessSegmentPolicyVersion}
 		staged, stageErr := u.media.Stager.Prepare(ctx, acquisition.PrepareRequest{
 			Source:         source,

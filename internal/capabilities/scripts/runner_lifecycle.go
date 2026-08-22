@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -92,6 +93,19 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 
 // completeRun marks the run as COMPLETED and saves the final result.
 func (r *Runner) completeRun(ctx context.Context, runID string, result *GenerateResult) {
+	if result != nil && result.ExpectedRenderCount > 0 {
+		actual, failed := len(result.LocalizedRenders), len(result.LocalizedRenderFailures)
+		if result.RenderMetrics != nil {
+			result.RenderMetrics.Expected = result.ExpectedRenderCount
+			result.RenderMetrics.Successful = actual
+			result.RenderMetrics.Failed = failed
+		}
+		if actual != result.ExpectedRenderCount || failed != 0 {
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments,
+				fmt.Errorf("INCOMPLETE_RENDER_SET: expected=%d successful=%d failed=%d", result.ExpectedRenderCount, actual, failed))
+			return
+		}
+	}
 	r.log.Info("scriptgeneration: run completed",
 		zap.String("run_id", runID),
 		zap.Int("scene_count", len(result.Scenes)),

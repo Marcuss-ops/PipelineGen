@@ -219,14 +219,15 @@ func (c *SQLiteMediaCommitter) commitTx(ctx context.Context, tx *sql.Tx, req med
 	if req.IndexPolicy.Indexable {
 		sourceVersion := firstNonEmpty(req.Source.SourceVersion, req.Asset.ContentHash)
 		indexResult, err = sqassets.CommitIndexRequestTx(ctx, tx, c.box, sqassets.IndexRequest{
-			AssetID:               assetID,
-			Source:                req.Asset.Source,
-			MediaType:             req.Asset.MediaType,
-			SourceVersion:         sourceVersion,
-			RequestedAt:           time.Now(),
-			UseProviderEventKey:   req.Asset.Source == "artlist",
-			IncludeSourceMetadata: req.Asset.Source == "artlist",
-			Priority:              req.IndexPolicy.Priority,
+			AssetID:                  assetID,
+			Source:                   req.Asset.Source,
+			MediaType:                req.Asset.MediaType,
+			SourceVersion:            sourceVersion,
+			RequestedAt:              time.Now(),
+			UseProviderEventKey:      true,
+			IncludeSourceMetadata:    true,
+			IncludeEmbeddingMetadata: true,
+			Priority:                 req.IndexPolicy.Priority,
 		})
 		if err != nil {
 			return mediacommit.CommitMediaAssetResult{}, fmt.Errorf("media committer: emit index request: %w", err)
@@ -420,6 +421,13 @@ func (c *SQLiteMediaCommitter) commitPersistence(ctx context.Context, req persis
 }
 
 func persistenceToMediaRequest(r persistence.CommitRequest) mediacommit.CommitMediaAssetRequest {
+	if r.EmitIndexEvent && r.Taxonomy.IsZero() {
+		if taxonomy, err := capregistry.ResolveTaxonomy(capregistry.TaxonomyInput{
+			AssetID: r.AssetID, Provider: r.Source, MediaType: capregistry.MediaType(r.MediaType),
+		}); err == nil {
+			r.Taxonomy = taxonomy
+		}
+	}
 	sourceRef := firstNonEmpty(r.SourceVideoID, firstNonEmpty(r.SourceURL, r.AssetLocation))
 	sourceVersion := firstNonEmpty(r.AssetVersion, firstNonEmpty(r.Metadata.SourceVersion, r.ContentHash))
 	return mediacommit.CommitMediaAssetRequest{
@@ -471,6 +479,14 @@ func (c *SQLiteMediaCommitter) CommitLegacy(ctx context.Context, req persistence
 
 // legacyToMediaCommitRequest maps the legacy request onto the canonical shape.
 func legacyToMediaCommitRequest(r persistence.CommitRequest) mediacommit.CommitMediaAssetRequest {
+	taxonomy := r.Taxonomy
+	if r.EmitIndexEvent && taxonomy.IsZero() {
+		if resolved, err := capregistry.ResolveTaxonomy(capregistry.TaxonomyInput{
+			AssetID: r.AssetID, Provider: r.Source, MediaType: capregistry.MediaType(r.MediaType),
+		}); err == nil {
+			taxonomy = resolved
+		}
+	}
 	return mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{
 			AssetID:        r.AssetID,
@@ -499,6 +515,6 @@ func legacyToMediaCommitRequest(r persistence.CommitRequest) mediacommit.CommitM
 			Locations:      r.Locations,
 		},
 		IndexPolicy: mediacommit.IndexPolicy{Indexable: r.EmitIndexEvent, Priority: r.IndexPriority},
-		Taxonomy:    r.Taxonomy,
+		Taxonomy:    taxonomy,
 	}
 }

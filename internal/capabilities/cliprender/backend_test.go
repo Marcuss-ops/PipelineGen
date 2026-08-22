@@ -30,10 +30,10 @@ func TestRendererCapabilitiesSatisfies(t *testing.T) {
 func TestNewRenderBackendRegistrySeedsCanonicalBackends(t *testing.T) {
 	registry := NewRenderBackendRegistry()
 	backends := registry.Backends()
-	if len(backends) != 2 {
-		t.Fatalf("backends = %v, want [cuda_native ffmpeg_fallback]", backends)
+	if len(backends) != 3 {
+		t.Fatalf("backends = %v, want [cuda_native chronon_vulkan ffmpeg_fallback]", backends)
 	}
-	if backends[0] != BackendCudaNative || backends[1] != BackendFFmpegFallback {
+	if backends[0] != BackendCudaNative || backends[1] != BackendChrononVulkan || backends[2] != BackendFFmpegFallback {
 		t.Fatalf("backends order = %v, want cuda_native preferred", backends)
 	}
 	// ffmpeg fallback runs on an empty host.
