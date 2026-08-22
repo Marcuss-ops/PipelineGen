@@ -14,15 +14,15 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/google/uuid"
 )
 
 type RecoveryCommitter struct {
-	db           *sql.DB
-	outbox       *outboxevents.Repository
-	targetSchema string
+	db     *sql.DB
+	outbox *outboxevents.Repository
 }
 
 type AssetReader struct{ db *sql.DB }
@@ -58,10 +58,8 @@ func NewRecoveryCommitter(db *sql.DB, outboxRepo *outboxevents.Repository, targe
 	if db == nil || outboxRepo == nil {
 		return nil, fmt.Errorf("media enrichment committer: database and outbox are required")
 	}
-	if strings.TrimSpace(targetSchema) == "" {
-		targetSchema = "media_assets_current"
-	}
-	return &RecoveryCommitter{db: db, outbox: outboxRepo, targetSchema: targetSchema}, nil
+	_ = targetSchema // retained in the constructor for caller compatibility; the canonical event owns its schema.
+	return &RecoveryCommitter{db: db, outbox: outboxRepo}, nil
 }
 
 func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, language string, tracks []asset.TextTrack, projection string) error {
@@ -109,11 +107,10 @@ func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, la
 			return fmt.Errorf("registry event: %w", err)
 		}
 	}
-	key, body, err := outboxevents.BuildReindexEnvelopeV1(assetID, c.targetSchema, sourceVersion, time.Now().UTC())
-	if err != nil {
-		return err
-	}
-	if _, err := c.outbox.Enqueue(ctx, tx, outboxevents.EventAssetIndexRequested, assetID, "media_asset", body, key); err != nil {
+	if _, err := sqassets.CommitIndexRequestTx(ctx, tx, c.outbox, sqassets.IndexRequest{
+		AssetID: assetID, Source: "qdrant-recovery", MediaType: "video",
+		SourceVersion: sourceVersion, RequestedAt: time.Now().UTC(),
+	}); err != nil {
 		return fmt.Errorf("targeted reindex outbox: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
