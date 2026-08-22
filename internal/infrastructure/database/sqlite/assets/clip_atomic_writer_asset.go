@@ -12,12 +12,11 @@
 package assets
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 )
 
@@ -110,15 +109,14 @@ func derivePolicyVersion(clipID string) string {
 
 // deriveSourceVersion returns the canonical ingest-time content hash
 // fingerprint used as event.source_version. In priority order:
-//  1. asset.FileHash (the canonical MD5 of the local clip file).
+//  1. asset.LegacyFileMD5 (the canonical MD5 of the local clip file).
 //  2. fallback = MD5(clipID + ":" + policyVersion) — invariant under
 //     retries so ON CONFLICT(event_key) collapses into a single row.
 func deriveSourceVersion(clipID, fileHash, policyVersion string) string {
 	if fileHash != "" {
 		return fileHash
 	}
-	h := md5.Sum([]byte(clipID + ":" + policyVersion))
-	return hex.EncodeToString(h[:])
+	return checksum.LegacyMD5String(clipID + ":" + policyVersion)
 }
 
 // filepathBase is a thin wrapper around path/filepath.Base that

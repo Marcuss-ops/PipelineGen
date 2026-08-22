@@ -115,7 +115,7 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	if requestID == "" {
 		requestID = buildRequestID()
 	}
-	textHash := ComputeFullTextHash(req.Text)
+	textHash := ComputeTextHash(req.Text)
 
 	// PR-VO-AUDIT-P02 (June 2026): the legacy gate
 	// `if req.Destination != nil` is REMOVED. The canonical destination

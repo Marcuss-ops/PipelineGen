@@ -50,8 +50,8 @@ import (
 //   - Step 5: runtime fail-closed on localPath (empty / missing / zero
 //     size / hash failure) with typed *ExtractionError propagation
 //
-// Mutates `out` on success (Item.LocalPath / Item.Filename / Item.FileHash /
-// FileHash → top-level out.FileHash). On any typed error path,
+// Mutates `out` on success (Item.LocalPath / Item.Filename / Item.LegacyFileMD5 /
+// LegacyFileMD5 → top-level out.LegacyFileMD5). On any typed error path,
 // `u.fail` has already populated out.Item.Status="failed" +
 // out.Item.Error + out.Error.
 //
@@ -222,7 +222,7 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	}
 	out.Item.LocalPath = localPath
 	out.Item.Filename = filepath.Base(localPath)
-	out.Item.FileHash = fileHash
-	out.FileHash = fileHash
+	out.Item.LegacyFileMD5 = fileHash
+	out.LegacyFileMD5 = fileHash
 	return fileHash, localPath, nil
 }

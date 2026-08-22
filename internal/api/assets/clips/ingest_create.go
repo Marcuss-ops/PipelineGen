@@ -72,7 +72,7 @@ func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	// back to clip.ID when the bind-time payload omits it (the dispatcher
 	// rejects empty asset.ID via the EnqueueAndIndex NewDispatcher wiring
 	// pre-flight at outbox/repository.go:243-246).
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = clip.ID
 	}

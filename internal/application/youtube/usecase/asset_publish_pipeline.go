@@ -14,8 +14,8 @@
 //     canal, not `delivery.Publisher.Publish`).
 //   - per-rendition filter select → THIS file (`shouldPublishRendition`,
 //     pure helper, hermetic unit-test coverage).
-//   - `RenditionOutput` → FileHash (SHA-256) threading → THIS file reads
-//     the canonical `RenditionOutput.FileHash` (computed by
+//   - `RenditionOutput` → LegacyFileMD5 (SHA-256) threading → THIS file reads
+//     the canonical `RenditionOutput.LegacyFileMD5` (computed by
 //     processor.buildRenditionOutput via fileutil.HashFile(sha256.New())).
 //
 // GODLIKE/07 typed-error contract:
@@ -313,7 +313,7 @@ func PublishRenditionsToYouTubeAsset(
 			LocalPath:   r.LocalPath,
 			Filename:    r.Filename,
 			AssetID:     assetID,
-			ContentHash: r.FileHash,
+			ContentHash: r.LegacyFileMD5,
 			SizeBytes:   r.SizeBytes,
 		})
 		if reqErr != nil {

@@ -146,11 +146,11 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// runs on the cached binary so a cache hit repairs missing/stale
 	// metadata, text tracks and the index request instead of
 	// short-circuiting before the semantic snapshot exists. The cached
-	// binary coordinates (LocalPath + FileHash) are surfaced on `out`
+	// binary coordinates (LocalPath + LegacyFileMD5) are surfaced on `out`
 	// by step2_CacheLookup on the hit path.
 	var fileHash, localPath string
 	if cacheHit {
-		fileHash = out.Item.FileHash
+		fileHash = out.Item.LegacyFileMD5
 		localPath = out.Item.LocalPath
 	} else {
 		fileHash, localPath, err = u.step3to5_CutRetryHash(ctx, cmd, &out, clipID, startSec, endSec, duration, keepAudio)

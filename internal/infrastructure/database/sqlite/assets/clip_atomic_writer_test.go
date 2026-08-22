@@ -15,10 +15,10 @@
 //     outboxevents.ReindexEnvelopeV1Schema. source_version is
 //     persisted in the media_assets row (BLOCKER #2 closure).
 //  2. Idempotency: a second call with the same clipID + same
-//     FileHash-derived sourceVersion collapses the outbox half via
+//     LegacyFileMD5-derived sourceVersion collapses the outbox half via
 //     ON CONFLICT(event_key) DO NOTHING. media_assets row is
 //     updated-once via ON CONFLICT(id) DO UPDATE.
-//  3. Different FileHash produces a different eventKey → second
+//  3. Different LegacyFileMD5 produces a different eventKey → second
 //     INSERT goes through with a NEW outbox_events row (the
 //     canonical content-hash supersede pattern).
 //  4. Tx rollback: outbox half failure propagates the error and
@@ -152,7 +152,7 @@ func canonicalEnvelopePayload() youtubeports.IndexEventPayload {
 }
 
 // sha256Hex returns a 64-hex string the writer treats as the canonical
-// FileHash shape (the production path uses MD5, but the writer does
+// LegacyFileMD5 shape (the production path uses MD5, but the writer does
 // not enforce hash length — any non-empty string is valid).
 func sha256Hex(seed string) string {
 	h := sha256.Sum256([]byte(seed))
@@ -174,7 +174,7 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "abc123",
-		FileHash:  sha256Hex("happy-path"),
+		LegacyFileMD5:  sha256Hex("happy-path"),
 		LocalPath: "/tmp/clips/yt_abc123_10_60_v1.mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_xyz",
@@ -213,8 +213,8 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	if gotName != item.Metadata.Summary {
 		t.Errorf("name: want %q got %q", item.Metadata.Summary, gotName)
 	}
-	if gotFileHash != item.FileHash {
-		t.Errorf("file_hash: want %q got %q", item.FileHash, gotFileHash)
+	if gotFileHash != item.LegacyFileMD5 {
+		t.Errorf("file_hash: want %q got %q", item.LegacyFileMD5, gotFileHash)
 	}
 	if gotLocalPath != item.LocalPath {
 		t.Errorf("local_path: want %q got %q", item.LocalPath, gotLocalPath)
@@ -226,13 +226,13 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 		t.Errorf("drive_link: want %q got %q", item.Drive.WebViewLink, gotDriveLink)
 	}
 	// BLOCKER #2 closure: source_version must be non-empty and must
-	// match what deriveSourceVersion computes (asset.FileHash when
+	// match what deriveSourceVersion computes (asset.LegacyFileMD5 when
 	// non-empty). The clipindexer's CAS fence reads this column.
 	if gotSourceVersion == "" {
 		t.Errorf("BLOCKER #2: source_version must be non-empty after CommitClipAndIndexEvent (CAS fence starves on empty)")
 	}
-	if gotSourceVersion != item.FileHash {
-		t.Errorf("BLOCKER #2: source_version must equal FileHash when FileHash is non-empty; want %q got %q", item.FileHash, gotSourceVersion)
+	if gotSourceVersion != item.LegacyFileMD5 {
+		t.Errorf("BLOCKER #2: source_version must equal LegacyFileMD5 when LegacyFileMD5 is non-empty; want %q got %q", item.LegacyFileMD5, gotSourceVersion)
 	}
 	if gotLifecycle != "ACTIVE" {
 		t.Errorf("lifecycle_state: want ACTIVE got %q", gotLifecycle)
@@ -277,7 +277,7 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 
 // TestClipAtomicWriter_IdempotentOnSameContent pins the canonical
 // "replay safe" contract: a second CommitClipAndIndexEvent with
-// the SAME clipID + SAME FileHash produces NO new outbox_events row
+// the SAME clipID + SAME LegacyFileMD5 produces NO new outbox_events row
 // (ON CONFLICT(event_key) DO NOTHING) AND no new media_assets row
 // (ON CONFLICT(id) DO UPDATE).
 func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
@@ -290,7 +290,7 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "idem_001",
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/" + clipID + ".mp4",
 		Drive:     youtubetypes.ClipAssetDrive{},
 		Coordinates: youtubetypes.ClipAssetCoordinates{
@@ -330,10 +330,10 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 	}
 }
 
-// ── Test 3: different FileHash → new outbox row ─────────────────────
+// ── Test 3: different LegacyFileMD5 → new outbox row ─────────────────────
 
 // TestClipAtomicWriter_DifferentFileHashEmitsSecondRow pins the
-// content-hash supersede contract: a different FileHash on the
+// content-hash supersede contract: a different LegacyFileMD5 on the
 // SAME clipID produces a different eventKey, so the second INSERT
 // goes through with a SECOND outbox_events row. The supersede gate
 // downstream (IndexingHandler.source_version check) fires on the
@@ -347,7 +347,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	itemA := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "supersede_001",
-		FileHash:      sha256Hex("content-A"),
+		LegacyFileMD5:      sha256Hex("content-A"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede A", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -356,7 +356,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	itemB := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "supersede_001",
-		FileHash:      sha256Hex("content-B"),
+		LegacyFileMD5:      sha256Hex("content-B"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede B", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -397,7 +397,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 		t.Fatalf("expected 2 distinct keys, got %v", keys)
 	}
 	if keys[0] == keys[1] {
-		t.Errorf("different FileHash MUST produce different event_keys; both rows had %q", keys[0])
+		t.Errorf("different LegacyFileMD5 MUST produce different event_keys; both rows had %q", keys[0])
 	}
 }
 
@@ -420,7 +420,7 @@ func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "terminal_001",
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/" + clipID + ".mp4",
 		Drive:     youtubetypes.ClipAssetDrive{},
 		Coordinates: youtubetypes.ClipAssetCoordinates{
@@ -448,7 +448,7 @@ func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
 		t.Fatalf("seed dead_letter row: %v", err)
 	}
 
-	// Second call: same FileHash → same sourceVersion → same eventKey.
+	// Second call: same LegacyFileMD5 → same sourceVersion → same eventKey.
 	// ON CONFLICT(event_key) DO NOTHING suppresses the INSERT;
 	// the existing row is dead_letter (terminal). BLOCKER #4 closure:
 	// the writer must return ErrOutboxTerminalConflict.
@@ -519,7 +519,7 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "closed_db_001",
-		FileHash:      sha256Hex("closed-db-content"),
+		LegacyFileMD5:      sha256Hex("closed-db-content"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Closed DB Probe", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -564,7 +564,7 @@ func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
 	asset := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "vdC5GXxS-qU",
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_broner",
@@ -701,7 +701,7 @@ func TestClipMetadataWriter_MetadataJSON_AllRequiredFields(t *testing.T) {
 	asset := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "vdC5GXxS-qU",
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_audit",

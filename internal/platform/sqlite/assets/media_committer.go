@@ -371,7 +371,7 @@ func (c *SQLiteMediaCommitter) CommitDiscoveredAsset(ctx context.Context, tx *sq
 		return fmt.Errorf("media committer: resolve discovery taxonomy: %w", err)
 	}
 	ref := firstNonEmpty(clip.MetadataSourceVideoID(), firstNonEmpty(clip.SourceURL, clip.ID))
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	request := mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{
 			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name, Filename: clip.Filename,

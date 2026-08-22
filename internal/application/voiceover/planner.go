@@ -75,10 +75,9 @@ func (u *GenerateVoiceoversUseCase) Plan(
 		//
 		// PR-VO-TYPED-PRIMITIVES (July 2026): perItemTextHash is the
 		// typed TextHash envelope. FilenameSpec.TextHash + buildVoiceoverID
-		// first param are raw string (the typed TextHash is canonical
-		// ONLY for the per-item 16-char value, but the filename
-		// generation + ID generation paths consume a polymorphic
-		// fingerprint — explicit string() conversion at the seam).
+		// first param are raw string (explicit string() conversion at
+		// the seam). PR-VO-TEXTHASH-64: the envelope now carries the
+		// full 64-char SHA-256.
 		filename, err := BuildVoiceoverFilename(FilenameSpec{
 			Text:     itemSpec.Text,
 			Language: itemSpec.Language,

@@ -130,7 +130,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) err
 			created_at, updated_at, folder_id, parent_folder_id, folder_path,
 			scene_type, phash, last_used_at, quality_score, reuse_count,
 			embedding_json, visual_embedding, transcript_embedding,
-			drive_link, download_link, local_path, drive_file_id, file_hash
+			drive_link, download_link, local_path, drive_file_id, legacy_file_md5
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
@@ -165,7 +165,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) err
 			download_link = excluded.download_link,
 			local_path = excluded.local_path,
 			drive_file_id = excluded.drive_file_id,
-			file_hash = excluded.file_hash
+			legacy_file_md5 = excluded.legacy_file_md5
 	`,
 		a.ID, string(a.Source), a.Name, a.Filename, string(a.MediaType), a.Category, a.Group,
 		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.Duration.Milliseconds(),
@@ -175,7 +175,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) err
 		a.FolderID(), a.ParentFolderID(), a.FolderPath(),
 		a.SceneType(), a.PHash(), a.LastUsedAt(), a.QualityScore(), a.ReuseCount(),
 		a.EmbeddingJSON(), a.VisualEmbedding(), a.TranscriptEmbedding(),
-		a.DriveLink(), a.DownloadLink(), a.LocalPath(), a.DriveFileID(), a.FileHash(),
+		a.DriveLink(), a.DownloadLink(), a.LocalPath(), a.DriveFileID(), a.LegacyFileMD5(),
 	)
 	if err != nil {
 		return fmt.Errorf("assets.Save: %w", err)

@@ -70,13 +70,13 @@ func (certInternetImagesProvider) Search(context.Context, scriptports.VidRushSea
 }
 func (certInternetImagesProvider) Acquire(_ context.Context, c scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	c.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: c, LocalPath: "/tmp/" + c.AssetID + ".jpg", MIMEType: "image/jpeg", SizeBytes: 10, FileHash: "hash-" + c.AssetID}, nil
+	return scriptports.LocalArtifact{Candidate: c, LocalPath: "/tmp/" + c.AssetID + ".jpg", MIMEType: "image/jpeg", SizeBytes: 10, LegacyFileMD5: "hash-" + c.AssetID}, nil
 }
 func (certInternetImagesProvider) Verify(_ context.Context, a scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	c := a.Candidate
 	c.VerificationStatus = scriptpkg.VidRushStatusVerified
 	c.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: c, LocalPath: a.LocalPath, MIMEType: a.MIMEType, SizeBytes: a.SizeBytes, FileHash: a.FileHash, Width: 640, Height: 480, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: c, LocalPath: a.LocalPath, MIMEType: a.MIMEType, SizeBytes: a.SizeBytes, LegacyFileMD5: a.LegacyFileMD5, Width: 640, Height: 480, RightsStatus: "verified"}, nil
 }
 
 // certFinalizer is the deterministic Drive persistence boundary.
@@ -84,7 +84,7 @@ type certFinalizer struct{}
 
 func (certFinalizer) Finalize(_ context.Context, a scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
 	c := a.Candidate
-	c.FileHash = a.FileHash
+	c.LegacyFileMD5 = a.LegacyFileMD5
 	c.Width = a.Width
 	c.Height = a.Height
 	c.DriveLink = "https://drive.google.com/file/d/" + c.AssetID + "/view"

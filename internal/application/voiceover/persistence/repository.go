@@ -130,13 +130,11 @@ type Repository interface {
 type VoiceoverRecord struct {
 	ID        string
 	RequestID string
-	// TextHash is raw string (NOT the typed TextHash envelope) for
-	// the same reason as FinalizeCommand.TextHash — the DB column
-	// stores either the 64-char legacy full SHA-256 or the 16-char
-	// ComputeTextHash prefix depending on the call path. Labelling
-	// it TextHash would be a type-system lie. The typed envelope
-	// is canonical ONLY for the per-item 16-char value (used in
-	// the per-item fan-out path before the finalizer writes it).
+	// TextHash is raw string (NOT the typed TextHash envelope)
+	// because the persistence sub-package cannot import the parent
+	// voiceover package (Go circular import rule). PR-VO-TEXTHASH-64
+	// (August 2026): the DB column now always stores the full 64-char
+	// SHA-256 digest regardless of call path.
 	TextHash    string
 	TextPreview string
 	// Language is raw string (NOT the typed Language envelope) because
@@ -155,7 +153,7 @@ type VoiceoverRecord struct {
 	DriveFileID     string
 	DriveLink       string
 	DownloadLink    string
-	FileHash        string
+	LegacyFileMD5        string
 	DurationSeconds float64
 	Status          string
 	Error           string

@@ -55,7 +55,7 @@ type FinalizeInput struct {
 	DriveLink    string
 	DriveFileID  string
 	DownloadLink string
-	FileHash     string
+	LegacyFileMD5     string
 	Metadata     string
 
 	Duration     int
@@ -69,7 +69,7 @@ type FinalizeResult struct {
 	OK             bool
 	Status         string
 	DeliveryStatus asset.AssetPublishStatus
-	FileHash       string
+	LegacyFileMD5       string
 	ContentHash    string
 	DriveLink      string
 	DriveFileID    string
@@ -85,7 +85,7 @@ type FinalizeResult struct {
 // voiceovers + media_assets projection + outbox in a single tx.
 //
 // Layering note: this struct is intentionally a drive-surface subset
-// of FinalizeResult (drops OK/Status/Error/FileHash). The caller is
+// of FinalizeResult (drops OK/Status/Error/LegacyFileMD5). The caller is
 // responsible for marking the BatchItem as StatusUploaded on success
 // (legacy constant) and routing any Drive upload failure through
 // FailureUpload at the Stage-2 fail() contract.
@@ -120,7 +120,7 @@ type VoiceoverProjectionInput struct {
 	DriveFileID  string
 	DriveLink    string
 	DownloadLink string
-	FileHash     string
+	LegacyFileMD5     string
 	Language     string
 	Status       string // "completed" on happy path
 	Metadata     string // JSON envelope (mirrors voiceovers.metadata)

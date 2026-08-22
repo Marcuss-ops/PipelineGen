@@ -79,7 +79,7 @@ func TestHandler_FilesystemOpsAbsent(t *testing.T) {
 		"filepath.Join",
 		"filepath.Write",
 		"hashutil.SHA256File",
-		"hashutil.MD5File",
+		"hashutil.LegacyMD5File",
 		"EasyFS.",
 		"FSWritePath",
 		"ComputeSHA256(", // function-name signature, NOT identifier

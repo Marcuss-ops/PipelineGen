@@ -127,7 +127,7 @@ func TestCommitAsset_OnlyCanonicalProducerOfAllFourWrites(t *testing.T) {
 				URI:         "https://drive.google.com/file/d/drive-ssot-001/view",
 				WebViewLink: "https://drive.google.com/file/d/drive-ssot-001/view",
 				DownloadURL: "https://drive.google.com/uc?id=drive-ssot-001",
-				FileHash:    "sha256:ssot-hash-001",
+				LegacyFileMD5:    "sha256:ssot-hash-001",
 				IsPrimary:   true,
 			},
 		},

@@ -272,7 +272,7 @@ type IndexEventPayload struct {
 // typed internal domain entity) instead of `youtubetypes.ExtractItem` (the
 // HTTP response shape). The verdict's P1 #6 mandates "il writer deve ricevere
 // il record canonico, non un DTO di risposta HTTP" — ClipAsset bundles the
-// ID/VideoID/LocalPath/FileHash/Drive/Coordinates/Metadata fields the writer
+// ID/VideoID/LocalPath/LegacyFileMD5/Drive/Coordinates/Metadata fields the writer
 // needs in one typed struct so the DB column mapping is explicit and
 // refactor-resistant.
 type ClipAtomicWriter interface {

@@ -171,10 +171,10 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clipID string) erro
 	// outbox event. Card 10 closed the legacy assetRepo fallback
 	// (the silent-success path that masked partial deployments);
 	// the canonical dispatcher is the SOLE writer here. A missing
-	// FileHash is a typed error (card 10 closed the warn-and-skip
+	// LegacyFileMD5 is a typed error (card 10 closed the warn-and-skip
 	// silent path that lost enrichment metadata in partial
 	// deployments).
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		return fmt.Errorf("EnrichUseCase.EnrichAndIndex: enriched clip_id=%s has no content hash (cannot re-index)", clip.ID)
 	}

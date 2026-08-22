@@ -1,0 +1,7 @@
+# digest-md5-imports transitional allowlist (August 2026)
+#
+# Files still importing "crypto/md5" while the checksum migration is in
+# flight. The list is EMPTY: every production importer now delegates to
+# internal/platform/checksum (the sole crypto/md5 owner). Entries are added
+# ONLY for in-flight migrations and removed in the SAME change that migrates
+# the file (zero-baseline ratchet — stale entries fail CI).

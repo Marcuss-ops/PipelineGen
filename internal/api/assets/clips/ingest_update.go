@@ -91,7 +91,7 @@ func (ih *IngestHandler) UpdateClip(c *gin.Context) {
 		apiutil.Error(c, 503, "clip update unavailable: dispatcher not wired")
 		return
 	}
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = clipID
 	}

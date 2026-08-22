@@ -35,7 +35,7 @@ func TestPersistClipAndIndex_HappyPath(t *testing.T) {
 		Tags:            []string{"boxing", "training"},
 		DurationSec:     30,
 		LocalPath:       "/tmp/clip.mp4",
-		FileHash:        "a1b2c3d4e5f6a7b8",
+		LegacyFileMD5:        "a1b2c3d4e5f6a7b8",
 		DriveLink:       "https://drive.google.com/file/d/xyz123/view",
 		DriveFileID:     "xyz123",
 		Summary:         "A boxing training video",
@@ -76,8 +76,8 @@ func TestPersistClipAndIndex_HappyPath(t *testing.T) {
 	if clip.LocalPath != cmd.LocalPath {
 		t.Errorf("expected LocalPath %q, got %q", cmd.LocalPath, clip.LocalPath)
 	}
-	if clip.FileHash != cmd.FileHash {
-		t.Errorf("expected FileHash %q, got %q", cmd.FileHash, clip.FileHash)
+	if clip.LegacyFileMD5 != cmd.LegacyFileMD5 {
+		t.Errorf("expected LegacyFileMD5 %q, got %q", cmd.LegacyFileMD5, clip.LegacyFileMD5)
 	}
 	if clip.DriveLink != cmd.DriveLink {
 		t.Errorf("expected DriveLink %q, got %q", cmd.DriveLink, clip.DriveLink)
@@ -102,8 +102,8 @@ func TestPersistClipAndIndex_HappyPath(t *testing.T) {
 	}
 
 	// The content hash should be passed through verbatim.
-	if stub.lastHash != cmd.FileHash {
-		t.Errorf("expected contentHash %q, got %q", cmd.FileHash, stub.lastHash)
+	if stub.lastHash != cmd.LegacyFileMD5 {
+		t.Errorf("expected contentHash %q, got %q", cmd.LegacyFileMD5, stub.lastHash)
 	}
 }
 

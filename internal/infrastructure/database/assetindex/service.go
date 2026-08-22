@@ -62,7 +62,7 @@ func (s *Service) CreateOrUpdateFromFinalize(ctx context.Context, assetID, asset
 		LocalPath:    opts.LocalPath,
 		DriveLink:    opts.DriveLink,
 		DownloadLink: opts.DownloadLink,
-		FileHash:     opts.FileHash,
+		LegacyFileMD5:     opts.LegacyFileMD5,
 		ContentHash:  opts.ContentHash,
 		Status:       opts.Status,
 		Metadata:     opts.Metadata,
@@ -79,7 +79,7 @@ type CreateOrUpdateOptions struct {
 	LocalPath    string
 	DriveLink    string
 	DownloadLink string
-	FileHash     string
+	LegacyFileMD5     string
 	ContentHash  string
 	Status       string
 	Metadata     string

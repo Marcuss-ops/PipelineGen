@@ -44,7 +44,7 @@ func TestFinalizeVidRushBindings(t *testing.T) {
 		c.VerificationStatus = scriptpkg.VidRushStatusVerified
 		c.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 		c.IndexStatus = scriptpkg.VidRushStatusIndexed
-		c.FileHash = "verified-hash-" + c.AssetID
+		c.LegacyFileMD5 = "verified-hash-" + c.AssetID
 		c.DriveLink = "https://drive.google.com/file/d/" + c.AssetID
 		c.RightsStatus = "verified"
 		return c
@@ -95,7 +95,7 @@ func TestFinalizeVidRushBindings_UsesDurableL2AcrossL1Restart(t *testing.T) {
 			AssetID: "durable-video", Provider: "artlist", SourceURL: "https://artlist.example/durable-video", Score: 1,
 			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
-			FileHash: "durable-hash", DriveLink: "https://drive.google.com/file/d/durable-video", RightsStatus: "verified",
+			LegacyFileMD5: "durable-hash", DriveLink: "https://drive.google.com/file/d/durable-video", RightsStatus: "verified",
 		}}},
 	}
 
@@ -125,7 +125,7 @@ func TestFinalizeVidRushBindings_ImageOnlyUsesDurableImagesAsBinding(t *testing.
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
-		FileHash:           "hash-commons-image-1",
+		LegacyFileMD5:           "hash-commons-image-1",
 	}
 
 	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{{

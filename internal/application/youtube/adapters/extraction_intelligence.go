@@ -128,7 +128,7 @@ func (s *Service) enrichManifestIntelligence(ctx context.Context, clipFolder *as
 			if idx != bestIdx {
 				item.DuplicateOf = records[bestIdx].item.ID
 				if item.DuplicateReason == "" {
-					if item.FileHash != "" && item.FileHash == records[bestIdx].item.FileHash {
+					if item.LegacyFileMD5 != "" && item.LegacyFileMD5 == records[bestIdx].item.LegacyFileMD5 {
 						item.DuplicateReason = "same_file_hash"
 					} else {
 						item.DuplicateReason = "near_duplicate"
@@ -307,7 +307,7 @@ func shouldMarkDuplicate(a, b *asset.ClipManifestItem, ra, rb *clipIntelligenceR
 	if a == nil || b == nil || a.ID == "" || b.ID == "" || a.ID == b.ID {
 		return false
 	}
-	if a.FileHash != "" && a.FileHash == b.FileHash {
+	if a.LegacyFileMD5 != "" && a.LegacyFileMD5 == b.LegacyFileMD5 {
 		return true
 	}
 	if a.Status != "processed" || b.Status != "processed" {
@@ -329,7 +329,7 @@ func duplicateSimilarityScore(a, b *asset.ClipManifestItem) float64 {
 	if a == nil || b == nil {
 		return 0
 	}
-	if a.FileHash != "" && a.FileHash == b.FileHash {
+	if a.LegacyFileMD5 != "" && a.LegacyFileMD5 == b.LegacyFileMD5 {
 		return 1
 	}
 	semanticA := buildManifestSemanticText(*a)

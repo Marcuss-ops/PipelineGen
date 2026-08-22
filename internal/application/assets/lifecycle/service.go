@@ -75,7 +75,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	if input == nil {
 		return nil, fmt.Errorf("%w: input is required", ErrFinalizationFailed)
 	}
-	out := &FinalizeResult{LocalPath: input.LocalPath, DriveLink: input.DriveLink, DriveFileID: input.DriveFileID, DownloadLink: input.DownloadLink, FileHash: fileHash}
+	out := &FinalizeResult{LocalPath: input.LocalPath, DriveLink: input.DriveLink, DriveFileID: input.DriveFileID, DownloadLink: input.DownloadLink, LegacyFileMD5: fileHash}
 	if input.RequireDrive && input.LocalPath == "" {
 		return out, fmt.Errorf("%w: local path is required", ErrDriveUploadFailed)
 	}
@@ -91,20 +91,20 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 		if s.store == nil {
 			return out, ErrAssetStoreUnavailable
 		}
-		existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, FileHash: fileHash, Filename: input.Filename, Source: input.Source})
+		existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, LegacyFileMD5: fileHash, Filename: input.Filename, Source: input.Source})
 		if err != nil {
 			return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 		}
 		if existing != nil && s.dedupe.Policy().SkipIfExists {
 			out.OK, out.Status, out.DeliveryStatus = true, "skipped_duplicate", asset.AssetPublishPublished
-			out.DriveLink, out.DriveFileID, out.DownloadLink, out.FileHash = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.FileHash
+			out.DriveLink, out.DriveFileID, out.DownloadLink, out.LegacyFileMD5 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.LegacyFileMD5
 			return out, nil
 		}
 	}
 
 	driveLink, driveFileID, downloadLink := input.DriveLink, input.DriveFileID, input.DownloadLink
 	publishStatus := asset.AssetPublishLocalOnly
-	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, FileHash: fileHash, ContentHash: fileHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
+	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, LegacyFileMD5: fileHash, ContentHash: fileHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
 
 	if needsDelivery {
 		if _, err := s.commitRecord(ctx, rec, false); err != nil {
@@ -238,13 +238,13 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 		out.OK, out.Status = true, "no_dedupe_policy"
 		return out, nil
 	}
-	existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, FileHash: fileHash, Filename: input.Filename, Source: input.Source})
+	existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, LegacyFileMD5: fileHash, Filename: input.Filename, Source: input.Source})
 	if err != nil {
 		return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 	}
 	if existing != nil && s.dedupe.Policy().SkipIfExists {
 		out.OK, out.Status = true, "would_skip_duplicate"
-		out.DriveLink, out.DriveFileID, out.DownloadLink, out.FileHash = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.FileHash
+		out.DriveLink, out.DriveFileID, out.DownloadLink, out.LegacyFileMD5 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.LegacyFileMD5
 		return out, nil
 	}
 	out.OK, out.Status = true, "would_process"

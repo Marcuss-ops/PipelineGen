@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -113,6 +114,57 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 		}
 	}
 	return db
+}
+
+// NewMigratedTestDB creates a temp SQLite DB, runs the full migration chain
+// from migrations/sqlite/, and returns the open *sql.DB. This is the
+// canonical fixture helper for tests that need the production schema.
+//
+// PR-MIGRATIONS-SSOT (August 2026): replaces NewTestDBWithSchema(drive.CanonicalMediaAssetsSchema).
+// Tests must not duplicate schema constants — the migration chain is the sole
+// physical schema authority.
+//
+// Usage:
+//
+//	db := drive.NewMigratedTestDB(t)
+//	defer db.Close()
+func NewMigratedTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	dbPath := testMigrationsDir()
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("NewMigratedTestDB: migrations dir not found at %s: %v (run from project root)", dbPath, err)
+	}
+
+	db := NewTestDB(t, nil)
+	if err := migrateAll(db, nil, dbPath, "primary"); err != nil {
+		db.Close()
+		t.Fatalf("NewMigratedTestDB: apply migrations: %v", err)
+	}
+	return db
+}
+
+// testMigrationsDir is the test-time resolution of the migrations directory.
+// Mirrors the production resolveMigrationsDir() in set.go but is its own
+// function so test-only files remain independent of the production opener.
+func testMigrationsDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return filepath.Join("migrations", "sqlite")
+	}
+	dir := filepath.Dir(file)
+	for {
+		candidate := filepath.Join(dir, "migrations", "sqlite")
+		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join("migrations", "sqlite")
 }
 
 // MustExec is a test helper that runs a SQL statement and fails the test on error.

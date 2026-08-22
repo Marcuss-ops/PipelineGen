@@ -235,7 +235,7 @@ type BatchItem struct {
 	DriveLink    string `json:"drive_link,omitempty"`
 	DriveFileID  string `json:"drive_file_id,omitempty"`
 	DownloadLink string `json:"download_link,omitempty"`
-	FileHash     string `json:"file_hash,omitempty"`
+	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
 	// byte-equivalent with the pre-refactor string field.

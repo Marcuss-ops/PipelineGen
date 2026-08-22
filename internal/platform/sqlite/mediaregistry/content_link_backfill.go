@@ -159,9 +159,9 @@ func (r *CanonicalIdentityResolver) BackfillContentSHA256(ctx context.Context, a
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, COALESCE(file_hash, '') FROM media_assets
+		SELECT id, COALESCE(legacy_file_md5, '') FROM media_assets
 		WHERE (content_sha256 = '' OR content_sha256 IS NULL OR content_sha256 = ?)
-		  AND COALESCE(file_hash, '') != ''`, capregistry.ContentSHA256Unknown)
+		  AND COALESCE(legacy_file_md5, '') != ''`, capregistry.ContentSHA256Unknown)
 	if err != nil {
 		return report, fmt.Errorf("content sha256 backfill: scan candidates: %w", err)
 	}

@@ -159,7 +159,7 @@ type LocationCommit struct {
 	DownloadURL   string
 	MimeType      string
 	FileSizeBytes int64
-	FileHash      string
+	LegacyFileMD5      string
 	IsPrimary     bool
 }
 

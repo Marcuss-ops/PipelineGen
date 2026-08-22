@@ -1,7 +1,7 @@
 // Package artlist — Gate 02 + Gate 09 Drive Contract Tests (ARTLIST-DOD-2026-07-07).
 //
 // PR-ARTLIST-DOD-GATE-02-DRIVE-UPLOAD: verify every processed clip has
-// non-empty DriveFileID + DriveLink + DownloadLink + FileHash after
+// non-empty DriveFileID + DriveLink + DownloadLink + LegacyFileMD5 after
 // a successful run.
 //
 // PR-ARTLIST-DOD-GATE-09-DRIVE-FAILURE: verify the Drive-failure
@@ -51,7 +51,7 @@ func (f *driveFailureProcessor) Process(_ context.Context, input *asset.ProcessI
 		ID:        input.ID,
 		Filename:  input.ID + "_processed.mp4",
 		LocalPath: input.OutputDir + "/" + input.ID + "_processed.mp4",
-		FileHash:  "drivefail-hash-" + input.ID,
+		LegacyFileMD5:  "drivefail-hash-" + input.ID,
 		// Drive fields intentionally left empty — simulates Drive upload failure
 		DriveLink:     "",
 		DriveFileID:   "",
@@ -80,7 +80,7 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *asset.ProcessI
 		ID:           input.ID,
 		Filename:     input.ID + "_processed.mp4",
 		LocalPath:    input.OutputDir + "/" + input.ID + "_processed.mp4",
-		FileHash:     "partial-hash-" + input.ID,
+		LegacyFileMD5:     "partial-hash-" + input.ID,
 		DownloadLink: input.SourceURL,
 		Status:       "processed",
 	}
@@ -104,7 +104,7 @@ var _ asset.Processor = (*partialDriveProcessor)(nil)
 
 // TestGate02_DriveFieldsPopulated verifies that every clip processed
 // through the happy-path pipeline has non-empty DriveFileID,
-// DriveLink, DownloadLink, and FileHash. This is the canonical
+// DriveLink, DownloadLink, and LegacyFileMD5. This is the canonical
 // assertion for the "Drive upload succeeded → fields are present"
 // contract (Gate 02 of ARTLIST-DOD-2026-07-07).
 func TestGate02_DriveFieldsPopulated(t *testing.T) {
@@ -204,12 +204,12 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 	require.Len(t, resp.Items, 2)
 	for i, item := range resp.Items {
 		t.Logf("item[%d]: clip_id=%s drive_file_id=%s drive_link=%s download_link=%s file_hash=%s",
-			i, item.ClipID, item.DriveFileID, item.DriveLink, item.DownloadLink, item.FileHash)
+			i, item.ClipID, item.DriveFileID, item.DriveLink, item.DownloadLink, item.LegacyFileMD5)
 
 		assert.NotEmpty(t, item.DriveFileID, "item[%d] %s: DriveFileID must be non-empty", i, item.ClipID)
 		assert.NotEmpty(t, item.DriveLink, "item[%d] %s: DriveLink must be non-empty", i, item.ClipID)
 		assert.NotEmpty(t, item.DownloadLink, "item[%d] %s: DownloadLink must be non-empty", i, item.ClipID)
-		assert.NotEmpty(t, item.FileHash, "item[%d] %s: FileHash must be non-empty", i, item.ClipID)
+		assert.NotEmpty(t, item.LegacyFileMD5, "item[%d] %s: LegacyFileMD5 must be non-empty", i, item.ClipID)
 
 		// DriveLink must look like a valid Drive URL
 		assert.Contains(t, item.DriveLink, "drive.google.com", "item[%d] %s: DriveLink must be a Drive URL", i, item.ClipID)
@@ -335,7 +335,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 	assert.Contains(t, resp.Items[0].Error, "missing Drive fields", "item Error should explain the failure")
 	assert.Empty(t, resp.Items[0].DriveFileID, "DriveFileID should be empty (Drive upload failed)")
 	assert.Empty(t, resp.Items[0].DriveLink, "DriveLink should be empty (Drive upload failed)")
-	assert.NotEmpty(t, resp.Items[0].FileHash, "FileHash should be present (transcode succeeded)")
+	assert.NotEmpty(t, resp.Items[0].LegacyFileMD5, "LegacyFileMD5 should be present (transcode succeeded)")
 
 	// Processed MUST be 0 — the gate in stagePersistResults skipped it
 	assert.Equal(t, 0, resp.Processed, "Processed must be 0 when Drive fields are missing")
@@ -494,11 +494,11 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 // contract (Gate 05 of ARTLIST-DOD-2026-07-07):
 //
 //  1. The dispatcher is called exactly once per successfully processed clip
-//  2. Each dispatch carries the clip's FileHash as the content hash
-//  3. Dispatch only fires for clips with non-empty Drive fields AND FileHash
+//  2. Each dispatch carries the clip's LegacyFileMD5 as the content hash
+//  3. Dispatch only fires for clips with non-empty Drive fields AND LegacyFileMD5
 //  4. Dispatch is NOT called for clips skipped by the Drive gate
 //
-// godlike/07 no-fake-availability: a clip with empty FileHash must NOT
+// godlike/07 no-fake-availability: a clip with empty LegacyFileMD5 must NOT
 // reach the dispatcher — the persist gate in stagePersistResults must
 // reject it before dispatch.
 func TestGate05_OutboxDispatchContract(t *testing.T) {
@@ -565,7 +565,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		insertTestClip(t, db, a)
 	}
 
-	// successMediaProcessor returns unique FileHash per clip ID.
+	// successMediaProcessor returns unique LegacyFileMD5 per clip ID.
 	// The gate05-hash- prefix is the canonical pattern from
 	// successMediaProcessor.Process in gate01_happy_path_test.go.
 	processor := &successMediaProcessor{}
@@ -613,16 +613,16 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		dispatchedHash := outboxSourceVersionFor(db, clipID)
 		assert.NotEmpty(t, dispatchedHash, "clip %s should have been dispatched", clipID)
 
-		// successMediaProcessor sets FileHash = "gate01-hash-" + input.ID
-		// stagePersistResults calls bridge.Dispatch(ctx, clip, clip.FileHash())
-		// which passes clip.FileHash() as the content hash to EnqueueAndIndex.
+		// successMediaProcessor sets LegacyFileMD5 = "gate01-hash-" + input.ID
+		// stagePersistResults calls bridge.Dispatch(ctx, clip, clip.LegacyFileMD5())
+		// which passes clip.LegacyFileMD5() as the content hash to EnqueueAndIndex.
 		//
-		// After stagePersistResults hydrates the clip, clip.FileHash() should
-		// equal the processor's FileHash ("gate01-hash-<clipID>").
+		// After stagePersistResults hydrates the clip, clip.LegacyFileMD5() should
+		// equal the processor's LegacyFileMD5 ("gate01-hash-<clipID>").
 		// The recording dispatcher sees the hash that EnqueueAndIndex received.
 		expectedHash := "gate01-hash-" + clipID
 		assert.Equal(t, expectedHash, dispatchedHash,
-			"clip %s: dispatched content hash must match the processor's FileHash", clipID)
+			"clip %s: dispatched content hash must match the processor's LegacyFileMD5", clipID)
 	}
 
 	// ── Gate 5: Contract 3 — only dispatched clips are in SQLite ──

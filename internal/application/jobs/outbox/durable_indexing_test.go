@@ -819,7 +819,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 
 	// Simulate: YouTube pipeline wrote stale file_hash to metadata_json.
 	if _, err := db.Exec(`UPDATE media_assets SET metadata_json = ? WHERE id = ?`,
-		`{"file_hash":"`+staleHash+`","publish_action":"drive"}`, assetID); err != nil {
+		`{"legacy_file_md5":"`+staleHash+`","publish_action":"drive"}`, assetID); err != nil {
 		t.Fatalf("simulate stale Tier 2: %v", err)
 	}
 

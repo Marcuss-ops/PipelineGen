@@ -64,7 +64,7 @@ type ReuploadResult struct {
 	Source     string
 	ClipID     string
 	DriveLink  string
-	FileHash   string
+	LegacyFileMD5   string
 	UploadedAt string
 }
 
@@ -206,7 +206,7 @@ func destinationForSource(source string) delivery.DestinationKey {
 // F2.9 (June 2026): the canonical Drive write goes through
 // delivery.Publisher.Publish (was: driveUploader.UploadFile). MD5
 // from PublishResult.MD5Checksum is now propagated to the Asset
-// via SetFileHash (was: result.MD5Checksum if non-empty). Drive
+// via SetLegacyFileMD5 (was: result.MD5Checksum if non-empty). Drive
 // folder resolution goes through publisher.ResolveFolder (was:
 // driveUploader.GetOrCreateFolder). The canonical Publisher scans
 // folders with semantic-aware names via DestinationRegistry +
@@ -287,10 +287,10 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 	clip.SetDriveFileID(pubRes.FileID)
 	if pubRes.MD5Checksum != "" {
 		// F2.9: propagate the canonical Drive-returned MD5 (delivered by
-		// post-P0-#9 Publisher) into the Asset via SetFileHash. Falls
-		// back to the existing FileHash if the Publisher didn't
+		// post-P0-#9 Publisher) into the Asset via SetLegacyFileMD5. Falls
+		// back to the existing LegacyFileMD5 if the Publisher didn't
 		// surface one (rare; logs but doesn't fail).
-		clip.SetFileHash(pubRes.MD5Checksum)
+		clip.SetLegacyFileMD5(pubRes.MD5Checksum)
 	}
 	// F2.9 (June 2026): publish_action propagation — the canonical
 	// Publisher action (PublishCreated | PublishUpdated | PublishNoop)
@@ -310,7 +310,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 			zap.String("clip_id", req.ClipID))
 		return nil, ErrReuploadDispatcherUnavailable
 	}
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = req.ClipID
 	}
@@ -325,7 +325,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 		Source:     req.Source,
 		ClipID:     req.ClipID,
 		DriveLink:  clip.DriveLink(),
-		FileHash:   clip.FileHash(),
+		LegacyFileMD5:   clip.LegacyFileMD5(),
 		UploadedAt: timeutil.FormatRFC3339(time.Now()),
 		// F2.9: PublishAction is NOT exposed on ReuploadResult (legacy
 		// handler shape preserves the 5 api-output keys verbatim).

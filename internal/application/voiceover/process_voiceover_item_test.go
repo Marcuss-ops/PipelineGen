@@ -98,7 +98,7 @@ func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persi
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice, rec.Filename,
 		rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath, rec.DriveFileID,
-		rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.Status, rec.Error, rec.Strategy,
+		rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.Status, rec.Error, rec.Strategy,
 		rec.Metadata, rec.IdempotencyKey, rec.JobID, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
@@ -212,7 +212,7 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 			LocalPath:   "/tmp/vo/test_en.mp3",
 			CleanedPath: "",
 			Voice:       "en_female",
-			FileHash:    "abc123",
+			LegacyFileMD5:    "abc123",
 			Duration:    45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
 		},
 	}
@@ -296,7 +296,7 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 		cannedOut: TTSOutput{
 			LocalPath: "/tmp/vo/test_en.mp3",
 			Voice:     "en_female",
-			FileHash:  "abc123",
+			LegacyFileMD5:  "abc123",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
@@ -390,7 +390,7 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 			LocalPath:   "/tmp/vo/peritem-orphan.mp3",
 			CleanedPath: "",
 			Voice:       "en_female",
-			FileHash:    "peritem-orphan-hash",
+			LegacyFileMD5:    "peritem-orphan-hash",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem"}
@@ -503,7 +503,7 @@ func TestNewProcessVoiceoverItemUseCase_WiresTxOutboxEnqueuer(t *testing.T) {
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
 		Pipeline: ProcessVoiceoverPipelineDeps{
-			TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
+			TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", LegacyFileMD5: "h"}},
 			DestinationResolver: &stubProcessDestResolver{folderID: "f"},
 			AudioPostProcessor:  nil,
 			Publisher:           &stubProcessPublisher{fileID: "drive-x"},
@@ -548,7 +548,7 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 			LocalPath:   "/tmp/vo/peritem-nil-outbox.mp3",
 			CleanedPath: "",
 			Voice:       "en_female",
-			FileHash:    "peritem-nil-outbox-hash",
+			LegacyFileMD5:    "peritem-nil-outbox-hash",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem-nil"}
@@ -626,7 +626,7 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 		cannedOut: TTSOutput{
 			LocalPath: "/tmp/vo/test_en.mp3",
 			Voice:     "en_female",
-			FileHash:  "abc123",
+			LegacyFileMD5:  "abc123",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}

@@ -138,7 +138,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 			"source":               existing.Source,
 			"term":                 term,
 			"filename":             existing.Filename,
-			"file_hash":            existing.FileHash(),
+			"legacy_file_md5":            existing.LegacyFileMD5(),
 			"duration_sec":         existing.Duration.Seconds(),
 			"created_at":           existing.CreatedAt.Format(time.RFC3339),
 			"drive_file_id":        existing.DriveFileID(),
@@ -189,7 +189,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 	// genera l'embedding da search_text come faceva IndexClip, ma lo fa in
 	// una tx con UpsertClip + outbox enqueue, eliminando la finestra in cui
 	// un crash tra le due lascia il clip un-indexed.
-	e.dispatchOrIndexAndUpsert(ctx, existing, existing.FileHash())
+	e.dispatchOrIndexAndUpsert(ctx, existing, existing.LegacyFileMD5())
 
 	// 🚀 Update search terms index after semantic enrichment
 	// This ensures the indexed clip_search_terms table reflects the rich

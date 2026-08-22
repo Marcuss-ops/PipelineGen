@@ -60,7 +60,7 @@ func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) 
 			return result, fmt.Errorf("%s", result.Error)
 		}
 		processedPath = mezzanine.LocalPath
-		result.FileHash = mezzanine.FileHash
+		result.LegacyFileMD5 = mezzanine.LegacyFileMD5
 		result.LocalPath = mezzanine.LocalPath
 		result.Filename = mezzanine.Filename
 	} else {
@@ -77,7 +77,7 @@ func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) 
 			return result, err
 		}
 
-		result.FileHash = fileHash
+		result.LegacyFileMD5 = fileHash
 		result.LocalPath = processedPath
 		result.Filename = filepath.Base(processedPath)
 	}

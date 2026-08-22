@@ -403,7 +403,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if ttsOut.Voice != "" {
 		out.Voice = ttsOut.Voice
 	}
-	out.FileHash = ttsOut.FileHash
+	out.LegacyFileMD5 = ttsOut.LegacyFileMD5
 
 	// Stage 2: optional AudioPostProcessor (silence removal). Nil-safe.
 	// The post output (cleaned path + edit map) is forwarded to the
@@ -520,7 +520,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		MetaJSON:        pub.MetaJSON,
 		LocalPath:       out.LocalPath,
 		CleanedPath:     out.CleanedPath,
-		FileHash:        out.FileHash,
+		LegacyFileMD5:        out.LegacyFileMD5,
 		DurationSeconds: ttsOut.Duration.Seconds(),
 		FolderID:        cmd.Dest.FolderID,
 		FolderPath:      cmd.Dest.FolderPath,

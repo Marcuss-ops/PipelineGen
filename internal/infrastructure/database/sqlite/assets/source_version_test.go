@@ -89,7 +89,7 @@ func TestSourceVersionFor_Tier0IndexRevisionWins(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	insertRow(t, db, "asset-0",
-		`{"index_revision":"rev-T0","content_hash":"hash-T1","file_hash":"hash-T2-fallback"}`,
+		`{"index_revision":"rev-T0","content_hash":"hash-T1","legacy_file_md5":"hash-T2-fallback"}`,
 		"hash-T3-legacy",
 	)
 	got, err := SourceVersionFor(context.Background(), db, "asset-0")
@@ -109,7 +109,7 @@ func TestSourceVersionFor_Tier1ContentHashWins(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	insertRow(t, db, "asset-1",
-		`{"content_hash":"hash-T1","file_hash":"hash-T2-fallback"}`,
+		`{"content_hash":"hash-T1","legacy_file_md5":"hash-T2-fallback"}`,
 		"hash-T3-legacy",
 	)
 	got, err := SourceVersionFor(context.Background(), db, "asset-1")
@@ -128,7 +128,7 @@ func TestSourceVersionFor_Tier2FileHashWins(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	insertRow(t, db, "asset-2",
-		`{"file_hash":"hash-T2"}`, /* no content_hash */
+		`{"legacy_file_md5":"hash-T2"}`, /* no content_hash */
 		"hash-T3-legacy",          /* top-level present but ignored */
 	)
 	got, err := SourceVersionFor(context.Background(), db, "asset-2")
@@ -142,7 +142,7 @@ func TestSourceVersionFor_Tier2FileHashWins(t *testing.T) {
 // TestSourceVersionFor_Tier3LegacyColumnWins: when both JSON tiers
 // are absent, the legacy top-level media_assets.file_hash column is
 // the canonical fingerprint. This is the slot that DRIFTED in the
-// pre-PR-11-followup consumer (which used Asset.FileHash() reading
+// pre-PR-11-followup consumer (which used Asset.LegacyFileMD5() reading
 // the same metadata slot as tier 2 — effectively skipping tier 3).
 // The helper now reads the actual top-level column so backfilled
 // rows WITHOUT metadata_json._hash but WITH file_hash are correctly
@@ -268,7 +268,7 @@ func TestSourceVersionFor_JsonEmptyStringShortCircuits(t *testing.T) {
 	// picks the empty string and short-circuits. Tier 2 has
 	// "good-tier-2-hash" but it's never reached.
 	insertRow(t, db, "asset-empty-json",
-		`{"content_hash":"","file_hash":"good-tier-2-hash"}`,
+		`{"content_hash":"","legacy_file_md5":"good-tier-2-hash"}`,
 		"good-tier-3-legacy",
 	)
 	got, err := SourceVersionFor(context.Background(), db, "asset-empty-json")

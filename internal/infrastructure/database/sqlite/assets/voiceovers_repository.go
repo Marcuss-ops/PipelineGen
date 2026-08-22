@@ -23,7 +23,7 @@ type Record struct {
 	DriveFileID     string
 	DriveLink       string
 	DownloadLink    string
-	FileHash        string
+	LegacyFileMD5        string
 	DurationSeconds float64
 	Status          string
 	Error           string
@@ -86,7 +86,7 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
+			drive_link, download_link, legacy_file_md5, duration_seconds, status,
 			error, strategy, metadata, fingerprint, idempotency_key, job_id,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -104,7 +104,7 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			download_link = excluded.download_link,
-			file_hash = excluded.file_hash,
+			legacy_file_md5 = excluded.legacy_file_md5,
 			duration_seconds = excluded.duration_seconds,
 			status = excluded.status,
 			error = excluded.error,
@@ -116,7 +116,7 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			updated_at = excluded.updated_at
 	`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
+		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), now)
@@ -128,7 +128,7 @@ func (r *VoiceoversRepository) GetByID(ctx context.Context, id string) (*Record,
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE id = ?`, id)
 
@@ -138,7 +138,7 @@ func (r *VoiceoversRepository) GetByID(ctx context.Context, id string) (*Record,
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
@@ -159,7 +159,7 @@ func (r *VoiceoversRepository) FindExisting(ctx context.Context, textHash, langu
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers
 		WHERE text_hash = ? AND language = ? AND folder_id = ?
@@ -172,7 +172,7 @@ func (r *VoiceoversRepository) FindExisting(ctx context.Context, textHash, langu
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
@@ -201,7 +201,7 @@ func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID st
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
 	if err != nil {
@@ -217,7 +217,7 @@ func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID st
 			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 			&rec.Metadata, &createdAt, &updatedAt,
 		)
 		if err != nil {
@@ -234,7 +234,7 @@ func (r *VoiceoversRepository) ListByFolderID(ctx context.Context, folderID stri
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE folder_id = ? ORDER BY created_at`, folderID)
 	if err != nil {
@@ -250,7 +250,7 @@ func (r *VoiceoversRepository) ListByFolderID(ctx context.Context, folderID stri
 			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 			&rec.Metadata, &createdAt, &updatedAt,
 		)
 		if err != nil {
@@ -289,14 +289,14 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
+			drive_link, download_link, legacy_file_md5, duration_seconds, status,
 			error, strategy, metadata, fingerprint, idempotency_key, job_id,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
+		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
@@ -335,7 +335,7 @@ func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprin
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), COALESCE(fingerprint, ''), created_at, updated_at
 		FROM voiceovers
 		WHERE fingerprint = ?
@@ -347,7 +347,7 @@ func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprin
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink, &rec.FileHash,
+		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink, &rec.LegacyFileMD5,
 		&rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy, &rec.Metadata,
 		&rec.Fingerprint, &createdAt, &updatedAt,
 	)
@@ -368,7 +368,7 @@ func (r *VoiceoversRepository) GetByDriveFileID(ctx context.Context, fileID stri
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers
 		WHERE drive_file_id = ? OR drive_link LIKE ? OR download_link LIKE ?`,
@@ -380,7 +380,7 @@ func (r *VoiceoversRepository) GetByDriveFileID(ctx context.Context, fileID stri
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 		&rec.Metadata, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -395,7 +395,7 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
 			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers ORDER BY created_at`)
 	if err != nil {
@@ -411,7 +411,7 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 			&rec.Metadata, &createdAt, &updatedAt,
 		)
 		if err != nil {

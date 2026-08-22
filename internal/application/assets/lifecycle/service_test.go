@@ -232,7 +232,7 @@ func TestProcessAsset_SkippedDuplicateDomainStatusReturnsNilError(t *testing.T) 
 		DriveLink:    "https://drive.test/existing",
 		DriveFileID:  "drive-existing",
 		DownloadLink: "https://drive.test/download",
-		FileHash:     "hash",
+		LegacyFileMD5:     "hash",
 	}}
 	svc := NewService(ServiceDeps{Store: store}, Config{
 		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByHash: true, SkipIfExists: true},

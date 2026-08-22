@@ -83,7 +83,7 @@ type ClipManifestItem struct {
 	Filename          string
 	LocalPath         string
 	DriveLink         string
-	FileHash          string
+	LegacyFileMD5          string
 	Status            string
 	Tags              []string
 	SourceTags        []string
@@ -135,7 +135,7 @@ func (c *ClipManifestItem) UnmarshalJSON(data []byte) error {
 		Filename          string          `json:"filename,omitempty"`
 		LocalPath         string          `json:"local_path,omitempty"`
 		DriveLink         string          `json:"drive_link,omitempty"`
-		FileHash          string          `json:"file_hash,omitempty"`
+		LegacyFileMD5          string          `json:"legacy_file_md5,omitempty"`
 		Status            string          `json:"status"`
 		Tags              json.RawMessage `json:"tags,omitempty"`
 		SourceTags        json.RawMessage `json:"source_tags,omitempty"`
@@ -188,7 +188,7 @@ func (c *ClipManifestItem) UnmarshalJSON(data []byte) error {
 		Filename:          aux.Filename,
 		LocalPath:         aux.LocalPath,
 		DriveLink:         aux.DriveLink,
-		FileHash:          aux.FileHash,
+		LegacyFileMD5:          aux.LegacyFileMD5,
 		Status:            aux.Status,
 		VideoTitle:        aux.VideoTitle,
 		Channel:           aux.Channel,

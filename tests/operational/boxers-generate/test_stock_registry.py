@@ -85,7 +85,6 @@ class StockRegistryTest(unittest.TestCase):
                 """CREATE TABLE media_assets (
                     id TEXT PRIMARY KEY,
                     lifecycle_state TEXT NOT NULL,
-                    lifecycle_status TEXT NOT NULL,
                     source TEXT NOT NULL,
                     source_provider TEXT,
                     index_state TEXT NOT NULL,
@@ -107,8 +106,8 @@ class StockRegistryTest(unittest.TestCase):
                     metadata = json.dumps({"role": metadata_role})
                 connection.execute(
                     "INSERT INTO media_assets "
-                    "(id, lifecycle_state, lifecycle_status, index_state, source, source_provider, drive_file_id, drive_link, name, metadata_json) "
-                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?)",
+                    "(id, lifecycle_state, index_state, source, source_provider, drive_file_id, drive_link, name, metadata_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         asset["asset_id"], lifecycle_state, index_state, source,
                         source_provider if is_bad_role and source_provider is not None else "youtube",

@@ -11,10 +11,11 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
+
 	"encoding/json"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -286,8 +287,8 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 	// Idempotency-preserving: identical (request, payload) replays return
 	// the same CorrelationID → same JobID (canonical godlike/07 fail-closed
 	// dedup). Distinct payloads get distinct CorrelationIDs → distinct jobs.
-	sum := sha256.Sum256(payload)
-	cid := "clip-sha256-" + fmt.Sprintf("%x", sum[:8])
+	dedupSum := digest.SHA256Bytes(payload)
+	cid := "clip-sha256-" + dedupSum[:16]
 	if baseID := corid.FromContext(ctx); baseID != "" {
 		cid = baseID + ":" + cid
 	}

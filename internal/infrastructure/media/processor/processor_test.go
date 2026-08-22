@@ -314,7 +314,7 @@ func TestProcessor_SkipPublishSkipsPublisher(t *testing.T) {
 	assert.Empty(t, result.DriveLink, "SkipPublish=true must leave DriveLink empty")
 	assert.Empty(t, result.DownloadLink, "SkipPublish=true must leave DownloadLink empty")
 	assert.NotEmpty(t, result.LocalPath, "SkipPublish=true keeps the local rendition")
-	assert.NotEmpty(t, result.FileHash, "SkipPublish=true keeps the computed file hash")
+	assert.NotEmpty(t, result.LegacyFileMD5, "SkipPublish=true keeps the computed file hash")
 }
 
 // ── E2E audit-pin (F2.8): happy-path Publisher + 5 field propagation ──
@@ -474,9 +474,9 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 	assert.Contains(t, result.Error, "Drive unreachable",
 		"F2.8: Result.Error must include the underlying publisher error verb so downstream triage is one-line")
 
-	// LocalPath + FileHash are still populated (local save + hash succeeded).
+	// LocalPath + LegacyFileMD5 are still populated (local save + hash succeeded).
 	assert.NotEmpty(t, result.LocalPath, "F2.8: LocalPath must be populated even on Publish failure (local save succeeded)")
-	assert.NotEmpty(t, result.FileHash, "F2.8: FileHash must be populated even on Publish failure")
+	assert.NotEmpty(t, result.LegacyFileMD5, "F2.8: LegacyFileMD5 must be populated even on Publish failure")
 }
 
 // ── Step 9/12 follow-up: PR-LOCALPATH-OSREMOVE-TEST-PIN (CHANGELOG forward-pointer closure) ──
@@ -535,7 +535,7 @@ func TestProcess_LocalPathPreservedOnProcessStepFailure(t *testing.T) {
 // TestProcess_LocalPathPreservedOnHashStepFailure — pin Step 3 cleanup guard.
 //
 // Forces hashStep to fail by creating a DIRECTORY at processedPath via
-// fakeFFmpeg.normalizeAsDir — hashutil.MD5File on a directory returns
+// fakeFFmpeg.normalizeAsDir — hashutil.LegacyMD5File on a directory returns
 // "is a directory" error. Asserts the caller-provided LocalPath file
 // STILL exists after Process returns. Pins processor.go's behavior at
 // the `if err != nil` branch of hashStep: `_ = os.Remove(actualRawPath)`

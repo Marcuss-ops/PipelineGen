@@ -81,12 +81,12 @@ func (s *stubRemoveFn) remove(localPath string) error {
 
 func mkRenditions() []asset.RenditionOutput {
 	return []asset.RenditionOutput{
-		{Kind: asset.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", FileHash: "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 1024},
-		{Kind: asset.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", FileHash: "hash_mezz_64chars_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SizeBytes: 1024},
-		{Kind: asset.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", FileHash: "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 512},
-		{Kind: asset.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", FileHash: "hash_thumb_64chars_dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", SizeBytes: 64},
-		{Kind: asset.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", FileHash: "hash_story_64chars_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", SizeBytes: 128},
-		{Kind: asset.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", FileHash: "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff", SizeBytes: 256},
+		{Kind: asset.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 1024},
+		{Kind: asset.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: "hash_mezz_64chars_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SizeBytes: 1024},
+		{Kind: asset.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 512},
+		{Kind: asset.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: "hash_thumb_64chars_dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", SizeBytes: 64},
+		{Kind: asset.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: "hash_story_64chars_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", SizeBytes: 128},
+		{Kind: asset.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff", SizeBytes: 256},
 	}
 }
 
@@ -209,7 +209,7 @@ func TestPublishRenditionsToYouTubeAsset_ThreadsSizeAndContentHash(t *testing.T)
 	}
 
 	// Build a per-Kind lookup so we can assert each call carried
-	// the canonical RenditionOutput.SizeBytes + FileHash + LocalPath
+	// the canonical RenditionOutput.SizeBytes + LegacyFileMD5 + LocalPath
 	// (the Step 9 thread).
 	byKind := map[asset.RenditionKind]delivery.PublishRequest{}
 	for _, c := range pub.calls {

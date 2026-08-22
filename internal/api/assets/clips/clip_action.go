@@ -152,7 +152,7 @@ func (h *ActionHandler) ReuploadClip(c *gin.Context) {
 		"source":      result.Source,
 		"clip_id":     result.ClipID,
 		"drive_link":  result.DriveLink,
-		"file_hash":   result.FileHash,
+		"legacy_file_md5":   result.LegacyFileMD5,
 		"uploaded_at": result.UploadedAt,
 	})
 }
@@ -171,10 +171,10 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	if clip.FileHash() == "" {
+	if clip.LegacyFileMD5() == "" {
 		apiutil.OK(c, gin.H{
 			"ok": true, "source": source, "clip_id": clipID,
-			"file_hash": "", "duplicates": []gin.H{},
+			"legacy_file_md5": "", "duplicates": []gin.H{},
 		})
 		return
 	}
@@ -184,7 +184,7 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	matches, findErr := h.duplicateFinder.Find(c.Request.Context(), clip.FileHash())
+	matches, findErr := h.duplicateFinder.Find(c.Request.Context(), clip.LegacyFileMD5())
 	if findErr != nil {
 		apiutil.InternalError(c, fmt.Errorf("duplicateFinder.Find: %w", findErr))
 		return
@@ -202,6 +202,6 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"ok": true, "source": source, "clip_id": clipID,
-		"file_hash": clip.FileHash(), "duplicates": duplicates,
+		"legacy_file_md5": clip.LegacyFileMD5(), "duplicates": duplicates,
 	})
 }

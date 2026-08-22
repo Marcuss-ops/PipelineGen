@@ -71,24 +71,24 @@ func (s *AssetStoreSQLite) FindByYouTubeVideoID(ctx context.Context, videoID str
 	return id, nil
 }
 
-// FindByFileHash returns the ID of the most recent non-deleted clip
-// with the given MD5 file_hash. Used by upload-video to skip
+// FindByLegacyFileMD5 returns the ID of the most recent non-deleted clip
+// with the given MD5 legacy_file_md5. Used by upload-video to skip
 // re-registration of an identical file.
-func (s *AssetStoreSQLite) FindByFileHash(ctx context.Context, fileHash string) (string, error) {
+func (s *AssetStoreSQLite) FindByLegacyFileMD5(ctx context.Context, fileHash string) (string, error) {
 	fileHash = strings.TrimSpace(fileHash)
 	if fileHash == "" {
 		return "", nil
 	}
 	var id string
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM media_assets
-		WHERE file_hash = ?
+		WHERE legacy_file_md5 = ?
 		AND `+SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, fileHash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("FindByFileHash: %w", err)
+		return "", fmt.Errorf("FindByLegacyFileMD5: %w", err)
 	}
 	return id, nil
 }

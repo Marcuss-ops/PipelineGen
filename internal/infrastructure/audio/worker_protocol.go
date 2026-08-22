@@ -13,7 +13,6 @@ package audioasset
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -158,10 +157,10 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	// Compute MD5 hash — byte-identical with the legacy path
 	// (processor.go::generateLegacy uses md5.New()).
 	if result.LocalPath != "" {
-		if hash, hashErr := hashutil.HashFile(result.LocalPath, md5.New()); hashErr != nil {
+		if hash, hashErr := hashutil.LegacyMD5File(result.LocalPath); hashErr != nil {
 			p.log.Warn("hash computation failed", zap.Error(hashErr))
 		} else {
-			result.FileHash = hash
+			result.LegacyFileMD5 = hash
 		}
 	}
 	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {

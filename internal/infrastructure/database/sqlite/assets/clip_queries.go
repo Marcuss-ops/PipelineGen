@@ -55,7 +55,7 @@ func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID stri
 // FindClipsByHash returns all clips with the given file hash
 // (canonical column after migration 059).
 func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error) {
-	query := buildMediaAssetQuery("") + " AND file_hash = ?"
+	query := buildMediaAssetQuery("") + " AND legacy_file_md5 = ?"
 	rows, err := s.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err
@@ -109,10 +109,10 @@ func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID
 	return err
 }
 
-// UpdateFileHash updates the file_hash for a clip (canonical column).
+// UpdateLegacyFileMD5 updates the legacy_file_md5 for a clip (canonical column).
 //
 // QDRANT-002: THIS METHOD BYPASSES THE OUTBOX.
-func (s *AssetStoreSQLite) UpdateFileHash(ctx context.Context, clipID, hash string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
+func (s *AssetStoreSQLite) UpdateLegacyFileMD5(ctx context.Context, clipID, hash string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET legacy_file_md5 = ? WHERE id=?", hash, clipID)
 	return err
 }

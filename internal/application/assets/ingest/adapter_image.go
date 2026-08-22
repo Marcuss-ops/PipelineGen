@@ -65,8 +65,8 @@ func (a *imageStoreAdapter) FindExisting(ctx context.Context, query assetop.Exis
 		}
 	}
 
-	if query.FileHash != "" {
-		img, err := a.repo.GetImageByHash(ctx, query.FileHash)
+	if query.LegacyFileMD5 != "" {
+		img, err := a.repo.GetImageByHash(ctx, query.LegacyFileMD5)
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +140,7 @@ func imageAssetToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts
 		ExternalURL: img.SourceURL,
 		LocalPath:   imageFullPath(imagesDir, img.PathRel),
 		DriveFileID: img.DriveFileID,
-		FileHash:    img.Hash,
+		LegacyFileMD5:    img.Hash,
 		Status:      img.Status,
 		Metadata:    img.MetadataJSON,
 		Tags:        append([]string(nil), img.Tags...),
@@ -202,7 +202,7 @@ func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath str
 		if rec.DownloadLink != "" {
 			payload["download_link"] = rec.DownloadLink
 		}
-		if rec.FileHash != "" {
+		if rec.LegacyFileMD5 != "" {
 			payload["hash"] = stripKindPrefix(rec.ID)
 		}
 		if rec.Status != "" {

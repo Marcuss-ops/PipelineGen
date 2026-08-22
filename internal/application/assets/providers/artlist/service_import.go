@@ -96,7 +96,7 @@ func (s *Service) ImportClip(ctx context.Context, req *ImportClipRequest) (*Impo
 	resp.DriveLink = item.DriveLink
 	resp.DriveFileID = item.DriveFileID
 	resp.LocalPath = item.LocalPath
-	resp.FileHash = item.FileHash
+	resp.LegacyFileMD5 = item.LegacyFileMD5
 	resp.DownloadLink = item.DownloadLink
 	if resp.Status == "" {
 		resp.Status = "completed"

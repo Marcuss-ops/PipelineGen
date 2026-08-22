@@ -77,7 +77,7 @@ func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, la
 		}
 	}()
 	var sourceVersion string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(json_extract(metadata_json,'$.content_hash'),''), NULLIF(json_extract(metadata_json,'$.file_hash'),''), NULLIF(content_sha256,''), NULLIF(binary_sha256,''), NULLIF(file_hash,''), id) FROM media_assets WHERE id=?`, assetID).Scan(&sourceVersion); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(json_extract(metadata_json,'$.content_hash'),''), NULLIF(json_extract(metadata_json,'$.file_hash'),''), NULLIF(content_sha256,''), NULLIF(binary_sha256,''), NULLIF(legacy_file_md5,''), id) FROM media_assets WHERE id=?`, assetID).Scan(&sourceVersion); err != nil {
 		return fmt.Errorf("asset source version: %w", err)
 	}
 	for _, track := range tracks {

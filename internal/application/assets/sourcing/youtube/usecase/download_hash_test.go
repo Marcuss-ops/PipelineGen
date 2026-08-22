@@ -65,8 +65,8 @@ func TestDownloadAndHashClip_HappyPath(t *testing.T) {
 	if result.LocalPath != "/tmp/downloads/dQw4w9WgXcQ.mp4" {
 		t.Errorf("expected LocalPath, got %q", result.LocalPath)
 	}
-	if result.FileHash != "a1b2c3d4e5f6a7b8" {
-		t.Errorf("expected FileHash a1b2c3d4e5f6a7b8, got %q", result.FileHash)
+	if result.LegacyFileMD5 != "a1b2c3d4e5f6a7b8" {
+		t.Errorf("expected LegacyFileMD5 a1b2c3d4e5f6a7b8, got %q", result.LegacyFileMD5)
 	}
 	wantClipID := "yt_dQw4w9WgXcQ_a1b2c3d4"
 	if result.ClipID != wantClipID {
@@ -212,8 +212,8 @@ func TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error (nil hasher is allowed), got %v", err)
 	}
-	if result.FileHash != "" {
-		t.Errorf("expected empty FileHash when hasher is nil, got %q", result.FileHash)
+	if result.LegacyFileMD5 != "" {
+		t.Errorf("expected empty LegacyFileMD5 when hasher is nil, got %q", result.LegacyFileMD5)
 	}
 	// clipID still derived with empty suffix: yt_videoID_
 	if result.ClipID != "yt_test123_" {

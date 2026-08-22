@@ -119,7 +119,7 @@ type IndexClipper interface {
 // cmd/admin/reconcile_qdrant.go — the producer walked a 3-tier
 // COALESCE chain (content_hash → metadata.file_hash → top-level
 // file_hash column) while the consumer walked *asset.Asset
-// accessor methods whose FileHash() returns the SAME metadata slot
+// accessor methods whose LegacyFileMD5() returns the SAME metadata slot
 // as the JSON file_hash tier. To unify the two, the upstream port
 // is replaced by SourceVersionQuerier which is a direct, narrow
 // method that returns the same value the producer computes.

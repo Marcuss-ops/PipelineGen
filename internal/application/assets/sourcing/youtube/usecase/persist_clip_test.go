@@ -48,7 +48,7 @@ func TestPersistClipAndEmitEvent_HappyPath(t *testing.T) {
 		Tags:            []string{"boxing", "training"},
 		DurationSec:     30,
 		LocalPath:       "/tmp/clip.mp4",
-		FileHash:        "a1b2c3d4e5f6a7b8",
+		LegacyFileMD5:        "a1b2c3d4e5f6a7b8",
 		DriveLink:       "https://drive.google.com/file/d/xyz123/view",
 		DriveFileID:     "xyz123",
 		Summary:         "A boxing training video",
@@ -88,8 +88,8 @@ func TestPersistClipAndEmitEvent_HappyPath(t *testing.T) {
 	if emitter.lastClipID != "yt_dQw4w9WgXcQ_a1b2c3d4" {
 		t.Errorf("expected emitter clipID %q, got %q", "yt_dQw4w9WgXcQ_a1b2c3d4", emitter.lastClipID)
 	}
-	if emitter.lastHash != cmd.FileHash {
-		t.Errorf("expected emitter hash %q, got %q", cmd.FileHash, emitter.lastHash)
+	if emitter.lastHash != cmd.LegacyFileMD5 {
+		t.Errorf("expected emitter hash %q, got %q", cmd.LegacyFileMD5, emitter.lastHash)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestPersistClipAndEmitEvent_NilPersister_SkipsUpsert(t *testing.T) {
 
 	cmd := PersistAndEmitCommand{
 		ClipID:   "yt_test_id",
-		FileHash: "feedface",
+		LegacyFileMD5: "feedface",
 	}
 
 	result, err := PersistClipAndEmitEvent(context.Background(), nil, emitter, cmd)
@@ -130,7 +130,7 @@ func TestPersistClipAndEmitEvent_NilEmitter_SkipsEvent(t *testing.T) {
 
 	cmd := PersistAndEmitCommand{
 		ClipID:   "yt_test_id",
-		FileHash: "cafebabe",
+		LegacyFileMD5: "cafebabe",
 	}
 
 	result, err := PersistClipAndEmitEvent(context.Background(), persister, nil, cmd)
@@ -153,7 +153,7 @@ func TestPersistClipAndEmitEvent_NilEmitter_SkipsEvent(t *testing.T) {
 func TestPersistClipAndEmitEvent_BothNil_NoOp(t *testing.T) {
 	cmd := PersistAndEmitCommand{
 		ClipID:   "yt_fallback_id",
-		FileHash: "deadbeef",
+		LegacyFileMD5: "deadbeef",
 	}
 
 	result, err := PersistClipAndEmitEvent(context.Background(), nil, nil, cmd)
@@ -180,7 +180,7 @@ func TestPersistClipAndEmitEvent_EmitterError_PartialSuccess(t *testing.T) {
 
 	cmd := PersistAndEmitCommand{
 		ClipID:   "yt_test_id",
-		FileHash: "cafef00d",
+		LegacyFileMD5: "cafef00d",
 	}
 
 	result, err := PersistClipAndEmitEvent(context.Background(), persister, emitter, cmd)
@@ -217,7 +217,7 @@ func TestPersistClipAndEmitEvent_PersisterError_Aborts(t *testing.T) {
 
 	cmd := PersistAndEmitCommand{
 		ClipID:   "yt_test_id",
-		FileHash: "baadf00d",
+		LegacyFileMD5: "baadf00d",
 	}
 
 	result, err := PersistClipAndEmitEvent(context.Background(), persister, emitter, cmd)

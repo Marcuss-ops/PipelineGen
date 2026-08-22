@@ -9,8 +9,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+
 	"os"
 	"strings"
 
@@ -38,8 +38,8 @@ func whisperBridgeVersion(scriptPath string) string {
 	if err != nil {
 		return "whisper/bridge-v1"
 	}
-	digest := sha256.Sum256(body)
-	return "whisper/bridge-v1/" + hex.EncodeToString(digest[:])
+	whisperDigest := digest.SHA256Bytes(body)
+	return "whisper/bridge-v1/" + whisperDigest
 }
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient

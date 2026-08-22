@@ -123,7 +123,7 @@ func wireCanonicalAssetStore(store *sqassets.AssetStoreSQLite, committer persist
 		_, err := committer.CommitAsset(ctx, persistence.CommitRequest{
 			AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
 			MediaType: mediaType, Category: a.Category, DurationMs: a.Duration.Milliseconds(),
-			ContentHash: a.FileHash(), SearchText: a.SearchText, LifecycleState: string(a.LifecycleState),
+			ContentHash: a.LegacyFileMD5(), SearchText: a.SearchText, LifecycleState: string(a.LifecycleState),
 			ThumbnailURL: a.ThumbnailURL, SourceURL: a.SourceURL, Title: a.Name,
 			Metadata:   persistence.TypedMetadata{Extra: a.Metadata},
 			IndexState: a.GetMetadataString("index_state"), AssetVersion: ref,

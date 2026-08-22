@@ -340,7 +340,7 @@ func buildImageIngestLocations(localPath, driveFileID, webLink, hash string, siz
 			URI:           localPath,
 			WebViewLink:   "",
 			FileSizeBytes: sizeBytes,
-			FileHash:      hash,
+			LegacyFileMD5:      hash,
 			IsPrimary:     true,
 		},
 	}
@@ -352,7 +352,7 @@ func buildImageIngestLocations(localPath, driveFileID, webLink, hash string, siz
 			URI:           webLink,
 			WebViewLink:   webLink,
 			FileSizeBytes: sizeBytes,
-			FileHash:      hash,
+			LegacyFileMD5:      hash,
 			IsPrimary:     false,
 		})
 	}

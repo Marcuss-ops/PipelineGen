@@ -225,8 +225,8 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 				message = "local file missing"
 			}
 		}
-		if a.FileHash() == "" {
-			message = "asset has no file_hash"
+		if a.LegacyFileMD5() == "" {
+			message = "asset has no legacy_file_md5"
 		}
 		return bulkChange{AssetID: id, Status: "success", Message: message, Before: before, After: after}
 
@@ -237,7 +237,7 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 
 // reindexAsset updates the asset row and enqueues an outbox reindex event.
 func (h *Handler) reindexAsset(ctx context.Context, a *asset.Asset, before, after map[string]any) bulkChange {
-	contentHash := a.FileHash()
+	contentHash := a.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = a.ID
 	}

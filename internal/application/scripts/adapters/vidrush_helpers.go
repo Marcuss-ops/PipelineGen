@@ -576,11 +576,11 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 			strings.EqualFold(candidate.IndexStatus, "pending") ||
 			strings.EqualFold(candidate.IndexStatus, "discovered") ||
 			strings.EqualFold(candidate.IndexStatus, "indexing_skipped_no_indexer")) &&
-		strings.TrimSpace(candidate.FileHash) != "" &&
+		strings.TrimSpace(candidate.LegacyFileMD5) != "" &&
 		strings.TrimSpace(candidate.DriveLink) != "" {
 		return true
 	}
-	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.FileHash) != "" && strings.TrimSpace(candidate.DriveLink) != ""
+	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.LegacyFileMD5) != "" && strings.TrimSpace(candidate.DriveLink) != ""
 }
 
 // VidRushRankingWeights is the shared deterministic ranking policy used by
@@ -667,7 +667,7 @@ func candidateSetHash(candidates []scriptpkg.SegmentAssetCandidate) string {
 	for _, candidate := range candidates {
 		parts = append(parts, strings.Join([]string{
 			candidate.AssetID, candidate.Provider, candidate.Query, candidate.SourceURL,
-			candidate.PreviewURL, candidate.FileHash, candidate.DriveLink,
+			candidate.PreviewURL, candidate.LegacyFileMD5, candidate.DriveLink,
 			candidate.AcquisitionStatus, candidate.VerificationStatus,
 			candidate.PersistenceStatus, candidate.IndexStatus,
 		}, "\x00"))

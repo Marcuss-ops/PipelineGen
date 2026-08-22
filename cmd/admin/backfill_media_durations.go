@@ -278,7 +278,7 @@ func persistMeasuredDuration(ctx context.Context, root *wiring.ComposeRoot, clip
 	clip.SetMetadataString("duration_source", string(asset.DurationProbe))
 	clip.SetMetadataInt("width", width)
 	clip.SetMetadataInt("height", height)
-	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 		return fmt.Errorf("persist and index measured asset: %w", err)
 	}
 	return nil

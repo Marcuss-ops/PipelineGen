@@ -246,7 +246,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			return result, fmt.Errorf("%s", result.Error)
 		}
 		processedPath = mezzanine.LocalPath
-		result.FileHash = mezzanine.FileHash
+		result.LegacyFileMD5 = mezzanine.LegacyFileMD5
 		result.LocalPath = mezzanine.LocalPath
 		result.Filename = mezzanine.Filename
 
@@ -336,7 +336,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			result.Error = fmt.Sprintf("hash failed: %v", err)
 			return result, err
 		}
-		result.FileHash = fileHash
+		result.LegacyFileMD5 = fileHash
 		result.LocalPath = processedPath
 		result.Filename = filepath.Base(processedPath)
 	}

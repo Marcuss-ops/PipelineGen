@@ -71,7 +71,7 @@ func TestExtractVideoID_RetainsLegacyAliases(t *testing.T) {
 func TestBackfillContentHashAccessorPrecedence(t *testing.T) {
 	a := &asset.Asset{}
 	a.SetContentHash("canonical-content-hash")
-	a.SetFileHash("legacy-file-hash")
+	a.SetLegacyFileMD5("legacy-file-hash")
 
 	require.Equal(t, "canonical-content-hash", assetContentHash(a))
 

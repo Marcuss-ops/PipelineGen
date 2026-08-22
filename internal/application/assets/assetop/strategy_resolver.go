@@ -12,7 +12,7 @@ import (
 type ExistingAssetEvidence struct {
 	DriveFileID string
 	DriveLink   string
-	FileHash    string
+	LegacyFileMD5    string
 }
 
 // ExistingAssetDecision is the canonical pre-download strategy verdict.
@@ -40,7 +40,7 @@ const (
 func ResolveExistingAssetStrategy(strategy string, evidence ExistingAssetEvidence) ExistingAssetDecision {
 	normalized := asset.NormalizeStrategy(strategy, false)
 	hasDrive := strings.TrimSpace(evidence.DriveFileID) != "" || strings.TrimSpace(evidence.DriveLink) != ""
-	hasHash := strings.TrimSpace(evidence.FileHash) != ""
+	hasHash := strings.TrimSpace(evidence.LegacyFileMD5) != ""
 
 	switch normalized {
 	case asset.StrategyReplace:

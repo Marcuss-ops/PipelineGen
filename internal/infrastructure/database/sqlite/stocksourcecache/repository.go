@@ -58,7 +58,7 @@ func NewRepository(db *sql.DB) *Repository {
 // Returns (nil, nil) when no active entry exists (cache miss).
 func (r *Repository) GetByCacheKey(ctx context.Context, cacheKey string) (*stockpipeline.SourceCacheEntry, error) {
 	const q = `SELECT cache_key, provider, external_id, source_url, local_path,
-	           file_size, file_hash, download_section, merge_format, force_keyframes
+	           file_size, legacy_file_md5, download_section, merge_format, force_keyframes
 	           FROM stock_source_cache
 	           WHERE cache_key = ? AND state = 'active'`
 
@@ -66,7 +66,7 @@ func (r *Repository) GetByCacheKey(ctx context.Context, cacheKey string) (*stock
 	var forceKeyframes int
 	err := r.db.QueryRowContext(ctx, q, cacheKey).Scan(
 		&e.CacheKey, &e.Provider, &e.ExternalID, &e.SourceURL,
-		&e.LocalPath, &e.FileSize, &e.FileHash, &e.DownloadSection,
+		&e.LocalPath, &e.FileSize, &e.LegacyFileMD5, &e.DownloadSection,
 		&e.MergeFormat, &forceKeyframes,
 	)
 	if err == sql.ErrNoRows {
@@ -85,7 +85,7 @@ func (r *Repository) GetByCacheKey(ctx context.Context, cacheKey string) (*stock
 func (r *Repository) Upsert(ctx context.Context, entry *stockpipeline.SourceCacheEntry) error {
 	const q = `INSERT INTO stock_source_cache
 	           (cache_key, provider, external_id, source_url, local_path,
-	            file_size, file_hash, download_section, merge_format,
+	            file_size, legacy_file_md5, download_section, merge_format,
 	            force_keyframes, state, created_at, updated_at)
 	           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
 	           ON CONFLICT(cache_key) DO UPDATE SET
@@ -94,7 +94,7 @@ func (r *Repository) Upsert(ctx context.Context, entry *stockpipeline.SourceCach
 	            source_url      = excluded.source_url,
 	            local_path      = excluded.local_path,
 	            file_size       = excluded.file_size,
-	            file_hash       = excluded.file_hash,
+	            legacy_file_md5       = excluded.legacy_file_md5,
 	            download_section = excluded.download_section,
 	            merge_format    = excluded.merge_format,
 	            force_keyframes = excluded.force_keyframes,
@@ -108,7 +108,7 @@ func (r *Repository) Upsert(ctx context.Context, entry *stockpipeline.SourceCach
 
 	_, err := r.db.ExecContext(ctx, q,
 		entry.CacheKey, entry.Provider, entry.ExternalID, entry.SourceURL,
-		entry.LocalPath, entry.FileSize, entry.FileHash, entry.DownloadSection,
+		entry.LocalPath, entry.FileSize, entry.LegacyFileMD5, entry.DownloadSection,
 		entry.MergeFormat, forceKeyframes,
 	)
 	if err != nil {

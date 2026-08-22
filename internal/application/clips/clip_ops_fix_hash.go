@@ -14,7 +14,7 @@ import (
 //  3. read clip from repo
 //  4. extract Drive fileID from clip.DriveLink/DownloadLink
 //  5. fetch MD5 from Drive
-//  6. set FileHash on the clip
+//  6. set LegacyFileMD5 on the clip
 //  7. delegate to dispatcher.EnqueueAndIndex (the canonical SSOT
 //     writer + outbox event emitter).
 //
@@ -40,7 +40,7 @@ func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*F
 	if err != nil {
 		return nil, fmt.Errorf("fix-hash: read clip %q: %w", clipID, err)
 	}
-	report.PreviousHash = clip.FileHash()
+	report.PreviousHash = clip.LegacyFileMD5()
 
 	driveLink := clip.DriveLink()
 	if driveLink == "" {
@@ -60,7 +60,7 @@ func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*F
 	if err != nil || md5 == "" {
 		return nil, fmt.Errorf("fix-hash: drive GetFileMD5(%s): %w", fileID, err)
 	}
-	clip.SetFileHash(md5)
+	clip.SetLegacyFileMD5(md5)
 	report.NewHash = md5
 
 	if s.dispatcher == nil {

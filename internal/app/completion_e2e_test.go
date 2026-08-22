@@ -276,7 +276,7 @@ func (s *sqlTxContext) InsertAssetLocations(ctx context.Context, entries []compl
 				file_hash = excluded.file_hash,
 				is_primary = excluded.is_primary,
 				updated_at = excluded.updated_at`,
-			e.AssetID, string(e.Kind), e.ExternalID, e.MIMEType, e.SizeBytes, e.FileHash, boolToInt(e.IsPrimary), "now", "now")
+			e.AssetID, string(e.Kind), e.ExternalID, e.MIMEType, e.SizeBytes, e.LegacyFileMD5, boolToInt(e.IsPrimary), "now", "now")
 		if err != nil {
 			return fmt.Errorf("e2e test tx: insert asset_location: %w", err)
 		}

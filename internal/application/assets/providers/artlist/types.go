@@ -154,7 +154,7 @@ type RunTagItem struct {
 	DriveFileID  string `json:"drive_file_id"`
 	DownloadLink string `json:"download_link,omitempty"`
 	LocalPath    string `json:"local_path,omitempty"`
-	FileHash     string `json:"file_hash,omitempty"`
+	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
 	Error        string `json:"error,omitempty"`
 	// Metadata carries provider provenance through processing into the
 	// canonical finalizer payload.
@@ -354,7 +354,7 @@ type ImportClipResponse struct {
 	DriveLink    string         `json:"drive_link,omitempty"`
 	DriveFileID  string         `json:"drive_file_id,omitempty"`
 	LocalPath    string         `json:"local_path,omitempty"`
-	FileHash     string         `json:"file_hash,omitempty"`
+	LegacyFileMD5     string         `json:"legacy_file_md5,omitempty"`
 	DownloadLink string         `json:"download_link,omitempty"`
 	ClipPageURL  string         `json:"clip_page_url,omitempty"`
 	ThumbnailURL string         `json:"thumbnail_url,omitempty"`

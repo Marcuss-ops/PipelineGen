@@ -35,14 +35,14 @@
 //     matching TextTrack row is rejected with a typed error before
 //     any rows are written.
 //
-//  7. Different FileHash emits second outbox row (supersede gate):
+//  7. Different LegacyFileMD5 emits second outbox row (supersede gate):
 //     a second CommitClipTextAndIndexEvent with a different
-//     FileHash on the same ClipAsset.ID produces a NEW
+//     LegacyFileMD5 on the same ClipAsset.ID produces a NEW
 //     outbox_events row (the canonical content-hash supersede
 //     pattern) while asset_text_tracks collapses to 1 row via
 //     ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE.
 //     media_assets.source_version is updated to the LATEST
-//     FileHash so the clipindexer CAS fence reads the freshest
+//     LegacyFileMD5 so the clipindexer CAS fence reads the freshest
 //     content.
 //
 // Schema: minimal in-memory SQLite with the production-faithful
@@ -204,7 +204,7 @@ func makeClipAssetForTest(clipID, videoID, fileHash string) youtubetypes.ClipAss
 	return youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   videoID,
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_" + clipID,
@@ -643,7 +643,7 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 		"error must identify the orphan-timed-track rejection: got %v", err)
 }
 
-// ── Test 7: different FileHash → 2 outbox rows (super-tx supersede) ─
+// ── Test 7: different LegacyFileMD5 → 2 outbox rows (super-tx supersede) ─
 
 // TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow
 // pins the content-hash supersede contract for the localized
@@ -651,12 +651,12 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 // July 2026). Mirrors TestClipAtomicWriter_DifferentFileHashEmitsSecondRow
 // in clip_atomic_writer_test.go (the legacy non-text-tracks
 // stripe) at the super-tx stripe: two calls to
-// CommitClipTextAndIndexEvent with a different FileHash on the
+// CommitClipTextAndIndexEvent with a different LegacyFileMD5 on the
 // same ClipAsset.ID must produce TWO outbox_events rows.
 //
-// Why two rows (not one) on a different FileHash:
+// Why two rows (not one) on a different LegacyFileMD5:
 //   - deriveSourceVersion(clipID, fileHash, policyVersion) returns
-//     fileHash (when non-empty) → different FileHash → different
+//     fileHash (when non-empty) → different LegacyFileMD5 → different
 //     sourceVersion.
 //   - BuildReindexEnvelopeV1 builds eventKey as
 //     "reconcile:reindex:<assetID>:<schema>:<sourceVersion>" →
@@ -669,7 +669,7 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 // content. asset_text_tracks collapses via
 // ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE so
 // still 1 track per (lang, kind) tuple; media_assets.source_version
-// is updated to the LATEST FileHash (the source the clipindexer
+// is updated to the LATEST LegacyFileMD5 (the source the clipindexer
 // CAS fence reads).
 func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	db := newLocalizedWriterDB(t)
@@ -685,7 +685,7 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 	// makeCmd builds a fresh command for each call. The text track
 	// content differs (A vs B) so the TextHash + TextTrack.SourceVersion
 	// also differ — defensive against future writers that derive
-	// sourceVersion from the TextTrack rather than from cmd.Clip.FileHash.
+	// sourceVersion from the TextTrack rather than from cmd.Clip.LegacyFileMD5.
 	makeCmd := func(clipAsset youtubetypes.ClipAsset, content string) localized.CommitLocalizedClipCommand {
 		return localized.CommitLocalizedClipCommand{
 			Clip: clipAsset,
@@ -720,7 +720,7 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 		t.Fatalf("count outbox: %v", err)
 	}
 	if outCount != 2 {
-		t.Errorf("outbox_events count after different content: want 2 got %d (supersede gate collapsed — FileHash-derived sourceVersion MUST differ)", outCount)
+		t.Errorf("outbox_events count after different content: want 2 got %d (supersede gate collapsed — LegacyFileMD5-derived sourceVersion MUST differ)", outCount)
 	}
 
 	// Sanity: two distinct event_keys (the canonical differentiator).
@@ -741,7 +741,7 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 		t.Fatalf("expected 2 distinct keys, got %v", keys)
 	}
 	if keys[0] == keys[1] {
-		t.Errorf("different FileHash MUST produce different event_keys; both rows had %q", keys[0])
+		t.Errorf("different LegacyFileMD5 MUST produce different event_keys; both rows had %q", keys[0])
 	}
 
 	// media_assets.source_version reflects the LATEST content
@@ -773,4 +773,4 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 // on bad cue (deferred tx.Rollback), ErrClipLocaleNotReady before
 // BeginTx, missing-language coverage, idempotent replay overlap,
 // orphan-timed-track rejection, and the content-hash supersede gate
-// (different FileHash → 2 outbox rows).
+// (different LegacyFileMD5 → 2 outbox rows).

@@ -163,7 +163,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// constructed clip below (parity with reupload_usecase.go::Execute per
 	// user F2.9 spec "DB has drive_file_id/drive_link/download_link/md5/
 	// publish_action populated"). Pre-F2.9 asymmetry: the upload path left
-	// FileHash(pubRes.MD5Checksum) and publish_action unrecorded on the clip.
+	// LegacyFileMD5(pubRes.MD5Checksum) and publish_action unrecorded on the clip.
 	var publishMD5, publishAction string
 
 	if uc.publisher != nil && localPath != "" {
@@ -234,7 +234,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		UpdatedAt:      now,
 	}
 	clip.SetLocalPath(localPath)
-	clip.SetFileHash(fileHash)
+	clip.SetLegacyFileMD5(fileHash)
 	clip.SetFolderID(targetFolderID)
 	clip.SetFolderPath(cmd.Group)
 	if driveFileID != "" {
@@ -249,7 +249,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// reupload must BOTH populate MD5 + publish_action so the dispatched
 	// clip + DB row carries the 5-field audit contract.
 	if publishMD5 != "" {
-		clip.SetFileHash(publishMD5)
+		clip.SetLegacyFileMD5(publishMD5)
 	}
 	if publishAction != "" {
 		clip.SetMetadataString("publish_action", publishAction)
@@ -266,7 +266,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 			zap.String("clip_id", clip.ID))
 		return nil, ErrDispatcherUnavailable
 	}
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = fileHash
 	}
@@ -315,7 +315,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		Filename:    driveFilename,
 		DriveLink:   clip.DriveLink(),
 		DriveFileID: clip.DriveFileID(),
-		FileHash:    fileHash,
+		LegacyFileMD5:    fileHash,
 		Source:      cmd.Source,
 		Category:    cmd.Category,
 		Tags:        cmd.Tags,

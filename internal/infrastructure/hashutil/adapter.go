@@ -6,8 +6,8 @@
 // this concrete adapter. This keeps the application→infra seam narrow
 // (Pattern 0: port abstraction layer, AGENTS.md June 2026).
 //
-// The adapter delegates to internal/infrastructure/files.MD5File /
-// MD5String, which is the canonical Go stdlib MD5 implementation.
+// The adapter delegates directly to internal/platform/checksum, the
+// canonical MD5 SSOT (compat-only — never identity/dedup).
 package hashutil
 
 import (
@@ -16,10 +16,10 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
-// HashAdapter is the concrete HashPort backed by the files package.
+// HashAdapter is the concrete HashPort backed by the checksum SSOT.
 type HashAdapter struct{}
 
 // NewHashAdapter returns a fresh HashAdapter.
@@ -29,14 +29,16 @@ func NewHashAdapter() *HashAdapter { return &HashAdapter{} }
 // Drift in either interface or concrete signature is caught at compile.
 var _ ports.HashPort = (*HashAdapter)(nil)
 
-// MD5String returns the MD5 hex digest of s.
+// MD5String returns the MD5 hex digest of s, delegated to the canonical
+// checksum SSOT (compat-only — never identity/dedup).
 func (a *HashAdapter) MD5String(s string) string {
-	return files.MD5String(s)
+	return checksum.LegacyMD5String(s)
 }
 
-// MD5File returns the MD5 hex digest of the file at path.
+// MD5File returns the MD5 hex digest of the file at path, delegated to
+// the canonical checksum SSOT (streaming, never buffers the whole file).
 func (a *HashAdapter) MD5File(path string) (string, error) {
-	return files.MD5File(path)
+	return checksum.LegacyMD5File(path)
 }
 
 func (a *HashAdapter) SHA256String(s string) string {

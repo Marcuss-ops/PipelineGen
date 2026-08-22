@@ -2,8 +2,6 @@ package images
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -77,8 +76,7 @@ func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genI
 	if err != nil {
 		return nil, err
 	}
-	hashBytes := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hashBytes[:])
+	contentHash := digest.SHA256Bytes(content)
 
 	if existing, err := s.repo.GetImageByHash(ingestCtx, contentHash); err == nil && existing != nil {
 		existingStyle := extractStyleFromPath(existing.PathRel)

@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -122,7 +122,7 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		}
 	}
 
-	fileHash, err := hashutil.MD5File(localPath)
+	fileHash, err := checksum.LegacyMD5File(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash media file: %w", err)
 	}
@@ -187,7 +187,7 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		"local_path":    localPath,
 		"folder_id":     resolvedFolderID,
 		"folder_path":   resolvedFolderPath,
-		"file_hash":     fileHash,
+		"legacy_file_md5":     fileHash,
 		"content_hash":  fileHash,
 		"source_url":    req.URL,
 		"drive_link":    req.DriveLink,
@@ -213,7 +213,7 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		DriveLink:    strings.TrimSpace(req.DriveLink),
 		DriveFileID:  strings.TrimSpace(req.DriveFileID),
 		DownloadLink: strings.TrimSpace(req.DownloadLink),
-		FileHash:     fileHash,
+		LegacyFileMD5:     fileHash,
 		Metadata:     string(metaJSON),
 		Destination:  destinationForKind(kind),
 		Subject:      name,
@@ -285,7 +285,7 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		DriveLink:        result.DriveLink,
 		DriveFileID:      result.DriveFileID,
 		DownloadLink:     result.DownloadLink,
-		FileHash:         fileHash,
+		LegacyFileMD5:         fileHash,
 		ContentHash:      fileHash,
 		SkippedDuplicate: status == "skipped_duplicate" || status == "would_skip_duplicate",
 		Metadata:         metadata,

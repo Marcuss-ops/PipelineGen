@@ -68,7 +68,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// environment surfaces the actionable ErrDispatcherUnavailable signal
 	// before the per-call contract violation. Both checks fire before any
 	// asset-derivation so a nil rec cannot panic on rec.ID / rec.Source /
-	// rec.FileHash. Strict fail-closed at the lifecycle adapter's error
+	// rec.LegacyFileMD5. Strict fail-closed at the lifecycle adapter's error
 	// propagation boundary.
 	//
 	// Rec == nil returns a contract violation error at runtime.
@@ -110,7 +110,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// INSERT in one tx) applies uniformly to artifacts-driven write paths. The
 	// strict fail-closed nil dispatcher check fires at the top of this function
 	// (before asset-derivation) so the dispatcher surface is reached first.
-	if err := r.dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash); err != nil {
+	if err := r.dispatcher.EnqueueAndIndex(ctx, m, rec.LegacyFileMD5); err != nil {
 		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
@@ -120,7 +120,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 			AssetID:      rec.ID,
 			LocationKind: asset.LocationKindLocal,
 			URI:          rec.LocalPath,
-			FileHash:     rec.FileHash,
+			LegacyFileMD5:     rec.LegacyFileMD5,
 			IsPrimary:    true,
 		}
 		if err := r.locations.Upsert(ctx, loc); err != nil {
@@ -268,7 +268,7 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 	for _, loc := range details.Locations {
 		if loc.LocationKind == asset.LocationKindLocal {
 			rec.LocalPath = loc.URI
-			rec.FileHash = loc.FileHash
+			rec.LegacyFileMD5 = loc.LegacyFileMD5
 		} else if loc.LocationKind == asset.LocationKindDrive {
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL

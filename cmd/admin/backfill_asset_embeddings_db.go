@@ -75,7 +75,7 @@ func fetchEmbeddingCandidates(
 	query := `
 		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
 		       COALESCE(local_path, ''),
-		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, ''),
+		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), legacy_file_md5, ''),
 		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
@@ -147,7 +147,7 @@ func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]bac
 	query := fmt.Sprintf(`
 		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
 		       COALESCE(local_path, ''),
-		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, ''),
+		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), legacy_file_md5, ''),
 		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,

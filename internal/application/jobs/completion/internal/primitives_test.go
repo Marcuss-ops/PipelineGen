@@ -169,7 +169,7 @@ func TestRowTypes_IdentityStable(t *testing.T) {
 			want: []string{
 				"ArtifactID", "AssetID", "Kind", "Provider",
 				"ExternalID", "AccessURL", "DownloadURL", "MIMEType",
-				"SizeBytes", "FileHash", "IsPrimary",
+				"SizeBytes", "LegacyFileMD5", "IsPrimary",
 			},
 		},
 	}

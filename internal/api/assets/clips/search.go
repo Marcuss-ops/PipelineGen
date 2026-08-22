@@ -175,7 +175,7 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 		"has_drive_link": clip.DriveLink() != "" || clip.DownloadLink() != "",
 		"drive_link":     clip.DriveLink(),
 		"download_link":  clip.DownloadLink(),
-		"file_hash":      clip.FileHash(),
+		"legacy_file_md5":      clip.LegacyFileMD5(),
 		"folder_id":      clip.FolderID(),
 		"folder_path":    clip.FolderPath(),
 		"status":         status,
@@ -324,7 +324,7 @@ func voiceoverDTOToClip(rec *appclips.ClipVoiceoverRecordDTO) *asset.Asset {
 	clip.SetDriveLink(rec.DriveLink)
 	clip.SetDriveFileID(rec.DriveFileID)
 	clip.SetDownloadLink(rec.DownloadLink)
-	clip.SetFileHash(rec.FileHash)
+	clip.SetLegacyFileMD5(rec.LegacyFileMD5)
 	clip.SetLocalPath(rec.LocalPath)
 	clip.SetMetadataJSON(rec.Metadata)
 	return clip

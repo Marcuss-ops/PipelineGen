@@ -88,7 +88,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		result.LocalExists = true
 	}
 
-	if rec.FileHash == "" && opts.RequireHash {
+	if rec.LegacyFileMD5 == "" && opts.RequireHash {
 		result.OK = false
 		result.Status = "failed"
 		result.Error = "missing file hash"
@@ -172,7 +172,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 			LocalPath:    rec.LocalPath,
 			DriveLink:    rec.DriveLink,
 			DownloadLink: rec.DownloadLink,
-			FileHash:     rec.FileHash,
+			LegacyFileMD5:     rec.LegacyFileMD5,
 			ContentHash:  rec.ContentHash,
 			Status:       assetIndexStatus(rec.PublishStatus),
 			Metadata:     rec.Metadata,
@@ -270,7 +270,7 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	// falling back to stale Tier 2 (file_hash from a previous ingest).
 	contentHash := rec.ContentHash
 	if contentHash == "" {
-		contentHash = rec.FileHash
+		contentHash = rec.LegacyFileMD5
 	}
 
 	metadata := f.metadata.BuildAssetMetadata(MetadataInput{
@@ -308,7 +308,7 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 			"drive_link":      rec.DriveLink,
 			"drive_file_id":   rec.DriveFileID,
 			"download_link":   rec.DownloadLink,
-			"file_hash":       rec.FileHash,
+			"legacy_file_md5":       rec.LegacyFileMD5,
 			"content_hash":    contentHash,
 			"source_id":       rec.SourceID,
 			"subfolder":       rec.Subfolder,
@@ -476,7 +476,7 @@ func defaultConfidence(rec *MediaRecord) float64 {
 	if rec.PHash != "" || rec.VisualEmbeddingJSON != "" {
 		return 0.9
 	}
-	if strings.TrimSpace(rec.FileHash) != "" {
+	if strings.TrimSpace(rec.LegacyFileMD5) != "" {
 		return 0.7
 	}
 	return 0.5

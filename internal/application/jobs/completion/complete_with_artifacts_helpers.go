@@ -198,7 +198,7 @@ func (s *WithArtifactsService) deriveAssetLocationEntries(
 			DownloadURL: pa.Location.DownloadLink,
 			MIMEType:    pa.MIMEType,
 			SizeBytes:   pa.SizeBytes,
-			FileHash:    pa.SHA256,
+			LegacyFileMD5:    pa.SHA256,
 			IsPrimary:   i == 0,
 		})
 	}

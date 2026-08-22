@@ -1,5 +1,17 @@
 package storage
 
+// DEPRECATED — PR-MIGRATIONS-SSOT (August 2026): the 4 constants in this file
+// (CanonicalMediaAssetsSchema, CanonicalAssetArtifactsTable,
+// CanonicalAssetTextTracksTable, CanonicalScriptLocalizationsTable) are
+// superseded by the migration chain in migrations/sqlite/. Tests should use
+// NewMigratedTestDB(t) (applies the full migration chain) instead of
+// NewTestDBWithSchema(t, CanonicalMediaAssetsSchema). The constants remain
+// only for callers that have not yet migrated; each is scheduled for removal
+// in the OWNERSHIP_MIGRATION phase (deadline TBD).
+//
+// The sole physical schema authority for every table is migrations/sqlite/.
+// No new CREATE TABLE blocks may be added to this file.
+//
 // CanonicalMediaAssetsSchema is the single source of truth for the
 // in-memory CREATE TABLE block required by assets.ClipsRepository.UpsertClipTx
 // (37 INSERT columns) and scanMediaAsset (39-column SELECT projection).
@@ -64,7 +76,7 @@ package storage
 //     column, so computeContentHash errored with `no such column`
 //     and fell back to contentHash=""; the empty hash then matched
 //     row.file_hash=” in the CAS fence and the test passed by
-//     accident. The fold + new seedFileHash helper (above the
+//     accident. The fold + new seedLegacyFileMD5 helper (above the
 //     test) now exercise the production-shape CAS fence honestly.
 //     Marked closed July 2026.
 //
@@ -118,12 +130,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
     drive_file_id TEXT,
     drive_link TEXT,
     download_link TEXT,
-    file_hash TEXT,
+    legacy_file_md5 TEXT,
     audio_embedding TEXT NOT NULL DEFAULT '[]',
     language TEXT NOT NULL DEFAULT '',
     width INTEGER NOT NULL DEFAULT 0,
-    height INTEGER NOT NULL DEFAULT 0,
-    lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+    height INTEGER NOT NULL DEFAULT 0,    lifecycle_state  TEXT    NOT NULL DEFAULT 'ACTIVE',
     deleted_at TEXT NOT NULL DEFAULT '',
     folder_id TEXT NOT NULL DEFAULT '',
     parent_folder_id TEXT NOT NULL DEFAULT '',
@@ -203,7 +214,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
     semantic_hash     TEXT    NOT NULL DEFAULT '',
     rights_status     TEXT    NOT NULL DEFAULT 'review_required',
     policy_version    TEXT    NOT NULL DEFAULT 'v1',
-    lifecycle_status  TEXT    NOT NULL DEFAULT 'ACTIVE',
     -- Migration 158 (July 2026, PR-CLIPINGEST-PIPELINE step 10) —
     -- 6 rights-extension columns. Types and DEFAULTs match
     -- migrations/sqlite/158_asset_rights_extension.sql byte-for-

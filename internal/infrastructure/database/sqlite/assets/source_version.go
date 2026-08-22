@@ -11,8 +11,8 @@
 //	The producer used an inline SQLite COALESCE over
 //	metadata_json.$.content_hash → metadata_json.$.file_hash →
 //	media_assets.file_hash. The consumer walked an *asset.Asset
-//	via GetMetadataString/FileHash() accessors — but
-//	Asset.FileHash() is defined as m.GetMetadataString("file_hash"),
+//	via GetMetadataString/LegacyFileMD5() accessors — but
+//	Asset.LegacyFileMD5() is defined as m.GetMetadataString("file_hash"),
 //	which is the SAME priority position as the JSON file_hash tier,
 //	not a real third tier. The two implementations DRIFTED silently:
 //	the producer actually checks the legacy top-level column while
@@ -121,7 +121,7 @@ func SourceVersionFor(ctx context.Context, q QueryRowContexter, assetID string) 
 			json_extract(metadata_json, '$.%s'),
 			json_extract(metadata_json, '$.content_hash'),
 			json_extract(metadata_json, '$.file_hash'),
-			file_hash,
+			legacy_file_md5,
 			''
 		) FROM media_assets WHERE id = ?
 	`, mediaregistry.IndexRevisionField), assetID).Scan(&v)

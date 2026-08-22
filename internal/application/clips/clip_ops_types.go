@@ -203,6 +203,6 @@ func voiceoverDTOToClip(rec *ClipVoiceoverRecordDTO) *asset.Asset {
 	clip.SetDriveFileID(rec.DriveFileID)
 	clip.SetFolderID(rec.FolderID)
 	clip.SetFolderPath(rec.FolderPath)
-	clip.SetFileHash(rec.FileHash)
+	clip.SetLegacyFileMD5(rec.LegacyFileMD5)
 	return clip
 }

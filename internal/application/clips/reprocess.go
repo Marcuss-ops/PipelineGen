@@ -76,7 +76,7 @@ type ReprocessResult struct {
 	Source       string `json:"source"`
 	Status       string `json:"status"`
 	LocalPath    string `json:"local_path"`
-	FileHash     string `json:"file_hash"`
+	LegacyFileMD5     string `json:"legacy_file_md5"`
 	DriveLink    string `json:"drive_link"`
 	DownloadLink string `json:"download_link"`
 	ProcessedAt  string `json:"processed_at"`
@@ -110,7 +110,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 			Source:       req.Source,
 			Status:       "processed",
 			LocalPath:    clip.LocalPath(),
-			FileHash:     clip.FileHash(),
+			LegacyFileMD5:     clip.LegacyFileMD5(),
 			DriveLink:    clip.DriveLink(),
 			DownloadLink: clip.DownloadLink(),
 			ProcessedAt:  timeutil.FormatRFC3339(clip.UpdatedAt),
@@ -199,7 +199,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 
 	// Update clip with result
 	clip.SetLocalPath(result.LocalPath)
-	clip.SetFileHash(result.FileHash)
+	clip.SetLegacyFileMD5(result.LegacyFileMD5)
 	if result.DriveFileID != "" {
 		// F2.8 parity (reprocess contract fix, August 2026): the canonical
 		// Drive identity pointer must track the newly published rendition.
@@ -217,7 +217,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 	if result.MD5 != "" {
 		// Drive-returned md5Checksum, distinct from the local SHA carried
-		// by FileHash (the QDRANT-002 source_version/content_hash). Stored
+		// by LegacyFileMD5 (the QDRANT-002 source_version/content_hash). Stored
 		// under its own metadata key so it never clobbers the local hash.
 		clip.SetMetadataString("md5", result.MD5)
 	}
@@ -236,12 +236,12 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	// Strict fail-closed: nil dispatcher surfaces an explicit error
 	// (the POST /clips/{id}/reprocess call returns 503-equivalent),
 	// NOT a half-written asset row. contentHash is the post-reprocess
-	// fingerprint from result.FileHash; mirrors the v1 supersede-gate
+	// fingerprint from result.LegacyFileMD5; mirrors the v1 supersede-gate
 	// semantics (QDRANT-002 item F: source_version on index.requested.v1).
 	if uc.dispatcher == nil {
 		return nil, fmt.Errorf("reprocess dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
 	}
-	if err := uc.dispatcher.EnqueueAndIndex(ctx, clip, result.FileHash); err != nil {
+	if err := uc.dispatcher.EnqueueAndIndex(ctx, clip, result.LegacyFileMD5); err != nil {
 		return nil, fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
@@ -250,7 +250,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		Source:       req.Source,
 		Status:       result.Status,
 		LocalPath:    result.LocalPath,
-		FileHash:     result.FileHash,
+		LegacyFileMD5:     result.LegacyFileMD5,
 		DriveLink:    result.DriveLink,
 		DownloadLink: result.DownloadLink,
 		ProcessedAt:  timeutil.FormatRFC3339(time.Now()),
@@ -264,7 +264,7 @@ func (uc *ReprocessUseCase) hasExistingRendition(clip *asset.Asset) bool {
 	if clip == nil {
 		return false
 	}
-	if clip.FileHash() == "" {
+	if clip.LegacyFileMD5() == "" {
 		return false
 	}
 	local := clip.LocalPath()

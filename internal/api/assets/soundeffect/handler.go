@@ -8,10 +8,8 @@
 package soundeffect
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -161,20 +160,15 @@ func (h *Handler) Generate(c *gin.Context) {
 	}
 	defer os.Remove(tempFile)
 
-	// 2. Compute file hash
-	f, err := os.Open(tempFile)
+	// 2. Compute file hash. COMPAT-ONLY MD5 via the canonical checksum
+	// owner (internal/platform/checksum): the persisted file_hash column /
+	// sfx_<hash> asset ID predate the digest SSOT and must stay
+	// byte-identical — content identity is SHA-256, never MD5.
+	hashStr, err := checksum.LegacyMD5File(tempFile)
 	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to open synthesized file: %w", err))
-		return
-	}
-	hsh := md5.New()
-	if _, err := io.Copy(hsh, f); err != nil {
-		f.Close()
 		apiutil.InternalError(c, fmt.Errorf("failed to compute hash: %w", err))
 		return
 	}
-	f.Close()
-	hashStr := fmt.Sprintf("%x", hsh.Sum(nil))
 
 	// 3. Resolve destination paths (typed-port adapter around drive.Resolver).
 	destReq := sfxports.AssetDestinationRequest{
@@ -317,7 +311,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	// supersede-gate dedup uses the ingest-time fingerprint (mirrors
 	// the contract pinned at
 	// internal/application/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
-	clip.SetFileHash(hashStr)
+	clip.SetLegacyFileMD5(hashStr)
 
 	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
 	// `if h.clipsRepo != nil { Upsert }` path bypasses the outbox —

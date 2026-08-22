@@ -80,7 +80,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			DriveLink:    defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
 			DriveFileID:  defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
 			LocalPath:    defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
-			FileHash:     defaults.String(clip.FileHash(), clip.GetMetadataString("_file_hash")),
+			LegacyFileMD5:     defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
 			Metadata:     cloneMetadata(clip.Metadata),
 		}
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
@@ -91,7 +91,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
 				DriveFileID: item.DriveFileID,
 				DriveLink:   item.DriveLink,
-				FileHash:    item.FileHash,
+				LegacyFileMD5:    item.LegacyFileMD5,
 			})
 			item.Status = "dry_run"
 			if decision.Skip {
@@ -107,7 +107,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
 			DriveFileID: item.DriveFileID,
 			DriveLink:   item.DriveLink,
-			FileHash:    item.FileHash,
+			LegacyFileMD5:    item.LegacyFileMD5,
 		})
 		if decision.Skip {
 			item.Status = "skipped_existing"
@@ -346,7 +346,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			arg.w.item.Status = defaults.String(result.Status, "processed")
 			arg.w.item.Filename = result.Filename
 			arg.w.item.LocalPath = result.LocalPath
-			arg.w.item.FileHash = result.FileHash
+			arg.w.item.LegacyFileMD5 = result.LegacyFileMD5
 			arg.w.item.DriveLink = result.DriveLink
 			arg.w.item.DriveFileID = result.DriveFileID
 			arg.w.item.DownloadLink = result.DownloadLink

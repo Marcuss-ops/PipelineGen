@@ -55,7 +55,7 @@ type ProcessResponse struct {
 	AssetID      string
 	Status       string
 	LocalPath    string
-	FileHash     string
+	LegacyFileMD5     string
 	DriveLink    string
 	DownloadLink string
 	DriveFileID  string
@@ -164,7 +164,7 @@ func (o *orchestrator) Process(ctx context.Context, req ProcessRequest) (*Proces
 	}
 
 	resp.LocalPath = transformResult.LocalPath
-	resp.FileHash = transformResult.FileHash
+	resp.LegacyFileMD5 = transformResult.LegacyFileMD5
 	resp.Renditions = transformResult.Renditions
 	resp.Status = "transformed"
 
@@ -208,7 +208,7 @@ func (o *orchestrator) Process(ctx context.Context, req ProcessRequest) (*Proces
 			Filename:    transformResult.Filename,
 			MIMEType:    "video/mp4",
 			SizeBytes:   fileSizeFromPath(transformResult.LocalPath),
-			SHA256:      transformResult.FileHash,
+			SHA256:      transformResult.LegacyFileMD5,
 			Source:      sourceFromMetadata(req.Metadata),
 			Description: req.Name,
 			Location: finalization.AssetLocation{

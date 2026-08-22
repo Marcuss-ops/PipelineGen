@@ -60,7 +60,7 @@ type RepositoryImageRow struct {
 	Author        string
 	SourcePageURL string
 	DriveLink     string
-	FileHash      string
+	LegacyFileMD5      string
 	Description   string
 	Width         int
 	Height        int

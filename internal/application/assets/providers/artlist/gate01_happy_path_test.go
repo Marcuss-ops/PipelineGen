@@ -6,7 +6,7 @@
 // 3 (SQLite projection), and 4 (outbox emission) from the action plan.
 //
 // godlike/07 no-fake-availability: every mock returns realistic data with
-// non-empty DriveFileID/DriveLink/DownloadLink/FileHash. The test asserts
+// non-empty DriveFileID/DriveLink/DownloadLink/LegacyFileMD5. The test asserts
 // the full response shape AND the SQLite state after persist.
 //
 // godlike/06 SSOT: the canonical Pipeline shape is
@@ -33,7 +33,7 @@ import (
 
 // successMediaProcessor is a Gate 01 test double that returns
 // deterministic, realistic ProcessResults with Drive fields
-// populated. Each clip gets a unique FileHash, DriveFileID,
+// populated. Each clip gets a unique LegacyFileMD5, DriveFileID,
 // and DriveLink based on its ID so the test can assert per-clip
 // values.
 type successMediaProcessor struct {
@@ -50,7 +50,7 @@ func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
-		FileHash:      "gate01-hash-" + input.ID,
+		LegacyFileMD5:      "gate01-hash-" + input.ID,
 		ContentHash:   "gate01-contenthash-" + input.ID,
 		DriveLink:     "https://drive.google.com/file/d/" + input.ID + "-drive/view",
 		DriveFileID:   input.ID + "-drive-id",
@@ -70,7 +70,7 @@ func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 // Assertions (mapped to action-plan gates):
 //
 //	Gate 2: resp.Processed == 3, resp.Failed == 0, every item has
-//	        DriveFileID/DriveLink/DownloadLink/FileHash non-empty
+//	        DriveFileID/DriveLink/DownloadLink/LegacyFileMD5 non-empty
 //	Gate 3: SQLite: source=artlist, media_type=video,
 //	        lifecycle_state=ACTIVE, drive_link/file_hash/drive_file_id
 //	        non-empty for all 3 clips
@@ -189,18 +189,18 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 
 	for i, item := range resp.Items {
 		t.Logf("item[%d]: clip_id=%s status=%s drive_file_id=%s drive_link=%s download_link=%s file_hash=%s",
-			i, item.ClipID, item.Status, item.DriveFileID, item.DriveLink, item.DownloadLink, item.FileHash)
+			i, item.ClipID, item.Status, item.DriveFileID, item.DriveLink, item.DownloadLink, item.LegacyFileMD5)
 
 		assert.Equal(t, "processed", item.Status, "item[%d] status should be 'processed'", i)
 		assert.NotEmpty(t, item.DriveFileID, "item[%d] DriveFileID should be non-empty", i)
 		assert.NotEmpty(t, item.DriveLink, "item[%d] DriveLink should be non-empty", i)
 		assert.NotEmpty(t, item.DownloadLink, "item[%d] DownloadLink should be non-empty", i)
-		assert.NotEmpty(t, item.FileHash, "item[%d] FileHash should be non-empty", i)
+		assert.NotEmpty(t, item.LegacyFileMD5, "item[%d] LegacyFileMD5 should be non-empty", i)
 		assert.NotEmpty(t, item.LocalPath, "item[%d] LocalPath should be non-empty", i)
 		assert.Empty(t, item.Error, "item[%d] Error should be empty", i)
 
 		// Each item should carry the expected per-clip values from successMediaProcessor
-		assert.Contains(t, item.FileHash, "gate01-hash-", "item[%d] FileHash should contain the gate01 prefix", i)
+		assert.Contains(t, item.LegacyFileMD5, "gate01-hash-", "item[%d] LegacyFileMD5 should contain the gate01 prefix", i)
 		assert.Contains(t, item.DriveFileID, "-drive-id", "item[%d] DriveFileID should contain -drive-id", i)
 		assert.Contains(t, item.DriveLink, "/drive.google.com/file/d/", "item[%d] DriveLink should be a Drive URL", i)
 	}
@@ -506,7 +506,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "dry_run", resp.Items[0].Status)
 	assert.Empty(t, resp.Items[0].DriveFileID, "DriveFileID should be empty in dry-run")
-	assert.Empty(t, resp.Items[0].FileHash, "FileHash should be empty in dry-run")
+	assert.Empty(t, resp.Items[0].LegacyFileMD5, "LegacyFileMD5 should be empty in dry-run")
 	assert.Equal(t, 0, outboxEventCount(db), "dispatcher should NOT be called in dry-run")
 }
 

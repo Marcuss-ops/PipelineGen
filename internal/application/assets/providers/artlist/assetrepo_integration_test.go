@@ -126,7 +126,7 @@ func TestArtlistPR12b_DispatcherRoutesWritesThroughRepo(t *testing.T) {
 	ctx := context.Background()
 
 	// ── Act: write via the dispatcher path that production uses ──
-	contentHash := clip.FileHash()
+	contentHash := clip.LegacyFileMD5()
 	if contentHash == "" {
 		contentHash = clip.ID
 	}

@@ -496,7 +496,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					// promoted into the content-addressed EntityMediaIndex for
 					// the entity card asset (bindings without it stay plain
 					// references).
-					SHA256: candidate.FileHash,
+					SHA256: candidate.LegacyFileMD5,
 				}
 			}
 		}

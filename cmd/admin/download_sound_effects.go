@@ -109,7 +109,7 @@ func runDownloadSoundEffects(args []string) error {
 			return fmt.Errorf("hash downloaded sound effect %s: %w", id, err)
 		}
 		clip.SetLocalPath(dest)
-		clip.SetFileHash(hash)
+		clip.SetLegacyFileMD5(hash)
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
 			failed++
 			return fmt.Errorf("persist local sound effect %s: %w", id, err)
@@ -265,7 +265,7 @@ func runRenameSoundEffects(args []string) error {
 				clip.SetLocalPath(newLocalPath)
 			}
 		}
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 			return fmt.Errorf("persist renamed asset %s: %w", id, err)
 		}
 		changed++
@@ -315,7 +315,7 @@ func runUpdateSoundEffectMetadata(args []string) error {
 		clip.SetMetadataString("sfx_category", item.Category)
 		clip.SetMetadataString("sfx_description", item.Description)
 		clip.SetMetadataString("sfx_tags", strings.Join(item.Tags, ","))
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 			return fmt.Errorf("persist metadata for %s: %w", id, err)
 		}
 		updated++
@@ -393,7 +393,7 @@ func runApplyAdditionalSoundEffects(args []string) error {
 		if duration := suppliedSoundEffectDuration(item.NewName); duration > 0 {
 			clip.Duration = duration
 		}
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 			return fmt.Errorf("persist additional effect %s: %w", id, err)
 		}
 		changed++

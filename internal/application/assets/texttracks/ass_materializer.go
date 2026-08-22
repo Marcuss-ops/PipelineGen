@@ -33,7 +33,7 @@ type SubtitleMaterializerInput struct {
 
 type SubtitleMaterializerOutput struct {
 	LocalPath       string
-	FileHash        string
+	LegacyFileMD5        string
 	CuesHash        string
 	TextHash        string
 	CoveredDuration int64
@@ -125,7 +125,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 
 	output := &SubtitleMaterializerOutput{
 		LocalPath:       localPath,
-		FileHash:        fileHash,
+		LegacyFileMD5:        fileHash,
 		CuesHash:        hex.EncodeToString(cuesHashBytes[:]), // Full hash for database record
 		TextHash:        textHash,
 		CoveredDuration: lastCueEndMs,
@@ -141,7 +141,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 		LanguageCode:     in.LanguageCode,
 		Format:           asset.SubtitleFormatASS,
 		LocalPath:        localPath,
-		FileHash:         fileHash,
+		LegacyFileMD5:         fileHash,
 		TextHash:         textHash,
 		CuesHash:         output.CuesHash,
 		ClipContentHash:  in.ClipContentHash,

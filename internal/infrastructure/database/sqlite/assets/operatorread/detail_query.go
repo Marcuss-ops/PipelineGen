@@ -73,7 +73,7 @@ SELECT
     m.lifecycle_state,
     %s AS asset_state,
     m.index_state,
-    m.file_hash AS content_hash,
+    m.legacy_file_md5 AS content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.indexed_content_hash') AS indexed_content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.embedding_model_version') AS embedding_version,
     m.collection_version,
@@ -148,7 +148,7 @@ WHERE m.id = ? AND m.lifecycle_state != 'DELETED'`
 
 func (r *InventoryReader) listLocations(ctx context.Context, assetID string) ([]*asset.Location, error) {
 	const q = `SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url,
-	       mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
+	       mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at
 	FROM asset_locations
 	WHERE asset_id = ?
 	ORDER BY is_primary DESC, location_kind`
@@ -168,7 +168,7 @@ func (r *InventoryReader) listLocations(ctx context.Context, assetID string) ([]
 		errStr = rows.Scan(
 			&loc.ID, &loc.AssetID, &loc.LocationKind, &loc.URI, &loc.ExternalID,
 			&loc.AccessURL, &loc.DownloadURL, &loc.MimeType, &loc.FileSizeBytes,
-			&loc.FileHash, &isPrimary, &createdAt, &updatedAt,
+			&loc.LegacyFileMD5, &isPrimary, &createdAt, &updatedAt,
 		)
 		if errStr != nil {
 			return nil, errStr

@@ -105,7 +105,7 @@ func (a *useCaseRepoAdapter) CountByDriveFileIDTx(
 		return "", 0, err
 	}
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(file_hash,'')
+		SELECT id, COALESCE(drive_link,''), COALESCE(local_path,''), COALESCE(legacy_file_md5,'')
 		  FROM voiceovers
 		 WHERE drive_file_id = ? AND id != ?
 		 LIMIT 1
@@ -163,7 +163,7 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *persistence.VoiceoverRecord) *sq
 		DriveFileID:     rec.DriveFileID,
 		DriveLink:       rec.DriveLink,
 		DownloadLink:    rec.DownloadLink,
-		FileHash:        rec.FileHash,
+		LegacyFileMD5:        rec.LegacyFileMD5,
 		Status:          rec.Status,
 		Error:           rec.Error,
 		Strategy:        rec.Strategy,
@@ -215,7 +215,7 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.Vo
 		DriveFileID:  r.DriveFileID,
 		DriveLink:    r.DriveLink,
 		DownloadLink: r.DownloadLink,
-		FileHash:     r.FileHash,
+		LegacyFileMD5:     r.LegacyFileMD5,
 		Status:       r.Status,
 		Error:        r.Error,
 		Strategy:     r.Strategy,

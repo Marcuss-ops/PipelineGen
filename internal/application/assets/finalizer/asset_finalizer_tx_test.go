@@ -425,7 +425,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 		Provider: "local",
 		URI:      "/tmp/asset-rendition.mp4",
 		MimeType: "video/mp4",
-		FileHash: "hash-rendition",
+		LegacyFileMD5: "hash-rendition",
 		Width:    1920,
 		Height:   1080,
 	}}

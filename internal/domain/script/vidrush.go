@@ -101,7 +101,7 @@ type SegmentAssetCandidate struct {
 	RightsStatus          string  `json:"rights_status,omitempty"`
 	SelectionReason       string  `json:"selection_reason,omitempty"`
 	CandidateSetHash      string  `json:"candidate_set_hash,omitempty"`
-	FileHash              string  `json:"file_hash,omitempty"`
+	LegacyFileMD5              string  `json:"legacy_file_md5,omitempty"`
 	MIMEType              string  `json:"mime_type,omitempty"`
 	LocalPath             string  `json:"local_path,omitempty"`
 	AcquisitionStatus     string  `json:"acquisition_status,omitempty"`

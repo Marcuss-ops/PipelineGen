@@ -50,7 +50,7 @@ var (
 	errArtlistEmptyDriveFileID   = errors.New("artlist publish: drive_file_id is required (godlike/07 — no fake availability)")
 	errArtlistEmptyDriveLink     = errors.New("artlist publish: drive_link is required (godlike/07 — no fake availability)")
 	errArtlistEmptyDownloadLink  = errors.New("artlist publish: download_link is required (godlike/07 — no fake availability)")
-	errArtlistEmptyFileHash      = errors.New("artlist publish: file_hash is required (godlike/07 — supersede gate requires a fingerprint)")
+	errArtlistEmptyLegacyFileMD5      = errors.New("artlist publish: file_hash is required (godlike/07 — supersede gate requires a fingerprint)")
 	errArtlistEmptySourceVersion = errors.New("artlist publish: source_version is required (godlike/07 — supersede gate requires a fingerprint)")
 )
 
@@ -99,7 +99,7 @@ type ArtlistPublishCommand struct {
 	DownloadLink string // signed download URL — required
 
 	// Content fingerprint
-	FileHash string // SHA-256 of the file bytes — required (godlike/07)
+	LegacyFileMD5 string // SHA-256 of the file bytes — required (godlike/07)
 
 	// Provenance
 	SourceVersion string // source_version (CAS fence for supersede gate) — required
@@ -164,7 +164,7 @@ func (a *artlistPublishTxAdapter) CommitArtlistPublishTx(ctx context.Context, cm
 		Source:         "artlist",
 		Filename:       cmd.AssetID,
 		MediaType:      "video",
-		ContentHash:    cmd.FileHash,
+		ContentHash:    cmd.LegacyFileMD5,
 		LifecycleState: "PUBLISHED",
 		IndexState:     "DISCOVERED",
 		AssetVersion:   cmd.AssetVersion,
@@ -232,8 +232,8 @@ func validateArtlistPublishCommand(cmd ArtlistPublishCommand) error {
 	if cmd.DownloadLink == "" {
 		return errArtlistEmptyDownloadLink
 	}
-	if cmd.FileHash == "" {
-		return errArtlistEmptyFileHash
+	if cmd.LegacyFileMD5 == "" {
+		return errArtlistEmptyLegacyFileMD5
 	}
 	if cmd.SourceVersion == "" {
 		return errArtlistEmptySourceVersion

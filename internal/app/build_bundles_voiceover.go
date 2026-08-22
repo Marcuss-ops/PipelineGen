@@ -139,7 +139,7 @@ func buildVoiceoverPipeline(
 	// per finalizer_invariants_test.go:390. The canonical AssetCommitter
 	// (VOICEOVER-ASSETCOMMITTER-CUTOVER) makes Step 4+5 a single CommitTx;
 	// the finalizer falls back to the legacy projection writer only for
-	// the empty-FileHash edge case.
+	// the empty-LegacyFileMD5 edge case.
 	finalizer := voiceover.NewVoiceoverFinalizer(
 		voRepoAdapter,     // VoiceoverRepository
 		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)

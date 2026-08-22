@@ -114,7 +114,7 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
 	for _, candidate := range all {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
-			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.FileHash) == "" ||
+			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.LegacyFileMD5) == "" ||
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
@@ -129,7 +129,7 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 		return &scriptpkg.EntityImageBinding{
 			Status: "resolved", AssetID: candidate.AssetID, DriveLink: candidate.DriveLink,
 			Source: candidate.Provider, License: candidate.RightsBasis,
-			PreviewURL: entityImagePreviewURL(candidate), SHA256: candidate.FileHash,
+			PreviewURL: entityImagePreviewURL(candidate), SHA256: candidate.LegacyFileMD5,
 		}
 	}
 	return nil

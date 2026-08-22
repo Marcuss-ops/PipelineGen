@@ -118,7 +118,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 		LifecycleState: asset.StateActive,
 	}
 	clip.SetIsFolder(false)
-	clip.SetFileHash("abc123")
+	clip.SetLegacyFileMD5("abc123")
 	clip.SetDriveLink("https://drive.google.com/file/d/abc")
 
 	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, repo, clip))
@@ -129,7 +129,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	require.NotNil(t, stored)
 	assert.Equal(t, asset.Source("youtube"), stored.Source)
 	assert.Equal(t, "Test clip", stored.Name)
-	assert.Equal(t, "abc123", stored.FileHash())
+	assert.Equal(t, "abc123", stored.LegacyFileMD5())
 	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink())
 
 	// outbox_events row must be present — this is what the dispatcher
@@ -220,7 +220,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 		LifecycleState: asset.StateActive,
 	}
 	clip.SetIsFolder(false)
-	clip.SetFileHash("legacy_hash")
+	clip.SetLegacyFileMD5("legacy_hash")
 
 	err := svc.upsertPreservingExisting(ctx, repo, repo, clip)
 	require.Error(t, err)

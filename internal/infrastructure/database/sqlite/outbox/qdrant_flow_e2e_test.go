@@ -678,7 +678,7 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:        clipID,
 		VideoID:   "qdrant_e2e",
-		FileHash:  fileHash,
+		LegacyFileMD5:  fileHash,
 		LocalPath: "/tmp/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_e2e",
@@ -721,7 +721,7 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 		t.Fatal("BLOCKER #2: source_version must be non-empty after CommitClipAndIndexEvent")
 	}
 	if gotSourceVersion != fileHash {
-		t.Errorf("BLOCKER #2: source_version must equal FileHash (the canonical ingest-time fingerprint); got %q want %q",
+		t.Errorf("BLOCKER #2: source_version must equal LegacyFileMD5 (the canonical ingest-time fingerprint); got %q want %q",
 			gotSourceVersion, fileHash)
 	}
 

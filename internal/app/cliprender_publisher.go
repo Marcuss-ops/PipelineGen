@@ -2,8 +2,7 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -90,7 +90,7 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 
 	// ── Phase 1: hash the rendered mp4 on disk ────────────────────────
 	hashStart := time.Now()
-	contentHash, size, err := sha256File(in.OutputPath)
+	contentHash, size, err := digest.SHA256File(in.OutputPath)
 	if err != nil {
 		p.publishPhase("hash_failed", runID, zap.Error(err))
 		return nil, fmt.Errorf("hash rendered output: %w", err)
@@ -238,7 +238,7 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 			}},
 		Locations: []persistence.LocationCommit{{Kind: "drive", Provider: "google_drive", ExternalID: pub.FileID,
 			URI: pub.DownloadLink, WebViewLink: pub.WebViewLink, DownloadURL: pub.DownloadLink,
-			MimeType: "video/mp4", FileSizeBytes: size, FileHash: contentHash, IsPrimary: true}},
+			MimeType: "video/mp4", FileSizeBytes: size, LegacyFileMD5: contentHash, IsPrimary: true}},
 		EmitIndexEvent: true,
 	}
 	commitStart := time.Now()
@@ -280,18 +280,4 @@ func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		SidecarFileID: sidecarFileID,
 		SidecarLink:   sidecarLink,
 	}, nil
-}
-
-func sha256File(path string) (string, int64, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
-	}
-	defer f.Close()
-	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return "", 0, err
-	}
-	return hex.EncodeToString(h.Sum(nil)), n, nil
 }

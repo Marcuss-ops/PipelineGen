@@ -110,7 +110,7 @@ func TestEntityImageCatalogOperationalMetricsDriveReuseAndBrokenDownload(t *test
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "metrics-drive-asset",
-		FileHash:       "metrics-drive-hash",
+		LegacyFileMD5:       "metrics-drive-hash",
 		DriveLink:      "https://drive.google.com/file/d/metrics-drive-asset/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),

@@ -4,8 +4,9 @@
 // godlike/06 one-owner-per-fact: HashFunc is the SINGLE canonical port
 // consumed by the domain-package idempotency-key derivation surface
 // (internal/domain/remote/idempotency.go + complete_job_idempotency.go).
-// The standard-library SHA-256 implementation lives in this package;
-// infrastructure adapters may return it as the canonical HashFunc value.
+// The SHA-256 ALGORITHM is owned by internal/kernel/digest (SSOT); this
+// package exposes it as the canonical HashFunc value, and infrastructure
+// adapters may return it as such.
 //
 // Functional-type-as-single-method-interface idiom: any
 // `func(string) string` value satisfies HashFunc without an explicit
@@ -22,17 +23,17 @@
 package hashutil
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// SHA256String is the default standard-library implementation of HashFunc.
-// It lives beside the port so legacy domain helpers can preserve their
-// existing free-function API without importing an infrastructure adapter.
-// New callers should prefer injecting a HashFunc into the Make* constructors.
+// SHA256String is the canonical HashFunc implementation: it delegates the
+// algorithm to the kernel digest SSOT (internal/kernel/digest), keeping the
+// byte-identical output the port contract promises. It lives beside the port
+// so legacy domain helpers can preserve their existing free-function API
+// without importing an infrastructure adapter. New callers should prefer
+// injecting a HashFunc into the Make* constructors.
 func SHA256String(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(s)
 }
 
 // HashFunc is the canonical typed-port for SHA-256-style string hashing.
