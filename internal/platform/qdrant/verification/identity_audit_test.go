@@ -37,13 +37,13 @@ func scrollPage(points ...schema.ScrollPoint) *schema.ScrollResult {
 	return &schema.ScrollResult{Points: points}
 }
 
-func point(id, assetID string) schema.ScrollPoint {
+func identityPoint(id, assetID string) schema.ScrollPoint {
 	return schema.ScrollPoint{ID: id, Payload: map[string]any{"asset_id": assetID}}
 }
 
 func TestCountDuplicateAssetPoints_CleanIsZero(t *testing.T) {
 	pager := &fakePager{pages: []*schema.ScrollResult{
-		scrollPage(point("p1", "asset-a"), point("p2", "asset-b")),
+		scrollPage(identityPoint("p1", "asset-a"), identityPoint("p2", "asset-b")),
 	}}
 	got, err := CountDuplicateAssetPoints(context.Background(), pager, "media_assets")
 	if err != nil {
@@ -57,8 +57,8 @@ func TestCountDuplicateAssetPoints_CleanIsZero(t *testing.T) {
 func TestCountDuplicateAssetPoints_DetectsDuplicatesAcrossPages(t *testing.T) {
 	// asset-a appears once on page 1 and twice on page 2 → 2 extra points.
 	pager := &fakePager{pages: []*schema.ScrollResult{
-		scrollPage(point("p1", "asset-a"), point("p2", "asset-b")),
-		scrollPage(point("p3", "asset-a"), point("p4", "asset-a")),
+		scrollPage(identityPoint("p1", "asset-a"), identityPoint("p2", "asset-b")),
+		scrollPage(identityPoint("p3", "asset-a"), identityPoint("p4", "asset-a")),
 	}}
 	got, err := CountDuplicateAssetPoints(context.Background(), pager, "media_assets")
 	if err != nil {
@@ -73,11 +73,11 @@ func TestCountDuplicateAssetPoints_CountsExtraPointsPerAsset(t *testing.T) {
 	// asset-a: 3 points → 2 duplicates; asset-b: 2 points → 1 duplicate.
 	pager := &fakePager{pages: []*schema.ScrollResult{
 		scrollPage(
-			point("p1", "asset-a"),
-			point("p2", "asset-a"),
-			point("p3", "asset-a"),
-			point("p4", "asset-b"),
-			point("p5", "asset-b"),
+			identityPoint("p1", "asset-a"),
+			identityPoint("p2", "asset-a"),
+			identityPoint("p3", "asset-a"),
+			identityPoint("p4", "asset-b"),
+			identityPoint("p5", "asset-b"),
 		),
 	}}
 	got, err := CountDuplicateAssetPoints(context.Background(), pager, "media_assets")
@@ -94,8 +94,8 @@ func TestCountDuplicateAssetPoints_IgnoresMissingAssetID(t *testing.T) {
 		scrollPage(
 			schema.ScrollPoint{ID: "p1", Payload: map[string]any{}},
 			schema.ScrollPoint{ID: "p2", Payload: map[string]any{"asset_id": 42}}, // non-string
-			point("p3", "asset-a"),
-			point("p4", "asset-a"),
+			identityPoint("p3", "asset-a"),
+			identityPoint("p4", "asset-a"),
 		),
 	}}
 	got, err := CountDuplicateAssetPoints(context.Background(), pager, "media_assets")
@@ -109,7 +109,7 @@ func TestCountDuplicateAssetPoints_IgnoresMissingAssetID(t *testing.T) {
 
 func TestCountDuplicateAssetPoints_ScrollErrorFailsClosed(t *testing.T) {
 	pager := &fakePager{pages: []*schema.ScrollResult{
-		scrollPage(point("p1", "asset-a")),
+		scrollPage(identityPoint("p1", "asset-a")),
 	}, err: errors.New("boom")}
 	_, err := CountDuplicateAssetPoints(context.Background(), pager, "media_assets")
 	if err == nil {
