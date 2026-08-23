@@ -2,14 +2,13 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -49,13 +48,12 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, result *G
 	if err != nil {
 		return fmt.Errorf("FINAL_VIDEO_HASH_FAILED: %w", err)
 	}
-	hash := sha256.New()
-	_, copyErr := io.Copy(hash, file)
+	computed, copyErr := digest.SHA256Reader(file)
 	closeErr := file.Close()
 	if copyErr != nil || closeErr != nil {
 		return fmt.Errorf("FINAL_VIDEO_HASH_FAILED: %v", firstError(copyErr, closeErr))
 	}
-	result.FinalVideo = &FinalVideoReference{LocalPath: output, SizeBytes: info.Size(), SHA256: fmt.Sprintf("%x", hash.Sum(nil))}
+	result.FinalVideo = &FinalVideoReference{LocalPath: output, SizeBytes: info.Size(), SHA256: computed}
 	return nil
 }
 

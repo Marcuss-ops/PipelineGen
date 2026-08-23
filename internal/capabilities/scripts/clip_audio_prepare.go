@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -39,9 +37,15 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 			if path != "" {
 				if _, err := os.Stat(path); err == nil {
 					clip.AudioPath = path
-					if err := clampClipAudioRanges(ctx, scene, clip.ID, path); err != nil {
-						return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
-					}
+					continue
+				}
+				// A caller may already have supplied the canonical path while
+				// running without a resolver (for example, an audio-only
+				// renderer that owns validation). Preserve that explicit path;
+				// resolver-backed production flows still materialize and verify
+				// missing files below.
+				if source == nil {
+					clip.AudioPath = path
 					continue
 				}
 			}
@@ -59,7 +63,7 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 				return 0, fmt.Errorf("scene %s clip %s materialized audio is not readable: %w", scene.ID, clip.ID, err)
 			}
 			clip.AudioPath = resolved.Path
-			if err := clampClipAudioRanges(ctx, scene, clip.ID, resolved.Path); err != nil {
+			if err := clampClipAudioRanges(scene, clip.ID, resolved.DurationUS); err != nil {
 				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
 			}
 		}
@@ -70,7 +74,7 @@ func prepareClipAudioAssets(ctx context.Context, result *GenerateResult, source 
 // clampClipAudioRanges reconciles provider metadata with the bytes actually
 // materialized. Clip registries can contain rounded/optimistic durations; the
 // audio renderer must never be asked for a source range beyond the local file.
-func clampClipAudioRanges(ctx context.Context, scene *Scene, clipID, path string) error {
+func clampClipAudioRanges(scene *Scene, clipID string, durationUS int64) error {
 	needsProbe := false
 	for _, intent := range scene.AudioIntents {
 		if intent.Mode == capabilityaudio.AudioClip && intent.ClipAssetID == clipID && intent.SourceDurationUS > 0 {
@@ -83,9 +87,8 @@ func clampClipAudioRanges(ctx context.Context, scene *Scene, clipID, path string
 	if !needsProbe {
 		return nil
 	}
-	durationUS, err := probeMediaDurationUS(ctx, path)
-	if err != nil {
-		return err
+	if durationUS <= 0 {
+		return nil
 	}
 	clamp := func(intent *capabilityaudio.AudioIntent) {
 		if intent == nil || intent.Mode != capabilityaudio.AudioClip || intent.ClipAssetID != clipID {
@@ -104,18 +107,6 @@ func clampClipAudioRanges(ctx context.Context, scene *Scene, clipID, path string
 	}
 	clamp(&scene.Audio)
 	return nil
-}
-
-func probeMediaDurationUS(ctx context.Context, path string) (int64, error) {
-	output, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path).Output()
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe %q: %w", path, err)
-	}
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
-	if err != nil || seconds <= 0 {
-		return 0, fmt.Errorf("ffprobe %q returned invalid duration %q", path, strings.TrimSpace(string(output)))
-	}
-	return int64(seconds*1_000_000 + 0.5), nil
 }
 
 func sceneUsesClipAudio(scene Scene, clipID string) bool {

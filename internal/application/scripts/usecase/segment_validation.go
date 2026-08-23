@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	"math"
 	"sort"
 	"strconv"
@@ -577,10 +578,11 @@ func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment,
 	}
 	anchors := make(map[string]struct{})
 	sourceAnchors := make(map[string]struct{})
+	stopWords := linguistics.DefaultLexicon().StopWords("en")
 	add := func(text string) {
 		for _, token := range strings.Fields(strings.ToLower(text)) {
 			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
-			if len(token) < 4 || clipEvidenceStopWords[token] {
+			if _, stop := stopWords[token]; len(token) < 4 || stop {
 				continue
 			}
 			anchors[token] = struct{}{}
@@ -589,7 +591,7 @@ func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment,
 	addSource := func(text string) {
 		for _, token := range strings.Fields(strings.ToLower(cleanSegmentSourceText(text))) {
 			token = strings.Trim(token, ".,!?;:()[]{}\"'“”‘’—–-")
-			if len(token) >= 4 && !clipEvidenceStopWords[token] {
+			if _, stop := stopWords[token]; len(token) >= 4 && !stop {
 				sourceAnchors[token] = struct{}{}
 			}
 		}
@@ -630,11 +632,4 @@ func clipNarrationHasEvidence(candidate string, segment scriptpkg.ScriptSegment,
 		return sourceMatched >= 1 && matched >= 2
 	}
 	return sourceMatched >= 2 && matched >= 3
-}
-
-var clipEvidenceStopWords = map[string]bool{
-	"about": true, "being": true, "from": true, "into": true, "only": true,
-	"this": true, "that": true, "with": true, "write": true, "funny": true,
-	"short": true, "based": true, "source": true, "text": true, "clip": true,
-	"scene": true, "does": true, "have": true, "they": true, "when": true,
 }

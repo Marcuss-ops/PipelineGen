@@ -1,9 +1,9 @@
 package media
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // AssemblyMediaContract is the SSOT for the technical stream identity.
@@ -252,8 +252,7 @@ type StreamSignature struct {
 // Fingerprint returns sha256 of canonical JSON.
 func (s StreamSignature) Fingerprint() string {
 	b, _ := json.Marshal(s)
-	h := sha256.Sum256(b)
-	return fmt.Sprintf("%x", h[:])
+	return digest.SHA256Bytes(b)
 }
 
 // FromContract builds the expected signature from the frozen contract.

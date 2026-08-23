@@ -22,8 +22,6 @@ package drive
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +29,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -318,14 +317,16 @@ func (m *CanonicalAssetMaterializer) downloadAndVerify(ctx context.Context, req 
 		return nil, fmt.Errorf("create part file %q: %w", partPath, err)
 	}
 
-	hasher := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(out, hasher), rc)
+	n, copyErr := io.Copy(out, rc)
 
 	// fsync before close to flush OS buffers.
 	syncErr := out.Sync()
 	closeErr := out.Close()
 
-	computed := hex.EncodeToString(hasher.Sum(nil))
+	computed, _, hashErr := hashFilePath(partPath)
+	if copyErr == nil && hashErr != nil {
+		copyErr = hashErr
+	}
 
 	// On any write/close error, clean up the part file.
 	if copyErr != nil || closeErr != nil || syncErr != nil {
@@ -431,11 +432,11 @@ func hashFilePath(path string) (sha256hex string, size int64, err error) {
 	if err != nil {
 		return "", 0, err
 	}
-	digest := sha256.New()
-	if _, err := io.Copy(digest, f); err != nil {
+	computed, err := digest.SHA256Reader(f)
+	if err != nil {
 		return "", 0, err
 	}
-	return hex.EncodeToString(digest.Sum(nil)), info.Size(), nil
+	return computed, info.Size(), nil
 }
 
 // copyFile copies src to dst (used as a fallback when os.Rename fails
