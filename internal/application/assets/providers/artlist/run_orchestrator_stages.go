@@ -391,7 +391,8 @@ func (o *RunOrchestratorService) ImportSingleClip(ctx context.Context, req *Impo
 		ClipDuration: 0,
 		Width:        0,
 		Height:       0,
-		FPS:          0,
+		FPSNum:       0,
+		FPSDen:       0,
 		Concurrency:  1,
 	}, resp, []asset.Asset{*clip})
 

@@ -1,8 +1,8 @@
 package rustexec
 
 import (
-	"crypto/sha256"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -114,7 +114,7 @@ func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, op
 	}
 	return p.run(ctx, request{
 		Operation: "normalize", SourcePath: input, OutputPath: output,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
@@ -210,7 +210,7 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 	return p.run(ctx, request{
 		Operation: "cut_and_normalize", SourcePath: input, OutputPath: output,
 		StartSec: startSec, EndSec: endSec, NoAudio: opts.NoAudio,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
@@ -228,7 +228,7 @@ func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output strin
 		return err
 	}
 	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen), KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
 		// Watermark scaling + green-screen chroma key (YouTube flow):
 		// ScalePercent is % of the main frame width; GreenScreen* drive the
@@ -283,7 +283,7 @@ func (p *VideoProcessor) GenerateProxy(ctx context.Context, input, output string
 		return err
 	}
 	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output, Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen), KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
 }
 
@@ -401,7 +401,7 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	}
 	profileInput := p.profile
 	if profileInput == (mediaexec.VideoProfile{}) {
-		profileInput = mediaexec.VideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
+		profileInput = mediaexec.VideoProfile{Width: req.Width, Height: req.Height, FPSNum: req.FPSNum, FPSDen: req.FPSDen, KeyframeInterval: req.KeyframeInterval}
 	}
 	profile, err := p.resolvedProfile(profileInput)
 	if err != nil {
@@ -409,7 +409,7 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	}
 	wire := request{
 		Operation: "cut_batch", SourcePath: req.SourcePath, Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels), NoAudio: req.NoAudio,
@@ -483,8 +483,9 @@ func normalizeProfile(opts mediaexec.NormalizeOptions) mediaexec.VideoProfile {
 	if opts.Height > 0 {
 		profile.Height = opts.Height
 	}
-	if opts.FPS > 0 {
-		profile.FPS = opts.FPS
+	if opts.FPSNum > 0 && opts.FPSDen > 0 {
+		profile.FPSNum = opts.FPSNum
+		profile.FPSDen = opts.FPSDen
 	}
 	if opts.KeyframeInterval > 0 {
 		profile.KeyframeInterval = opts.KeyframeInterval
@@ -542,8 +543,9 @@ func cutProfile(opts mediaexec.CutAndNormalizeOptions) mediaexec.VideoProfile {
 	if opts.Height > 0 {
 		profile.Height = opts.Height
 	}
-	if opts.FPS > 0 {
-		profile.FPS = opts.FPS
+	if opts.FPSNum > 0 && opts.FPSDen > 0 {
+		profile.FPSNum = opts.FPSNum
+		profile.FPSDen = opts.FPSDen
 	}
 	return profile
 }
@@ -556,8 +558,9 @@ func (p *VideoProcessor) resolvedProfile(requested mediaexec.VideoProfile) (medi
 	if requested.Height > 0 {
 		profile.Height = requested.Height
 	}
-	if requested.FPS > 0 {
-		profile.FPS = requested.FPS
+	if requested.FPSNum > 0 && requested.FPSDen > 0 {
+		profile.FPSNum = requested.FPSNum
+		profile.FPSDen = requested.FPSDen
 	}
 	if requested.KeyframeInterval > 0 {
 		profile.KeyframeInterval = requested.KeyframeInterval
@@ -581,7 +584,7 @@ func (p *VideoProcessor) resolvedProfile(requested mediaexec.VideoProfile) (medi
 }
 
 func validateResolvedProfile(profile mediaexec.VideoProfile) error {
-	if profile.Width <= 0 || profile.Height <= 0 || profile.FPS <= 0 || profile.KeyframeInterval <= 0 || profile.AudioCodec == "" || profile.AudioBitrate == "" || profile.SampleRate <= 0 || profile.Channels <= 0 {
+	if profile.Width <= 0 || profile.Height <= 0 || profile.FPSNum <= 0 || profile.FPSDen <= 0 || profile.KeyframeInterval <= 0 || profile.AudioCodec == "" || profile.AudioBitrate == "" || profile.SampleRate <= 0 || profile.Channels <= 0 {
 		return fmt.Errorf("PROFILE_REQUIRED: complete resolved video profile is required")
 	}
 	return nil

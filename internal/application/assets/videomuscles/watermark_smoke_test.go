@@ -121,7 +121,7 @@ func wmRunYouTubeCut(t *testing.T, workDir, musclesPath, ffmpegPath, sourcePath 
 		musclesPath, ffmpegPath,
 		mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
 		mediaexec.VideoProfile{
-			Width: 1920, Height: 1080, FPS: 24, KeyframeInterval: 48,
+			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, KeyframeInterval: 48,
 			AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 		},
 		log,

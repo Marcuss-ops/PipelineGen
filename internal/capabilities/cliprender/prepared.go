@@ -84,6 +84,11 @@ func (t *TranscriptResult) HasText() bool {
 // precise codec/pixel/timebase values are owned here (single canonical
 // owner); the render pass and contract validator consume this verbatim.
 //
+// SSOT: kernel/media.VideoContract (AssemblyReadyVideoContractID). This struct
+// is the clip.render working copy with flat int fields. Frozen values live in
+// kernel/media.DefaultAssemblyReadyVideoContract(). Use ToVideoContract() /
+// FromVideoContract() bridges (contract_ssot.go) to convert.
+//
 // Audio profile follows the canonical audio SSOT: audio.DefaultAudioProfile()
 // (aac, LC, 48000 Hz, 2 channels, stereo, 128k). If that SSOT changes, the
 // Resolve implementation and ValidateContract must be updated together.

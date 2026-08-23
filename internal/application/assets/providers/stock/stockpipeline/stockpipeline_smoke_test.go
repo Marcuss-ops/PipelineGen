@@ -45,7 +45,7 @@ func (r *stageURLRecordingRunner) RunInput() *RunInput                      { re
 func (r *stageURLRecordingRunner) JobID() string                            { return "stage-url-test" }
 func (r *stageURLRecordingRunner) PolicyVersion() string                    { return "v1" }
 func (r *stageURLRecordingRunner) Planner() ClipPlanner                     { return nil }
-func (r *stageURLRecordingRunner) SourceStager() acquisition.SourceStager        { return r.stager }
+func (r *stageURLRecordingRunner) SourceStager() acquisition.SourceStager   { return r.stager }
 func (r *stageURLRecordingRunner) Cutter() VideoCutter                      { return nil }
 func (r *stageURLRecordingRunner) Renderer() StockRenderer                  { return nil }
 func (r *stageURLRecordingRunner) Builder() ManifestBuilder                 { return nil }

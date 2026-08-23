@@ -155,7 +155,7 @@ func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
 			drive_folder_id      TEXT NOT NULL DEFAULT '',
 			drive_link           TEXT NOT NULL DEFAULT '',
 			download_link        TEXT NOT NULL DEFAULT '',
-			file_hash            TEXT NOT NULL DEFAULT '',
+			legacy_file_md5            TEXT NOT NULL DEFAULT '',
 			metadata_json        TEXT NOT NULL DEFAULT '{}',
 			visual_embedding     TEXT NOT NULL DEFAULT '[]',
 			transcript_embedding TEXT NOT NULL DEFAULT '[]',
@@ -179,7 +179,24 @@ func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
 			quality_score        REAL NOT NULL DEFAULT 0.0,
 			reuse_count          INTEGER NOT NULL DEFAULT 0,
 			last_used_at         TEXT NOT NULL DEFAULT ''
-		)
+    index_state TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',)
 	`)
 	if err != nil {
 		t.Fatalf("create media_assets fixture: %v", err)

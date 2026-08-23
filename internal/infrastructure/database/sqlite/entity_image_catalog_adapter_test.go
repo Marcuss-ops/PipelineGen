@@ -73,7 +73,7 @@ func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
-		)`,
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("apply test schema: %v", err)

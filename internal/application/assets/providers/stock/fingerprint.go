@@ -25,9 +25,9 @@
 package stock
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math/rand"
 	"strconv"
 )

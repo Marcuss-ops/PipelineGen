@@ -179,12 +179,32 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		segmentPlan.SingleScene = true
 		segmentPlan.Topic = strings.TrimSpace(segment.Topic)
 		segmentPlan.TargetWords = segmentReq.ScriptParams.TargetWords
-		segmentPlan.UseMemory = false // the aggregate cache key cannot identify one segment safely
+		// The aggregate key is not safe for a segment replay, but the segment
+		// plan now carries its own topic/source/target fingerprint. Reuse the
+		// caller's memory policy so warm multi-segment runs do not regenerate
+		// identical narration; force_refresh still bypasses the gate.
+		segmentPlan.UseMemory = plan.UseMemory
 		segmentPlan.RenderedPrompt = buildEditorialPromptFromGenReq(segmentReq)
+		segmentPlan.CacheKey = scriptpkg.BuildCacheKey(&segmentPlan)
 
 		result, genErr := g.Engine.Generate(ctx, &segmentPlan)
 		if genErr != nil {
 			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generate failed: %w", index, genErr)}
+		}
+		if g.Memory != nil && segmentPlan.UseMemory && result.CacheStatus == "generated" && result.Output.Text != "" {
+			if _, saveErr := g.Memory.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+				ChannelID: "default",
+				Mode:      segmentPlan.Mode,
+				Language:  segmentPlan.Language,
+				Title:     segmentPlan.Title,
+				Prompt:    segmentPlan.RenderedPrompt,
+				Model:     result.Model,
+				WordCount: result.WordCount,
+				CacheKey:  segmentPlan.CacheKey,
+			}, result.Output.Text); saveErr != nil && g.Log != nil {
+				g.Log.Warn("scenetext: failed to save segment script cache",
+					zap.String("segment_id", segment.ID), zap.Error(saveErr))
+			}
 		}
 		scenes, convertErr := g.convertScenes(ctx, result, req.SourceLanguage, req.Audio, false)
 		if convertErr != nil {

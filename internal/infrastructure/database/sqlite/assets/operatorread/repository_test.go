@@ -23,14 +23,35 @@ CREATE TABLE media_assets (
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     asset_state TEXT NOT NULL DEFAULT 'DISCOVERED',
     index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     embedding_json TEXT NOT NULL DEFAULT '',
     collection_version TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT ''
-);
+    category TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    search_text TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',);
 
 CREATE TABLE asset_locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +63,7 @@ CREATE TABLE asset_locations (
     download_url TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     is_primary INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT ''
@@ -80,7 +101,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// active indexed asset with local + drive
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-1", "Beluga underwater", "beluga.mp4", "artlist", "artlist", "clip",
 		"ACTIVE", "DISCOVERED", "INDEXED",
@@ -90,7 +111,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// pending asset with outbox event
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-2", "Pending asset", "pending.mp4", "stock", "stock", "clip",
 		"ACTIVE", "DISCOVERED", "DISCOVERED",
@@ -99,7 +120,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// failed embedding asset
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-3", "Failed asset", "failed.mp4", "youtube_clip", "youtube", "clip",
 		"ACTIVE", "FAILED_RETRYABLE", "EMBEDDING_FAILED",
@@ -108,7 +129,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// stale asset
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-4", "Stale asset", "stale.mp4", "artlist", "artlist", "clip",
 		"ACTIVE", "DISCOVERED", "INDEXED",
@@ -117,7 +138,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// not indexable
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-5", "Sound effect", "sfx.mp3", "artlist", "artlist", "sound_effect",
 		"ACTIVE", "UPLOADED", "NOT_INDEXABLE",
@@ -126,7 +147,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 	// deleted asset (should be excluded by default)
 	storage.MustExec(t, db, `INSERT INTO media_assets
 		(id, name, filename, source, provider, media_type, lifecycle_state, asset_state, index_state,
-		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
+		 legacy_file_md5, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-6", "Deleted asset", "deleted.mp4", "stock", "stock", "clip",
 		"DELETED", "FAILED_PERMANENT", "DELETED",

@@ -118,7 +118,8 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 		ProjectID:     "project-e2e",
 		Width:         1920,
 		Height:        1080,
-		FPS:           30,
+		FPSNum:        30,
+		FPSDen:        1,
 		Items: []capoverlay.OverlayItem{{
 			ID:         "overlay-1",
 			TemplateID: "person_default",

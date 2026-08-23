@@ -440,18 +440,15 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create manifest dir: %w", err)
 	}
-	// The placeholder must report the CANONICAL fps (config profile, 24),
-	// not a hardcoded 30 — the normalized master is encoded at the resolved
-	// profile fps, so a divergent literal makes the manifest lie about the
-	// asset's real frame rate.
-	manifestFPS := p.videoCfg.Profile.FPS
-	if manifestFPS <= 0 {
-		manifestFPS = p.videoCfg.FPS
+	// The placeholder must report the CANONICAL frame rate (config profile,
+	// 24/1), not a hardcoded 30 — the normalized master is encoded at the
+	// resolved profile frame rate, so a divergent literal makes the manifest
+	// lie about the asset's real frame rate.
+	manifestFPSNum, manifestFPSDen := p.videoCfg.Profile.FrameRate()
+	if manifestFPSNum <= 0 || manifestFPSDen <= 0 {
+		manifestFPSNum, manifestFPSDen = 24, 1
 	}
-	if manifestFPS <= 0 {
-		manifestFPS = 24
-	}
-	manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps":%d,"placeholder":true}`+"\n", assetID, manifestFPS)
+	manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps_num":%d,"fps_den":%d,"placeholder":true}`+"\n", assetID, manifestFPSNum, manifestFPSDen)
 	if err := os.WriteFile(manifestPath, []byte(manifestBody), 0o644); err != nil {
 		return nil, fmt.Errorf("write manifest placeholder: %w", err)
 	}

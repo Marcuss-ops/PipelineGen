@@ -81,7 +81,7 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo ass
 	profile := mediaConfig.Profile
 	policy := mediaConfig.Policy
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,
-		Width: profile.Width, Height: profile.Height, FPS: profile.FPS, Codec: policy.Codec, Preset: policy.Preset,
+		Width: profile.Width, Height: profile.Height, FPSNum: profile.FPSNum, FPSDen: profile.FPSDen, Codec: policy.Codec, Preset: policy.Preset,
 		CRF: policy.CRF, KeyframeInterval: profile.KeyframeInterval}
 	proc := processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: videoCfg, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
 	// Derived-artifact cache: source bytes + normalize operation + encoder

@@ -20,21 +20,22 @@ type renderRustResult struct {
 }
 
 func (r *Renderer) renderRust(ctx context.Context, in VariantInput, outputPath string) (*renderRustResult, error) {
-	width, height, fps := r.rustWidth, r.rustHeight, r.rustFPS
+	width, height := r.rustWidth, r.rustHeight
+	fpsNum, fpsDen := r.rustFPSNum, r.rustFPSDen
 	if width <= 0 {
 		width = cliprender.DefaultWidth
 	}
 	if height <= 0 {
 		height = cliprender.DefaultHeight
 	}
-	if fps <= 0 {
-		fps = cliprender.DefaultFPSNum
+	if fpsNum <= 0 || fpsDen <= 0 {
+		fpsNum, fpsDen = cliprender.DefaultFPSNum, 1
 	}
 	request := &cliprender.RenderRequest{
 		SourceAssetID: in.SourceClipID,
 		Output: &cliprender.OutputSpec{
-			Contract: cliprender.OutputContractVeloxEditingClipV1,
-			Width:    width, Height: height, FPSNum: fps, FPSDen: 1,
+			Contract: cliprender.OutputContractVeloxAssemblyReadyV1,
+			Width:    width, Height: height, FPSNum: fpsNum, FPSDen: fpsDen,
 		},
 	}
 	request.Normalize()

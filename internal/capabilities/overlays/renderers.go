@@ -30,9 +30,9 @@ type Renderer interface {
 // It does NOT enforce kind-specific required inputs — that is each renderer's
 // job before delegating here.
 func buildLayer(item OverlayItem, plan OverlayPlan, spec TemplateSpec) (ChrononLayer, error) {
-	fps := plan.FPS
+	fps := float64(plan.FPSNum) / float64(plan.FPSDen)
 	frameAt := func(ms int64) int64 {
-		return int64(math.Round(float64(ms) * float64(fps) / 1000.0))
+		return int64(math.Round(float64(ms) * fps / 1000.0))
 	}
 	// The preset is resolved through the single SemanticOverlayResolver
 	// (semantic_role → Chronon preset), never from the geometry table.

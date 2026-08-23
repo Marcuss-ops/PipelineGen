@@ -19,7 +19,7 @@ func TestNormalizeUsesLegacyScalarOverrides(t *testing.T) {
 	}
 
 	opts := mediaexec.NormalizeOptions{
-		Width: 1280, Height: 720, FPS: 30, KeyframeInterval: 60,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1, KeyframeInterval: 60,
 		Codec: "libx264", Preset: "slow", CRF: 20,
 		KeepAudio: true,
 	}
@@ -31,7 +31,7 @@ func TestNormalizeUsesLegacyScalarOverrides(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Width != 1280 || sent.Height != 720 || sent.FPS != 30 || sent.KeyframeInterval != 60 || sent.Codec != "libx264" || sent.Preset != "slow" || sent.CRF != 20 {
+	if sent.Width != 1280 || sent.Height != 720 || sent.FPSNum != 30 || sent.FPSDen != 1 || sent.KeyframeInterval != 60 || sent.Codec != "libx264" || sent.Preset != "slow" || sent.CRF != 20 {
 		t.Fatalf("legacy scalar overrides were not applied: %+v", sent)
 	}
 }
@@ -69,7 +69,7 @@ func TestCutAndNormalizeUsesLegacyScalarOverrides(t *testing.T) {
 	}
 
 	opts := mediaexec.CutAndNormalizeOptions{
-		Width: 1024, Height: 576, FPS: 25,
+		Width: 1024, Height: 576, FPSNum: 25, FPSDen: 1,
 		Codec: "libx265", Preset: "medium", CRF: 22,
 	}
 	if err := processor.CutAndNormalize(context.Background(), "in.mp4", "out.mp4", "0", "2", opts); err != nil {
@@ -80,7 +80,7 @@ func TestCutAndNormalizeUsesLegacyScalarOverrides(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Width != 1024 || sent.Height != 576 || sent.FPS != 25 || sent.Codec != "libx265" || sent.Preset != "medium" || sent.CRF != 22 {
+	if sent.Width != 1024 || sent.Height != 576 || sent.FPSNum != 25 || sent.FPSDen != 1 || sent.Codec != "libx265" || sent.Preset != "medium" || sent.CRF != 22 {
 		t.Fatalf("legacy scalar overrides were not applied: %+v", sent)
 	}
 }

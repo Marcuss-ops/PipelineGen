@@ -88,7 +88,7 @@ func TestObservedExecutorRecordsExactlyOneMeasurementPerOperation(t *testing.T) 
 		Metrics: &OperationMetrics{WallMS: 50, CPUUserMS: 40, CPUSystemMS: 5, FramesDecoded: 900, FramesEncoded: 900},
 	}})
 
-	result, err := client.call(context.Background(), request{Operation: OperationNormalize, SourcePath: input, OutputPath: output, Width: 1920, Height: 1080, FPS: 30, Codec: "h264"})
+	result, err := client.call(context.Background(), request{Operation: OperationNormalize, SourcePath: input, OutputPath: output, Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Codec: "h264"})
 	if err != nil {
 		t.Fatal(err)
 	}

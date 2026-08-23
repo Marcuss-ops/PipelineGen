@@ -56,10 +56,10 @@ func runMigrateLegacyCache(args []string) error {
 	defer rows.Close()
 
 	type migrationResult struct {
-		ID          string `json:"id"`
-		BeforeType  string `json:"before_type"`
-		AfterText   string `json:"after_text,omitempty"`
-		Error       string `json:"error,omitempty"`
+		ID         string `json:"id"`
+		BeforeType string `json:"before_type"`
+		AfterText  string `json:"after_text,omitempty"`
+		Error      string `json:"error,omitempty"`
 	}
 
 	var results []migrationResult

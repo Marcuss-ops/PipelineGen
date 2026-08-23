@@ -487,7 +487,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		zap.Int("crf", mediaConfig.Policy.CRF),
 		zap.Int("profile_width", mediaConfig.Profile.Width),
 		zap.Int("profile_height", mediaConfig.Profile.Height),
-		zap.Int("profile_fps", mediaConfig.Profile.FPS),
+		zap.Int("profile_fps_num", mediaConfig.Profile.FPSNum),
+		zap.Int("profile_fps_den", mediaConfig.Profile.FPSDen),
 	)
 
 	descriptor, err := cliprender.Build(cliprender.Dependencies{

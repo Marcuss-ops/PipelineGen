@@ -125,7 +125,8 @@ media:
 video:
   width: 1920
   height: 1080
-  fps: 24
+  fps_num: 24
+  fps_den: 1
   # GPU-oriented production video policy. `h264_nvenc` is explicit and
   # GPU-required; runtime failure is terminal (no libx264/CPU retry).
   # `p1` is the native NVENC performance preset and `crf` maps to NVENC CQ.

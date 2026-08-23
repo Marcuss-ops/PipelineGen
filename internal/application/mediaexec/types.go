@@ -7,15 +7,16 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // VideoProfile describes the fully resolved video artifact independently of
 // configuration, transport, or encoder implementation.
-// FPS is deprecated: use FPSNum/FPSDen rational. FPS remains as legacy projection.
+// SSOT: kernel/media.VideoContract (AssemblyReadyVideoContractID). This struct is the
+// media-execution-level working copy; frozen values live in kernel/media.DefaultAssemblyReadyVideoContract().
 type VideoProfile struct {
 	Width            int
 	Height           int
-	FPS              int `json:"fps"` // deprecated: use FPSNum/FPSDen
 	FPSNum           int `json:"fps_num"`
 	FPSDen           int `json:"fps_den"`
 	KeyframeInterval int
@@ -30,15 +31,47 @@ func (p VideoProfile) FrameRate() (num, den int) {
 	if p.FPSNum > 0 && p.FPSDen > 0 {
 		return p.FPSNum, p.FPSDen
 	}
-	if p.FPS > 0 {
-		return p.FPS, 1
-	}
 	return 24, 1
 }
 
 func (p VideoProfile) FPSFloat() float64 {
 	n, d := p.FrameRate()
 	return float64(n) / float64(d)
+}
+
+// ToVideoContract uplifts this media-execution profile to the canonical SSOT.
+func (p VideoProfile) ToVideoContract() kernelmedia.VideoContract {
+	n, d := p.FrameRate()
+	return kernelmedia.VideoContract{
+		ID:                 kernelmedia.AssemblyReadyVideoContractID,
+		Version:            kernelmedia.AssemblyReadyVideoVersion,
+		Container:          "mp4",
+		VideoCodec:         "h264",
+		VideoProfile:       "high",
+		VideoLevel:         "4.0",
+		PixelFormat:        "yuv420p",
+		Width:              p.Width,
+		Height:             p.Height,
+		FPS:                kernelmedia.FrameRate{Num: n, Den: d},
+		VideoTimeBase:      kernelmedia.Rational{Num: 1, Den: 90000},
+		AudioTimeBase:      kernelmedia.Rational{Num: 1, Den: 48000},
+		SAR:                kernelmedia.Rational{Num: 1, Den: 1},
+		ColorRange:         "tv",
+		ColorSpace:         "bt709",
+		ColorTransfer:      "bt709",
+		ColorPrimaries:     "bt709",
+		FieldOrder:         "progressive",
+		KeyframeInterval:   p.KeyframeInterval,
+		AudioCodec:         p.AudioCodec,
+		AudioProfile:       "LC",
+		AudioSampleRate:    p.SampleRate,
+		AudioChannels:      p.Channels,
+		AudioChannelLayout: "stereo",
+		AudioBitrate:       p.AudioBitrate,
+		VideoStreams:       1,
+		AudioStreams:       1,
+		StartPTS:           0,
+	}
 }
 
 // WithDefaults makes a partially populated profile safe for direct consumers.
@@ -50,19 +83,8 @@ func (p VideoProfile) WithDefaults() VideoProfile {
 		p.Height = 1080
 	}
 	if p.FPSNum <= 0 || p.FPSDen <= 0 {
-		if p.FPS > 0 {
-			p.FPSNum = p.FPS
-			p.FPSDen = 1
-		} else {
-			p.FPSNum = 24
-			p.FPSDen = 1
-		}
-	}
-	if p.FPS <= 0 {
-		p.FPS = p.FPSNum / p.FPSDen
-		if p.FPS <= 0 {
-			p.FPS = 24
-		}
+		p.FPSNum = 24
+		p.FPSDen = 1
 	}
 	if p.KeyframeInterval <= 0 {
 		p.KeyframeInterval = 48
@@ -116,7 +138,8 @@ type NormalizeOptions struct {
 	Duration              int
 	DisableDuration       bool
 	KeepAudio             bool
-	Width, Height, FPS    int
+	Width, Height         int
+	FPSNum, FPSDen        int
 	Codec, Preset         string
 	CRF, KeyframeInterval int
 }
@@ -125,10 +148,11 @@ type CutAndNormalizeOptions struct {
 	Profile VideoProfile
 	Policy  EncoderPolicy
 
-	Width, Height, FPS int
-	Codec, Preset      string
-	CRF                int
-	NoAudio            bool
+	Width, Height  int
+	FPSNum, FPSDen int
+	Codec, Preset  string
+	CRF            int
+	NoAudio        bool
 }
 
 type WatermarkOptions struct {

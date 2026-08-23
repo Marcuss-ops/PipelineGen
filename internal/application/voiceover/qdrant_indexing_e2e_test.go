@@ -52,7 +52,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -214,7 +213,7 @@ func (a *e2eRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persiste
 		DriveFileID:     rec.DriveFileID,
 		DriveLink:       rec.DriveLink,
 		DownloadLink:    rec.DownloadLink,
-		LegacyFileMD5:        rec.LegacyFileMD5,
+		LegacyFileMD5:   rec.LegacyFileMD5,
 		DurationSeconds: 0,
 		Status:          rec.Status,
 		Error:           rec.Error,
@@ -258,27 +257,27 @@ func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*persisten
 		return nil, nil
 	}
 	return &persistence.VoiceoverRecord{
-		ID:           r.ID,
-		RequestID:    r.RequestID,
-		TextHash:     r.TextHash,
-		TextPreview:  r.TextPreview,
-		Language:     r.Language,
-		Voice:        r.Voice,
-		Filename:     r.Filename,
-		LocalPath:    r.LocalPath,
-		CleanedPath:  r.CleanedPath,
-		FolderID:     r.FolderID,
-		FolderPath:   r.FolderPath,
-		DriveFileID:  r.DriveFileID,
-		DriveLink:    r.DriveLink,
-		DownloadLink: r.DownloadLink,
-		LegacyFileMD5:     r.LegacyFileMD5,
-		Status:       r.Status,
-		Error:        r.Error,
-		Strategy:     r.Strategy,
-		Metadata:     r.Metadata,
-		CreatedAt:    timeutil.FormatRFC3339(r.CreatedAt),
-		UpdatedAt:    timeutil.FormatRFC3339(r.UpdatedAt),
+		ID:            r.ID,
+		RequestID:     r.RequestID,
+		TextHash:      r.TextHash,
+		TextPreview:   r.TextPreview,
+		Language:      r.Language,
+		Voice:         r.Voice,
+		Filename:      r.Filename,
+		LocalPath:     r.LocalPath,
+		CleanedPath:   r.CleanedPath,
+		FolderID:      r.FolderID,
+		FolderPath:    r.FolderPath,
+		DriveFileID:   r.DriveFileID,
+		DriveLink:     r.DriveLink,
+		DownloadLink:  r.DownloadLink,
+		LegacyFileMD5: r.LegacyFileMD5,
+		Status:        r.Status,
+		Error:         r.Error,
+		Strategy:      r.Strategy,
+		Metadata:      r.Metadata,
+		CreatedAt:     timeutil.FormatRFC3339(r.CreatedAt),
+		UpdatedAt:     timeutil.FormatRFC3339(r.UpdatedAt),
 	}, nil
 }
 
@@ -293,10 +292,10 @@ type e2eTTSProvider struct {
 
 func (s *e2eTTSProvider) Synthesize(_ context.Context, in TTSInput) (TTSOutput, error) {
 	return TTSOutput{
-		LocalPath:   s.localPath,
-		CleanedPath: "",
-		Voice:       in.Voice,
-		LegacyFileMD5:    s.fileHash,
+		LocalPath:     s.localPath,
+		CleanedPath:   "",
+		Voice:         in.Voice,
+		LegacyFileMD5: s.fileHash,
 	}, nil
 }
 

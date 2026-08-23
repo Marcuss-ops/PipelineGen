@@ -5,13 +5,13 @@
 // media_assets (source='stock') has a complete file footprint:
 //
 //   - source='stock', media_type='video'
-//   - file_hash != ”             (content fingerprint populated)
+//   - legacy_file_md5 != ”             (content fingerprint populated)
 //   - drive_file_id != ”         (uploaded to Drive)
 //   - drive_link != ”            (canonical shareable URL)
 //   - duration_ms > 0             (when media_type='video')
 //   - lifecycle_state='PUBLISHED' rows never have empty
-//     file_hash / drive_file_id / drive_link (no orphan SUCCEEDED assets)
-//   - file_hash is unique across source='stock' rows (no duplicates)
+//     legacy_file_md5 / drive_file_id / drive_link (no orphan SUCCEEDED assets)
+//   - legacy_file_md5 is unique across source='stock' rows (no duplicates)
 //
 // godlike/06 SSOT: the SELECT query mirrors the canonical runbook probe
 // in scripts/stock_pipeline_live_test.sh STEP 5/6 (the CASE WHEN expression
@@ -41,7 +41,7 @@ import (
 // created_at DESC is the runbook's default sort order.
 const canonicalStockSelect = `
 SELECT id, filename, '' AS folder_id, index_state, lifecycle_state,
-       CASE WHEN file_hash     = '' THEN '-' ELSE substr(file_hash,     1, 12) || '...' END,
+       CASE WHEN legacy_file_md5     = '' THEN '-' ELSE substr(legacy_file_md5,     1, 12) || '...' END,
        CASE WHEN drive_file_id = '' THEN '-' ELSE substr(drive_file_id, 1, 12) || '...' END
 FROM media_assets
 WHERE source = 'stock'
@@ -78,7 +78,7 @@ type stockDetailRow struct {
 //
 // Per godlike/06 SSOT: HasFileHash / HasDriveFileID / HasDriveLink are
 // derived from the CASE WHEN '-' placeholder — this is the canonical
-// SSOT signal (matches runbook's `CASE WHEN file_hash=” THEN '<empty>'
+// SSOT signal (matches runbook's `CASE WHEN legacy_file_md5=” THEN '<empty>'
 // ELSE substr(...) END` rendering).
 type stockIntegrityReport struct {
 	Row                 stockRow
@@ -88,7 +88,7 @@ type stockIntegrityReport struct {
 	IsPublished         bool
 	IsVideo             bool
 	DurationMS          int
-	IsOrphanedPublished bool // PUBLISHED with any of {file_hash, drive_file_id, drive_link} empty
+	IsOrphanedPublished bool // PUBLISHED with any of {legacy_file_md5, drive_file_id, drive_link} empty
 	HasZeroDuration     bool // media_type='video' but duration_ms <= 0
 }
 
@@ -123,7 +123,7 @@ func setupStockIntegrityDB(t *testing.T) *sql.DB {
 			drive_folder_id TEXT,
 			drive_link TEXT NOT NULL DEFAULT '',
 			download_link TEXT,
-			file_hash TEXT NOT NULL DEFAULT '',
+			legacy_file_md5 TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT,
 			visual_embedding TEXT, transcript_embedding TEXT,
 			created_at TEXT, updated_at TEXT,
@@ -135,7 +135,23 @@ func setupStockIntegrityDB(t *testing.T) *sql.DB {
 			folder_id TEXT, parent_folder_id TEXT, folder_path TEXT, category TEXT,
 			group_name TEXT, filename TEXT, error TEXT, thumb_url TEXT, phash TEXT,
 			search_text TEXT, scene_type TEXT, quality_score REAL, reuse_count INTEGER, last_used_at TEXT
-		)`)
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',)`)
 	require.NoError(t, err, "create media_assets schema")
 	return db
 }
@@ -184,7 +200,7 @@ func seedStockRow(t *testing.T, db *sql.DB, s stockSeed) {
 	_, err := db.ExecContext(context.Background(),
 		`INSERT INTO media_assets (
 			id, source, media_type, lifecycle_state, created_at,
-			file_hash, drive_file_id, drive_link, duration_ms,
+			legacy_file_md5, drive_file_id, drive_link, duration_ms,
 			local_path, filename, category
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Source, s.MediaType, s.Lifecycle, s.CreatedAt,
@@ -260,7 +276,7 @@ func reportFromRow(r stockRow, d stockDetailRow) stockIntegrityReport {
 	return rep
 }
 
-// countDuplicateHashes returns the number of file_hash values that
+// countDuplicateHashes returns the number of legacy_file_md5 values that
 // appear more than once across source='stock' rows. Zero is the
 // canonical "no duplicates" state.
 func countDuplicateHashes(t *testing.T, db *sql.DB) int {
@@ -268,9 +284,9 @@ func countDuplicateHashes(t *testing.T, db *sql.DB) int {
 	var n int
 	err := db.QueryRowContext(context.Background(), `
 		SELECT COUNT(*) FROM (
-			SELECT file_hash FROM media_assets
-			WHERE source = 'stock' AND file_hash != ''
-			GROUP BY file_hash HAVING COUNT(*) > 1
+			SELECT legacy_file_md5 FROM media_assets
+			WHERE source = 'stock' AND legacy_file_md5 != ''
+			GROUP BY legacy_file_md5 HAVING COUNT(*) > 1
 		)
 	`).Scan(&n)
 	require.NoError(t, err)
@@ -279,7 +295,7 @@ func countDuplicateHashes(t *testing.T, db *sql.DB) int {
 
 // ── T1: Happy path — complete row passes every integrity check ──────
 //
-// DoD §4 PASS condition: source=stock + media_type=video + file_hash!=”
+// DoD §4 PASS condition: source=stock + media_type=video + legacy_file_md5!=”
 // + drive_file_id!=” + drive_link!=” + duration coherent + no
 // duplicate fingerprints + no orphaned PUBLISHED rows.
 func TestStockMediaAssets_Integrity_HappyPath(t *testing.T) {
@@ -300,22 +316,22 @@ func TestStockMediaAssets_Integrity_HappyPath(t *testing.T) {
 
 	assert.True(t, rep.IsPublished, "happy-path: lifecycle_state must be PUBLISHED")
 	assert.True(t, rep.IsVideo, "happy-path: media_type must be video")
-	assert.True(t, rep.HasFileHash, "happy-path: file_hash must be present")
+	assert.True(t, rep.HasFileHash, "happy-path: legacy_file_md5 must be present")
 	assert.True(t, rep.HasDriveFileID, "happy-path: drive_file_id must be present")
 	assert.True(t, rep.HasDriveLink, "happy-path: drive_link must be present (read from raw column)")
 	assert.False(t, rep.IsOrphanedPublished, "happy-path: PUBLISHED row must NOT be orphaned")
 	assert.False(t, rep.HasZeroDuration, "happy-path: video duration must be > 0")
 	assert.Equal(t, 4000, rep.DurationMS, "happy-path: duration must round-trip from SELECT")
 	assert.Equal(t, 0, countDuplicateHashes(t, db),
-		"happy-path: zero duplicate file_hashes across source='stock'")
+		"happy-path: zero duplicate legacy_file_md5es across source='stock'")
 }
 
-// ── T2: Missing file_hash on PUBLISHED → orphaned flag fires ────────
+// ── T2: Missing legacy_file_md5 on PUBLISHED → orphaned flag fires ────────
 func TestStockMediaAssets_Integrity_MissingFileHash(t *testing.T) {
 	db := setupStockIntegrityDB(t)
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-nohash-1",
-		LegacyFileMD5:    "", // violation: file_hash must be present on PUBLISHED rows
+		LegacyFileMD5:    "", // violation: legacy_file_md5 must be present on PUBLISHED rows
 		DriveFileID: "1abc_drive_file_id",
 		DurationMS:  4000,
 		LocalPath:   "data/tmp/source.mp4",
@@ -327,10 +343,10 @@ func TestStockMediaAssets_Integrity_MissingFileHash(t *testing.T) {
 	rep := reports[0]
 
 	assert.False(t, rep.HasFileHash,
-		"expected file_hash MISSING (CASE WHEN placeholder '-' must surface)")
+		"expected legacy_file_md5 MISSING (CASE WHEN placeholder '-' must surface)")
 	assert.True(t, rep.IsOrphanedPublished,
-		"PUBLISHED + missing file_hash must be flagged as orphaned (DoD §4: no SUCCEEDED asset without final file)")
-	// Other integrity fields pass — the test isolates the file_hash violation.
+		"PUBLISHED + missing legacy_file_md5 must be flagged as orphaned (DoD §4: no SUCCEEDED asset without final file)")
+	// Other integrity fields pass — the test isolates the legacy_file_md5 violation.
 	assert.True(t, rep.HasDriveFileID, "drive_file_id is present, no false positive on this field")
 	assert.False(t, rep.HasZeroDuration, "duration > 0, no false positive")
 }
@@ -405,10 +421,10 @@ func TestStockMediaAssets_Integrity_ZeroDuration(t *testing.T) {
 		"video asset with duration_ms=0 must be flagged as zero-duration")
 }
 
-// ── T6: Duplicate file_hash → fingerprint dedup check fires ────────
+// ── T6: Duplicate legacy_file_md5 → fingerprint dedup check fires ────────
 func TestStockMediaAssets_Integrity_DuplicateFileHash(t *testing.T) {
 	db := setupStockIntegrityDB(t)
-	// Two distinct rows with identical file_hash — bit-identical
+	// Two distinct rows with identical legacy_file_md5 — bit-identical
 	// content fingerprint, the canonical duplicate boundary for stock.
 	seedStockRow(t, db, stockSeed{
 		ID:          "stock-dup-1",
@@ -428,7 +444,7 @@ func TestStockMediaAssets_Integrity_DuplicateFileHash(t *testing.T) {
 	reports := fetchStockReports(t, db)
 	assert.Len(t, reports, 2, "expected both duplicate rows in the canonical SELECT")
 	assert.Equal(t, 1, countDuplicateHashes(t, db),
-		"expected exactly 1 duplicate file_hash group (DoD §4: no duplicates per fingerprint)")
+		"expected exactly 1 duplicate legacy_file_md5 group (DoD §4: no duplicates per fingerprint)")
 }
 
 // ── T7: Multiple violations on a single row → all flags fire ───────
@@ -450,7 +466,7 @@ func TestStockMediaAssets_Integrity_MultipleViolations(t *testing.T) {
 	require.Len(t, reports, 1)
 	rep := reports[0]
 
-	assert.False(t, rep.HasFileHash, "violation 1: missing file_hash")
+	assert.False(t, rep.HasFileHash, "violation 1: missing legacy_file_md5")
 	assert.False(t, rep.HasDriveFileID, "violation 2: missing drive_file_id")
 	assert.False(t, rep.HasDriveLink, "violation propagated: missing drive_link (read from raw column)")
 	assert.True(t, rep.HasZeroDuration, "violation 3: zero duration on video asset")
@@ -460,7 +476,7 @@ func TestStockMediaAssets_Integrity_MultipleViolations(t *testing.T) {
 // ── T8: Non-stock rows are NOT touched by the integrity filter ─────
 //
 // The canonical SELECT filters source='stock' (runbook STEP 5/6).
-// A non-stock row with a missing file_hash must NOT appear in the
+// A non-stock row with a missing legacy_file_md5 must NOT appear in the
 // report (no false positive on the integrity check).
 func TestStockMediaAssets_Integrity_NonStockRowIsIgnored(t *testing.T) {
 	db := setupStockIntegrityDB(t)

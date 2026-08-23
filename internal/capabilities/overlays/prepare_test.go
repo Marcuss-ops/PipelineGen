@@ -11,7 +11,7 @@ func validPrepareRequest() PrepareRequest {
 		VideoID:       "run-001",
 		Width:         1280,
 		Height:        720,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		Intents: []OverlayIntent{{
 			Version:     OverlayIntentVersion,
 			IntentID:    "intent-scene-0-tom-hanks",

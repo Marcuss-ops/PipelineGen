@@ -56,7 +56,8 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 			ProjectID:     strings.TrimSpace(req.Project),
 			Width:         canvas.Width,
 			Height:        canvas.Height,
-			FPS:           canvas.FPS,
+			FPSNum:        canvas.FPSNum,
+			FPSDen:        canvas.FPSDen,
 			Intents:       intents,
 		})
 	}); err != nil {

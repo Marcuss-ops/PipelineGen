@@ -69,7 +69,6 @@ type request struct {
 	CRF              int       `json:"crf,omitempty"`
 	Width            uint32    `json:"width,omitempty"`
 	Height           uint32    `json:"height,omitempty"`
-	FPS              uint32    `json:"fps,omitempty"`
 	FPSNum           uint32    `json:"fps_num,omitempty"`
 	FPSDen           uint32    `json:"fps_den,omitempty"`
 	KeyframeInterval uint32    `json:"keyframe_interval,omitempty"`

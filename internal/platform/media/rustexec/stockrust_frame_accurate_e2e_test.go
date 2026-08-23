@@ -108,7 +108,7 @@ func TestStockRustExactFrameCount(t *testing.T) {
 				client: NewClientWithExecutor(executor, nil),
 				policy: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
 				profile: mediaexec.VideoProfile{
-					Width: width, Height: height, FPS: 30, KeyframeInterval: 60,
+					Width: width, Height: height, FPSNum: 30, FPSDen: 1, KeyframeInterval: 60,
 					AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 				},
 			}

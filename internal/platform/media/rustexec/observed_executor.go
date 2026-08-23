@@ -83,7 +83,7 @@ func (o *ObservedExecutor) measurement(req request, started time.Time, result re
 		Operation:       string(req.Operation),
 		Width:           int(req.Width),
 		Height:          int(req.Height),
-		FPS:             float64(req.FPS),
+		FPS:             wireFPSFloat(req.FPSNum, req.FPSDen),
 		OutputCodec:     req.Codec,
 		ElapsedMS:       time.Since(started).Milliseconds(),
 		SourceSizeBytes: sumInputBytes(req),
@@ -129,6 +129,15 @@ func metricsMetadataJSON(m *OperationMetrics) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// wireFPSFloat projects the wire rational frame rate to the float observation
+// column. Zero denominator (absent rate) projects to 0.
+func wireFPSFloat(num, den uint32) float64 {
+	if den == 0 {
+		return 0
+	}
+	return float64(num) / float64(den)
 }
 
 // sumInputBytes totals the request's source files (SourcePath + InputPaths).

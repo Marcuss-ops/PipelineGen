@@ -65,13 +65,13 @@ func TestImageAspectFitNeverStretches(t *testing.T) {
 		})
 	}
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "aspect-fit",
-		VideoID:         "video-aspect-fit",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "aspect-fit",
+		VideoID:       "video-aspect-fit",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items:           items,
 	}
@@ -121,13 +121,13 @@ func TestImageAspectFitNeverStretches(t *testing.T) {
 // verbatim — so nothing stretches unless a caller explicitly demands it.
 func TestImageAspectFitRejectsStretchOverride(t *testing.T) {
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "aspect-fit-default",
-		VideoID:         "video-aspect-fit-default",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "aspect-fit-default",
+		VideoID:       "video-aspect-fit-default",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{{
 			ID:         "img",

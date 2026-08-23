@@ -48,17 +48,17 @@ type finalizeFakeRunner struct {
 	jobFinalizer finalization.JobFinalizer // controllable: nil for test-fixture mode, non-nil for production mode
 }
 
-func (f *finalizeFakeRunner) Cfg() OrchestratorConfig           { return f.cfg }
-func (f *finalizeFakeRunner) RunInput() *RunInput               { return f.runInput }
-func (f *finalizeFakeRunner) JobID() string                     { return "test-finalize-job" }
-func (f *finalizeFakeRunner) PolicyVersion() string             { return f.cfg.PolicyVersion }
-func (f *finalizeFakeRunner) Planner() ClipPlanner              { return nil }
+func (f *finalizeFakeRunner) Cfg() OrchestratorConfig                { return f.cfg }
+func (f *finalizeFakeRunner) RunInput() *RunInput                    { return f.runInput }
+func (f *finalizeFakeRunner) JobID() string                          { return "test-finalize-job" }
+func (f *finalizeFakeRunner) PolicyVersion() string                  { return f.cfg.PolicyVersion }
+func (f *finalizeFakeRunner) Planner() ClipPlanner                   { return nil }
 func (f *finalizeFakeRunner) SourceStager() acquisition.SourceStager { return nil }
-func (f *finalizeFakeRunner) Cutter() VideoCutter               { return nil }
-func (f *finalizeFakeRunner) Renderer() StockRenderer           { return nil }
-func (f *finalizeFakeRunner) Builder() ManifestBuilder          { return nil }
-func (f *finalizeFakeRunner) Writer() TransactionalAssetWriter  { return nil }
-func (f *finalizeFakeRunner) Projection() ProjectionPort        { return nil }
+func (f *finalizeFakeRunner) Cutter() VideoCutter                    { return nil }
+func (f *finalizeFakeRunner) Renderer() StockRenderer                { return nil }
+func (f *finalizeFakeRunner) Builder() ManifestBuilder               { return nil }
+func (f *finalizeFakeRunner) Writer() TransactionalAssetWriter       { return nil }
+func (f *finalizeFakeRunner) Projection() ProjectionPort             { return nil }
 func (f *finalizeFakeRunner) SourceDurationProbe() SourceDurationProbe {
 	return nil
 }

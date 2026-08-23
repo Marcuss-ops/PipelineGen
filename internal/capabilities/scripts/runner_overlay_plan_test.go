@@ -415,7 +415,8 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	require.Equal(t, runID, prep.VideoID)
 	require.Equal(t, GoldenOverlayCanvas.Width, prep.Width)
 	require.Equal(t, GoldenOverlayCanvas.Height, prep.Height)
-	require.Equal(t, GoldenOverlayCanvas.FPS, prep.FPS)
+	require.Equal(t, GoldenOverlayCanvas.FPSNum, prep.FPSNum)
+	require.Equal(t, GoldenOverlayCanvas.FPSDen, prep.FPSDen)
 	require.NoError(t, prep.Validate())
 
 	want := map[string]string{

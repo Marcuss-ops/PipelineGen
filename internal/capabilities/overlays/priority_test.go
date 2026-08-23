@@ -153,7 +153,7 @@ func TestCountContentCensus(t *testing.T) {
 // items automatically (never piling up).
 func TestBuildPlanDegradesOverlappingContent(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			// All four content categories overlap at [1000, 2000].

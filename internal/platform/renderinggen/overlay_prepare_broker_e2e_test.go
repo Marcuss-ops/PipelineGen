@@ -77,7 +77,7 @@ func TestOverlayPrepareBrokerE2E(t *testing.T) {
 		ProjectID:     "overlay-prepare-broker-cert",
 		Width:         1280,
 		Height:        720,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		Intents: []capoverlay.OverlayIntent{
 			{
 				Version:     capoverlay.OverlayIntentVersion,
@@ -160,8 +160,8 @@ func TestOverlayPrepareBrokerE2E(t *testing.T) {
 	if plan.VideoID != planID {
 		t.Errorf("plan.video_id = %q, want %q", plan.VideoID, planID)
 	}
-	if plan.Width <= 0 || plan.Height <= 0 || plan.FPS <= 0 {
-		t.Errorf("plan canvas not strictly positive: w=%d h=%d fps=%d", plan.Width, plan.Height, plan.FPS)
+	if plan.Width <= 0 || plan.Height <= 0 || plan.FPSNum <= 0 || plan.FPSDen <= 0 {
+		t.Errorf("plan canvas not strictly positive: w=%d h=%d fps=%d/%d", plan.Width, plan.Height, plan.FPSNum, plan.FPSDen)
 	}
 	if len(plan.Intents) == 0 {
 		t.Fatalf("plan.intents empty — every prepare must carry at least one intent")
@@ -225,7 +225,8 @@ type overlayPrepareEnvelope struct {
 	VideoID       string `json:"video_id"`
 	Width         int    `json:"width"`
 	Height        int    `json:"height"`
-	FPS           int    `json:"fps"`
+	FPSNum        int    `json:"fps_num"`
+	FPSDen        int    `json:"fps_den"`
 	Intents       []struct {
 		TemplateID  string `json:"template_id"`
 		TimingState string `json:"timing_state"`

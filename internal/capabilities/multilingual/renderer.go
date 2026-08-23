@@ -19,8 +19,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -155,7 +155,8 @@ type Renderer struct {
 	rust       RustRenderer
 	rustWidth  int
 	rustHeight int
-	rustFPS    int
+	rustFPSNum int
+	rustFPSDen int
 	// outputProber certifies the actual bytes on disk match the clip.render
 	// output contract; wired by the composition root alongside RustRenderer.
 	outputProber cliprender.OutputProber
@@ -178,11 +179,11 @@ func NewRenderer(repo asset.RenderVariantRepository, publisher delivery.Publishe
 }
 
 // WithRustRenderer enables the canonical Rust render_clip path. Width,
-// height, and fps are resolved by the composition root and become part of
-// every sealed plan.
-func (r *Renderer) WithRustRenderer(renderer RustRenderer, width, height, fps int) *Renderer {
+// height, and the rational frame rate are resolved by the composition root
+// and become part of every sealed plan.
+func (r *Renderer) WithRustRenderer(renderer RustRenderer, width, height, fpsNum, fpsDen int) *Renderer {
 	r.rust = renderer
-	r.rustWidth, r.rustHeight, r.rustFPS = width, height, fps
+	r.rustWidth, r.rustHeight, r.rustFPSNum, r.rustFPSDen = width, height, fpsNum, fpsDen
 	return r
 }
 

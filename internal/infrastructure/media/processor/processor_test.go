@@ -128,7 +128,7 @@ func TestProcessorPassesDefaultNormalizePolicyWithoutCodecOverride(t *testing.T)
 	ff := &fakeFFmpeg{}
 	clip := (config.VideoConfig{}).CanonicalClip()
 	defaultOpts := mediaexec.NormalizeOptions{
-		Profile: mediaexec.VideoProfile{Width: clip.Width, Height: clip.Height, FPS: clip.FPS, KeyframeInterval: clip.KeyframeInterval, AudioCodec: clip.AudioCodec, AudioBitrate: clip.AudioBitrate, SampleRate: clip.SampleRate, Channels: clip.Channels},
+		Profile: mediaexec.VideoProfile{Width: clip.Width, Height: clip.Height, FPSNum: clip.FPSNum, FPSDen: clip.FPSDen, KeyframeInterval: clip.KeyframeInterval, AudioCodec: clip.AudioCodec, AudioBitrate: clip.AudioBitrate, SampleRate: clip.SampleRate, Channels: clip.Channels},
 		Policy:  mediaexec.EncoderPolicy{Preset: clip.Preset, CRF: clip.CRF},
 		Preset:  clip.Preset,
 		CRF:     clip.CRF,
@@ -203,7 +203,8 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
-				FPS:    30,
+				FPSNum: 30,
+				FPSDen: 1,
 			},
 		},
 		nil,
@@ -226,7 +227,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 
 	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called.
 	ff.normalizeCalled = false
-	p.videoCfg.FPS = 60
+	p.videoCfg.FPSNum, p.videoCfg.FPSDen = 60, 1
 
 	result, err = p.Process(ctx, &asset.ProcessInput{
 		ID:         "clip-2",
@@ -344,7 +345,8 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
-				FPS:    30,
+				FPSNum: 30,
+				FPSDen: 1,
 			},
 		},
 		nil,
@@ -437,7 +439,8 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
-				FPS:    30,
+				FPSNum: 30,
+				FPSDen: 1,
 			},
 		},
 		nil,

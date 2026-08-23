@@ -13,7 +13,8 @@ presets:
     pixel_format: yuv420p
     width: 1920
     height: 1080
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     audio: preserve_if_present
     scaling: fit_pad
     fast_start: true
@@ -22,33 +23,38 @@ presets:
     clip_duration: 7
     width: 1920
     height: 1080
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     strategy: verify
 
   youtube_720p_7s:
     clip_duration: 7
     width: 1280
     height: 720
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     strategy: verify
 
   stock_7s_drive:
     clip_duration: 7
     width: 1920
     height: 1080
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     strategy: verify
 
   shorts_1080x1920_7s:
     clip_duration: 7
     width: 1080
     height: 1920
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     strategy: verify
 
   documentary_16_9_12s:
     clip_duration: 12
     width: 1920
     height: 1080
-    fps: 24
+    fps_num: 24
+    fps_den: 1
     strategy: verify

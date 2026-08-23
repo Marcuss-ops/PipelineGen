@@ -92,7 +92,7 @@ type AssetRow struct {
 	SourceProvider string
 	DriveFileID    string
 	DrivePath      string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 }
 
 // EnrichmentHandler is the canonical broker entry-point for the

@@ -10,7 +10,7 @@ func TestPresetSelectionIsDeterministicAndUsesKnownFamilies(t *testing.T) {
 	}
 
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "job-1", VideoID: "video-1", Width: 1920, Height: 1080, FPS: 30,
+		PlanID: "job-1", VideoID: "video-1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID:       "scene-1",
 			Phrases:  []TimedAnnotation{{Text: "IMPORTANT", StartMs: 0, EndMs: 1000}},

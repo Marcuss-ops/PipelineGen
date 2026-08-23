@@ -16,8 +16,8 @@ import (
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	obsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
@@ -107,7 +107,7 @@ func runMultilingualRender(args []string) error {
 	rustClipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, mediaProfile, log)
 	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
 	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer, resolver: backendResolver, probe: backendProbe}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPS)
+	renderer.WithRustRenderer(adminRustRenderer{renderer: rustClipRenderer, resolver: backendResolver, probe: backendProbe}, mediaProfile.Width, mediaProfile.Height, mediaProfile.FPSNum, mediaProfile.FPSDen)
 	subMat := texttracks.NewSubtitleArtifactMaterializer(root.Repos.SubtitleArtifactRepo, "data/media/subtitles", root.Drive.Publisher)
 	cueRepair, err := texttracks.NewCueRepairService(root.Domains.CueWriter)
 	if err != nil {

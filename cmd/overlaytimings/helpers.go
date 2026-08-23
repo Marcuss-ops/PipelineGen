@@ -64,7 +64,8 @@ func content04Plan() capabilityoverlay.OverlayPlan {
 		ProjectID:       "golden-content",
 		Width:           1280,
 		Height:          720,
-		FPS:             30,
+		FPSNum:          30,
+		FPSDen:          1,
 		RendererVersion: "chronon",
 		Items: []capabilityoverlay.OverlayItem{
 			{

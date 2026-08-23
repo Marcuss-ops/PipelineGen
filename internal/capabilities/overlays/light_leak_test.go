@@ -18,13 +18,13 @@ import (
 // depends on the carried (hash, logical_path) pairs and the layer fields.
 func lightLeakPlan() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-content-04-light-leak",
-		VideoID:         "video-golden-content-04-light-leak",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-content-04-light-leak",
+		VideoID:       "video-golden-content-04-light-leak",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -141,13 +141,13 @@ func TestCompileLightLeakDeterministic(t *testing.T) {
 //   - explicit loop=true → the layer carries "loop": true.
 func TestCompileLightLeakDefaults(t *testing.T) {
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "light-leak-defaults",
-		VideoID:         "video-light-leak-defaults",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "light-leak-defaults",
+		VideoID:       "video-light-leak-defaults",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{

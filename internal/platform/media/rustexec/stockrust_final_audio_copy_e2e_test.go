@@ -78,7 +78,7 @@ func TestStockRustFinalAudioCopyNoReencode(t *testing.T) {
 	outputPath := filepath.Join(dir, "final.mp4")
 	plan, err := render.Compile(render.CompileInput{
 		JobID: "stockrust-final-audio-copy", Revision: "generation.v1",
-		OutputPath: outputPath, FPS: fps, Timeline: timeline,
+		OutputPath: outputPath, FrameRate: audio.IntegerFrameRate(fps), Timeline: timeline,
 		FinalAudio: &render.FinalAudioAsset{
 			AssetID: "final-audio", AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy),
 			Path: audioPath, SHA256: sum, PlanSHA256: strings.Repeat("a", 64),
@@ -101,7 +101,7 @@ func TestStockRustFinalAudioCopyNoReencode(t *testing.T) {
 		client: NewClientWithExecutor(executor, nil),
 		policy: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
 		profile: mediaexec.VideoProfile{
-			Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+			Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 			AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 		},
 	}

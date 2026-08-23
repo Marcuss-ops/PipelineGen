@@ -82,13 +82,13 @@ func TestLiveContentShowcaseE2E(t *testing.T) {
 	// box_width + box_height because Chronon's preset registry otherwise
 	// cannot resolve a "collision-free safe-area anchor" for them.
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          jobID,
-		VideoID:         jobID,
-		ProjectID:       "pipelinegen-live",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        jobID,
+		VideoID:       jobID,
+		ProjectID:     "pipelinegen-live",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background_video", TemplateID: "VIDEO_BACKGROUND", StartMs: 0, EndMs: 6000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "bg", URL: "assets/background.mp4", SHA256: backgroundHash}}},

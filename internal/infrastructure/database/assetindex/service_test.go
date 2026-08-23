@@ -30,7 +30,7 @@ func setupTestService(t *testing.T) (*Service, func()) {
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
-	);
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',);
 	CREATE INDEX IF NOT EXISTS idx_asset_content_hash ON asset_index(content_hash);
 	CREATE INDEX IF NOT EXISTS idx_asset_source ON asset_index(source, source_id);
 	CREATE INDEX IF NOT EXISTS idx_asset_status ON asset_index(status);

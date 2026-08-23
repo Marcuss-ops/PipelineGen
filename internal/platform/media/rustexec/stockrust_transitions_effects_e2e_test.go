@@ -46,7 +46,7 @@ func TestStockRustAppliesResolvedTransitions(t *testing.T) {
 	stock := stockrustRenderer(newRealExecutor(t, musclesPath, ffmpegPath), width, height, fps)
 	_, err := stock.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: paths, OutputPath: output,
-		Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+		Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 		Codec: "libx264", Preset: "veryfast", CRF: 23,
 		NoTransitions: false, ClipDurationSec: 2,
 		Transitions: []stockpipeline.RenderTransition{
@@ -110,7 +110,7 @@ func TestStockRustAppliesResolvedEffects(t *testing.T) {
 	stock := stockrustRenderer(newRealExecutor(t, musclesPath, ffmpegPath), width, height, fps)
 	_, err := stock.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: paths, OutputPath: output,
-		Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+		Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 		Codec: "libx264", Preset: "veryfast", CRF: 23,
 		NoTransitions:  true,
 		NoEffects:      false,
@@ -170,7 +170,7 @@ func TestStockRustRejectsUnknownTransitionID(t *testing.T) {
 	stock := stockrustRenderer(newRealExecutor(t, musclesPath, ffmpegPath), width, height, fps)
 	_, err := stock.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: paths, OutputPath: output,
-		Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+		Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 		Codec: "libx264", Preset: "veryfast", CRF: 23,
 		NoTransitions: false, ClipDurationSec: 2,
 		Transitions: []stockpipeline.RenderTransition{{ClipIndex: 0, Segment: "end", ID: "random-transition"}},
@@ -214,7 +214,7 @@ func TestStockRustRejectsMissingEffectFile(t *testing.T) {
 	stock := stockrustRenderer(newRealExecutor(t, musclesPath, ffmpegPath), width, height, fps)
 	_, err := stock.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: paths, OutputPath: output,
-		Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+		Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 		Codec: "libx264", Preset: "veryfast", CRF: 23,
 		NoTransitions: true,
 		NoEffects:     false,

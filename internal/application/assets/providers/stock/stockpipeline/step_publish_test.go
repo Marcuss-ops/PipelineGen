@@ -41,17 +41,17 @@ type publishFakeRunner struct {
 	artifactPrep finalization.ArtifactPreparationService
 }
 
-func (f *publishFakeRunner) Cfg() OrchestratorConfig           { return f.cfg }
-func (f *publishFakeRunner) RunInput() *RunInput               { return f.runInput }
-func (f *publishFakeRunner) JobID() string                     { return "publish-test-job" }
-func (f *publishFakeRunner) PolicyVersion() string             { return f.cfg.PolicyVersion }
-func (f *publishFakeRunner) Planner() ClipPlanner              { return nil }
+func (f *publishFakeRunner) Cfg() OrchestratorConfig                { return f.cfg }
+func (f *publishFakeRunner) RunInput() *RunInput                    { return f.runInput }
+func (f *publishFakeRunner) JobID() string                          { return "publish-test-job" }
+func (f *publishFakeRunner) PolicyVersion() string                  { return f.cfg.PolicyVersion }
+func (f *publishFakeRunner) Planner() ClipPlanner                   { return nil }
 func (f *publishFakeRunner) SourceStager() acquisition.SourceStager { return nil }
-func (f *publishFakeRunner) Cutter() VideoCutter               { return nil }
-func (f *publishFakeRunner) Renderer() StockRenderer           { return nil }
-func (f *publishFakeRunner) Builder() ManifestBuilder          { return nil }
-func (f *publishFakeRunner) Writer() TransactionalAssetWriter  { return nil }
-func (f *publishFakeRunner) Projection() ProjectionPort        { return nil }
+func (f *publishFakeRunner) Cutter() VideoCutter                    { return nil }
+func (f *publishFakeRunner) Renderer() StockRenderer                { return nil }
+func (f *publishFakeRunner) Builder() ManifestBuilder               { return nil }
+func (f *publishFakeRunner) Writer() TransactionalAssetWriter       { return nil }
+func (f *publishFakeRunner) Projection() ProjectionPort             { return nil }
 func (f *publishFakeRunner) SourceDurationProbe() SourceDurationProbe {
 	return nil
 }

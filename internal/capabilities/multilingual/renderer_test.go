@@ -255,7 +255,7 @@ func TestRenderer_ColdThenWarmCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRenderer: %v", err)
 	}
-	r.WithRustRenderer(mockRust, 1920, 1080, 30)
+	r.WithRustRenderer(mockRust, 1920, 1080, 30, 1)
 	r.WithOutputProber(defaultMockProber())
 
 	src := filepath.Join(dir, "source.mp4")
@@ -339,7 +339,7 @@ func TestRenderPool_StreamingOrderAndTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRenderer: %v", err)
 	}
-	r.WithRustRenderer(mockRust, 1920, 1080, 30)
+	r.WithRustRenderer(mockRust, 1920, 1080, 30, 1)
 	r.WithOutputProber(defaultMockProber())
 
 	src := filepath.Join(dir, "source.mp4")

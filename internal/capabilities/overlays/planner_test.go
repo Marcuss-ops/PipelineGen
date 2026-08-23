@@ -4,7 +4,7 @@ import "testing"
 
 func TestBuildPlanAppliesConservativeLimitsAndRanks(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "p1", VideoID: "v1", Width: 1920, Height: 1080, FPS: 30,
+		PlanID: "p1", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Phrases: []TimedAnnotation{
@@ -40,7 +40,7 @@ func TestBuildPlanAppliesConservativeLimitsAndRanks(t *testing.T) {
 
 func TestBuildPlanNeverInventsTiming(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{{Text: "No timing"}}}},
 	}, PlannerConfig{})
 	if err != nil {
@@ -57,7 +57,7 @@ func TestBuildPlanNeverInventsTiming(t *testing.T) {
 // mapping itself is owned by the registry).
 func TestBuildPlanExtendedEntities(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Numbers: []TimedAnnotation{
@@ -106,7 +106,7 @@ func TestBuildPlanExtendedEntities(t *testing.T) {
 
 func TestBuildPlanRejectsInvalidImageIdentity(t *testing.T) {
 	_, err := BuildPlan(PlanInput{
-		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "p1", VideoID: "v1", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "scene-1", Images: []ImageCandidate{{StartMs: 1, EndMs: 2}}}},
 	}, PlannerConfig{MaxImages: 1})
 	if err != nil {
@@ -127,7 +127,7 @@ func TestBuildPlanRejectsInvalidImageIdentity(t *testing.T) {
 //     never given guessed timing.
 func TestBuildPlanGolden01ImportantPhrase(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "golden-01", VideoID: "video-golden-01", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "golden-01", VideoID: "video-golden-01", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Phrases: []TimedAnnotation{
@@ -191,7 +191,7 @@ func TestBuildPlanGolden01ImportantPhrase(t *testing.T) {
 // stop-word SSOT). The planner consumes pre-ranked keywords.
 func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "golden-02", VideoID: "video-golden-02", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "golden-02", VideoID: "video-golden-02", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Keywords: []TimedAnnotation{
@@ -245,7 +245,7 @@ func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 // invented items). The planner must never fill empty air with filler text.
 func TestBuildPlanGolden01EmptyWhenNothingImportant(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "golden-01-empty", VideoID: "video-golden-01-empty", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "golden-01-empty", VideoID: "video-golden-01-empty", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "scene-1"}},
 	}, PlannerConfig{})
 	if err != nil {

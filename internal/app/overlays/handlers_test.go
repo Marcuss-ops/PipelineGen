@@ -53,7 +53,7 @@ func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.Ov
 }
 
 func testPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1", Width: 1920, Height: 1080, FPS: 30, Items: []capoverlay.OverlayItem{{ID: "overlay-1", TemplateID: "entity-card@1", StartMs: 100, EndMs: 1100, Text: "Ada"}}}
+	return capoverlay.OverlayPlan{SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Items: []capoverlay.OverlayItem{{ID: "overlay-1", TemplateID: "entity-card@1", StartMs: 100, EndMs: 1100, Text: "Ada"}}}
 }
 
 func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
@@ -211,7 +211,7 @@ func TestPrepareHandlerConsumesPrepareRequest(t *testing.T) {
 		SchemaVersion: capoverlay.SchemaVersionPrepare,
 		PlanID:        "run-001",
 		VideoID:       "run-001",
-		Width:         1280, Height: 720, FPS: 30,
+		Width:         1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Intents: []capoverlay.OverlayIntent{{
 			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
 			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
@@ -254,7 +254,7 @@ func TestPrepareHandlerRejectsFrozenIntent(t *testing.T) {
 	}
 	req := capoverlay.PrepareRequest{
 		SchemaVersion: capoverlay.SchemaVersionPrepare,
-		PlanID:        "run-001", VideoID: "run-001", Width: 1280, Height: 720, FPS: 30,
+		PlanID:        "run-001", VideoID: "run-001", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Intents: []capoverlay.OverlayIntent{{
 			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
 			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,

@@ -36,7 +36,28 @@ func newProviderTimestampsTestDB(t *testing.T) *sql.DB {
 		end_ms INTEGER NOT NULL DEFAULT 0,
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		updated_at TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
+    filename TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    lifecycle_state TEXT NOT NULL DEFAULT '',
+    index_state TEXT NOT NULL DEFAULT '',
+    search_text TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',)`); err != nil {
 		t.Fatalf("create media_assets: %v", err)
 	}
 	return db

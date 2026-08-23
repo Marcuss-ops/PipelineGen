@@ -78,7 +78,7 @@ func TestMediaexecV1SharedGoldens(t *testing.T) {
 					t.Fatalf("render_stock fixture drift: inputs=%v transition=%+v effect=%+v", fixture.Request.InputPaths, transition, effect)
 				}
 			case "normalize":
-				if fixture.Request.SourcePath != "/fixtures/input.mp4" || fixture.Request.OutputPath != "/fixtures/normalized.mp4" || fixture.Request.Codec != "h264_nvenc" || fixture.Request.Preset != "p1" || fixture.Request.CRF != 23 || fixture.Request.Width != 1920 || fixture.Request.Height != 1080 || fixture.Request.FPS != 24 || fixture.Request.KeyframeInterval != 48 || fixture.Request.AudioCodec != "aac" || fixture.Request.AudioBitrate != "128k" || fixture.Request.SampleRate != 48000 || fixture.Request.Channels != 2 || !fixture.Request.KeepAudio {
+				if fixture.Request.SourcePath != "/fixtures/input.mp4" || fixture.Request.OutputPath != "/fixtures/normalized.mp4" || fixture.Request.Codec != "h264_nvenc" || fixture.Request.Preset != "p1" || fixture.Request.CRF != 23 || fixture.Request.Width != 1920 || fixture.Request.Height != 1080 || fixture.Request.FPSNum != 24 || fixture.Request.FPSDen != 1 || fixture.Request.KeyframeInterval != 48 || fixture.Request.AudioCodec != "aac" || fixture.Request.AudioBitrate != "128k" || fixture.Request.SampleRate != 48000 || fixture.Request.Channels != 2 || !fixture.Request.KeepAudio {
 					t.Fatalf("normalize fixture drift: %+v", fixture.Request)
 				}
 			}

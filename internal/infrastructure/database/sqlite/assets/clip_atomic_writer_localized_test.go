@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     category TEXT NOT NULL DEFAULT '', duration_ms INTEGER NOT NULL DEFAULT 0,
     tags TEXT NOT NULL DEFAULT '', tags_norm TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT, drive_link TEXT, download_link TEXT,
-    local_path TEXT, file_hash TEXT,
+    local_path TEXT, legacy_file_md5 TEXT,
     folder_id TEXT, folder_path TEXT,
     source_version TEXT NOT NULL DEFAULT '',
     search_text TEXT NOT NULL DEFAULT '',
@@ -104,7 +104,10 @@ CREATE TABLE IF NOT EXISTS media_assets (
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     created_at TEXT, updated_at TEXT
-);
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',);
 CREATE TABLE IF NOT EXISTS asset_text_tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     asset_id TEXT NOT NULL,
@@ -171,7 +174,7 @@ CREATE TABLE IF NOT EXISTS asset_locations (
     download_url TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     is_primary INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT '',

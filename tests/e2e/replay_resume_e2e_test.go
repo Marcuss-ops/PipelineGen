@@ -218,7 +218,7 @@ func compileReplayPlan(t *testing.T, shaA, shaB string) render.RenderPlan {
 		},
 	}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: replayJobID, Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: replayJobID, Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 		Manifest: []render.AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: shaA, FrameCount: 2000},

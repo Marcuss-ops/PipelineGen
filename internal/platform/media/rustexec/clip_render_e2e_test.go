@@ -62,7 +62,7 @@ func TestClipRenderE2E_BlurSourceWatermarkBurnCopyAudio(t *testing.T) {
 	renderer := NewClipRendererWithExecutor(executor,
 		mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
 		mediaexec.VideoProfile{
-			Width: 1080, Height: 1920, FPS: 60, KeyframeInterval: 120,
+			Width: 1080, Height: 1920, FPSNum: 60, FPSDen: 1, KeyframeInterval: 120,
 			AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 		},
 		nil,
@@ -200,7 +200,7 @@ func compileClipRenderE2EPlan(t *testing.T, dir, sourcePath, watermarkPath, subt
 			StyleID:   "shorts-v1",
 		},
 		Contract: &cliprender.ResolvedContract{
-			ContractID:   cliprender.OutputContractVeloxEditingClipV1,
+			ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
 			Container:    "mp4",
 			VideoCodec:   "h264",
 			VideoProfile: "high",

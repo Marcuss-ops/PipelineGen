@@ -19,9 +19,9 @@
 //     literal assertion pins the contract for future regressions.
 //
 // Composition-time "fail fast at boot" (godlike/07) is verified per
-// each gate. The verify-script side at tests/operational/
-// artlist_live_e2e_verify.sh validates end-to-end runtime behavior
-// (the operator-only battery surface, Fase 14 follow-up).
+// each gate. The verify-script side at tests/operational/artlist/
+// run_all.sh validates end-to-end runtime behavior (the operator-only
+// battery surface, Fase 14 follow-up).
 package app
 
 import (

@@ -137,7 +137,7 @@ func TestStockRustRenderUsesExactSourceRanges(t *testing.T) {
 	plan, err := render.Compile(render.CompileInput{
 		JobID: "stockrust-source-ranges", Revision: "generation.v1",
 		OutputPath: filepath.Join(t.TempDir(), "stockrust-ranges-output.mp4"),
-		FPS:        fps, Timeline: timeline,
+		FrameRate:  audio.IntegerFrameRate(fps), Timeline: timeline,
 		Manifest: []render.AssetManifestEntry{{AssetID: "src", Path: sourcePath, SHA256: hex.EncodeToString(sum[:]), FrameCount: 600}},
 	})
 	if err != nil {
@@ -182,7 +182,7 @@ func stockrustRenderer(executor *Executor, width, height, fps int) *StockRendere
 		client: NewClientWithExecutor(executor, nil),
 		policy: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
 		profile: mediaexec.VideoProfile{
-			Width: width, Height: height, FPS: fps, KeyframeInterval: 60,
+			Width: width, Height: height, FPSNum: fps, FPSDen: 1, KeyframeInterval: 60,
 			AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 		},
 	}

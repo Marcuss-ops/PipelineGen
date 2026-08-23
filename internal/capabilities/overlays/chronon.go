@@ -160,11 +160,13 @@ type ChrononAnimWindow struct {
 	DurationFrames int64 `json:"duration_frames"`
 }
 
-// ChrononCanvas mirrors the chronon.render-plan.v1 canvas block.
+// ChrononCanvas mirrors the chronon.render-plan.v1 canvas block. Frame rate
+// is the canonical rational pair fps_num/fps_den.
 type ChrononCanvas struct {
 	Width          int   `json:"width"`
 	Height         int   `json:"height"`
-	FPS            int   `json:"fps"`
+	FPSNum         int   `json:"fps_num"`
+	FPSDen         int   `json:"fps_den"`
 	DurationFrames int64 `json:"duration_frames"`
 }
 
@@ -296,19 +298,19 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 	if renderer != "" && renderer != "chronon" {
 		return ChrononCompileResult{}, fmt.Errorf("overlay plan: renderer %q cannot compile to chronon.render-plan.v1", renderer)
 	}
-	if plan.Width <= 0 || plan.Height <= 0 || plan.FPS <= 0 {
-		return ChrononCompileResult{}, fmt.Errorf("overlay plan: width, height and fps must be positive for chronon compilation")
+	if plan.Width <= 0 || plan.Height <= 0 || plan.FPSNum <= 0 || plan.FPSDen <= 0 {
+		return ChrononCompileResult{}, fmt.Errorf("overlay plan: width, height and frame rate must be positive for chronon compilation")
 	}
 	if len(plan.Items) == 0 {
 		return ChrononCompileResult{}, fmt.Errorf("overlay plan: cannot compile an empty item list to chronon")
 	}
 
-	fps := plan.FPS
+	fps := float64(plan.FPSNum) / float64(plan.FPSDen)
 	frameAtMS := func(ms int64) int64 {
-		return int64(math.Round(float64(ms) * float64(fps) / 1000.0))
+		return int64(math.Round(float64(ms) * fps / 1000.0))
 	}
 	frameAtUS := func(us int64) int64 {
-		return int64(math.Round(float64(us) * float64(fps) / 1_000_000.0))
+		return int64(math.Round(float64(us) * fps / 1_000_000.0))
 	}
 	// itemFrameRange returns the item's [start, end) in integer frames from
 	// its canonical timing: integer microseconds when present, else the legacy
@@ -571,7 +573,8 @@ func CompileChrononPlan(plan OverlayPlan) (ChrononCompileResult, error) {
 			Canvas: ChrononCanvas{
 				Width:          plan.Width,
 				Height:         plan.Height,
-				FPS:            fps,
+				FPSNum:         plan.FPSNum,
+				FPSDen:         plan.FPSDen,
 				DurationFrames: frameAtUS(maxEndUS),
 			},
 			Layers: layers,

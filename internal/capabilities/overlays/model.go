@@ -29,7 +29,8 @@ type OverlayPlan struct {
 	ProjectID       string `json:"project_id,omitempty"`
 	Width           int    `json:"width"`
 	Height          int    `json:"height"`
-	FPS             int    `json:"fps"`
+	FPSNum          int    `json:"fps_num"`
+	FPSDen          int    `json:"fps_den"`
 	RendererVersion string `json:"renderer_version,omitempty"`
 	// MediaContract is the ID of the OverlayMediaContract the renderer must
 	// honor (container/codec/pixel format, audio_streams==0, alpha policy).
@@ -147,7 +148,8 @@ type RenderResult struct {
 	MIMEType        string `json:"mime_type"`
 	Width           int    `json:"width"`
 	Height          int    `json:"height"`
-	FPS             int    `json:"fps"`
+	FPSNum          int    `json:"fps_num"`
+	FPSDen          int    `json:"fps_den"`
 	DurationMs      int64  `json:"duration_ms"`
 	HasAlpha        bool   `json:"has_alpha"`
 	RendererVersion string `json:"renderer_version"`
@@ -217,8 +219,8 @@ func (p *OverlayPlan) Validate() error {
 	if strings.TrimSpace(p.PlanID) == "" || strings.TrimSpace(p.VideoID) == "" {
 		return fmt.Errorf("overlay plan: plan_id and video_id are required")
 	}
-	if p.Width <= 0 || p.Height <= 0 || p.FPS <= 0 {
-		return fmt.Errorf("overlay plan: width, height and fps must be positive")
+	if p.Width <= 0 || p.Height <= 0 || p.FPSNum <= 0 || p.FPSDen <= 0 {
+		return fmt.Errorf("overlay plan: width, height and frame rate must be positive")
 	}
 	if strings.TrimSpace(p.MediaContract) != "" {
 		if _, err := ResolveMediaContract(p.MediaContract); err != nil {
@@ -334,12 +336,12 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 	input := struct {
 		Template, Text, Params, Renderer string
 		Assets                           []string
-		Width, Height, FPS               int
+		Width, Height, FPSNum, FPSDen    int
 		StartMs, EndMs                   int64
 		StartUS, DurationUS              int64
 		PresetID                         string `json:"preset_id,omitempty"`
 	}{
-		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPS, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
+		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
 		item.PresetID,
 	}
 	b, _ := json.Marshal(input)

@@ -15,7 +15,7 @@ func TestOverlayPlanContract_EntityRefSerialized(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "plan-001", VideoID: "video-001",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID: "overlay-scene-0-tim-cook", SceneID: "scene-0",
 			EntityID: "ent_abc123", Kind: string(KindEntityCard),
@@ -58,7 +58,7 @@ func TestOverlayPlanContract_PresetIDSerialized(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "plan-002", VideoID: "video-002",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID: "ov_001", StartMs: 1500, EndMs: 3700,
 			TemplateID: "IMPORTANT_PHRASE", PresetID: "phrase_focus_v1",
@@ -85,7 +85,7 @@ func TestOverlayPlanContract_EntityRefValidation(t *testing.T) {
 	base := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "plan-003", VideoID: "video-003",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID: "ov_001", StartMs: 0, EndMs: 200, TemplateID: "person_default", Text: "Tim Cook",
 		}},
@@ -106,7 +106,7 @@ func TestOverlayPlanContract_EntityRefValidation(t *testing.T) {
 func TestOverlayPlanContract_PresetDoesNotChangeLegacyRenderKey(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
-		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPS: 30,
+		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID: "o", TemplateID: "entity-card@1", StartMs: 10, EndMs: 20,
 			Text: "Ada",
@@ -133,7 +133,7 @@ func TestOverlayPlanContract_PresetDoesNotChangeLegacyRenderKey(t *testing.T) {
 func TestOverlayPlanContract_EntityRefNotInRenderKey(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
-		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPS: 30,
+		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 	}
 	a := OverlayItem{
 		ID: "o1", TemplateID: "person_default", StartMs: 0, EndMs: 200, Text: "Tim Cook",

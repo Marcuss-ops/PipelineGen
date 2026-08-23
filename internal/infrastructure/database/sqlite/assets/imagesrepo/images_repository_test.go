@@ -59,7 +59,7 @@ var fase4TestSchema = []string{
 		media_type TEXT NOT NULL DEFAULT '',
 		width INTEGER NOT NULL DEFAULT 0,
 		height INTEGER NOT NULL DEFAULT 0,
-		file_hash TEXT NOT NULL DEFAULT '',
+		legacy_file_md5 TEXT NOT NULL DEFAULT '',
 		local_path TEXT NOT NULL DEFAULT '',
 		relative_path TEXT NOT NULL DEFAULT '',
 		drive_file_id TEXT NOT NULL DEFAULT '',
@@ -70,7 +70,28 @@ var fase4TestSchema = []string{
 		provider TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)`,
+    filename TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    index_state TEXT NOT NULL DEFAULT '',
+    search_text TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',)`,
 	`CREATE TABLE IF NOT EXISTS generated_image_details (
 		asset_id TEXT PRIMARY KEY,
 		prompt_original TEXT NOT NULL DEFAULT '',
@@ -99,7 +120,7 @@ var fase4TestSchema = []string{
 func insertMediaAsset(t *testing.T, db *sql.DB, id, hash string) {
 	t.Helper()
 	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO media_assets (id, source, file_hash) VALUES (?, 'image', ?)`, id, hash)
+		`INSERT INTO media_assets (id, source, legacy_file_md5) VALUES (?, 'image', ?)`, id, hash)
 	if err != nil {
 		t.Fatalf("seed media_assets: %v", err)
 	}
@@ -296,7 +317,7 @@ func (e *errScanner) Scan(dest ...any) error {
 // GetByDriveFileID / ListImagesBySubject / ListAll all use the same
 // 12-column list). DRY-ing it into a constant so the property tests
 // stay aligned with production code.
-const selectImageAssetProjection = `SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider FROM media_assets`
+const selectImageAssetProjection = `SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider FROM media_assets`
 
 // seedFullImageAsset inserts a media_assets row with all 12 columns
 // populated so the property tests have a non-trivial fixture. Used by
@@ -305,7 +326,7 @@ func seedFullImageAsset(t *testing.T, db *sql.DB, id, hash string) {
 	t.Helper()
 	_, err := db.ExecContext(context.Background(), `
 		INSERT INTO media_assets (
-			id, source, name, url, tags, file_hash, local_path, drive_file_id,
+			id, source, name, url, tags, legacy_file_md5, local_path, drive_file_id,
 			metadata_json, origin, provider, lifecycle_state
 		) VALUES (
 			?, 'image', ?, 'https://example.com/x.jpg', ?, ?, ?, ?,
@@ -407,7 +428,7 @@ func TestScanImageAssetFromRow_ScanErrorPropagation(t *testing.T) {
 func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
 	db := testDB(t)
 	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO media_assets (id, source, file_hash, tags, metadata_json)
+		`INSERT INTO media_assets (id, source, legacy_file_md5, tags, metadata_json)
 		 VALUES (?, 'image', ?, '{not valid JSON', '{not valid JSON either')`,
 		"img-bad-json", "hash-bad-json")
 	if err != nil {
@@ -460,7 +481,7 @@ func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
 func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenAvailable(t *testing.T) {
 	db := testDB(t)
 	_, err := db.ExecContext(context.Background(), `
-		INSERT INTO media_assets (id, source, name, url, file_hash, drive_file_id, origin, provider)
+		INSERT INTO media_assets (id, source, name, url, legacy_file_md5, drive_file_id, origin, provider)
 		VALUES (?, 'image', ?, ?, ?, ?, ?, ?)
 	`,
 		"img-drive-link",
@@ -496,7 +517,7 @@ func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenAvailable(t *testing.T) {
 func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenURLEmpty(t *testing.T) {
 	db := testDB(t)
 	_, err := db.ExecContext(context.Background(), `
-		INSERT INTO media_assets (id, source, name, url, drive_link, file_hash, origin, provider)
+		INSERT INTO media_assets (id, source, name, url, drive_link, legacy_file_md5, origin, provider)
 		VALUES (?, 'image', ?, ?, ?, ?, ?, ?)
 	`,
 		"img-drive-link-only",
@@ -615,7 +636,7 @@ func TestListImagesByOrigin_MultipleRowsOrderedDesc(t *testing.T) {
 	}
 	for _, ins := range inserts {
 		_, err := db.ExecContext(context.Background(),
-			`INSERT INTO media_assets (id, source, name, file_hash, origin, created_at)
+			`INSERT INTO media_assets (id, source, name, legacy_file_md5, origin, created_at)
 			 VALUES (?, 'image', ?, ?, 'generated', ?)`,
 			ins.id, "Image of "+ins.id, ins.hash, ins.createdAt)
 		if err != nil {
@@ -649,7 +670,7 @@ func TestListImagesByOrigin_Limit200Cap(t *testing.T) {
 
 	// Bulk-insert 250 rows via prepared statement for speed.
 	stmt, err := db.PrepareContext(context.Background(),
-		`INSERT INTO media_assets (id, source, name, file_hash, origin, created_at)
+		`INSERT INTO media_assets (id, source, name, legacy_file_md5, origin, created_at)
 		 VALUES (?, 'image', ?, ?, 'generated', ?)`)
 	if err != nil {
 		t.Fatalf("prepare bulk insert: %v", err)
@@ -696,7 +717,7 @@ func TestListImagesByOrigin_DifferentOriginsIsolated(t *testing.T) {
 	}
 	for _, ins := range inserts {
 		_, err := db.ExecContext(context.Background(),
-			`INSERT INTO media_assets (id, source, name, file_hash, origin)
+			`INSERT INTO media_assets (id, source, name, legacy_file_md5, origin)
 			 VALUES (?, 'image', ?, ?, ?)`,
 			ins.id, "Image of "+ins.id, "hash-"+ins.id, ins.origin)
 		if err != nil {

@@ -140,7 +140,7 @@ func compileTenClipPlan(t *testing.T, clips []stockrustClip, clipPaths []string,
 	plan, err := render.Compile(render.CompileInput{
 		JobID: "stockrust-live-10clip", Revision: "generation.v1",
 		OutputPath: filepath.Join(t.TempDir(), "stockrust-10clip-output.mp4"),
-		FPS:        fps, Timeline: timeline, Manifest: manifest,
+		FrameRate:  audio.IntegerFrameRate(fps), Timeline: timeline, Manifest: manifest,
 	})
 	if err != nil {
 		t.Fatal(err)

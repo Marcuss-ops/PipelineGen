@@ -115,7 +115,7 @@ func openLiveEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
-		);
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',);
 	`)
 	if err != nil {
 		_ = db.Close()

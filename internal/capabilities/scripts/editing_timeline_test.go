@@ -76,7 +76,7 @@ func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
-			FPS:           30,
+			FPSNum:        30, FPSDen: 1,
 			Items: []capabilityoverlay.OverlayItem{
 				{
 					ID:         "overlay-scene-01-tom-hanks",
@@ -196,7 +196,7 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
-			FPS:           30,
+			FPSNum:        30, FPSDen: 1,
 			MediaContract: "overlay-v1",
 			Items: []capabilityoverlay.OverlayItem{
 				{
@@ -252,7 +252,7 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 		VideoID:       "source-video-asset-001",
 		Width:         1920,
 		Height:        1080,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		MediaContract: "overlay-v1",
 		Items: []capabilityoverlay.OverlayItem{
 			{
@@ -364,7 +364,7 @@ func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
-			FPS:           30,
+			FPSNum:        30, FPSDen: 1,
 			Items: []capabilityoverlay.OverlayItem{
 				{
 					ID:         "overlay-scene-01-tom-hanks",

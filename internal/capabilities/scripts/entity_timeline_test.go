@@ -190,7 +190,7 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 
 	// The persisted SSOT feeds the overlay resolver: every occurrence gets
 	// an entity_card starting exactly when the entity is spoken.
-	plan, err := capabilityentities.ResolveEntityOverlayPlan(*res.EntityTimeline, "plan-run-001", "video-run-001", "", 1280, 720, 30)
+	plan, err := capabilityentities.ResolveEntityOverlayPlan(*res.EntityTimeline, "plan-run-001", "video-run-001", "", 1280, 720, 30, 1)
 	require.NoError(t, err)
 	require.Len(t, plan.Items, 4, "four entity occurrences → four entity cards")
 	item := overlayItemByID(t, plan, "overlay-scene-1-tom-hanks")

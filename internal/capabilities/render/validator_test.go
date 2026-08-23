@@ -28,7 +28,7 @@ func validPlanForValidator(t *testing.T, finalAudio *FinalAudioAsset) RenderPlan
 		}},
 	}
 	plan, err := Compile(CompileInput{
-		JobID: "job-validator", Revision: "rev-1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30,
+		JobID: "job-validator", Revision: "rev-1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline, FinalAudio: finalAudio,
 		Manifest: []AssetManifestEntry{{AssetID: "clip", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 30}},
 	})
@@ -88,7 +88,7 @@ func TestRenderPlanValidatorRejectsMissingFilesAndMissingVisuals(t *testing.T) {
 	}
 
 	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: 1_000_000, Segments: []audio.TimelineSegment{{ID: "scene", Index: 0, DurationUS: 1_000_000, Audio: audio.AudioIntent{Mode: audio.AudioSilence}}}}
-	noVideo, err := Compile(CompileInput{JobID: "job-no-video", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30, Timeline: timeline})
+	noVideo, err := Compile(CompileInput{JobID: "job-no-video", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30), Timeline: timeline})
 	if err != nil {
 		t.Fatal(err)
 	}

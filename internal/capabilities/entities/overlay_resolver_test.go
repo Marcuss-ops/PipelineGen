@@ -48,7 +48,7 @@ func entityTimelineFixture(t *testing.T) EntityTimeline {
 
 func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.T) {
 	timeline := entityTimelineFixture(t)
-	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-001", "video-001", "cert-project", 1920, 1080, 30)
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-001", "video-001", "cert-project", 1920, 1080, 30, 1)
 	require.NoError(t, err)
 	require.NoError(t, plan.Validate())
 	require.Equal(t, capabilityoverlay.SchemaVersionPlan, plan.SchemaVersion)
@@ -56,7 +56,8 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 	require.Equal(t, "video-001", plan.VideoID)
 	require.Equal(t, 1920, plan.Width)
 	require.Equal(t, 1080, plan.Height)
-	require.Equal(t, 30, plan.FPS)
+	require.Equal(t, 30, plan.FPSNum)
+	require.Equal(t, 1, plan.FPSDen)
 	require.Len(t, plan.Items, 3)
 
 	// The plan is sealed: every item carries a render key and the plan a
@@ -104,7 +105,7 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 // 0.120s = 4 frames.
 func TestResolveEntityOverlayPlan_CompilesToChronon(t *testing.T) {
 	timeline := entityTimelineFixture(t)
-	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-002", "video-002", "", 1280, 720, 30)
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-002", "video-002", "", 1280, 720, 30, 1)
 	require.NoError(t, err)
 
 	compiled, err := capabilityoverlay.CompileChrononPlan(plan)
@@ -157,9 +158,9 @@ func TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic(t *testing.T)
 		}},
 	}
 
-	first, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30)
+	first, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30, 1)
 	require.NoError(t, err)
-	second, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30)
+	second, err := ResolveEntityOverlayPlan(timeline, jobID, "video-"+jobID, "", 1920, 1080, 30, 1)
 	require.NoError(t, err)
 	require.True(t, reflect.DeepEqual(first, second), "same job/scene/item identities must produce identical OverlayPlans")
 
@@ -231,7 +232,7 @@ func TestResolveEntityOverlayPlan_TypeTemplateViaRegistry(t *testing.T) {
 // TestResolveEntityOverlayPlan_EmptyTimelineFailsClosed certifies that a
 // timeline without occurrences cannot produce an empty plan.
 func TestResolveEntityOverlayPlan_EmptyTimelineFailsClosed(t *testing.T) {
-	_, err := ResolveEntityOverlayPlan(EntityTimeline{Version: EntityTimelineVersion, DurationUS: 1_000_000}, "p", "v", "", 1920, 1080, 30)
+	_, err := ResolveEntityOverlayPlan(EntityTimeline{Version: EntityTimelineVersion, DurationUS: 1_000_000}, "p", "v", "", 1920, 1080, 30, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no entity occurrences")
 }

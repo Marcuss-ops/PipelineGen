@@ -72,13 +72,13 @@ func BuildPresetCertificationPlan(cell PresetCertificationCell, planID string) O
 		item.Text = cell.Text
 	}
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          planID,
-		VideoID:         "video-" + planID,
-		ProjectID:       "preset-certification",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        planID,
+		VideoID:       "video-" + planID,
+		ProjectID:     "preset-certification",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{

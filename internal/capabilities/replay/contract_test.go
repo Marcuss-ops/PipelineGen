@@ -26,7 +26,7 @@ func testTimeline() audio.CanonicalTimeline {
 func testPlan(t *testing.T) render.RenderPlan {
 	t.Helper()
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testTimeline(),
 		Manifest: []render.AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64('a'), FrameCount: 2000},
@@ -84,7 +84,7 @@ func TestBuildAssetsDropsLocalPathsAndDeduplicates(t *testing.T) {
 
 func TestBuildAssetsIncludesFinalAudio(t *testing.T) {
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testTimeline(),
 		Manifest: []render.AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64('a'), FrameCount: 2000},

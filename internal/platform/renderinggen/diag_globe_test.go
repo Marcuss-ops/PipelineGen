@@ -38,13 +38,13 @@ func TestDiagGlobeOverlay(t *testing.T) {
 
 	jobID := getenvOr("PIPELINEGEN_E2E_JOB_ID", "diag-globe-overlay")
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          jobID,
-		VideoID:         jobID,
-		ProjectID:       "pipelinegen-diag",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        jobID,
+		VideoID:       jobID,
+		ProjectID:     "pipelinegen-diag",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 5000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},
