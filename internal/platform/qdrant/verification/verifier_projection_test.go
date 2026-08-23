@@ -143,8 +143,8 @@ func TestVerifyActiveProjection_HappyPath(t *testing.T) {
 		AliasTarget: "media_assets_v4_test",
 		Pages: [][]map[string]any{
 			{
-				projectionPoint("asset-1"),
-				projectionPoint("asset-2"),
+				point("asset-1"),
+				point("asset-2"),
 			},
 		},
 	})
@@ -172,7 +172,7 @@ func TestVerifyActiveProjection_MissingBlocks(t *testing.T) {
 	srv := mockProjectionQdrant(t, projectionMockSpec{
 		AliasTarget: "media_assets_v4_test",
 		Pages: [][]map[string]any{
-			{projectionPoint("asset-1")},
+			{point("asset-1")},
 		},
 	})
 	defer srv.Close()
@@ -194,7 +194,7 @@ func TestVerifyActiveProjection_OrphanBlocks(t *testing.T) {
 	srv := mockProjectionQdrant(t, projectionMockSpec{
 		AliasTarget: "media_assets_v4_test",
 		Pages: [][]map[string]any{
-			{projectionPoint("asset-1"), projectionPoint("asset-9")},
+			{point("asset-1"), point("asset-9")},
 		},
 	})
 	defer srv.Close()
@@ -237,9 +237,9 @@ func TestVerifyActiveProjection_MultiPage(t *testing.T) {
 	srv := mockProjectionQdrant(t, projectionMockSpec{
 		AliasTarget: "media_assets_v4_test",
 		Pages: [][]map[string]any{
-			{projectionPoint("asset-1")},
-			{projectionPoint("asset-2")},
-			{projectionPoint("asset-3")},
+			{point("asset-1")},
+			{point("asset-2")},
+			{point("asset-3")},
 		},
 	})
 	defer srv.Close()
@@ -261,7 +261,7 @@ func TestVerifyActiveProjection_ScrollErrorFatal(t *testing.T) {
 		AliasTarget: "media_assets_v4_test",
 		// Two pages so the loop performs a second scroll request; the
 		// injected error fires on page 1.
-		Pages:        [][]map[string]any{{projectionPoint("asset-1")}, {projectionPoint("asset-2")}},
+		Pages:        [][]map[string]any{{point("asset-1")}, {point("asset-2")}},
 		ErrAfterPage: 1,
 	})
 	defer srv.Close()
@@ -301,7 +301,7 @@ type projectionMockSpec struct {
 }
 
 // point builds a Qdrant scroll point with a payload asset_id.
-func projectionPoint(assetID string) map[string]any {
+func point(assetID string) map[string]any {
 	return map[string]any{
 		"id": qdrantSchema.AssetIDToQdrantPointID(assetID),
 		"payload": map[string]any{
