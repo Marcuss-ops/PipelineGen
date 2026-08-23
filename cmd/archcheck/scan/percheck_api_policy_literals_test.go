@@ -103,7 +103,7 @@ func TestScanAPIPolicyLiterals_ImportBlockExempt(t *testing.T) {
 		`package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 `)
 	rep := &report.Report{}
@@ -127,7 +127,7 @@ func TestScanAPIPolicyLiterals_PostImportBlockReference_TripsGate(t *testing.T) 
 		`package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 
 var _ = operations.ScopeScriptGenerate

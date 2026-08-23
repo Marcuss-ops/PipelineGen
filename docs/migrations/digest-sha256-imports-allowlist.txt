@@ -5,13 +5,10 @@ internal/app/chunked_voiceover_tts.go
 internal/app/vidrush_materialization_wiring.go
 internal/application/assets/artifacts/local_blob.go
 internal/application/assets/artifacts/service.go
-internal/application/assets/delivery/types.go
+internal/capabilities/delivery/types.go
 internal/application/scripts/adapters/vidrush_helpers.go
 internal/application/staging/service.go
-internal/application/voiceover/process_segment.go
 internal/application/voiceover/process_segment_publish.go
-internal/domain/linguistics/lexicon_scoring.go
-internal/domain/remote/artifact_preparation.go
 internal/infrastructure/acquisition/filesystem_stager_prepare.go
 internal/infrastructure/ai/autotag/autotag.go
 internal/infrastructure/artifacts/local_store_fs.go

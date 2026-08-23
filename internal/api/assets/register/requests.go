@@ -19,7 +19,7 @@ package register
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.

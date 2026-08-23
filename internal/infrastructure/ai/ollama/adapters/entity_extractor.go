@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

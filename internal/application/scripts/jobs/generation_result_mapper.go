@@ -39,7 +39,7 @@ import (
 	"errors"
 	"fmt"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // buildSingleSuccessEnvelope wraps a successful single-item result

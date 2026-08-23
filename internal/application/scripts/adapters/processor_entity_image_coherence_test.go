@@ -3,7 +3,7 @@ package adapters
 import (
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestEntityImage_WrongPersonImageNeverBinds certifies Test 18's dangerous

@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

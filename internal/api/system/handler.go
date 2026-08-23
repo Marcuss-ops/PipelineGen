@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // DoctorConfig is the typed snapshot of configuration fields the
@@ -281,4 +282,18 @@ func (h *SystemHandler) checkGoogleAccounting(ctx context.Context, resp *DoctorR
 			resp.Checks["google_accounting"] = fmt.Sprintf("error_%d", hResp.StatusCode)
 		}
 	}
+}
+
+// Slugify handles GET /internal/slug — the canonical slug endpoint absorbed
+// from the retired UtilityModule (2026-08-23 Cleanup Day).
+func (h *SystemHandler) Slugify(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing query parameter q"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"input": q,
+		"slug":  textutil.Slugify(q),
+	})
 }

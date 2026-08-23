@@ -41,8 +41,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -106,7 +106,7 @@ func (s *stubRepository) IncrementAttemptCount(_ context.Context, _ string) erro
 }
 
 // Compile-time conformance anchor.
-var _ artifact.Repository = (*stubRepository)(nil)
+var _ artifact.ArtifactStageRepository = (*stubRepository)(nil)
 
 // stubPublisher captures Publish calls + returns a canned
 // PublishResult (default: drive-published) + a canned error

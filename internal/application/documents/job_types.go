@@ -1,7 +1,7 @@
 package documents
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

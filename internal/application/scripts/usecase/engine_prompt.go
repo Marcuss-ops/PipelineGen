@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // cleanSegmentSourceText converts legacy editorial briefs into model-facing

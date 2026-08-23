@@ -53,7 +53,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

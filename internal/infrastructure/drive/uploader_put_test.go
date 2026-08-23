@@ -34,7 +34,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 )
 
 // newFakeDriveService constructs a *driveapi.Service that is NEVER

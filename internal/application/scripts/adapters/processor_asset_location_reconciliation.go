@@ -25,7 +25,7 @@
 package adapters
 
 import (
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // AssetLocationReconciliationProcessor verifies every drive_link

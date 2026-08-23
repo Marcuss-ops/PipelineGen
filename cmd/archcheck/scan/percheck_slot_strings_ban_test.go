@@ -49,7 +49,7 @@ func slotStringsViolations(r *report.Report) []report.Violation {
 func TestSlotStrings_CanonicalOwnerPasses(t *testing.T) {
 	dir := t.TempDir()
 	slotStringsWriteTree(t, dir, map[string]string{
-		"internal/domain/media/slot.go": `package media
+		"internal/kernel/media/slot.go": `package media
 const SlotPrimaryVideo SlotKind = "primary_video"
 const SlotDocument SlotKind = "document"
 `,

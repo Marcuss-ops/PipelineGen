@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 type fakeSubtitleSource struct {

@@ -28,7 +28,7 @@
 //     ClipSearchPort).
 //   - internal/application/scripts/ports: ClipSearchQuery
 //     (curate-resolver search input shape).
-//   - internal/domain/script: SearchResultItem
+//   - internal/kernel/script: SearchResultItem
 //     (typed curatior-resolver search output shape).
 //   - internal/infrastructure/qdrant: Searcher + IndexWriter +
 //     NewTextEmbedderAdapter (Qdrant-backed engine ports).

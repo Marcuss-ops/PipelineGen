@@ -33,7 +33,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 
-	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 

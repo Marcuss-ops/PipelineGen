@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

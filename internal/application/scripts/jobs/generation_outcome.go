@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Outcome is the canonical classification of a script.generate job

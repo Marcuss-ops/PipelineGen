@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

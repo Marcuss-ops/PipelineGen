@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subjects"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	_ "github.com/mattn/go-sqlite3"

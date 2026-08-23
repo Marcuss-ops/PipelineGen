@@ -87,7 +87,7 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

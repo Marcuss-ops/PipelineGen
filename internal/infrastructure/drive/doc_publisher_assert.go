@@ -13,7 +13,7 @@
 // ports.go.
 package drive
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 
 // Compile-time: *DocClientImpl satisfies the application-layer
 // delivery.DocPublisher port. Return types are any in the interface

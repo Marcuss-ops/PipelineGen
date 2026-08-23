@@ -50,7 +50,7 @@ import (
 	"math"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )
@@ -62,8 +62,8 @@ import (
 // stages consume.
 //
 // godlike/06 SSOT: NarrativeDraft lives in the scene package
-// instead of domain/script because W1.1 is a minimal-blast-radius
-// extraction. A future wave may promote it to domain/script when
+// instead of kernel/script because W1.1 is a minimal-blast-radius
+// extraction. A future wave may promote it to kernel/script when
 // additional producers need to consume the same shape; until then,
 // the planner is the sole producer and sole consumer.
 //

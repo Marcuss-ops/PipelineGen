@@ -12,7 +12,7 @@
 // Allowlist:
 //   - internal/application/scripts/scene/binder.go : the canonical binder.
 //   - *_test.go                                    : tests may construct fixtures directly.
-//   - internal/domain/script types                 : domain types own ClipBinding/StockBinding definitions.
+//   - internal/kernel/script types                 : domain types own ClipBinding/StockBinding definitions.
 //
 // Pattern anchors:
 //

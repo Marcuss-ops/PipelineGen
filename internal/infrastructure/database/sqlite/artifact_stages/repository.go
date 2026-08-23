@@ -58,14 +58,14 @@ import (
 	"fmt"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Compile-time assertion: *Repository satisfies the domain port.
-var _ artifact.Repository = (*Repository)(nil)
+var _ artifact.ArtifactStageRepository = (*Repository)(nil)
 
 // Repository is the SQLite-backed implementation of
-// artifact.Repository. Holds a *sql.DB; all 8 methods are safe for
+// artifact.ArtifactStageRepository. Holds a *sql.DB; all methods are safe for
 // concurrent use (database/sql is the standard connection pool).
 type Repository struct {
 	db *sql.DB
@@ -130,7 +130,7 @@ func validateForWrite(stage *artifact.ArtifactStage) error {
 	// non-STAGED row bypasses the state machine; rejected with
 	// ErrInvalidArtifactStageState (same sentinel as non-canonical
 	// values, so log-greppers get one consistent failure class).
-	if stage.State != artifact.StateStaged {
+	if stage.State != artifact.ArtifactStageStateStaged {
 		return fmt.Errorf("%w: Insert requires state=STAGED (canonical initial state of the saga), got %q", artifact.ErrInvalidArtifactStageState, stage.State)
 	}
 	if !stage.Requirement.IsValid() {

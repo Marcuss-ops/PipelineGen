@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"

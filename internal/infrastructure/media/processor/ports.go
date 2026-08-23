@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 

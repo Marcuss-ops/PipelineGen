@@ -35,7 +35,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ── 7-gate filter-input projection ─────────────────────────────────

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Typed-sentinel branches (errors.Is + errors.As) ───────────────────────

@@ -4,7 +4,7 @@
 // against the policy threshold and clip_evidence binding coverage.
 package usecase
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // sourceCoverageChecker fails when the source_text coverage is below the
 // policy threshold (only enforced when the source was evaluated — a

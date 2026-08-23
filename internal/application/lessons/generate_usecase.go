@@ -22,7 +22,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
-	joblessons "github.com/Marcuss-ops/PipelineGen/internal/domain/lessons"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -176,7 +175,7 @@ func NewGenerateLessonUseCase(svc lessonProcessor, jobsSvc asyncEnqueuer, log *z
 // Same async/sync split as books.ProcessBookUseCase.
 func (uc *GenerateLessonUseCase) Handle(ctx context.Context, req GenerateLessonRequest) (GenerateLessonResponse, error) {
 	if req.Async {
-		return uc.enqueueLessonJob(ctx, req, string(joblessons.TypeProcess))
+		return uc.enqueueLessonJob(ctx, req, string(jobs.TypeLessonsProcess))
 	}
 	return uc.handleSync(ctx, req)
 }

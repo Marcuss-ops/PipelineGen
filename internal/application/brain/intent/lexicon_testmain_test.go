@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
 func TestMain(m *testing.M) {

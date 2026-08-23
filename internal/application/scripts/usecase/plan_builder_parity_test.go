@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestBuildPlanParityWithGeneration pins the EXPAND/BACKFILL boundary:

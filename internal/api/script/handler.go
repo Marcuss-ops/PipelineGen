@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // mapErrorToHTTP maps domain-level script errors to HTTP status codes.

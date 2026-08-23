@@ -88,7 +88,7 @@ internal/application/jobs/jobs:Broker                               # applicatio
 internal/application/assets/search/search:Logger                    # cross-module search.Logger mirror — assets side — owner: @qdrant-hygiene, deadline: 2026-09-01
 internal/application/search/search:Logger                            # cross-module search.Logger mirror — canonical side — owner: @qdrant-hygiene, deadline: 2026-09-01
 internal/application/scripts/scripts:ScriptStockMatchRecord         # legacy sqlite-vs-application mirror — application side only — owner: @qdrant-hygiene, deadline: 2026-09-01
-internal/domain/voiceover/voiceover:VoiceoverResult                 # scanner-flagged alias — domain/voiceover/result.go:86 type alias `VoiceoverResult = Result` — owner: @voiceover-team, deadline: 2026-09-01
+internal/capabilities/voiceover/voiceover:VoiceoverResult                 # scanner-flagged alias — capabilities/voiceover/result.go:86 type alias `VoiceoverResult = Result` — owner: @voiceover-team, deadline: 2026-09-01
 internal/application/voiceover/voiceover:VoiceoverResult            # scanner-flagged alias — types.go:195 struct — owner: @voiceover-team, deadline: 2026-09-01
 internal/application/scripts/jobs/jobs:GenerateJobHandler           # port-pattern canonical — scripts/jobs/generation_job.go (canonical script.generate handler) — owner: @jobs-core, deadline: 2026-09-01
 internal/application/voiceover/jobs/jobs:GenerateJobHandler          # port-pattern canonical — voiceover/jobs/generate_handler.go (typed-port voiceover.generate sub-handler) — owner: @jobs-core, deadline: 2026-09-01

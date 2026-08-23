@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TypedMetadata carries the canonical semantic fields that must be
@@ -40,136 +41,12 @@ import (
 // deserve a first-class column. The committer merges Extra on top
 // of the typed fields (with typed fields winning on conflict for
 // the canonical keys).
-type TypedMetadata struct {
-	Title          string
-	Origin         string
-	Description    string
-	SourceVersion  string
-	PublishAction  string
-	SizeBytes      int64
-	Round          int
-	Event          string
-	Subject        string
-	Tags           []string
-	Category       string
-	SourceProvider string
-	SourceVideoID  string
-	SourceTitle    string
-	SourceChannel  string
-	DrivePath      string
-	IndexingStatus string
-	StartSec       float64
-	EndSec         float64
-	Slug           string
-
-	// Summary/Topics/Speakers/MentionedPeople/Hook/QualityScore/
-	// SponsorSegment are the canonical semantic-enrichment fields
-	// produced by the metadata analyzer (PR-ASSET-COMMITTER-
-	// ENRICHMENT, August 2026). They were formerly hand-marshalled
-	// into Extra by the YouTube metadata writer as a SECOND post-commit
-	// write; promoting them here makes the single canonical commit
-	// carry the complete semantic snapshot atomically.
-	Summary         string
-	Topics          []string
-	Speakers        []string
-	MentionedPeople []string
-	Hook            string
-	QualityScore    float64
-	SponsorSegment  bool
-
-	Extra map[string]any
-}
-
-// ToMap serialises the typed metadata into the canonical map shape
-// written to media_assets.metadata_json. Canonical keys that have
-// dedicated first-class columns are intentionally OMITTED — they are
-// written by the AssetCommitter to their own columns and MUST NOT be
-// mirrored in JSON (PR-METAJSON-STOP-MIRROR, August 2026). The JSON
-// carries only provider-specific extras and semantic-enrichment facts
-// that lack their own dedicated column.
-//
-// Keys deliberately NOT written (owned by first-class columns):
-//
-//	title, source_provider, source_video_id, source_version, tags, category
-//
-// Provider extras live in the Extra map and are included at the bottom.
-func (m TypedMetadata) ToMap() map[string]any {
-	out := make(map[string]any)
-	setIfNotEmpty := func(k, v string) {
-		if v != "" {
-			out[k] = v
-		}
-	}
-	// PR-METAJSON-STOP-MIRROR (August 2026): title, source_provider,
-	// source_video_id, source_version, tags, and category are removed
-	// from the JSON output — they are owned by first-class columns.
-	setIfNotEmpty("description", m.Description)
-	setIfNotEmpty("publish_action", m.PublishAction)
-	setIfNotEmpty("event", m.Event)
-	setIfNotEmpty("subject", m.Subject)
-	setIfNotEmpty("source_title", m.SourceTitle)
-	setIfNotEmpty("source_channel", m.SourceChannel)
-	setIfNotEmpty("drive_path", m.DrivePath)
-	setIfNotEmpty("indexing_status", m.IndexingStatus)
-	setIfNotEmpty("slug", m.Slug)
-	setIfNotEmpty("origin", m.Origin)
-	setIfNotEmpty("summary", m.Summary)
-	setIfNotEmpty("hook", m.Hook)
-	if len(m.Topics) > 0 {
-		out["topics"] = m.Topics
-	}
-	if len(m.Speakers) > 0 {
-		out["speakers"] = m.Speakers
-	}
-	if len(m.MentionedPeople) > 0 {
-		out["mentioned_people"] = m.MentionedPeople
-	}
-	if m.QualityScore != 0 {
-		out["quality_score"] = m.QualityScore
-	}
-	if m.SponsorSegment {
-		out["sponsor_segment"] = true
-	}
-	if m.SizeBytes != 0 {
-		out["size_bytes"] = m.SizeBytes
-	}
-	if m.Round != 0 {
-		out["round"] = m.Round
-	}
-	if m.StartSec != 0 {
-		out["start_sec"] = m.StartSec
-	}
-	if m.EndSec != 0 {
-		out["end_sec"] = m.EndSec
-	}
-	if len(m.Tags) > 0 {
-		out["tags"] = append([]string(nil), m.Tags...)
-	}
-	// Provider extras live in Extra and are included at the bottom.
-	for k, v := range m.Extra {
-		// Typed fields win over Extra for canonical keys.
-		if _, exists := out[k]; !exists && v != nil {
-			out[k] = v
-		}
-	}
-	return out
-}
+type TypedMetadata = asset.TypedMetadata
 
 // LocationCommit describes one row to write into asset_locations.
 // At least one location should be marked primary (IsPrimary=true);
 // the committer will treat the first location as primary if none is.
-type LocationCommit struct {
-	Kind          string
-	Provider      string
-	ExternalID    string
-	URI           string
-	WebViewLink   string
-	DownloadURL   string
-	MimeType      string
-	FileSizeBytes int64
-	LegacyFileMD5 string
-	IsPrimary     bool
-}
+type LocationCommit = asset.LocationCommit
 
 // CommitRequest is the canonical input for committing an asset.
 //

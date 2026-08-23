@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Resolver-version discriminators for research_cache rows. They MUST match

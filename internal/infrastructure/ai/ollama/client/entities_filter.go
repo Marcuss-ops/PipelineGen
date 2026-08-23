@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

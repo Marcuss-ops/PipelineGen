@@ -48,7 +48,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // noopAssetTxByteEquiv satisfies finalization.AssetFinalizerTx with a

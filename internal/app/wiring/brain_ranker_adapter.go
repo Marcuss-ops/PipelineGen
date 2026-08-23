@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // mediaMemoryRankerAdapter adapts the rich MediaMemory ranker to the

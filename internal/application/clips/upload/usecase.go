@@ -18,7 +18,7 @@ import (
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"

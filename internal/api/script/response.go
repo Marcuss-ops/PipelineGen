@@ -31,7 +31,7 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 )
 
 // GenerateResponse is the canonical typed output shape that the

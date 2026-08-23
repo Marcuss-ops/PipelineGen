@@ -7,13 +7,12 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult, skeletons map[Language]string) bool {
+func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult, skeletons map[Language]string) bool {
 	// ── Publish Documents after the final audio/render payload ───
 	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
 	if startErr != nil {

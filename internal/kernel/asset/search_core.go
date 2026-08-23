@@ -69,7 +69,7 @@ type AdvancedSearchResult struct {
 //
 // Renaming history (Wave-14, Jun 2026): this type previously used the
 // name `SearchQuery` but conflicted with the YouTube topic entity
-// that came in from internal/domain/media. The canonical name we
+// that came in from internal/kernel/media. The canonical name we
 // inherited from `search_types.go` was `SearchQuery` for the request
 // DTO; the arrival of the database-backed entity forced a
 // clarification. The request DTO kept the role-rich name

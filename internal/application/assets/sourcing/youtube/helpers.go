@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"strings"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/sourcing"
 )
 
 // ExtractVideoIDFromURL pulls the YouTube video ID from a raw URL.

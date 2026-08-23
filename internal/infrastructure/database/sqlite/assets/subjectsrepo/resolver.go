@@ -27,7 +27,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subjects"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/google/uuid"

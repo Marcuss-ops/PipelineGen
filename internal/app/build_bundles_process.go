@@ -53,9 +53,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -108,7 +108,7 @@ import (
 // production it is a dead-letter regression, so the wiring logs a
 // loud Warn when it is missing. Production wiring always supplies
 // the canonical drive.FileLifecycle adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}

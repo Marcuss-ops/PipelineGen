@@ -9,7 +9,7 @@
 // directly (no import cycle).
 //
 // PR 8 (June 2026): GenerateVideoMetadata returns
-// scriptpkg.VideoMetadata (internal/domain/script) directly —
+// scriptpkg.VideoMetadata (internal/kernel/script) directly —
 // the pre-PR-8 in-package VideoMetadata alias is gone.
 package dto
 
@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -74,7 +74,7 @@ func BuildMetadataLanguages(languages []string) []string {
 // translation calls.
 //
 // PR 8 (June 2026): returns scriptpkg.VideoMetadata (the canonical
-// structured shape in internal/domain/script).
+// structured shape in internal/kernel/script).
 //
 // PR-VO cleanup (June 2026, P0.6 sotto-task 4): removed the silent
 // "fallback to original text" behaviour on translator error. Each

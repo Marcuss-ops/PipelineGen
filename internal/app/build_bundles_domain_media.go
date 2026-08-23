@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -19,6 +18,7 @@ import (
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"

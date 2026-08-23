@@ -35,7 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

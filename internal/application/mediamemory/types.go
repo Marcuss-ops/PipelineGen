@@ -1,7 +1,7 @@
 package mediamemory
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // SlotKind is an alias for the canonical media.SlotKind kept for backward

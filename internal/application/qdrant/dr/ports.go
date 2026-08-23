@@ -24,7 +24,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
 )
 
 // SnapshotStore persists + restores Qdrant collection snapshots

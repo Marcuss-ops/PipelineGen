@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
-	scriptdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	scriptdomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestJobPolicyResolver_ResolveScriptGenerate(t *testing.T) {

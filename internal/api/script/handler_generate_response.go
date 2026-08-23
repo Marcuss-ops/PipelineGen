@@ -36,7 +36,7 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 
 // writeGenerateSubmitError maps an opsapp.Submit error to the canonical

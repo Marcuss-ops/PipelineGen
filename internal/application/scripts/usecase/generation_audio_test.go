@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type audioPlanProcessorStub struct {

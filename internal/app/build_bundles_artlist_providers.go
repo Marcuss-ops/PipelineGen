@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"time"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"

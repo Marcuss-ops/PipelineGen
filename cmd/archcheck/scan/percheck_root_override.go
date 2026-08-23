@@ -98,14 +98,13 @@ var rootOverrideSkipPathPrefixes = []string{
 // rootOverrideAllowedFiles enumerates specific production Go files
 // in the forbidden zones where the transitional parent-folder seam is legitimate:
 //
-//   - delivery/types.go: the field DECLARATION on PublishRequest
-//     (not a call site; the scanner should whitelist the canonical
-//     delivery contract declaration).
+//   - the canonical delivery contract declaration is outside the
+//     application layer (internal/capabilities/delivery), so it does
+//     not require an application-zone allowlist entry.
 //   - health/readyz_checkers.go: operational readiness probes
 //     (Drive canary + folder checker) that need explicit parent folders
 //     to target specific Drive folders for canary uploads.
 var rootOverrideAllowedFiles = map[string]bool{
-	"internal/application/assets/delivery/types.go": true,
 	// PR-P12-HEALTH-CHECKER-SPLIT: readyz_checkers.go was decomposed into 4 sister files
 	// (readyz_checkers.go orchestrator + readyz_checkers_tools.go + readyz_checkers_canary.go +
 	// readyz_checkers_fase6.go). The 2 files that reference RootFolderOverride are the
@@ -151,7 +150,6 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// callers pass per-call folder overrides while the registry transitions
 	// to full semantic routing. The field is the canonical owner of
 	// PublishRequest shape; reading it in a PathBuilder is NOT a violation.
-	"internal/application/assets/delivery/registry.go": true,
 	// PR-P12-IMAGES-WHITELIST (July 2026): images/storage_service.go passes
 	// req.DriveRootOverride from the AssetDestinationRequest into the Publisher.
 	// This is a legitimate operator-supplied folder override for image storage.

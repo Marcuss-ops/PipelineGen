@@ -28,20 +28,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subtitle"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/system"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Completion declaration ─────────────────────────────────────────────
@@ -198,20 +193,20 @@ const (
 	TypeMediaExtract        = media.TypeExtract
 	TypeMediaStock          = media.TypeStock
 	TypeVoiceoverBatch      = voiceover.TypeBatch
-	TypeSubtitleGenerate    = subtitle.TypeGenerate
+	TypeSubtitleGenerate    = job.TypeSubtitleGenerate
 	TypeYouTubeUpload       = youtube.TypeUpload
 	TypeYouTubeStock        = youtube.TypeStock
-	TypeCatalogSync         = catalog.TypeSync
+	TypeCatalogSync         = job.TypeCatalogSync
 	TypeArtlistRun          = media.TypeArtlistRun
 	TypeArtlistCacheRefresh = media.TypeArtlistCacheRefresh
-	TypeSystemCleanup       = system.TypeCleanup
+	TypeSystemCleanup       = job.TypeSystemCleanup
 	TypeMediaGenerate       = media.TypeGenerate
-	TypeBooksProcess        = books.TypeProcess
-	TypeLessonsProcess      = lessons.TypeProcess
+	TypeBooksProcess        = job.TypeBooksProcess
+	TypeLessonsProcess      = job.TypeLessonsProcess
 	TypeMediaReindex        = media.TypeReindex
 	TypeMediaEnrich         = media.TypeEnrich
 	TypeYouTubeRebuildST    = youtube.TypeRebuildSearchText
-	TypeDriveFolderSync     = drive.TypeFolderSync
+	TypeDriveFolderSync     = job.TypeDriveFolderSync
 	TypeMediaCurate         = media.TypeCurate
 	TypeVoiceoverPromo      = voiceover.TypePromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
@@ -231,7 +226,7 @@ const (
 
 	// Step 11B (July 2026) sibling-job type aliases. Canonical strings
 	// ("script.spawn_voiceover", "script.spawn_images") live in
-	// internal/domain/script per godlike/02 §Capability-specific
+	// internal/kernel/script per godlike/02 §Capability-specific
 	// constants stay in their owning domain package.
 	TypeScriptVoiceoverSibling = script.TypeVoiceoverSibling
 	TypeScriptImageSibling     = script.TypeImageSibling
@@ -299,5 +294,7 @@ const (
 	// kernel (internal/kernel/job/canonical_definitions.go) and is
 	// re-exported by the owning capability; this is a pure re-export
 	// alias so registry files reference one stable identifier.
-	TypeClipRender = job.TypeClipRender
+	TypeClipRender       = job.TypeClipRender
+	TypeAssemblyPrepare  = assembly.PrepareJobType
+	TypeAssemblyFinalize = assembly.FinalizeJobType
 )

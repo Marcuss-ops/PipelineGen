@@ -22,8 +22,7 @@ package adapters
 import (
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
@@ -216,7 +215,7 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 	// The normalizer has no error channel, so an enabled request with no
 	// resolvable folder stays empty and is rejected by ValidateItem
 	// (docs enabled but no script docs folder configured).
-	if resolvedFolderID, _ := kernelscript.ResolveScriptDocsFolderID(
+	if resolvedFolderID, _ := scriptpkg.ResolveScriptDocsFolderID(
 		item.Docs.Enabled, item.Docs.FolderID, cfg.ScriptDocsFolderID,
 	); resolvedFolderID != "" {
 		item.Docs.FolderID = resolvedFolderID

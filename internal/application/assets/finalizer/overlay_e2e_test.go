@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	appoverlays "github.com/Marcuss-ops/PipelineGen/internal/app/overlays"
+	appwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
@@ -106,7 +106,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	renderer := &fakeChrononRenderer{bytes: []byte("chronon-overlay-e2e")}
-	h, err := appoverlays.NewHandlerSet(cache, renderer, gate, &fakeChrononProber{}, "chronon-e2e")
+	h, err := appwiring.NewHandlerSet(cache, renderer, gate, &fakeChrononProber{}, "chronon-e2e")
 	if err != nil {
 		t.Fatal(err)
 	}

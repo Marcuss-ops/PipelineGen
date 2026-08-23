@@ -79,8 +79,8 @@
     "internal/capabilities/scripts/runner_unit_test.go",
     "internal/domain/qdrantdr/types.go",
     "internal/domain/qdrantdr/types_test.go",
-    "internal/domain/script/generation_source_validation.go",
-    "internal/domain/script/output_spec.go",
+    "internal/kernel/script/generation_source_validation.go",
+    "internal/kernel/script/output_spec.go",
     "internal/infrastructure/drive/materializer.go",
     "internal/infrastructure/drive/uploader_put.go",
     "internal/infrastructure/hashutil/adapter.go",
@@ -1533,10 +1533,10 @@
     "internal/domain/qdrantdr/types_test.go": [
       "qdrant"
     ],
-    "internal/domain/script/generation_source_validation.go": [
+    "internal/kernel/script/generation_source_validation.go": [
       "script"
     ],
-    "internal/domain/script/output_spec.go": [
+    "internal/kernel/script/output_spec.go": [
       "script"
     ],
     "internal/infrastructure/drive/materializer.go": [
@@ -1746,7 +1746,7 @@
       "duration_ms": 13786,
       "timeout_seconds": 300.0,
       "commands": [
-        "go test ./internal/domain/script/...",
+        "go test ./internal/kernel/script/...",
         "go test ./internal/application/scripts/...",
         "go test ./internal/api/script/..."
       ],
@@ -1757,9 +1757,9 @@
           "exit_code": 0,
           "duration_ms": 658,
           "timed_out": false,
-          "command": "go test ./internal/domain/script/...",
+          "command": "go test ./internal/kernel/script/...",
           "kind": "go",
-          "source": "./internal/domain/script/..."
+          "source": "./internal/kernel/script/..."
         },
         {
           "status": "FAIL",
@@ -2067,7 +2067,7 @@
       "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
-        "go test ./internal/domain/voiceover/...",
+        "go test ./internal/capabilities/voiceover/...",
         "go test ./internal/application/voiceover/...",
         "go test ./internal/api/assets/voiceover/..."
       ],
@@ -2526,7 +2526,7 @@
         "duration_ms": 13786,
         "timeout_seconds": 300.0,
         "commands": [
-          "go test ./internal/domain/script/...",
+          "go test ./internal/kernel/script/...",
           "go test ./internal/application/scripts/...",
           "go test ./internal/api/script/..."
         ],
@@ -2537,9 +2537,9 @@
             "exit_code": 0,
             "duration_ms": 658,
             "timed_out": false,
-            "command": "go test ./internal/domain/script/...",
+            "command": "go test ./internal/kernel/script/...",
             "kind": "go",
-            "source": "./internal/domain/script/..."
+            "source": "./internal/kernel/script/..."
           },
           {
             "status": "FAIL",
@@ -2847,7 +2847,7 @@
         "duration_ms": 0,
         "timeout_seconds": 600.0,
         "commands": [
-          "go test ./internal/domain/voiceover/...",
+          "go test ./internal/capabilities/voiceover/...",
           "go test ./internal/application/voiceover/...",
           "go test ./internal/api/assets/voiceover/..."
         ],

@@ -107,7 +107,7 @@ var ErrSaveManifestV2NilManifest = errors.New("scripts repository: nil manifest_
 // Processor marshals the typed ManifestV2 to JSON, then passes the
 // bytes verbatim. The port stays decoupled from the domain type
 // tree (the canonical ManifestV2 + DownstreamRequest + nested
-// AssetRequirements live in internal/domain/script and are NOT
+// AssetRequirements live in internal/kernel/script and are NOT
 // imported by the port).
 type ScriptManifestJSON = []byte
 

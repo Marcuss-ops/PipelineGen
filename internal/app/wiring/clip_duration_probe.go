@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	mediaexec "github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	mediaexec "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

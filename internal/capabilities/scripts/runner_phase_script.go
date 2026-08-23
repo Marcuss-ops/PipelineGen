@@ -9,9 +9,8 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -161,7 +160,7 @@ func contaminatedClipNarration(text string) bool {
 	return false
 }
 
-func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
+func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
 	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
 	if startErr != nil {

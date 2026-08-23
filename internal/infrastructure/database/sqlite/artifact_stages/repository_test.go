@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -140,7 +140,7 @@ func validStage() *artifact.ArtifactStage {
 		Mime:         "audio/mpeg",
 		Requirement:  artifact.RequirementRequired,
 		Destination:  "drive:voiceover/test",
-		State:        artifact.StateStaged,
+		State:        artifact.ArtifactStageStateStaged,
 		AttemptCount: 0,
 	}
 }
@@ -167,7 +167,7 @@ func TestRepository_Insert_HappyPath(t *testing.T) {
 	if got.Hash != stage.Hash {
 		t.Errorf("Hash = %q, want %q", got.Hash, stage.Hash)
 	}
-	if got.State != artifact.StateStaged {
+	if got.State != artifact.ArtifactStageStateStaged {
 		t.Errorf("State = %q, want STAGED", got.State)
 	}
 	if got.Requirement != artifact.RequirementRequired {
@@ -248,9 +248,9 @@ func TestRepository_Insert_RejectsEmptyJobID(t *testing.T) {
 // is wrong").
 func TestRepository_Insert_RejectsNonStagedState(t *testing.T) {
 	for _, badState := range []artifact.ArtifactStageState{
-		artifact.StatePublished,
-		artifact.StateSucceeded,
-		artifact.StateFailedPermanent,
+		artifact.ArtifactStageStatePublished,
+		artifact.ArtifactStageStateSucceeded,
+		artifact.ArtifactStageStateFailedPermanent,
 	} {
 		t.Run(string(badState), func(t *testing.T) {
 			db := setupTestDB(t)
@@ -372,7 +372,7 @@ func TestRepository_ListByState_ReturnsOnlyMatchingState(t *testing.T) {
 	if err := repo.MarkPublished(ctx, pub.ID, `{"kind":"drive","uri":"file-1"}`, nowFixed); err != nil {
 		t.Fatalf("MarkPublished: %v", err)
 	}
-	got, err := repo.ListByState(ctx, artifact.StateStaged, 10)
+	got, err := repo.ListByState(ctx, artifact.ArtifactStageStateStaged, 10)
 	if err != nil {
 		t.Fatalf("ListByState STAGED: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestRepository_ListByState_ReturnsOnlyMatchingState(t *testing.T) {
 		t.Errorf("ListByState STAGED: got %d rows, want 2", len(got))
 	}
 	for _, s := range got {
-		if s.State != artifact.StateStaged {
+		if s.State != artifact.ArtifactStageStateStaged {
 			t.Errorf("ListByState STAGED: row %q has state %q", s.ID, s.State)
 		}
 	}
@@ -405,7 +405,7 @@ func TestRepository_MarkPublished_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.State != artifact.StatePublished {
+	if got.State != artifact.ArtifactStageStatePublished {
 		t.Errorf("State = %q, want PUBLISHED", got.State)
 	}
 	if got.PublishedLocation != `{"kind":"drive","uri":"f-1"}` {
@@ -473,7 +473,7 @@ func TestRepository_MarkPublished_RejectsOnPublishedState(t *testing.T) {
 	if got.PublishedLocation != `{"kind":"drive","uri":"first"}` {
 		t.Errorf("PublishedLocation = %q, want canonical first-write value (rejected Call must NOT have overwritten)", got.PublishedLocation)
 	}
-	if got.State != artifact.StatePublished {
+	if got.State != artifact.ArtifactStageStatePublished {
 		t.Errorf("State = %q, want PUBLISHED (terminal-state rejection must preserve the existing row state)", got.State)
 	}
 }
@@ -502,7 +502,7 @@ func TestRepository_MarkSucceeded_HappyPath(t *testing.T) {
 		t.Fatalf("MarkSucceeded: %v", err)
 	}
 	got, _ := repo.GetByID(ctx, s.ID)
-	if got.State != artifact.StateSucceeded {
+	if got.State != artifact.ArtifactStageStateSucceeded {
 		t.Errorf("State = %q, want SUCCEEDED", got.State)
 	}
 }
@@ -542,7 +542,7 @@ func TestRepository_MarkFailedPermanent_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.State != artifact.StateFailedPermanent {
+	if got.State != artifact.ArtifactStageStateFailedPermanent {
 		t.Errorf("State = %q, want FAILED_PERMANENT", got.State)
 	}
 	if got.LastError != "hash mismatch on re-read" {
@@ -746,7 +746,7 @@ func TestRepository_InsertWithOutbox_HappyPath_AtomicCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID after InsertWithOutbox: %v (artifact row MUST be persisted)", err)
 	}
-	if got.State != artifact.StateStaged {
+	if got.State != artifact.ArtifactStageStateStaged {
 		t.Errorf("artifact_stages.State = %q, want STAGED", got.State)
 	}
 	if !got.CreatedAt.Equal(nowFixed) {

@@ -11,7 +11,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 

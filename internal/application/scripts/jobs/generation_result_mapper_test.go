@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestBuildSingleFailureEnvelope_ClipNativePlanningError_SetsErrorCode(t *testing.T) {

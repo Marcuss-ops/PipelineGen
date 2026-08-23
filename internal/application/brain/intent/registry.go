@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // IntentResolverRegistry dispatches intent resolution to a

@@ -53,7 +53,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // p2aMemoryGate is a thread-safe fake memory gate for P2.A

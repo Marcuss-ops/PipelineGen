@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // translateTextSegment is the canonical per-segment translation

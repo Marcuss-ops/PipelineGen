@@ -44,7 +44,7 @@
 package adapters
 
 import (
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // canonicalDefaultVoiceID returns the canonical non-empty placeholder

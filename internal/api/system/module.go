@@ -87,6 +87,14 @@ func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
 		systemGroup.GET("/doctor", m.handler.Doctor)
 	}
 
+	// /internal/slug — absorbed from the retired UtilityModule
+	// (2026-08-23 Cleanup Day). The canonical slug endpoint lives
+	// under System, not as a standalone module.
+	internalGroup := rg.Group("/internal")
+	{
+		internalGroup.GET("/slug", m.handler.Slugify)
+	}
+
 	driveGroup := rg.Group("/drive")
 	{
 		m.driveHandler.RegisterRoutes(driveGroup)

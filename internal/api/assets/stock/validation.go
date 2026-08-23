@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 )
 
 // isValidURL validates that u is an absolute https URL with a

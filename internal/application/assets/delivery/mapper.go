@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 )
 
 // ── typed-error contract (godlike/07) ───────────────────────────────────

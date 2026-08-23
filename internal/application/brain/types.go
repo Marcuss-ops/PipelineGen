@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // BrainRequest is the canonical input to Brain.Resolve.

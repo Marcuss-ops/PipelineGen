@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

@@ -7,7 +7,7 @@
 // historical reason ordering surfaced in QualityGateError).
 package usecase
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // qualityGateInput is the context a single rule needs to emit its
 // failure reasons. Metrics (q) are computed by the orchestrator before

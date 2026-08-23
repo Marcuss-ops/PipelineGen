@@ -5,7 +5,7 @@
 // package. The helper was relocated DOWN into
 // internal/application/scripts/dto/language_helpers.go so the canonical
 // BuildMetadataLanguages (in dto/metadata.go) could reach it without a
-// dto→adapters import cycle (the canonical dto imports `domain/script`
+// dto→adapters import cycle (the canonical dto imports `kernel/script`
 // + `pkg/concurrent` only — adding adapters would have created a future
 // cycle when adapters later reached back to dto). The dto-side helper
 // extends the pre-commit semantics with a lowercase fold (per the

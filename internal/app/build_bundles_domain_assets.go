@@ -11,9 +11,9 @@ import (
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 

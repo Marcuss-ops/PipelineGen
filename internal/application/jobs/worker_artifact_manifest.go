@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"strings"
 
-	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

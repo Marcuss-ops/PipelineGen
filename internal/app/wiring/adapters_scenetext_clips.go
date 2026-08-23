@@ -6,7 +6,7 @@ import (
 	"math"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func (g *SceneTextGenerator) resolveEvidenceClip(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, clipID string, allowDriveOnly bool) (*scriptgen.ClipReference, error) {

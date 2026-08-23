@@ -1,6 +1,6 @@
 package scriptgeneration
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // GenerateArtifacts contains compatibility projections that are derived from
 // the canonical durable result. It is not an independent entity source.

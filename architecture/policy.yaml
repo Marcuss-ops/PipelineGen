@@ -8,8 +8,18 @@
 # Phase 0 report-only (exits 0 even when violations exist). Phase N will
 # promote specific rules to hard gates via the `--strict` flag.
 
-# File size and population caps. History and rationale live in
-# architecture/policy.history.yaml; this file keeps only executable values.
+# File size and population caps.
+#
+# Package-size regime (2026-08-23 Cleanup Day revision):
+#   normal package:      ≤ 40 production .go files
+#   registered hotspot:  temporarily > 40 (tracked in architecture/package_hotspots.json,
+#                         each with owner + deadline + target subzones)
+#   emergency ceiling:   NEVER exceed 65 (this executable value)
+#
+# The prior policy set max_files_per_package=65 as a single catch-all, which
+# masked the distinction between what's tolerable temporarily (a registered
+# hotspot working toward decomposition) and what's permanently unacceptable.
+# The 40/65 regime makes both numbers canonical. History in policy.history.yaml.
 max_files_per_package: 65
 # File line cap. Files exceeding this limit are reported as violations
 # (exceptions must be named per-file in architecture/policy.history.yaml).
@@ -74,7 +84,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, identity, errors, observability, embedding, semanticdoc, digest, media, stocksupply
+kernel_subzones: asset, job, script, event, errors, observability, embedding, semanticdoc, digest, media, stocksupply, assembly, delivery, primitives, transcript
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -143,8 +153,7 @@ stale_prose_paths:
   - module_jobs
   - module_stock
   - module_youtube
-
-	  - subject_bindings
+  - subject_bindings
 # Migration-boundary application areas are explicit DoD scope. Every production
 # Go file under these paths must remain free of direct internal/infrastructure
 # imports while the root migration is in progress; the composition root owns
@@ -162,10 +171,51 @@ canonical_application_areas:
 # events.go, repository.go, adapters.go per proposal §"internal/capabilities".
 capabilities: assets, artlist, youtube, scripts, images, voiceover, content, channels, jobs, system
 
-# Expected platform adapters (target: internal/platform/<x>). platform/sqlite
-# only owns connection/transactions/migration/pragma mechanics — capability
-# repositories own SQL for their tables (per proposal §"platform/sqlite").
-platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, observability, httpserver, ollama, nvidia, youtube, checksum
+# ── Platform adapter ownership (2026-08-23 Cleanup Day) ───────────────
+# Each on-disk subzone maps to exactly one technology concern. Ownership is
+# exclusive: a platform adapter belongs to one subzone only.
+#
+# On-disk subzones (governed by policy):
+#
+#   config         — config loading, decoding (multilingual, scripts, worker)
+#   sqlite         — connection pool, migration runner, PRAGMA policy
+#   drive          — Google Drive publisher, reader, location verifier
+#   qdrant         — Qdrant collection schemas, transport, verification
+#   process        — process-level health, readiness probes, worker caps
+#   filesystem     — SQLite-backed folder memory, file staging helpers
+#   checksum       — legacy MD5 checksum bridge (compatibility surface)
+#   youtube        — YouTube cached-whisper, subtitle normalization
+#   cas            — content-addressed storage (SHA-256 keyed blob store)
+#   embeddings     — embedding adapters (HTTP, Python, Ollama)
+#   overlays       — GPU gate, render cache, media contract prober
+#   media          — Rust media execution executor (rustexec/VideoProcessor)
+#   renderinggen   — RenderingGen queue client (HTTP → external overlay render)
+#   delivery       — (uncommitted as of 2026-08-23, not yet in subzone list.
+#                     delivery registry, startup validators, transport contracts.
+#                     Will be added to platform_subzones with the cutover PR.)
+#
+# Deferred migrations (exist in infrastructure/, not yet cut over):
+#
+#   observability  — 28 files in internal/infrastructure/observability/
+#                     (metrics, recorders, runreports). 52 import sites.
+#                     Target: internal/platform/observability/
+#
+#   ollama         — 46 files in internal/infrastructure/ai/ollama/
+#                     (adapters, client). 54 import sites.
+#                     Target: internal/platform/ollama/
+#
+#   httpserver     — HTTP server/router lives in internal/api/ (Gin).
+#                     No standalone package yet. Target: platform/httpserver
+#                     after api root migration.
+#
+#   ffmpeg         — FFmpeg execution lives in platform/media/rustexec/.
+#                     No standalone ffmpeg package needed; subsumed by
+#                     rustexec.VideoProcessor. Remove from target list.
+#
+#   nvidia         — GPU/NVIDIA capability probing lives in
+#                     platform/overlays/gpu_gate.go and app/workerruntime.
+#                     No standalone nvidia package needed.
+platform_subzones: config, sqlite, drive, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery
 
 # CANONICAL LAYOUT (binding): target_internal_roots
 #
@@ -187,7 +237,6 @@ legacy_internal_roots: application, api, infrastructure, domain
 # only checks the structural rules above. Grandfathering never authorizes new
 # code in a migration-only root.
 known_grandfathered:
-  - "internal/application/scripts — RESOLVED June 2026: split into 8 subpackages (adapters/ contracts/ dto/ events/ jobs/ jsonextract/ ports/ usecase/). Retired from transitional baselines; see audit_ledger in docs/migrations/archcheck-strict-baseline.json."
   - "internal/application/images (25 files) — in_progress to capability/images split"
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
   - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
@@ -341,7 +390,8 @@ wave_qdrant_005d_hygiene:
   follow_up_ticket: "QDRANT-RECOVERY-001 (resolved; runbook 05 removed July 2026)"
   cross_refs:
     wave: architecture/current.yaml#id-20
-    lint_gates_entry: lint_gates[check=5]    registration_record: |
+    lint_gates_entry: lint_gates[check=5]
+    registration_record: |
       Wave 20 entry (architecture/current.yaml#id-20) + this section +
       the matching lint_gates entry were registered in the same commit
       on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md

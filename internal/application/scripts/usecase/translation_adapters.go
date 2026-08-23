@@ -5,7 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // translationUseCaseAdapter is the canonical thin struct that

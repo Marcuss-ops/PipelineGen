@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // fakeProbe is a scriptable MediaProbe for the adapter tests.

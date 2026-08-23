@@ -25,7 +25,7 @@ import (
 	"errors"
 	"testing"
 
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

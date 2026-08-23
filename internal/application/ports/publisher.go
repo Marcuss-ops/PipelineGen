@@ -2,7 +2,7 @@
 //
 // godlike/06 SSOT: this file is a thin alias re-export of the
 // canonical `Publisher` declaration at
-// `internal/application/assets/delivery/publisher.go`. The alias
+// `internal/capabilities/delivery/publisher.go`. The alias
 // preserves byte-stable identity for callers that want to depend on
 // the abstract `ports.Publisher` rather than the deep-package
 // `delivery.Publisher`.
@@ -19,7 +19,7 @@
 package ports
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 )
 
 // Publisher is the canonical Fase 5(a) alias for the

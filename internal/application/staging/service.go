@@ -49,7 +49,7 @@ import (
 	"strings"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Compile-time assertion: *StoreService satisfies the Store port.
@@ -57,9 +57,9 @@ var _ Store = (*StoreService)(nil)
 
 // StoreService is the canonical concrete for staging.Store.
 type StoreService struct {
-	// repo is the artifact.Repository port (single-writer for the
+	// repo is the artifact.ArtifactStageRepository port (single-writer for the
 	// artifact_stages table per Push 3.1a SSOT).
-	repo artifact.Repository
+	repo artifact.ArtifactStageRepository
 
 	// workspaceDir is the canonical staging root (e.g.
 	// /var/lib/pipelinegen/staging). The composition root reads
@@ -80,7 +80,7 @@ type StoreService struct {
 // NewStoreService constructs the canonical FASE 3 staging
 // service. Caller MUST supply non-nil repo + non-empty
 // workspaceDir (godlike/07 fail-fast at construction).
-func NewStoreService(repo artifact.Repository, workspaceDir string) (*StoreService, error) {
+func NewStoreService(repo artifact.ArtifactStageRepository, workspaceDir string) (*StoreService, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("staging.NewStoreService: repo is required")
 	}
@@ -218,7 +218,7 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 		Mime:         req.Mime,
 		Requirement:  req.Requirement,
 		Destination:  req.Destination,
-		State:        artifact.StateStaged,
+		State:        artifact.ArtifactStageStateStaged,
 		AttemptCount: 0,
 		CreatedAt:    now,
 		UpdatedAt:    now,

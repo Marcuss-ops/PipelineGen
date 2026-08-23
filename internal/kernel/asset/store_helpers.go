@@ -32,7 +32,7 @@ package asset
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"go.uber.org/zap"
 )
 

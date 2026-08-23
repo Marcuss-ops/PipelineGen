@@ -417,7 +417,7 @@ domain_job:
     - internal/jobs/domain_commands.go
 
 domain_script:
-  owner: internal/domain/script
+  owner: internal/kernel/script
   rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
 
 domain_asset:

@@ -41,7 +41,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 
 // MapErrorToHTTP writes the canonical completion-error envelope to

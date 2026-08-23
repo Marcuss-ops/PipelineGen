@@ -225,6 +225,7 @@ func Compose() *Registry {
 	registerVoiceoverEntries(r)
 	registerTextTrackEntries(r)
 	registerIntegrityEntries(r)
+	registerAssemblyEntries(r)
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

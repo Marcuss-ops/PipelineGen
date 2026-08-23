@@ -3,7 +3,7 @@ package mediamemory
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func ptr(b bool) *bool { return &b }

@@ -69,7 +69,7 @@ const BrainVersion = "brain-v1"
 func TestVersionStrings_RegistryOwnerPasses(t *testing.T) {
 	dir := t.TempDir()
 	versionStringsWriteTree(t, dir, map[string]string{
-		"internal/domain/media/version.go": `package media
+		"internal/kernel/media/version.go": `package media
 const VersionBrain = "brain-v1"
 `,
 	})

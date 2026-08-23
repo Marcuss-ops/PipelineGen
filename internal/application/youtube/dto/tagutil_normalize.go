@@ -3,8 +3,8 @@ package dto
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // NormalizeClipTagList normalizes, filters generic tags, and deduplicates a
@@ -95,6 +95,6 @@ func IsGenericToken(token string) bool {
 	case "http", "https", "www", "nbsp", "subscribe":
 		return true
 	default:
-		return textutil.IsStopWord(token)
+		return linguistics.IsStopWord(token)
 	}
 }

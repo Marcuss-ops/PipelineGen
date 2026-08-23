@@ -52,7 +52,7 @@
 //     internal/application/voiceover/groups_resolver.go).
 //   - internal/application/jobs: appjobs.Service (Enqueue surface).
 //   - internal/domain/job: EnqueueRequest, TypeScriptGenerateItem.
-//   - internal/domain/script: GenerationItemV2, Preset.
+//   - internal/kernel/script: GenerationItemV2, Preset.
 package app
 
 import (
@@ -69,9 +69,9 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 

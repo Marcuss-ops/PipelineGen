@@ -40,7 +40,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

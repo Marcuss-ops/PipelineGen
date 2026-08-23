@@ -39,7 +39,7 @@ import (
 	"fmt"
 
 	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 
 	"go.uber.org/zap"
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestResolveDocumentVoiceoverLink_UsesRequestedLanguage(t *testing.T) {

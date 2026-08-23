@@ -24,7 +24,9 @@
 // reference resolves cleanly).
 package schema
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+import (
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+)
 
 // ── Config ───────────────────────────────────────────────────────────
 

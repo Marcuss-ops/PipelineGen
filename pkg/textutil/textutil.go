@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 )
 
 // Slugify converts a string to a lowercase slug with hyphens.
@@ -318,32 +316,6 @@ func Float64To32(in []float64) []float32 {
 	return out
 }
 
-// IsStopWord checks the configured fallback lexicon. It returns false while
-// the composition root has not installed a registry; production startup
-// fails before this path is reachable without configuration.
-func IsStopWord(term string) bool {
-	registry := linguistics.DefaultLexiconOrNil()
-	if registry == nil {
-		return false
-	}
-	_, ok := registry.StopWords("fallback")[strings.ToLower(term)]
-	return ok
-}
-
-// IsStopWordForLanguage checks the requested configured language.
-func IsStopWordForLanguage(term string, language string) bool {
-	registry := linguistics.DefaultLexiconOrNil()
-	if registry == nil {
-		return false
-	}
-	profile, err := registry.ResolveRequired(language)
-	if err != nil {
-		return false
-	}
-	_, ok := profile.StopWords[strings.ToLower(term)]
-	return ok
-}
-
 // ── Script text stripping ───────────────────────────────────────────────
 
 // StripNarrationMarkerRe matches narration markers like [NARRATION] or [NARRATORE].
@@ -352,12 +324,17 @@ var StripNarrationMarkerRe = regexp.MustCompile(`(?i)\[(?:narration|narratore|na
 // StripClipMarkerRe matches clip markers like [CLIP:...] or [VIDEO:...].
 var StripClipMarkerRe = regexp.MustCompile(`(?i)\[(?:clip|video|film|media):[^\]]+\]`)
 
-// TokenizeWithStopWords removes stop words from tokenization.
-func TokenizeWithStopWords(text string) []string {
+// TokenizeWithStopWords removes the supplied stop words from tokenization.
+// The caller owns lexicon selection; this leaf package performs no global
+// registry lookup.
+func TokenizeWithStopWords(text string, stopWords map[string]struct{}) []string {
 	tokens := Tokenize(text)
 	result := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
-		if len(tok) >= 3 && !IsStopWord(tok) {
+		if len(tok) >= 3 {
+			if _, stop := stopWords[tok]; stop {
+				continue
+			}
 			result = append(result, tok)
 		}
 	}

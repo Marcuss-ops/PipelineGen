@@ -6,8 +6,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -20,7 +21,7 @@ func TestPublisher_EmptyRootFolderRejected(t *testing.T) {
 			MediaRootFolder: "",
 		},
 	}
-	reg := delivery.NewDestinationRegistry(cfg)
+	reg := platformdelivery.NewDestinationRegistry(cfg)
 	folders := &fakeFolderManager{}
 	files := &fakeFileUploader{}
 	pub, err := NewPublisher(reg, folders, files, zap.NewNop())

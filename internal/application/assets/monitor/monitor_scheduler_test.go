@@ -8,7 +8,7 @@ import (
 	"time"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )

@@ -23,7 +23,7 @@ import (
 	"errors"
 	"net/http"
 
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // CanonicalHTTPStatus returns the mapped HTTP status for a script error.

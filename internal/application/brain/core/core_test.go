@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 type fakeMediaMemoryPort struct {

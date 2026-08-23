@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "schema_version": 1,
+  "generated_at": "2026-07-15",
+  "description": "Forward-prevention baseline for the 10 architectural diagnosis rules (PR-DIAGNOSI-FINALE, July 2026). Documents (a) the canonical-owner allowlists each archcheck scanner enforces and (b) the legitimately-retained residue caller-sties (test fixtures + godlike/07 migration-window permits). Forward-prevention discipline: any NEW caller trips the corresponding gate as a CI build failure unless the scanner's hardcoded allowlist AND this baseline JSON are updated in the same PR. Per godlike/07 NO-FAKE-AVAILABILITY, the baseline is the snapshot of LEGITIMATE callers that MUST remain — silent regressions (a future contributor introducing a new caller) get caught by the forward-prevention gate, not by manual review.",
+  "rules": {
+    "percheck_assetbinder_no_scenesynthesizer": {
+      "rule_id": "percheck_assetbinder_no_scenesynthesizer",
+      "scope": "internal/application/scripts/scene/binder.go",
+      "canonical_owner": "internal/application/scripts/scene/scene_planner.go (the ScenePlanner)",
+      "forbidden_patterns": ["SceneSynthesizer", "/scripts/scene/synthesizer"],
+      "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],
+      "residue_allowed": []
+    },
+    "percheck_binder_scene_field_writes": {
+      "rule_id": "percheck_binder_scene_field_writes",
+      "scope": "internal/application/scripts/scene/",
+      "canonical_owner": "internal/application/scripts/scene/scene_planner.go (the ScenePlanner)",
+      "forbidden_fields": ["Text", "Title", "Kind", "Index"],
+      "forbidden_pattern": "\\bscenes?\\s*(\\[[^\\]]*\\])?\\s*\\.\\s*(Text|Title|Kind|Index)\\s*=",
+      "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],
+      "residue_allowed": []
+    },
+    "percheck_asset_committer_event_ssot": {
+      "rule_id": "percheck_asset_committer_event_ssot",
+      "scope": "internal/ + tests/ + cmd/",
+      "canonical_owner": "internal/application/assets/persistence/committer.go + internal/infrastructure/database/sqlite/assets/asset_committer.go (the AssetCommitter port and canonical SQLite implementation in single TX)",
+      "forbidden_literal": "'asset.index.requested' or 'asset.index.requested.v1' envelope string",
+      "forbidden_pattern": "['\"]asset\\.index\\.requested(\\.v1)?['\"]",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/application/assets/persistence/",
+        "internal/infrastructure/database/sqlite/outboxevents/",
+        "internal/application/assets/mutations/",
+        "internal/application/assets/finalizer/",
+        "internal/application/assets/texttracks/",
+        "internal/application/voiceover/",
+        "internal/application/images/",
+        "internal/application/assets/soundeffect/",
+        "internal/application/assets/catalogsync/",
+        "internal/application/assets/providers/",
+        "internal/recommendation/",
+        "internal/app/",
+        "pkg/idempotency/",
+        "cmd/admin/",
+        "internal/api/assets/soundeffect/",
+        "internal/api/images/",
+        "internal/infrastructure/observability/",
+        "internal/infrastructure/qdrant/search/",
+        "tests/"
+      ],
+      "residue_allowed": [
+        {
+          "file": "tests/acceptance/acceptance_multilingual_test.go",
+          "lines": [146, 147],
+          "reason": "godlike/07 acceptance-fixture residue: the assertions verify event_type == 'asset.index.requested' for end-to-end test surface; this is observation, NOT emission"
+        },
+        {
+          "file": "tests/operational/voiceover_e2e_smoke_test.go",
+          "line": 11,
+          "reason": "godlike/07 op-smoke-fixture residue: e2e observability check on the outbox event_type for voiceover pipeline"
+        },
+        {
+          "file": "tests/e2e/canonical_surfaces_e2e_test.go",
+          "lines": [508, 560, 695, 711],
+          "reason": "godlike/07 e2e-fixture residue: canonical-surface envelope shape assertions across multiple fixture scopes"
+        },
+        {
+          "file": "tests/e2e/text_track_e2e_test.go",
+          "lines": [820, 891, 892, 1095, 1127],
+          "reason": "godlike/07 e2e-fixture residue: text-track end-to-end pipeline telemetry; verifies exactly 1 outbox row per text-track asset"
+        },
+        {
+          "file": "tests/acceptance/acceptance_idempotency_test.go",
+          "lines": [33, 38],
+          "reason": "godlike/07 acceptance-fixture residue: idempotency-key uniqueness assertions on the canonical envelope"
+        },
+        {
+          "file": "cmd/admin/qdrant_preflight_stubs.go",
+          "line": 315,
+          "reason": "CLI admin tool (operator diagnosis); observation of dead-letter state for asset.index.requested events"
+        },
+        {
+          "file": "internal/infrastructure/observability/metrics_outbox.go",
+          "lines": [11],
+          "reason": "godlike/06 SSOT metric-label documentation: the metric helps rederive event_type dimensions at query time (NOT for emission)"
+        }
+      ]
+    },
+    "percheck_upsert_points_sole_owner": {
+      "rule_id": "percheck_upsert_points_sole_owner",
+      "scope": "internal/",
+      "canonical_owner": "internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer; the IndexClip / DeletePointsByFilter entry surface)",
+      "forbidden_pattern": "\\.\\s*(UpsertPoints|DeletePoints)\\s*\\(",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/infrastructure/qdrant/indexing/",
+        "internal/infrastructure/qdrant/qdrantmm/",
+        "internal/infrastructure/qdrant/transport/client_points.go (the declaration line; naturally exempt because the regex requires a dot-receiver)",
+        "*_test.go"
+      ],
+      "residue_allowed": [
+        {
+          "file": "tests/fixtures/synthetic_assets_test.go",
+          "lines": [261, 281, 334, 378, 386, 406, 434, 444, 465, 498],
+          "reason": "godlike/07 test-fixture residue: synthetic asset Qdrant setup bypasses the outbox (the test verifies the transport contract end-to-end; substitute a mock would lose the integration-test value)"
+        },
+        {
+          "file": "tests/e2e/qdrant_e2e_youtube_test.go",
+          "lines": [19],
+          "reason": "godlike/07 e2e-fixture residue: integration test verifies the Qdrant transport via direct UpsertPoints (bypasses the outbox for fixture determinism)"
+        },
+        {
+          "file": "internal/infrastructure/qdrant/transport/qdrant_bm25_e2e_test.go",
+          "line": 126,
+          "reason": "godlike/07 e2e-fixture residue: BM25 end-to-end integration test for the Qdrant transport"
+        }
+      ]
+    },
+    "percheck_embedding_constants_ssot": {
+      "rule_id": "percheck_embedding_constants_ssot",
+      "scope": "internal/",
+      "canonical_owner": "internal/kernel/embedding/ (the EmbeddingContract SSOT — the sole owner of text-embedding model id, revision, dimension, normalization, distance, prefixes)",
+      "forbidden_pattern": "^\\s*(?:const|var)?\\s*[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*\"(nomic-embed-text|intfloat/multilingual-e5-base|multilingual-e5-base|multilingual-e5-small|multilingual-e5-large)\"",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/kernel/embedding/**",
+        "*_test.go"
+      ],
+      "residue_allowed": []
+    },
+    "percheck_frame_concept_projection_writer": {
+      "rule_id": "percheck_frame_concept_projection_writer",
+      "scope": "internal/",
+      "canonical_owner": "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (media_frames, FrameCollectionName) + internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (media_concepts, ConceptCollectionName) — the respective projection writers, through the generic ProjectionWriter",
+      "forbidden_pattern": "a point-write call (\\.\\s*(UpsertProjection|DeleteProjection|UpsertPoints|DeletePoints)\\s*\\() on the same line as a frame/concept collection identifier (\\b(FrameCollectionName|ConceptCollectionName)\\b)",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (FrameCollectionName only)",
+        "internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (ConceptCollectionName only)",
+        "*_test.go"
+      ],
+      "residue_allowed": []
+    },
+    "percheck_drive_access_ssot": {
+      "rule_id": "percheck_drive_access_ssot",
+      "scope": "internal/application/**",
+      "canonical_owner": "internal/application/assets/delivery/ (the typed-port surface; delivery.Publisher as the SOLE Drive-write canal)",
+      "forbidden_patterns": ["drive.Uploader", "drive.Admin", "drive.NewUploader"],
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "*_test.go",
+        "cmd/admin/** (operator tools)",
+        "internal/infrastructure/drive/** (the canonical infra implementations)"
+      ],
+      "residue_allowed": []
+    },
+    "percheck_search_aggregator_singleton": {
+      "rule_id": "percheck_search_aggregator_singleton",
+      "scope": "internal/ + cmd/",
+      "canonical_owner": "internal/app/registry_search.go (or internal/app/search_backends.go) — the composition root constructs the canonical search.NewAggregator( exactly once at boot",
+      "forbidden_pattern": "\\bsearch\\.NewAggregator\\s*\\(",
+      "singleton_assertion": "exactly 1 production-code construction site globally (NOT including _test.go)",
+      "exempt_surface": [
+        "cmd/archcheck/scan/**",
+        "*_test.go",
+        "internal/application/workerdoctor/** (the workerdoctor.Aggregator is a separate-domain helper — health-probe aggregation, NOT search aggregation; the regex requires the search. qualifier so it is naturally exempt)"
+      ],
+      "residue_allowed": []
+    },
+    "percheck_api_module_deps_max_8": {
+      "rule_id": "percheck_api_module_deps_max_8",
+      "scope": "internal/api/**/module.go",
+      "canonical_owner": "Each Build entrypoint's Dependencies (or Deps) bag; the upper ClipsModule is the WIRING surface for the 7 sub-descriptors and is exempted by canonical-operator intent (PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE)",
+      "bypass_list": [
+        "internal/api/assets/clips/module.go (the 25-field upper Dependencies is the WIRING surface, not the route-installer surface)"
+      ],
+      "forbidden_pattern": "Dependencies/Deps struct carrying > 8 fields",
+      "residue_allowed": []
+    },
+    "percheck_metadata_key_registry": {
+      "rule_id": "percheck_metadata_key_registry",
+      "scope": "internal/",
+      "canonical_owner": "internal/domain/asset/metadata_registry.go (the typed metadata registry; declares every provider.* style key with Owner + Type)",
+      "residue_allowed": [],
+      "documented_in": "PR-79 (PR-METADATA-REGISTRY-FOUNDATION, July 2026)",
+      "current_registered_keys": [
+        {"key": "artlist.clip_page_url", "owner": "internal/application/assets/providers/artlist/", "type": "string"},
+        {"key": "youtube.channel_id", "owner": "internal/application/youtube/", "type": "string"},
+        {"key": "youtube.video_id", "owner": "internal/application/youtube/", "type": "string"}
+      ]
+    },
+    "percheck_mediatransformer_no_infra_fields": {
+      "rule_id": "percheck_mediatransformer_no_infra_fields",
+      "scope": "internal/domain/asset/processor.go (the canonical SOLE owner; the gate inspects this file but the inspection is read-only)",
+      "canonical_owner": "internal/domain/asset/processor.go (the MediaTransformer DTOs: TransformSpec + RenditionSet)",
+      "forbidden_substrings_case_insensitive": [
+        "drive",
+        "qdrant",
+        "sqlite",
+        "folderid",
+        "downloadlink",
+        "md5",
+        "publishaction",
+        "clippageurl"
+      ],
+      "residue_allowed": [
+        {
+          "file": "internal/domain/asset/processor.go",
+          "reason": "Forward-pointer to step 2 of PR-MEDIATRANSFORMER-RENAME. The existing fields (DriveLink, DriveFileID, DownloadLink, FolderID, MD5, PublishAction, ClipPageURL in TransformSpec / RenditionSet) STAY in the DTOs until step 2 deletes them. The gate trips on these existing fields by design — the violations are EXPECTED and documented as forward-pointers."
+        }
+      ]
+    },
+    "percheck_input_immutability": {
+      "rule_id": "percheck_input_immutability",
+      "scope": "internal/application/** + internal/api/**",
+      "canonical_owner": "Each use case or handler treats caller-owned pointer input contracts as read-only and derives local normalized values or dedicated outputs",
+      "detection": "Go AST object identity; line-oriented name regexes are forbidden because local DTOs and value copies are not caller-visible mutations",
+      "tracked_parameter_names": ["req", "input", "request", "params"],
+      "tracked_pointer_contract_suffixes": ["Input", "Request", "Params", "Command"],
+      "forbidden_operations": [
+        "whole tracked pointer target reassignment through *input = ...",
+        "direct or nested field assignment through a tracked pointer input",
+        "indexed assignment through a tracked pointer input",
+        "increment or decrement through a tracked pointer input",
+        "mutation from a nested closure capturing a tracked pointer input"
+      ],
+      "excluded_by_design": [
+        "local variables named req/input/request/params",
+        "value parameters normalized inside a function",
+        "local output DTO construction",
+        "shadowed local variables",
+        "net/http.Request transport state"
+      ],
+      "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],
+      "residue_allowed": []
+    }
+  }
+}

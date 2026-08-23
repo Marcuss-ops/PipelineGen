@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // JobPolicy captures the runtime policy for an enqueued job.

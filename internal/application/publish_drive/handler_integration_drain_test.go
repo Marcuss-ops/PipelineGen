@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,7 +47,7 @@ import (
 // JSON, and (d) transition the row to state=PUBLISHED +
 // non-null published_at. Direct SQLite probes below the
 // application layer pin the row-level state, so any drift
-// between Repository's MarkPublished SQL and artifact.StatePublished
+// between Repository's MarkPublished SQL and artifact.ArtifactStageStatePublished
 // constant surfaces here.
 func TestHandlerIntegration_Drain_HappyPath_RealSQLite(t *testing.T) {
 	db := setupTestDB(t)
@@ -89,8 +89,8 @@ func TestHandlerIntegration_Drain_HappyPath_RealSQLite(t *testing.T) {
 	if err := row.Scan(&gotState, &gotPublishedLoc, &gotPublishedAt); err != nil {
 		t.Fatalf("SELECT state+published_location+published_at: %v", err)
 	}
-	if gotState != string(artifact.StatePublished) {
-		t.Errorf("artifact_stages.state = %q, want %q (MarkPublished CAS MUST have flipped state to PUBLISHED)", gotState, artifact.StatePublished)
+	if gotState != string(artifact.ArtifactStageStatePublished) {
+		t.Errorf("artifact_stages.state = %q, want %q (MarkPublished CAS MUST have flipped state to PUBLISHED)", gotState, artifact.ArtifactStageStatePublished)
 	}
 	if gotPublishedLoc == "" {
 		t.Fatalf("published_location IS empty after drain — PublishedLocation JSON MUST have been persisted via MarkPublished")
@@ -191,8 +191,8 @@ func TestHandlerIntegration_Drain_TerminalStateFenceIsNoOp(t *testing.T) {
 	if err := row.Scan(&gotState, &gotPublishedLoc); err != nil {
 		t.Fatalf("SELECT post-redelivery: %v", err)
 	}
-	if gotState != string(artifact.StateSucceeded) {
-		t.Errorf("state = %q, want %q (terminal-state fence MUST preserve SUCCEEDED)", gotState, artifact.StateSucceeded)
+	if gotState != string(artifact.ArtifactStageStateSucceeded) {
+		t.Errorf("state = %q, want %q (terminal-state fence MUST preserve SUCCEEDED)", gotState, artifact.ArtifactStageStateSucceeded)
 	}
 	if gotPublishedLoc != "" {
 		t.Errorf("published_location = %q, want empty (terminal-state fence MUST NOT have written a fresh PublishedLocation)", gotPublishedLoc)

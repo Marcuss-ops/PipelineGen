@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // appendVoiceoverCriticalValidators populates the critical-handler

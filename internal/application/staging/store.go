@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Sentinel errors (godlike/07 typed-error contract) ────────────────

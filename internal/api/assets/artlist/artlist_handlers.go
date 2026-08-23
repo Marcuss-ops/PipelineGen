@@ -16,7 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )

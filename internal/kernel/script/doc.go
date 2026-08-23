@@ -4,7 +4,9 @@
 // capability, its consumers, and the jobs that carry scripts as payloads
 // (Plan, GenerationSpec, payload codec identity, request/DTO markers).
 //
-// EXPAND-phase placeholder (Wave 19, June 2026). Production content
-// authoritatively lives in internal/domain/script/ until BACKFILL/CUTOVER.
+// BACKFILL complete (Aug 2026): the production content that previously
+// lived in internal/kernel/script/ was migrated here atomically (task 1:
+// kernel/script → kernel/script). The legacy root is deleted; all importers
+// consume this package directly.
 // No transport, no SQL, no logger dependencies allowed here.
 package script

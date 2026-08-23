@@ -72,7 +72,7 @@ func buildQuery() search.Query {
 func TestSearchModeForced_ExemptDomainOwner(t *testing.T) {
 	dir := t.TempDir()
 	searchModeForcedWriteTree(t, dir, map[string]string{
-		"internal/domain/media/search_policy.go": `package media
+		"internal/kernel/media/search_policy.go": `package media
 type SearchMode string
 const SearchModeANN SearchMode = "ann"
 `,

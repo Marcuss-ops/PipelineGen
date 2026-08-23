@@ -27,7 +27,7 @@ import (
 	"sort"
 	"strings"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 // Document type alias for back-compat with the local WindowSampler

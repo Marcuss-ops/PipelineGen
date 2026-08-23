@@ -2,7 +2,7 @@
 // Owns: SceneVoiceover.
 package adapters
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // SceneVoiceover is a single scene-voiceover outcome from
 // VoiceoverProcessor. PR 9: voices map to model-defined scenes

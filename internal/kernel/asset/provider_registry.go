@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ProviderRegistryVersion is the canonical version of the provider

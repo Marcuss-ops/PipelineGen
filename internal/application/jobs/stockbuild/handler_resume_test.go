@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subjects"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

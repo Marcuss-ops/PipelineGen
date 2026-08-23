@@ -32,7 +32,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
 )

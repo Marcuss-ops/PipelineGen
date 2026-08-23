@@ -14,7 +14,7 @@ import (
 	"google.golang.org/api/googleapi"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

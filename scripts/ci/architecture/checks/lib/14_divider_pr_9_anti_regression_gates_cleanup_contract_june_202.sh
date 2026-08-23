@@ -174,7 +174,7 @@ literals=$(rg -n --type go \
     -e "OutputFmt[[:space:]]*[:=][[:space:]]*'prose'" \
     -e "output_fmt[[:space:]]*[:=][[:space:]]*'prose'" \
     --glob '!**/*_test.go' \
-    internal/application/scripts internal/domain/script 2>/dev/null \
+    internal/application/scripts internal/kernel/script 2>/dev/null \
     | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
     || true)
 if [ -n "$literals" ]; then

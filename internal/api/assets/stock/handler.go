@@ -11,7 +11,7 @@ import (
 
 	stockapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 )
 
 // StockHandler is the HTTP projection of the stock pipeline UseCase.

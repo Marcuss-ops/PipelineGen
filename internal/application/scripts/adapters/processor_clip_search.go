@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -242,7 +243,7 @@ func compactLiveFallbackQuery(text string) string {
 	if end := strings.IndexAny(text, ".!?\n"); end > 0 {
 		text = text[:end]
 	}
-	tokens := textutil.TokenizeWithStopWords(text)
+	tokens := textutil.TokenizeWithStopWords(text, linguistics.DefaultStopWords())
 	if len(tokens) > 6 {
 		tokens = tokens[:6]
 	}

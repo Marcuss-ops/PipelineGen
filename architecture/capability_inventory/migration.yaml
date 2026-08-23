@@ -1,8 +1,0 @@
-migration_changelog:
-  - step_id: C1-Step-1
-    date: "2026-06-29"
-    author: PipelineGen Agent
-    note: |
-      Baseline snapshot. ZERO capability migrations landed.
-      Downstream gates_baseline entries hold the day-1 counts.
-      TBD placeholders mark evidence sites that require a clean re-scan.

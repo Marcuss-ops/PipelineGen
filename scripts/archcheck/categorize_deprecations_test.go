@@ -38,7 +38,7 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 		{"internal/application/assets/sourcing", bucketAssets},
 		// Scripts.
 		{"internal/application/scripts/usecase/services", bucketScripts},
-		{"internal/domain/script", bucketScripts},
+		{"internal/kernel/script", bucketScripts},
 		// Media.
 		{"internal/application/youtube/metadata", bucketMedia},
 		{"internal/application/media", bucketMedia},

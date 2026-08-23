@@ -28,7 +28,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ParseEntities parses the postgen LLM entity JSON into a typed

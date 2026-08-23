@@ -11,8 +11,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── Test doubles ───────────────────────────────────────────────────────
@@ -189,7 +190,7 @@ func (f *fakeFileUploader) PutFile(_ context.Context, req PutFileRequest) (*PutF
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-func testRegistry() *delivery.DestinationRegistry {
+func testRegistry() *platformdelivery.DestinationRegistry {
 	cfg := &config.Config{
 		Drive: config.DriveConfig{
 			MediaRootFolder:        "media-root",
@@ -203,7 +204,7 @@ func testRegistry() *delivery.DestinationRegistry {
 			SoundEffectsRootFolder: "sfx-root",
 		},
 	}
-	return delivery.NewDestinationRegistry(cfg)
+	return platformdelivery.NewDestinationRegistry(cfg)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

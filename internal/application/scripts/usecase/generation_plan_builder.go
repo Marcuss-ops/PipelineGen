@@ -6,7 +6,7 @@ package usecase
 
 import (
 	generationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/generation"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // BuildPlan preserves the legacy usecase API while routing all plan creation

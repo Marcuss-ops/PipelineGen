@@ -12,8 +12,6 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 
@@ -37,7 +35,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -50,6 +47,7 @@ import (
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -77,7 +75,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // IOpaqueStartFunc is the opaque type for deferred initialisation closures
@@ -357,7 +355,6 @@ type MaintBundle struct {
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.
 type UtilityBundle struct {
-	Utility       *transport.UtilityHandler
 	HealthService *systemhealth.Service
 	ReadyChecker  *systemhealth.ReadyChecker
 }
@@ -401,7 +398,7 @@ type StagingBundle struct {
 	// finalizer (MarkSucceeded / MarkFailedPermanent) to call
 	// Mark* state transitions without round-tripping through the
 	// application layer.
-	Repository artifact.Repository
+	Repository artifact.ArtifactStageRepository
 
 	// Workspace is the resolved absolute path of the staging
 	// workspace (the input to StoreService.Stage). Exposed for

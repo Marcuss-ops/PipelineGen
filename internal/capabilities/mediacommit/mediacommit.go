@@ -25,7 +25,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
@@ -55,8 +55,8 @@ type AssetDraft struct {
 	SourceVideoID  string
 	StartMs        int64
 	EndMs          int64
-	Metadata       persistence.TypedMetadata
-	Locations      []persistence.LocationCommit
+	Metadata       asset.TypedMetadata
+	Locations      []asset.LocationCommit
 	Image          *ImageDraft
 }
 

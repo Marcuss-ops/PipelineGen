@@ -8,7 +8,7 @@ package scriptgeneration
 import (
 	"context"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // VidRushPlanResolver resolves the per-run ResolvedGenerationPlan consumed by

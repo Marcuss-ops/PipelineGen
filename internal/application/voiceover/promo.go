@@ -29,7 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
-	domainvo "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainvo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // ErrPromoVoiceoverGeneration is the typed sentinel wrapped by every

@@ -8,7 +8,7 @@ import (
 
 	pkgconcurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
-	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 

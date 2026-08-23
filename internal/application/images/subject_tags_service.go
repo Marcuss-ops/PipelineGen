@@ -27,6 +27,7 @@ package images
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -68,7 +69,10 @@ func (s *DefaultSubjectTagsService) ExtractSubjectAndTags(_ context.Context, des
 
 	// Tag extraction with default TermOptions (MinLen=3, lowercase,
 	// remove-stops, unique). Mirrors the action plan C9 spec.
-	rawTags := termutil.TermsFromText(description, termutil.TermOptions{})
+	rawTags := termutil.TermsFromText(description, termutil.TermOptions{
+		RemoveStops: true,
+		StopWords:   linguistics.DefaultStopWords(),
+	})
 
 	// De-dup subject slug from the tag list. Slugify each candidate
 	// to normalize before comparison (termutil already lowercased).

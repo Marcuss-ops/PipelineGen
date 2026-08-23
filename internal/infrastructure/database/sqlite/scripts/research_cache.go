@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // GetResearchCache returns a non-expired source_text for the given key.

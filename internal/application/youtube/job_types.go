@@ -1,7 +1,7 @@
 package youtube
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

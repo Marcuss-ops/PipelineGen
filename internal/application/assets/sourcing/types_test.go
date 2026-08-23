@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/sourcing"
 )
 
 // repoRoot walks up from the test's working directory until it finds
@@ -113,7 +113,6 @@ func TestSourcingNoLegacyIndexingStrings(t *testing.T) {
 	subtrees := []string{
 		filepath.Join(root, "internal/application/assets/sourcing/"),
 		filepath.Join(root, "internal/api/assets/register/"),
-		filepath.Join(root, "internal/domain/sourcing/"),
 	}
 
 	for _, root := range subtrees {
@@ -142,7 +141,6 @@ func TestSourcingNoLegacyIndexingStrings(t *testing.T) {
 			// from enqueued/not_configured → pending/skipped") are
 			// explicitly anchored as audit-pins and must remain
 			// readable for future agents. The residue check skips
-			// `//`-prefix lines so legitimate migration-history
 			// documentation is preserved; non-comment lines that
 			// still mention "enqueued" or "not_configured" are
 			// real production-code failures.

@@ -41,7 +41,9 @@
 // pre-split types.go.
 package schema
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+import (
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+)
 
 // ── Point (canonical upsert wire shape) ────────────────────────────────
 // Relocated from point_types.go (Phase 5 consolidation, June 2026).

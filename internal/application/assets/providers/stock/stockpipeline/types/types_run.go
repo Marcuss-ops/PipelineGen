@@ -12,7 +12,7 @@
 package types
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ClipSpec defines a single clip to extract from a source video.

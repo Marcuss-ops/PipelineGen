@@ -30,7 +30,7 @@
 // degraded output from being reported as a clean generation success.
 //
 // godlike/06 SSOT: the canonical constants live in
-// internal/domain/script/generation_result.go (ItemStatus*).
+// internal/kernel/script/generation_result.go (ItemStatus*).
 // This helper imports them rather than redefining local string
 // literals — the verdict §"Usa sempre le costanti di dominio"
 // explicitly forbids local "SUCCEEDED" / "success" strings.
@@ -39,7 +39,7 @@ package usecase
 import (
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ClassifyGenerationStatus returns the canonical per-item

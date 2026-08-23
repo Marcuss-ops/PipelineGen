@@ -27,7 +27,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestSpecScene_DocumentEmbeddedJSON_Equals_JSONWire is the load-bearing
@@ -78,7 +78,7 @@ func TestSpecScene_DocumentEmbeddedJSON_Equals_JSONWire(t *testing.T) {
 	}
 
 	// SpecScene.Version is set to 1 (canonical schema version per
-	// internal/domain/script/model_output.go) so the renderer's
+	// internal/kernel/script/model_output.go) so the renderer's
 	// MarshalIndent emits "version": 1, not the int zero value.
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},

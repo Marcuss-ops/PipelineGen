@@ -34,7 +34,7 @@ const (
 	OutputModePlainText OutputMode = "plain_text"
 
 	// OutputModeScriptV1 demands the canonical ModelScriptOutputV1
-	// shape ("internal/domain/script/model_output.go") — RETAINED
+	// shape ("internal/kernel/script/model_output.go") — RETAINED
 	// for backward-compat with pre-wave cached rows:
 	//
 	//   {

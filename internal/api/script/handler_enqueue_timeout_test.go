@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 
 type slowSubmissionService struct {

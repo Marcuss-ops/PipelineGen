@@ -72,6 +72,10 @@ const (
 	TypeAssetTextMaterialize = "asset.text.materialize"
 	TypeBooksProcess         = "books.process"
 	TypeLessonsProcess       = "lessons.process"
+	TypeSubtitleGenerate     = "subtitle.generate"
+	TypeCatalogSync          = "catalog.sync"
+	TypeSystemCleanup        = "system.cleanup"
+	TypeDriveFolderSync      = "drive.folder_sync"
 
 	// TypeClipRender is the canonical job type for the clip.render
 	// capability (canonical VeloxEditing-compatible clip

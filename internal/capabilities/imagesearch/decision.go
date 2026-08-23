@@ -3,7 +3,7 @@ package imagesearch
 import (
 	"context"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // EntityExtractor is the structural port consumed by the Resolver. It mirrors

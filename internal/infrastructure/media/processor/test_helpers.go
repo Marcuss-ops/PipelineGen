@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // reconcileResult captures the outcome of a single link verification.
