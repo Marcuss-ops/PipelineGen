@@ -56,8 +56,10 @@ const (
 	AudioModeCopyIfCompatible = "copy_if_compatible"
 	AudioModeTranscode        = "transcode"
 
-	// Output media contract.
-	OutputContractVeloxEditingClipV1 = "velox-editing-clip-v1"
+	// Output media contract — single SSOT VELOX_ASSEMBLY_READY_V1.
+	// velox-editing-clip-v1 is deprecated alias, kept for wire compat during migration.
+	OutputContractVeloxAssemblyReadyV1 = "VELOX_ASSEMBLY_READY_V1"
+	OutputContractVeloxEditingClipV1   = "velox-editing-clip-v1"
 
 	// Watermark positions.
 	PositionTopLeft     = "top_left"
@@ -244,7 +246,7 @@ func (r *RenderRequest) Normalize() {
 		r.Output = &OutputSpec{}
 	}
 	if r.Output.Contract == "" {
-		r.Output.Contract = OutputContractVeloxEditingClipV1
+		r.Output.Contract = OutputContractVeloxAssemblyReadyV1
 	}
 	if r.Output.Width == 0 {
 		r.Output.Width = DefaultWidth
