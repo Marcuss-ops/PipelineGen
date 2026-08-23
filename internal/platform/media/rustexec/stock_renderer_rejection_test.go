@@ -38,7 +38,7 @@ func compileStockPlan(t *testing.T) (render.RenderPlan, string) {
 		}},
 	}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-1", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 		Manifest: []render.AssetManifestEntry{{AssetID: "clip", Path: clipPath, SHA256: hex.EncodeToString(sum[:]), FrameCount: 30}},
 	})
@@ -74,7 +74,7 @@ func compileStockPlanWithFinalAudio(t *testing.T) (render.RenderPlan, string) {
 		}},
 	}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-audio", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30,
+		JobID: "job-audio", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 		FinalAudio: &render.FinalAudioAsset{
 			AssetID: "final-audio", AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy),
@@ -217,7 +217,7 @@ func TestStockRenderer_RejectsEmptyManifest(t *testing.T) {
 		}},
 	}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-empty", Revision: "rev-1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30,
+		JobID: "job-empty", Revision: "rev-1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 	})
 	if err != nil {

@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     duration_ms INTEGER NOT NULL DEFAULT 0,
     tags TEXT NOT NULL DEFAULT '',
     tags_norm TEXT NOT NULL DEFAULT '',
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT NOT NULL DEFAULT '',
     drive_link TEXT NOT NULL DEFAULT '',
     download_link TEXT NOT NULL DEFAULT '',
@@ -78,7 +78,10 @@ CREATE TABLE IF NOT EXISTS media_assets (
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT ''
-);`); err != nil {
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',);`); err != nil {
 		t.Fatalf("CREATE TABLE media_assets: %v", err)
 	}
 
@@ -92,7 +95,7 @@ CREATE TABLE IF NOT EXISTS asset_locations (
     download_url TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     is_primary INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT '',
@@ -174,7 +177,7 @@ func getMediaAssetRow(t *testing.T, db *sql.DB, assetID string) mediaAssetRow {
 	err := db.QueryRow(`
 SELECT source, asset_version, asset_location, rendition,
        drive_file_id, drive_link, download_link,
-       file_hash, source_version, lifecycle_state,
+       legacy_file_md5, source_version, lifecycle_state,
        created_at, updated_at
 FROM media_assets WHERE id = ?`, assetID).Scan(
 		&r.Source, &r.AssetVersion, &r.AssetLocation, &r.Rendition,
@@ -220,7 +223,7 @@ func TestCommitArtlistPublishTx_HappyPath_BothRowsPersist(t *testing.T) {
 		t.Errorf("download_link = %q, want %q", row.DownloadLink, cmd.DownloadLink)
 	}
 	if row.LegacyFileMD5 != cmd.LegacyFileMD5 {
-		t.Errorf("file_hash = %q, want %q", row.LegacyFileMD5, cmd.LegacyFileMD5)
+		t.Errorf("legacy_file_md5 = %q, want %q", row.LegacyFileMD5, cmd.LegacyFileMD5)
 	}
 	if row.SourceVersion != cmd.SourceVersion {
 		t.Errorf("source_version = %q, want %q", row.SourceVersion, cmd.SourceVersion)

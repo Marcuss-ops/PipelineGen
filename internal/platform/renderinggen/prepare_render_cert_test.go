@@ -62,7 +62,7 @@ func TestPrepareRenderCertification(t *testing.T) {
 		ProjectID:     "prepare-render-cert",
 		Width:         1280,
 		Height:        720,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		Intents: []capoverlay.OverlayIntent{
 			{
 				Version:     capoverlay.OverlayIntentVersion,
@@ -95,13 +95,13 @@ func TestPrepareRenderCertification(t *testing.T) {
 
 	// === 2. Submit overlay.render with the timing-frozen plan ===
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          planID,
-		VideoID:         planID,
-		ProjectID:       "prepare-render-cert",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        planID,
+		VideoID:       planID,
+		ProjectID:     "prepare-render-cert",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 4000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},

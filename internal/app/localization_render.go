@@ -115,7 +115,7 @@ func (a *localizationRenderPlanExecutor) execute(ctx context.Context, plan rende
 	// plan's nominal frame rate (the render plan carries no geometry/pixel
 	// facts — those are the profile's single canonical owner).
 	contract := &cliprender.ResolvedContract{
-		ContractID:   cliprender.OutputContractVeloxEditingClipV1,
+		ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
 		Container:    "mp4",
 		VideoCodec:   "h264",
 		VideoProfile: "high",

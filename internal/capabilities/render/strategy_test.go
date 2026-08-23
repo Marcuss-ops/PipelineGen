@@ -23,7 +23,7 @@ func validExecutionPolicy() *RenderExecutionPolicy {
 func compilePlanWithPolicy(t *testing.T, policy *RenderExecutionPolicy) RenderPlan {
 	t.Helper()
 	plan, err := Compile(CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testRenderTimeline(),
 		Manifest: []AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64('a'), FrameCount: 2000},
@@ -152,7 +152,7 @@ func TestCompileRejectsIncompleteExecutionPolicy(t *testing.T) {
 	}
 	for name, policy := range cases {
 		if _, err := Compile(CompileInput{
-			JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+			JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 			Timeline: testRenderTimeline(), ExecutionPolicy: policy,
 			Manifest: []AssetManifestEntry{{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64('a'), FrameCount: 2000}, {AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: hash64('b'), FrameCount: 1000}},
 		}); err == nil {
@@ -370,7 +370,7 @@ func TestResolveDegradesToRenderWhenProbeFails(t *testing.T) {
 
 func TestResolveRequiresAudioMixWhenFinalAudioNotCopyEligible(t *testing.T) {
 	plan, err := Compile(CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testRenderTimeline(),
 		Manifest: []AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64('a'), FrameCount: 2000},

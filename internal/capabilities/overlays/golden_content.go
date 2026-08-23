@@ -44,13 +44,13 @@ package overlays
 // Important Phrases content scenario.
 func GoldenOverlayPlanContent01Phrases() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-content-01-phrases",
-		VideoID:         "video-golden-content-01-phrases",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-content-01-phrases",
+		VideoID:       "video-golden-content-01-phrases",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -90,9 +90,9 @@ var GoldenChrononPlanContent01Phrases = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-content-01-phrases",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 150,
 	},
 	Layers: []ChrononLayer{
@@ -144,13 +144,13 @@ var GoldenChrononAssetsContent01Phrases = []ChrononAsset{
 // Important Words content scenario.
 func GoldenOverlayPlanContent02Words() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-content-02-words",
-		VideoID:         "video-golden-content-02-words",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-content-02-words",
+		VideoID:       "video-golden-content-02-words",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -208,9 +208,9 @@ var GoldenChrononPlanContent02Words = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-content-02-words",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 150,
 	},
 	Layers: []ChrononLayer{
@@ -285,13 +285,13 @@ var GoldenChrononAssetsContent02Words = []ChrononAsset{
 // Images content scenario.
 func GoldenOverlayPlanContent03Images() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-content-03-images",
-		VideoID:         "video-golden-content-03-images",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-content-03-images",
+		VideoID:       "video-golden-content-03-images",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -365,9 +365,9 @@ var GoldenChrononPlanContent03Images = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-content-03-images",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 150,
 	},
 	Layers: []ChrononLayer{
@@ -441,13 +441,13 @@ var GoldenChrononAssetsContent03Images = []ChrononAsset{
 // Mixed Content scenario (phrase + keyword + image + light leak).
 func GoldenOverlayPlanContent05Mixed() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-content-05-mixed",
-		VideoID:         "video-golden-content-05-mixed",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-content-05-mixed",
+		VideoID:       "video-golden-content-05-mixed",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -520,9 +520,9 @@ var GoldenChrononPlanContent05Mixed = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-content-05-mixed",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 150,
 	},
 	Layers: []ChrononLayer{

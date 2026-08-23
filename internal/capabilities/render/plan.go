@@ -107,7 +107,6 @@ type RenderPlan struct {
 	JobID          string                  `json:"job_id"`
 	Revision       string                  `json:"revision"`
 	OutputPath     string                  `json:"output_path"`
-	FPS            int                     `json:"fps"` // legacy nominal integer for executor compatibility
 	FPSNumerator   int64                   `json:"fps_numerator"`
 	FPSDenominator int64                   `json:"fps_denominator"`
 	DurationFrames int64                   `json:"duration_frames"`
@@ -129,7 +128,6 @@ type CompileInput struct {
 	JobID      string
 	Revision   string
 	OutputPath string
-	FPS        int
 	FrameRate  audio.FrameRate
 	Timeline   audio.CanonicalTimeline
 	FinalAudio *FinalAudioAsset
@@ -151,10 +149,6 @@ func Compile(input CompileInput) (RenderPlan, error) {
 	if err := input.Timeline.Validate(); err != nil {
 		return RenderPlan{}, err
 	}
-	nominalFPS, err := nominalFPSForRate(rate)
-	if err != nil {
-		return RenderPlan{}, err
-	}
 	durationFrames, err := resolver.FrameAt(input.Timeline.DurationUS)
 	if err != nil {
 		return RenderPlan{}, fmt.Errorf("%w: timeline duration frames: %v", ErrInvalidPlan, err)
@@ -164,7 +158,6 @@ func Compile(input CompileInput) (RenderPlan, error) {
 		JobID:          strings.TrimSpace(input.JobID),
 		Revision:       strings.TrimSpace(input.Revision),
 		OutputPath:     strings.TrimSpace(input.OutputPath),
-		FPS:            nominalFPS,
 		FPSNumerator:   rate.Numerator,
 		FPSDenominator: rate.Denominator,
 		DurationFrames: durationFrames,
@@ -240,37 +233,16 @@ func Compile(input CompileInput) (RenderPlan, error) {
 	return plan, nil
 }
 
-func nominalFPSForRate(rate audio.FrameRate) (int, error) {
-	if err := rate.Validate(); err != nil {
-		return 0, fmt.Errorf("%w: invalid frame rate: %v", ErrInvalidPlan, err)
-	}
-	nominalNumerator := rate.Numerator + rate.Denominator/2
-	if nominalNumerator < rate.Numerator { // defensive overflow guard
-		return 0, fmt.Errorf("%w: frame rate rounding overflows", ErrInvalidPlan)
-	}
-	nominal := nominalNumerator / rate.Denominator
-	if nominal <= 0 || uint64(nominal) > uint64(^uint(0)>>1) {
-		return 0, fmt.Errorf("%w: nominal frame rate overflows int", ErrInvalidPlan)
-	}
-	return int(nominal), nil
-}
-
 func compileFrameRate(input CompileInput) (audio.FrameRate, error) {
-	if input.FrameRate.Numerator > 0 || input.FrameRate.Denominator > 0 {
-		if err := input.FrameRate.Validate(); err != nil {
-			return audio.FrameRate{}, fmt.Errorf("%w: %v", ErrInvalidPlan, err)
-		}
-		return input.FrameRate, nil
+	if err := input.FrameRate.Validate(); err != nil {
+		return audio.FrameRate{}, fmt.Errorf("%w: invalid frame rate: %v", ErrInvalidPlan, err)
 	}
-	if input.FPS <= 0 {
-		return audio.FrameRate{}, fmt.Errorf("%w: fps must be positive", ErrInvalidPlan)
-	}
-	return audio.IntegerFrameRate(input.FPS), nil
+	return input.FrameRate, nil
 }
 
 // FrameAtMS is retained only as a compatibility helper for callers outside
 // the canonical timeline path. New code must use audio.FrameResolver with US.
-func FrameAtMS(milliseconds int64, fps int) (int64, error) {
+func FrameAtMS(milliseconds int64, rate audio.FrameRate) (int64, error) {
 	if milliseconds < 0 {
 		return 0, fmt.Errorf("%w: invalid milliseconds", ErrInvalidPlan)
 	}
@@ -278,7 +250,7 @@ func FrameAtMS(milliseconds int64, fps int) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrInvalidPlan, err)
 	}
-	resolver, err := audio.NewFrameResolver(audio.IntegerFrameRate(fps))
+	resolver, err := audio.NewFrameResolver(rate)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrInvalidPlan, err)
 	}
@@ -331,17 +303,13 @@ func (p *RenderPlan) Seal() error {
 }
 
 func (p RenderPlan) Validate() error {
-	if p.Version != PlanVersion || p.JobID == "" || p.Revision == "" || p.OutputPath == "" || p.FPS <= 0 || p.FPSNumerator <= 0 || p.FPSDenominator <= 0 || p.DurationFrames <= 0 {
-		return fmt.Errorf("%w: version, identity, output, fps, or duration", ErrInvalidPlan)
+	if p.Version != PlanVersion || p.JobID == "" || p.Revision == "" || p.OutputPath == "" || p.FPSNumerator <= 0 || p.FPSDenominator <= 0 || p.DurationFrames <= 0 {
+		return fmt.Errorf("%w: version, identity, output, frame rate, or duration", ErrInvalidPlan)
 	}
 	if err := p.Timeline.Validate(); err != nil {
 		return err
 	}
 	rate := audio.FrameRate{Numerator: p.FPSNumerator, Denominator: p.FPSDenominator}
-	nominalFPS, err := nominalFPSForRate(rate)
-	if err != nil || p.FPS != nominalFPS {
-		return fmt.Errorf("%w: legacy fps does not match rational frame rate", ErrInvalidPlan)
-	}
 	expectedTimeline, err := p.Timeline.Hash()
 	if err != nil {
 		return err

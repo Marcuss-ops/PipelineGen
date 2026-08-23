@@ -131,7 +131,7 @@ func TestLocalizationRenderPlanExecutor_ExecutesViaClipRender(t *testing.T) {
 	plan := appTestRenderPlan(t, srcPath, srcSHA, outPath)
 	subtitle := appTestSubtitle(t)
 	exec := &fakeLocalizationRenderExecutor{outcome: &cliprender.RenderOutcome{OutputPath: outPath, SizeBytes: info.Size(), DurationSec: 8.432}}
-	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{Width: 1920, Height: 1080, FPS: 30}, zap.NewNop())
+	adapter := newLocalizationRenderPlanExecutor(exec, mediaexec.VideoProfile{Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1}, zap.NewNop())
 
 	facts, err := adapter.Execute(context.Background(), plan, subtitle)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestLocalizationRenderPlanExecutor_ExecutesViaClipRender(t *testing.T) {
 	if got.Subtitles == nil || got.Subtitles.Mode != cliprender.SubtitlesModeBurn || got.Subtitles.SHA256 != subtitle.SHA256 || got.Subtitles.StyleID != "style-sha" {
 		t.Fatalf("clip plan subtitles: %+v", got.Subtitles)
 	}
-	if got.Output.ContractID != cliprender.OutputContractVeloxEditingClipV1 || got.Output.Width != 1920 || got.Output.Height != 1080 || got.Output.FPSNum != 30 || got.Output.FPSDen != 1 || got.Output.VideoCodec != "h264" {
+	if got.Output.ContractID != cliprender.OutputContractVeloxAssemblyReadyV1 || got.Output.Width != 1920 || got.Output.Height != 1080 || got.Output.FPSNum != 30 || got.Output.FPSDen != 1 || got.Output.VideoCodec != "h264" {
 		t.Fatalf("clip plan output: %+v", got.Output)
 	}
 	if got.OutputPath != outPath || got.RunID != "clip-1/es" {

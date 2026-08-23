@@ -124,9 +124,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			// Errors here are LOGGED, not swallowed, per Fase 1.a
 			// (audit 2026-07-11 §2.a).
 			if writeErr := os.WriteFile(txtPath, []byte(bundle.PlainText), 0o644); writeErr != nil {
-				u.core.Log.Warn("transcript .txt side-channel write failed (clipindexer.lookupTranscriptPath Qdrant transcript embedding may miss this clip)",
-					zap.String("txt_path", txtPath),
-					zap.Error(writeErr))
+				return nil, u.fail(out, NewExtractionError(
+					FailureCodeWriterFailed, true,
+					fmt.Sprintf("write transcript sidecar %s: %v", txtPath, writeErr), writeErr))
 			}
 		}
 	}
@@ -295,12 +295,17 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			requireAllLanguages = *cmd.RequireAllLanguagesBeforeVideo
 		}
 
+		requireTranscript := u.observability.RequireTranscriptReady
+		if cmd.RequireTranscriptReady != nil {
+			requireTranscript = *cmd.RequireTranscriptReady
+		}
+
 		superCmd := localized.CommitLocalizedClipCommand{
 			Clip:                           clipAsset,
 			TextTracks:                     tracks,
 			TimedTracks:                    timedTracks,
 			IndexEvent:                     event,
-			RequireTranscriptReady:         u.observability.RequireTranscriptReady,
+			RequireTranscriptReady:         requireTranscript,
 			RequireAllLanguagesBeforeVideo: requireAllLanguages,
 			PreferredLanguages:             u.observability.PreferredLanguages,
 		}

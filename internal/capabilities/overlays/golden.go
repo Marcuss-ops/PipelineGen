@@ -30,13 +30,13 @@ const (
 // chronon.render-plan.v1 document the RenderingGen golden carries.
 func GoldenOverlayPlanV1() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-overlay-v1",
-		VideoID:         "video-golden-overlay-v1",
-		ProjectID:       "golden",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-overlay-v1",
+		VideoID:       "video-golden-overlay-v1",
+		ProjectID:     "golden",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -90,9 +90,9 @@ var GoldenChrononPlanV1 = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-overlay-v1",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 150,
 	},
 	Layers: []ChrononLayer{
@@ -189,13 +189,13 @@ const (
 // the layer animations.
 func GoldenOverlayPlanV2() OverlayPlan {
 	return OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "golden-overlay-v2",
-		VideoID:         "video-golden-overlay-v2",
-		ProjectID:       "golden",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "golden-overlay-v2",
+		VideoID:       "video-golden-overlay-v2",
+		ProjectID:     "golden",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{
@@ -306,9 +306,9 @@ var GoldenChrononPlanV2 = ChrononPlan{
 	Version: ChrononVersion,
 	JobID:   "golden-overlay-v2",
 	Canvas: ChrononCanvas{
-		Width:          1280,
-		Height:         720,
-		FPS:            30,
+		Width:  1280,
+		Height: 720,
+		FPSNum: 30, FPSDen: 1,
 		DurationFrames: 240,
 	},
 	Layers: []ChrononLayer{

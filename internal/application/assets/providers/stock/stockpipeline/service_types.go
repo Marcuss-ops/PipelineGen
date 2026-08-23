@@ -43,7 +43,8 @@ type PipelineConfig struct {
 	EffectsDir         string
 	Width              int
 	Height             int
-	FPS                int
+	FPSNum             int
+	FPSDen             int
 	Codec              string
 	Preset             string
 	CRF                int
@@ -65,7 +66,7 @@ func DefaultPipelineConfig() PipelineConfig {
 		MaxResults:     25,
 		EffectInterval: 4,
 		EffectsDir:     "assets/effects/EffettiVisiv",
-		Width:          1920, Height: 1080, FPS: 24, Codec: "libx264", Preset: "veryfast", CRF: 23,
+		Width:          1920, Height: 1080, FPSNum: 24, FPSDen: 1, Codec: "libx264", Preset: "veryfast", CRF: 23,
 		KeyframeInterval: 48, TransitionInterval: 4, OverlayOpacity: 0.25, ClipDuration: 5,
 	}
 }

@@ -59,7 +59,7 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 	}
 	profile := r.profile
 	if profile == (mediaexec.VideoProfile{}) {
-		profile = mediaexec.VideoProfile{Width: input.Width, Height: input.Height, FPS: input.FPS, KeyframeInterval: input.KeyframeInterval}
+		profile = mediaexec.VideoProfile{Width: input.Width, Height: input.Height, FPSNum: input.FPSNum, FPSDen: input.FPSDen, KeyframeInterval: input.KeyframeInterval}
 	}
 	if err := validateResolvedProfile(profile); err != nil {
 		return stockpipeline.RenderResult{}, err
@@ -67,7 +67,7 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 	_, err = r.client.call(ctx, request{
 		Operation: "render_stock", OutputPath: input.OutputPath, InputPaths: input.InputPaths,
 		Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
@@ -128,7 +128,8 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, validated rende
 		CRF:              crf,
 		Width:            uint32(profile.Width),
 		Height:           uint32(profile.Height),
-		FPS:              uint32(plan.FPS),
+		FPSNum:           uint32(plan.FPSNumerator),
+		FPSDen:           uint32(plan.FPSDenominator),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec,
 		AudioBitrate:     profile.AudioBitrate,

@@ -31,7 +31,7 @@ func TestLayoutSemanticSlotResolvesToCanvasSlot(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-slot", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("img", "IMAGE_OVERLAY", 0, 3000, map[string]any{
 				"position": "right", "priority": 0.9,
@@ -60,7 +60,7 @@ func TestLayoutCollisionMovesLowerPriorityToFallbackSlot(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-collision", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("img_a", "IMAGE_OVERLAY", 0, 4000, map[string]any{
 				"position": "right", "priority": 0.5,
@@ -96,7 +96,7 @@ func TestLayoutNonOverlappingSharesSlot(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-share", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("img_a", "IMAGE_OVERLAY", 0, 2000, map[string]any{
 				"position": "corner", "box_width": 160, "box_height": 160,
@@ -122,7 +122,7 @@ func TestLayoutExplicitNumericPositionWins(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-explicit", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("img", "IMAGE_OVERLAY", 0, 3000, map[string]any{
 				"position": []any{380, 0}, "box_width": 260, "box_height": 260,
@@ -146,7 +146,7 @@ func TestLayoutTemplateDefaultUntouched(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-default", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("img", "IMAGE_OVERLAY", 0, 3000, nil, imageAsset("globe")),
 		},
@@ -173,7 +173,7 @@ func TestLayoutTextNeverAutoLaidOut(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "layout-text", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("phrase", "IMPORTANT_PHRASE", 0, 3000, map[string]any{"position": "center", "priority": 0.9}),
 		},
@@ -200,7 +200,7 @@ func TestCompileEmitsNoFontOrFontSizeForText(t *testing.T) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        "fit-long", VideoID: "v", ProjectID: "p",
-		Width: 1280, Height: 720, FPS: 30,
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{
 			item("phrase", "IMPORTANT_PHRASE", 0, 3000, nil),
 		},
@@ -233,7 +233,7 @@ func TestLayoutDeterministic(t *testing.T) {
 		return OverlayPlan{
 			SchemaVersion: SchemaVersionPlan,
 			PlanID:        "layout-det", VideoID: "v", ProjectID: "p",
-			Width: 1280, Height: 720, FPS: 30,
+			Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 			Items: []OverlayItem{
 				item("a", "IMAGE_OVERLAY", 0, 4000, map[string]any{"position": "right", "priority": 0.4, "box_width": 260, "box_height": 260}, imageAsset("a")),
 				item("b", "IMAGE_OVERLAY", 500, 4500, map[string]any{"position": "right", "priority": 0.8, "box_width": 260, "box_height": 260}, imageAsset("b")),

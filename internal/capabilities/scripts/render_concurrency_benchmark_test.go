@@ -60,16 +60,16 @@ func renderBenchSampleClips() int {
 
 // renderBenchReport holds the result of one concurrency level.
 type renderBenchReport struct {
-	Concurrency       int
-	WallMS            int64
-	WorkMS            int64 // sum of all individual render wall times
-	PerRenderMS       []int64
-	PeakRSSMB         int64 // 0 when unavailable
-	FFmpegWaitMS      int64 // 0 when not real-stack
-	DriveUploadMS     int64 // 0 when not real-stack
-	IOWaitEstimateMS  int64 // 0 when not real-stack
-	Completed         int
-	Failed            int
+	Concurrency      int
+	WallMS           int64
+	WorkMS           int64 // sum of all individual render wall times
+	PerRenderMS      []int64
+	PeakRSSMB        int64 // 0 when unavailable
+	FFmpegWaitMS     int64 // 0 when not real-stack
+	DriveUploadMS    int64 // 0 when not real-stack
+	IOWaitEstimateMS int64 // 0 when not real-stack
+	Completed        int
+	Failed           int
 }
 
 func (r renderBenchReport) String() string {

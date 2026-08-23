@@ -35,8 +35,9 @@ func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
 	if req.Height > 0 {
 		m["height"] = req.Height
 	}
-	if req.FPS > 0 {
-		m["fps"] = req.FPS
+	if req.FPSNum > 0 && req.FPSDen > 0 {
+		m["fps_num"] = req.FPSNum
+		m["fps_den"] = req.FPSDen
 	}
 	if req.Concurrency > 0 {
 		m["concurrency"] = req.Concurrency
@@ -78,10 +79,15 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 	} else if v, ok := payload["height"].(int); ok {
 		req.Height = v
 	}
-	if v, ok := payload["fps"].(float64); ok {
-		req.FPS = int(v)
-	} else if v, ok := payload["fps"].(int); ok {
-		req.FPS = v
+	if v, ok := payload["fps_num"].(float64); ok {
+		req.FPSNum = int(v)
+	} else if v, ok := payload["fps_num"].(int); ok {
+		req.FPSNum = v
+	}
+	if v, ok := payload["fps_den"].(float64); ok {
+		req.FPSDen = int(v)
+	} else if v, ok := payload["fps_den"].(int); ok {
+		req.FPSDen = v
 	}
 	if v, ok := payload["concurrency"].(float64); ok {
 		req.Concurrency = int(v)

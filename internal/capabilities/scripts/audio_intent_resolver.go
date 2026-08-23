@@ -12,8 +12,8 @@
 package scriptgeneration
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"

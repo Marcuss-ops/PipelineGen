@@ -86,7 +86,7 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		category TEXT NOT NULL DEFAULT '',
 		duration_ms INTEGER NOT NULL DEFAULT 0,
 		drive_file_id TEXT, drive_link TEXT, download_link TEXT,
-		local_path TEXT, file_hash TEXT,
+		local_path TEXT, legacy_file_md5 TEXT,
 		folder_id TEXT, folder_path TEXT,
 		source_version TEXT NOT NULL DEFAULT '',
 		lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
@@ -112,7 +112,10 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		asset_kind TEXT NOT NULL DEFAULT '',
 		source_type TEXT NOT NULL DEFAULT '',
 		semantic_role TEXT NOT NULL DEFAULT ''
-	);`
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',);`
 	schema += `
 	CREATE TABLE IF NOT EXISTS asset_locations (
 		asset_id TEXT NOT NULL,
@@ -123,7 +126,7 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		download_url TEXT NOT NULL DEFAULT '',
 		mime_type TEXT NOT NULL DEFAULT '',
 		file_size_bytes INTEGER NOT NULL DEFAULT 0,
-		file_hash TEXT NOT NULL DEFAULT '',
+		legacy_file_md5 TEXT NOT NULL DEFAULT '',
 		is_primary INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL DEFAULT '',
 		updated_at TEXT NOT NULL DEFAULT '',
@@ -713,7 +716,7 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 	// ═══════════════════════════════════════════════════════════════
 	var gotSourceVersion, gotFileHash string
 	if err := db.QueryRow(
-		`SELECT source_version, file_hash FROM media_assets WHERE id = ?`, clipID,
+		`SELECT source_version, legacy_file_md5 FROM media_assets WHERE id = ?`, clipID,
 	).Scan(&gotSourceVersion, &gotFileHash); err != nil {
 		t.Fatalf("read media_assets: %v", err)
 	}

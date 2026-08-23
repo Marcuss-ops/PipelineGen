@@ -77,16 +77,16 @@ type ClipPreflighter interface {
 // MediaPreflightInput carries everything needed to verify media
 // requirements for one run.
 type MediaPreflightInput struct {
-	ClipIDs          []string
-	IntroClipIDs     []string
-	ClipProber       ClipPreflighter
-	ClipAudioSource  ClipAudioAssetSource
-	MixPolicy        capabilityaudio.AudioMixPolicy
-	BGMIDs           []string
-	SFXIDs           []string
-	AudioAssetSource AudioAssetSource
-	RenderEnabled    bool
-	WatermarkAssetID string
+	ClipIDs           []string
+	IntroClipIDs      []string
+	ClipProber        ClipPreflighter
+	ClipAudioSource   ClipAudioAssetSource
+	MixPolicy         capabilityaudio.AudioMixPolicy
+	BGMIDs            []string
+	SFXIDs            []string
+	AudioAssetSource  AudioAssetSource
+	RenderEnabled     bool
+	WatermarkAssetID  string
 	WatermarkResolver ClipPreflighter
 }
 

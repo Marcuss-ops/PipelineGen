@@ -71,7 +71,7 @@ func replayTestBundle(t *testing.T) capreplay.ReplayBundle {
 		},
 	}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 		Manifest: []render.AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: hash64Replay('a'), FrameCount: 2000},

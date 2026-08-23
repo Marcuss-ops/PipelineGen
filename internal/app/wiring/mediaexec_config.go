@@ -18,7 +18,8 @@ func MediaexecConfig(cfg *config.Config) mediaexec.ExecutionConfig {
 		Profile: mediaexec.VideoProfile{
 			Width:            profile.Width,
 			Height:           profile.Height,
-			FPS:              profile.FPS,
+			FPSNum:           profile.FPSNum,
+			FPSDen:           profile.FPSDen,
 			KeyframeInterval: profile.KeyframeInterval,
 			AudioCodec:       profile.AudioCodec,
 			AudioBitrate:     profile.AudioBitrate,

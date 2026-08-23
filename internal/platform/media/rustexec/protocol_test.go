@@ -81,7 +81,7 @@ func sealedClipRenderPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 			SHA256:    strings.Repeat("a", 64),
 		},
 		Contract: &cliprender.ResolvedContract{
-			ContractID:   cliprender.OutputContractVeloxEditingClipV1,
+			ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
 			Container:    "mp4",
 			VideoCodec:   "h264",
 			VideoProfile: "high",

@@ -3,7 +3,7 @@ package overlays
 import "testing"
 
 func TestRenderKeyStableAndChangesWithInputs(t *testing.T) {
-	p := OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPS: 30}
+	p := OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1}
 	i := OverlayItem{ID: "o", TemplateID: "entity-card@1", StartMs: 10, EndMs: 20, Text: "Ada", AssetRefs: []OverlayAssetRef{{SHA256: "ABC"}}}
 	a, b := RenderKey(p, i), RenderKey(p, i)
 	if a == "" || a != b {
@@ -16,7 +16,7 @@ func TestRenderKeyStableAndChangesWithInputs(t *testing.T) {
 }
 
 func TestOverlayPlanValidateComputesMissingKeys(t *testing.T) {
-	p := &OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPS: 30, Items: []OverlayItem{{ID: "o", TemplateID: "card", StartMs: 0, EndMs: 1000}}}
+	p := &OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Items: []OverlayItem{{ID: "o", TemplateID: "card", StartMs: 0, EndMs: 1000}}}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestOverlayPlanValidateComputesMissingKeys(t *testing.T) {
 }
 
 func TestValidateResultRejectsStalePlan(t *testing.T) {
-	p := &OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPS: 30, Items: []OverlayItem{{ID: "o", TemplateID: "card", StartMs: 0, EndMs: 1000}}}
+	p := &OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Items: []OverlayItem{{ID: "o", TemplateID: "card", StartMs: 0, EndMs: 1000}}}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}

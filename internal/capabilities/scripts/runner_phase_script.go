@@ -118,11 +118,11 @@ func hasExplicitSceneMarkers(sourceText string) bool {
 //
 // Eligibility conditions:
 //
-// 1. Source is SourceClips with at least 1 ClipID
-// 2. Source text has NO explicit "SCENE N:" markers
-// 3. Optional extra safety: ScriptParams.Segments are present (1:1 stable
-//    clip→scene mapping); when absent the generator will emit a scene per
-//    clip anyway, but explicit segments make the contract explicit.
+//  1. Source is SourceClips with at least 1 ClipID
+//  2. Source text has NO explicit "SCENE N:" markers
+//  3. Optional extra safety: ScriptParams.Segments are present (1:1 stable
+//     clip→scene mapping); when absent the generator will emit a scene per
+//     clip anyway, but explicit segments make the contract explicit.
 //
 // The "SCENE N:" marker check is the canonical signal: if present,
 // bindExplicitClipSceneText WILL fire and could overwrite already-emitted

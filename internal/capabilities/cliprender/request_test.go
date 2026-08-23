@@ -35,8 +35,8 @@ func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {
 	if req.Subtitles.Mode != SubtitlesModeBurn {
 		t.Errorf("Subtitles.Mode default: got %q, want burn", req.Subtitles.Mode)
 	}
-	if req.Output.Contract != OutputContractVeloxEditingClipV1 {
-		t.Errorf("Output.Contract default: got %q, want velox-editing-clip-v1", req.Output.Contract)
+	if req.Output.Contract != OutputContractVeloxAssemblyReadyV1 {
+		t.Errorf("Output.Contract default: got %q, want VELOX_ASSEMBLY_READY_V1", req.Output.Contract)
 	}
 	if req.Output.Width != DefaultWidth || req.Output.Height != DefaultHeight || req.Output.FPSNum != DefaultFPSNum || req.Output.FPSDen != DefaultFPSDen {
 		t.Errorf("Output defaults: got %dx%d@%d/%d, want %dx%d@%d/%d", req.Output.Width, req.Output.Height, req.Output.FPSNum, req.Output.FPSDen, DefaultWidth, DefaultHeight, DefaultFPSNum, DefaultFPSDen)

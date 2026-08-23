@@ -19,13 +19,13 @@ import (
 // the exact motion preset.
 func TestCompilePhraseAnimationPresets(t *testing.T) {
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "anim-phrases",
-		VideoID:         "video-anim-phrases",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "anim-phrases",
+		VideoID:       "video-anim-phrases",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{ID: "p_fade", TemplateID: "IMPORTANT_PHRASE", StartMs: 0, EndMs: 2000, Text: "FADE", Params: map[string]any{"animation": map[string]any{"preset": "fade"}}},
@@ -53,13 +53,13 @@ func TestCompilePhraseAnimationPresets(t *testing.T) {
 // window (the "when" the renderer applies the enter-hold-exit curve).
 func TestCompileAnimationExplicitWindow(t *testing.T) {
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "anim-window",
-		VideoID:         "video-anim-window",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "anim-window",
+		VideoID:       "video-anim-window",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{{
 			ID:         "p_fade",
@@ -96,13 +96,13 @@ func TestCompileAnimationExplicitWindow(t *testing.T) {
 func TestCompileKineticWordTransformDeterministic(t *testing.T) {
 	build := func() OverlayPlan {
 		return OverlayPlan{
-			SchemaVersion:   SchemaVersionPlan,
-			PlanID:          "kinetic-transform",
-			VideoID:         "video-kinetic-transform",
-			ProjectID:       "golden-content",
-			Width:           1280,
-			Height:          720,
-			FPS:             30,
+			SchemaVersion: SchemaVersionPlan,
+			PlanID:        "kinetic-transform",
+			VideoID:       "video-kinetic-transform",
+			ProjectID:     "golden-content",
+			Width:         1280,
+			Height:        720,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items: []OverlayItem{
 				{ID: "w_apple", TemplateID: "IMPORTANT_WORD", StartMs: 500, EndMs: 1300, Text: "APPLE", Params: map[string]any{
@@ -162,13 +162,13 @@ func TestCompileKineticWordTransformDeterministic(t *testing.T) {
 func TestCompileKineticWordTimingDeterministic(t *testing.T) {
 	build := func() OverlayPlan {
 		return OverlayPlan{
-			SchemaVersion:   SchemaVersionPlan,
-			PlanID:          "kinetic-timing",
-			VideoID:         "video-kinetic-timing",
-			ProjectID:       "golden-content",
-			Width:           1280,
-			Height:          720,
-			FPS:             30,
+			SchemaVersion: SchemaVersionPlan,
+			PlanID:        "kinetic-timing",
+			VideoID:       "video-kinetic-timing",
+			ProjectID:     "golden-content",
+			Width:         1280,
+			Height:        720,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items: []OverlayItem{
 				{ID: "w_apple", TemplateID: "IMPORTANT_WORD", StartMs: 500, EndMs: 1300, Text: "APPLE", Params: map[string]any{"animation": map[string]any{"preset": "scale_drop"}}},

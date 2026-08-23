@@ -12,7 +12,7 @@ import (
 // canonical name — RenderingGen never has to guess who the card is about.
 func TestOverlayPlanContract_EntityResolverEmitsRef(t *testing.T) {
 	timeline := entityTimelineFixture(t)
-	plan, err := ResolveEntityOverlayPlan(timeline, "plan-contract-001", "video-contract-001", "", 1920, 1080, 30)
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-contract-001", "video-contract-001", "", 1920, 1080, 30, 1)
 	require.NoError(t, err)
 	require.NoError(t, plan.Validate())
 

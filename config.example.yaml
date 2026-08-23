@@ -173,7 +173,8 @@ media:
 video:
   width: 1920
   height: 1080
-  fps: 24
+  fps_num: 24
+  fps_den: 1
   # Encoder policy example: libx264 is an explicit CPU policy. For GPU-required
   # production encoding use h264_nvenc; runtime NVENC failure is terminal.
   codec: "libx264"

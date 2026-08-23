@@ -32,26 +32,27 @@ import (
 
 // OverlayCanvasSpec is the target render canvas for the derived OverlayPlan.
 // The runner's withDefaults() resolves a zero spec to the production contract
-// (1920×1080 @ 24 FPS), matching the AssemblyReadyVideoContract.
-// Golden/certification tests use GoldenOverlayCanvas (1280×720 @ 30 FPS) explicitly.
+// (1920×1080 @ 24/1), matching the AssemblyReadyVideoContract.
+// Golden/certification tests use GoldenOverlayCanvas (1280×720 @ 30/1) explicitly.
 type OverlayCanvasSpec struct {
 	Width      int
 	Height     int
-	FPS        int
+	FPSNum     int
+	FPSDen     int
 	Background *capabilityoverlay.OverlayBackground
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
-// 30 FPS, 5 seconds of job) — the same canvas the cross-repo canary renders.
-// Production runners derive from the AssemblyReadyVideoContract (1920×1080 @ 24).
-var GoldenOverlayCanvas = OverlayCanvasSpec{Width: 1280, Height: 720, FPS: 30}
+// 30/1 FPS, 5 seconds of job) — the same canvas the cross-repo canary renders.
+// Production runners derive from the AssemblyReadyVideoContract (1920×1080 @ 24/1).
+var GoldenOverlayCanvas = OverlayCanvasSpec{Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1}
 
 func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
-	if c.Width <= 0 || c.Height <= 0 || c.FPS <= 0 {
+	if c.Width <= 0 || c.Height <= 0 || c.FPSNum <= 0 || c.FPSDen <= 0 {
 		// Production default: derived from the AssemblyReadyVideoContract
 		// (1920×1080 @ 24/1). Golden/certification paths use GoldenOverlayCanvas
 		// explicitly.
-		return OverlayCanvasSpec{Width: 1920, Height: 1080, FPS: 24}
+		return OverlayCanvasSpec{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1}
 	}
 	return c
 }
@@ -149,7 +150,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
-		Width: canvas.Width, Height: canvas.Height, FPS: canvas.FPS,
+		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:     scenes,
 		Background: canvas.Background,
 	}, capabilityoverlay.PlannerConfig{})
@@ -173,7 +174,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	if result.EntityTimeline != nil && len(result.EntityTimeline.Scenes) > 0 {
 		owned := plannerOwnedEntityIDs(result)
 		media, canonicalByStable := entityCardMediaIndex(result)
-		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*result.EntityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPS)
+		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*result.EntityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
 		if err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
 		}
@@ -198,13 +199,14 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		ProjectID:     strings.TrimSpace(projectID),
 		Width:         canvas.Width,
 		Height:        canvas.Height,
-		FPS:           canvas.FPS,
+		FPSNum:        canvas.FPSNum,
+		FPSDen:        canvas.FPSDen,
 		Background:    canvas.Background,
 		// Overlays are composited over the master video, so they require an
 		// alpha channel. The contract travels with the plan (never re-derived
 		// downstream); the compiled chronon output derives container/codec/
 		// pixel format from it.
-		MediaContract: capabilityoverlay.ContractIDForCanvas(canvas.Width, canvas.Height, canvas.FPS, true),
+		MediaContract: capabilityoverlay.ContractIDForCanvas(canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen, true),
 		Items:         items,
 	}
 	if err := plan.Validate(); err != nil {

@@ -163,7 +163,7 @@ func TestWorker_ValidPayload_PreparesAndFailsClosed(t *testing.T) {
 	if !ok || plan["plan_sha256"] == "" {
 		t.Errorf("plan envelope: got %v", result["plan"])
 	}
-	if got := result["contract_id"]; got != OutputContractVeloxEditingClipV1 {
+	if got := result["contract_id"]; got != OutputContractVeloxAssemblyReadyV1 {
 		t.Errorf("contract_id: got %v", got)
 	}
 	if len(mat.calls) != 1 || mat.calls[0] != "asset-source" {

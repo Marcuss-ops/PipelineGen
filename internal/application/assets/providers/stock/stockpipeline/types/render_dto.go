@@ -55,7 +55,8 @@ type RenderRequest struct {
 	// ── Encoding policy (target codec + container) ────────────────
 	Width            int
 	Height           int
-	FPS              int
+	FPSNum           int
+	FPSDen           int
 	Codec            string // "libx264", "h264_nvenc", ...
 	Preset           string
 	CRF              int
@@ -174,7 +175,8 @@ type CutRequest struct {
 	CRF    int
 	Width  int
 	Height int
-	FPS    int
+	FPSNum int
+	FPSDen int
 	// KeyframeInterval is the canonical GOP size for encoded cuts.
 	KeyframeInterval int
 	NoAudio          bool

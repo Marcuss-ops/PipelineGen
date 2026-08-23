@@ -3,8 +3,8 @@
 package ingest
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 

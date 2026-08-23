@@ -150,7 +150,7 @@ func TestRankScene_NoveltyAndAssetQualityInfluenceScore(t *testing.T) {
 func TestResolveRankedEntityOverlayPlan_CapsPerScene(t *testing.T) {
 	timeline := rankedTimelineFixture(t)
 
-	plan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-001", "video-001", "", 1280, 720, 30, RankConfig{MaxEntityOverlaysPerScene: 2})
+	plan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-001", "video-001", "", 1280, 720, 30, 1, RankConfig{MaxEntityOverlaysPerScene: 2})
 	require.NoError(t, err)
 	require.NoError(t, plan.Validate())
 
@@ -172,9 +172,9 @@ func TestResolveRankedEntityOverlayPlan_CapsPerScene(t *testing.T) {
 func TestResolveRankedEntityOverlayPlan_ZeroCapsEqualUnlimited(t *testing.T) {
 	timeline := rankedTimelineFixture(t)
 
-	unlimited, err := ResolveEntityOverlayPlan(timeline, "plan-ranked-002", "video-002", "", 1280, 720, 30)
+	unlimited, err := ResolveEntityOverlayPlan(timeline, "plan-ranked-002", "video-002", "", 1280, 720, 30, 1)
 	require.NoError(t, err)
-	ranked, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-002", "video-002", "", 1280, 720, 30, RankConfig{})
+	ranked, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-002", "video-002", "", 1280, 720, 30, 1, RankConfig{})
 	require.NoError(t, err)
 
 	require.Len(t, ranked.Items, len(unlimited.Items))
@@ -225,7 +225,7 @@ func rankedTimelineFixture(t *testing.T) EntityTimeline {
 // unlimited path.
 func TestResolveRankedEntityOverlayPlan_TemplateResolution(t *testing.T) {
 	timeline := rankedTimelineFixture(t)
-	plan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-003", "video-003", "", 1280, 720, 30, RankConfig{MaxEntityOverlaysPerScene: 2})
+	plan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-ranked-003", "video-003", "", 1280, 720, 30, 1, RankConfig{MaxEntityOverlaysPerScene: 2})
 	require.NoError(t, err)
 
 	for _, item := range plan.Items {

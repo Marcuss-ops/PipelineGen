@@ -105,7 +105,8 @@ type PlanInput struct {
 	ProjectID string
 	Width     int
 	Height    int
-	FPS       int
+	FPSNum    int
+	FPSDen    int
 	// RendererVersion is intentionally optional. PipelineGen emits semantic
 	// overlay instructions; RenderingGen owns the concrete renderer selection.
 	// Callers should leave this empty unless the queue contract explicitly
@@ -126,7 +127,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        input.PlanID, VideoID: input.VideoID, ProjectID: input.ProjectID,
-		Width: input.Width, Height: input.Height, FPS: input.FPS,
+		Width: input.Width, Height: input.Height, FPSNum: input.FPSNum, FPSDen: input.FPSDen,
 		RendererVersion: input.RendererVersion,
 		Background:      input.Background,
 	}

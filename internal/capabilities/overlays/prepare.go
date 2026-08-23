@@ -23,7 +23,8 @@ type PrepareRequest struct {
 	ProjectID     string          `json:"project_id,omitempty"`
 	Width         int             `json:"width"`
 	Height        int             `json:"height"`
-	FPS           int             `json:"fps"`
+	FPSNum        int             `json:"fps_num"`
+	FPSDen        int             `json:"fps_den"`
 	Intents       []OverlayIntent `json:"intents"`
 }
 
@@ -38,8 +39,8 @@ func (p PrepareRequest) Validate() error {
 	if strings.TrimSpace(p.PlanID) == "" || strings.TrimSpace(p.VideoID) == "" {
 		return fmt.Errorf("overlay prepare: plan_id and video_id are required")
 	}
-	if p.Width <= 0 || p.Height <= 0 || p.FPS <= 0 {
-		return fmt.Errorf("overlay prepare: width, height and fps must be positive")
+	if p.Width <= 0 || p.Height <= 0 || p.FPSNum <= 0 || p.FPSDen <= 0 {
+		return fmt.Errorf("overlay prepare: width, height and frame rate must be positive")
 	}
 	if len(p.Intents) == 0 {
 		return fmt.Errorf("overlay prepare: no intents to prepare")

@@ -21,8 +21,8 @@ import (
 // item strictly covers the certified microsecond span. The plan is sealed
 // (render keys + fingerprint) by its own Validate, so the caller can enqueue
 // it directly.
-func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fps int) (capabilityoverlay.OverlayPlan, error) {
-	return ResolveRankedEntityOverlayPlan(timeline, planID, videoID, projectID, width, height, fps, RankConfig{})
+func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int) (capabilityoverlay.OverlayPlan, error) {
+	return ResolveRankedEntityOverlayPlan(timeline, planID, videoID, projectID, width, height, fpsNum, fpsDen, RankConfig{})
 }
 
 // ResolveRankedEntityOverlayPlan is the ranked OverlayResolver: it turns the
@@ -35,15 +35,15 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 // never renders every extracted entity. The top-N occurrences by importance
 // survive per scene (cfg.MaxEntityOverlaysPerScene); the survivors keep
 // their certified timeline positions exactly like the unlimited resolver.
-func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fps int, cfg RankConfig) (capabilityoverlay.OverlayPlan, error) {
+func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, cfg RankConfig) (capabilityoverlay.OverlayPlan, error) {
 	if err := timeline.Validate(); err != nil {
 		return capabilityoverlay.OverlayPlan{}, err
 	}
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: plan_id and video_id are required")
 	}
-	if width <= 0 || height <= 0 || fps <= 0 {
-		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and fps must be positive")
+	if width <= 0 || height <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and frame rate must be positive")
 	}
 
 	// Run-level context: frequency / novelty / asset quality are derived
@@ -96,7 +96,8 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		ProjectID:     strings.TrimSpace(projectID),
 		Width:         width,
 		Height:        height,
-		FPS:           fps,
+		FPSNum:        fpsNum,
+		FPSDen:        fpsDen,
 		Items:         items,
 	}
 	if err := plan.Validate(); err != nil {

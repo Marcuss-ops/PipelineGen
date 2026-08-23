@@ -22,12 +22,12 @@ type qdrantReadinessReport struct {
 	SchemaErrors               int               `json:"schema_errors"`
 	// Projection parity (plan item #14): eligible SQLite asset IDs vs
 	// the ACTIVE Qdrant projection — never the total INDEXED count.
-	ProjectionEligibleSQLite int               `json:"projection_eligible_sqlite"`
-	ProjectionQdrantPoints   int               `json:"projection_qdrant_points"`
-	ProjectionMissingCount   int               `json:"projection_missing_count"`
-	ProjectionOrphanCount    int               `json:"projection_orphan_count"`
-	MissingSourceFile        int               `json:"missing_source_file"`
-	LegacyStatusRows           int               `json:"legacy_status_rows"`
-	LegacyLocatorRows          int               `json:"legacy_locator_rows"`
-	OutboxOperational          bool              `json:"outbox_operational"`
+	ProjectionEligibleSQLite int  `json:"projection_eligible_sqlite"`
+	ProjectionQdrantPoints   int  `json:"projection_qdrant_points"`
+	ProjectionMissingCount   int  `json:"projection_missing_count"`
+	ProjectionOrphanCount    int  `json:"projection_orphan_count"`
+	MissingSourceFile        int  `json:"missing_source_file"`
+	LegacyStatusRows         int  `json:"legacy_status_rows"`
+	LegacyLocatorRows        int  `json:"legacy_locator_rows"`
+	OutboxOperational        bool `json:"outbox_operational"`
 }

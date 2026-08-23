@@ -1,16 +1,18 @@
 package config
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // CanonicalVideoProfile describes the materialized video artifact. It contains
 // no encoder choice: the same profile can be produced by libx264 or NVENC.
-// FPS is deprecated: use FPSNum/FPSDen rational. FPS remains as legacy projection (round).
+// SSOT: kernel/media.VideoContract (AssemblyReadyVideoContractID). This struct is the
+// platform-level working copy; frozen values live in kernel/media.DefaultAssemblyReadyVideoContract().
 type CanonicalVideoProfile struct {
 	Width            int
 	Height           int
-	FPS              int `json:"fps"` // deprecated: use FPSNum/FPSDen
 	FPSNum           int `json:"fps_num"`
 	FPSDen           int `json:"fps_den"`
 	KeyframeInterval int
@@ -25,9 +27,6 @@ func (p CanonicalVideoProfile) FrameRate() (num, den int) {
 	if p.FPSNum > 0 && p.FPSDen > 0 {
 		return p.FPSNum, p.FPSDen
 	}
-	if p.FPS > 0 {
-		return p.FPS, 1
-	}
 	return 24, 1
 }
 
@@ -35,6 +34,41 @@ func (p CanonicalVideoProfile) FrameRate() (num, den int) {
 func (p CanonicalVideoProfile) FPSFloat() float64 {
 	n, d := p.FrameRate()
 	return float64(n) / float64(d)
+}
+
+// ToVideoContract uplifts this platform profile to the canonical SSOT.
+func (p CanonicalVideoProfile) ToVideoContract() kernelmedia.VideoContract {
+	n, d := p.FrameRate()
+	return kernelmedia.VideoContract{
+		ID:                 kernelmedia.AssemblyReadyVideoContractID,
+		Version:            kernelmedia.AssemblyReadyVideoVersion,
+		Container:          "mp4",
+		VideoCodec:         "h264",
+		VideoProfile:       "high",
+		VideoLevel:         "4.0",
+		PixelFormat:        "yuv420p",
+		Width:              p.Width,
+		Height:             p.Height,
+		FPS:                kernelmedia.FrameRate{Num: n, Den: d},
+		VideoTimeBase:      kernelmedia.Rational{Num: 1, Den: 90000},
+		AudioTimeBase:      kernelmedia.Rational{Num: 1, Den: 48000},
+		SAR:                kernelmedia.Rational{Num: 1, Den: 1},
+		ColorRange:         "tv",
+		ColorSpace:         "bt709",
+		ColorTransfer:      "bt709",
+		ColorPrimaries:     "bt709",
+		FieldOrder:         "progressive",
+		KeyframeInterval:   p.KeyframeInterval,
+		AudioCodec:         p.AudioCodec,
+		AudioProfile:       "LC",
+		AudioSampleRate:    p.SampleRate,
+		AudioChannels:      p.Channels,
+		AudioChannelLayout: "stereo",
+		AudioBitrate:       p.AudioBitrate,
+		VideoStreams:       1,
+		AudioStreams:       1,
+		StartPTS:           0,
+	}
 }
 
 // WithDefaults makes partially populated profiles safe for direct consumers.
@@ -46,19 +80,8 @@ func (p CanonicalVideoProfile) WithDefaults() CanonicalVideoProfile {
 		p.Height = 1080
 	}
 	if p.FPSNum <= 0 || p.FPSDen <= 0 {
-		if p.FPS > 0 {
-			p.FPSNum = p.FPS
-			p.FPSDen = 1
-		} else {
-			p.FPSNum = 24
-			p.FPSDen = 1
-		}
-	}
-	if p.FPS <= 0 {
-		p.FPS = p.FPSNum / p.FPSDen
-		if p.FPS <= 0 {
-			p.FPS = 24
-		}
+		p.FPSNum = 24
+		p.FPSDen = 1
 	}
 	if p.KeyframeInterval <= 0 {
 		p.KeyframeInterval = 48
@@ -105,7 +128,6 @@ type VideoEncoderPolicy struct {
 type VideoConfig struct {
 	Width  int `yaml:"width" default:"1920"`
 	Height int `yaml:"height" default:"1080"`
-	FPS    int `yaml:"fps" default:"24"` // deprecated: use FPSNum/FPSDen
 	FPSNum int `yaml:"fps_num" default:"24"`
 	FPSDen int `yaml:"fps_den" default:"1"`
 	// Codec, Preset and CRF are encoder policy. They are deliberately kept
@@ -138,19 +160,8 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 		v.Height = 1080
 	}
 	if v.FPSNum <= 0 || v.FPSDen <= 0 {
-		if v.FPS > 0 {
-			v.FPSNum = v.FPS
-			v.FPSDen = 1
-		} else {
-			v.FPSNum = 24
-			v.FPSDen = 1
-		}
-	}
-	if v.FPS <= 0 {
-		v.FPS = v.FPSNum / v.FPSDen
-		if v.FPS <= 0 {
-			v.FPS = 24
-		}
+		v.FPSNum = 24
+		v.FPSDen = 1
 	}
 	if v.Duration <= 0 {
 		v.Duration = 7
@@ -226,7 +237,6 @@ func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
 	return CanonicalVideoProfile{
 		Width:            v.Width,
 		Height:           v.Height,
-		FPS:              v.FPS,
 		FPSNum:           v.FPSNum,
 		FPSDen:           v.FPSDen,
 		KeyframeInterval: v.KeyframeInterval,
@@ -260,7 +270,8 @@ func (v VideoConfig) CanonicalClip() VideoConfig {
 	profile := v.CanonicalVideoProfile()
 	v.Width = profile.Width
 	v.Height = profile.Height
-	v.FPS = profile.FPS
+	v.FPSNum = profile.FPSNum
+	v.FPSDen = profile.FPSDen
 	v.KeyframeInterval = profile.KeyframeInterval
 	v.AudioCodec = profile.AudioCodec
 	v.AudioBitrate = profile.AudioBitrate

@@ -42,7 +42,7 @@ func TestCompileUsesIntegerFramesForSourceAndTimeline(t *testing.T) {
 		JobID:      "job-1",
 		Revision:   "rev-1",
 		OutputPath: "final.mp4",
-		FPS:        30,
+		FrameRate:  audio.IntegerFrameRate(30),
 		Timeline:   testRenderTimeline(),
 		Manifest: []AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 2000},
@@ -75,7 +75,7 @@ func TestCompileUsesAllVideoSegmentsOwnedByTimelineScene(t *testing.T) {
 		},
 		Audio: audio.AudioIntent{Mode: audio.AudioSilence},
 	}}}
-	plan, err := Compile(CompileInput{JobID: "multi", Revision: "r1", OutputPath: "final.mp4", FPS: 30, Timeline: timeline, Manifest: []AssetManifestEntry{
+	plan, err := Compile(CompileInput{JobID: "multi", Revision: "r1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30), Timeline: timeline, Manifest: []AssetManifestEntry{
 		{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 100},
 		{AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 100},
 	}})
@@ -100,7 +100,7 @@ func TestCompileUsesRationalFrameRate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.FPSNumerator != 30000 || plan.FPSDenominator != 1001 || plan.FPS != 30 {
+	if plan.FPSNumerator != 30000 || plan.FPSDenominator != 1001 {
 		t.Fatalf("rational frame rate was not preserved: %+v", plan)
 	}
 	if err := plan.Validate(); err != nil {
@@ -125,7 +125,7 @@ func TestCompileMapsFreezeTailToSingleFrozenSourceFrame(t *testing.T) {
 		}},
 	}
 	plan, err := Compile(CompileInput{
-		JobID: "job-freeze", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-freeze", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: timeline,
 		Manifest: []AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 480},
@@ -153,7 +153,7 @@ func TestCompileMapsFreezeTailToSingleFrozenSourceFrame(t *testing.T) {
 
 func TestCompileRejectsSourceRangeBeyondAssetFrameCount(t *testing.T) {
 	_, err := Compile(CompileInput{
-		JobID: "job-range", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-range", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testRenderTimeline(),
 		Manifest: []AssetManifestEntry{
 			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 1000},
@@ -167,7 +167,7 @@ func TestCompileRejectsSourceRangeBeyondAssetFrameCount(t *testing.T) {
 
 func TestRenderPlanRejectsHashTampering(t *testing.T) {
 	manifest := []AssetManifestEntry{{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 2000}, {AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 1000}}
-	plan, err := Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30, Timeline: testRenderTimeline(), Manifest: manifest})
+	plan, err := Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30), Timeline: testRenderTimeline(), Manifest: manifest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestRenderPlanRejectsHashTampering(t *testing.T) {
 	if err := plan.Validate(); err == nil {
 		t.Fatal("timeline mutation must be rejected")
 	}
-	plan, err = Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30, Timeline: testRenderTimeline(), Manifest: manifest})
+	plan, err = Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30), Timeline: testRenderTimeline(), Manifest: manifest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestRenderPlanValidatesManifestBytes(t *testing.T) {
 	}
 	sum := sha256.Sum256(contents)
 	plan, err := Compile(CompileInput{
-		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FrameRate: audio.IntegerFrameRate(30),
 		Timeline: testRenderTimeline(),
 		Manifest: []AssetManifestEntry{{AssetID: "clip-a", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 2000}, {AssetID: "clip-b", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 1000}},
 	})

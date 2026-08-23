@@ -142,7 +142,7 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.DurationSec != 0 || !sent.KeepAudio || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 {
+	if sent.DurationSec != 0 || !sent.KeepAudio || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 {
 		t.Fatalf("unexpected fully resolved normalize request: %+v", sent)
 	}
 }
@@ -185,7 +185,7 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	renderer := &StockRenderer{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
 	_, err := renderer.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: []string{"a.mp4", "b.mp4"}, OutputPath: "out.mp4",
-		Codec: "h264_nvenc", Preset: "p1", CRF: 23, Width: 1920, Height: 1080, FPS: 24,
+		Codec: "h264_nvenc", Preset: "p1", CRF: 23, Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 		Transitions: []stockpipeline.RenderTransition{{ClipIndex: 1, Segment: "end", ID: "fadeblack"}},
 		EffectPaths: []stockpipeline.RenderEffectPath{{ClipIndex: 1, Path: "/effects/a.mp4"}}, ClipDurationSec: 5,
 	})
@@ -196,7 +196,7 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Transitions) != 1 || sent.Transitions[0].ID != "fadeblack" || len(sent.EffectPaths) != 1 || sent.EffectPaths[0].Path != "/effects/a.mp4" {
+	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Transitions) != 1 || sent.Transitions[0].ID != "fadeblack" || len(sent.EffectPaths) != 1 || sent.EffectPaths[0].Path != "/effects/a.mp4" {
 		t.Fatalf("unexpected render request: %+v", sent)
 	}
 }
@@ -213,7 +213,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{
 		SourcePath: "source.mp4",
 		Jobs:       []stockpipeline.CutJob{{StartSec: 1, EndSec: 2, OutputPath: out}},
-		Width:      1920, Height: 1080, FPS: 24, KeyframeInterval: 48,
+		Width:      1920, Height: 1080, FPSNum: 24, FPSDen: 1, KeyframeInterval: 48,
 	})
 	if err != nil {
 		t.Fatalf("Cut() error = %v", err)
@@ -225,7 +225,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Jobs) != 1 {
+	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Jobs) != 1 {
 		t.Fatalf("unexpected shared cut request: %+v", sent)
 	}
 }
@@ -255,7 +255,7 @@ func TestAdminRendererPreservesEncoderPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "admin_render" || sent.Codec != "h264_nvenc" || sent.Preset != "p1" || sent.CRF != 21 || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Effects) != 1 || len(sent.Overlays) != 1 {
+	if sent.Operation != "admin_render" || sent.Codec != "h264_nvenc" || sent.Preset != "p1" || sent.CRF != 21 || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Effects) != 1 || len(sent.Overlays) != 1 {
 		t.Fatalf("unexpected admin render request: %+v", sent)
 	}
 }

@@ -171,7 +171,7 @@ func TestCompileChrononPlan_MicrosecondTiming(t *testing.T) {
 		VideoID:       "us-video",
 		Width:         1280,
 		Height:        720,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID:         "precise",
 			TemplateID: "IMPORTANT_PHRASE",

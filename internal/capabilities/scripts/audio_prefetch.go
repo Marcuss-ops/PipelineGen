@@ -48,9 +48,9 @@ type AudioPrefetchResult struct {
 // prefetch adapters. Write once (during prefetch), read many
 // (during audio compile).
 type audioPrefetchCache struct {
-	mu       sync.RWMutex
-	audio    map[string]capabilityaudio.ResolvedAudioAsset // asset_id → resolved
-	clipAudio map[string]string                            // clip_id → path
+	mu        sync.RWMutex
+	audio     map[string]capabilityaudio.ResolvedAudioAsset // asset_id → resolved
+	clipAudio map[string]string                             // clip_id → path
 }
 
 func newAudioPrefetchCache() *audioPrefetchCache {

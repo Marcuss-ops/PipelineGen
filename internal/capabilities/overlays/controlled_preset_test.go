@@ -11,13 +11,13 @@ import "testing"
 // built from.
 func TestCompileControlledPresetsImagePhraseWord(t *testing.T) {
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "controlled-preset-image-phrase-word",
-		VideoID:         "video-controlled-preset",
-		ProjectID:       "controlled-preset-cert",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "controlled-preset-image-phrase-word",
+		VideoID:       "video-controlled-preset",
+		ProjectID:     "controlled-preset-cert",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{
 			{

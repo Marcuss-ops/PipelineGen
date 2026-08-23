@@ -43,12 +43,12 @@ const RegressionThresholdPercent = 1.0
 // materialized and hashed (the benchmark input-generation step).
 func CanonicalWorkloads() []Workload {
 	return []Workload{
-		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":10}`},
-		{WorkloadID: Workload1080p60s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":30,"duration_sec":60}`},
-		{WorkloadID: WorkloadWatermark, Version: WorkloadVersion, Operation: "watermark", ParametersJSON: `{"operation":"watermark","width":1920,"height":1080,"fps":30}`},
+		{WorkloadID: Workload1080p10s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":24,"duration_sec":10}`},
+		{WorkloadID: Workload1080p60s, Version: WorkloadVersion, Operation: "normalize", ParametersJSON: `{"operation":"normalize","width":1920,"height":1080,"fps":24,"duration_sec":60}`},
+		{WorkloadID: WorkloadWatermark, Version: WorkloadVersion, Operation: "watermark", ParametersJSON: `{"operation":"watermark","width":1920,"height":1080,"fps":24}`},
 		{WorkloadID: WorkloadAudioMix, Version: WorkloadVersion, Operation: "audio_mix", ParametersJSON: `{"operation":"audio_mix","codec":"aac","profile":"LC","sample_rate":48000,"channels":2}`},
-		{WorkloadID: Workload10SceneRender, Version: WorkloadVersion, Operation: "render_scene", ParametersJSON: `{"operation":"render_scene","scene_count":10,"width":1920,"height":1080,"fps":30}`},
-		{WorkloadID: WorkloadStreamCopy, Version: WorkloadVersion, Operation: "assemble_copy", ParametersJSON: `{"operation":"assemble_copy","codec":"h264","pixel_format":"yuv420p","fps":30}`},
+		{WorkloadID: Workload10SceneRender, Version: WorkloadVersion, Operation: "render_scene", ParametersJSON: `{"operation":"render_scene","scene_count":10,"width":1920,"height":1080,"fps":24}`},
+		{WorkloadID: WorkloadStreamCopy, Version: WorkloadVersion, Operation: "assemble_copy", ParametersJSON: `{"operation":"assemble_copy","codec":"h264","pixel_format":"yuv420p","fps":24}`},
 	}
 }
 

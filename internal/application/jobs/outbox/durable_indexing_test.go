@@ -520,7 +520,25 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	source_version TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL DEFAULT ''
-);
+    search_text TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',);
 CREATE TABLE IF NOT EXISTS asset_versions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,

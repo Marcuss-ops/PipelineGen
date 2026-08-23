@@ -213,13 +213,13 @@ func TestPresetCertificationMatrix(t *testing.T) {
 // across rows and visual differences come from the preset ONLY.
 func buildMatrixPlan(jobID, bgHash, imgHash, family, tpl, preset, text string) capoverlay.OverlayPlan {
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          jobID,
-		VideoID:         jobID,
-		ProjectID:       "preset-matrix-cert",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        jobID,
+		VideoID:       jobID,
+		ProjectID:     "preset-matrix-cert",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{

@@ -6,7 +6,7 @@
 //   - Fail-closed: any of the 9 components nil at construction surfaces
 //     ErrClipIngestPipelineFailClosed.
 //   - Empty URL: Ingest surfaces ErrClipIngestPipelineSourceRefEmpty.
-//   - Dispatcher error propagation: stub returns sentinel; Ingest must
+//   - Committer error propagation: stub returns sentinel; Ingest must
 //     errors.Is surface the sentinel.
 //
 // Field shapes (canonical from internal/kernel/asset/*.go):
@@ -26,7 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -103,23 +103,30 @@ func (s *stubComposer) Compose(_ context.Context, _ ClipIngestContext) (string, 
 	return "search-text-composed", nil
 }
 
-type stubDispatcher struct {
+type stubCommitter struct {
 	called atomic.Int32
 	err    error
 }
 
-func (s *stubDispatcher) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
+func (s *stubCommitter) CommitTx(_ context.Context, _ persistence.Transaction, _ persistence.CommitRequest) (persistence.CommitResult, error) {
 	s.called.Add(1)
-	return s.err
+	return persistence.CommitResult{AssetRowsAffected: 1}, s.err
 }
 
-func (s *stubDispatcher) EnqueueAndRestore(_ context.Context, _ string) error { return nil }
-func (s *stubDispatcher) EnqueueAndDelete(_ context.Context, _ string) error  { return nil }
+func (s *stubCommitter) CommitAndIndex(_ context.Context, _ persistence.CommitRequest) (persistence.CommitResult, error) {
+	s.called.Add(1)
+	return persistence.CommitResult{AssetRowsAffected: 1}, s.err
+}
 
-// compile-time port-pin: stub satisfies the canonical AssetMutationDispatcher interface.
-var _ mutations.AssetMutationDispatcher = (*stubDispatcher)(nil)
+func (s *stubCommitter) CommitAsset(_ context.Context, _ persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	s.called.Add(1)
+	return persistence.CommittedAsset{AssetRowsAffected: 1}, s.err
+}
 
-func newAllPassDeps() (ClipIngestPipelineDeps, *stubDownloader, *stubNormalizer, *stubHasher, *stubStore, *stubTranscriber, *stubEnricher, *stubTranslator, *stubComposer, *stubDispatcher) {
+// compile-time port-pin: stub satisfies the canonical persistence.AssetCommitter interface.
+var _ persistence.AssetCommitter = (*stubCommitter)(nil)
+
+func newAllPassDeps() (ClipIngestPipelineDeps, *stubDownloader, *stubNormalizer, *stubHasher, *stubStore, *stubTranscriber, *stubEnricher, *stubTranslator, *stubComposer, *stubCommitter) {
 	d := &stubDownloader{}
 	n := &stubNormalizer{}
 	h := &stubHasher{}
@@ -128,7 +135,7 @@ func newAllPassDeps() (ClipIngestPipelineDeps, *stubDownloader, *stubNormalizer,
 	e := &stubEnricher{}
 	tt := &stubTranslator{}
 	sc := &stubComposer{}
-	disp := &stubDispatcher{}
+	committer := &stubCommitter{}
 	return ClipIngestPipelineDeps{
 		MediaProcessing: MediaProcessingDeps{
 			Downloader:      d,
@@ -142,13 +149,13 @@ func newAllPassDeps() (ClipIngestPipelineDeps, *stubDownloader, *stubNormalizer,
 			TextTrackTranslator: tt,
 			SearchTextComposer:  sc,
 		},
-		AssetMutationDispatcher: disp,
-		Log:                     zap.NewNop(),
-	}, d, n, h, st, tr, e, tt, sc, disp
+		AssetCommitter: committer,
+		Log:            zap.NewNop(),
+	}, d, n, h, st, tr, e, tt, sc, committer
 }
 
 func TestClipIngestPipeline_Ingest_HappyPath(t *testing.T) {
-	deps, d, n, h, st, tr, e, tt, sc, disp := newAllPassDeps()
+	deps, d, n, h, st, tr, e, tt, sc, committer := newAllPassDeps()
 	p, err := NewClipIngestPipeline(deps)
 	if err != nil {
 		t.Fatalf("NewClipIngestPipeline: %v", err)
@@ -175,7 +182,7 @@ func TestClipIngestPipeline_Ingest_HappyPath(t *testing.T) {
 		"Enricher":      &e.called,
 		"Translator":    &tt.called,
 		"Composer":      &sc.called,
-		"Dispatcher":    &disp.called,
+		"Committer":     &committer.called,
 	}
 	for name, c := range pairs {
 		if c.Load() != 1 {
@@ -197,7 +204,7 @@ func TestClipIngestPipeline_NilAnyComponent_Fails(t *testing.T) {
 		{"nil ClipEnricher", func(d *ClipIngestPipelineDeps) { d.Enrichment.ClipEnricher = nil }},
 		{"nil TextTrackTranslator", func(d *ClipIngestPipelineDeps) { d.Enrichment.TextTrackTranslator = nil }},
 		{"nil SearchTextComposer", func(d *ClipIngestPipelineDeps) { d.Enrichment.SearchTextComposer = nil }},
-		{"nil AssetMutationDispatcher", func(d *ClipIngestPipelineDeps) { d.AssetMutationDispatcher = nil }},
+		{"nil AssetCommitter", func(d *ClipIngestPipelineDeps) { d.AssetCommitter = nil }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,10 +236,10 @@ func TestClipIngestPipeline_Ingest_EmptyURLTypedSentinel(t *testing.T) {
 	}
 }
 
-func TestClipIngestPipeline_Ingest_DispatcherErrorPropagates(t *testing.T) {
-	deps, _, _, _, _, _, _, _, _, disp := newAllPassDeps()
-	sentinel := errors.New("db unavailable at dispatcher")
-	disp.err = sentinel
+func TestClipIngestPipeline_Ingest_CommitterErrorPropagates(t *testing.T) {
+	deps, _, _, _, _, _, _, _, _, committer := newAllPassDeps()
+	sentinel := errors.New("db unavailable at committer")
+	committer.err = sentinel
 	p, _ := NewClipIngestPipeline(deps)
 	if p == nil {
 		t.Fatalf("NewClipIngestPipeline: nil")

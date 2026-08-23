@@ -11,11 +11,13 @@ import (
 )
 
 // PresetConfig defines the configuration for a preset.
+// FPS is carried as a rational FPSNum/FPSDen pair (canonical FrameRate).
 type PresetConfig struct {
 	ClipDuration int    `yaml:"clip_duration"`
 	Width        int    `yaml:"width"`
 	Height       int    `yaml:"height"`
-	FPS          int    `yaml:"fps"`
+	FPSNum       int    `yaml:"fps_num"`
+	FPSDen       int    `yaml:"fps_den"`
 	Strategy     string `yaml:"strategy"`
 }
 
@@ -49,7 +51,8 @@ type RunTagRequest struct {
 	ClipDuration int    `json:"clip_duration,omitempty"`
 	Width        int    `json:"width,omitempty"`
 	Height       int    `json:"height,omitempty"`
-	FPS          int    `json:"fps,omitempty"`
+	FPSNum       int    `json:"fps_num,omitempty"`
+	FPSDen       int    `json:"fps_den,omitempty"`
 	// Concurrency sets how many clips are downloaded in parallel.
 	// Default: 3. Max: 10. Set to 1 for sequential downloads (legacy behavior).
 	Concurrency int `json:"concurrency,omitempty"`

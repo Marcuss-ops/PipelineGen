@@ -61,7 +61,7 @@ func TestRenderMetricsDiagnostic(t *testing.T) {
 		PlanID:        jobID,
 		VideoID:       jobID,
 		ProjectID:     "metrics-diag",
-		Width:         1280, Height: 720, FPS: 30,
+		Width:         1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 4000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},

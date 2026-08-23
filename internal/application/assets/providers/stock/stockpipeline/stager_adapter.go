@@ -192,8 +192,6 @@ func isYouTubeSourceURL(raw string) bool {
 	return host == "youtu.be" || strings.HasSuffix(host, ".youtube.com") || host == "youtube.com"
 }
 
-
-
 // ── acquisition.SourceStager adapter (Prepare / Release) ─────────────
 
 // Compile-time assertion: StockStager satisfies acquisition.SourceStager.
@@ -224,7 +222,7 @@ func (s *StockStager) Prepare(ctx context.Context, req acquisition.PrepareReques
 		ID:           staged.SourceID,
 		LocalPath:    staged.LocalPath,
 		SizeBytes:    staged.Bytes,
-		CleanupToken: staged.LocalPath, // LocalPath doubles as cleanup token for legacy path
+		CleanupToken: staged.LocalPath,               // LocalPath doubles as cleanup token for legacy path
 		ExpiresAt:    time.Now().Add(24 * time.Hour), // legacy path has no TTL
 	}, nil
 }

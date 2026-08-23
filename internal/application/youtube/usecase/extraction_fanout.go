@@ -112,6 +112,7 @@ func buildSegmentCommand(
 		SubtitleFolderPath:             subtitleFolderPath(req),
 		SubtitlePerClipSubfolders:      subtitlePerClipSubfolders(req),
 		RequireAllLanguagesBeforeVideo: req.RequireAllLanguagesBeforeVideo,
+		RequireTranscriptReady:         req.RequireTranscriptReady,
 	}
 }
 

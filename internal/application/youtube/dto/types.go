@@ -82,6 +82,10 @@ type ExtractRequest struct {
 	Concurrency         int                         `json:"concurrency,omitempty"`
 	Destination         *DestinationRequest         `json:"destination,omitempty"`
 	SubtitleDestination *SubtitleDestinationRequest `json:"subtitle_destination,omitempty"`
+	// RequireTranscriptReady makes subtitle/transcript acquisition a hard
+	// pre-commit requirement. When true, a segment is never committed or
+	// indexed without a READY transcript track.
+	RequireTranscriptReady *bool `json:"require_transcript_ready,omitempty"`
 	// Selection configures how segments are selected. nil (or
 	// selection.mode="explicit") uses the caller-supplied Segments;
 	// selection.mode="important" derives segments from the video
@@ -233,7 +237,7 @@ type ExtractItem struct {
 	EndSeconds      int    `json:"end_seconds,omitempty"`
 	Duration        int    `json:"duration_seconds,omitempty"`
 	Filename        string `json:"filename,omitempty"`
-	LegacyFileMD5        string `json:"legacy_file_md5,omitempty"`
+	LegacyFileMD5   string `json:"legacy_file_md5,omitempty"`
 	LocalPath       string `json:"local_path,omitempty"`
 	DriveLink       string `json:"drive_link,omitempty"`
 	DriveFileID     string `json:"drive_file_id,omitempty"`
@@ -283,11 +287,12 @@ type ProcessSegmentCommand struct {
 	// RequireAllLanguagesBeforeVideo is the per-job override propagated from
 	// ExtractRequest. nil preserves the process-wide policy.
 	RequireAllLanguagesBeforeVideo *bool
+	RequireTranscriptReady         *bool
 }
 
 type ProcessSegmentResult struct {
 	ID               string
-	LegacyFileMD5         string
+	LegacyFileMD5    string
 	DriveFileID      string
 	DriveLink        string
 	IndexedRequestID string
@@ -400,7 +405,7 @@ type ClipAsset struct {
 	ID            string
 	VideoID       string
 	LocalPath     string
-	LegacyFileMD5      string
+	LegacyFileMD5 string
 	SearchText    string
 	Drive         ClipAssetDrive
 	Coordinates   ClipAssetCoordinates

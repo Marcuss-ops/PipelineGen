@@ -101,7 +101,7 @@ var commandRegistry = map[string]commandHandler{
 	"keep-drive-folder-files":        runKeepDriveFolderFiles,
 	"list-drive-folder":              runListDriveFolder,
 	"list-styles":                    runListStyles,
-	"migrate-legacy-cache":            runMigrateLegacyCache,
+	"migrate-legacy-cache":           runMigrateLegacyCache,
 	"multilingual-benchmark":         runMultilingualBenchmark,
 	"multilingual-render":            runMultilingualRender,
 	"normalize-sound-effects-drive":  runNormalizeSoundEffectsDrive,

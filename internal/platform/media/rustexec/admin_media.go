@@ -43,7 +43,7 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 	_, err := p.client.call(ctx, request{
 		Operation: "trim", SourcePath: inputPath, OutputPath: tmpPath,
 		MaxDurationSec: maxSeconds, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
-		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPS: uint32(p.profile.FPS), KeyframeInterval: uint32(p.profile.KeyframeInterval),
+		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPSNum: uint32(p.profile.FPSNum), FPSDen: uint32(p.profile.FPSDen), KeyframeInterval: uint32(p.profile.KeyframeInterval),
 		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels),
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.Re
 		return err
 	}
 	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
-		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPS: uint32(p.profile.FPS), KeyframeInterval: uint32(p.profile.KeyframeInterval),
+		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPSNum: uint32(p.profile.FPSNum), FPSDen: uint32(p.profile.FPSDen), KeyframeInterval: uint32(p.profile.KeyframeInterval),
 		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels)}
 	for _, effect := range manifest.Effects {
 		req.Effects = append(req.Effects, renderEffect{Path: effect.Path, DelayMS: effect.DelayMS, Duration: effect.Duration, Volume: effect.Volume})

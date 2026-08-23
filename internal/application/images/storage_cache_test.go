@@ -64,7 +64,7 @@ func openImageCacheTestDB(t *testing.T) *sql.DB {
 			media_type TEXT NOT NULL DEFAULT 'image',
 			width INTEGER NOT NULL DEFAULT 0,
 			height INTEGER NOT NULL DEFAULT 0,
-			file_hash TEXT NOT NULL DEFAULT '',
+			legacy_file_md5 TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
 			relative_path TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
@@ -75,7 +75,28 @@ func openImageCacheTestDB(t *testing.T) *sql.DB {
 			provider TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
+    filename TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    index_state TEXT NOT NULL DEFAULT '',
+    search_text TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.ExecContext(context.Background(), stmt); err != nil {
@@ -90,7 +111,7 @@ func seedCachedImage(t *testing.T, db *sql.DB, id, hash, sourceQuery string, cre
 	metadata := `{"subject_id":"jaguar","source_query":"` + sourceQuery + `","resolved_query":"` + sourceQuery + `"}`
 	_, err := db.ExecContext(context.Background(), `
 		INSERT INTO media_assets (
-			id, source, name, url, tags, file_hash, local_path, relative_path,
+			id, source, name, url, tags, legacy_file_md5, local_path, relative_path,
 			drive_file_id, drive_link, metadata_json, origin, provider, created_at, updated_at
 		) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'retrieved', ?, ?, ?)
 	`,

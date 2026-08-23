@@ -45,13 +45,13 @@ func TestControlledPresetE2E(t *testing.T) {
 
 	jobID := getenvOr("PIPELINEGEN_E2E_JOB_ID", "controlled-preset-image-phrase-word")
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          jobID,
-		VideoID:         jobID,
-		ProjectID:       "controlled-preset-cert",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        jobID,
+		VideoID:       jobID,
+		ProjectID:     "controlled-preset-cert",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background_video", TemplateID: "VIDEO_BACKGROUND", StartMs: 0, EndMs: 6000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.mp4", SHA256: backgroundHash}}},

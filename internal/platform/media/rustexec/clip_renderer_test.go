@@ -66,7 +66,7 @@ func clipRenderPlanWithFiles(t *testing.T) (cliprender.ClipRenderPlanV1, string)
 			StyleID:   "shorts-v1",
 		},
 		Contract: &cliprender.ResolvedContract{
-			ContractID:   cliprender.OutputContractVeloxEditingClipV1,
+			ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
 			Container:    "mp4",
 			VideoCodec:   "h264",
 			VideoProfile: "high",
@@ -95,7 +95,7 @@ func newTestClipRenderer(runner commandRunner) *ClipRenderer {
 		client: client,
 		policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23},
 		profile: mediaexec.VideoProfile{
-			Width: 1080, Height: 1920, FPS: 60, KeyframeInterval: 120,
+			Width: 1080, Height: 1920, FPSNum: 60, FPSDen: 1, KeyframeInterval: 120,
 			AudioCodec: "aac", AudioBitrate: "128k", SampleRate: 48000, Channels: 2,
 		},
 	}

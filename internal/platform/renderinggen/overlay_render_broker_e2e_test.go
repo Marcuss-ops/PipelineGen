@@ -67,13 +67,13 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 	// PHRASE 1000->4000. WORD is intentionally omitted — the test is
 	// specifically about overlay.render with a 3-layer timed plan.
 	plan := capoverlay.OverlayPlan{
-		SchemaVersion:   capoverlay.SchemaVersionPlan,
-		PlanID:          jobID,
-		VideoID:         jobID,
-		ProjectID:       "overlay-render-broker-cert",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        jobID,
+		VideoID:       jobID,
+		ProjectID:     "overlay-render-broker-cert",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{
@@ -109,8 +109,9 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 	}
 	for _, layer := range compiled.Plan.Layers {
 		if want, ok := wantTiming[layer.ID]; ok {
-			gotStart := int64(layer.StartFrame) * 1000 / int64(compiled.Plan.Canvas.FPS)
-			gotDuration := int64(layer.DurationFrames) * 1000 / int64(compiled.Plan.Canvas.FPS)
+			canvasFPS := float64(compiled.Plan.Canvas.FPSNum) / float64(compiled.Plan.Canvas.FPSDen)
+			gotStart := int64(float64(layer.StartFrame) * 1000 / canvasFPS)
+			gotDuration := int64(float64(layer.DurationFrames) * 1000 / canvasFPS)
 			gotEnd := gotStart + gotDuration
 			if gotStart != want.StartMs || gotEnd != want.EndMs {
 				t.Fatalf("layer %s timing off: got [%d..%d] ms, want [%d..%d] ms",

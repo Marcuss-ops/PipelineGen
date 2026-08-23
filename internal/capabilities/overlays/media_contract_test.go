@@ -247,10 +247,10 @@ func TestResolveMediaContract_UnknownFailsClosed(t *testing.T) {
 }
 
 func TestContractIDForCanvas(t *testing.T) {
-	if id := ContractIDForCanvas(1280, 720, 30, true); id != DefaultOverlayContractV1.ID {
+	if id := ContractIDForCanvas(1280, 720, 30, 1, true); id != DefaultOverlayContractV1.ID {
 		t.Fatalf("alpha contract id = %q, want %q", id, DefaultOverlayContractV1.ID)
 	}
-	if id := ContractIDForCanvas(1280, 720, 30, false); id != DefaultOverlayContractNoAlpha.ID {
+	if id := ContractIDForCanvas(1280, 720, 30, 1, false); id != DefaultOverlayContractNoAlpha.ID {
 		t.Fatalf("no-alpha contract id = %q, want %q", id, DefaultOverlayContractNoAlpha.ID)
 	}
 }

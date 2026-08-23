@@ -335,7 +335,7 @@ func TestPrepare_ContractResolved(t *testing.T) {
 	if c == nil {
 		t.Fatal("expected resolved contract")
 	}
-	if c.ContractID != OutputContractVeloxEditingClipV1 || c.Width != 1920 || c.Height != 1080 || c.FPSNum != 24 || c.FPSDen != 1 {
+	if c.ContractID != OutputContractVeloxAssemblyReadyV1 || c.Width != 1920 || c.Height != 1080 || c.FPSNum != 24 || c.FPSDen != 1 {
 		t.Fatalf("unexpected contract: %+v", c)
 	}
 	if c.VideoCodec != "h264" || c.PixelFormat != "yuv420p" || c.AudioCodec != "aac" {

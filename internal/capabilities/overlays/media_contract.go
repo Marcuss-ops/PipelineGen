@@ -257,8 +257,8 @@ func ResolveMediaContract(id string) (OverlayMediaContract, error) {
 // and alpha requirement. It is the single owner of canvas → contract-ID
 // selection; callers stamp it onto OverlayPlan.MediaContract so the render
 // contract travels with the plan instead of being re-derived downstream.
-func ContractIDForCanvas(width, height, fps int, requiresAlpha bool) string {
-	return OverlayContractForCanvas(width, height, fps, 1, requiresAlpha).ID
+func ContractIDForCanvas(width, height, fpsNum, fpsDen int, requiresAlpha bool) string {
+	return OverlayContractForCanvas(width, height, fpsNum, fpsDen, requiresAlpha).ID
 }
 
 // firstContainerToken returns the first comma-separated token of an ffprobe

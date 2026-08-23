@@ -26,13 +26,13 @@ import (
 func TestCompileMissingImageFailsClosed(t *testing.T) {
 	base := func(items ...OverlayItem) OverlayPlan {
 		return OverlayPlan{
-			SchemaVersion:   SchemaVersionPlan,
-			PlanID:          "missing-image",
-			VideoID:         "video-missing-image",
-			ProjectID:       "golden-content",
-			Width:           1280,
-			Height:          720,
-			FPS:             30,
+			SchemaVersion: SchemaVersionPlan,
+			PlanID:        "missing-image",
+			VideoID:       "video-missing-image",
+			ProjectID:     "golden-content",
+			Width:         1280,
+			Height:        720,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items:           items,
 		}
@@ -75,13 +75,13 @@ func TestCompileUnicodeTextRuneCounting(t *testing.T) {
 	cases := []string{"È CAMBIATO", "MÜNCHEN", "L'IPHONE", "日本", "€50 MILIONI", "90%"}
 	for _, tc := range cases {
 		plan := OverlayPlan{
-			SchemaVersion:   SchemaVersionPlan,
-			PlanID:          "unicode",
-			VideoID:         "video-unicode",
-			ProjectID:       "golden-content",
-			Width:           1280,
-			Height:          720,
-			FPS:             30,
+			SchemaVersion: SchemaVersionPlan,
+			PlanID:        "unicode",
+			VideoID:       "video-unicode",
+			ProjectID:     "golden-content",
+			Width:         1280,
+			Height:        720,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items: []OverlayItem{{
 				ID: "phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 0, EndMs: 2000, Text: tc,
@@ -99,13 +99,13 @@ func TestCompileUnicodeTextRuneCounting(t *testing.T) {
 func TestCompileHugeTextCarriesNoFontSize(t *testing.T) {
 	huge := "THIS IS A VERY LONG IMPORTANT PHRASE THAT SHOULD NEVER FIT ON ONE LINE AND MUST SCALE DOWN DETERMINISTICALLY"
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "huge-text",
-		VideoID:         "video-huge-text",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "huge-text",
+		VideoID:       "video-huge-text",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items: []OverlayItem{{
 			ID: "phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 0, EndMs: 2000, Text: huge,
@@ -127,13 +127,13 @@ func TestCompileHugeTextCarriesNoFontSize(t *testing.T) {
 func TestLayoutSafeAreaAcrossResolutions(t *testing.T) {
 	for _, canvas := range []struct{ w, h int }{{1280, 720}, {1920, 1080}, {1080, 1920}} {
 		plan := OverlayPlan{
-			SchemaVersion:   SchemaVersionPlan,
-			PlanID:          "safe-area",
-			VideoID:         "video-safe-area",
-			ProjectID:       "golden-content",
-			Width:           canvas.w,
-			Height:          canvas.h,
-			FPS:             30,
+			SchemaVersion: SchemaVersionPlan,
+			PlanID:        "safe-area",
+			VideoID:       "video-safe-area",
+			ProjectID:     "golden-content",
+			Width:         canvas.w,
+			Height:        canvas.h,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items: []OverlayItem{{
 				ID: "img", TemplateID: "IMAGE_OVERLAY", StartMs: 0, EndMs: 3000,
@@ -180,7 +180,7 @@ func TestBuildPlanEditorialCullingCapsHugeCandidateSet(t *testing.T) {
 	}
 
 	plan, err := BuildPlan(PlanInput{
-		PlanID: "cull", VideoID: "video-cull", Width: 1280, Height: 720, FPS: 30,
+		PlanID: "cull", VideoID: "video-cull", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "scene-1", Phrases: phrases, Keywords: keywords, Images: images}},
 	}, PlannerConfig{MaxPhrases: 2, MaxKeywords: 3, MaxImages: 3})
 	if err != nil {
@@ -245,13 +245,13 @@ func TestCompileStressProfile900Items(t *testing.T) {
 		})
 	}
 	plan := OverlayPlan{
-		SchemaVersion:   SchemaVersionPlan,
-		PlanID:          "stress",
-		VideoID:         "video-stress",
-		ProjectID:       "golden-content",
-		Width:           1280,
-		Height:          720,
-		FPS:             30,
+		SchemaVersion: SchemaVersionPlan,
+		PlanID:        "stress",
+		VideoID:       "video-stress",
+		ProjectID:     "golden-content",
+		Width:         1280,
+		Height:        720,
+		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
 		Items:           items,
 	}

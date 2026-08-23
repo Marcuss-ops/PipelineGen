@@ -250,7 +250,7 @@ func prepareTestRequest(planID string) capoverlay.PrepareRequest {
 		VideoID:       planID,
 		Width:         1280,
 		Height:        720,
-		FPS:           30,
+		FPSNum:        30, FPSDen: 1,
 		Intents: []capoverlay.OverlayIntent{
 			{
 				Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom-hanks",

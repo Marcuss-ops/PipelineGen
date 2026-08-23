@@ -17,7 +17,7 @@ func baseCompileInput() CompileInput {
 			SizeBytes: 1024,
 		},
 		Contract: &ResolvedContract{
-			ContractID:         OutputContractVeloxEditingClipV1,
+			ContractID:         OutputContractVeloxAssemblyReadyV1,
 			Container:          "mp4",
 			VideoCodec:         "h264",
 			VideoProfile:       "high",

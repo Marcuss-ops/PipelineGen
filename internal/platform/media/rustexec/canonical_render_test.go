@@ -101,7 +101,7 @@ func TestStockRendererRenderCanonicalPlanCopiesCertifiedFinalAudio(t *testing.T)
 	audioHash := sha256.Sum256(audioBytes)
 	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: 1000000, Segments: []audio.TimelineSegment{{ID: "scene", Index: 0, DurationUS: 1000000, Video: audio.VideoSegment{AssetID: "clip", SourceInUS: 0, SourceDurationUS: 1000000}, Audio: audio.AudioIntent{Mode: audio.AudioSilence}}}}
 	plan, err := render.Compile(render.CompileInput{
-		JobID: "job-audio", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30, Timeline: timeline,
+		JobID: "job-audio", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.IntegerFrameRate(30), Timeline: timeline,
 		FinalAudio: &render.FinalAudioAsset{
 			AssetID: "final-audio", AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy), Path: audioPath, SHA256: hex.EncodeToString(audioHash[:]), PlanSHA256: strings.Repeat("a", 64),
 			AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,

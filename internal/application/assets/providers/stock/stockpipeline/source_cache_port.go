@@ -84,7 +84,7 @@ type SourceCacheEntry struct {
 	SourceURL       string
 	LocalPath       string
 	FileSize        int64
-	LegacyFileMD5        string
+	LegacyFileMD5   string
 	DownloadSection string
 	MergeFormat     string
 	ForceKeyframes  bool

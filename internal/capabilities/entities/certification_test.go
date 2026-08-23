@@ -234,7 +234,7 @@ func certifyJob(t *testing.T, job certJob) {
 	require.NoError(t, err)
 	require.NoError(t, timeline.Validate())
 
-	plan, err := ResolveEntityOverlayPlan(timeline, "plan-"+job.id, "video-"+job.id, job.id, 1280, 720, 30)
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-"+job.id, "video-"+job.id, job.id, 1280, 720, 30, 1)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(plan.Items), len(job.scenes), "job %s: at least one entity card per scene's key entity", job.id)
 

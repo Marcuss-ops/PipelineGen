@@ -79,13 +79,13 @@ func TestPhrasePresetE2E(t *testing.T) {
 	for i, preset := range presets {
 		jobID := jobPrefix + "-" + preset
 		plan := capoverlay.OverlayPlan{
-			SchemaVersion:   capoverlay.SchemaVersionPlan,
-			PlanID:          jobID,
-			VideoID:         jobID,
-			ProjectID:       "phrase-preset-cert",
-			Width:           1280,
-			Height:          720,
-			FPS:             30,
+			SchemaVersion: capoverlay.SchemaVersionPlan,
+			PlanID:        jobID,
+			VideoID:       jobID,
+			ProjectID:     "phrase-preset-cert",
+			Width:         1280,
+			Height:        720,
+			FPSNum:        30, FPSDen: 1,
 			RendererVersion: "chronon",
 			Items: []capoverlay.OverlayItem{
 				{ID: "background_video", TemplateID: "VIDEO_BACKGROUND", StartMs: 0, EndMs: 6000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.mp4", SHA256: backgroundHash}}},

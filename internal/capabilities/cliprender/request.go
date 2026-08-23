@@ -130,7 +130,7 @@ type SubtitlesSpec struct {
 // precise codec/pixel/timebase values are owned by the contract
 // (follow-up step); the request only selects it + resolution/fps.
 type OutputSpec struct {
-	Contract string `json:"contract,omitempty"` // default velox-editing-clip-v1
+	Contract string `json:"contract,omitempty"` // default VELOX_ASSEMBLY_READY_V1
 	Width    int    `json:"width,omitempty"`    // default 1920 (YouTube horizontal)
 	Height   int    `json:"height,omitempty"`   // default 1080 (YouTube horizontal)
 	FPSNum   int    `json:"fps_num,omitempty"`  // default 24
@@ -334,7 +334,7 @@ func (r *RenderRequest) Validate() error {
 	}
 
 	if r.Output.Contract == "" {
-		return fmt.Errorf("%w: output.contract is required (default velox-editing-clip-v1)", ErrInvalidRequest)
+		return fmt.Errorf("%w: output.contract is required (default VELOX_ASSEMBLY_READY_V1)", ErrInvalidRequest)
 	}
 	if r.Output.Width < MinDimension || r.Output.Width > MaxDimension {
 		return fmt.Errorf("%w: output.width must be within [%d,%d] (got %d)", ErrInvalidRequest, MinDimension, MaxDimension, r.Output.Width)
