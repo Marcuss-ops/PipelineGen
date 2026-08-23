@@ -72,8 +72,8 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 			return fmt.Errorf("%w: SAR %d/%d != 1/1", ErrContractMismatch, probe.SARNum, probe.SARDen)
 		}
 	}
-	if probe.ColorRange != "" && probe.ColorRange != "limited" {
-		return fmt.Errorf("%w: color_range %q != limited", ErrContractMismatch, probe.ColorRange)
+	if probe.ColorRange != "" && probe.ColorRange != "tv" {
+		return fmt.Errorf("%w: color_range %q != tv", ErrContractMismatch, probe.ColorRange)
 	}
 	if probe.ColorSpace != "" && probe.ColorSpace != "bt709" {
 		return fmt.Errorf("%w: color_space %q != bt709", ErrContractMismatch, probe.ColorSpace)
@@ -100,8 +100,8 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 		return fmt.Errorf("%w: audio bitrate %q != 128k", ErrContractMismatch, probe.AudioBitrate)
 	}
 	if probe.VideoTimeBaseNum != 0 && probe.VideoTimeBaseDen != 0 {
-		if probe.VideoTimeBaseNum != 1 || probe.VideoTimeBaseDen != 12288 {
-			return fmt.Errorf("%w: video timebase %d/%d != 1/12288", ErrContractMismatch, probe.VideoTimeBaseNum, probe.VideoTimeBaseDen)
+		if probe.VideoTimeBaseNum != 1 || probe.VideoTimeBaseDen != 90000 {
+			return fmt.Errorf("%w: video timebase %d/%d != 1/90000", ErrContractMismatch, probe.VideoTimeBaseNum, probe.VideoTimeBaseDen)
 		}
 	}
 	if probe.AudioTimeBaseNum != 0 && probe.AudioTimeBaseDen != 0 {
@@ -121,9 +121,8 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	return nil
 }
 
-// NewContractResolver returns the canonical ContractResolver. It supports
-// OutputContractVeloxEditingClipV1 today; a future contract adds a case here
-// (the single resolution owner) rather than duplicating codec settings.
+// NewContractResolver returns the canonical ContractResolver. Single SSOT:
+// VELOX_ASSEMBLY_READY_V1 (24/1, 1/90000, GOP48). Old velox-editing-clip-v1 is alias.
 func NewContractResolver() ContractResolver {
 	return defaultContractResolver{}
 }
@@ -135,9 +134,9 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 		return nil, fmt.Errorf("%w: request output block is missing", ErrUnsupportedContract)
 	}
 	switch req.Output.Contract {
-	case OutputContractVeloxEditingClipV1:
+	case OutputContractVeloxAssemblyReadyV1, OutputContractVeloxEditingClipV1:
 		return &ResolvedContract{
-			ContractID:   OutputContractVeloxEditingClipV1,
+			ContractID:   OutputContractVeloxAssemblyReadyV1,
 			Container:    "mp4",
 			VideoCodec:   "h264",
 			VideoProfile: "high",

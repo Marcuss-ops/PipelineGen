@@ -11,13 +11,13 @@ import (
 // this contract exactly. Intermediate artifacts (ProRes, alpha, proxies)
 // declare assembly_ready=false and never enter the assembler.
 //
-// Frozen values for assembly-ready-video-v1 (2026-08-23):
-//   container mp4, h264 high yuv420p, 1920x1080, 24/1, 1/1 SAR,
-//   timebase video 1/12288 audio 1/48000, limited/bt709, progressive,
-//   GOP 48, level 4.0, 1 video + 1 audio stream (video first, start_pts 0),
-//   AAC-LC 48000 2ch stereo 128k.
+// Frozen values for VELOX_ASSEMBLY_READY_V1 (2026-08-23, unico SSOT):
+//   container mp4, h264 high 4.0 yuv420p, 1920x1080, 24/1, 1/1 SAR,
+//   timebase video 1/90000 audio 1/48000, tv/bt709 progressive,
+//   GOP 48 b_frames 0 closed_gop, 1 video +1 audio (video,audio) start_pts 0,
+//   AAC-LC 48000 2ch stereo 128k, watermark/subtitles già incorporati.
 const (
-	AssemblyReadyVideoContractID = "assembly-ready-video-v1"
+	AssemblyReadyVideoContractID = "VELOX_ASSEMBLY_READY_V1"
 	AssemblyReadyVideoVersion    = 1
 )
 
@@ -103,10 +103,10 @@ func DefaultAssemblyReadyVideoContract() VideoContract {
 		Width:              1920,
 		Height:             1080,
 		FPS:                FrameRate{Num: 24, Den: 1},
-		VideoTimeBase:      Rational{Num: 1, Den: 12288},
+		VideoTimeBase:      Rational{Num: 1, Den: 90000},
 		AudioTimeBase:      Rational{Num: 1, Den: 48000},
 		SAR:                Rational{Num: 1, Den: 1},
-		ColorRange:         "limited",
+		ColorRange:         "tv",
 		ColorSpace:         "bt709",
 		ColorTransfer:      "bt709",
 		ColorPrimaries:     "bt709",
@@ -138,8 +138,8 @@ func (c VideoContract) ValidateExact() error {
 	if !c.FPS.Equal(FrameRate{Num: 24, Den: 1}) {
 		return fmt.Errorf("fps %d/%d != 24/1", c.FPS.Num, c.FPS.Den)
 	}
-	if !c.VideoTimeBase.Equal(Rational{Num: 1, Den: 12288}) {
-		return fmt.Errorf("video timebase %d/%d != 1/12288", c.VideoTimeBase.Num, c.VideoTimeBase.Den)
+	if !c.VideoTimeBase.Equal(Rational{Num: 1, Den: 90000}) {
+		return fmt.Errorf("video timebase %d/%d != 1/90000", c.VideoTimeBase.Num, c.VideoTimeBase.Den)
 	}
 	if !c.AudioTimeBase.Equal(Rational{Num: 1, Den: 48000}) {
 		return fmt.Errorf("audio timebase %d/%d != 1/48000", c.AudioTimeBase.Num, c.AudioTimeBase.Den)
@@ -147,8 +147,8 @@ func (c VideoContract) ValidateExact() error {
 	if !c.SAR.Equal(Rational{Num: 1, Den: 1}) {
 		return fmt.Errorf("SAR %d/%d != 1/1", c.SAR.Num, c.SAR.Den)
 	}
-	if c.ColorRange != "limited" || c.ColorSpace != "bt709" || c.ColorTransfer != "bt709" || c.ColorPrimaries != "bt709" {
-		return fmt.Errorf("color %s/%s/%s/%s != limited/bt709", c.ColorRange, c.ColorSpace, c.ColorTransfer, c.ColorPrimaries)
+	if c.ColorRange != "tv" || c.ColorSpace != "bt709" || c.ColorTransfer != "bt709" || c.ColorPrimaries != "bt709" {
+		return fmt.Errorf("color %s/%s/%s/%s != tv/bt709", c.ColorRange, c.ColorSpace, c.ColorTransfer, c.ColorPrimaries)
 	}
 	if c.FieldOrder != "progressive" {
 		return fmt.Errorf("field_order %q != progressive", c.FieldOrder)
