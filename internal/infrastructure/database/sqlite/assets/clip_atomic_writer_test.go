@@ -86,11 +86,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
-    created_at TEXT, updated_at TEXT
+    created_at TEXT, updated_at TEXT,
     origin TEXT NOT NULL DEFAULT '',
     provider TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);
+    status TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS outbox_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,

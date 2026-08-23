@@ -72,7 +72,7 @@ func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 //	Gate 2: resp.Processed == 3, resp.Failed == 0, every item has
 //	        DriveFileID/DriveLink/DownloadLink/LegacyFileMD5 non-empty
 //	Gate 3: SQLite: source=artlist, media_type=video,
-//	        lifecycle_state=ACTIVE, drive_link/file_hash/drive_file_id
+//	        lifecycle_state=ACTIVE, drive_link/legacy_file_md5/drive_file_id
 //	        non-empty for all 3 clips
 //	Gate 4: dispatcher recorded exactly 3 EnqueueAndIndex calls,
 //	        one per clip, each with the expected content hash
@@ -212,7 +212,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 		err := db.QueryRow(`
 			SELECT source, media_type, lifecycle_state,
 			       COALESCE(drive_link, ''),
-			       COALESCE(file_hash, ''),
+			       COALESCE(legacy_file_md5, ''),
 			       COALESCE(drive_file_id, ''),
 			       COALESCE(metadata_json, '')
 			FROM media_assets WHERE id = ?
@@ -223,10 +223,10 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 		assert.Equal(t, "video", mediaType, "clip %s media_type should be 'video'", clipID)
 		assert.Equal(t, "PUBLISHED", lifecycleState, "clip %s lifecycle_state should be ACTIVE", clipID)
 		assert.NotEmpty(t, driveLink, "clip %s drive_link should be non-empty", clipID)
-		assert.NotEmpty(t, fileHash, "clip %s file_hash should be non-empty", clipID)
+		assert.NotEmpty(t, fileHash, "clip %s legacy_file_md5 should be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "clip %s drive_file_id should be non-empty", clipID)
 
-		t.Logf("SQLite clip %s: source=%s media_type=%s lifecycle_state=%s drive_link=%s file_hash=%s drive_file_id=%s",
+		t.Logf("SQLite clip %s: source=%s media_type=%s lifecycle_state=%s drive_link=%s legacy_file_md5=%s drive_file_id=%s",
 			clipID, source, mediaType, lifecycleState, driveLink, fileHash, driveFileID)
 	}
 

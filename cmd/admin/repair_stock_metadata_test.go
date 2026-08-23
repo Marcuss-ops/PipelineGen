@@ -29,7 +29,7 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
 			source_url TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
 			search_text TEXT NOT NULL DEFAULT '',
-			updated_at TEXT NOT NULL DEFAULT ''
+			updated_at TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
     lifecycle_state TEXT NOT NULL DEFAULT '',
@@ -52,7 +52,7 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);
+    status TEXT NOT NULL DEFAULT '');
 		CREATE TABLE asset_text_tracks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL,

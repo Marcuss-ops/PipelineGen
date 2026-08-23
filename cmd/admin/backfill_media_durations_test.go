@@ -112,7 +112,7 @@ func newDurationBackfillTestDB(t *testing.T) *sql.DB {
 		duration_ms INTEGER,
 		parent_folder_id TEXT NOT NULL DEFAULT '',
 		drive_folder_id TEXT NOT NULL DEFAULT '',
-		folder_id TEXT NOT NULL DEFAULT ''
+		folder_id TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     search_text TEXT NOT NULL DEFAULT '',
@@ -134,7 +134,7 @@ func newDurationBackfillTestDB(t *testing.T) *sql.DB {
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',)`); err != nil {
+    status TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatalf("create media_assets: %v", err)
 	}
 	return db

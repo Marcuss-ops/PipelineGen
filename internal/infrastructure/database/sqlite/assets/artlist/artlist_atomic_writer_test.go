@@ -77,11 +77,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
     namespace TEXT NOT NULL DEFAULT '',
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
-    semantic_role TEXT NOT NULL DEFAULT ''
+    semantic_role TEXT NOT NULL DEFAULT '',
     origin TEXT NOT NULL DEFAULT '',
     provider TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);`); err != nil {
+    status TEXT NOT NULL DEFAULT '');`); err != nil {
 		t.Fatalf("CREATE TABLE media_assets: %v", err)
 	}
 

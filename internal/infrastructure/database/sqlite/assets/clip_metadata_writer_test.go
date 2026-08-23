@@ -61,7 +61,7 @@ func testDBForMetadataWriter(t *testing.T) *sql.DB {
 			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
 			updated_at TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT '',
-			metadata_json TEXT NOT NULL DEFAULT '{}'
+			metadata_json TEXT NOT NULL DEFAULT '{}',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
     index_state TEXT NOT NULL DEFAULT '',
@@ -85,7 +85,7 @@ func testDBForMetadataWriter(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);
+    status TEXT NOT NULL DEFAULT '');
 	`); err != nil {
 		t.Fatalf("create media_assets: %v", err)
 	}

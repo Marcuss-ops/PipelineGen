@@ -227,13 +227,13 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 		var driveLink, fileHash, driveFileID string
 		err := db.QueryRow(`
 			SELECT COALESCE(drive_link, ''),
-			       COALESCE(file_hash, ''),
+			       COALESCE(legacy_file_md5, ''),
 			       COALESCE(drive_file_id, '')
 			FROM media_assets WHERE id = ?
 		`, clipID).Scan(&driveLink, &fileHash, &driveFileID)
 		require.NoError(t, err, "clip %s should exist in media_assets", clipID)
 		assert.NotEmpty(t, driveLink, "SQLite: clip %s drive_link must be non-empty", clipID)
-		assert.NotEmpty(t, fileHash, "SQLite: clip %s file_hash must be non-empty", clipID)
+		assert.NotEmpty(t, fileHash, "SQLite: clip %s legacy_file_md5 must be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "SQLite: clip %s drive_file_id must be non-empty", clipID)
 	}
 }

@@ -29,7 +29,7 @@ func setupProviderMetadataDB(t *testing.T) *sql.DB {
 			source TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL DEFAULT '',
 			media_type TEXT NOT NULL DEFAULT '',
-			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE'
+			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -54,7 +54,7 @@ func setupProviderMetadataDB(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);
+    status TEXT NOT NULL DEFAULT '');
 
 		CREATE TABLE asset_provider_metadata (
 			asset_id TEXT PRIMARY KEY,

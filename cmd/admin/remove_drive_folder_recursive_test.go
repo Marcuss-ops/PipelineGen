@@ -32,7 +32,7 @@ func recursiveMediaAssetsFixture(t *testing.T) *sql.DB {
 			folder_id        TEXT NOT NULL DEFAULT '',
 			parent_folder_id TEXT NOT NULL DEFAULT '',
 			lifecycle_state  TEXT NOT NULL DEFAULT 'ACTIVE',
-			metadata_json    TEXT NOT NULL DEFAULT '{}'
+			metadata_json    TEXT NOT NULL DEFAULT '{}',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -57,7 +57,7 @@ func recursiveMediaAssetsFixture(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',)
+    status TEXT NOT NULL DEFAULT '')
 	`)
 	if err != nil {
 		t.Fatalf("create media_assets fixture: %v", err)

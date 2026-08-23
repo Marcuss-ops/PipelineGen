@@ -3,7 +3,7 @@
 // PR-ARTLIST-DOD-GATE-03-SQLITE-PERSISTENCE: verify the artlist_runs
 // table is populated after a successful RunTag, and every media_assets
 // row has source=artlist + media_type=video + lifecycle_state=ACTIVE
-// with all expected columns (drive_link, file_hash, drive_file_id)
+// with all expected columns (drive_link, legacy_file_md5, drive_file_id)
 // populated.
 //
 // The artlist_runs Record is written during HandleJob (the worker-side
@@ -116,7 +116,7 @@ var _ RunRepository = (*recordingRunRepo)(nil)
 // Also verifies the media_assets projection contract:
 //  6. Every processed clip has source=artlist, media_type=video,
 //     lifecycle_state=ACTIVE.
-//  7. drive_link, file_hash, and drive_file_id are non-empty.
+//  7. drive_link, legacy_file_md5, and drive_file_id are non-empty.
 //
 // godlike/07 no-fake-availability: the recordingRunRepo captures the
 // exact RunRecord written by HandleJob. An empty recording means
@@ -258,7 +258,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 		err := db.QueryRow(`
 			SELECT source, media_type, lifecycle_state,
 			       COALESCE(drive_link, ''),
-			       COALESCE(file_hash, ''),
+			       COALESCE(legacy_file_md5, ''),
 			       COALESCE(drive_file_id, '')
 			FROM media_assets WHERE id = ?
 		`, clipID).Scan(&source, &mediaType, &lifecycleState,
@@ -269,7 +269,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 		assert.Equal(t, "video", mediaType, "clip %s: media_type must be 'video'", clipID)
 		assert.Equal(t, "PUBLISHED", lifecycleState, "clip %s: lifecycle_state must be 'PUBLISHED'", clipID)
 		assert.NotEmpty(t, driveLink, "clip %s: drive_link must be non-empty", clipID)
-		assert.NotEmpty(t, fileHash, "clip %s: file_hash must be non-empty", clipID)
+		assert.NotEmpty(t, fileHash, "clip %s: legacy_file_md5 must be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "clip %s: drive_file_id must be non-empty", clipID)
 	}
 }

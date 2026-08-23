@@ -90,7 +90,7 @@ func TestBucketAssetQuery_UsesCanonicalEligibility(t *testing.T) {
 			source_type TEXT NOT NULL DEFAULT '',
 			deleted_at TEXT NOT NULL DEFAULT '',
 			embedding_json TEXT NOT NULL DEFAULT '',
-			index_state TEXT NOT NULL DEFAULT ''
+			index_state TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -112,7 +112,7 @@ func TestBucketAssetQuery_UsesCanonicalEligibility(t *testing.T) {
     provider TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',)`); err != nil {
+    status TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	seed := []string{

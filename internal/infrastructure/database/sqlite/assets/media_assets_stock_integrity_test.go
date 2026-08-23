@@ -134,7 +134,7 @@ func setupStockIntegrityDB(t *testing.T) *sql.DB {
 			deleted_at TEXT,
 			folder_id TEXT, parent_folder_id TEXT, folder_path TEXT, category TEXT,
 			group_name TEXT, filename TEXT, error TEXT, thumb_url TEXT, phash TEXT,
-			search_text TEXT, scene_type TEXT, quality_score REAL, reuse_count INTEGER, last_used_at TEXT
+			search_text TEXT, scene_type TEXT, quality_score REAL, reuse_count INTEGER, last_used_at TEXT,
     source_version TEXT NOT NULL DEFAULT '',
     thumbnail_url TEXT NOT NULL DEFAULT '',
     asset_version TEXT NOT NULL DEFAULT '',
@@ -151,7 +151,7 @@ func setupStockIntegrityDB(t *testing.T) *sql.DB {
     namespace TEXT NOT NULL DEFAULT '',
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
-    semantic_role TEXT NOT NULL DEFAULT '',)`)
+    semantic_role TEXT NOT NULL DEFAULT '')`)
 	require.NoError(t, err, "create media_assets schema")
 	return db
 }
