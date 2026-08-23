@@ -26,6 +26,7 @@ func baseCompileInput() CompileInput {
 			Height:             1080,
 			FPSNum:             24,
 			FPSDen:             1,
+			KeyframeInterval:   48,
 			AudioCodec:         "aac",
 			AudioProfile:        "LC",
 			SampleRate:         48000,

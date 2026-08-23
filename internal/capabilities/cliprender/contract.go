@@ -145,6 +145,7 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 			Height:             req.Output.Height,
 			FPSNum:             req.Output.FPSNum,
 			FPSDen:             req.Output.FPSDen,
+			KeyframeInterval:   48,
 			AudioCodec:         "aac",
 			AudioProfile:        "LC",
 			SampleRate:         48000,
