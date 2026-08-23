@@ -49,7 +49,14 @@ func explicitSegmentNarrativeReasons(result *scriptpkg.GenerationResult, plan sc
 				scene = mapped
 			}
 		}
-		if len(strings.Fields(scene.Text)) < 100 {
+		words := len(strings.Fields(scene.Text))
+		// Clip-backed scenes are narrator intros, not documentary chapters.
+		// Do not require the generic 100-word chapter minimum: that minimum
+		// caused short, valid Gemma introductions to fail after generation.
+		if words == 0 {
+			reasons = append(reasons, fmt.Sprintf("segment %q is empty", segment.ID))
+		}
+		if plan.ClipEvidence == nil && words < 100 {
 			reasons = append(reasons, fmt.Sprintf("segment %q contains fewer than 100 words", segment.ID))
 		}
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(segment.ID)), "boxer-") {

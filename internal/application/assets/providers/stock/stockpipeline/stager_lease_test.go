@@ -35,7 +35,7 @@ func TestCleanupSharedLease_RetainsRetryAfterRemoveFailure(t *testing.T) {
 	stager.publishSharedLease(lease, leaderPath, true)
 	staged := &assets.StagedAsset{LocalPath: ownerPath}
 
-	if err := stager.Cleanup(context.Background(), staged); err == nil {
+	if err := stager.cleanup(context.Background(), staged); err == nil {
 		t.Fatal("expected first cleanup to report RemoveAll failure")
 	}
 	if _, ok := stager.sharedRefs.Load("retry-key"); !ok {
@@ -44,7 +44,7 @@ func TestCleanupSharedLease_RetainsRetryAfterRemoveFailure(t *testing.T) {
 	if _, ok := stager.assetLeases.Load(staged.LocalPath); !ok {
 		t.Fatal("asset lease binding was not restored after failed cleanup")
 	}
-	if err := stager.Cleanup(context.Background(), staged); err != nil {
+	if err := stager.cleanup(context.Background(), staged); err != nil {
 		t.Fatalf("retry cleanup failed: %v", err)
 	}
 	if _, ok := stager.sharedRefs.Load("retry-key"); ok {

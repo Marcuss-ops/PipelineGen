@@ -3,10 +3,9 @@ package texttracks
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +32,7 @@ type SubtitleMaterializerInput struct {
 
 type SubtitleMaterializerOutput struct {
 	LocalPath       string
-	LegacyFileMD5        string
+	LegacyFileMD5   string
 	CuesHash        string
 	TextHash        string
 	CoveredDuration int64
@@ -80,15 +79,15 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	}
 	fullText := fullTextBuilder.String()
 
-	textHashBytes := sha256.Sum256([]byte(fullText))
-	textHash := hex.EncodeToString(textHashBytes[:])
+	textHashBytes := digest.SHA256Bytes([]byte(fullText))
+	textHash := textHashBytes
 
 	cuesJSON, err := json.Marshal(in.TimedCues)
 	if err != nil {
 		return nil, fmt.Errorf("ass_materializer: marshal cues: %w", err)
 	}
-	cuesHashBytes := sha256.Sum256(cuesJSON)
-	cuesHash := hex.EncodeToString(cuesHashBytes[:8]) // Keep 8 chars for the file path as requested
+	cuesHashBytes := digest.SHA256Bytes(cuesJSON)
+	cuesHash := cuesHashBytes[:8] // Keep 8 chars for the file path as requested
 
 	// 2. Build deterministic ASS file path
 	localDir := filepath.Join(m.root, in.AssetID, in.LanguageCode)
@@ -106,8 +105,8 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	}
 
 	// Calculate File Hash
-	fileHashBytes := sha256.Sum256([]byte(assContent))
-	fileHash := hex.EncodeToString(fileHashBytes[:])
+	fileHashBytes := digest.SHA256Bytes([]byte(assContent))
+	fileHash := fileHashBytes
 
 	// 4. Validate ASS file
 	vErr := validateASSFile(localPath, in.ClipDurationMs)
@@ -125,8 +124,8 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 
 	output := &SubtitleMaterializerOutput{
 		LocalPath:       localPath,
-		LegacyFileMD5:        fileHash,
-		CuesHash:        hex.EncodeToString(cuesHashBytes[:]), // Full hash for database record
+		LegacyFileMD5:   fileHash,
+		CuesHash:        cuesHashBytes, // Full hash for database record
 		TextHash:        textHash,
 		CoveredDuration: lastCueEndMs,
 		ValidationError: validationErrorStr,
@@ -141,7 +140,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 		LanguageCode:     in.LanguageCode,
 		Format:           asset.SubtitleFormatASS,
 		LocalPath:        localPath,
-		LegacyFileMD5:         fileHash,
+		LegacyFileMD5:    fileHash,
 		TextHash:         textHash,
 		CuesHash:         output.CuesHash,
 		ClipContentHash:  in.ClipContentHash,

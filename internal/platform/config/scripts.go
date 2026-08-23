@@ -75,14 +75,6 @@ type ScriptsConfig struct {
 	// DefaultLanguage is the default language for all generate endpoints.
 	DefaultLanguage string `yaml:"default_language" env:"VELOX_SCRIPTS_DEFAULT_LANGUAGE" default:"it"`
 
-	// ScriptSegmentDefault (PR-CS-1 FASE 14, July 2026 — CUTOVER default).
-	// True ⇒ the canonical POST /api/script/generate path emits a
-	// Branch A prompt (ScriptSegment-driven render). False ⇒ legacy
-	// Branch B (SegmentTopics-driven render) is the fallback path,
-	// governed by the WAVE-21/22 deprecation timeline landing in
-	// architecture/deprecations.yaml#DL-SCRIPT-BRANCH-B-001.
-	ScriptSegmentDefault bool `yaml:"script_segment_default" env:"VELOX_SCRIPTS_SEGMENT_DEFAULT" default:"true"`
-
 	// DefaultDurationSeconds is the default script duration in seconds.
 	// 600 = 10 minutes (standard YouTube clip). Used by /generate and batch jobs.
 	DefaultDurationSeconds int `yaml:"default_duration_seconds" env:"VELOX_SCRIPTS_DEFAULT_DURATION" default:"600"`

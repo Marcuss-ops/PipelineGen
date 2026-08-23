@@ -295,6 +295,7 @@ type DomainBundle struct {
 	AssocService                 scriptcore.AssocSearchService
 	VoiceoverGenerateHandler     *voiceoverjobs.GenerateJobHandler
 	VoiceoverProcessItem         voiceover.VoiceoverItemExecutor
+	VoiceoverPublishPool         interface{ Wait() } // P0.4 async publish drainer for the runner
 	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
 	ArtifactService              *artifacts.Service
 	ImageSearchResolver          routing.ImageSearchResolver

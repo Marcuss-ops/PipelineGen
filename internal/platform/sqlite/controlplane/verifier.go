@@ -3,11 +3,10 @@ package controlplane
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -310,6 +309,5 @@ func currentMigration(version int) (string, []byte, error) {
 }
 
 func sha256Hex(content []byte) string {
-	sum := sha256.Sum256(content)
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256Bytes(content)
 }

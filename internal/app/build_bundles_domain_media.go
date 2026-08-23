@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
@@ -54,7 +54,7 @@ func buildDomainMediaServices(
 	process *wiring.ProcessBundle,
 	ai *wiring.AIBundle,
 	outbox *wiring.OutboxBundle,
-	mutationsDisp mutations.AssetMutationDispatcher,
+	committer persistence.AssetCommitter,
 	bundle *wiring.DomainBundle,
 	mediaConfig mediaexec.ExecutionConfig,
 ) (
@@ -283,7 +283,7 @@ func buildDomainMediaServices(
 				repos.Assets,
 				repos.Assets.LocationRepository(),
 				repos.Assets.ProcessingRepository(),
-				mutationsDisp,
+				newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, log),
 			),
 			Publisher:   drive.Publisher,
 			DriveReader: drive.DriveUploader,

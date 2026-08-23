@@ -88,18 +88,41 @@ func TestRenderBackendResolverFailClosedWhenNoBackendRuns(t *testing.T) {
 	}
 }
 
-func TestResolveBackendFallsBackWhenProbeMissingOrFails(t *testing.T) {
+func TestResolveBackendFailsClosedWhenProbeMissingOrFails(t *testing.T) {
 	resolver := NewRenderBackendResolver(nil)
 	plan := ClipRenderPlanV1{}
 
-	backend, err := ResolveBackend(context.Background(), nil, resolver, plan)
-	if err != nil || backend != BackendFFmpegFallback {
-		t.Fatalf("nil probe: got %q, %v", backend, err)
+	// nil probe → error, not silent fallback.
+	_, err := ResolveBackend(context.Background(), nil, resolver, plan)
+	if !errors.Is(err, ErrBackendUnavailable) {
+		t.Fatalf("nil probe: expected ErrBackendUnavailable, got %v", err)
 	}
 
-	backend, err = ResolveBackend(context.Background(), failingProbe{}, resolver, plan)
-	if err != nil || backend != BackendFFmpegFallback {
-		t.Fatalf("failing probe: got %q, %v", backend, err)
+	// nil resolver → error, not silent fallback.
+	_, err = ResolveBackend(context.Background(), &emptyProbe{}, nil, plan)
+	if !errors.Is(err, ErrBackendUnavailable) {
+		t.Fatalf("nil resolver: expected ErrBackendUnavailable, got %v", err)
+	}
+
+	// failing probe → wrapped error, not silent fallback.
+	_, err = ResolveBackend(context.Background(), failingProbe{}, resolver, plan)
+	if !errors.Is(err, ErrBackendUnavailable) {
+		t.Fatalf("failing probe: expected ErrBackendUnavailable, got %v", err)
+	}
+}
+
+func TestResolveBackendResolvesToFFmpegWithEmptyProbedCapabilities(t *testing.T) {
+	resolver := NewRenderBackendResolver(nil)
+	plan := ClipRenderPlanV1{}
+
+	// Explicit probe that reports empty capabilities → FFmpeg fallback is the
+	// intentional choice (CPU-only worker, not a degrading wiring bug).
+	backend, err := ResolveBackend(context.Background(), emptyProbe{}, resolver, plan)
+	if err != nil {
+		t.Fatalf("empty probe: %v", err)
+	}
+	if backend != BackendFFmpegFallback {
+		t.Fatalf("empty probe: got %q, want ffmpeg_fallback", backend)
 	}
 }
 
@@ -107,4 +130,10 @@ type failingProbe struct{}
 
 func (failingProbe) ProbeCapabilities(context.Context) (RendererCapabilities, error) {
 	return RendererCapabilities{}, errors.New("ffmpeg unavailable")
+}
+
+type emptyProbe struct{}
+
+func (emptyProbe) ProbeCapabilities(context.Context) (RendererCapabilities, error) {
+	return RendererCapabilities{}, nil
 }

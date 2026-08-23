@@ -84,7 +84,7 @@ func buildVoiceoverPipeline(
 	outboxDispatcher *outbox.Dispatcher,
 	committer assetspersistence.AssetCommitter,
 	mediaConfig mediaexec.ExecutionConfig,
-) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
+) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, voiceover.AsyncPublishPool, error) {
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.DualPool.Writer)
 
@@ -94,6 +94,18 @@ func buildVoiceoverPipeline(
 	// through a canonical port instead of holding a *sql.DB field
 	// (the previous field was removed in P1-2 commit 1).
 	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer)
+
+	// Cross-run voiceover cache (August 2026): wraps the existing
+	// FindByFingerprint on the SQLite repository to short-circuit
+	// TTS + upload + finalize when a previous run already produced
+	// the same voiceover for the same content fingerprint.
+	voCacheAdapter := newVoiceoverCacheAdapter(voRepoAdapter, log)
+
+	// P0.4 async publish pool: Drive uploads + timing publishes +
+	// SQLite commits run in a bounded background pool so TTS slots
+	// are freed after synthesis. The runner drains this pool after
+	// the voiceover phase (before audio compile).
+	publishPool := NewVoiceoverPublishPool(cfg.Voiceover.MaxConcurrentTTS, log)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
 	// lifecycle.Registry so NewLifecycleFromDeps accepts it.
@@ -228,6 +240,8 @@ func buildVoiceoverPipeline(
 			AudioPostProcessor:  audioAdapter,
 			Publisher:           publisherAdapter,
 			VoiceoverRepository: voRepoAdapter,
+			VoiceoverCache:      voCacheAdapter,
+			AsyncPublish:        publishPool,
 		},
 		Recovery: voiceover.ProcessVoiceoverRecoveryDeps{
 			DefaultFolderResolver: defaultFolderResolver,
@@ -263,5 +277,5 @@ func buildVoiceoverPipeline(
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voRepo, processItemUseCase, audioProcessor, nil
+	return voRepo, processItemUseCase, audioProcessor, publishPool, nil
 }

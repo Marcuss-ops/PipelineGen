@@ -43,6 +43,15 @@ type mutationsDispatcherAdapter struct {
 	disp *outbox.Dispatcher
 }
 
+// EnqueueAndIndex keeps legacy ingest producers on the canonical dispatcher
+// path while the broader application port migration is completed.
+func (a *mutationsDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
+	if a == nil || a.disp == nil {
+		return mutations.ErrDispatcherUnavailable
+	}
+	return a.disp.EnqueueAndIndex(ctx, clip, contentHash)
+}
+
 // var _ mutations.AssetMutationDispatcher = (*mutationsDispatcherAdapter)(nil)
 //
 // is the canonical compile-time assertion. Per AGENTS.md Pattern 0 / 8
@@ -59,16 +68,6 @@ func newMutationsDispatcherAdapter(disp *outbox.Dispatcher) (mutations.AssetMuta
 		return nil, fmt.Errorf("app.newMutationsDispatcherAdapter: outbox.Dispatcher is required (QDRANT-asset-mutation isolation, Wave 22 task 1; composition root must wire the canonical *outbox.Dispatcher)")
 	}
 	return &mutationsDispatcherAdapter{disp: disp}, nil
-}
-
-// EnqueueAndIndex delegates to the dispatcher's tx-bound UPSERT +
-// outbox enqueue. No per-call mutation (the interface is the SSOT;
-// the dispatcher owns the SQL + envelope + state stamp).
-func (a *mutationsDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
-	if a == nil || a.disp == nil {
-		return mutations.ErrDispatcherUnavailable
-	}
-	return a.disp.EnqueueAndIndex(ctx, clip, contentHash)
 }
 
 // EnqueueAndRestore delegates to the dispatcher's tx-bound state

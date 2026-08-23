@@ -14,9 +14,9 @@
 package embedding
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Canonical string constants for the multilingual E5 text model.
@@ -102,8 +102,7 @@ func (c Contract) Hash() string {
 		c.DocumentPrefix,
 		c.SemanticDocumentVersion,
 	)
-	sum := sha256.Sum256([]byte(canonical))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(canonical)
 }
 
 // Equal reports full equality of two contracts.

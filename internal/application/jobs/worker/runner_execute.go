@@ -56,6 +56,24 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 		ledger.Finish(parent, job, stepID, r.workerID, attemptID, status, resultJSON, finishErr, report)
 	}
 
+	// PR-COMPLETE-FAIL-CLOSED (August 2026): if the registry is nil
+	// (composition bug or unwired worker), fail-closed immediately.
+	// A nil registry means we can't look up handlers, can't determine
+	// artifact routing, and would silently degrade to tools.Complete
+	// for artifact-producing jobs — silently dropping asset records.
+	// FAIL BOOT in wire_services_composition.go already prevents this
+	// at startup; this is the runtime defense-in-depth layer.
+	if r.registry == nil {
+		r.log.Error("nil registry — fail-closed (FAIL BOOT should have caught this)",
+			zap.String("job_type", job.Type),
+			zap.String("job_id", job.ID),
+		)
+		terminalErr = fmt.Errorf("%w: nil registry — worker must be composed with a job Registry", ErrHandlerNotRegistered)
+		stepID = ledger.Start(parent, job, r.workerID, attemptID)
+		finishLedger(nil)
+		return r.fail(parent, lease, terminalErr)
+	}
+
 	// Defensive: the claim filter should prevent this, but verify the
 	// claimed job type is actually supported before doing any work.
 	if !r.registry.Has(job.Type) {

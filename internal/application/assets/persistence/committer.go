@@ -81,9 +81,17 @@ type TypedMetadata struct {
 }
 
 // ToMap serialises the typed metadata into the canonical map shape
-// written to media_assets.metadata_json. Canonical keys are written
-// in snake_case to match the existing Qdrant PayloadMapper and the
-// SourceVersionFor helper.
+// written to media_assets.metadata_json. Canonical keys that have
+// dedicated first-class columns are intentionally OMITTED — they are
+// written by the AssetCommitter to their own columns and MUST NOT be
+// mirrored in JSON (PR-METAJSON-STOP-MIRROR, August 2026). The JSON
+// carries only provider-specific extras and semantic-enrichment facts
+// that lack their own dedicated column.
+//
+// Keys deliberately NOT written (owned by first-class columns):
+//   title, source_provider, source_video_id, source_version, tags, category
+//
+// Provider extras live in the Extra map and are included at the bottom.
 func (m TypedMetadata) ToMap() map[string]any {
 	out := make(map[string]any)
 	setIfNotEmpty := func(k, v string) {
@@ -91,21 +99,19 @@ func (m TypedMetadata) ToMap() map[string]any {
 			out[k] = v
 		}
 	}
-	setIfNotEmpty("title", m.Title)
-	setIfNotEmpty("origin", m.Origin)
+	// PR-METAJSON-STOP-MIRROR (August 2026): title, source_provider,
+	// source_video_id, source_version, tags, and category are removed
+	// from the JSON output — they are owned by first-class columns.
 	setIfNotEmpty("description", m.Description)
-	setIfNotEmpty("source_version", m.SourceVersion)
 	setIfNotEmpty("publish_action", m.PublishAction)
 	setIfNotEmpty("event", m.Event)
 	setIfNotEmpty("subject", m.Subject)
-	setIfNotEmpty("category", m.Category)
-	setIfNotEmpty("source_provider", m.SourceProvider)
-	setIfNotEmpty("source_video_id", m.SourceVideoID)
 	setIfNotEmpty("source_title", m.SourceTitle)
 	setIfNotEmpty("source_channel", m.SourceChannel)
 	setIfNotEmpty("drive_path", m.DrivePath)
 	setIfNotEmpty("indexing_status", m.IndexingStatus)
 	setIfNotEmpty("slug", m.Slug)
+	setIfNotEmpty("origin", m.Origin)
 	setIfNotEmpty("summary", m.Summary)
 	setIfNotEmpty("hook", m.Hook)
 	if len(m.Topics) > 0 {
@@ -135,9 +141,8 @@ func (m TypedMetadata) ToMap() map[string]any {
 	if m.EndSec != 0 {
 		out["end_sec"] = m.EndSec
 	}
-	if len(m.Tags) > 0 {
-		out["tags"] = m.Tags
-	}
+	// PR-METAJSON-STOP-MIRROR (August 2026): tags are written to the
+	// media_assets.tags column, not mirrored in metadata_json.
 	for k, v := range m.Extra {
 		// Typed fields win over Extra for canonical keys.
 		if _, exists := out[k]; !exists && v != nil {
@@ -211,6 +216,15 @@ type CommitRequest struct {
 	Title string
 	// SourceProvider is persisted to media_assets.source_provider.
 	SourceProvider string
+	// Origin is persisted to media_assets.origin (image-specific:
+	// generated, downloaded, etc.). Written atomically inside the
+	// commit transaction alongside metadata_json → no post-commit
+	// second write needed.
+	Origin string
+	// Provider is persisted to media_assets.provider (image-specific:
+	// flux, dalle, wikipedia, etc.). Written atomically alongside
+	// source_provider in the same commit transaction.
+	Provider string
 	// SourceVideoID is persisted to media_assets.source_video_id.
 	SourceVideoID string
 	// StartMs/EndMs are millisecond timestamps persisted to

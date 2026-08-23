@@ -56,11 +56,11 @@ func BenchmarkStockStageSource_CacheHit(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		staged, err := stager.StageSource(context.Background(), ref)
+		staged, err := stager.stageSource(context.Background(), ref)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := stager.Cleanup(context.Background(), staged); err != nil {
+		if err := stager.cleanup(context.Background(), staged); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -73,11 +73,11 @@ func BenchmarkStockStageSource_CacheMissDownload(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ref := assets.SourceRef{URL: fmt.Sprintf("https://example.test/benchmark-miss-%d.mp4", i)}
-		staged, err := stager.StageSource(context.Background(), ref)
+		staged, err := stager.stageSource(context.Background(), ref)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := stager.Cleanup(context.Background(), staged); err != nil {
+		if err := stager.cleanup(context.Background(), staged); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -107,11 +107,11 @@ func BenchmarkStockStageSource_ConcurrentCacheHit(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			staged, err := stager.StageSource(context.Background(), ref)
+			staged, err := stager.stageSource(context.Background(), ref)
 			if err != nil {
 				b.Fatal(err)
 			}
-			if err := stager.Cleanup(context.Background(), staged); err != nil {
+			if err := stager.cleanup(context.Background(), staged); err != nil {
 				b.Fatal(err)
 			}
 		}

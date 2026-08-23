@@ -9,9 +9,8 @@
 package script
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 )
@@ -68,6 +67,6 @@ func ComputeResearchCacheKey(topicFingerprint, language, researchVersion, source
 		maxSteps,
 	)
 
-	sum := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(payload))
+	return sum
 }

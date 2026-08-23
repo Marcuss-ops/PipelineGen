@@ -44,7 +44,11 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		AudioEncodePasses: &passes,
 		SubtitleRasterCPU: &cpuSubs,
 	}}
-	adapter := &clipRenderExecutorAdapter{renderer: fake}
+	adapter := &clipRenderExecutorAdapter{
+		renderer: fake,
+		resolver: cliprender.NewRenderBackendResolver(nil),
+		probe:    emptyCapabilityProbe{},
+	}
 
 	outcome, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
 	if err != nil {
@@ -57,7 +61,7 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		t.Fatalf("media facts: %+v", outcome)
 	}
 	if outcome.Backend != cliprender.BackendFFmpegFallback {
-		t.Fatalf("backend = %q, want ffmpeg_fallback (unwired resolver/probe)", outcome.Backend)
+		t.Fatalf("backend = %q, want ffmpeg_fallback (explicit empty probe → intentional software path)", outcome.Backend)
 	}
 	if outcome.AudioCopyEligible == nil || !*outcome.AudioCopyEligible {
 		t.Fatalf("AudioCopyEligible = %v, want true", outcome.AudioCopyEligible)
@@ -100,11 +104,39 @@ func TestClipRenderExecutorAdapter_ResolvesCudaBackend(t *testing.T) {
 
 func TestClipRenderExecutorAdapter_PropagatesFailure(t *testing.T) {
 	fake := &fakeClipRenderExecutor{err: errors.New("rust render_clip: boom")}
-	adapter := &clipRenderExecutorAdapter{renderer: fake}
+	adapter := &clipRenderExecutorAdapter{
+		renderer: fake,
+		resolver: cliprender.NewRenderBackendResolver(nil),
+		probe:    emptyCapabilityProbe{},
+	}
 
 	_, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
 	if err == nil || err.Error() != "rust render_clip: boom" {
 		t.Fatalf("expected propagated failure, got %v", err)
+	}
+}
+
+// emptyCapabilityProbe returns empty capabilities so the resolver selects
+// the FFmpeg fallback explicitly — a CPU-only worker that declares its
+// intent, never a silent degrading wiring bug.
+type emptyCapabilityProbe struct{}
+
+func (emptyCapabilityProbe) ProbeCapabilities(context.Context) (cliprender.RendererCapabilities, error) {
+	return cliprender.RendererCapabilities{}, nil
+}
+
+func TestClipRenderExecutorAdapter_FailsClosedWhenBackendProbeIsUnwired(t *testing.T) {
+	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{OutputPath: "/out", SizeBytes: 1, DurationSec: 1}}
+	// No resolver, no probe → ResolveBackend fails with ErrBackendUnavailable
+	// instead of silently degrading to FFmpeg.
+	adapter := &clipRenderExecutorAdapter{renderer: fake}
+
+	_, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
+	if err == nil {
+		t.Fatal("expected fail-closed error for unwired backend probe, got nil")
+	}
+	if !errors.Is(err, cliprender.ErrBackendUnavailable) {
+		t.Fatalf("expected ErrBackendUnavailable, got %v", err)
 	}
 }
 

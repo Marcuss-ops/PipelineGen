@@ -60,11 +60,12 @@ type GenerationItemV2 struct {
 	Title string `json:"title,omitempty"`
 	// Project is the explicit artifact-routing namespace. It is resolved at
 	// ingress and propagated unchanged to every published artifact.
-	Project  string `json:"project,omitempty"`
-	Language string `json:"language,omitempty"`
-	Tone     string `json:"tone,omitempty"`
-	Style    string `json:"style,omitempty"`
-	Model    string `json:"model,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Language  string `json:"language,omitempty"`
+	Tone      string `json:"tone,omitempty"`
+	Style     string `json:"style,omitempty"`
+	Model     string `json:"model,omitempty"`
+	ModelAuto bool   `json:"-"`
 
 	// MediaMode explicitly selects the media contract for this item.
 	// Mixed media is never inferred from the presence of references.

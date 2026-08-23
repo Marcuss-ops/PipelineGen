@@ -15,11 +15,12 @@ Concrete owner-per-fact map. Canonical business state is SQLite; every other sto
 | Store | Path (canonical resolver) | Role | Rebuildable from |
 |---|---|---|---|
 | Primary SQLite | `cfg.Storage.PrimaryDBFullPath()` → `media/media.db.sqlite` | **SSOT** — canonical business state (jobs, assets, scripts, voiceovers, outbox) | — |
+| acquisition.SourceStager | `internal/application/acquisition/port.go` | **SSOT** — canonical source staging port (Prepare/Release lifecycle). All consumers (YouTube, Artlist, Stock, Images, Jobs/assets) use this port. The legacy `assets.SourceStager` has been removed (CONTRACT completed 2026-08-22). | — |
 | Observability SQLite | `cfg.Storage.ObservabilityDBFullPath()` → `observability/api_requests.db.sqlite` | **SSOT for the observability axis** (run/attempt/stage/operation timing + API audit) | distinct concern; derived from job execution, not from business tables |
 | Qdrant | runtime alias per `ProjectionContract` | **Projection** — semantic/lexical retrieval | primary SQLite |
 | Google Drive | remote | **Side-effect surface** — delivery location for bytes | SQLite metadata is authoritative; Drive is reconciled against it |
 | Local filesystem | `MediaDir`/`CacheDir`/`StagingDir`/`WorkspaceDir` | **Side-effect surface** — staging/cache blobs | redownloadable / regenerable |
-| Legacy catalog DBs | `data/stock/stock.db.sqlite`, `data/artlist/artlist.db.sqlite` | **Decommissioned projections** — being folded into primary via `unify-catalogs` | primary `media_assets` (source='stock'/'artlist') |
+| Legacy catalog DBs | `data/stock/stock.db.sqlite`, `data/artlist/artlist.db.sqlite`, `data/artlist_videos.db`, `data/clips.db.sqlite` | **ELIMINATED** — merged into primary via `unify-catalogs` (run the tool, reconcile rows/hashes/locations, backup, then rm) | primary `media_assets` (source='stock'/'artlist') |
 
 ### Primary SQLite — fact families (SSOT)
 
@@ -82,7 +83,7 @@ Derived caches are projections keyed by their canonical SQLite record and are sa
 | "this phrase binds to this entity" | `media_concepts`/`media_bindings` (primary) | Qdrant `media_concepts` point | reindex bindings |
 | "this job is RUNNING/SUCCEEDED/FAILED" | `jobs` (primary) | `run_observability`/`job_attempts` (observability) | replay from job lifecycle |
 | "this file is on Drive at X" | `media_assets.drive_file_id` etc. (primary) | Drive folder structure | Drive reconcile (`/api/drive/reconcile`) |
-| "this request was served" | `api_requests` (observability, append-only) | — | — |
+| "this source is staged for processing" | `acquisition.SourceStager.Prepare` (canonical port) | Local staged file + CleanupToken | Re-Prepare same SourceRef within TTL |
 
 ## One owner per fact
 

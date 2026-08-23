@@ -3,9 +3,8 @@ package jobregistry
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -226,8 +225,8 @@ func hashPayload(raw string) string {
 			raw = string(b)
 		}
 	}
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(raw))
+	return sum
 }
 func nonEmpty(v, fallback string) string {
 	if strings.TrimSpace(v) == "" {

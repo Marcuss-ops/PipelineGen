@@ -3,12 +3,14 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult, skeletons map[Language]string) bool {
@@ -112,15 +114,22 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		}
 
 		// ── DocsPublish ─────────────────────────────────────────────
-		// Join the final required artifacts and upload each rendered document.
-		// This is the only network boundary in the docs branch and the last
-		// join in the run: it uploads the already-prepared HTML to Google Docs.
+		// P2: Parallelize Google Docs upload per language with bounded
+		// pool (4). Each language's UpsertDocument is an independent
+		// network call; running them concurrently reduces the total
+		// publish time from SUM(languages) to MAX(languages).
+		// Idempotent restart: already-published languages are filtered
+		// before the fan-out (fast, no network calls).
 		if _, publishErr := kernobs.MeasureStageReport(ctx, StageDocumentPublish, func(stageCtx context.Context) error {
+			// ── Filter already-published languages ────────────────
+			type docPublishJob struct {
+				lang  Language
+				rd    renderedDocument
+				title string
+			}
+			var publishJobs []docPublishJob
 			for _, lang := range docsLangs {
 				rd := rendered[lang]
-				// Idempotent restart: a language already published in a prior
-				// attempt is reused (same deterministic identity) — never
-				// re-uploaded, so a resume writes 0 duplicate Docs.
 				if existing, ok := docs[lang]; ok && existing.ID != "" {
 					renderers[lang] = rd.rendererID
 					hashes[lang] = rd.hash
@@ -131,50 +140,88 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 				if title == "" {
 					title = "Script"
 				}
-				var docRef DocumentReference
-				if opErr := kernobs.MeasureOperation(stageCtx, kernobs.OperationInfo{
-					Stage:     StageDocumentPublish,
-					Component: kernobs.ComponentGoogleDocs,
-					Operation: kernobs.OperationPublish,
-				}, func(opCtx context.Context) error {
-					var upsertErr error
-					docRef, upsertErr = r.docPublisher.UpsertDocument(opCtx, DocumentInput{
-						RunID:    runID,
-						Language: lang,
-						Title:    title + "_" + string(lang),
-						Content:  rd.content,
-						FolderID: docsFolderID,
-					})
-					return upsertErr
-				}); opErr != nil {
-					return fmt.Errorf("upsert document for language %s: %w", lang, opErr)
-				}
-				docs[lang] = docRef
-				renderers[lang] = rd.rendererID
-				hashes[lang] = rd.hash
-				sceneCounts[lang] = rd.sceneCount
-				if err := r.attachOutputAsset(stageCtx, exec, documentStep.StepID, docRef.ID, len(docs)-1); err != nil {
-					return err
-				}
-				// Drive correlation: the published document is traceable to its
-				// upload via (language, asset_id) = (lang, docRef.ID).
-				if err := r.recordArtifactOperation(stageCtx, exec, ArtifactOperation{
-					OperationID: artifactOperationID(exec.Attempt, OperationDriveUpload, "document", string(lang)),
-					Kind:        OperationDriveUpload,
-					Language:    lang,
-					AssetID:     docRef.ID,
-					Status:      "COMPLETED",
-				}); err != nil {
-					return err
-				}
-				// Per-language durable checkpoint: a crash right after this doc
-				// is published must not re-upload it on restart. The maps are
-				// projected onto the durable result before the checkpoint.
-				result.Documents = docs
-				result.DocumentRenderers = renderers
-				result.DocumentSpecSceneSHA256 = hashes
-				result.DocumentSceneCounts = sceneCounts
-				r.checkpoint(stageCtx, runID, result)
+				publishJobs = append(publishJobs, docPublishJob{
+					lang:  lang,
+					rd:    rd,
+					title: title,
+				})
+			}
+
+			if len(publishJobs) == 0 {
+				return nil
+			}
+
+			// ── Parallel fan-out with per-language checkpoint ─────
+			// Each language's UpsertDocument is an independent
+			// network call. Use concurrent.Group with bounded
+			// concurrency (4) via a semaphore. Each goroutine
+			// checkpoints its own result ATOMICALLY so that a
+			// crash after EN but before ES preserves EN on the
+			// partial result (0 duplicate Docs on restart).
+			const docsPublishConcurrency = 4
+			group, groupCtx := concurrent.WithContext(stageCtx)
+			sem := make(chan struct{}, docsPublishConcurrency)
+			var publishedMu sync.Mutex
+
+			for _, job := range publishJobs {
+				group.Go(fmt.Sprintf("docs-publish-%s", job.lang), func() error {
+					sem <- struct{}{}
+					defer func() { <-sem }()
+
+					var docRef DocumentReference
+					if measureErr := kernobs.MeasureOperation(groupCtx, kernobs.OperationInfo{
+						Stage:     StageDocumentPublish,
+						Component: kernobs.ComponentGoogleDocs,
+						Operation: kernobs.OperationPublish,
+						Provider:  string(job.lang),
+					}, func(measureCtx context.Context) error {
+						var upsertErr error
+						docRef, upsertErr = r.docPublisher.UpsertDocument(measureCtx, DocumentInput{
+							RunID:    runID,
+							Language: job.lang,
+							Title:    job.title + "_" + string(job.lang),
+							Content:  job.rd.content,
+							FolderID: docsFolderID,
+						})
+						return upsertErr
+					}); measureErr != nil {
+						return fmt.Errorf("upsert document for language %s: %w", job.lang, measureErr)
+					}
+
+					// Per-language durable checkpoint: a crash after
+					// one doc is published must preserve it on the
+					// partial result so a restart reuses it.
+					publishedMu.Lock()
+					docs[job.lang] = docRef
+					renderers[job.lang] = job.rd.rendererID
+					hashes[job.lang] = job.rd.hash
+					sceneCounts[job.lang] = job.rd.sceneCount
+					result.Documents = docs
+					result.DocumentRenderers = renderers
+					result.DocumentSpecSceneSHA256 = hashes
+					result.DocumentSceneCounts = sceneCounts
+					r.checkpoint(groupCtx, runID, result)
+					publishedMu.Unlock()
+
+					if err := r.attachOutputAsset(groupCtx, exec, documentStep.StepID, docRef.ID, len(docs)-1); err != nil {
+						return err
+					}
+					if err := r.recordArtifactOperation(groupCtx, exec, ArtifactOperation{
+						OperationID: artifactOperationID(exec.Attempt, OperationDriveUpload, "document", string(job.lang)),
+						Kind:        OperationDriveUpload,
+						Language:    job.lang,
+						AssetID:     docRef.ID,
+						Status:      "COMPLETED",
+					}); err != nil {
+						return err
+					}
+
+					return nil
+				})
+			}
+
+			if mapErr := group.Wait(); mapErr != nil {
+				return mapErr
 			}
 			return nil
 		}); publishErr != nil {
@@ -183,11 +230,8 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 			return false
 		}
-		result.Documents = docs
-		result.DocumentRenderers = renderers
-		result.DocumentSpecSceneSHA256 = hashes
-		result.DocumentSceneCounts = sceneCounts
-		r.checkpoint(ctx, runID, result)
+		// Maps are already projected inside the DocsPublish callback;
+		// the checkpoint there is the single durable write.
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StagePublishingDocuments)))
 	}
 	if documentSkipped {

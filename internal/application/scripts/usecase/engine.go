@@ -27,13 +27,12 @@
 // scripts-table persistence (see processor_persistence.go for the
 // single-writer contract).
 //
-// P0.8 (June 2026) + post-rename (July 2026): payload decoding unified
-// into internal/application/scripts/jsonextract/. Engine uses
-// ModeFreshPlainText (canonical; deprecated same-value alias ModeStrict)
-// on the fresh path — V1 JSON fast lane then ParsePlainTextFresh
-// (canonical primary path in fresh_parser.go) for plain prose per
-// the LLM-PLAIN-TEXT-CONTRACT wave. ModeCompatibility drives the
-// cache-replay path with declared Prometheus fallback metrics.
+// P0.8 (June 2026) + DL-MODECOMPAT-REMOVAL (August 2026): payload decoding
+// unified into internal/application/scripts/jsonextract/. Engine uses
+// ModeFreshPlainText (sole canonical mode) — V1 JSON fast lane then
+// ParsePlainTextFresh (canonical primary path in fresh_parser.go)
+// for plain prose per the LLM-PLAIN-TEXT-CONTRACT wave.
+// ModeCompatibility was removed August 2026.
 //
 // The Engine does NOT own:
 //   - clip context building (ClipSourceBuilder responsibility)
@@ -55,7 +54,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -77,10 +75,9 @@ import (
 // single owner is PersistenceProcessor, registered in the plan's
 // Postprocessors list.
 type Engine struct {
-	ollamaGen    scriptOllamaGenerator
-	memorySvc    memoryGateChecker
-	branchMetric scriptmetrics.ScriptGenerationBranchRecorder
-	log          *zap.Logger
+	ollamaGen scriptOllamaGenerator
+	memorySvc memoryGateChecker
+	log       *zap.Logger
 
 	// Segment QA policy is configured at the composition root. Zero values
 	// use the canonical defaults in segment_validation.go.
@@ -258,16 +255,10 @@ func NewEngine(
 	ollamaGen scriptOllamaGenerator,
 	memorySvc memoryGateChecker,
 	log *zap.Logger,
-	branchMetrics ...scriptmetrics.ScriptGenerationBranchRecorder,
 ) *Engine {
-	var branchMetric scriptmetrics.ScriptGenerationBranchRecorder
-	if len(branchMetrics) > 0 {
-		branchMetric = branchMetrics[0]
-	}
 	return &Engine{
-		ollamaGen:    ollamaGen,
-		memorySvc:    memorySvc,
-		branchMetric: branchMetric,
-		log:          log,
+		ollamaGen: ollamaGen,
+		memorySvc: memorySvc,
+		log:       log,
 	}
 }

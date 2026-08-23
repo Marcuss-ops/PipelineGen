@@ -203,6 +203,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		AssetIndexService: root.Search.AssetIndexService,
 		PrebuiltService:   root.Domains.IngestService,
 		Dispatcher:        root.Outbox.Dispatcher,
+		Committer:         newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
 	}, idemHandler)
 	regWiring.MediaIngest = mediaIngestW
 	if mediaIngestErr != nil {

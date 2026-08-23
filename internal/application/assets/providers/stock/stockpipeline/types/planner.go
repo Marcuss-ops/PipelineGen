@@ -23,7 +23,7 @@ package types
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
 	"net/url"
@@ -348,7 +348,7 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 // plan.Description after this function returns — see
 // (p *explicitPlanner).Plan below.
 func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer string) ClipPlan {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", src.URL, idx, policyVer, windowKey(start), windowKey(end))))
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", src.URL, idx, policyVer, windowKey(start), windowKey(end))))
 	id := fmt.Sprintf("planner:%x:%d", h[:8], idx)
 	return ClipPlan{
 		SourceID:        src.URL,

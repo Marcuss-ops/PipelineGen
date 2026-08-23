@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"go.uber.org/zap"
 )
@@ -39,11 +40,11 @@ func TestHTTPSourceStager_StageSourceV2_DeterministicPath(t *testing.T) {
 	defer srv.Close()
 
 	ref := assets.SourceRef{URL: srv.URL + "/a.png"}
-	a, err := s.StageSourceV2(context.Background(), ref)
+	a, err := s.stageSourceV2(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("first StageSourceV2: %v", err)
 	}
-	b, err := s.StageSourceV2(context.Background(), ref)
+	b, err := s.stageSourceV2(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("second StageSourceV2: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestHTTPSourceStager_StageSourceV2_IntermediateHashMatchesBody(t *testing.T
 	defer srv.Close()
 
 	ref := assets.SourceRef{URL: srv.URL + "/b.png"}
-	staged, err := s.StageSourceV2(context.Background(), ref)
+	staged, err := s.stageSourceV2(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("StageSourceV2: %v", err)
 	}
@@ -100,11 +101,11 @@ func TestHTTPSourceStager_StageSourceV2_DistinctURLsDistinctPaths(t *testing.T) 
 	}))
 	defer srv.Close()
 
-	a, err := s.StageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/a"})
+	a, err := s.stageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/a"})
 	if err != nil {
 		t.Fatalf("StageSourceV2 a: %v", err)
 	}
-	b, err := s.StageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/b"})
+	b, err := s.stageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/b"})
 	if err != nil {
 		t.Fatalf("StageSourceV2 b: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestHTTPSourceStager_StageSourceV2_NonOKStatusFailsClosed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := s.StageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/oops"})
+	_, err := s.stageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/oops"})
 	if err == nil {
 		t.Fatal("expected error for non-2xx status, got nil")
 	}
@@ -141,7 +142,7 @@ func TestHTTPSourceStager_StageSourceV2_NonOKStatusFailsClosed(t *testing.T) {
 // an empty SourceRef.URL is rejected with a typed error (godlike/07).
 func TestHTTPSourceStager_StageSourceV2_EmptyURLFailsClosed(t *testing.T) {
 	s, _ := newTestStager(t)
-	_, err := s.StageSourceV2(context.Background(), assets.SourceRef{URL: ""})
+	_, err := s.stageSourceV2(context.Background(), assets.SourceRef{URL: ""})
 	if err == nil {
 		t.Fatal("expected error for empty URL, got nil")
 	}
@@ -157,17 +158,17 @@ func TestHTTPSourceStager_CleanupStagedSource_Idempotent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	staged, err := s.StageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/c"})
+	staged, err := s.stageSourceV2(context.Background(), assets.SourceRef{URL: srv.URL + "/c"})
 	if err != nil {
 		t.Fatalf("StageSourceV2: %v", err)
 	}
-	if err := s.CleanupStagedSource(context.Background(), staged); err != nil {
+	if err := s.cleanupStagedSource(context.Background(), staged); err != nil {
 		t.Fatalf("first cleanup: %v", err)
 	}
-	if err := s.CleanupStagedSource(context.Background(), staged); err != nil {
+	if err := s.cleanupStagedSource(context.Background(), staged); err != nil {
 		t.Fatalf("second cleanup (idempotent): %v", err)
 	}
-	if err := s.CleanupStagedSource(context.Background(), nil); err != nil {
+	if err := s.cleanupStagedSource(context.Background(), nil); err != nil {
 		t.Fatalf("nil staged: %v", err)
 	}
 }
@@ -212,7 +213,7 @@ func TestHTTPSourceStager_StageSourceV2_ConcurrentSameURLSafe(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i], errs[i] = s.StageSourceV2(context.Background(), ref)
+			results[i], errs[i] = s.stageSourceV2(context.Background(), ref)
 		}()
 	}
 	wg.Wait()
@@ -248,5 +249,5 @@ func TestHTTPSourceStager_StageSourceV2_ConcurrentSameURLSafe(t *testing.T) {
 	}
 }
 
-// compile-time check: HTTPSourceStager satisfies the canonical port.
-var _ assets.SourceStager = (*HTTPSourceStager)(nil)
+// compile-time check: HTTPSourceStager satisfies the canonical acquisition port.
+var _ acquisition.SourceStager = (*HTTPSourceStager)(nil)

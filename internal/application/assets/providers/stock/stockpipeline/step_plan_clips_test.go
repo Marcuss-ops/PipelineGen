@@ -19,6 +19,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -42,7 +43,7 @@ func (f *fakeStepRunner) RunInput() *RunInput                                   
 func (f *fakeStepRunner) JobID() string                                                { return "test-job" }
 func (f *fakeStepRunner) PolicyVersion() string                                        { return f.cfg.PolicyVersion }
 func (f *fakeStepRunner) Planner() ClipPlanner                                         { return f.planner }
-func (f *fakeStepRunner) SourceStager() assets.SourceStager                            { return nil }
+func (f *fakeStepRunner) SourceStager() acquisition.SourceStager                            { return nil }
 func (f *fakeStepRunner) Cutter() VideoCutter                                          { return f.cutter }
 func (f *fakeStepRunner) Renderer() StockRenderer                                      { return nil }
 func (f *fakeStepRunner) Builder() ManifestBuilder                                     { return nil }

@@ -3,10 +3,9 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -259,21 +258,21 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 	if err != nil || config.Width < policy.MinWidth || config.Height < policy.MinHeight {
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
-	sum := sha256.Sum256(data)
-	candidate.LegacyFileMD5 = hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes(data)
+	candidate.LegacyFileMD5 = sum
 	candidate.MIMEType = mime
 	candidate.Width = config.Width
 	candidate.Height = config.Height
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	return scriptports.VerifiedArtifact{
-		Candidate:    candidate,
-		MIMEType:     mime,
-		SizeBytes:    int64(len(data)),
-		LegacyFileMD5:     candidate.LegacyFileMD5,
-		Width:        config.Width,
-		Height:       config.Height,
-		RightsStatus: candidate.RightsStatus,
+		Candidate:     candidate,
+		MIMEType:      mime,
+		SizeBytes:     int64(len(data)),
+		LegacyFileMD5: candidate.LegacyFileMD5,
+		Width:         config.Width,
+		Height:        config.Height,
+		RightsStatus:  candidate.RightsStatus,
 	}, nil
 }
 

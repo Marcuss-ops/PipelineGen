@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -141,7 +141,7 @@ func optionalImageContent(hash string) *mediacommit.ContentIdentity {
 }
 
 func isSHA256(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != digest.SHA256HexLength {
 		return false
 	}
 	_, err := hex.DecodeString(value)

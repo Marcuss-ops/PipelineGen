@@ -16,13 +16,13 @@
 package render
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // SceneFingerprintVersion is the schema version of SceneFingerprintInput.
@@ -113,8 +113,7 @@ func ComputeSceneFingerprint(input SceneFingerprintInput) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidFingerprint, err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return digest.SHA256Bytes(b), nil
 }
 
 // AssetsFromManifest projects a render plan manifest into fingerprint form:

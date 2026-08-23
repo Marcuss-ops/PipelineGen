@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"sync"
 
@@ -194,8 +195,8 @@ func splitParagraphSegments(text string) []string {
 }
 
 func segmentTextHash(text string) string {
-	sum := sha256.Sum256([]byte(normalizeSegmentText(text)))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(normalizeSegmentText(text)))
+	return sum
 }
 
 func normalizeSegmentText(text string) string {

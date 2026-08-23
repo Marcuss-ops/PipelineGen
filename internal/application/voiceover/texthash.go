@@ -25,9 +25,9 @@
 //     (own crypto/sha256 + encoding/hex impl)
 //
 // Both produced the same byte-for-byte 16-hex-char lowercase
-// prefix. Post-PR-VO-TEXTHASH-64, ComputeTextHash returns the
-// full 64-char hash and is byte-equivalent with the legacy
-// ComputeFullTextHash (deprecated alias).
+// prefix. Post-PR-VO-TEXTHASH-64, ComputeTextHash always returns
+// the full 64-char SHA-256 — idempotency, reuse, and cache
+// lookups are uniform across all call paths.
 //
 // JSON wire compat: type TextHash string serialises the
 // underlying 64-char hex string byte-for-byte. omitempty on
@@ -41,8 +41,7 @@
 package voiceover
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // TextHash is the typed envelope for the 64-char SHA-256 fingerprint
@@ -51,10 +50,10 @@ import (
 // site. JSON wire shape + SQLite column shape are byte-equivalent
 // with the pre-PR-VO-TYPED-PRIMITIVES string field.
 //
-// PR-VO-TEXTHASH-64 (August 2026): widened from 16-hex-char prefix
-// to full 64-char SHA-256. The voiceovers.text_hash column (TEXT)
-// already accepts 64-char values (legacy batch path). The per-item
-// fan-out path now emits the full hash.
+// PR-VO-TEXTHASH-64 (August 2026): always 64-char SHA-256.
+// The voiceovers.text_hash column (TEXT) accepts 64-char values;
+// migration 231 adds a CHECK(length(text_hash) IN (0, 64)) for
+// new rows.
 //
 // Conversion semantics: a TextHash value IS a string at the
 // any level (Go's named-type rules) so the metaBuf-style
@@ -72,49 +71,17 @@ const EmptyTextHash TextHash = ""
 // of text. Byte-stable across retries with the same input (per
 // godlike/07 no-fake-availability).
 //
-// PR-VO-TEXTHASH-64 (August 2026): widened from 16-hex-char prefix
-// to full 64-char digest. Both the per-item fan-out path and the
-// legacy batch path now produce the same canonical fingerprint, so
-// idempotency keys, voiceover reuse, and cache lookups match across
-// both paths.
-//
+// PR-VO-TEXTHASH-64 (August 2026): always 64-char SHA-256.
 // Empty-text input returns EmptyTextHash.
 func ComputeTextHash(text string) TextHash {
-	return TextHash(sha256Hex(text))
-}
-
-// String returns the underlying string form. Useful for fmt
-// interpolation (`fmt.Sprintf("text=%s", hash)`) where the
-// named-type rules would otherwise require explicit conversion.
-//
-// NOT a Stringer conformance declaration — the voiceover package
-// already has a higher-layer String form (FinalizeResult fields)
-// and the audit's minimal-blast-radius discipline avoids
-// opportunistic Stringer additions.
-func (t TextHash) String() string { return string(t) }
-
-// sha256Hex returns the full 64-char SHA-256 hex digest of text.
-// Uses crypto/sha256 directly so the voiceover package stays free of
-// any internal/infrastructure/files import (Pattern 0, AGENTS.md).
-// Empty-text input returns empty string (defensive).
-func sha256Hex(text string) string {
 	if text == "" {
-		return ""
+		return EmptyTextHash
 	}
-	h := sha256.New()
-	h.Write([]byte(text))
-	return hex.EncodeToString(h.Sum(nil))
+	return TextHash(digest.SHA256String(text))
 }
 
-// ComputeFullTextHash returns the full 64-char SHA-256 hex digest of
-// text. Deprecated: use ComputeTextHash instead (widened to full
-// 64-char per PR-VO-TEXTHASH-64). Kept as a one-line alias so
-// existing callers in stages.go compile without churn.
-//
-// Empty-text input returns empty string (defensive).
-func ComputeFullTextHash(text string) string {
-	return string(ComputeTextHash(text))
-}
+// String returns the underlying string form.
+func (t TextHash) String() string { return string(t) }
 
 // IsEmpty returns true when t is the canonical zero value.
 // Convenience predicate for `if !hash.IsEmpty()` checks (more

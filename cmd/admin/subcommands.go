@@ -72,6 +72,7 @@ var commandRegistry = map[string]commandHandler{
 	"backfill-source-url-metadata":   runBackfillSourceURLMetadata,
 	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
 	"benchmark":                      runBenchmark,
+	"broken-references":              runBrokenReferences,
 	"check-drive-names":              runCheckDriveNames,
 	"clip-drive-audit":               runClipDriveAudit,
 	"clip-drive-orphan-cleanup":      runClipDriveOrphanCleanup,
@@ -100,6 +101,7 @@ var commandRegistry = map[string]commandHandler{
 	"keep-drive-folder-files":        runKeepDriveFolderFiles,
 	"list-drive-folder":              runListDriveFolder,
 	"list-styles":                    runListStyles,
+	"migrate-legacy-cache":            runMigrateLegacyCache,
 	"multilingual-benchmark":         runMultilingualBenchmark,
 	"multilingual-render":            runMultilingualRender,
 	"normalize-sound-effects-drive":  runNormalizeSoundEffectsDrive,
@@ -143,7 +145,6 @@ var commandRegistry = map[string]commandHandler{
 	"unify-catalogs":                 runUnifyCatalogs,
 	"update-sound-effect-metadata":   runUpdateSoundEffectMetadata,
 	"upload-drive-file":              runUploadDriveFile,
-	"verify-artlist-pipeline":        runVerifyArtlistPipeline,
 	"verify-projection":              runVerifyProjection,
 	"zombie-sweep":                   runZombieSweep,
 }

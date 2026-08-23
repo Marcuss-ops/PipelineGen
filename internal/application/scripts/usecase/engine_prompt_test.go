@@ -1,8 +1,7 @@
 // Package scripts — engine_prompt_test.go pins the PR-CS-1 FASE 3
-// contracts for buildSegmentInstructions (Branch A). The legacy
-// Branch B (SegmentTopics in buildClipGroundingInstructions) is
-// already covered by TestEngineGenerate_AppendsClipGroundingInstructions
-// in engine_test.go; this file is the focal lock for the new path.
+// contracts for buildSegmentInstructions (Branch A). Branch B
+// (SegmentTopics prompt rendering) was removed in August 2026
+// per DL-SCRIPT-BRANCH-B-001.
 //
 // USER-SPEC INVARIANTS pinned here:
 //

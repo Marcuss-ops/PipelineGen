@@ -405,7 +405,7 @@ func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
 		SourceLanguage: "en",
 		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "Segmented topic"},
 		Title:          "Segmented",
-		ScriptParams:   scriptpkg.ScriptSpec{SegmentTopics: []string{"Intro", "Body", "Outro"}},
+		ScriptParams:   scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{{Topic: "Intro"}, {Topic: "Body"}, {Topic: "Outro"}}},
 	}
 
 	var emitted []scriptgen.Scene

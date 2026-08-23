@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 )
 
@@ -71,6 +72,8 @@ func BuildProfileWorkerRegistry(root *wiring.ComposeRoot, allowedTypes []string)
 		return nil, nil, worker.ErrNoHandlers
 	}
 
+	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
+
 	// Creator invariant: script.generate MUST be present.
 	// A profile that omits script generation is a composition-level
 	// misconfiguration and must fail closed.
@@ -112,6 +115,18 @@ func BuildWorkerRegistry(root *wiring.ComposeRoot) (*worker.Registry, []string, 
 	if reg.Len() == 0 {
 		return nil, nil, worker.ErrNoHandlers
 	}
+
+	// PR-COMPLETE-WORKER-FAIL-BOOT (Aug 2026): seed the worker
+	// runner's ProducesArtifacts map from the canonical job
+	// registry so that artifact-producing jobs (ArtifactOwnership=
+	// WorkerSpine) route through CompleteWithArtifacts instead of
+	// silently falling through to the legacy Complete() path.
+	// Without this, r.registry.ProducesArtifacts() always returns
+	// false in production, and every artifact job hits the
+	// SQL-layer ErrCompleteJobPathViolation gate after a costly
+	// retry cycle.
+	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
+
 	caps := reg.JobTypes()
 	return reg, caps, nil
 }

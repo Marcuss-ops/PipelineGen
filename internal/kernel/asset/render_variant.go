@@ -2,10 +2,10 @@ package asset
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // RenderVariantStatus is the lifecycle of a rendered per-language clip
@@ -77,16 +77,14 @@ func RenderVariantFingerprint(
 	sourceClipSHA256, transcriptSHA256, targetLanguage,
 	translationVersion, subtitleStyleVersion, renderProfileVersion string,
 ) string {
-	parts := []string{
+	return digest.Fingerprint(
 		strings.TrimSpace(sourceClipSHA256),
 		strings.TrimSpace(transcriptSHA256),
 		strings.TrimSpace(targetLanguage),
 		strings.TrimSpace(translationVersion),
 		strings.TrimSpace(subtitleStyleVersion),
 		strings.TrimSpace(renderProfileVersion),
-	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	)
 }
 
 // RenderVariantContentFingerprint identifies the rendered pixels by their
@@ -97,13 +95,11 @@ func RenderVariantContentFingerprint(
 	sourceClipSHA256, transcriptSHA256, targetLanguage,
 	subtitleStyleVersion, renderProfileVersion string,
 ) string {
-	parts := []string{
+	return digest.Fingerprint(
 		strings.TrimSpace(sourceClipSHA256),
 		strings.TrimSpace(transcriptSHA256),
 		strings.TrimSpace(targetLanguage),
 		strings.TrimSpace(subtitleStyleVersion),
 		strings.TrimSpace(renderProfileVersion),
-	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	)
 }

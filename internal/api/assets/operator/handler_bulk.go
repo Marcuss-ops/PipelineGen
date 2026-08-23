@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -241,7 +242,14 @@ func (h *Handler) reindexAsset(ctx context.Context, a *asset.Asset, before, afte
 	if contentHash == "" {
 		contentHash = a.ID
 	}
-	if err := h.mutator.EnqueueAndIndex(ctx, a, contentHash); err != nil {
+	if h.committer == nil {
+		return bulkChange{AssetID: a.ID, Status: "error", Message: "committer not wired", Before: before, After: after}
+	}
+	if _, err := h.committer.CommitAndIndex(ctx, persistence.AssetCommitRequest{
+		AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
+		MediaType: string(a.MediaType), ContentHash: contentHash, LifecycleState: string(a.LifecycleState),
+		IndexState: a.GetMetadataString("index_state"), EmitIndexEvent: true,
+	}); err != nil {
 		return bulkChange{AssetID: a.ID, Status: "error", Message: err.Error(), Before: before, After: after}
 	}
 	return bulkChange{AssetID: a.ID, Status: "success", Before: before, After: after}

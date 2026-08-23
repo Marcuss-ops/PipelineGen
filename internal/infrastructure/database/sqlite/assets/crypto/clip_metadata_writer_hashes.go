@@ -28,9 +28,8 @@
 package crypto
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 
@@ -77,8 +76,8 @@ func ComputeIndexRevision(contentHash string, textTracks []asset.TextTrack) stri
 		}
 	}
 
-	h := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(b.String()))
+	return h
 }
 
 // ComputeContentHashWithTextTracks is the legacy alias for

@@ -3,8 +3,7 @@ package overlays
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,8 +106,7 @@ func (c *Cache) EnsureAsset(ctx context.Context, refURL, sha256Hex string) (stri
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(b)
-	got := hex.EncodeToString(h[:])
+	got := digest.SHA256Bytes(b)
 	if got != sha256Hex {
 		return "", fmt.Errorf("overlay asset SHA-256 mismatch: got %s want %s", got, sha256Hex)
 	}
@@ -120,6 +118,5 @@ func SHA256File(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:]), nil
+	return digest.SHA256Bytes(b), nil
 }

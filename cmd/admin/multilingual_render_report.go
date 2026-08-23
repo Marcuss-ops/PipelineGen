@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,25 +15,21 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
 func hashLocalFile(path string) (string, error) {
-	f, err := os.Open(path)
+	h, _, err := digest.SHA256File(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return h, nil
 }
 
 func isSHA256Hex(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != digest.SHA256HexLength {
 		return false
 	}
 	_, err := hex.DecodeString(value)

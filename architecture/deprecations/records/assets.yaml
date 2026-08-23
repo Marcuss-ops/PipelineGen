@@ -1,46 +1,74 @@
 deprecations:
     - id: ASSETS-SOURCESTAGER-LEGACY
-      owner_capability: internal/application/assets (legacy) + internal/application/acquisition (canonical)
+      owner_capability: internal/application/acquisition (sole owner)
       exact_symbol: |
         assets.SourceStager interface (StageSource + Cleanup methods) at
         internal/application/assets/ports.go — the per-call staging port.
         Concrete implementations: YouTube (infrastructure/youtube/stager_adapter.go),
         Artlist (providers/artlist/stager_adapter.go), Stock (stockpipeline/
         stager_adapter.go — dual-implements both ports).
+        REMOVED: interface deleted from ports.go, SourceStagerRegistry
+        deleted, legacy methods (StageSource, Cleanup, StageSourceV2,
+        CleanupStagedSource) removed from StockStager and HTTPSourceStager.
       file: internal/application/assets/ports.go
-      file_line: ~55 (SourceStager interface definition)
+      file_line: ~55 (SourceStager interface definition — REMOVED)
       replacement: |
         acquisition.SourceStager (internal/application/acquisition/port.go)
         — persistent staging with Prepare(ctx, PrepareRequest) +
         Release(ctx, cleanupToken). Deterministic CleanupToken via
         SHA-256(URL + Section + PolicyVersion), TTL eviction, cross-call
-        dedupe via filesystem-backed registry. Stock pipeline already wired.
+        dedupe via filesystem-backed registry.
+        All consumers (YouTube, Artlist, Stock, Images, Jobs/assets)
+        now use acquisition.SourceStager exclusively.
       introduction_date: 2026-04
-      removal_date: 2026-Q4
+      removal_date: 2026-08-22
       tracking_issue: §12-4.2 forward-pointer (architecture/current.yaml). Migrate YouTube and Artlist from assets.SourceStager to acquisition.SourceStager.
       compatibility_test: |
-        Post-migration CUTOVER:
-          (a) rg 'assets\.SourceStager' internal/application/youtube/
-              internal/application/assets/providers/artlist/ returns 0 hits.
-          (b) go build exits 0 on both packages.
-        Post-removal CONTRACT:
-          (c) rg 'assets\.SourceStager' internal/ --include='*.go' returns
-              0 hits in production code.
-          (d) Legacy interface physically removed from assets/ports.go.
+        Post-removal CONTRACT (verified 2026-08-22):
+          (a) rg 'assets\.SourceStager' internal/ --include='*.go' returns
+              0 hits in production code (only legacy comments remain).
+          (b) Legacy interface physically removed from assets/ports.go.
+          (c) SourceStagerRegistry physically removed (stager_registry.go deleted).
+          (d) HTTPSourceStager satisfies acquisition.SourceStager via
+              compile-time assertion in http_source_stager_test.go.
+          (e) All consumers (YouTube, Artlist, Stock, Images, Jobs/assets)
+              compile and pass tests against acquisition.SourceStager.
       usage_metric: |
         Audit baseline (2026-07-04):
           - assets.SourceStager consumers: YouTube (1), Artlist (1), Stock (1, dual).
           - acquisition.SourceStager consumers: Stock (1).
-        Post-CUTOVER: assets.SourceStager=0, acquisition.SourceStager=3.
-      migration_phase: EXPAND
-      status: in_progress
+        Post YouTube/Artlist migration (2026-08-22):
+          - assets.SourceStager consumers: Stock (1, dual), Images (1), Jobs/assets (1).
+          - acquisition.SourceStager consumers: YouTube (1), Artlist (1), Stock (1, dual).
+        Post-CONTRACT (2026-08-22): assets.SourceStager=0, acquisition.SourceStager=5.
+          All consumers: YouTube, Artlist, Stock, Images, Jobs/assets.
+      migration_phase: CONTRACT
+      status: completed
       notes: |
-        Two ports coexist per godlike/07 §"Migration sequence":
+        Two ports coexisted per godlike/07 §"Migration sequence":
           - EXPAND: canonical acquisition.SourceStager shipped (Stock Cutover
             §12-4, July 2026). Legacy retained for YouTube/Artlist.
-          - BACKFILL: migrate YouTube from assets → acquisition.
-          - CUTOVER: migrate Artlist from assets → acquisition.
-          - CONTRACT: physical removal of assets.SourceStager from ports.go.
+          - BACKFILL: ✅ YouTube migrated from assets → acquisition (2026-08).
+          - CUTOVER: ✅ Artlist migrated from assets → acquisition (2026-08).
+            Both packages have zero references to assets.SourceStager.
+          - CONTRACT: ✅ Physical removal completed (2026-08-22):
+            (1) assets.SourceStager interface removed from ports.go.
+            (2) StagedAsset DTO moved to standalone staged_asset.go.
+            (3) SourceStagerRegistry deleted (stager_registry.go).
+            (4) HTTPSourceStager: Prepare/Release added as public API;
+                legacy StageSourceV2→stageSourceV2,
+                CleanupStagedSource→cleanupStagedSource made private
+                (same-package only, not callable from outside).
+            (5) Stock pipeline: orchestrator + step interfaces migrated
+                to acquisition.SourceStager; all test stubs updated;
+                StockStager.StageSource/Cleanup already private.
+            (6) Images: storage_download.go + deps.go + storage_service.go
+                migrated to acquisition.SourceStager.Prepare/Release.
+            (7) Jobs/assets: service.go migrated to
+                acquisition.SourceStager.Prepare/Release.
+            (8) StagedAsset DTO moved to kernel/asset.StagedAsset;
+                backward-compatibility alias in assets/ retained
+                for 41 existing consumers during migration.
         Cross-refs: godlike/06 §"One owner per fact", godlike/07 §"No fake
         availability", AGENTS.md Pattern 0.
     - id: MONITOR-YOUTUBE-DIRECT-IMPORT

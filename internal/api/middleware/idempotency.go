@@ -39,7 +39,7 @@ package middleware
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -164,8 +164,8 @@ func buildMiddleware(store mw.IdempotencyStore, log *zap.Logger) gin.HandlerFunc
 			}
 			// Reset Body so the downstream handler can re-read it.
 			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-			sum := sha256.Sum256(body)
-			bodyHash = hex.EncodeToString(sum[:])
+			sum := digest.SHA256Bytes(body)
+			bodyHash = hex.EncodeToString([]byte(sum))
 		}
 
 		ctx := c.Request.Context()

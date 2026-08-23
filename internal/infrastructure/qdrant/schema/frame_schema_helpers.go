@@ -9,7 +9,7 @@
 package schema
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/google/uuid"
 )
@@ -19,7 +19,9 @@ import (
 // AssetIDToQdrantPointID swallows the namespace-pre-mix and the
 // frame-shape derivation is intentionally more compact.
 func sha256Sum(b []byte) [32]byte {
-	return sha256.Sum256(b)
+	var out [32]byte
+	copy(out[:], []byte(digest.SHA256Bytes(b)))
+	return out
 }
 
 // uuidV8String returns the canonical UUID-v8 string for a

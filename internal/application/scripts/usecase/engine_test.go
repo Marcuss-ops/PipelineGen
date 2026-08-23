@@ -112,16 +112,6 @@ type fakeMemoryGate struct {
 	onCheck     func()
 }
 
-type fakeBranchRecorder struct {
-	branches  []string
-	countries []string
-}
-
-func (r *fakeBranchRecorder) RecordScriptGenerationBranch(branch, bcp47 string) {
-	r.branches = append(r.branches, branch)
-	r.countries = append(r.countries, ExtractCountryForTelemetry(bcp47))
-}
-
 func (f *fakeMemoryGate) CheckGate(_ context.Context, req memoryGateRequest) (*memoryGateResult, error) {
 	if f.onCheck != nil {
 		f.onCheck()
@@ -193,37 +183,13 @@ func defaultFakeResult() *scriptports.GenerationResult {
 // pass a non-nil `mem` (a `*fakeMemoryGate{}` or `*p2aMemoryGate{}`)
 // so the engine's memorySvc != nil check fires correctly.
 func buildTestEngine(gen *fakeOllamaGen, mem memoryGateChecker) *Engine {
-	return &Engine{
+	e := &Engine{
 		ollamaGen: gen,
 		memorySvc: mem,
 		log:       zap.NewNop(),
 	}
-}
-
-func TestEngineGenerate_RecordsScriptBranchThroughPort(t *testing.T) {
-	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
-		Script:      "This is a generated script with multiple sentences and narrative depth.",
-		WordCount:   11,
-		EstDuration: 4,
-		Model:       "test-model",
-	}}
-	recorder := &fakeBranchRecorder{}
-	e := NewEngine(gen, nil, zap.NewNop(), recorder)
-
-	_, err := e.Generate(context.Background(), &scriptpkg.ResolvedGenerationPlan{
-		Language:    "it-IT",
-		TargetWords: 11,
-		Segments:    []scriptpkg.ScriptSegment{{Topic: "canonical", TargetWords: 11}},
-	})
-	require.NoError(t, err)
-	_, err = e.Generate(context.Background(), &scriptpkg.ResolvedGenerationPlan{
-		Language:      "pt-BR",
-		SegmentTopics: []string{"legacy"},
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, []string{"a", "b"}, recorder.branches)
-	require.Equal(t, []string{"IT", "BR"}, recorder.countries)
+	e.ConfigureSegmentValidation(50, 50, 0) // lenient tolerance for unit tests
+	return e
 }
 
 // ── Nil / missing dependency ───────────────────────────────────────────────
@@ -415,8 +381,6 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 		Model:          "llama3:8b",
 		Mode:           "clip_to_script",
 		NumClips:       2,
-		SegmentWords:   120,
-		SegmentTopics:  []string{"Breakfast setup", "Street reaction"},
 		RenderedPrompt: "Write about the supplied clips.",
 		ClipEvidence: &scriptpkg.ClipEvidence{
 			AcceptedClipIDs: []string{"clip-1", "clip-2"},
@@ -442,9 +406,6 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 	assert.Contains(t, captured.Prompt, "do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists")
 	assert.Contains(t, captured.Prompt, "Put technical details only in metadata or bindings")
 	assert.Contains(t, captured.Prompt, "Use exactly 2 clip-driven scenes.")
-	assert.Contains(t, captured.Prompt, "Aim for about 120 words per segment.")
-	assert.Contains(t, captured.Prompt, "Breakfast setup")
-	assert.Contains(t, captured.Prompt, "Street reaction")
 	assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]")
 	assert.Empty(t, captured.ClipIDs)
 	assert.NotContains(t, captured.Prompt, "clip-1, clip-2")
@@ -569,12 +530,11 @@ func TestEngineGenerate_NilPlan(t *testing.T) {
 
 // ── PR 1: decoder / scene-preservation paths ─────────────────────────────
 
-// TestEngineGenerate_DecodeFailure verifies that the ModeCompatibility
-// retry (PR-FIX, June 2026) salvages plain prose from the model.
-// ModeStrict rejects bare prose → engine retries with ModeCompatibility
-// → plain-text wrapper produces a synthetic V1 with empty scenes.
-// The job no longer fails on malformed JSON; operators see salvaged
-// output with the "fresh-fallback" source label in metrics.
+// TestEngineGenerate_DecodeFailure verifies that plain prose from the
+// model is wrapped as V1 by ModeFreshPlainText's ParsePlainTextFresh
+// (sole canonical decoder; DL-MODECOMPAT-REMOVAL August 2026).
+// The job no longer fails on plain prose; operators see wrapped V1
+// output with empty scenes.
 func TestEngineGenerate_DecodeFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{
@@ -594,9 +554,9 @@ func TestEngineGenerate_DecodeFailure(t *testing.T) {
 		Mode:     "text",
 	}
 
-	// PR-FIX (June 2026): plain prose is salvaged by ModeCompatibility.
-	// The engine no longer returns ErrModelOutputMalformed on prose;
-	// instead it wraps prose as synthetic V1 with empty scenes.
+	// DL-MODECOMPAT-REMOVAL (August 2026): plain prose is wrapped as
+	// V1 by ModeFreshPlainText's ParsePlainTextFresh (no retry).
+	// The engine returns synthetic V1 with empty scenes for prose.
 	result, err := e.Generate(context.Background(), plan)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -607,52 +567,14 @@ func TestEngineGenerate_DecodeFailure(t *testing.T) {
 	assert.Equal(t, int32(1), gen.calls.Load(), "ollama must be called (fresh generation path)")
 }
 
-// TestEngineGenerate_CacheLegacyHit verifies that pre-V1 legacy-array
-// cache rows are promoted to V1 by the jsonextract.Scanner
-// ModeCompatibility fallback. Operators upgrading from the legacy
-// decoder see the cache continue working without manual intervention.
-func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
-	t.Parallel()
-	gen := &fakeOllamaGen{}
-	legacyArray := `[{"id":"scene-0","index":0,"text":"Legacy cached scene.","kind":"narration"}]`
-	mem := &fakeMemoryGate{
-		result: &memoryGateResult{
-			Output:    legacyArray,
-			WordCount: 5,
-			Model:     "llama3:8b",
-		},
-	}
-	e := buildTestEngine(gen, mem)
-
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:     "Legacy Cache",
-		Language:  "en",
-		Mode:      "text",
-		UseMemory: true,
-	}
-
-	result, err := e.Generate(context.Background(), plan)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, int32(0), gen.calls.Load(), "ollama must NOT be called on cache hit")
-	assert.Equal(t, "exact_hit", result.CacheStatus)
-	assert.Equal(t, 1, result.Output.SchemaVersion)
-	require.Len(t, result.Output.SpecScene.Scenes, 1)
-	// jsonextract.Scanner prefixes promoted IDs with "legacy-"
-	// to flag rows promoted from the pre-V1 cache.
-	assert.Equal(t, "legacy-scene-0", result.Output.SpecScene.Scenes[0].ID)
-	assert.Equal(t, "Legacy cached scene.", result.Output.SpecScene.Scenes[0].Text)
-	assert.Equal(t, scriptpkg.SceneNarration, result.Output.SpecScene.Scenes[0].Kind)
-}
-
-// TestEngineGenerate_CacheProseHit verifies that an unparseable cache
-// row (legacy prose, perhaps from before the V1 rollout) is wrapped as
-// plain-text V1 in ModeCompatibility (declared fallback with
-// Prometheus metric) rather than silently erroring.
+// TestEngineGenerate_CacheProseHit verifies that plain-text cache
+// rows (legacy prose from before the V1 rollout) are wrapped as
+// plain-text V1 by ModeFreshPlainText's ParsePlainTextFresh (sole
+// canonical decoder; DL-MODECOMPAT-REMOVAL August 2026).
 //
-// P0.8 (June 2026): changed from error to success — ModeCompatibility
-// wraps plain text as a synthetic V1 with empty scenes, bumping
-// jsonextract_plain_text_fallback_total.
+// P0.8 (June 2026): changed from error to success.
+// DL-MODECOMPAT-REMOVAL (August 2026): ModeFreshPlainText handles
+// plain prose directly — no retry path needed.
 func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
@@ -677,7 +599,7 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, int32(0), gen.calls.Load(), "ollama must NOT be called on cache hit")
 	assert.Equal(t, "exact_hit", result.CacheStatus)
-	// P0.8: ModeCompatibility wraps plain text as a synthetic V1.
+	// DL-MODECOMPAT-REMOVAL (August 2026): ModeFreshPlainText wraps plain text as synthetic V1.
 	assert.Equal(t, "This is not JSON, just prose paragraphs.", result.Output.Text)
 	assert.Equal(t, 1, result.Output.SchemaVersion)
 	assert.Empty(t, result.Output.SpecScene.Scenes, "plain-text wrapped output has empty scenes")

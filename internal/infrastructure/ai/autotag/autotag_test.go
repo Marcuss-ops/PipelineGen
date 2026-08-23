@@ -2,6 +2,7 @@ package autotag
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,22 +12,26 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-type fakeDispatcher struct {
+type fakeCommitter struct {
 	asset *asset.Asset
 	err   error
 }
 
-func (d *fakeDispatcher) EnqueueAndIndex(ctx context.Context, a *asset.Asset, contentHash string) error {
-	d.asset = a
-	return d.err
+func (c *fakeCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	c.asset = &asset.Asset{ID: req.AssetID, Source: asset.Source(req.Source)}
+	return persistence.CommitResult{}, c.err
 }
-
-func (d *fakeDispatcher) EnqueueAndRestore(ctx context.Context, assetID string) error { return nil }
-func (d *fakeDispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error  { return nil }
+func (c *fakeCommitter) CommitAsset(ctx context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	return persistence.CommitResult{}, nil
+}
+func (c *fakeCommitter) CommitTx(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	return persistence.CommitResult{}, nil
+}
 
 func newTestFile(t *testing.T) string {
 	t.Helper()
@@ -67,8 +72,8 @@ func TestTagAsset_SavesModelAndDuration(t *testing.T) {
 		TimeoutMs:    5000,
 	})
 
-	dispatcher := &fakeDispatcher{}
-	svc := NewService(ServiceDeps{VLMClient: client, Dispatcher: dispatcher, Log: zap.NewNop()})
+	dispatcher := &fakeCommitter{}
+	svc := NewService(ServiceDeps{VLMClient: client, Committer: dispatcher, Log: zap.NewNop()})
 
 	a := &asset.Asset{ID: "asset-1", MediaType: asset.MediaTypeClip}
 	a.SetLocalPath(newTestFile(t))
@@ -137,8 +142,8 @@ func TestTagAsset_FallsBackToConfiguredModel(t *testing.T) {
 		TimeoutMs:    5000,
 	})
 
-	dispatcher := &fakeDispatcher{}
-	svc := NewService(ServiceDeps{VLMClient: client, Dispatcher: dispatcher, Log: zap.NewNop()})
+	dispatcher := &fakeCommitter{}
+	svc := NewService(ServiceDeps{VLMClient: client, Committer: dispatcher, Log: zap.NewNop()})
 
 	a := &asset.Asset{ID: "asset-2", MediaType: asset.MediaTypeImage}
 	a.SetLocalPath(newTestFile(t))

@@ -11,10 +11,9 @@
 package brain
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
@@ -144,8 +143,8 @@ type ResolutionVersionSet struct {
 // tuple used to produce a visual plan.
 func (v ResolutionVersionSet) DecisionFingerprint(language, normalized string) string {
 	input := v.fingerprintInput(language, normalized)
-	sum := sha256.Sum256([]byte(input))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(input))
+	return sum
 }
 
 // fingerprintPayload is the deterministic serialization envelope for

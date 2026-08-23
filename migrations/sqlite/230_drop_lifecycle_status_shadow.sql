@@ -1,0 +1,23 @@
+-- database: primary
+-- 230_drop_lifecycle_status_shadow.sql
+--
+-- Drops the lifecycle_status shadow column from media_assets.
+--
+-- lifecycle_status was added by migration 152 as a maintenance-only
+-- compatibility column. Migration 183 reconciled any divergences
+-- (lifecycle_status = lifecycle_state WHERE they differed).
+-- No production Go code references this column; lifecycle_state
+-- is the sole operational source of truth (godlike/06 SSOT).
+--
+-- IDEMPOTENCY: this ALTER is NOT idempotent. SQLite's
+-- `ALTER TABLE … DROP COLUMN` does NOT support `IF EXISTS`.
+-- Re-run against a column-less table emits error
+-- `error: no such column: lifecycle_status`.
+--
+-- PRODUCTION ROLLOUT: apply once after audit confirms all
+-- lifecycle_status values match lifecycle_state (backfill
+-- already performed by migration 183). The fixture path
+-- (internal/infrastructure/database/canonical.go) already omits
+-- this column.
+
+ALTER TABLE media_assets DROP COLUMN lifecycle_status;

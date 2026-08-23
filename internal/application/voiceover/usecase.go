@@ -85,6 +85,12 @@ type UseCaseDeps struct {
 	// *voiceoverFinalizer shared by the per-item use case.
 	Finalizer VoiceoverFinalizer
 
+	// VoiceoverCache is the OPTIONAL cross-run cache lookup. When
+	// wired, the per-item pipeline short-circuits TTS + upload +
+	// finalize when a previous run already produced the same
+	// voiceover for the same content fingerprint. Nil-safe.
+	VoiceoverCache VoiceoverCacheLookup
+
 	// DefaultParallelism is the fallback when cmd.Parallelism == 0.
 	// Clamped to >= 1. Production: 3.
 	DefaultParallelism int
@@ -158,6 +164,7 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 			Publisher:           deps.Publisher,
 			VoiceoverRepository: deps.VoiceoverRepository,
 			Finalizer:           deps.Finalizer,
+			VoiceoverCache:      deps.VoiceoverCache,
 			Logger:              deps.Logger,
 		}),
 	}

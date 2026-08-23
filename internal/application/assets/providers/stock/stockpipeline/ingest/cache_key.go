@@ -3,7 +3,7 @@
 package ingest
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"strings"
 )
@@ -17,7 +17,7 @@ func DeriveSourceCacheKey(rawURL, downloadSection, mergeFormat string, forceKeyf
 		force = "true"
 	}
 	input := fmt.Sprintf("stock-source:%s|%s|%s|%s", canon, downloadSection, mergeFormat, force)
-	hash := sha256.Sum256([]byte(input))
+	hash := digest.SHA256Bytes([]byte(input))
 	return fmt.Sprintf("%x", hash)
 }
 

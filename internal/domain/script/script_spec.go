@@ -11,8 +11,7 @@ package script
 //     ScriptSpec.SegmentWords, else to ScriptSpec.TargetWords,
 //     else default 80.
 //
-// The runtime mutex with SegmentTopics is enforced at the validator
-// layer (DoD #8). ScriptSpec.Segments is the SOLE canonical owner;
+// ScriptSpec.Segments is the SOLE canonical owner;
 // SourceSpec and Item layers consume via generator-normalizer copies.
 type ScriptSegment struct {
 	ID          string   `json:"id,omitempty"`
@@ -33,17 +32,12 @@ type ScriptSegment struct {
 // on GenerationItemV2; the normalizer merges them into the resolved
 // plan.
 //
-// PR-CS-1 (July 2026): Segments is the per-block payload. When
-// present:
-//   - it is MUTUALLY EXCLUSIVE with SegmentTopics at runtime
-//     (validator surfaces ErrSegmentsAndTopicTopicsBothSet on conflict).
-//   - each segment MUST have a non-empty Topic (validator enforces).
-//   - the engine prompt renders one block per segment in order.
-//
-// SegmentTopics remains the legacy alias — used when caller omits
-// Segments.
+// PR-CS-1 (July 2026): Segments is the per-block payload.
+// Each segment MUST have a non-empty Topic (validator enforces).
+// The engine prompt renders one block per segment in order.
 type ScriptSpec struct {
 	TargetWords    int    `json:"target_words,omitempty"`
+	Concurrency    int    `json:"concurrency,omitempty"`
 	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 	// SingleScene requests one consolidated SpecScene in the generated
 	// output. It is useful for short single-segment documents where the
@@ -52,7 +46,6 @@ type ScriptSpec struct {
 	Duration            int             `json:"duration,omitempty"`
 	MinWords            int             `json:"min_words,omitempty"`
 	SegmentWords        int             `json:"segment_words,omitempty"`
-	SegmentTopics       []string        `json:"segment_topics,omitempty"`
 	Segments            []ScriptSegment `json:"segments,omitempty"`
 	SentencesPerImage   int             `json:"sentences_per_image,omitempty"`
 	ImagesPerScene      int             `json:"images_per_scene,omitempty"`

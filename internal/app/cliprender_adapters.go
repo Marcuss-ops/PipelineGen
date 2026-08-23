@@ -146,7 +146,7 @@ func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 	result, err := m.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
 		AssetID:        ref.AssetID,
 		DriveFileID:    ref.DriveFileID,
-		ExpectedSHA256: ref.FileHash,
+		ExpectedSHA256: ref.LegacyFileMD5,
 		Extension:      ext,
 		RegisteredPath: ref.LocalPath,
 	})
@@ -159,7 +159,6 @@ func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 		)
 		return nil, err
 	}
-
 
 	m.log.Info("clip.render.materialize.done",
 		zap.String("subsystem", "cliprender_materializer"),

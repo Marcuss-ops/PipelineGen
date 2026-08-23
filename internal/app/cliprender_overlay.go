@@ -22,6 +22,7 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
@@ -72,7 +73,7 @@ func (r *overlaySegmentResolver) Resolve(_ context.Context, in cliprender.Overla
 	if err != nil {
 		return nil, err
 	}
-	sha, size, err := sha256File(path)
+	sha, size, err := digest.SHA256File(path)
 	if err != nil {
 		return nil, fmt.Errorf("overlay segment resolver: hash artifact: %w", err)
 	}
@@ -159,7 +160,7 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 	if combined, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("overlay compositor: ffmpeg blend: %w\n%s", err, lastLines(string(combined), 20))
 	}
-	sha, size, err := sha256File(in.OutputPath)
+	sha, size, err := digest.SHA256File(in.OutputPath)
 	if err != nil {
 		return nil, fmt.Errorf("overlay compositor: hash output: %w", err)
 	}

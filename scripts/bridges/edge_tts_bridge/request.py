@@ -58,6 +58,11 @@ class SynthesizeRequest:
     # use SentenceBoundary. PipelineGen explicitly requests word-level
     # boundaries so timing capture never depends on a library default.
     boundary: str = "word"
+    # allow_voice_fallback controls whether the voice resolver may
+    # auto-select a voice when no explicit voice is provided.
+    # Default False (production fail-closed): a missing voice is a
+    # 400 error. Set to True only in debug/smoke-test contexts.
+    allow_voice_fallback: bool = False
 
     @classmethod
     def from_dict(cls, body: Any) -> "SynthesizeRequest":
@@ -95,7 +100,16 @@ class SynthesizeRequest:
                 f'(expected one of: {", ".join(_BOUNDARY_MODES)})'
             )
 
-        return cls(text=text, out=out_path, lang=lang, voice=voice, boundary=boundary)
+        # Optional field: allow_voice_fallback (bool, default False).
+        allow_fallback = body.get("allow_voice_fallback", False)
+        if not isinstance(allow_fallback, bool):
+            # Accept truthy/falsy for robustness but coerce to bool.
+            allow_fallback = bool(allow_fallback)
+
+        return cls(
+            text=text, out=out_path, lang=lang, voice=voice,
+            boundary=boundary, allow_voice_fallback=allow_fallback,
+        )
 
 
 def normalize_language(lang: str) -> str:

@@ -147,7 +147,7 @@ func TestNewClipEvidence_MapMutationDoesNotPropagate(t *testing.T) {
 }
 
 // TestNewResolvedGenerationPlan_SliceMutationDoesNotPropagate
-// verifies that mutating the source SegmentTopics / Segments /
+// verifies that mutating the source Segments /
 // Languages / Postprocessors slices AFTER construction does NOT
 // reach the constructed instance. Also verifies that mutating
 // the embedded ClipEvidence's source maps does NOT reach the
@@ -164,7 +164,6 @@ func TestNewResolvedGenerationPlan_SliceMutationDoesNotPropagate(t *testing.T) {
 	source := ResolvedGenerationPlan{
 		Topic:          "topic",
 		SourceText:     "source text",
-		SegmentTopics:  []string{"a", "b", "c"},
 		Segments:       []ScriptSegment{{Topic: "a"}, {Topic: "b"}},
 		Languages:      []string{"en", "it"},
 		Postprocessors: []string{"clip_bindings", "voiceover"},
@@ -173,7 +172,6 @@ func TestNewResolvedGenerationPlan_SliceMutationDoesNotPropagate(t *testing.T) {
 	plan := NewResolvedGenerationPlan(source)
 
 	// Mutate the source slices + embedded map fields.
-	source.SegmentTopics = append(source.SegmentTopics, "d")
 	source.Segments = append(source.Segments, ScriptSegment{Topic: "c"})
 	source.Languages = append(source.Languages, "fr")
 	source.Postprocessors = append(source.Postprocessors, "images")
@@ -182,9 +180,6 @@ func TestNewResolvedGenerationPlan_SliceMutationDoesNotPropagate(t *testing.T) {
 	sourceEv.AcceptedClipIDs = append(sourceEv.AcceptedClipIDs, "clip-NEW")
 
 	// Assert pre-mutation values preserved.
-	if !reflect.DeepEqual(plan.SegmentTopics, []string{"a", "b", "c"}) {
-		t.Errorf("SegmentTopics mutated: want [a b c], got %v", plan.SegmentTopics)
-	}
 	if !reflect.DeepEqual(plan.Segments, []ScriptSegment{{Topic: "a"}, {Topic: "b"}}) {
 		t.Errorf("Segments mutated: want [a b], got %v", plan.Segments)
 	}
@@ -278,7 +273,6 @@ func TestNewClipEvidence_FullyPopulated_RoundTrip(t *testing.T) {
 func TestNewResolvedGenerationPlan_NilClipEvidence_HandlesCleanly(t *testing.T) {
 	source := ResolvedGenerationPlan{
 		Topic:          "topic",
-		SegmentTopics:  []string{"a"},
 		Segments:       []ScriptSegment{{Topic: "a"}},
 		Languages:      []string{"en"},
 		Postprocessors: []string{"clip_bindings"},
@@ -290,9 +284,6 @@ func TestNewResolvedGenerationPlan_NilClipEvidence_HandlesCleanly(t *testing.T) 
 	}
 	if p.ClipEvidence != nil {
 		t.Errorf("nil ClipEvidence source must clone to nil; got %v", p.ClipEvidence)
-	}
-	if !reflect.DeepEqual(p.SegmentTopics, []string{"a"}) {
-		t.Errorf("SegmentTopics value lost: %v", p.SegmentTopics)
 	}
 	if !reflect.DeepEqual(p.Languages, []string{"en"}) {
 		t.Errorf("Languages value lost: %v", p.Languages)

@@ -1,8 +1,9 @@
 package app
 
 import (
-	"context"
 	"crypto/sha256"
+	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -345,8 +346,7 @@ func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate sc
 		_ = os.Remove(path)
 		return scriptports.LocalArtifact{}, err
 	}
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:])
+	hash := digest.SHA256Bytes(data)
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.LocalPath, candidate.MIMEType, candidate.LegacyFileMD5 = path, mime, hash
 	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: path, MIMEType: mime, SizeBytes: int64(len(data)), LegacyFileMD5: hash}, nil

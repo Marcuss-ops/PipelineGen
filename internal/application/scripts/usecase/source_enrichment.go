@@ -9,9 +9,8 @@ package usecase
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 
@@ -187,8 +186,8 @@ func topicFingerprint(topic string) string {
 	if t == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(t))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(t))
+	return sum
 }
 
 // sourceFingerprint returns the source fingerprint component used in

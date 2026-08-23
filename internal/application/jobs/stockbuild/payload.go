@@ -26,8 +26,7 @@
 package stockbuild
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -233,8 +232,8 @@ func DeriveRunID(subjectSlug string, p Payload) string {
 		DestinationFolder: p.DestinationFolderID,
 		Categories:        normalizeCategories(p.Categories),
 	}
-	sum := sha256.Sum256([]byte(canonicalJSON(normalized)))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(canonicalJSON(normalized)))
+	return sum
 }
 
 // payloadForHash is a private canonical-structure for hashing. Separated

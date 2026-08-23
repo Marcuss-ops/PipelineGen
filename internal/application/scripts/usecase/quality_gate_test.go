@@ -165,6 +165,32 @@ func TestEvaluateQualityGate_FailsTargetWordsTolerance(t *testing.T) {
 	}
 }
 
+func TestEvaluateQualityGate_AllowsShortClipIntroduction(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Output: scriptpkg.ScriptOutput{
+			Text:      "Margot says she would spend the day with J.K. Rowling asking a million questions.",
+			WordCount: 14,
+			SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+				ID:   "scene-0",
+				Text: "Margot says she would spend the day with J.K. Rowling asking a million questions.",
+			}}},
+		},
+	}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		Language:        "en",
+		SourceText:      "Margot says she would spend the day with J.K. Rowling asking a million and 73 questions.",
+		TargetWords:     100,
+		Segments:        []scriptpkg.ScriptSegment{{ID: "scene-0", Topic: "J.K. Rowling", TargetWords: 100}},
+		ClipEvidence:    &scriptpkg.ClipEvidence{},
+		GroundingPolicy: scriptpkg.GroundingPolicyClipsPrimary,
+	}
+
+	quality, err := evaluateQualityGate(result, scriptpkg.GenerationItemV2{ID: "margot-clip"}, plan)
+	if err != nil {
+		t.Fatalf("short clip introduction should pass the clip-specific gate: quality=%+v err=%v", quality, err)
+	}
+}
+
 func TestEvaluateQualityGate_FailsEmptyText(t *testing.T) {
 	result := &scriptpkg.GenerationResult{
 		Output: scriptpkg.ScriptOutput{

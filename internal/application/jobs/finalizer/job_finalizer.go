@@ -256,10 +256,17 @@ func (f *Finalizer) CompleteWithArtifacts(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("finalizer: commit: %w", err)
 	}
-	if f.postCommitHooks != nil {
-		for _, artifact := range req.Artifacts {
-			f.postCommitHooks.FirePostCommitHooks(ctx, artifact)
-		}
+	if f.postCommitHooks != nil && len(req.Artifacts) > 0 {
+		// The canonical rows and SUCCEEDED transition are already durable.
+		// Transcript/description/summary materialization is an enrichment
+		// fan-out and must not hold the worker in post-writer finalization.
+		hooks := f.postCommitHooks
+		artifacts := append([]finalization.PublishedArtifact(nil), req.Artifacts...)
+		go func() {
+			for _, artifact := range artifacts {
+				hooks.FirePostCommitHooks(context.Background(), artifact)
+			}
+		}()
 	}
 
 	f.log.Info("job finalised with artifacts",

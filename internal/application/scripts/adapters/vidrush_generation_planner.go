@@ -1,9 +1,8 @@
 package adapters
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -46,9 +45,9 @@ func MissingVidRushImageCount(segment scriptpkg.VidRushSegmentResult, target int
 // VidRushGenerationCacheKey is stable across process restarts and includes
 // every input that can change the generated artifact.
 func VidRushGenerationCacheKey(req VidRushGenerationRequest) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{
+	sum := digest.SHA256Bytes([]byte(strings.Join([]string{
 		req.SegmentTextHash, req.Prompt, req.Style, fmt.Sprint(req.Width), fmt.Sprint(req.Height),
 		req.Provider, req.PromptVersion,
 	}, "\x00")))
-	return hex.EncodeToString(sum[:])
+	return sum
 }

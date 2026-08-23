@@ -202,7 +202,8 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
 		for _, sa := range state.StagedAssets {
-			if cleanErr := stager.Cleanup(cleanupCtx, sa); cleanErr != nil {
+			// The cleanup token is the LocalPath (set by StockStager.Prepare adapter).
+			if cleanErr := stager.Release(cleanupCtx, sa.LocalPath); cleanErr != nil {
 				if o.executorLog != nil {
 					o.executorLog.Warn("orchestrator: staged source cleanup failed",
 						zap.String("local_path", sa.LocalPath),

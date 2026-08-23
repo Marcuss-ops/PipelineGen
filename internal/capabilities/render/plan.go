@@ -4,8 +4,6 @@
 package render
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // FileSystem is the minimal read-side filesystem port used by
@@ -293,8 +292,7 @@ func (p RenderPlan) ManifestHash() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("hash render manifest: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return digest.SHA256Bytes(b), nil
 }
 
 func (p RenderPlan) Hash() (string, error) {
@@ -307,8 +305,7 @@ func (p RenderPlan) Hash() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("hash render plan: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return digest.SHA256Bytes(b), nil
 }
 
 func (p *RenderPlan) Seal() error {
@@ -452,10 +449,9 @@ func (p RenderPlan) ValidateManifestFiles(fs FileSystem) error {
 		if err != nil {
 			return fmt.Errorf("%w: open %s: %v", ErrAssetHashDrift, entry.AssetID, err)
 		}
-		hash := sha256.New()
-		_, copyErr := io.Copy(hash, file)
+		gotHash, copyErr := digest.SHA256Reader(file)
 		closeErr := file.Close()
-		if copyErr != nil || closeErr != nil || hex.EncodeToString(hash.Sum(nil)) != entry.SHA256 {
+		if copyErr != nil || closeErr != nil || gotHash != entry.SHA256 {
 			return fmt.Errorf("%w: asset %s", ErrAssetHashDrift, entry.AssetID)
 		}
 	}
@@ -469,10 +465,9 @@ func (p RenderPlan) ValidateManifestFiles(fs FileSystem) error {
 			_ = file.Close()
 			return fmt.Errorf("%w: final audio size mismatch for %s", ErrAssetHashDrift, p.FinalAudio.AssetID)
 		}
-		hash := sha256.New()
-		_, copyErr := io.Copy(hash, file)
+		gotHash, copyErr := digest.SHA256Reader(file)
 		closeErr := file.Close()
-		if copyErr != nil || closeErr != nil || hex.EncodeToString(hash.Sum(nil)) != p.FinalAudio.SHA256 {
+		if copyErr != nil || closeErr != nil || gotHash != p.FinalAudio.SHA256 {
 			return fmt.Errorf("%w: final audio %s", ErrAssetHashDrift, p.FinalAudio.AssetID)
 		}
 	}
@@ -511,9 +506,5 @@ func validateManifestEntries(entries []AssetManifestEntry) error {
 }
 
 func isSHA256(value string) bool {
-	if len(value) != sha256.Size*2 {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil && value == strings.ToLower(value)
+	return digest.IsSHA256(value)
 }

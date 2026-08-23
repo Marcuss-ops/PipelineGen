@@ -5,8 +5,7 @@ package artifactcache
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"errors"
 	"io"
@@ -54,8 +53,8 @@ func (k Key) Digest() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(canonical)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(canonical)
+	return sum, nil
 }
 
 type Entry struct {

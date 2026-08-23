@@ -1,8 +1,8 @@
 package app
 
 import (
-	"context"
 	"crypto/sha256"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -138,7 +138,7 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 	return voiceover.TTSOutput{
 		LocalPath:      merged,
 		Voice:          outputs[0].Voice,
-		LegacyFileMD5:       hash,
+		LegacyFileMD5:  hash,
 		Duration:       timeDuration(duration),
 		Provider:       outputs[0].Provider,
 		BoundaryMode:   outputs[0].BoundaryMode,

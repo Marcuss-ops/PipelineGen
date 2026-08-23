@@ -325,6 +325,8 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	if input.Voice != "" {
 		args = append(args, "--voice", input.Voice)
+	} else if input.AllowVoiceFallback {
+		args = append(args, "--allow-voice-fallback")
 	}
 
 	useStdin := input.UseStdin || len(input.Text) > 32*1024

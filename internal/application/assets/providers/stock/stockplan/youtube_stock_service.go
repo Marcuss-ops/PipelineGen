@@ -2,10 +2,9 @@ package stockplan
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"sync"
 	"time"
@@ -245,10 +244,10 @@ func TranscriptFromBundle(bundle *asset.ResolvedTextBundle) *Transcript {
 	if bundle == nil || bundle.IsEmpty() {
 		return nil
 	}
-	sum := sha256.Sum256([]byte(bundle.PlainText))
+	sum := digest.SHA256Bytes([]byte(bundle.PlainText))
 	return &Transcript{
 		Cues: bundleToCues(bundle.Cues), Language: bundle.LanguageCode,
-		Source: string(bundle.SourceType), Hash: hex.EncodeToString(sum[:]),
+		Source: string(bundle.SourceType), Hash: sum,
 	}
 }
 

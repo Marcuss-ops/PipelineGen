@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,6 +16,7 @@ import (
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	obsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -269,15 +268,18 @@ func resolveOverlayAssets(ctx context.Context, reader drive.Reader, backgroundID
 		if err != nil {
 			return "", "", err
 		}
-		h := sha256.New()
-		if _, err = io.Copy(io.MultiWriter(out, h), input); err != nil {
+		if _, err = io.Copy(out, input); err != nil {
 			out.Close()
 			return "", "", err
 		}
 		if err = out.Close(); err != nil {
 			return "", "", err
 		}
-		return path, hex.EncodeToString(h.Sum(nil)), nil
+		h, _, err := digest.SHA256File(path)
+		if err != nil {
+			return "", "", fmt.Errorf("hash %s: %w", path, err)
+		}
+		return path, h, nil
 	}
 	if backgroundID != "" {
 		path, sha, err := materialize(backgroundID, "background")

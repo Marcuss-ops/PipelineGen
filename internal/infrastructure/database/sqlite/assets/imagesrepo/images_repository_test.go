@@ -5,7 +5,6 @@
 // Locks the contract surface so future refactors do not regress:
 //   - UpsertGeneratedDetails idempotent + round-trip.
 //   - UpsertRetrievedDetails idempotent + round-trip.
-//   - UpdateOrigin backfill path.
 //   - DELETE CASCADE: deleting a media_assets row drops its detail row.
 //   - Dual-write branching in AddImage (origin=generated retrieves
 //     detail row; origin=” skips; origin=retrieved routes to retrieved).
@@ -200,25 +199,6 @@ func TestUpsertRetrievedDetailsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestUpdateOrigin: media_assets origin/provider assignment for FASE 4 backfill.
-func TestUpdateOrigin(t *testing.T) {
-	db := testDB(t)
-	repo := NewImagesRepository(db)
-	insertMediaAsset(t, db, "img-3", "hash-3")
-
-	if err := repo.UpdateOrigin(context.Background(), "hash-3", "generated", "flux"); err != nil {
-		t.Fatalf("UpdateOrigin: %v", err)
-	}
-	var origin, provider string
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT origin, provider FROM media_assets WHERE id = 'img-3'`).Scan(&origin, &provider); err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-	if origin != "generated" || provider != "flux" {
-		t.Fatalf("UpdateOrigin ineffective: origin=%q provider=%q", origin, provider)
-	}
-}
-
 // TestGeneratedDetailsDeleteCascade: deleting media_assets drops the
 // detail row (FK ON DELETE CASCADE). Per migration 116 + 117.
 func TestGeneratedDetailsDeleteCascade(t *testing.T) {
@@ -280,9 +260,6 @@ func TestUpsertAssetIDEmptyReturnsError(t *testing.T) {
 		AssetID: "", SourceImageURL: "https://example.com",
 	}); err == nil {
 		t.Fatal("expected error on empty AssetID (retrieved), got nil")
-	}
-	if err := repo.UpdateOrigin(context.Background(), "", "generated", "flux"); err == nil {
-		t.Fatal("expected error on empty hash, got nil")
 	}
 }
 

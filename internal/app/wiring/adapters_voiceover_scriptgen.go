@@ -50,6 +50,7 @@ type ScriptVoiceoverGenerator struct {
 	Exec   voiceover.VoiceoverItemExecutor
 	OutDir string
 	Log    *zap.Logger
+	voices map[string]string
 }
 
 // NewScriptVoiceoverGenerator constructs the ScriptVoiceoverGenerator.
@@ -70,6 +71,26 @@ func NewScriptVoiceoverGenerator(exec voiceover.VoiceoverItemExecutor, outDir st
 		OutDir: outDir,
 		Log:    log,
 	}
+}
+
+// ConfigureVoices wires the canonical per-language Edge TTS voice registry.
+func (g *ScriptVoiceoverGenerator) ConfigureVoices(voices map[string]string) {
+	if g == nil {
+		return
+	}
+	g.voices = make(map[string]string, len(voices))
+	for language, voice := range voices {
+		if strings.TrimSpace(language) != "" && strings.TrimSpace(voice) != "" {
+			g.voices[strings.ToLower(strings.TrimSpace(language))] = strings.TrimSpace(voice)
+		}
+	}
+}
+
+func (g *ScriptVoiceoverGenerator) voiceForLanguage(language scriptgen.Language) string {
+	if g == nil || len(g.voices) == 0 {
+		return ""
+	}
+	return g.voices[strings.ToLower(strings.TrimSpace(string(language)))]
 }
 
 // Generate implements scriptgeneration.VoiceoverGenerator.
@@ -128,6 +149,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		Language:    voiceover.Language(input.Language),
 		Filename:    filename,
 		TextHash:    voiceover.ComputeTextHash(input.Text),
+		Voice:       g.voiceForLanguage(input.Language),
 		Timing:      timing,
 		// Project is the canonical semantic project namespace resolved ONCE
 		// by BuildGenerateRequest and forwarded verbatim so the per-item
@@ -173,7 +195,12 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: pipeline returned nil result for scene %s language %s",
 			input.SceneID, input.Language)
 	}
-	if result.Status != voiceover.StatusCompleted {
+	// P0.4 async publish: StatusGenerated means TTS completed successfully
+	// but Drive upload + timing publish are still running in the background
+	// pool. The partial result carries local file paths and duration —
+	// enough for the render to start. DriveFileID/DriveLink/TimingBundle
+	// are not yet populated.
+	if result.Status != voiceover.StatusCompleted && result.Status != voiceover.StatusGenerated {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: pipeline status %s for scene %s language %s: %s",
 			result.Status, input.SceneID, input.Language, result.Error)
 	}
@@ -192,6 +219,9 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		URL:      result.DriveLink,
 		FilePath: filePath,
 		Duration: float64(result.DurationMs) / 1000.0,
+		// CacheHit means the per-item pipeline short-circuited on the
+		// cross-run SQLite fingerprint cache — no TTS ran for this item.
+		Cached: result.CacheHit,
 	}
 	if ref.Duration <= 0 {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: pipeline returned non-positive duration for scene %s language %s", input.SceneID, input.Language)

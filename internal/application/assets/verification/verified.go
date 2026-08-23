@@ -20,7 +20,6 @@ package verification
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -149,7 +148,7 @@ func (v *Verifier) VerifyStagedArtifact(_ context.Context, sa *staged.StagedArti
 	// 3. SHA-256 recompute via internal/infrastructure/files (canonical
 	//    hashutil per Azione 3 precedent). Streaming via crypto/sha256.New()
 	//    to avoid loading the whole file in memory.
-	observedHash, hashErr := files.HashFile(sa.LocalPath, sha256.New())
+	observedHash, hashErr := files.SHA256File(sa.LocalPath)
 	if hashErr != nil {
 		return nil, fmt.Errorf("verification.VerifyStagedArtifact[%s]: hash recompute %q: %w",
 			sa.AssetID, sa.LocalPath, hashErr)

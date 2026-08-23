@@ -115,11 +115,6 @@ const (
 	ReasonUnknown TranslationWarningReason = "unknown"
 )
 
-// ScriptGenerationBranchRecorder records the selected script-generation branch.
-type ScriptGenerationBranchRecorder interface {
-	RecordScriptGenerationBranch(branch, bcp47 string)
-}
-
 // TranslationMetricsRecorder is the canonical SOLE consumer surface
 // for the script_translation_warnings_total Prometheus counter.
 // The observability adapter (internal/infrastructure/observability/metrics_translation.go)

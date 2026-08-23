@@ -3,12 +3,13 @@ package imagesregistry
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -19,7 +20,7 @@ import (
 // NewRegistryAdapter returns an artifacts.Registry backed by an
 // ImagesRepository. The returned *artifacts.SimpleRegistry delegates
 // every Registry method to a repo-specific callback.
-func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log *zap.Logger, dispatcher mutations.AssetMutationDispatcher) artifacts.Registry {
+func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log *zap.Logger, committer persistence.AssetCommitter) artifacts.Registry {
 	return &artifacts.SimpleRegistry{
 		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
 			if rec == nil {
@@ -39,8 +40,8 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			if img.Description == "" {
 				img.Description = filepath.Base(rec.Filename)
 			}
-			if dispatcher == nil {
-				return mutations.ErrDispatcherUnavailable
+			if committer == nil {
+				return fmt.Errorf("images registry committer unavailable")
 			}
 			m := &asset.Asset{
 				ID: img.Hash, Source: asset.Source("image"), Name: rec.Name,
@@ -55,7 +56,12 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			m.SetDownloadLink(rec.DownloadLink)
 			m.SetLegacyFileMD5(rec.LegacyFileMD5)
 			m.SetContentHash(rec.ContentHash)
-			return dispatcher.EnqueueAndIndex(ctx, m, rec.LegacyFileMD5)
+			_, err := committer.CommitAndIndex(ctx, persistence.CommitRequest{
+				AssetID: m.ID, Source: string(m.Source), Name: m.Name, Filename: m.Filename,
+				MediaType: string(m.MediaType), ContentHash: rec.LegacyFileMD5,
+				LifecycleState: string(m.LifecycleState), EmitIndexEvent: true,
+			})
+			return err
 		},
 		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 			img, err := repo.GetImageByHash(ctx, imageRecordHash(id, ""))
@@ -98,22 +104,22 @@ func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.Medi
 		return nil
 	}
 	return &artifacts.MediaRecord{
-		ID:          imageRecordHash(img.Hash, img.Hash),
-		Name:        img.Description,
-		Filename:    filepath.Base(img.PathRel),
-		Source:      "image",
-		Category:    img.SubjectID,
-		Group:       img.SubjectID,
-		MediaType:   "image",
-		ExternalURL: img.SourceURL,
-		LocalPath:   imageFullPath(imagesDir, img.PathRel),
-		DriveFileID: img.DriveFileID,
-		DriveLink:   imageMetadataString(img.MetadataJSON, "drive_link"),
-		LegacyFileMD5:    img.Hash,
-		Status:      img.Status,
-		Metadata:    img.MetadataJSON,
-		Tags:        append([]string(nil), img.Tags...),
-		SourceID:    textutil.FirstNonEmpty(img.SourceURL, img.Hash),
+		ID:            imageRecordHash(img.Hash, img.Hash),
+		Name:          img.Description,
+		Filename:      filepath.Base(img.PathRel),
+		Source:        "image",
+		Category:      img.SubjectID,
+		Group:         img.SubjectID,
+		MediaType:     "image",
+		ExternalURL:   img.SourceURL,
+		LocalPath:     imageFullPath(imagesDir, img.PathRel),
+		DriveFileID:   img.DriveFileID,
+		DriveLink:     imageMetadataString(img.MetadataJSON, "drive_link"),
+		LegacyFileMD5: img.Hash,
+		Status:        img.Status,
+		Metadata:      img.MetadataJSON,
+		Tags:          append([]string(nil), img.Tags...),
+		SourceID:      textutil.FirstNonEmpty(img.SourceURL, img.Hash),
 	}
 }
 

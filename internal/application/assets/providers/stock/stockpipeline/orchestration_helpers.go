@@ -2,7 +2,7 @@ package stockpipeline
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"strconv"
@@ -90,47 +90,24 @@ func effectiveClipDurationSec(input *RunInput, s *Service) int {
 	return 0
 }
 
-// stagerForRun resolves the canonical assets.SourceStager for the
-// stock pipeline (Commit 1.2 — Stock Cutover, July 2026).
-//
-// godlike/06 SSOT: this helper centralises registry construction so
-// production wiring has one canonical entry point per run. Today
-// the registry carries a single SourceKindExistingCatalog entry
-// (StockStager wrapping Service.StageSource — the only SourceStager
-// adapter the stock pipeline actually invokes at runtime). Future
-// commit waves add YouTube / Artlist / Drive / HTTP / per-source-kind
-// dispatch when the orchestrator's stage_sources step gains real
-// Stage invocations (currently Begin/Complete only).
+// stagerForRun resolves the canonical acquisition.SourceStager for the
+// stock pipeline. StockStager implements acquisition.SourceStager via
+// the Prepare/Release adapter methods (stager_adapter.go).
 //
 // nil receiver returns a nil SourceStager; the orchestrator's
 // nil-guard handles that case (ErrOrchestratorNilDeps) so the
 // production error path is observable.
-func (s *Service) stagerForRun() assets.SourceStager {
+func (s *Service) stagerForRun() acquisition.SourceStager {
 	if s == nil {
 		return nil
 	}
-	reg := assets.NewSourceStagerRegistry()
-	// Existing-catalog path is the only kind the stock pipeline
-	// dispatches today. StockStager wraps Service.StageSource
-	// (the canonical yt-dlp-backed download path) and satisfies
-	// assets.SourceStager via the compile-time assertion at
-	// stager_adapter.go:18.
 	stockStager := NewStockStager(s).
 		WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter).
 		WithDownloader(serviceSourceDownloader{service: s})
 	if s.driveReader != nil {
 		stockStager = stockStager.WithDriveReader(s.driveReader)
 	}
-	if err := reg.Register(assets.SourceKindExistingCatalog, stockStager); err != nil {
-		// godlike/07 typed-error path: log+drop for production;
-		// tests assert via the registry's own error sentinels.
-		return nil
-	}
-	resolvedStager, err := reg.Resolve(assets.SourceKindExistingCatalog)
-	if err != nil {
-		return nil
-	}
-	return resolvedStager
+	return stockStager
 }
 
 // Package stockpipeline — orchestrator_stage_snapshots.go.

@@ -55,18 +55,18 @@ func newVoiceoverProjectionAdapter(svc *lifecycle.Service) *voiceoverProjectionA
 
 func (a *voiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *voiceover.VoiceoverProjectionInput) error {
 	return a.svc.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
-		ID:           in.ID,
-		Source:       in.Source,
-		Name:         in.Name,
-		Filename:     in.Filename,
-		FolderID:     in.FolderID,
-		FolderPath:   in.FolderPath,
-		MediaType:    in.MediaType,
-		LocalPath:    in.LocalPath,
-		DriveFileID:  in.DriveFileID,
-		DriveLink:    in.DriveLink,
-		DownloadLink: in.DownloadLink,
-		LegacyFileMD5:     in.LegacyFileMD5,
+		ID:            in.ID,
+		Source:        in.Source,
+		Name:          in.Name,
+		Filename:      in.Filename,
+		FolderID:      in.FolderID,
+		FolderPath:    in.FolderPath,
+		MediaType:     in.MediaType,
+		LocalPath:     in.LocalPath,
+		DriveFileID:   in.DriveFileID,
+		DriveLink:     in.DriveLink,
+		DownloadLink:  in.DownloadLink,
+		LegacyFileMD5: in.LegacyFileMD5,
 		// PR-VO-TYPED-PRIMITIVES (July 2026): typed Language is
 		// converted to the raw string for the lifecycle package's
 		// wire shape (infrastructure layer stays un-typed per the

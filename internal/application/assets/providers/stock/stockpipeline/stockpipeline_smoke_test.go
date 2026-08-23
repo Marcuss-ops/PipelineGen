@@ -24,9 +24,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/stretchr/testify/assert"
@@ -38,7 +37,7 @@ import (
 
 type stageURLRecordingRunner struct {
 	state  *RunState
-	stager assets.SourceStager
+	stager acquisition.SourceStager
 }
 
 func (r *stageURLRecordingRunner) Cfg() OrchestratorConfig                  { return OrchestratorConfig{} }
@@ -46,7 +45,7 @@ func (r *stageURLRecordingRunner) RunInput() *RunInput                      { re
 func (r *stageURLRecordingRunner) JobID() string                            { return "stage-url-test" }
 func (r *stageURLRecordingRunner) PolicyVersion() string                    { return "v1" }
 func (r *stageURLRecordingRunner) Planner() ClipPlanner                     { return nil }
-func (r *stageURLRecordingRunner) SourceStager() assets.SourceStager        { return r.stager }
+func (r *stageURLRecordingRunner) SourceStager() acquisition.SourceStager        { return r.stager }
 func (r *stageURLRecordingRunner) Cutter() VideoCutter                      { return nil }
 func (r *stageURLRecordingRunner) Renderer() StockRenderer                  { return nil }
 func (r *stageURLRecordingRunner) Builder() ManifestBuilder                 { return nil }
@@ -69,22 +68,18 @@ type stageURLRecordingStager struct {
 	lastURL string
 }
 
-var _ assets.SourceStager = (*stageURLRecordingStager)(nil)
+var _ acquisition.SourceStager = (*stageURLRecordingStager)(nil)
 
-func (s *stageURLRecordingStager) StageSource(_ context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
-	s.lastURL = ref.URL
-	return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1}, nil
+func (s *stageURLRecordingStager) Prepare(_ context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	s.lastURL = req.Source.URL
+	return &acquisition.PrepareContext{
+		LocalPath:    "/tmp/staged.mp4",
+		SizeBytes:    1,
+		CleanupToken: "/tmp/staged.mp4",
+	}, nil
 }
 
-func (s *stageURLRecordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
-}
-
-func (s *stageURLRecordingStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
-	return nil
-}
-
-func (s *stageURLRecordingStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error { return nil }
+func (s *stageURLRecordingStager) Release(_ context.Context, _ string) error { return nil }
 
 func TestStockStageSourcesStep_CanonicalizesYouTubeURL(t *testing.T) {
 	stager := &stageURLRecordingStager{}

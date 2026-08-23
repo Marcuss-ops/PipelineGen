@@ -20,8 +20,7 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
 	"os"
@@ -142,8 +141,8 @@ func (c *localizationSubtitleCompiler) Compile(_ context.Context, in localizatio
 	if err := os.WriteFile(localPath, []byte(content), 0o644); err != nil {
 		return nil, fmt.Errorf("localization: subtitle compile: write ASS %q: %w", localPath, err)
 	}
-	sum := sha256.Sum256([]byte(content))
-	sha := hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(content))
+	sha := sum
 	if err := texttracks.ValidateASSFile(localPath, in.ClipDurationMS); err != nil {
 		return nil, fmt.Errorf("localization: subtitle compile: invalid generated ASS for %q: %w", in.ClipID, err)
 	}

@@ -37,8 +37,9 @@
 package staging
 
 import (
-	"context"
 	"crypto/sha256"
+	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -100,8 +101,8 @@ func NewStoreService(repo artifact.Repository, workspaceDir string) (*StoreServi
 // resolution × 32-bit entropy per second).
 func defaultIDGenerator() string {
 	now := time.Now().UTC().UnixNano()
-	h := sha256.Sum256([]byte(fmt.Sprintf("stage-id-%d", now)))
-	return fmt.Sprintf("art_%d_%s", now, hex.EncodeToString(h[:4]))
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("stage-id-%d", now)))
+	return fmt.Sprintf("art_%d_%s", now, h[:4])
 }
 
 // ── Stage pipeline ──────────────────────────────────────────────────────

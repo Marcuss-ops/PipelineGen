@@ -33,10 +33,7 @@ func newTextTrackFixture(t *testing.T, collection string) *textTrackFixture {
 	t.Helper()
 	fx := newE2EFixture(t, collection)
 
-	// Add asset_text_tracks table using the canonical schema constant
-	// so the fixture stays in lockstep with production migrations.
-	_, err := fx.DB.Exec(storage.CanonicalAssetTextTracksTable)
-	require.NoError(t, err, "CREATE TABLE asset_text_tracks must succeed")
+	// asset_text_tracks is created by the migration chain applied via newE2EFixture.
 
 	// Add asset_text_track_segments table (migration 14X DDL).
 	// Bucket-B closure (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3):

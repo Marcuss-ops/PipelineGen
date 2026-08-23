@@ -1,8 +1,8 @@
 package acquisition
 
 import (
-	"context"
 	"crypto/sha256"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"

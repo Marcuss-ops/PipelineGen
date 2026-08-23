@@ -1,6 +1,6 @@
 package stockpipeline
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+import "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 
 // ResilienceDeps bundles test-only resilience ports for the fixture
 // orchestrator. Production composition must use ProductionStockPipelineDeps
@@ -17,7 +17,7 @@ type ResilienceDeps struct {
 func NewOrchestratorWithResilience(
 	cfg OrchestratorConfig,
 	planner ClipPlanner,
-	stager assets.SourceStager,
+	stager acquisition.SourceStager,
 	cutter VideoCutter,
 	renderer StockRenderer,
 	resilience ResilienceDeps,

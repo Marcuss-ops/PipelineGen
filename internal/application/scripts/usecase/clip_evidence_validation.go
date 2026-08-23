@@ -13,6 +13,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+const defaultWordsPerSecondClipEvidence = 2.5
+
 // enforceClipEvidenceTextSupport rejects source_text that exceeds
 // what the resolved clip evidence duration can support. It only
 // applies to clip-based sources when the caller provided source_text
@@ -35,6 +37,11 @@ func enforceClipEvidenceTextSupport(plan *scriptpkg.ResolvedGenerationPlan, cfg 
 	for _, detail := range plan.ClipEvidence.ClipDetails {
 		if detail.EndMs > detail.StartMs {
 			totalSeconds += float64(detail.EndMs-detail.StartMs) / 1000.0
+		} else if detail.TotalDurationMs > 0 {
+			// Catalog/fake assets may expose only the probed total duration
+			// and no selected source window. It is still valid evidence for
+			// this safety budget.
+			totalSeconds += float64(detail.TotalDurationMs) / 1000.0
 		}
 	}
 	if totalSeconds <= 0 {

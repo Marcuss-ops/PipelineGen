@@ -27,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
@@ -132,7 +131,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
 	memGate := newScriptMemoryGate(scriptMemRepo)
 	memSvc := adapters.NewService(memGate, log)
-	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), usecase.NewMemoryGateChecker(memSvc), log, observability.NewScriptGenerationBranchRecorder())
+	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), usecase.NewMemoryGateChecker(memSvc), log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(
 		cfg.Scripts.SegmentWordsTolerancePercent,

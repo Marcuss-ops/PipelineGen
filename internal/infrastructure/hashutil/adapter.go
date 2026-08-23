@@ -6,16 +6,15 @@
 // this concrete adapter. This keeps the application→infra seam narrow
 // (Pattern 0: port abstraction layer, AGENTS.md June 2026).
 //
-// The adapter delegates directly to internal/platform/checksum, the
-// canonical MD5 SSOT (compat-only — never identity/dedup).
+// godlike/06 SSOT (August 2026): SHA-256 delegates to
+// internal/kernel/digest. MD5 delegates to internal/platform/checksum.
 package hashutil
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
@@ -42,15 +41,14 @@ func (a *HashAdapter) MD5File(path string) (string, error) {
 }
 
 func (a *HashAdapter) SHA256String(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
+	return digest.SHA256String(s)
 }
 
 func (a *HashAdapter) SHA256File(path string) (string, error) {
-	b, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:]), nil
+	defer f.Close()
+	return digest.SHA256Reader(f)
 }

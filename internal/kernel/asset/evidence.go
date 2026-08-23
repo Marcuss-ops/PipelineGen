@@ -27,10 +27,10 @@
 package asset
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // EvidenceTextSource names the canonical source tier that produced the
@@ -148,6 +148,5 @@ func ResolveEvidence(in EvidenceInput) EvidenceDocument {
 // hashEvidenceText returns the SHA-256 hex fingerprint of the exact
 // evidence text (the SourceHash provenance value).
 func hashEvidenceText(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(text)
 }

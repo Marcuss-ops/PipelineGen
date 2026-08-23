@@ -117,8 +117,7 @@ var ErrStyleVersionMismatch = errors.New("styleerrors: style version does not ma
 // ErrSegmentsEmpty — caller explicitly sends `segments: []` on the
 // wire (present-but-empty payload). Distinct from "segments field
 // absent" (silent default, caller may have meant to omit). DoD #8
-// fail-closed: do not silently coerce to the legacy SegmentTopics
-// path when the caller was explicit. Wire: invalid `segments`
+// fail-closed. Wire: invalid `segments`
 // shape → 400 with detail "script_params.segments must not be empty
 // when present".
 var ErrSegmentsEmpty = errors.New("styleerrors: script_params.segments must not be empty when present")
@@ -130,14 +129,6 @@ var ErrSegmentsEmpty = errors.New("styleerrors: script_params.segments must not 
 // offending row. Wire: 400 INVALID_PAYLOAD with detail like
 // "script_params.segments[3].topic is required".
 var ErrSegmentTopicEmpty = errors.New("styleerrors: script_params.segments[i].topic is required")
-
-// ErrSegmentsAndTopicTopicsBothSet — runtime mutex between the new
-// Segments field (per-block payload, PR-CS-1) and the legacy
-// SegmentTopics alias. Callers MUST pick ONE; both set is a
-// malformed request. Wire: 400 INVALID_PAYLOAD with detail
-// "script_params.segment_topics and script_params.segments cannot
-// both be set".
-var ErrSegmentsAndTopicTopicsBothSet = errors.New("styleerrors: script_params.segment_topics and script_params.segments cannot both be set")
 
 // ErrTargetWordsNotPositive — target_words <= 0 AND segments is
 // absent (canonical "single-target mode"). In the new Segments

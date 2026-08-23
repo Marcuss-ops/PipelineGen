@@ -9,8 +9,7 @@ package normalizer
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"strings"
 	"unicode"
@@ -88,8 +87,8 @@ func (n *defaultNormalizer) Normalize(_ context.Context, language, text string) 
 }
 
 func (n *defaultNormalizer) fingerprint(language, normalized string) string {
-	sum := sha256.Sum256([]byte(language + ":" + normalized + ":" + n.version))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(language + ":" + normalized + ":" + n.version))
+	return sum
 }
 
 func canonicalize(s string) string {

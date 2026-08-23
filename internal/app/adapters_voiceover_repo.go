@@ -22,13 +22,16 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
 )
 
 var _ persistence.Repository = (*useCaseRepoAdapter)(nil)
@@ -163,7 +166,7 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *persistence.VoiceoverRecord) *sq
 		DriveFileID:     rec.DriveFileID,
 		DriveLink:       rec.DriveLink,
 		DownloadLink:    rec.DownloadLink,
-		LegacyFileMD5:        rec.LegacyFileMD5,
+		LegacyFileMD5:   rec.LegacyFileMD5,
 		Status:          rec.Status,
 		Error:           rec.Error,
 		Strategy:        rec.Strategy,
@@ -203,23 +206,23 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.Vo
 		// persistence sub-package cannot import the parent voiceover
 		// package). The raw strings from the DB are forwarded verbatim
 		// — the persistence layer IS the canonical source of truth.
-		TextHash:     r.TextHash,
-		TextPreview:  r.TextPreview,
-		Language:     r.Language,
-		Voice:        r.Voice,
-		Filename:     r.Filename,
-		LocalPath:    r.LocalPath,
-		CleanedPath:  r.CleanedPath,
-		FolderID:     r.FolderID,
-		FolderPath:   r.FolderPath,
-		DriveFileID:  r.DriveFileID,
-		DriveLink:    r.DriveLink,
-		DownloadLink: r.DownloadLink,
-		LegacyFileMD5:     r.LegacyFileMD5,
-		Status:       r.Status,
-		Error:        r.Error,
-		Strategy:     r.Strategy,
-		Metadata:     r.Metadata,
+		TextHash:      r.TextHash,
+		TextPreview:   r.TextPreview,
+		Language:      r.Language,
+		Voice:         r.Voice,
+		Filename:      r.Filename,
+		LocalPath:     r.LocalPath,
+		CleanedPath:   r.CleanedPath,
+		FolderID:      r.FolderID,
+		FolderPath:    r.FolderPath,
+		DriveFileID:   r.DriveFileID,
+		DriveLink:     r.DriveLink,
+		DownloadLink:  r.DownloadLink,
+		LegacyFileMD5: r.LegacyFileMD5,
+		Status:        r.Status,
+		Error:         r.Error,
+		Strategy:      r.Strategy,
+		Metadata:      r.Metadata,
 		// FASE 3 (July 2026): round-trip through the infra layer.
 		IdempotencyKey: r.IdempotencyKey,
 		JobID:          r.JobID,
@@ -242,6 +245,186 @@ func (a *useCaseRepoAdapter) FindByFingerprint(ctx context.Context, fingerprint 
 		return nil, err
 	}
 	return a.fromInfraRecord(rec), nil
+}
+
+// voiceoverMediaAssetLocation is the subset of media_assets columns
+// needed to hydrate a VoiceoverCacheHit after a fingerprint match.
+// PR-VO-ASSET-ID (August 2026): after migration 232 dropped location
+// columns from the voiceovers table, the canonical Drive and local
+// path facts live in media_assets (same id = voiceover id).
+type voiceoverMediaAssetLocation struct {
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	LocalPath    string
+	Name         string // media_assets.name → VoiceoverCacheHit.Filename
+}
+
+// findVoiceoverMediaAsset queries media_assets for the location columns
+// needed to build a valid VoiceoverCacheHit. Returns nil when the
+// media_assets row doesn't exist (legacy rows without the projection).
+func (a *useCaseRepoAdapter) findVoiceoverMediaAsset(ctx context.Context, assetID string) (*voiceoverMediaAssetLocation, error) {
+	if a == nil || a.db == nil {
+		return nil, nil
+	}
+	row := a.db.QueryRowContext(ctx, `
+		SELECT COALESCE(drive_file_id, ''), COALESCE(drive_link, ''),
+		       COALESCE(download_link, ''), COALESCE(local_path, ''),
+		       COALESCE(name, '')
+		FROM media_assets WHERE id = ?
+	`, assetID)
+
+	var loc voiceoverMediaAssetLocation
+	err := row.Scan(&loc.DriveFileID, &loc.DriveLink, &loc.DownloadLink, &loc.LocalPath, &loc.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &loc, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// VoiceoverCacheLookup adapter (cross-run voiceover cache, August 2026)
+// ─────────────────────────────────────────────────────────────────────
+
+// voiceoverCacheAdapter implements voiceover.VoiceoverCacheLookup by
+// wrapping the existing FindByFingerprint on the SQLite repository.
+// It is the canonical production adapter for the cross-run voiceover
+// cache — on a fingerprint hit, it verifies the row is reusable
+// (completed/uploaded/generated status with a non-empty DriveFileID)
+// and, when timing is required, checks that the metadata column
+// carries a timing_json_link so the cached result includes the timing
+// bundle references.
+type voiceoverCacheAdapter struct {
+	repo *useCaseRepoAdapter
+	log  *zap.Logger
+}
+
+var _ voiceover.VoiceoverCacheLookup = (*voiceoverCacheAdapter)(nil)
+
+func newVoiceoverCacheAdapter(repo *useCaseRepoAdapter, log *zap.Logger) *voiceoverCacheAdapter {
+	if repo == nil {
+		return nil
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &voiceoverCacheAdapter{repo: repo, log: log}
+}
+
+// Lookup checks the voiceovers table for an existing row with the same
+// content fingerprint. A cache HIT requires:
+//
+//  1. A row exists with the exact fingerprint
+//  2. The row status is reusable (completed | uploaded | generated)
+//  3. A media_assets row exists with a non-empty DriveFileID
+//     (PR-VO-ASSET-ID: after migration 232, location columns were
+//     dropped from voiceovers — the canonical source is media_assets)
+//  4. When timingRequired is true, the metadata column carries
+//     timing_json_link (the timing bundle was published)
+//
+// Any failure — missing row, non-reusable status, missing DriveFileID,
+// missing timing links when required — returns (nil, nil) so the caller
+// falls through to the full pipeline. Lookup errors (DB unavailable)
+// return the error so the caller can decide whether to fail or retry.
+func (a *voiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, timingRequired bool) (*voiceover.VoiceoverCacheHit, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+
+	rec, err := a.repo.FindByFingerprint(ctx, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
+		return nil, nil
+	}
+
+	// Check reusable status.
+	if !voiceover.IsReusableStatus(voiceover.Status(rec.Status)) {
+		a.log.Debug("voiceover cache: fingerprint match but status not reusable",
+			zap.String("fingerprint", fingerprint),
+			zap.String("status", rec.Status),
+			zap.String("id", rec.ID))
+		return nil, nil
+	}
+
+	// PR-VO-ASSET-ID (August 2026): after migration 232 dropped location
+	// columns from voiceovers, the canonical Drive and local-path facts
+	// live in media_assets (same id). Query media_assets for the location
+	// data — a missing row means the asset projection was never written
+	// (legacy pre-migration row), so this is a cache MISS.
+	loc, locErr := a.repo.findVoiceoverMediaAsset(ctx, rec.ID)
+	if locErr != nil {
+		a.log.Warn("voiceover cache: media_assets lookup error",
+			zap.String("fingerprint", fingerprint),
+			zap.String("id", rec.ID),
+			zap.Error(locErr))
+		return nil, locErr
+	}
+
+	// DriveFileID must be non-empty — the audio was uploaded.
+	if loc == nil || loc.DriveFileID == "" {
+		a.log.Debug("voiceover cache: fingerprint match but media_assets DriveFileID empty or missing",
+			zap.String("fingerprint", fingerprint),
+			zap.String("id", rec.ID))
+		return nil, nil
+	}
+
+	// When timing is required, verify the metadata carries timing links.
+	if timingRequired {
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err != nil || meta["timing_json_link"] == nil || meta["timing_json_link"] == "" {
+			a.log.Debug("voiceover cache: fingerprint match but timing not hydrated",
+				zap.String("fingerprint", fingerprint),
+				zap.String("id", rec.ID),
+				zap.Bool("meta_parse_ok", err == nil))
+			return nil, nil
+		}
+	}
+
+	durationMs := int64(rec.DurationSeconds * 1000)
+
+	// Extract cleaned_path from voiceovers metadata (not in media_assets).
+	cleanedPath := loc.LocalPath
+	if rec.Metadata != "" {
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err == nil {
+			if cp, ok := meta["cleaned_path"].(string); ok && cp != "" {
+				cleanedPath = cp
+			}
+		}
+	}
+
+	filename := loc.Name
+	if filename == "" {
+		// Fall back to voiceovers.filename column for pre-migration rows
+		// that have the column still populated.
+		filename = rec.Filename
+	}
+
+	a.log.Debug("voiceover cache HIT",
+		zap.String("fingerprint", fingerprint),
+		zap.String("id", rec.ID),
+		zap.String("drive_file_id", loc.DriveFileID),
+		zap.String("status", rec.Status),
+		zap.Int64("duration_ms", durationMs))
+
+	return &voiceover.VoiceoverCacheHit{
+		ID:            rec.ID,
+		Voice:         rec.Voice,
+		Filename:      filename,
+		DriveFileID:   loc.DriveFileID,
+		DriveLink:     loc.DriveLink,
+		DownloadLink:  loc.DownloadLink,
+		LocalPath:     loc.LocalPath,
+		CleanedPath:   cleanedPath,
+		DurationMs:    durationMs,
+		LegacyFileMD5: rec.LegacyFileMD5,
+		MetaJSON:      []byte(rec.Metadata),
+	}, nil
 }
 
 // parseRFC3339OrNow parses an RFC3339 timestamp string into time.Time,

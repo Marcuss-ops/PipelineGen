@@ -49,7 +49,7 @@ from edge_tts import Communicate
 
 from .boundaries import boundary_line, remove_partials
 from .request import SynthesizeRequest, SynthesizeRequestError, edge_boundary_mode
-from .voice_resolver import resolve_voice
+from .voice_resolver import VoiceResolutionError, resolve_voice
 
 
 async def handle_synthesize(request: web.Request) -> web.Response:
@@ -83,7 +83,14 @@ async def handle_synthesize(request: web.Request) -> web.Response:
         )
 
     resolve_started = time.monotonic()
-    voice = await resolve_voice(parsed.lang, parsed.voice or None)
+    allow_fallback = parsed.allow_voice_fallback if hasattr(parsed, 'allow_voice_fallback') else False
+    try:
+        voice = await resolve_voice(parsed.lang, parsed.voice or None, allow_fallback=allow_fallback)
+    except VoiceResolutionError as exc:
+        return web.json_response(
+            {"ok": False, "error": str(exc)},
+            status=400,
+        )
     voice_resolve_ms = round((time.monotonic() - resolve_started) * 1000)
 
     out_dir = os.path.dirname(parsed.out)

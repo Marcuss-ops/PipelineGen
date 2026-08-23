@@ -163,25 +163,3 @@ func TestScanner_NilScanner_DefaultsToModeStrict(t *testing.T) {
 		t.Errorf("Text = %q, want verbatim prose", out.Text)
 	}
 }
-
-// TestScanner_ModeCompatibility_StillUsesLegacyFallbacks — canonical
-// contract test: ModeCompatibility is UNCHANGED by PR-4. It keeps
-// its 3-stage cascade (V1 → legacy array → plain-text wrapper).
-func TestScanner_ModeCompatibility_StillUsesLegacyFallbacks(t *testing.T) {
-	t.Parallel()
-
-	scanner := jsonextract.NewScanner(jsonextract.ModeCompatibility)
-
-	// Plain prose in ModeCompatibility: wraps via wrapPlainText.
-	raw := []byte("Legacy compatibility prose fallback.")
-	out, err := scanner.Scan(raw, "cache")
-	if err != nil {
-		t.Fatalf("ModeCompatibility Scan on plain prose returned err = %v, want nil", err)
-	}
-	if out == nil {
-		t.Fatal("ModeCompatibility Scan returned nil output")
-	}
-	if out.Text != "Legacy compatibility prose fallback." {
-		t.Errorf("Text = %q, want verbatim prose", out.Text)
-	}
-}

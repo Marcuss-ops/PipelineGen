@@ -1,10 +1,9 @@
 package overlays
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 )
@@ -317,8 +316,8 @@ func (p OverlayPlan) FingerprintValue() string {
 		copyPlan.Items[i].RenderKey = ""
 	}
 	b, _ := json.Marshal(copyPlan)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes(b)
+	return h
 }
 
 func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
@@ -344,8 +343,8 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		item.PresetID,
 	}
 	b, _ := json.Marshal(input)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes(b)
+	return h
 }
 
 // RenderKey is kept as the concise public spelling used by planners.

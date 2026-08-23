@@ -71,10 +71,11 @@
 package asset
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ErrClipIdentityEmpty is the typed sentinel for ANY ClipKey
@@ -128,6 +129,5 @@ func ClipKey(subjectID, sourceVideoID string, startMs, endMs int64) (string, err
 
 	canonical := subjectID + "|" + sourceVideoID + "|" +
 		strconv.FormatInt(startMs, 10) + "|" + strconv.FormatInt(endMs, 10)
-	sum := sha256.Sum256([]byte(canonical))
-	return fmt.Sprintf("%x", sum), nil
+	return digest.SHA256String(canonical), nil
 }

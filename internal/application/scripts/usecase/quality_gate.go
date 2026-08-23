@@ -7,7 +7,8 @@
 //   - source_text coverage meets the configured policy threshold
 //   - clip_evidence coverage == 1.00 for clips_primary
 //   - unsupported claims == 0 for grounded sources (diagnostic for text)
-//   - target words within 80-120% tolerance
+//   - target words within 80-120% tolerance for documentary/source plans
+//     (clip intros use their bounded per-segment budget instead)
 //   - reject empty/generic text
 //
 // The result is always populated in GenerationResult.Quality. When

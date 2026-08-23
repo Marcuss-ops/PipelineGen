@@ -5,21 +5,21 @@
 // The matrix below exercises the per-mode × per-shape cut-points
 // the operator dashboard depends on. Locks the corrected behaviour:
 //
-//	┌─────────────────────────────┬──────────────────────────┬──────────────────────────┐
-//	│ shape                       │ ModeFreshPlainText       │ ModeCompatibility        │
-//	│                             │ (alias: ModeStrict)      │                           │
-//	├─────────────────────────────┼──────────────────────────┼──────────────────────────┤
-//	│ V1 JSON                    │ ✓ decodeV1               │ ✓ decodeV1               │
-//	│ legacy array [...]         │ ✗ ErrModelOutputMalformed │ ✓ convertLegacyArray     │
-//	│ invalid V1 (bad schema)    │ ✗ ErrModelOutputMalformed │ ✓ wrapPlainText fallback │
-//	│ bare prose                 │ ✓ ParsePlainTextFresh    │ ✓ wrapPlainText fallback │
-//	│ empty/nil/whitespace       │ ✗ ErrModelOutputMalformed │ ✗ ErrModelOutputMalformed│
-//	└─────────────────────────────┴──────────────────────────┴──────────────────────────┘
+//	┌─────────────────────────────┬──────────────────────────┐
+//	│ shape                       │ ModeFreshPlainText       │
+//	│                             │ (alias: ModeStrict)      │
+//	├─────────────────────────────┼──────────────────────────┤
+//	│ V1 JSON                    │ ✓ decodeV1               │
+//	│ legacy array [...]         │ ✗ ErrModelOutputMalformed │
+//	│ invalid V1 (bad schema)    │ ✗ ErrModelOutputMalformed │
+//	│ bare prose                 │ ✓ ParsePlainTextFresh    │
+//	│ empty/nil/whitespace       │ ✗ ErrModelOutputMalformed │
+//	└─────────────────────────────┴──────────────────────────┘
 //
-// The "invalid V1 (bad schema)" cell is the corner-case that drives
-// the engine retry in engine_generate.go — ModeFreshPlainText must
-// hard-error so the engine can fallback to ModeCompatibility's
-// wrapPlainText path or convertLegacyArray for cache replay.
+// DL-MODECOMPAT-REMOVAL (August 2026): ModeCompatibility column
+// removed — ModeFreshPlainText is the sole canonical mode.
+// Legacy arrays are no longer convertible at runtime; use the
+// admin migrate-legacy-cache tool for one-shot backfill.
 //
 // ModeFreshPlainText and ModeStrict produce IDENTICAL matrix cells
 // because they share the same numeric value (the rename preserves
@@ -194,119 +194,6 @@ func TestScanner_ModeFreshPlainText_Matrix(t *testing.T) {
 			t.Parallel()
 			scanner := jsonextract.NewScanner(tc.mode)
 			out, err := scanner.Scan(tc.input, "fresh")
-			switch tc.outcome {
-			case outcomeOK:
-				if err != nil {
-					t.Fatalf("Scan returned err = %v, want nil", err)
-				}
-				if out == nil {
-					t.Fatal("Scan returned nil output, want non-nil")
-				}
-				if tc.validate != nil {
-					tc.validate(t, out)
-				}
-			case outcomeErr:
-				if err == nil {
-					t.Fatalf("Scan returned nil err, want error (mode=%d, shape=%q)", tc.mode, tc.input)
-				}
-				if tc.probeErr != nil {
-					tc.probeErr(t, err)
-				}
-			default:
-				t.Fatalf("unhandled outcome %d", tc.outcome)
-			}
-		})
-	}
-}
-
-// TestScanner_ModeCompatibility_Matrix — per-shape table for the
-// compatibility-mode behaviour.
-func TestScanner_ModeCompatibility_Matrix(t *testing.T) {
-	t.Parallel()
-
-	const validV1 = `{"schema_version":1,"text":"Compatibility V1.","specscene":{"version":1,"scenes":[]}}`
-	const legacyArray = `[{"index":0,"text":"scena legacy.","kind":"narration","clip_id":"clip-legacy-1"}]`
-	const invalidV1BadSchema = `{"schema_version":99,"text":"Bad schema.","specscene":{"version":1,"scenes":[]}}`
-	const plainProse = "Compat prose fallback into wrapPlainText."
-
-	cases := []matrixCase{
-		{
-			name:    "compat_mode_v1_json_decode_directly",
-			mode:    jsonextract.ModeCompatibility,
-			input:   []byte(validV1),
-			outcome: outcomeOK,
-			validate: func(t *testing.T, out *scriptpkg.ModelScriptOutputV1) {
-				if out.Text != "Compatibility V1." {
-					t.Errorf("Text = %q, want verbatim V1 text", out.Text)
-				}
-			},
-		},
-		{
-			name:    "compat_mode_legacy_array_converted",
-			mode:    jsonextract.ModeCompatibility,
-			input:   []byte(legacyArray),
-			outcome: outcomeOK,
-			validate: func(t *testing.T, out *scriptpkg.ModelScriptOutputV1) {
-				if out.Text != "scena legacy." {
-					t.Errorf("Text = %q, want verbatim legacy scene text", out.Text)
-				}
-				if len(out.SpecScene.Scenes) != 1 {
-					t.Errorf("len(SpecScene.Scenes) = %d, want 1", len(out.SpecScene.Scenes))
-				}
-			},
-		},
-		{
-			name:    "compat_mode_invalid_v1_falls_through_to_plain_text",
-			mode:    jsonextract.ModeCompatibility,
-			input:   []byte(invalidV1BadSchema),
-			outcome: outcomeOK,
-			validate: func(t *testing.T, out *scriptpkg.ModelScriptOutputV1) {
-				if out.Text != "Bad schema." {
-					t.Errorf("Text = %q, want fallback prose text", out.Text)
-				}
-			},
-		},
-		{
-			name:    "compat_mode_plain_prose_wrap",
-			mode:    jsonextract.ModeCompatibility,
-			input:   []byte(plainProse),
-			outcome: outcomeOK,
-			validate: func(t *testing.T, out *scriptpkg.ModelScriptOutputV1) {
-				if out.Text != plainProse {
-					t.Errorf("Text = %q, want verbatim prose", out.Text)
-				}
-			},
-		},
-		{
-			name:    "compat_mode_nil_rejected",
-			mode:    jsonextract.ModeCompatibility,
-			input:   nil,
-			outcome: outcomeErr,
-			probeErr: func(t *testing.T, err error) {
-				if !errors.Is(err, scriptpkg.ErrModelOutputMalformed) {
-					t.Errorf("nil err = %v, want ErrModelOutputMalformed", err)
-				}
-			},
-		},
-		{
-			name:    "compat_mode_empty_rejected",
-			mode:    jsonextract.ModeCompatibility,
-			input:   []byte{},
-			outcome: outcomeErr,
-			probeErr: func(t *testing.T, err error) {
-				if !errors.Is(err, scriptpkg.ErrModelOutputMalformed) {
-					t.Errorf("empty err = %v, want ErrModelOutputMalformed", err)
-				}
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			scanner := jsonextract.NewScanner(tc.mode)
-			out, err := scanner.Scan(tc.input, "cache")
 			switch tc.outcome {
 			case outcomeOK:
 				if err != nil {

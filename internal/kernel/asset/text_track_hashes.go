@@ -32,9 +32,9 @@ package asset
 // idempotency namespace.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Normalize is the canonical hash-invariant text representation.
@@ -77,8 +77,7 @@ func TextHash(text, language string, kind TextTrackKind) string {
 		language,
 		string(kind),
 	}, "|")
-	sum := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256Bytes([]byte(payload))
 }
 
 // SourceVersion is the canonical SHA-256 fingerprint for a derived
@@ -127,8 +126,7 @@ func SourceVersion(
 		modelVersion,
 		promptVersion,
 	}, "|")
-	sum := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256Bytes([]byte(payload))
 }
 
 // TranslationKey is the canonical SHA-256 fingerprint of a
@@ -203,6 +201,5 @@ func TranslationKey(
 		modelVersion,
 		promptVersion,
 	}, "|")
-	sum := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256Bytes([]byte(payload))
 }

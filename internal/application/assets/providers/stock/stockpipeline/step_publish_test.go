@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
@@ -46,7 +46,7 @@ func (f *publishFakeRunner) RunInput() *RunInput               { return f.runInp
 func (f *publishFakeRunner) JobID() string                     { return "publish-test-job" }
 func (f *publishFakeRunner) PolicyVersion() string             { return f.cfg.PolicyVersion }
 func (f *publishFakeRunner) Planner() ClipPlanner              { return nil }
-func (f *publishFakeRunner) SourceStager() assets.SourceStager { return nil }
+func (f *publishFakeRunner) SourceStager() acquisition.SourceStager { return nil }
 func (f *publishFakeRunner) Cutter() VideoCutter               { return nil }
 func (f *publishFakeRunner) Renderer() StockRenderer           { return nil }
 func (f *publishFakeRunner) Builder() ManifestBuilder          { return nil }

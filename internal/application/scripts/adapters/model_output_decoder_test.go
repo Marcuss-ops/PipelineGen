@@ -1,11 +1,10 @@
 // Package adapters_test — model_output_decoder_test.go exercises the
-// unified jsonextract.Scanner in both ModeStrict and ModeCompatibility.
+// unified jsonextract.Scanner in ModeFreshPlainText (canonical; alias
+// ModeStrict).
 //
-// P0.8 (June 2026): merged the old DecodeModelOutput (canonical decoder)
-// and compat.LegacyArrayToOutput (legacy array decoder) tests into a
-// single test surface that exercises jsonextract.Scanner in the
-// appropriate mode. ModeStrict rejects bare prose; ModeCompatibility
-// wraps it (declared fallback, Prometheus-measured).
+// P0.8 (June 2026): merged old decoder tests into jsonextract.Scanner.
+// DL-MODECOMPAT-REMOVAL (August 2026): ModeCompatibility tests removed;
+// ModeFreshPlainText is the sole canonical mode.
 //
 // PR1 follow-up: package name normalised from `scripts_test` to
 // `adapters_test` so this file can coexist with `compat_adapters.go`
@@ -320,132 +319,6 @@ func TestScannerFuzz(t *testing.T) {
 			}()
 			_, _ = jsonextract.NewScanner(jsonextract.ModeStrict).Scan(input, "test")
 		}()
-	}
-}
-
-// ── ModeCompatibility: valid legacy array accepted ──────────────────
-
-func TestScannerCompatLegacyArrayValid(t *testing.T) {
-	raw := []byte(`[
-		{"index": 0, "text": "First scene.", "kind": "narration"},
-		{"index": 1, "text": "Second scene.", "kind": "clip", "clip_id": "clip-123"}
-	]`)
-
-	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
-	if err != nil {
-		t.Fatalf("expected valid legacy array decode in compatibility mode, got: %v", err)
-	}
-	if output.SchemaVersion != 1 {
-		t.Errorf("schema_version: %d", output.SchemaVersion)
-	}
-	if output.Text == "" {
-		t.Error("text should be concatenated from scenes")
-	}
-	if !strings.Contains(output.Text, "First scene.") {
-		t.Errorf("text should contain first scene: %s", output.Text)
-	}
-	if !strings.Contains(output.Text, "Second scene.") {
-		t.Errorf("text should contain second scene: %s", output.Text)
-	}
-	if len(output.SpecScene.Scenes) != 2 {
-		t.Fatalf("expected 2 scenes, got %d", len(output.SpecScene.Scenes))
-	}
-
-	s0 := output.SpecScene.Scenes[0]
-	if s0.ID != "legacy-scene-0" {
-		t.Errorf("scene 0 id: %s", s0.ID)
-	}
-	if s0.Index != 0 {
-		t.Errorf("scene 0 index: %d", s0.Index)
-	}
-	if s0.Kind != scriptpkg.SceneNarration {
-		t.Errorf("scene 0 kind: %s", s0.Kind)
-	}
-
-	s1 := output.SpecScene.Scenes[1]
-	if s1.ID != "legacy-scene-1" {
-		t.Errorf("scene 1 id: %s", s1.ID)
-	}
-	if s1.Kind != scriptpkg.SceneClip {
-		t.Errorf("scene 1 kind: %s", s1.Kind)
-	}
-	if s1.Bindings.Clip == nil {
-		t.Fatal("scene 1: clip binding is nil")
-	}
-	if s1.Bindings.Clip.ClipID != "clip-123" {
-		t.Errorf("scene 1 clip_id: %s", s1.Bindings.Clip.ClipID)
-	}
-}
-
-// ── ModeCompatibility: valid legacy array with alternate fields ─────
-
-func TestScannerCompatLegacyArrayAlternateFields(t *testing.T) {
-	raw := []byte(`[
-		{
-			"index": 0,
-			"content": "Scene from content field.",
-			"title": "My Scene",
-			"kind": "voice",
-			"image_prompt": "A picture of a mountain",
-			"image_url": "https://example.com/img.png"
-		}
-	]`)
-
-	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
-	if err != nil {
-		t.Fatalf("expected valid legacy decode: %v", err)
-	}
-
-	scene := output.SpecScene.Scenes[0]
-	if scene.Text != "Scene from content field." {
-		t.Errorf("text should come from content field: %s", scene.Text)
-	}
-	if scene.Title != "My Scene" {
-		t.Errorf("title: %s", scene.Title)
-	}
-	// "voice" → SceneNarration
-	if scene.Kind != scriptpkg.SceneNarration {
-		t.Errorf("kind 'voice' should map to narration, got %s", scene.Kind)
-	}
-	if scene.Bindings.Image == nil {
-		t.Fatal("image binding is nil")
-	}
-	if scene.Bindings.Image.Prompt != "A picture of a mountain" {
-		t.Errorf("image prompt: %s", scene.Bindings.Image.Prompt)
-	}
-}
-
-// ── ModeCompatibility: empty array is plain-text wrapped ────────────
-// P0.8: empty legacy array no longer errors — ModeCompatibility falls
-// through to the plain-text wrapper (declared fallback).
-
-func TestScannerCompatLegacyArrayEmpty(t *testing.T) {
-	raw := []byte(`[]`)
-	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
-	if err != nil {
-		t.Fatalf("ModeCompatibility: empty array should fall through to plain-text wrapper, got: %v", err)
-	}
-	if output.Text != "[]" {
-		t.Errorf("expected plain-text wrapped '[]', got: %q", output.Text)
-	}
-	if len(output.SpecScene.Scenes) != 0 {
-		t.Errorf("expected 0 scenes, got %d", len(output.SpecScene.Scenes))
-	}
-}
-
-// ── ModeCompatibility: non-array, non-V1 JSON is plain-text wrapped ─
-// P0.8: `{"key":"value"}` is not valid V1 and not a legacy array;
-// ModeCompatibility falls through to the plain-text wrapper (declared
-// fallback with Prometheus metric).
-
-func TestScannerCompatNotArray(t *testing.T) {
-	raw := []byte(`{"key": "value"}`)
-	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
-	if err != nil {
-		t.Fatalf("ModeCompatibility: non-V1, non-array JSON should fall through to plain-text wrapper, got: %v", err)
-	}
-	if output.Text != `{"key": "value"}` {
-		t.Errorf("expected plain-text wrapped, got: %q", output.Text)
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"

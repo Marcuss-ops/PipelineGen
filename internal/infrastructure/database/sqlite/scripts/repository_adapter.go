@@ -11,8 +11,7 @@ package scripts
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
 	"time"
@@ -296,6 +295,6 @@ var ErrSaveManifestV2AdapterNotWired = errSaveManifestV2AdapterNotWired
 
 func computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion string, targetWords int, language string) string {
 	tuple := fmt.Sprintf("%s|%s|%s|%d|%s", itemID, cacheKey, promptVersion, targetWords, language)
-	sum := sha256.Sum256([]byte(tuple))
-	return hex.EncodeToString(sum[:])[:16]
+	sum := digest.SHA256Bytes([]byte(tuple))
+	return sum[:16]
 }

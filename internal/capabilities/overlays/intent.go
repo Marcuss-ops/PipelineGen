@@ -18,10 +18,9 @@
 package overlays
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 )
@@ -153,8 +152,8 @@ func (i OverlayIntent) Fingerprint() string {
 		i.Entity, i.Source, i.SourceID, i.SourceText, i.Kind, i.TemplateID, i.Payload.Name, i.Payload.Text,
 	}
 	b, _ := encodeJSON(flat)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes(b)
+	return h
 }
 
 // ── EntityOverlayPlanner ────────────────────────────────────────────

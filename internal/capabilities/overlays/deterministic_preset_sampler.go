@@ -23,10 +23,10 @@
 package overlays
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // PresetSampleInput is the deterministic seed plus the candidate vocabulary
@@ -84,14 +84,14 @@ func (DeterministicPresetSampler) Sample(in PresetSampleInput) PresetSample {
 	if err != nil {
 		panic(fmt.Sprintf("overlays: preset sampler seed marshal: %v", err))
 	}
-	sum := sha256.Sum256(b)
+	sum := digest.SHA256Bytes(b)
 
 	var out PresetSample
 	if n := len(in.Presets); n > 0 {
-		out.Preset = in.Presets[int(binary.BigEndian.Uint64(sum[0:8])%uint64(n))]
+		out.Preset = in.Presets[int(binary.BigEndian.Uint64([]byte(sum[0:8]))%uint64(n))]
 	}
 	if n := len(in.Animations); n > 0 {
-		out.Animation = in.Animations[int(binary.BigEndian.Uint64(sum[8:16])%uint64(n))]
+		out.Animation = in.Animations[int(binary.BigEndian.Uint64([]byte(sum[8:16]))%uint64(n))]
 	}
 	return out
 }

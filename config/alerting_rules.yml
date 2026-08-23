@@ -297,20 +297,6 @@ groups:
             shrinking the memory-cache TTL (gemmamemory.Service) or
             proactively evicting pre-V1 rows. Removal deadline threshold:
             0 invocations for 60 consecutive days. Source label: cache.
-      - alert: ScriptLegacyBranchBResidual
-        expr: increase(script_generation_branch_total{branch="b"}[1h]) > 0
-        for: 1h
-        labels:
-          severity: warning
-          team: scripts
-          service: velox-go
-          deprecation: DL-SCRIPT-BRANCH-B-001
-        annotations:
-          summary: "Legacy /api/script/generate Branch B (SegmentTopics) invoked"
-          description: |
-            Branch B (legacy SegmentTopics) emitted in the last 1h. CUTOVER
-            target: WAVE-21 (2026-07-31, IT) -> 0%, WAVE-22 (2026-09-15,
-            all languages) -> 0%. Removal date: 2026-09-15. Source: script_generation_branch_total{branch="b"} counter (canonical: internal/infrastructure/observability/metrics_scripts.go). See architecture/deprecations.yaml DL-SCRIPT-BRANCH-B-001.
 
   - name: velox_canary
     interval: 15s

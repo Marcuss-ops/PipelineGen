@@ -8,11 +8,10 @@ package assets
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 
@@ -259,8 +258,8 @@ func commitRequestFingerprint(req persistence.CommitRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(payload)
+	return sum, nil
 }
 
 func buildAssetMutationOutboxEvent(req persistence.CommitRequest) (capcontrol.OutboxEvent, error) {
@@ -380,8 +379,9 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 			asset_version, asset_location, rendition,
 			source_provider, source_video_id, source_url,
 			start_ms, end_ms, title,
+			origin, provider,
 			namespace, asset_kind, source_type, semantic_role
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -414,6 +414,8 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 			start_ms = excluded.start_ms,
 			end_ms = excluded.end_ms,
 			title = excluded.title,
+			origin = COALESCE(NULLIF(excluded.origin, ''), origin),
+			provider = COALESCE(NULLIF(excluded.provider, ''), provider),
 			namespace = COALESCE(NULLIF(excluded.namespace, ''), namespace),
 			asset_kind = COALESCE(NULLIF(excluded.asset_kind, ''), asset_kind),
 			source_type = COALESCE(NULLIF(excluded.source_type, ''), source_type),
@@ -429,6 +431,7 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 		req.AssetVersion, req.AssetLocation, req.Rendition,
 		sourceProvider, sourceVideoID, req.SourceURL,
 		startMs, endMs, title,
+		req.Origin, req.Provider,
 		req.Taxonomy.Namespace, string(req.Taxonomy.AssetKind), req.Taxonomy.SourceType, req.Taxonomy.SemanticRole,
 	)
 	if err != nil {

@@ -45,7 +45,7 @@ import (
 )
 
 // phase4TestSchema inlines the MINIMUM columns the indexer writers
-// + Phase 4 audio path need. We DO NOT embed drive.CanonicalMediaAssetsSchema
+// + Phase 4 audio path need. The migration chain is the sole schema authority.
 // here because that constant was authored before migration 094
 // (QDRANT-002 PR6, June 2026) added the index_state /
 // index_state_updated_at / source_version columns; the canonical

@@ -17,58 +17,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// pr12bArtlistSchema mirrors the production schema: CanonicalMediaAssetsSchema
-// (single source of truth for media_assets) + asset_locations + outbox_events.
-// Keeps fixtures in lockstep with migration changes — a new canonical column
-// added by migration only requires updating internal/infrastructure/database/canonical.go.
-const pr12bArtlistSchema = drive.CanonicalMediaAssetsSchema + `
-
-CREATE TABLE IF NOT EXISTS asset_locations (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	asset_id TEXT NOT NULL,
-	location_kind TEXT NOT NULL,
-	uri TEXT NOT NULL,
-	external_id TEXT NOT NULL DEFAULT '',
-	web_view_link TEXT NOT NULL DEFAULT '',
-	download_url TEXT NOT NULL DEFAULT '',
-	mime_type TEXT NOT NULL DEFAULT '',
-	file_size_bytes INTEGER NOT NULL DEFAULT 0,
-	file_hash TEXT NOT NULL DEFAULT '',
-	is_primary INTEGER NOT NULL DEFAULT 0,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL,
-	UNIQUE(asset_id, location_kind)
-);
-
-CREATE TABLE IF NOT EXISTS outbox_events (
-	id TEXT PRIMARY KEY,
-	aggregate_id TEXT NOT NULL DEFAULT '',
-	aggregate_type TEXT NOT NULL DEFAULT '',
-	event_type TEXT NOT NULL,
-	payload_json TEXT NOT NULL,
-	event_key TEXT NOT NULL DEFAULT '',
-	status TEXT NOT NULL DEFAULT 'pending',
-	attempt_count INTEGER NOT NULL DEFAULT 0,
-	max_attempts INTEGER NOT NULL DEFAULT 10,
-	last_error TEXT NOT NULL DEFAULT '',
-	next_attempt_at TEXT,
-	worker_id TEXT NOT NULL DEFAULT '',
-	lease_id TEXT NOT NULL DEFAULT '',
-	lease_expiry TEXT,
-	completed_at TEXT,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id);
-`
 
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
 func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
-	db = drive.NewTestDBWithSchema(t, pr12bArtlistSchema)
+	db = drive.NewMigratedTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = sqassets.NewClipsRepository(db, log)

@@ -11,7 +11,7 @@ package cliprender
 // path, or an unresolved block rejects the plan before any process starts.
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -305,8 +305,8 @@ func (p ClipRenderPlanV1) Hash() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("hash clip render plan: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(b)
+	return hex.EncodeToString([]byte(sum)), nil
 }
 
 // Validate enforces the plan contract fail-closed: identity, resolved blocks,
@@ -388,9 +388,9 @@ func (p ClipRenderPlanV1) Validate() error {
 }
 
 func isSHA256Hex(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != digest.SHA256HexLength {
 		return false
 	}
 	decoded, err := hex.DecodeString(value)
-	return err == nil && strings.ToLower(value) == value && len(decoded) == sha256.Size
+	return err == nil && strings.ToLower(value) == value && len(decoded) == digest.SHA256HexLength/2
 }

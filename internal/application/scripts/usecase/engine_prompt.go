@@ -57,19 +57,6 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	if plan.SegmentWords > 0 {
 		extra = append(extra, fmt.Sprintf("Aim for about %d words per segment.", plan.SegmentWords))
 	}
-	if len(plan.SegmentTopics) > 0 {
-		topics := make([]string, 0, len(plan.SegmentTopics))
-		for i, topic := range plan.SegmentTopics {
-			topic = strings.TrimSpace(topic)
-			if topic == "" {
-				continue
-			}
-			topics = append(topics, fmt.Sprintf("%d. %s", i+1, topic))
-		}
-		if len(topics) > 0 {
-			extra = append(extra, "Segment topics:\n"+strings.Join(topics, "\n"))
-		}
-	}
 
 	lines := []string{
 		"CLIP-GROUNDED WRITING RULES:",
@@ -119,11 +106,9 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 // runs unconditionally — segments are a script-level structural
 // directive, independent of clip evidence.
 //
-// Branch A applies when len(plan.Segments) > 0. Branch B (legacy,
-// untouched) is the existing buildClipGroundingInstructions path
-// that handles plan.SegmentTopics when Segments is empty. The two
-// paths are mutually exclusive at runtime — the validator layer
-// (DoD #8 / FASE 6, separate commit) rejects input that mixes both.
+// This is the canonical Branch A path. Branch B (SegmentTopics
+// prompt rendering) was removed in August 2026 per
+// DL-SCRIPT-BRANCH-B-001.
 func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	if plan == nil || len(plan.Segments) == 0 {
 		return ""

@@ -416,7 +416,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 		"PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT follow_up Option A")
 
 	prose := "The bell rings and the fighters touch gloves before round one begins."
-	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"scenes":[]}`, prose)
+	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, prose)
 
 	uc := buildUsecaseWithClipResolver(
 		&fakeOllamaGen{result: &scriptports.GenerationResult{

@@ -8,11 +8,11 @@
 package script
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // GenerationFingerprintInput is the canonical, versioned set of
@@ -87,17 +87,12 @@ type GenerationFingerprintInput struct {
 	// block (Topic + SourceText + TargetWords) participates in
 	// the hash, and the SLICE ORDER is preserved verbatim
 	// (DoD #9 reverse-mapping: a reorder IS a different identity,
-	// NOT a canonical no-op). SegmentTopics is preserved too
-	// because changing the segment topic list changes the generated
-	// script shape and must alter replay identity.
+	// NOT a canonical no-op).
 	Segments []ScriptSegment `json:"segments"`
 
 	// PRE-EXISTING-7/8 (FASE 13, July 2026): Topic joined the
-	// canonical fingerprint input. SegmentTopics is kept in the
-	// fingerprint for replay stability when the segment topic
-	// schedule changes.
-	Topic         string   `json:"topic"`
-	SegmentTopics []string `json:"segment_topics,omitempty"`
+	// canonical fingerprint input.
+	Topic string `json:"topic"`
 
 	// AudioIntent is the editorial audio intent block (audio.mix_policy,
 	// background_music, sound_effects — plus the audio mode/timing that
@@ -132,8 +127,7 @@ func BuildFingerprint(input GenerationFingerprintInput) string {
 		return "ffffffffffffffff"
 	}
 
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])[:16]
+	return digest.SHA256Bytes(raw)[:16]
 }
 
 // FingerprintInputFromSource builds a source-only fingerprint input.
@@ -209,10 +203,6 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	// produce distinct keys.
 	if plan.Topic != "" {
 		input.Topic = plan.Topic
-	}
-
-	if len(plan.SegmentTopics) > 0 {
-		input.SegmentTopics = append([]string(nil), plan.SegmentTopics...)
 	}
 
 	return input
@@ -353,14 +343,10 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	if input.Segments != nil {
 		input.Segments = append([]ScriptSegment(nil), input.Segments...)
 	}
-	if input.SegmentTopics != nil {
-		input.SegmentTopics = append([]string(nil), input.SegmentTopics...)
-	}
 	return input
 }
 
-// sha256Hex returns the SHA-256 hex digest of s.
+// sha256Hex returns the SHA-256 hex digest of s, delegating to kernel/digest.
 func sha256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(s)
 }

@@ -1,6 +1,9 @@
 package observability
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // CriticalPathStage is one sequential stage on the run's critical path — the
 // ordered chain of top-level (non-nested) stages. The chain is ordered by
@@ -32,6 +35,9 @@ type Breakdown struct {
 	UnattributedMs int64
 	// UnattributedPercent is UnattributedMs as a percentage of total wall time.
 	UnattributedPercent float64
+	// OverlappedMs is wall time covered by measured nested/parallel work but
+	// not represented by the sum of top-level critical stages.
+	OverlappedMs int64
 	// BottleneckStage is the name of the top-level stage with the largest wall
 	// time.
 	BottleneckStage string
@@ -67,13 +73,19 @@ func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 	for _, st := range top {
 		attributed += nonNegative(st.DurationMs)
 	}
-	unattributed := int64(0)
-	if wall > attributed {
-		unattributed = wall - attributed
+	covered := measuredCoverageMs(r, wall)
+	unattributed := wall - covered
+	if unattributed < 0 {
+		unattributed = 0
+	}
+	overlapped := covered - attributed
+	if overlapped < 0 {
+		overlapped = 0
 	}
 	b := Breakdown{
 		AttributedStageMs: attributed,
 		UnattributedMs:    unattributed,
+		OverlappedMs:      overlapped,
 		CriticalPath:      criticalPathStages(top, wall),
 	}
 	if wall > 0 {
@@ -93,6 +105,83 @@ func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 		}
 	}
 	return b
+}
+
+// measuredCoverageMs computes the union of all anchored stage and operation
+// intervals. Summing them would double-count concurrency; taking their union
+// tells us how much wall time has an owner at all. This is deliberately kept
+// separate from the critical-path sum used for AttributedStageMs.
+func measuredCoverageMs(r *RunReport, wall int64) int64 {
+	if r == nil || wall <= 0 {
+		return 0
+	}
+	type interval struct{ start, end int64 }
+	intervals := make([]interval, 0, len(r.Stages)+len(r.Operations))
+	base := r.StartedAt
+	if base.IsZero() {
+		return attributedFallback(r, wall)
+	}
+	add := func(start, finish time.Time) {
+		if start.IsZero() || finish.IsZero() || !finish.After(start) {
+			return
+		}
+		s := start.Sub(base).Milliseconds()
+		e := finish.Sub(base).Milliseconds()
+		if e <= 0 || s >= wall {
+			return
+		}
+		if s < 0 {
+			s = 0
+		}
+		if e > wall {
+			e = wall
+		}
+		if e > s {
+			intervals = append(intervals, interval{s, e})
+		}
+	}
+	for _, stage := range r.Stages {
+		add(stage.StartedAt, stage.FinishedAt)
+	}
+	for _, operation := range r.Operations {
+		add(operation.StartedAt, operation.FinishedAt)
+	}
+	if len(intervals) == 0 {
+		return attributedFallback(r, wall)
+	}
+	sort.Slice(intervals, func(i, j int) bool {
+		if intervals[i].start == intervals[j].start {
+			return intervals[i].end < intervals[j].end
+		}
+		return intervals[i].start < intervals[j].start
+	})
+	covered := int64(0)
+	start, end := intervals[0].start, intervals[0].end
+	for _, next := range intervals[1:] {
+		if next.start > end {
+			covered += end - start
+			start, end = next.start, next.end
+			continue
+		}
+		if next.end > end {
+			end = next.end
+		}
+	}
+	return covered + end - start
+}
+
+func attributedFallback(r *RunReport, wall int64) int64 {
+	if r == nil {
+		return 0
+	}
+	covered := int64(0)
+	for _, stage := range topLevelStages(r.Stages) {
+		covered += nonNegative(stage.DurationMs)
+	}
+	if covered > wall {
+		return wall
+	}
+	return covered
 }
 
 // criticalPathStages projects the top-level stages onto the ordered critical

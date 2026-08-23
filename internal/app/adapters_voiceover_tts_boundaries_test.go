@@ -134,10 +134,10 @@ func (f *fakeTTSGenerator) Generate(_ context.Context, _ *audioasset.AudioInput)
 	idx := f.calls
 	f.calls++
 	res := &audioasset.AudioResult{
-		LocalPath: "/tmp/stub.mp3",
-		LegacyFileMD5:  "stub-hash",
-		Duration:  1234,
-		Voice:     "it-IT-ElsaNeural",
+		LocalPath:     "/tmp/stub.mp3",
+		LegacyFileMD5: "stub-hash",
+		Duration:      1234,
+		Voice:         "it-IT-ElsaNeural",
 	}
 	if idx < len(f.metadataPaths) && f.metadataPaths[idx] != "" {
 		res.MetadataPath = f.metadataPaths[idx]

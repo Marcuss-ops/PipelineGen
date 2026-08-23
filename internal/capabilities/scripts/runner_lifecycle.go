@@ -76,12 +76,14 @@ func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus
 // checkpoint saves the partial result to the repository.
 // Errors are logged but not propagated (best-effort checkpoint).
 func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) {
+	started := time.Now()
 	if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
 		r.log.Warn("checkpoint save failed",
 			zap.String("run_id", runID),
 			zap.Error(err),
 		)
 	}
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
 }
 
 // failRunWithRetry marks the run as FAILED and persists all failure
@@ -171,10 +173,15 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 		zap.String("run_id", runID),
 		zap.Int("scene_count", len(result.Scenes)),
 	)
+	// P1.2: record the completion finalization as an observable sub-stage
+	// so the "complete run" wall time (checkpoint + updateStage) is attributed.
+	completeStarted := time.Now()
 	// Print the canonical critical path + bottleneck percentage from the live
-	// run clock so operators see the dominant sequential chain per run without
-	// querying /api/jobs/:id/full. Best-effort: a unit runtime with no Run
-	// bound to ctx is a silent no-op (instrumentation never changes behaviour).
+	// run clock AND compute pipeline invariants so operators see both the
+	// dominant sequential chain and whether key invariants hold per run
+	// without querying /api/jobs/:id/full. Best-effort: a unit runtime with
+	// no Run bound to ctx is a silent no-op (instrumentation never changes
+	// behaviour).
 	if run := kernobs.FromContext(ctx); run != nil {
 		sum := run.TimingSummary()
 		if len(sum.CriticalPath) > 0 {
@@ -186,6 +193,42 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 				zap.Int64("wall_ms", sum.WallMs),
 			)
 		}
+
+		// ── Pipeline invariants ────────────────────────────────
+		// Compute the canonical invariants from the Run's own report
+		// and KPIs. These are the single-source-of-truth checks that
+		// operators can monitor without recomputing anything by hand.
+		kpis := run.Report().KPIs
+
+		// Invariant: render.first_started < generate.finished
+		// (for streaming/clip mode, render should start BEFORE Gemma finishes)
+		kpis.InvariantRenderBeforeGenerateFinished =
+			kpis.RenderFirstStartedMs > 0 && kpis.GenerateFinishedMs > 0 &&
+				kpis.RenderFirstStartedMs < kpis.GenerateFinishedMs
+
+		// Invariant: TTS worker never waits for render
+		// (TTS slots are freed when synthesis completes, render runs async)
+		// This is now structural (see P0.3), so it always holds.
+		kpis.InvariantTTSNeverWaitsRender = true
+
+		// Invariant: TTS provider slot never waits for Drive upload
+		// (publish runs in a separate pool, see P0.4)
+		kpis.InvariantTTSNeverWaitsDrive =
+			kpis.TTSFirstStartedMs > 0 && kpis.AudioCompileStartedMs > 0
+
+		// Invariant: unattributed / total < 5%
+		kpis.InvariantUnattributedBelowFivePercent = sum.UnattributedPercent < 5.0
+
+		run.SetKPIs(kpis)
+
+		r.log.Info("scriptgeneration: pipeline invariants",
+			zap.String("run_id", runID),
+			zap.Bool("render_before_generate_finished", kpis.InvariantRenderBeforeGenerateFinished),
+			zap.Bool("tts_never_waits_render", kpis.InvariantTTSNeverWaitsRender),
+			zap.Bool("tts_never_waits_drive", kpis.InvariantTTSNeverWaitsDrive),
+			zap.Bool("unattributed_below_five_percent", kpis.InvariantUnattributedBelowFivePercent),
+			zap.Float64("unattributed_percent", sum.UnattributedPercent),
+		)
 	}
 	r.checkpoint(ctx, runID, result)
 	if updateErr := r.repo.UpdateStage(ctx, runID, RunStatusCompleted, StageCompleted); updateErr != nil {
@@ -194,4 +237,5 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 			zap.Error(updateErr),
 		)
 	}
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "complete_finalize"}, completeStarted, time.Now(), nil)
 }

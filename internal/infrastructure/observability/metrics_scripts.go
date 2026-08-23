@@ -30,15 +30,4 @@ var (
 		Name: "script_phase_total",
 		Help: "Total number of script phase executions",
 	}, []string{"phase", "topic"})
-
-	// ScriptGenerationBranchTotal (PR-CS-1 FASE 14, July 2026 — CUTOVER default).
-	// Single counter, branch + country labels. Branch "a" = ScriptSegment
-	// canonical (PR-CS-1 default). Branch "b" = legacy SegmentTopics path
-	// targeted by deprecation DL-SCRIPT-BRANCH-B-001 (WAVE-21 + WAVE-22).
-	// Increment site: engine_prompt.go tail per-branch. Country label
-	// derived from BCP-47 plan.Language via usecase.ExtractCountryForTelemetry.
-	ScriptGenerationBranchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "script_generation_branch_total",
-		Help: "Total /api/script/generate dispatches by branch (a = ScriptSegment canonical, b = legacy SegmentTopics).",
-	}, []string{"branch", "country"})
 )

@@ -2,16 +2,14 @@ package backup
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -139,14 +137,9 @@ func writeManifest(path string, manifest Manifest) error {
 }
 
 func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+	h, _, err := digest.SHA256File(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return h, nil
 }

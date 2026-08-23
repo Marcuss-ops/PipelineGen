@@ -27,39 +27,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// pr12bYoutubeSchema mirrors the production schema: CanonicalMediaAssetsSchema
-// (single source of truth for media_assets) + outbox_events.
-const pr12bYoutubeSchema = drive.CanonicalMediaAssetsSchema + `
-
-CREATE TABLE IF NOT EXISTS outbox_events (
-	id TEXT PRIMARY KEY,
-	aggregate_id TEXT NOT NULL DEFAULT '',
-	aggregate_type TEXT NOT NULL DEFAULT '',
-	event_type TEXT NOT NULL,
-	payload_json TEXT NOT NULL,
-	event_key TEXT NOT NULL DEFAULT '',
-	status TEXT NOT NULL DEFAULT 'pending',
-	attempt_count INTEGER NOT NULL DEFAULT 0,
-	max_attempts INTEGER NOT NULL DEFAULT 10,
-	last_error TEXT NOT NULL DEFAULT '',
-	next_attempt_at TEXT,
-	worker_id TEXT NOT NULL DEFAULT '',
-	lease_id TEXT NOT NULL DEFAULT '',
-	lease_expiry TEXT,
-	completed_at TEXT,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id);
-`
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema
 // and registers teardown. Returns the canonical asset.Repository wrapper
 // (the SOLE writer in PR1.6).
 func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
-	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
+	db = drive.NewMigratedTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = sqassets.NewClipsRepository(db, log)

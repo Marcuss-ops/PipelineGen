@@ -98,7 +98,7 @@ func TestStageSource_ConcurrentCleanupDuringFollowerCopy(t *testing.T) {
 	for i := 0; i < jobs; i++ {
 		go func(index int) {
 			<-barrier
-			asset, err := stager.StageSource(context.Background(), ref)
+			asset, err := stager.stageSource(context.Background(), ref)
 			results <- concurrentStageResult{index: index, asset: asset, err: err}
 		}(i)
 	}
@@ -148,7 +148,7 @@ func TestStageSource_ConcurrentCleanupDuringFollowerCopy(t *testing.T) {
 		}
 	}
 
-	if err := stager.Cleanup(context.Background(), leader.asset); err != nil {
+	if err := stager.cleanup(context.Background(), leader.asset); err != nil {
 		t.Fatalf("leader cleanup: %v", err)
 	}
 	entry, err := cache.GetByCacheKey(context.Background(), cacheKey)
@@ -171,7 +171,7 @@ func TestStageSource_ConcurrentCleanupDuringFollowerCopy(t *testing.T) {
 		if result.asset == nil {
 			t.Fatalf("job %d returned nil asset", index)
 		}
-		if err := stager.Cleanup(context.Background(), result.asset); err != nil {
+		if err := stager.cleanup(context.Background(), result.asset); err != nil {
 			t.Fatalf("job %d cleanup: %v", index, err)
 		}
 	}

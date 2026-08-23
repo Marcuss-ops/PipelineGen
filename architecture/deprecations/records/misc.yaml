@@ -235,44 +235,42 @@ deprecations:
         Wave-tracker: architecture/current.yaml#CUTOVER-COMPLETE-WITH-ARTIFACTS.
         Cross-ref: architecture/action-plans/2026-07-04-CUTOVER-COMPLETE-WITH-ARTIFACTS.md.
       compatibility_test: |
-        Five-layer defence mirroring DRIVE-005-FIELDS / PR-CLIP-RAW-MUTATIONS:
-          (a) `rg 'tools\.Complete\(jobCtx, resultJSON\)' internal/application/jobs/worker/`
-              returns 1 hit (the legacy fallback at runner.go:289). After CONTRACT
-              (2026-09-26), the same ripgrep returns 0 hits for artifact-producing
-              callers.
+        Five-layer defence post DL-COMPLETE-FAIL-CLOSED (August 2026):
+          (a) `rg 'r\.registry == nil' internal/application/jobs/worker/`
+              returns 1 hit (fail-closed guard in runner_execute.go).
           (b) `rg 'tools\.CompleteWithArtifacts\(' internal/application/jobs/worker/`
-              returns 1 hit (the Azione 7 branch at runner.go:599). This is the
-              canonical path; drift away from it is a build failure.
+              returns 1 hit (Azione 7 branch). Drift is a build failure.
           (c) `rg 'ProducesArtifacts' internal/application/jobs/worker/` returns
-              1 hit (the registry-driven branch). The registry is the SSOT for
-              the artifact-vs-legacy decision per godlike/06.
-          (d) `go build ./internal/application/jobs/worker/...` exits 0
-              pre- and post-CUTOVER (the legacy Complete method stays available
-              for non-artifact jobs; only the ARTIFACT-PRODUCING branch is
-              deprecated).
-          (e) `scripts/ci-architectural-checks.sh` Check 53/54 forward-prevention
-              bans raw-string `job.Type == "script.generate"` patterns after
-              Azione 7 lands (enforces the registry-driven branch).
+              2 hits (registry gate + runner branch).
+          (d) `rg 'FAIL BOOT.*JobFinalizer' internal/app/` returns 1 hit
+              (wire_services_composition.go boot-time gate).
+          (e) `go build ./internal/application/jobs/worker/...` exits 0.
       usage_metric: |
-        Audit baseline (2026-07-04, post-Azione 6, pre-Azione 7):
-          - tools.Complete(jobCtx, resultJSON) calls at runner.go:289 : 1
-            (the legacy fallback for ALL non-artifact jobs + artifact
-            jobs when ProducesArtifacts is unwired).
-          - tools.CompleteWithArtifacts(...) calls at runner.go:599 : 1
-            (the Azione 7 branch for artifact jobs).
-          - r.registry.ProducesArtifacts(job.Type) reads : 1 (the branch gate).
-        Post-CUTOVER (2026-09-01): the legacy Complete path serves only
-        non-artifact jobs (ProducesArtifacts=false). Artifact-producing
-        jobTypes always route through CompleteWithArtifacts.
-        Post-CONTRACT (2026-09-26): the legacy Complete fallback for
-        artifact jobs is physically removed; tools.Complete remains
-        available for non-artifact-producing jobTypes only.
-      migration_phase: EXPAND
-      status: in_progress
+        Post DL-COMPLETE-FAIL-CLOSED (August 2026):
+          - tools.Complete(jobCtx, resultJSON) at runner_execute.go:297 : 1
+            (non-artifact jobs only; guarded by ProducesArtifacts branch
+            above it and nil-registry fail-closed guard above that).
+          - tools.CompleteWithArtifacts(...) at runner_execute.go:289 : 1
+          - nil-registry fail-closed guard at runner_execute.go:72 : 1
+          - FAIL BOOT at wire_services_composition.go:182 : 1
+      migration_phase: CONTRACT
+      status: completed
       notes: |
-        Per godlike/07 §"Migration sequence", this record enters at EXPAND
+        DL-COMPLETE-FAIL-CLOSED (August 2026): two-layer defense against
+        silent Complete fallback for artifact-producing jobs:
+          - FAIL BOOT (wire_services_composition.go): if SpineJobTypes()
+            returns any types but JobFinalizer can't be wired, the server
+            refuses to start.
+          - FAIL CLOSED (runner_execute.go): if the job Registry is nil
+            at runtime (defense-in-depth), the runner fails the job
+            immediately via r.fail() instead of routing through
+            tools.Complete.
+        The tools.Complete call at runner_execute.go:290 remains for
+        non-artifact jobs only — the ProducesArtifacts branch above it
+        returns early for artifact-producing jobs.
+        Per godlike/07 §"Migration sequence", this record enters at CUTOVER
         because the canonical replacement (CompleteWithArtifacts) already
-        exists (Azione 6 shipped as commit 2bf7e865 on origin/main) AND
+        exists (Azione 6 shipped as commit 2bf7e865) AND
         the legacy path still serves non-artifact jobs. The CUTOVER phase
         (Azione 7) flips the branch to registry-driven; CONTRACT (2026-09-26)
         removes the legacy artifact-producing fallback entirely.

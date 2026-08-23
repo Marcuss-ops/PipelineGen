@@ -2,10 +2,9 @@ package assets
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 	"time"
@@ -305,8 +304,8 @@ func locationBoolToInt(v bool) int {
 }
 
 func locationEventKeySuffix(change scriptpkg.AssetLocationChange) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(change.DriveFileID) + "|" + strings.TrimSpace(change.DriveLink)))
-	return ":location:" + hex.EncodeToString(sum[:])[:16]
+	sum := digest.SHA256Bytes([]byte(strings.TrimSpace(change.DriveFileID) + "|" + strings.TrimSpace(change.DriveLink)))
+	return ":location:" + sum[:16]
 }
 
 func normalizeAssetLocationChanges(changes []scriptpkg.AssetLocationChange) ([]scriptpkg.AssetLocationChange, error) {

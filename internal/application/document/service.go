@@ -22,14 +22,12 @@ package document
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/jung-kurt/gofpdf"
 	"go.uber.org/zap"
 
@@ -216,15 +214,9 @@ func (s *Service) GeneratePDF(ctx context.Context, req DocumentRequest, jobID st
 // Kept package-internal — the sidecar / Sender uses job.ComputeSHA256
 // (the cross-package canonical helper) at upload-cycle time.
 func sha256File(path string) (string, error) {
-	f, err := os.Open(path)
+	h, _, err := digest.SHA256File(path)
 	if err != nil {
-		return "", fmt.Errorf("sha256File: open %q: %w", path, err)
+		return "", fmt.Errorf("sha256File: %q: %w", path, err)
 	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("sha256File: read %q: %w", path, err)
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return h, nil
 }

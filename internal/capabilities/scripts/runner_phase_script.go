@@ -10,11 +10,15 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
-const minimumClipSceneWords = 20
+// Clip-backed narrator intros are intentionally short-form. Keep a small
+// floor to reject empty/placeholders without imposing long-form documentary
+// minimums on an 18-word target scene.
+const minimumClipSceneWords = 12
 
 // outputFromScenes builds the single durable narration projection from the
 // ordered scene list. The requested source language wins; a first available
@@ -84,6 +88,60 @@ func bindExplicitClipSceneText(req GenerateRequest, scenes []Scene) {
 	}
 }
 
+// hasExplicitSceneMarkers returns true when sourceText contains "SCENE N:"
+// markers that bindExplicitClipSceneText would use for post-generation
+// rebinding. Streaming must be disabled when markers are present because
+// scene text emitted scene-by-scene could be overwritten by the bind step.
+func hasExplicitSceneMarkers(sourceText string) bool {
+	for _, line := range strings.Split(sourceText, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) < 8 || !strings.EqualFold(line[:5], "scene") {
+			continue
+		}
+		colon := strings.Index(line, ":")
+		if colon >= 0 && strings.TrimSpace(line[colon+1:]) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// SceneStreamingEligibility determines whether a SourceClips request can
+// safely use per-scene streaming (SceneTextReady fired scene-by-scene as
+// each scene's text becomes final) instead of the barrier batch path.
+//
+// Streaming is safe when NO post-generation mutation will change scene
+// text — the bindExplicitClipSceneText step is the only mutation, and it
+// fires ONLY when SCENE N: markers are present in the source text. When
+// markers are absent, the source text is already the definitive text OR
+// the LLM generates fresh text from clip evidence alone.
+//
+// Eligibility conditions:
+//
+// 1. Source is SourceClips with at least 1 ClipID
+// 2. Source text has NO explicit "SCENE N:" markers
+// 3. Optional extra safety: ScriptParams.Segments are present (1:1 stable
+//    clip→scene mapping); when absent the generator will emit a scene per
+//    clip anyway, but explicit segments make the contract explicit.
+//
+// The "SCENE N:" marker check is the canonical signal: if present,
+// bindExplicitClipSceneText WILL fire and could overwrite already-emitted
+// scene text, corrupting downstream consumers (NLP, TTS, render) that
+// already started on stale text.
+func SceneStreamingEligibility(req GenerateRequest) bool {
+	if req.Source.Type != SourceClips || len(req.Source.ClipIDs) == 0 {
+		return false
+	}
+	// SCENE N: markers → bindExplicitClipSceneText will fire → NOT streamable.
+	if hasExplicitSceneMarkers(req.Source.SourceText) {
+		return false
+	}
+	// Explicit Segments with 1:1 clip mapping strengthen the safe streaming
+	// contract but are not mandatory: without them the generator still emits
+	// one scene per clip. The marker check alone is the safety gate.
+	return true
+}
+
 func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) error {
 	actual := len(strings.Fields(strings.TrimSpace(output.Text)))
 	minimum := minimumGeneratedWords(req)
@@ -126,18 +184,25 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		var streamTranslationMetrics *TranslationPipelineMetrics
 		var streamAudioMetrics *AudioPipelineMetrics
 		var ready *sceneReadyCoordinator
-		if _, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
+		// ── Streaming eligibility ──────────────────────────────────
+		// SceneTextStreamer can emit scenes one-by-one so downstream
+		// branches (NLP, TTS, render) start before the LLM finishes.
+		// Historically this was disabled for all SourceClips because
+		// bindExplicitClipSceneText can mutate scene text after
+		// generation. SceneStreamingEligibility now gates streaming
+		// per-request: clips with no SCENE N: markers in source text
+		// are streamable (no post-gen rebinding).
+		streamable := SceneStreamingEligibility(req)
+		if _, ok := r.textGen.(SceneTextStreamer); ok && (req.Source.Type != SourceClips || streamable) {
 			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
 		}
-		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && req.Source.Type != SourceClips {
+		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && (req.Source.Type != SourceClips || streamable) {
 			streamed = true
 			scenes, generatedTrace, genErr = r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
-		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && req.Source.Type != SourceClips {
-			// Scene-ready streaming: emit SceneTextReady(N) per scene as its
-			// text becomes final so downstream branches start while the LLM
-			// keeps generating later scenes. The explicit-clip marker rebind
-			// (bindExplicitClipSceneText) mutates scene text after generation,
-			// so clip sources keep the batch path to preserve that contract.
+		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && (req.Source.Type != SourceClips || streamable) {
+			// Scene-ready streaming: emit SceneTextReady(N) per scene
+			// as its text becomes final so downstream branches start
+			// while the LLM keeps generating later scenes.
 			streamed = true
 			scenes, genErr = r.generateSceneTextStreaming(ctx, runID, req, exec, streamer, ready)
 		} else if traced, ok := r.textGen.(SceneTextTraceGenerator); ok {
@@ -275,8 +340,13 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {
-			if err := r.emitSceneCommits(ctx, runID, req, exec, scenes); err != nil {
-				cause := fmt.Errorf("emit scene commits: %w", err)
+			var emitErr error
+			kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
+				emitErr = r.emitSceneCommits(stageCtx, runID, req, exec, scenes)
+				return emitErr
+			})
+			if emitErr != nil {
+				cause := fmt.Errorf("emit scene commits: %w", emitErr)
 				r.failExecutionStep(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false

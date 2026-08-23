@@ -104,10 +104,9 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		cfg.StepStore = s.stepStore
 	}
 	planner := NewDeterministicPlanner()
-	// Resolve the application-layer stager adapter around the acquisition
-	// SourceStager injected by the composition root. This preserves the
-	// legacy assets.SourceStager shape required by the orchestrator while
-	// keeping Prepare/Release ownership in the canonical acquisition port.
+	// Resolve the acquisition.SourceStager for the orchestrator.
+	// StockStager implements acquisition.SourceStager via Prepare/Release
+	// adapter methods (stager_adapter.go).
 	stager := s.stagerForRun()
 	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {

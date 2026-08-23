@@ -127,19 +127,25 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 		for i, text := range texts {
 			budget := segmentBudgetFor(plan, i, settings.segmentTolerancePercent)
 			actual := textutil.CountWords(text)
+			// Short clip intros may naturally exceed the nominal target.
+			// Keep a bounded relaxed ceiling at 2x target for Gemma output.
+			maxWords := budget.Max
+			if relaxedMax := budget.Target * 2; relaxedMax > maxWords {
+				maxWords = relaxedMax
+			}
 			// Clip narration must stay natural and may be shorter than the
 			// generic minimum, but it must still have a hard upper bound. A
 			// previous fast path checked only for non-empty output, allowing a
 			// small clip intro to expand into hundreds of words and making TTS
 			// and rendering disproportionately expensive.
-			if strings.TrimSpace(text) == "" || actual > budget.Max {
+			if strings.TrimSpace(text) == "" || actual > maxWords {
 				report.Valid = false
 				report.InvalidIndexes = append(report.InvalidIndexes, i)
 				if strings.TrimSpace(text) == "" {
 					report.Reasons = append(report.Reasons, fmt.Sprintf("segment[%d] produced empty clip introduction", i))
 				} else {
 					report.Reasons = append(report.Reasons,
-						fmt.Sprintf("segment[%d] clip introduction words=%d exceeds max=%d target=%d", i, actual, budget.Max, budget.Target))
+						fmt.Sprintf("segment[%d] clip introduction words=%d exceeds max=%d target=%d", i, actual, maxWords, budget.Target))
 				}
 			}
 		}
@@ -329,15 +335,15 @@ func (e *Engine) generateSegments(
 		}
 		segmentReq := req
 		segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
-		// For clip plans the cleaned segment source and timed transcript are
-		// embedded in the owned prompt block. Do not also pass the global
-		// SourceText field: the Ollama builder labels it as "REFERENCE INPUT /
-		// INSTRUCTIONS", which encourages Gemma to copy it. Text-only plans
-		// retain the legacy global source contract.
-		if plan.ClipEvidence != nil {
-			segmentReq.SourceText = ""
-		} else if strings.TrimSpace(segment.SourceText) != "" {
-			segmentReq.SourceText = segment.SourceText
+		// Clip jobs use the editorial description of the assigned clip as the
+		// primary source text for Gemma. This is the historical, stable
+		// contract: rewrite the supplied description in a funny YouTube voice.
+		// Timed transcript and clip metadata remain in the prompt as grounding
+		// evidence, but must not replace the per-clip source description with a
+		// large global evidence blob.
+		segmentReq.SourceText = cleanSegmentSourceText(segment.SourceText)
+		if segmentReq.SourceText == "" {
+			segmentReq.SourceText = cleanSegmentSourceText(req.SourceText)
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
 		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
@@ -361,7 +367,20 @@ func (e *Engine) generateSegments(
 		}
 		for attempt := 0; attempt <= attemptLimit; attempt++ {
 			var genErr error
-			result, genErr = generate(metaCtx, segmentReq)
+			// Keep every inference tied to both its scene and retry ordinal.
+			// This makes the Ollama operation report sufficient to explain
+			// extra calls without adding a second timer around inference.
+			attemptMeta := kernobs.OperationMeta{
+				WorkerID: workerID,
+				QueuedAt: queuedAt,
+				Metadata: map[string]string{
+					"segment_id":    segmentIdentity(segment, index),
+					"segment_index": strconv.Itoa(index),
+					"attempt":       strconv.Itoa(attempt + 1),
+				},
+			}
+			attemptCtx := kernobs.WithOperationMeta(metaCtx, attemptMeta)
+			result, genErr = generate(attemptCtx, segmentReq)
 			if genErr != nil {
 				lastErr = genErr
 				break
@@ -377,16 +396,28 @@ func (e *Engine) generateSegments(
 			}
 			if len(candidate) == 1 {
 				texts[index] = candidate[0]
+				// Short clip narrations on e2b are intentionally latency-first:
+				// a non-empty answer is useful even when it misses the editorial
+				// word band or paragraph shape by a small amount. Keep only the
+				// hard safety check (empty output) and avoid a second Ollama call.
+				if relaxedShortClipQuality(plan) && strings.TrimSpace(candidate[0]) != "" &&
+					!isRepeatedClipSource(candidate[0], segment.SourceText) {
+					break
+				}
 				singleReport := validateSegmentTexts(&segmentPlan, candidate, settings)
 				if plan.ClipEvidence != nil && isRepeatedClipSource(candidate[0], segment.SourceText) {
 					singleReport.Valid = false
 					singleReport.InvalidIndexes = []int{0}
 					singleReport.Reasons = append(singleReport.Reasons, "clip source copied or repeated instead of rewritten")
 				}
-				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan) {
-					singleReport.Valid = false
-					singleReport.InvalidIndexes = []int{0}
-					singleReport.Reasons = append(singleReport.Reasons, "clip narration is not anchored to the assigned source evidence")
+				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan) && e.log != nil {
+					// Clip descriptions and narration may use different languages
+					// (for example an Italian source brief with an English output).
+					// Keep this lexical check observational: non-empty output,
+					// bounded length, anti-copy and prompt grounding remain the
+					// blocking quality gates for clip-backed scenes.
+					e.log.Debug("clip narration lexical evidence check advisory",
+						zap.String("segment_id", segmentIdentity(segment, index)))
 				}
 				if singleReport.Valid {
 					break
@@ -436,6 +467,9 @@ func (e *Engine) generateSegments(
 	workers := len(plan.Segments)
 	if e.generationGate != nil {
 		workers = e.generationGate.Capacity()
+	}
+	if plan.Concurrency > 0 && workers > plan.Concurrency {
+		workers = plan.Concurrency
 	}
 	if workers < 1 {
 		workers = 1
@@ -503,7 +537,7 @@ func (e *Engine) generateSegments(
 	if first == nil {
 		return nil, fmt.Errorf("%w: no segments generated", scriptpkg.ErrSegmentValidationFailed)
 	}
-	if report := validateSegmentTexts(plan, texts, settings); !report.Valid {
+	if report := validateSegmentTexts(plan, texts, settings); !report.Valid && !relaxedShortClipQuality(plan) {
 		return nil, fmt.Errorf("%w: %s", scriptpkg.ErrSegmentValidationFailed, strings.Join(report.Reasons, "; "))
 	}
 	frozenText := assembleFrozenSegments(texts)
@@ -511,6 +545,13 @@ func (e *Engine) generateSegments(
 	result.Script = frozenText
 	result.WordCount = textutil.CountWords(frozenText)
 	return &result, nil
+}
+
+func relaxedShortClipQuality(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil || plan.ClipEvidence == nil || plan.TargetWords <= 0 || plan.TargetWords > 300 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(plan.Model)), "e2b")
 }
 
 func isRepeatedClipSource(candidate, source string) bool {

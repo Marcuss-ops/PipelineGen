@@ -78,7 +78,7 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// with the same hash via seedLegacyFileMD5, CAS matches, setIndexedAt
 	// writes INDEXED. See canonical.go header's "Historical audits" block
 	// for the full exemption-archaeology context.
-	db := drive.NewTestDBWithSchema(t, drive.CanonicalMediaAssetsSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	// 2. Insert test clips. embedding_json is OMITTED from the column
@@ -92,10 +92,10 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// production-shape pattern (search_text starts empty until the
 	// outbox elsepath populates it).
 	_, err := db.Exec(`
-		INSERT INTO media_assets (id, name, source, media_type, asset_kind, source_type, tags, metadata_json)
+		INSERT INTO media_assets (id, name, source, media_type, asset_kind, source_type, tags, metadata_json, lifecycle_state, index_state)
 		VALUES
-			('clip_1', 'Test Clip One', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
-			('clip_2', 'Test Clip Two', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
+			('clip_1', 'Test Clip One', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}', 'ACTIVE', 'DISCOVERED'),
+			('clip_2', 'Test Clip Two', 'artlist', 'video', 'stock_video', 'artlist', '[]', '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}', 'ACTIVE', 'DISCOVERED')
 	`)
 	require.NoError(t, err)
 

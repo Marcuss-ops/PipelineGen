@@ -98,13 +98,25 @@ type ProcessVoiceoverItemDeps struct {
 
 // ProcessVoiceoverPipelineDeps groups the 5 canonical per-item
 // pipeline ports (TTSProvider → DestinationResolver → AudioPostProcessor
-// → Publisher → Finalize). Field count: 5.
+// → Publisher → Finalize) plus the optional cross-run cache and async
+// publish pool. Field count: 7.
 type ProcessVoiceoverPipelineDeps struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository persistence.Repository
+	// VoiceoverCache is the OPTIONAL cross-run cache lookup. When
+	// wired, the per-item pipeline short-circuits TTS + upload +
+	// finalize when a previous run already produced the same
+	// voiceover for the same content fingerprint. Nil-safe.
+	VoiceoverCache VoiceoverCacheLookup
+	// AsyncPublish is the OPTIONAL bounded publish pool (P0.4: separate
+	// TTS pool from publish pool). When wired, Stage 3 (Drive upload +
+	// timing) and Stage 4 (SQLite finalize) run in a background goroutine
+	// so the TTS slot is freed after synthesis. Nil means synchronous
+	// execution (backward compat).
+	AsyncPublish AsyncPublishPool
 }
 
 // ProcessVoiceoverRecoveryDeps groups the 2 nil-tolerant recovery
@@ -211,6 +223,8 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 			VoiceoverRepository: deps.Pipeline.VoiceoverRepository,
 			Finalizer:           deps.Finalize.Finalizer,
 			TxOutboxEnqueuer:    deps.Recovery.TxOutboxEnqueuer,
+			VoiceoverCache:      deps.Pipeline.VoiceoverCache,
+			AsyncPublish:        deps.Pipeline.AsyncPublish,
 			Logger:              deps.Logger,
 		}),
 	}

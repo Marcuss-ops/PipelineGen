@@ -8,8 +8,6 @@
 package app
 
 import (
-	"fmt"
-
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
@@ -42,10 +40,7 @@ func wireMediaProcessor(
 		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
 		return nil, nil
 	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(outbox.Dispatcher)
-	if err != nil {
-		return nil, fmt.Errorf("wireMediaProcessor: mutations dispatcher adapter: %w", err)
-	}
+	committer := newCanonicalAssetCommitter(dbs.Main.DB, outbox.EventsRepo, log)
 	mp := wiring.InitMediaProcessor(
 		cfg,
 		dbs.Main,
@@ -53,7 +48,7 @@ func wireMediaProcessor(
 		repos.Assets,
 		repos.Assets.LocationRepository(),
 		repos.Assets.ProcessingRepository(),
-		mutationsDisp,
+		committer,
 		log,
 		publisher,
 		mediaConfig,

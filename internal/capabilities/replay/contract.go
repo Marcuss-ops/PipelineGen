@@ -17,7 +17,7 @@ package replay
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -174,7 +174,7 @@ type AssetSource interface {
 }
 
 func isSHA256(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != digest.SHA256HexLength {
 		return false
 	}
 	_, err := hex.DecodeString(value)

@@ -53,9 +53,10 @@ type vidRushPrepareResult struct {
 // late-bound injection in the document phase; it is nil when the renderer
 // does not implement the early/late split.
 type vidRushPrepareOutcome struct {
-	result    vidRushPrepareResult
-	skeletons map[Language]string
-	err       error
+	result     vidRushPrepareResult
+	skeletons  map[Language]string
+	prefetched *AudioPrefetchResult
+	err        error
 }
 
 // applyVidRushPrepareProjections projects the prepare branch's outputs onto

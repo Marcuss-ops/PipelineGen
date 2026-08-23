@@ -1,0 +1,274 @@
+// Package scriptgeneration — media_preflight.go implements the fail-fast
+// Media Requirement Preflight that runs after normalize/source resolve in
+// parallel with Gemma (scene text generation).
+//
+// P0.5: after normalize, the preflight verifies all media assets the
+// pipeline will need — clip files, original audio streams, BGM/SFX
+// assets, Drive folders, watermark assets — BEFORE Gemma and TTS spend
+// minutes of work. A preflight failure fails the run immediately at the
+// join point, so no LLM/TTS work is wasted on a run that would fail at
+// audio compile anyway (e.g. missing clip audio for VOICEOVER_DUCKED_CLIP).
+//
+// The preflight runs EVERY check in parallel and collects ALL failures,
+// so the operator sees the complete picture in one run instead of
+// failing → fixing → failing → fixing across N retries.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every check is fail-closed. An
+// unavailable resolver (nil port) for a required check is itself a
+// preflight failure.
+package scriptgeneration
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+)
+
+// PreflightResult carries every failure found during the media preflight.
+// A nil or empty PreflightFailure slice means all checks passed.
+type PreflightResult struct {
+	Failures []PreflightFailure
+	WallMS   int64
+}
+
+// HasFailures returns true when at least one check failed.
+func (r PreflightResult) HasFailures() bool { return len(r.Failures) > 0 }
+
+// Error returns all failures joined by newlines.
+func (r PreflightResult) Error() string {
+	if len(r.Failures) == 0 {
+		return ""
+	}
+	parts := make([]string, len(r.Failures))
+	for i, f := range r.Failures {
+		parts[i] = f.Error()
+	}
+	return strings.Join(parts, "\n")
+}
+
+// PreflightFailure is one discrete media requirement check failure.
+type PreflightFailure struct {
+	Category string
+	AssetID  string
+	Detail   string
+}
+
+func (f PreflightFailure) Error() string {
+	if f.AssetID != "" {
+		return fmt.Sprintf("[%s] %s: %s", f.Category, f.AssetID, f.Detail)
+	}
+	return fmt.Sprintf("[%s] %s", f.Category, f.Detail)
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// MediaPreflight — ports
+// ────────────────────────────────────────────────────────────────────────
+
+// ClipPreflighter verifies a clip ID is reachable (fast probe).
+type ClipPreflighter interface {
+	ProbeClip(ctx context.Context, clipID string) error
+}
+
+// MediaPreflightInput carries everything needed to verify media
+// requirements for one run.
+type MediaPreflightInput struct {
+	ClipIDs          []string
+	IntroClipIDs     []string
+	ClipProber       ClipPreflighter
+	ClipAudioSource  ClipAudioAssetSource
+	MixPolicy        capabilityaudio.AudioMixPolicy
+	BGMIDs           []string
+	SFXIDs           []string
+	AudioAssetSource AudioAssetSource
+	RenderEnabled    bool
+	WatermarkAssetID string
+	WatermarkResolver ClipPreflighter
+}
+
+// RunMediaPreflight executes every check concurrently and returns all
+// failures. Designed to run in a goroutine during Gemma; the join point
+// after Gemma checks result.HasFailures().
+func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightResult {
+	started := time.Now()
+
+	var (
+		mu       sync.Mutex
+		failures []PreflightFailure
+		wg       sync.WaitGroup
+	)
+
+	// Flatten: one goroutine per check item. Add to wg BEFORE spawning.
+	// ── Clip existence ──────────────────────────────────────────
+	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.IntroClipIDs))
+	allClipIDs = append(allClipIDs, in.ClipIDs...)
+	allClipIDs = append(allClipIDs, in.IntroClipIDs...)
+	for _, id := range allClipIDs {
+		id := id
+		if in.ClipProber == nil {
+			mu.Lock()
+			failures = append(failures, PreflightFailure{
+				Category: "clip", AssetID: id,
+				Detail: "clip prober not wired — cannot verify clip existence",
+			})
+			mu.Unlock()
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := in.ClipProber.ProbeClip(ctx, id); err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "clip", AssetID: id,
+					Detail: fmt.Sprintf("clip not reachable: %v", err),
+				})
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// ── Original audio stream (VOICEOVER_DUCKED_CLIP only) ─────
+	if in.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip {
+		for _, id := range in.ClipIDs {
+			id := id
+			if in.ClipAudioSource == nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "clip_audio", AssetID: id,
+					Detail: "clip audio source not wired — cannot verify original audio stream for VOICEOVER_DUCKED_CLIP",
+				})
+				mu.Unlock()
+				continue
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				resolved, err := in.ClipAudioSource.ResolveClipAudioAsset(ctx, id)
+				if err != nil {
+					mu.Lock()
+					failures = append(failures, PreflightFailure{
+						Category: "clip_audio", AssetID: id,
+						Detail: fmt.Sprintf("original audio stream unavailable: %v", err),
+					})
+					mu.Unlock()
+					return
+				}
+				if _, statErr := os.Stat(resolved.Path); statErr != nil {
+					mu.Lock()
+					failures = append(failures, PreflightFailure{
+						Category: "clip_audio", AssetID: id,
+						Detail: fmt.Sprintf("resolved audio path not readable: %s: %v", resolved.Path, statErr),
+					})
+					mu.Unlock()
+				}
+			}()
+		}
+	}
+
+	// ── BGM assets ────────────────────────────────────────────
+	for _, id := range in.BGMIDs {
+		id := id
+		if in.AudioAssetSource == nil {
+			mu.Lock()
+			failures = append(failures, PreflightFailure{
+				Category: "bgm", AssetID: id,
+				Detail: "audio asset source not wired — cannot verify BGM",
+			})
+			mu.Unlock()
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resolved, err := in.AudioAssetSource.ResolveAudioAsset(ctx, id)
+			if err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "bgm", AssetID: id,
+					Detail: fmt.Sprintf("BGM asset unavailable: %v", err),
+				})
+				mu.Unlock()
+				return
+			}
+			if _, statErr := os.Stat(resolved.Path); statErr != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "bgm", AssetID: id,
+					Detail: fmt.Sprintf("BGM file not readable: %s: %v", resolved.Path, statErr),
+				})
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// ── SFX assets ────────────────────────────────────────────
+	for _, id := range in.SFXIDs {
+		id := id
+		if in.AudioAssetSource == nil {
+			mu.Lock()
+			failures = append(failures, PreflightFailure{
+				Category: "sfx", AssetID: id,
+				Detail: "audio asset source not wired — cannot verify SFX",
+			})
+			mu.Unlock()
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resolved, err := in.AudioAssetSource.ResolveAudioAsset(ctx, id)
+			if err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "sfx", AssetID: id,
+					Detail: fmt.Sprintf("SFX asset unavailable: %v", err),
+				})
+				mu.Unlock()
+				return
+			}
+			if _, statErr := os.Stat(resolved.Path); statErr != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "sfx", AssetID: id,
+					Detail: fmt.Sprintf("SFX file not readable: %s: %v", resolved.Path, statErr),
+				})
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// ── Watermark asset ────────────────────────────────────────
+	if in.RenderEnabled && strings.TrimSpace(in.WatermarkAssetID) != "" {
+		id := in.WatermarkAssetID
+		if in.WatermarkResolver == nil {
+			failures = append(failures, PreflightFailure{
+				Category: "watermark", AssetID: id,
+				Detail: "watermark resolver not wired",
+			})
+		} else {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := in.WatermarkResolver.ProbeClip(ctx, id); err != nil {
+					mu.Lock()
+					failures = append(failures, PreflightFailure{
+						Category: "watermark", AssetID: id,
+						Detail: fmt.Sprintf("watermark asset unavailable: %v", err),
+					})
+					mu.Unlock()
+				}
+			}()
+		}
+	}
+
+	wg.Wait()
+	return PreflightResult{
+		Failures: failures,
+		WallMS:   time.Since(started).Milliseconds(),
+	}
+}

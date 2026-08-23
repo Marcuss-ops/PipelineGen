@@ -79,7 +79,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
@@ -217,7 +216,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), nil, log, observability.NewScriptGenerationBranchRecorder())
+	engine := usecase.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), nil, log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(cfg.Scripts.SegmentWordsTolerancePercent, cfg.Scripts.TotalWordsTolerancePercent, cfg.Scripts.MaxSegmentRegenerationAttempts)
 
@@ -298,6 +297,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 			return nil, nil, fmt.Errorf("creator: register handler %q in worker registry: %w", jobType, err)
 		}
 	}
+	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
 	reg.Freeze()
 
 	caps := appjobs.WorkerCapabilities{JobTypes: reg.JobTypes()}
