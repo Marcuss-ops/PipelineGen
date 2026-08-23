@@ -53,6 +53,17 @@ var (
 	vidrushMaterializedCache sync.Map
 )
 
+// artlistSegmentCacheKey makes explicit Artlist intent the stable identity of
+// a tagged search. Generated prose can vary slightly across model retries;
+// explicit keywords must still replay the same provider result. Untagged
+// searches retain the text-hash identity used by the legacy path.
+func artlistSegmentCacheKey(segmentID, textHash, intentHash, language, model, promptVersion string) string {
+	if strings.TrimSpace(intentHash) != "" {
+		textHash = ""
+	}
+	return segmentCacheKey("artlist-assets-v3", segmentID, textHash, intentHash, language, model, promptVersion)
+}
+
 func materializeNarrativeScenes(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.SpecScene {
 	if plan == nil || plan.SingleScene || len(scenes) > 1 {
 		return scenes

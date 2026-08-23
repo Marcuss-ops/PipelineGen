@@ -265,6 +265,7 @@ func (p *VideoProcessor) Probe(ctx context.Context, path string) (*mediaexec.Med
 		AudioStreamCount: int(m.AudioStreamCount),
 		FPSNum:           int(m.FPSNum),
 		FPSDen:           int(m.FPSDen),
+		AudioProfile:     m.AudioProfile,
 	}, nil
 }
 

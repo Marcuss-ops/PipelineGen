@@ -88,12 +88,10 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			continue
 		}
 
-		cacheKey := segmentCacheKey(
+		cacheKey := artlistSegmentCacheKey(
 			// Provider discovery is keyed by the canonical scene identity.
-			// Extracted queries are ranking hints and may vary across
-			// deterministic retries; including them caused warm runs to
-			// refetch the same scene when the LLM chose different wording.
-			"artlist-assets-v3",
+			// Explicit Artlist intent is stable across generated-prose retries;
+			// untagged scenes retain their text-hash identity.
 			updated.SegmentID,
 			updated.TextHash,
 			updated.Insights.ArtlistIntentHash,

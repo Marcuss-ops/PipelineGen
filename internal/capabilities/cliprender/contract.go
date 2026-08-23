@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 )
 
 // ErrUnsupportedContract is the typed sentinel for an output.contract ID the
@@ -30,8 +29,9 @@ var ErrContractMismatch = errors.New("clip.render: rendered output violates the 
 
 // ValidateContract is the pure post-render contract gate: it compares the
 // probed output facts against the fully-resolved contract. Every dimension
-// must match exactly — rational FPS via cross-multiplication, no epsilon.
-// The contract pins what VeloxEditing accepts, the probe reads actual bytes.
+// must match exactly — rational FPS/SAR/timebase via cross-multiplication,
+// no float epsilon anywhere. No value is hardcoded; every check reads from
+// the contract struct so the SSOT is the Resolve() function.
 func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if contract == nil {
 		return fmt.Errorf("%w: contract is nil", ErrContractMismatch)
@@ -39,6 +39,7 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if probe == nil {
 		return fmt.Errorf("%w: probe is nil", ErrContractMismatch)
 	}
+	// Container and video identity.
 	if probe.Container != "" && probe.Container != contract.Container {
 		return fmt.Errorf("%w: container %q != %q", ErrContractMismatch, probe.Container, contract.Container)
 	}
@@ -51,72 +52,99 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if probe.VideoProfile != "" && probe.VideoProfile != contract.VideoProfile {
 		return fmt.Errorf("%w: video profile %q != %q", ErrContractMismatch, probe.VideoProfile, contract.VideoProfile)
 	}
+	if probe.VideoLevel != "" && probe.VideoLevel != contract.VideoLevel {
+		return fmt.Errorf("%w: video level %q != %q", ErrContractMismatch, probe.VideoLevel, contract.VideoLevel)
+	}
 	if probe.PixelFormat != contract.PixelFormat {
 		return fmt.Errorf("%w: pixel format %q != %q", ErrContractMismatch, probe.PixelFormat, contract.PixelFormat)
 	}
+	// Geometry.
 	if probe.Width != contract.Width || probe.Height != contract.Height {
 		return fmt.Errorf("%w: geometry %dx%d != %dx%d", ErrContractMismatch, probe.Width, probe.Height, contract.Width, contract.Height)
 	}
-	if probe.FPSNum != 0 && probe.FPSDen != 0 {
+	// FPS: exact rational via cross-multiplication — no float epsilon.
+	if contract.FPSNum > 0 && contract.FPSDen > 0 {
 		if probe.FPSNum*contract.FPSDen != contract.FPSNum*probe.FPSDen {
 			return fmt.Errorf("%w: fps %d/%d != %d/%d", ErrContractMismatch, probe.FPSNum, probe.FPSDen, contract.FPSNum, contract.FPSDen)
 		}
-	} else {
-		targetFPS := float64(contract.FPSNum) / float64(contract.FPSDen)
-		if math.Abs(probe.FPS-targetFPS) > 0.001 {
-			return fmt.Errorf("%w: fps %.3f != %d/%d", ErrContractMismatch, probe.FPS, contract.FPSNum, contract.FPSDen)
+	}
+	// Timebase: exact rational.
+	if contract.VideoTimeBaseNum > 0 && contract.VideoTimeBaseDen > 0 {
+		if probe.VideoTimeBaseNum != 0 && probe.VideoTimeBaseDen != 0 {
+			if probe.VideoTimeBaseNum*contract.VideoTimeBaseDen != contract.VideoTimeBaseNum*probe.VideoTimeBaseDen {
+				return fmt.Errorf("%w: video timebase %d/%d != %d/%d", ErrContractMismatch, probe.VideoTimeBaseNum, probe.VideoTimeBaseDen, contract.VideoTimeBaseNum, contract.VideoTimeBaseDen)
+			}
 		}
 	}
-	if probe.SARNum != 0 && probe.SARDen != 0 {
-		if probe.SARNum != 1 || probe.SARDen != 1 {
-			return fmt.Errorf("%w: SAR %d/%d != 1/1", ErrContractMismatch, probe.SARNum, probe.SARDen)
+	if contract.AudioTimeBaseNum > 0 && contract.AudioTimeBaseDen > 0 {
+		if probe.AudioTimeBaseNum != 0 && probe.AudioTimeBaseDen != 0 {
+			if probe.AudioTimeBaseNum*contract.AudioTimeBaseDen != contract.AudioTimeBaseNum*probe.AudioTimeBaseDen {
+				return fmt.Errorf("%w: audio timebase %d/%d != %d/%d", ErrContractMismatch, probe.AudioTimeBaseNum, probe.AudioTimeBaseDen, contract.AudioTimeBaseNum, contract.AudioTimeBaseDen)
+			}
 		}
 	}
-	if probe.ColorRange != "" && probe.ColorRange != "tv" {
-		return fmt.Errorf("%w: color_range %q != tv", ErrContractMismatch, probe.ColorRange)
-	}
-	if probe.ColorSpace != "" && probe.ColorSpace != "bt709" {
-		return fmt.Errorf("%w: color_space %q != bt709", ErrContractMismatch, probe.ColorSpace)
-	}
-	if !probe.HasAudio {
-		return fmt.Errorf("%w: output has no audio stream (contract requires %s/%dHz/%dch)", ErrContractMismatch, contract.AudioCodec, contract.SampleRate, contract.Channels)
-	}
-	if probe.AudioCodec != contract.AudioCodec {
-		return fmt.Errorf("%w: audio codec %q != %q", ErrContractMismatch, probe.AudioCodec, contract.AudioCodec)
-	}
-	if probe.AudioProfile != "" && probe.AudioProfile != contract.AudioProfile {
-		return fmt.Errorf("%w: audio profile %q != %q", ErrContractMismatch, probe.AudioProfile, contract.AudioProfile)
-	}
-	if probe.SampleRate != contract.SampleRate {
-		return fmt.Errorf("%w: sample rate %d != %d", ErrContractMismatch, probe.SampleRate, contract.SampleRate)
-	}
-	if probe.Channels != contract.Channels {
-		return fmt.Errorf("%w: channels %d != %d", ErrContractMismatch, probe.Channels, contract.Channels)
-	}
-	if probe.ChannelLayout != "" && probe.ChannelLayout != contract.AudioChannelLayout {
-		return fmt.Errorf("%w: channel_layout %q != %q", ErrContractMismatch, probe.ChannelLayout, contract.AudioChannelLayout)
-	}
-	if probe.AudioBitrate != "" && probe.AudioBitrate != contract.AudioBitrate {
-		return fmt.Errorf("%w: audio bitrate %q != %q", ErrContractMismatch, probe.AudioBitrate, contract.AudioBitrate)
-	}
-	if probe.VideoTimeBaseNum != 0 && probe.VideoTimeBaseDen != 0 {
-		if probe.VideoTimeBaseNum != 1 || probe.VideoTimeBaseDen != 90000 {
-			return fmt.Errorf("%w: video timebase %d/%d != 1/90000", ErrContractMismatch, probe.VideoTimeBaseNum, probe.VideoTimeBaseDen)
+	// SAR: exact rational.
+	if contract.SARNum > 0 && contract.SARDen > 0 {
+		if probe.SARNum != 0 && probe.SARDen != 0 {
+			if probe.SARNum*contract.SARDen != contract.SARNum*probe.SARDen {
+				return fmt.Errorf("%w: SAR %d/%d != %d/%d", ErrContractMismatch, probe.SARNum, probe.SARDen, contract.SARNum, contract.SARDen)
+			}
 		}
 	}
-	if probe.AudioTimeBaseNum != 0 && probe.AudioTimeBaseDen != 0 {
-		if probe.AudioTimeBaseNum != 1 || probe.AudioTimeBaseDen != 48000 {
-			return fmt.Errorf("%w: audio timebase %d/%d != 1/48000", ErrContractMismatch, probe.AudioTimeBaseNum, probe.AudioTimeBaseDen)
+	// Color metadata.
+	if contract.ColorRange != "" && probe.ColorRange != "" && probe.ColorRange != contract.ColorRange {
+		return fmt.Errorf("%w: color_range %q != %q", ErrContractMismatch, probe.ColorRange, contract.ColorRange)
+	}
+	if contract.ColorSpace != "" && probe.ColorSpace != "" && probe.ColorSpace != contract.ColorSpace {
+		return fmt.Errorf("%w: color_space %q != %q", ErrContractMismatch, probe.ColorSpace, contract.ColorSpace)
+	}
+	if contract.ColorTransfer != "" && probe.ColorTransfer != "" && probe.ColorTransfer != contract.ColorTransfer {
+		return fmt.Errorf("%w: color_transfer %q != %q", ErrContractMismatch, probe.ColorTransfer, contract.ColorTransfer)
+	}
+	if contract.ColorPrimaries != "" && probe.ColorPrimaries != "" && probe.ColorPrimaries != contract.ColorPrimaries {
+		return fmt.Errorf("%w: color_primaries %q != %q", ErrContractMismatch, probe.ColorPrimaries, contract.ColorPrimaries)
+	}
+	if contract.FieldOrder != "" && probe.FieldOrder != "" && probe.FieldOrder != contract.FieldOrder {
+		return fmt.Errorf("%w: field_order %q != %q", ErrContractMismatch, probe.FieldOrder, contract.FieldOrder)
+	}
+	// GOP.
+	if contract.KeyframeInterval > 0 && probe.KeyframeInterval != 0 && probe.KeyframeInterval != contract.KeyframeInterval {
+		return fmt.Errorf("%w: keyframe interval %d != %d", ErrContractMismatch, probe.KeyframeInterval, contract.KeyframeInterval)
+	}
+	// Audio contract.
+	if contract.AudioStreams > 0 {
+		if !probe.HasAudio {
+			return fmt.Errorf("%w: output has no audio stream (contract requires %s/%dHz/%dch)", ErrContractMismatch, contract.AudioCodec, contract.SampleRate, contract.Channels)
+		}
+		if probe.AudioCodec != contract.AudioCodec {
+			return fmt.Errorf("%w: audio codec %q != %q", ErrContractMismatch, probe.AudioCodec, contract.AudioCodec)
+		}
+		if contract.AudioProfile != "" && probe.AudioProfile != "" && probe.AudioProfile != contract.AudioProfile {
+			return fmt.Errorf("%w: audio profile %q != %q", ErrContractMismatch, probe.AudioProfile, contract.AudioProfile)
+		}
+		if probe.SampleRate != contract.SampleRate {
+			return fmt.Errorf("%w: sample rate %d != %d", ErrContractMismatch, probe.SampleRate, contract.SampleRate)
+		}
+		if probe.Channels != contract.Channels {
+			return fmt.Errorf("%w: channels %d != %d", ErrContractMismatch, probe.Channels, contract.Channels)
+		}
+		if contract.AudioChannelLayout != "" && probe.ChannelLayout != "" && probe.ChannelLayout != contract.AudioChannelLayout {
+			return fmt.Errorf("%w: channel_layout %q != %q", ErrContractMismatch, probe.ChannelLayout, contract.AudioChannelLayout)
+		}
+		if contract.AudioBitrate != "" && probe.AudioBitrate != "" && probe.AudioBitrate != contract.AudioBitrate {
+			return fmt.Errorf("%w: audio bitrate %q != %q", ErrContractMismatch, probe.AudioBitrate, contract.AudioBitrate)
 		}
 	}
-	if probe.VideoStreams != 0 && probe.VideoStreams != 1 {
-		return fmt.Errorf("%w: video streams %d != 1", ErrContractMismatch, probe.VideoStreams)
+	// Stream layout.
+	if contract.VideoStreams > 0 && probe.VideoStreams != 0 && probe.VideoStreams != contract.VideoStreams {
+		return fmt.Errorf("%w: video streams %d != %d", ErrContractMismatch, probe.VideoStreams, contract.VideoStreams)
 	}
-	if probe.AudioStreams != 0 && probe.AudioStreams != 1 {
-		return fmt.Errorf("%w: audio streams %d != 1", ErrContractMismatch, probe.AudioStreams)
+	if contract.AudioStreams > 0 && probe.AudioStreams != 0 && probe.AudioStreams != contract.AudioStreams {
+		return fmt.Errorf("%w: audio streams %d != %d", ErrContractMismatch, probe.AudioStreams, contract.AudioStreams)
 	}
-	if probe.StartPTS != 0 {
-		return fmt.Errorf("%w: start_pts %d != 0", ErrContractMismatch, probe.StartPTS)
+	// StartPTS (always 0 for assembly-ready).
+	if probe.StartPTS != contract.StartPTS {
+		return fmt.Errorf("%w: start_pts %d != %d", ErrContractMismatch, probe.StartPTS, contract.StartPTS)
 	}
 	return nil
 }
@@ -140,11 +168,23 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 			Container:          "mp4",
 			VideoCodec:         "h264",
 			VideoProfile:       "high",
+			VideoLevel:         "4.0",
 			PixelFormat:        "yuv420p",
 			Width:              req.Output.Width,
 			Height:             req.Output.Height,
 			FPSNum:             req.Output.FPSNum,
 			FPSDen:             req.Output.FPSDen,
+			VideoTimeBaseNum:   1,
+			VideoTimeBaseDen:   90000,
+			AudioTimeBaseNum:   1,
+			AudioTimeBaseDen:   48000,
+			SARNum:             1,
+			SARDen:             1,
+			ColorRange:         "tv",
+			ColorSpace:         "bt709",
+			ColorTransfer:      "bt709",
+			ColorPrimaries:     "bt709",
+			FieldOrder:         "progressive",
 			KeyframeInterval:   48,
 			AudioCodec:         "aac",
 			AudioProfile:        "LC",
@@ -152,6 +192,9 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 			Channels:           2,
 			AudioChannelLayout: "stereo",
 			AudioBitrate:        "128k",
+			VideoStreams:       1,
+			AudioStreams:       1,
+			StartPTS:           0,
 		}, nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedContract, req.Output.Contract)

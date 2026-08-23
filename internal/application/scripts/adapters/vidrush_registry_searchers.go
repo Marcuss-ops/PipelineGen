@@ -198,6 +198,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// deterministic regardless of provider completion order.
 	segmentID := updated.SegmentID
 	textHash := updated.TextHash
+	artlistIntentHash := updated.Insights.ArtlistIntentHash
 	artlistQueries := append([]string(nil), updated.Insights.ArtlistQueries...)
 	imageQueries := append([]string(nil), updated.Insights.ImageQueries...)
 	firstEntity := ""
@@ -210,6 +211,54 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			cacheKey := artlistSegmentCacheKey(
+				segmentID,
+				textHash,
+				artlistIntentHash,
+				plan.Language,
+				plan.Model,
+				plan.PromptVersion,
+			)
+			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+				if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
+					if payload, ok := cached.(artlistSegmentCachePayload); ok {
+						candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
+						var primary *scriptpkg.SegmentAssetCandidate
+						if len(candidates) > 0 && readyVidRushCandidate(candidates[0]) {
+							selected := candidates[0]
+							primary = &selected
+						}
+						if f.metrics != nil {
+							f.metrics.IncAssetCache("artlist", true)
+						}
+						outcomes <- providerOutcome{provider: "artlist", candidates: candidates, primary: primary, allCacheHits: true}
+						return
+					}
+				}
+				var persisted artlistSegmentCachePayload
+				if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, &persisted); err != nil {
+					outcomes <- providerOutcome{provider: "artlist", err: err}
+					return
+				} else if hit {
+					persisted = cloneArtlistSegmentCachePayload(persisted)
+					if len(persisted.Candidates) > 0 {
+						cacheStore(&vidrushArtlistCache, cacheKey, persisted)
+					}
+					var primary *scriptpkg.SegmentAssetCandidate
+					if len(persisted.Candidates) > 0 && readyVidRushCandidate(persisted.Candidates[0]) {
+						selected := persisted.Candidates[0]
+						primary = &selected
+					}
+					if f.metrics != nil {
+						f.metrics.IncAssetCache("artlist", true)
+					}
+					outcomes <- providerOutcome{provider: "artlist", candidates: persisted.Candidates, primary: primary, allCacheHits: true}
+					return
+				}
+			}
+			if f.metrics != nil {
+				f.metrics.IncAssetCache("artlist", false)
+			}
 			if f.metrics != nil {
 				f.metrics.IncProviderRequest("artlist")
 			}
@@ -226,6 +275,15 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 			if len(candidates) > 0 && readyVidRushCandidate(candidates[0]) {
 				selected := candidates[0]
 				primary = &selected
+			}
+			payload := artlistSegmentCachePayload{
+				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+				Matches:    cloneArtlistMatches(dedupeArtlistMatches(matches)),
+			}
+			cacheStore(&vidrushArtlistCache, cacheKey, payload)
+			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, payload); cacheErr != nil {
+				outcomes <- providerOutcome{provider: "artlist", err: cacheErr}
+				return
 			}
 			outcomes <- providerOutcome{provider: "artlist", candidates: candidates, primary: primary}
 		}()
@@ -465,6 +523,11 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		case scriptpkg.VidRushProviderArtlist:
 			updated.Assets.PrimaryVideo = outcome.primary
 			updated.Cache.Artlist = "MISS"
+			if plan.MediaPlan.ForceRefreshAssets {
+				updated.Cache.Artlist = "REFRESHED"
+			} else if outcome.allCacheHits {
+				updated.Cache.Artlist = "HIT_EXACT"
+			}
 		case scriptpkg.VidRushProviderInternetImages:
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, outcome.candidates)
 			updated.Cache.InternetImages = "MISS"

@@ -92,11 +92,23 @@ type ResolvedContract struct {
 	Container         string
 	VideoCodec        string
 	VideoProfile      string
+	VideoLevel        string
 	PixelFormat       string
 	Width             int
 	Height            int
 	FPSNum            int
 	FPSDen            int
+	VideoTimeBaseNum  int
+	VideoTimeBaseDen  int
+	AudioTimeBaseNum  int
+	AudioTimeBaseDen  int
+	SARNum            int
+	SARDen            int
+	ColorRange        string
+	ColorSpace        string
+	ColorTransfer     string
+	ColorPrimaries    string
+	FieldOrder        string
 	KeyframeInterval  int
 	AudioCodec        string
 	AudioProfile       string
@@ -104,6 +116,9 @@ type ResolvedContract struct {
 	Channels          int
 	AudioChannelLayout string
 	AudioBitrate       string
+	VideoStreams      int
+	AudioStreams      int
+	StartPTS          int64
 }
 
 // PhaseTiming records one preparation phase. WorkMS is the phase's own
