@@ -76,8 +76,6 @@ type LocalizedRenderEnqueuerConfig struct {
 	GlobalConcurrency int
 }
 
-const inlineRenderChildJobType = "script.render.child"
-
 type inlineRenderChild struct {
 	broker   job.JobBroker
 	id       string
@@ -446,99 +444,6 @@ func invalidSubtitleText(trackText string, cues []asset.TimedCue) bool {
 		}
 	}
 	return false
-}
-
-// persistTracks upserts the source transcript + translated subtitle text
-// tracks as READY. Idempotent: the UNIQUE(asset_id, language_code, text_kind)
-// upsert reuses an existing row, so a crash/restart never duplicates tracks.
-func (a *localizedRenderEnqueuerAdapter) persistTracks(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) error {
-	if a.tracks == nil {
-		return fmt.Errorf("localized render: text track repository not wired")
-	}
-	var tracks []asset.TextTrack
-	// The source-language render still needs a READY transcript. When source
-	// and target language are equal, `Text` is the canonical narration and
-	// `SourceText` is its provenance; use either value, but never skip the
-	// source track entirely.
-	sourceText := strings.TrimSpace(in.SourceText)
-	if sourceText == "" && sourceLang == targetLang {
-		sourceText = strings.TrimSpace(in.Text)
-	}
-	if sourceText != "" {
-		tracks = append(tracks, asset.TextTrack{
-			AssetID:            assetID,
-			LanguageCode:       sourceLang,
-			TextKind:           asset.TextTrackTranscript,
-			TextContent:        sourceText,
-			SourceType:         asset.TextSourceProvided,
-			SourceLanguageCode: sourceLang,
-			IsOriginal:         true,
-			Provider:           "script-generation",
-			TextHash:           asset.TextHash(sourceText, sourceLang, asset.TextTrackTranscript),
-			Status:             asset.TextTrackReady,
-		})
-	}
-	// The translated subtitle track is additional only when target language
-	// differs from the source language; the source track above is reused for
-	// same-language subtitles by the plan builder.
-	if strings.TrimSpace(in.Text) != "" && targetLang != sourceLang {
-		tracks = append(tracks, asset.TextTrack{
-			AssetID:            assetID,
-			LanguageCode:       targetLang,
-			TextKind:           asset.TextTrackTranscript,
-			TextContent:        in.Text,
-			SourceType:         asset.TextSourceTranslation,
-			SourceLanguageCode: sourceLang,
-			IsOriginal:         false,
-			Provider:           "script-generation",
-			TextHash:           asset.TextHash(in.Text, targetLang, asset.TextTrackTranscript),
-			Status:             asset.TextTrackReady,
-		})
-	}
-	if len(tracks) == 0 {
-		return fmt.Errorf("localized render: no text to persist for scene %q lang %q", in.SceneID, targetLang)
-	}
-	if err := a.tracks.UpsertBatch(ctx, tracks); err != nil {
-		return fmt.Errorf("localized render: persist text tracks for %q: %w", assetID, err)
-	}
-	return nil
-}
-
-// persistCues writes a full-span timed cue (0 → clip duration) for each
-// persisted language. ReplaceTranscriptCues replaces the whole per-asset cue
-// set, so the adapter accumulates every language's cue under a lock and
-// re-writes the complete set — two concurrent languages of the same scene can
-// never clobber each other's cues.
-func (a *localizedRenderEnqueuerAdapter) persistCues(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) error {
-	if a.cues == nil {
-		return fmt.Errorf("localized render: timed cue writer not wired")
-	}
-	duration := in.ClipDurationMS
-	if duration <= 0 {
-		duration = 1 // a valid single-frame cue; the renderer re-audits real duration
-	}
-
-	a.cueMu.Lock()
-	defer a.cueMu.Unlock()
-	byLang := a.cueState[assetID]
-	if byLang == nil {
-		byLang = make(map[string][]asset.TimedCue)
-		a.cueState[assetID] = byLang
-	}
-	sourceCueText := strings.TrimSpace(in.SourceText)
-	if sourceCueText == "" && sourceLang == targetLang {
-		sourceCueText = strings.TrimSpace(in.Text)
-	}
-	if sourceCueText != "" {
-		byLang[sourceLang] = []asset.TimedCue{{StartMs: 0, EndMs: duration, Text: sourceCueText}}
-	}
-	if strings.TrimSpace(in.Text) != "" && targetLang != sourceLang {
-		byLang[targetLang] = []asset.TimedCue{{StartMs: 0, EndMs: duration, Text: in.Text}}
-	}
-	if err := a.cues.ReplaceTranscriptCues(ctx, assetID, byLang); err != nil {
-		return fmt.Errorf("localized render: persist cues for %q: %w", assetID, err)
-	}
-	return nil
 }
 
 // wireLocalizedRenderEnqueuer wires the runner's localized-render fan-out to

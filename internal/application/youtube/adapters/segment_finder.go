@@ -1,53 +1,19 @@
 package adapters
 
 import (
-	"context"
-	"encoding/json"
-
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Segment discovery constants ──────────────────────────────────────────
 
-const maxAutoSegmentsPerVideo = 4
-const maxAutoSegmentsPerLongSection = 1
 
-// timedEntry represents a single timed subtitle entry with start/end times and text.
-type timedEntry struct {
-	start float64
-	end   float64
-	text  string
-}
 
 // ── Segment splitting ────────────────────────────────────────────────────
 
 // ── Segment cache ────────────────────────────────────────────────────────
 
-func (s *Service) getCachedSegments(ctx context.Context, videoID string) ([]youtubetypes.Segment, bool) {
-	if s.cache == nil {
-		return nil, false
-	}
-	if segmentsJSON, ok := s.cache.GetSegments(ctx, videoID); ok {
-		var segments []youtubetypes.Segment
-		if err := json.Unmarshal([]byte(segmentsJSON), &segments); err == nil {
-			return segments, true
-		}
-	}
-	return nil, false
-}
 
-func (s *Service) setCachedSegments(ctx context.Context, videoID string, segments []youtubetypes.Segment) {
-	if s.cache == nil {
-		return
-	}
-	segmentsJSON, err := json.Marshal(segments)
-	if err != nil {
-		return
-	}
-	s.cache.SetSegments(ctx, videoID, string(segmentsJSON))
-}
 
 // buildSubtitleArgs assembles the canonical yt-dlp argv for a subtitle
 // fetch used by the segment finder. Extracted from findSegmentsFromSubtitles

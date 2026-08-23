@@ -419,11 +419,3 @@ func getQualityTier(score float64) string {
 	return "low"
 }
 
-func buildVideoURL(clipID string, existing *asset.Asset) string {
-	if existing != nil {
-		if url := existing.ExternalURL(); url != "" {
-			return url
-		}
-	}
-	return ""
-}
