@@ -721,7 +721,7 @@ echo "ffmpeg=$ffmpeg_count ffprobe=$ffprobe_count"
 
 ### §12.5 — Measured N=30 bench (real ffmpeg subprocess economics)
 
-**Status**: measured on this host (ffmpeg 4.4.2, /usr/bin/{ffmpeg,ffprobe}), bench script committed at [`scripts/operations/bench_stock_clip_round.sh`](../scripts/operations/bench_stock_clip_round.sh). N=351 full bench timed out at ffmpeg 4.4.2 single-process limit on filter_complex with 351 outputs (out of ffmpeg 4.4.2 single-CLI graph depth); the N=30 measured ratios + linear scaling close the loop numerically per §12.2's projection contracts.
+**Status**: measured on this host (ffmpeg 4.4.2, /usr/bin/{ffmpeg,ffprobe}), bench script committed at `scripts/operations/bench_stock_clip_round.sh` *(removed — historical measurement)*. N=351 full bench timed out at ffmpeg 4.4.2 single-process limit on filter_complex with 351 outputs (out of ffmpeg 4.4.2 single-CLI graph depth); the N=30 measured ratios + linear scaling close the loop numerically per §12.2's projection contracts.
 
 #### §12.5.1 — Measured numbers (N=30, single source group, 150s lavfi source)
 
@@ -766,7 +766,7 @@ Smoke receipt (`N=2 SRC_DUR=4`, deterministic counts; wall/CPU values are host-d
 Run the reproducible local receipt with:
 
 ```bash
-N=30 SRC_DUR=150 bash scripts/operations/bench_stock_clip_round.sh
+N=30 SRC_DUR=150 # bash scripts/operations/bench_stock_clip_round.sh  *(deleted)*
 cat /tmp/stock-bench/result.json
 cat /tmp/stock-bench/hashes.txt
 ```
@@ -818,10 +818,10 @@ To re-run the bench from clean state (operator-facing recipe):
 ```bash
 # 0. anchor + load N=30 (default).
 cd "$(git rev-parse --show-toplevel)"
-bash scripts/operations/bench_stock_clip_round.sh          # N=30 default — ~75s wall
+# bash scripts/operations/bench_stock_clip_round.sh  *(deleted)*          # N=30 default — ~75s wall
 
 # 1. for N=351 (MUST run on ffmpeg 6.x ≈ OR multi-process chunked iteration):
-N=351 SRC_DUR=1755 bash scripts/operations/bench_stock_clip_round.sh
+N=351 SRC_DUR=1755 # bash scripts/operations/bench_stock_clip_round.sh  *(deleted)*
 
 # 2. inspect:
 cat /tmp/stock-bench/result.json
@@ -837,7 +837,7 @@ The N=351 bench emitted ffmeg via `/tmp/ffmpeg-static/ffmpeg` (7.0.2-static, joh
 
 ### §12.6 — Lockstep referenti (§12.5 bench canonical surface)
 
-- **Bench script (canonical)**: [`scripts/operations/bench_stock_clip_round.sh`](../scripts/operations/bench_stock_clip_round.sh) (just-committed in this wave)
+- **Bench script (canonical)**: `scripts/operations/bench_stock_clip_round.sh` *(removed — historical measurement)* (just-committed in this wave)
 - **Bench result (canonical):** `/tmp/stock-bench/result.json` (per-run; ephemeral but reproducible)
 - **Bench hashes (canonical):** `/tmp/stock-bench/hashes.txt` (per-run; sha256sum of every produced .mp4)
 - **Subprocess log (canonical):** `/tmp/stock-bench/subprocess.log` (per-run; one line per ffmpeg/ffprobe invocation)

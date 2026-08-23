@@ -14,7 +14,6 @@
       "scripts/start.sh",
       "scripts/operate_script_generate.sh",
       "scripts/lib/dotenv.sh",
-      ".split2-push.sh",
       "start_server.sh",
       "examples/scripts/",
       "examples/worker_integration/"
@@ -90,7 +89,6 @@
       "internal/api/assets/artlist/",
       "internal/infrastructure/artlist/",
       "scripts/youtube_boxer_stock_e2e.py",
-      "scripts/operations/bench_stock_clip_round.sh",
       "scripts/check_ma_v3.py",
       "scripts/poll_ma_v3.py",
       "scripts/poll_ma_v3b.py",
