@@ -269,10 +269,14 @@ func TestProcessSegment_FailsOnZeroSizeFile(t *testing.T) {
 	require.Equal(t, FailureCodeInvalidLocalArtifact, ee.Code)
 }
 
-// stubHashServiceErr returns an error from MD5File. The use case's
-// Step 5 should fail-closed with FailureCodeHashFailed.
+// stubHashServiceErr returns an error from SHA256File/MD5File. The use case's
+// Step 5 should fail-closed with FailureCodeHashFailed (now via SHA256File).
 type stubHashServiceErr struct {
 	stubHashService
+}
+
+func (stubHashServiceErr) SHA256File(_ string) (string, error) {
+	return "", errors.New("simulated hash error")
 }
 
 func (stubHashServiceErr) MD5File(_ string) (string, error) {
