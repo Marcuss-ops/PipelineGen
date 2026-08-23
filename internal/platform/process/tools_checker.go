@@ -63,7 +63,7 @@ func (c *CommandTTSChecker) CheckTTS(ctx context.Context) error {
 		return fmt.Errorf("%s not available: %w", python, err)
 	}
 	if c.ScriptDir != "" {
-		ttsScript := c.ScriptDir + "/tts_edge.py"
+		ttsScript := c.ScriptDir + "/bridges/tts_edge.py"
 		if _, err := os.Stat(ttsScript); err != nil {
 			return fmt.Errorf("TTS script %s not found: %w", ttsScript, err)
 		}
