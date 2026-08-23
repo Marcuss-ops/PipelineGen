@@ -21,12 +21,13 @@ import (
 var structDepsNames = []string{"Dependencies", "Deps", "Options"}
 
 var optionalFieldTypes = map[string]bool{
-	"Logger":   true,
-	"int":      true,
-	"string":   true,
-	"bool":     true,
-	"float64":  true,
-	"Duration": true,
+	"Logger":          true,
+	"int":             true,
+	"string":          true,
+	"bool":            true,
+	"float64":         true,
+	"Duration":        true,
+	"OperatorOptions": true,
 }
 
 var typeDeclRe = regexp.MustCompile(`^\s*type\s+(\w+)\s+struct\s*\{`)

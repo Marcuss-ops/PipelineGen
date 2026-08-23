@@ -40,13 +40,13 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 	}
 
 	desc, err := operatorapi.Build(operatorapi.Dependencies{
-		AssetService:  root.Repos.Assets,
-		ReadModel:     readModel,
-		IndexVerifier: verifier,
-		JobService:    root.Jobs.Facade,
-		OutboxPort:    nil, // optional — outbox monitoring degrades gracefully
-		Mutator:       root.Outbox.Dispatcher,
-		AllowedRoots:  allowedRoots,
+		AssetService:    root.Repos.Assets,
+		ReadModel:       readModel,
+		IndexVerifier:   verifier,
+		JobService:      root.Jobs.Facade,
+		OutboxPort:      nil, // optional — outbox monitoring degrades gracefully
+		Mutator:         root.Outbox.Dispatcher,
+		OperatorOptions: &operatorapi.OperatorOptions{AllowedRoots: allowedRoots},
 	}, log)
 	if err != nil {
 		return fmt.Errorf("wire registry: operator-admin-api build: %w", err)

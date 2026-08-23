@@ -84,8 +84,13 @@ type Handler struct {
 // JobStatsReader is the narrow port for job statistics.
 type JobStatsReader = jobs.JobStatsReader
 
+type OperatorOptions struct {
+	AllowedRoots []string // directories allowed for file previews
+}
+
 // Dependencies holds the pre-built dependencies for the operator handler.
 type Dependencies struct {
+	*OperatorOptions
 	AssetService  *asset.Service
 	ReadModel     operator.AssetInventoryReader
 	IndexVerifier operator.IndexVerifier
@@ -94,7 +99,6 @@ type Dependencies struct {
 	OutboxPort    outbox.MonitorPort
 	Mutator       mutations.AssetMutationDispatcher
 	Committer     persistence.AssetCommitter
-	AllowedRoots  []string // directories allowed for file previews
 }
 
 // NewHandler creates a new operator API handler.
@@ -108,9 +112,16 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 		outboxPort:    deps.OutboxPort,
 		mutator:       deps.Mutator,
 		committer:     deps.Committer,
-		allowedRoots:  deps.AllowedRoots,
+		allowedRoots:  operatorAllowedRoots(deps.OperatorOptions),
 		log:           log,
 	}
+}
+
+func operatorAllowedRoots(options *OperatorOptions) []string {
+	if options == nil {
+		return nil
+	}
+	return options.AllowedRoots
 }
 
 // RegisterRoutes mounts the operator endpoints under the given router

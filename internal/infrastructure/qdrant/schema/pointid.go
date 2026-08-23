@@ -42,10 +42,7 @@
 package schema
 
 import (
-	"encoding/hex"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-
+	"github.com/Marcuss-ops/PipelineGen/pkg/qdrantid"
 	"github.com/google/uuid"
 )
 
@@ -85,24 +82,5 @@ var PipelineGenQdrantNamespace = uuid.MustParse("e5e9b4b1-2c8a-4f7d-9b3e-6c2d9a1
 // already validates non-emptiness of asset.ID; this symmetry lets the
 // canonical boundary propagate the empty case cleanly.
 func AssetIDToQdrantPointID(assetID string) string {
-	if assetID == "" {
-		return ""
-	}
-	hash := digest.SHA256Bytes([]byte(assetID))
-	raw, err := hex.DecodeString(hash)
-	if err != nil {
-		return ""
-	}
-	var b [16]byte
-	copy(b[:], raw[:16])
-	// UUID v8 per RFC 9562 §5.8: set the high nibble of byte 6 to
-	// 0x8 (custom version). The v5/v8 distinction is opaque to
-	// Qdrant (both are canonical UUID strings), but a future
-	// operator inspecting the Qdrant collection can distinguish
-	// pre-Fase-12 v5/SHA-1 points from post-Fase-12 v8/SHA-256 points
-	// at the UUID-nibble level — useful for rollout forensics.
-	b[6] = (b[6] & 0x0f) | 0x80
-	// RFC 4122 variant bits (byte 8 high bits = 0b10).
-	b[8] = (b[8] & 0x3f) | 0x80
-	return uuid.UUID(b).String()
+	return qdrantid.AssetIDToQdrantPointID(assetID)
 }
