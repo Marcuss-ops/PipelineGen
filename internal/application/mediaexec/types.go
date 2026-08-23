@@ -153,4 +153,5 @@ type MediaInfo struct {
 	VideoStreamCount, StreamCount int
 	AudioStreamCount              int
 	FPSNum, FPSDen                int
+	AudioProfile                  string
 }

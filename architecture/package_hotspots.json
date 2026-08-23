@@ -66,9 +66,9 @@
       "path": "internal/application/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
-      "baseline_files": 52,
+      "baseline_files": 64,
       "baseline": {
-        "files": 52,
+        "files": 64,
         "max_loc": 11473
       },
       "current": {

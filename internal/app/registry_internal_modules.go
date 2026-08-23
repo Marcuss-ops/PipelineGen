@@ -474,7 +474,12 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		preset:     mediaConfig.Policy.Preset,
 		crf:        mediaConfig.Policy.CRF,
 	})
-	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary)",
+	// Post-render OutputProber: probes actual bytes on disk via the canonical
+	// Rust probe boundary. Mandatory for overlay compositing; validates
+	// rendered output against the assembly-ready contract before publication.
+	outputProber := &rustOutputProber{processor: rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)}
+	worker.WithOutputProber(outputProber)
+	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary + OutputProber)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),
 		zap.String("ffmpeg", cfg.External.FfmpegPath),
 		zap.String("encoder", mediaConfig.Policy.Codec),
