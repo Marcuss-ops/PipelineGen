@@ -13,6 +13,7 @@ func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {
 }
 
 func buildEditorialPrompt(topic, sourceText, title, query string, targetWords, minWords int, style, guidelines, language, promptVersion string) string {
+	sourceText, _ = scriptpkg.ParseArtlistDirectives(sourceText)
 	var parts []string
 	if topic != "" {
 		parts = append(parts, "Topic: "+topic)
@@ -66,6 +67,7 @@ func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 		Type:               scriptpkg.SourceType(src.Type),
 		Topic:              src.Topic,
 		SourceText:         src.SourceText,
+		ArtlistKeywords:    copyStrings(src.ArtlistKeywords),
 		Guidelines:         src.Guidelines,
 		ClipIDs:            copyStrings(src.ClipIDs),
 		IntroClipIDs:       copyStrings(src.IntroClipIDs),

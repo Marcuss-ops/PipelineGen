@@ -96,6 +96,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			"artlist-assets-v3",
 			updated.SegmentID,
 			updated.TextHash,
+			updated.Insights.ArtlistIntentHash,
 			plan.Language,
 			plan.Model,
 			plan.PromptVersion,

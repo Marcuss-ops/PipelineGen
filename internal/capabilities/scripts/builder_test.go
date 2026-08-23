@@ -23,6 +23,20 @@ func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequest_PropagatesArtlistKeywords(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"source":{"type":"text","topic":"foods","artlist_keywords":["bread","wine","olive"]}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "keywords")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Source.ArtlistKeywords) != 3 {
+		t.Fatalf("keywords = %#v", got.Source.ArtlistKeywords)
+	}
+}
+
 func TestBuildGenerateRequest_PropagatesVideoRenderContract(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	err := json.Unmarshal([]byte(`{

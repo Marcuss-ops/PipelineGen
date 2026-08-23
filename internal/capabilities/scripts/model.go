@@ -39,6 +39,7 @@ type Source struct {
 	Type               SourceType                  `json:"type"`
 	Topic              string                      `json:"topic,omitempty"`
 	SourceText         string                      `json:"source_text,omitempty"`
+	ArtlistKeywords    []string                    `json:"artlist_keywords,omitempty"`
 	ClipIDs            []string                    `json:"clip_ids,omitempty"`
 	IntroClipIDs       []string                    `json:"intro_clip_ids,omitempty"`
 	NumClips           int                         `json:"num_clips,omitempty"`

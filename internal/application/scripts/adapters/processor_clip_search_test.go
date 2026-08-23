@@ -2,7 +2,10 @@ package adapters
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -109,6 +112,82 @@ type emptyArtlistSearcher struct {
 
 type recordingArtlistSearcher struct {
 	queries []string
+}
+
+type countingArtlistSearcher struct{ calls int }
+
+func (s *countingArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) ([]ArtlistClipMatch, error) {
+	s.calls++
+	return []ArtlistClipMatch{{Phrase: queries[0], ClipNames: []string{"cached-clip"}, ClipDriveLinks: []string{"https://cdn.artlist.io/cached.m3u8"}, Remote: true}}, nil
+}
+
+func TestClipSearchProcessorReusesWarmArtlistSegmentCache(t *testing.T) {
+	vidrushArtlistCache = sync.Map{}
+	searcher := &countingArtlistSearcher{}
+	processor := NewClipSearchProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Top 10 foods", Language: "en", MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+	}}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "food-1", TextHash: "food-hash", Insights: scriptpkg.SegmentInsights{ArtlistQueries: []string{"bread"}},
+	}}}
+	first, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.calls != 1 || first.VidRushSegments[0].Cache.Artlist != "MISS" || second.VidRushSegments[0].Cache.Artlist != "HIT_EXACT" {
+		t.Fatalf("calls=%d first=%q second=%q, want 1/MISS/HIT_EXACT", searcher.calls, first.VidRushSegments[0].Cache.Artlist, second.VidRushSegments[0].Cache.Artlist)
+	}
+}
+
+func TestClipSearchProcessorColdWarmAndIntentInvalidation(t *testing.T) {
+	vidrushArtlistCache = sync.Map{}
+	searcher := &countingArtlistSearcher{}
+	processor := NewClipSearchProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Top 10 foods", Language: "en", MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+	}}
+	makeInput := func(changed bool) ProcessInput {
+		keywords := []string{"bread", "wine", "olive oil", "cheese", "fish"}
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(keywords))
+		for i, keyword := range keywords {
+			if changed && i == 0 {
+				keyword = "sourdough bread"
+			}
+			segments = append(segments, scriptpkg.VidRushSegmentResult{
+				SegmentID: fmt.Sprintf("food-%d", i),
+				TextHash:  fmt.Sprintf("text-%d", i),
+				Insights:  scriptpkg.SegmentInsights{ArtlistQueries: []string{keyword}, ArtlistIntentHash: scriptpkg.ArtlistSearchIntentHash([]string{keyword})},
+			})
+		}
+		return ProcessInput{VidRushSegments: segments}
+	}
+	coldStart := time.Now()
+	cold, err := processor.Process(context.Background(), plan, makeInput(false))
+	coldWall := time.Since(coldStart)
+	if err != nil || len(cold.VidRushSegments) != 5 || searcher.calls != 5 {
+		t.Fatalf("cold: err=%v segments=%d calls=%d", err, len(cold.VidRushSegments), searcher.calls)
+	}
+	warmStart := time.Now()
+	warm, err := processor.Process(context.Background(), plan, makeInput(false))
+	warmWall := time.Since(warmStart)
+	if err != nil || searcher.calls != 5 {
+		t.Fatalf("warm: err=%v calls=%d, want zero additional provider calls", err, searcher.calls)
+	}
+	for _, segment := range warm.VidRushSegments {
+		if segment.Cache.Artlist != "HIT_EXACT" || len(segment.Assets.Candidates) != 1 {
+			t.Fatalf("warm segment = %+v", segment)
+		}
+	}
+	_, err = processor.Process(context.Background(), plan, makeInput(true))
+	if err != nil || searcher.calls != 6 {
+		t.Fatalf("intent invalidation: err=%v calls=%d, want exactly one new lookup", err, searcher.calls)
+	}
+	t.Logf("artlist_prefetch cold_ms=%d warm_ms=%d provider_calls_cold=5 provider_calls_warm=0", coldWall.Milliseconds(), warmWall.Milliseconds())
 }
 
 func (s *recordingArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) ([]ArtlistClipMatch, error) {

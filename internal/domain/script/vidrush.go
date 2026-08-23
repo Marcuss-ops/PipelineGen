@@ -29,11 +29,12 @@ const (
 // CanonicalSegment is the stable segment representation used for
 // VidRush extraction and asset binding.
 type CanonicalSegment struct {
-	ID       string `json:"segment_id"`
-	SceneID  string `json:"scene_id,omitempty"`
-	Position int    `json:"position"`
-	Text     string `json:"text"`
-	TextHash string `json:"text_hash"`
+	ID              string   `json:"segment_id"`
+	SceneID         string   `json:"scene_id,omitempty"`
+	Position        int      `json:"position"`
+	Text            string   `json:"text"`
+	TextHash        string   `json:"text_hash"`
+	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
 }
 
 // ExtractedEntity is a typed entity extracted from one segment.
@@ -46,13 +47,14 @@ type ExtractedEntity struct {
 // SegmentInsights collects the per-segment semantic extractions and
 // generated queries used by VidRush.
 type SegmentInsights struct {
-	SegmentID        string            `json:"segment_id"`
-	TextHash         string            `json:"text_hash"`
-	Entities         []ExtractedEntity `json:"entities,omitempty"`
-	ImportantPhrases []string          `json:"important_phrases,omitempty"`
-	ImportantWords   []string          `json:"important_words,omitempty"`
-	ArtlistQueries   []string          `json:"artlist_queries,omitempty"`
-	ImageQueries     []string          `json:"image_queries,omitempty"`
+	SegmentID         string            `json:"segment_id"`
+	TextHash          string            `json:"text_hash"`
+	Entities          []ExtractedEntity `json:"entities,omitempty"`
+	ImportantPhrases  []string          `json:"important_phrases,omitempty"`
+	ImportantWords    []string          `json:"important_words,omitempty"`
+	ArtlistQueries    []string          `json:"artlist_queries,omitempty"`
+	ArtlistIntentHash string            `json:"artlist_intent_hash,omitempty"`
+	ImageQueries      []string          `json:"image_queries,omitempty"`
 	// ImageSearchRequired is the deterministic image search decision of the
 	// Image Search Intent resolver (capabilities/imagesearch): false when the
 	// scene carries no visual entity (abstract/editorial text). When false,
@@ -101,7 +103,7 @@ type SegmentAssetCandidate struct {
 	RightsStatus          string  `json:"rights_status,omitempty"`
 	SelectionReason       string  `json:"selection_reason,omitempty"`
 	CandidateSetHash      string  `json:"candidate_set_hash,omitempty"`
-	LegacyFileMD5              string  `json:"legacy_file_md5,omitempty"`
+	LegacyFileMD5         string  `json:"legacy_file_md5,omitempty"`
 	MIMEType              string  `json:"mime_type,omitempty"`
 	LocalPath             string  `json:"local_path,omitempty"`
 	AcquisitionStatus     string  `json:"acquisition_status,omitempty"`

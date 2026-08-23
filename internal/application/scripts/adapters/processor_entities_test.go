@@ -448,6 +448,7 @@ func TestVidRushSegmentEnricher_EnrichCacheHitSkipsEntityProviderCall(t *testing
 func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
 	artlist := buildArtlistQueries(
 		"In the summer of 1969, millions watched as American astronauts prepared for one of the most important missions in human history.",
+		nil,
 		[]scriptpkg.ExtractedEntity{{Value: "Apollo 11 astronauts", Type: "EVENT"}},
 		[]string{
 			"NASA mission control",
@@ -491,5 +492,25 @@ func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(images, " | "), "Subject") {
 		t.Errorf("placeholder leaked into image queries: %v", images)
+	}
+}
+
+func TestExplicitArtlistKeywordsArePrioritized(t *testing.T) {
+	queries := buildArtlistQueries("Top 10 foods", []string{"bread", "wine", "olive"}, nil, nil, nil, "foods")
+	if len(queries) < 3 || strings.Join(queries[:3], "|") != "bread|wine|olive" {
+		t.Fatalf("queries = %v, want explicit keywords first", queries)
+	}
+}
+
+func TestSegmentArtlistDirectiveBecomesInsightQuery(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Topic: "foods", ArtlistKeywords: nil}
+	seg := buildVidRushSegmentResult(context.Background(), nil, plan, scriptpkg.CanonicalSegment{
+		ID: "bread", Text: "Bread\n[ARTLIST: bread, fresh bread]",
+	}, &scriptpkg.EntityResult{}, 5, 5, 5, 5, 5)
+	if seg.Text != "Bread" || len(seg.Insights.ArtlistQueries) < 2 || seg.Insights.ArtlistQueries[0] != "bread" {
+		t.Fatalf("segment text=%q queries=%v", seg.Text, seg.Insights.ArtlistQueries)
+	}
+	if seg.Insights.ArtlistIntentHash == "" {
+		t.Fatal("explicit Artlist intent hash is required")
 	}
 }

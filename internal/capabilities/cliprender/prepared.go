@@ -83,19 +83,26 @@ func (t *TranscriptResult) HasText() bool {
 // ResolvedContract is the fully-resolved VeloxEditing output contract. The
 // precise codec/pixel/timebase values are owned here (single canonical
 // owner); the render pass and contract validator consume this verbatim.
+//
+// Audio profile follows the canonical audio SSOT: audio.DefaultAudioProfile()
+// (aac, LC, 48000 Hz, 2 channels, stereo, 128k). If that SSOT changes, the
+// Resolve implementation and ValidateContract must be updated together.
 type ResolvedContract struct {
-	ContractID   string
-	Container    string
-	VideoCodec   string
-	VideoProfile string
-	PixelFormat  string
-	Width        int
-	Height       int
-	FPSNum       int
-	FPSDen       int
-	AudioCodec   string
-	SampleRate   int
-	Channels     int
+	ContractID        string
+	Container         string
+	VideoCodec        string
+	VideoProfile      string
+	PixelFormat       string
+	Width             int
+	Height            int
+	FPSNum            int
+	FPSDen            int
+	AudioCodec        string
+	AudioProfile       string
+	SampleRate        int
+	Channels          int
+	AudioChannelLayout string
+	AudioBitrate       string
 }
 
 // PhaseTiming records one preparation phase. WorkMS is the phase's own

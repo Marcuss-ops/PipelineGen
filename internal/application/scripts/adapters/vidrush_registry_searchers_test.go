@@ -32,7 +32,7 @@ func (p *rateLimitedVidRushSearchProvider) Search(_ context.Context, req scriptp
 		return nil, errors.New("artlist: invalid response: status 429")
 	}
 	return []scriptpkg.SegmentAssetCandidate{{
-		AssetID: "retry-asset", Provider: p.Name(), SourceURL: "https://cdn.example/retry-asset",
+		AssetID: "retry-asset", Provider: p.Name(), SourceURL: "https://cdn.example/retry-asset.m3u8",
 		Query: req.Query,
 	}}, nil
 }
@@ -66,7 +66,7 @@ func (p *boundedVidRushSearchProvider) Search(ctx context.Context, req scriptpor
 	}
 	return []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "asset-" + req.Query, Provider: p.Name(),
-		SourceURL: "https://cdn.example/" + req.Query,
+		SourceURL: "https://cdn.example/" + req.Query + ".m3u8",
 	}}, nil
 }
 

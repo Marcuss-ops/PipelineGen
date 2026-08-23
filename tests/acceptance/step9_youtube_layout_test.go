@@ -80,7 +80,7 @@ import (
 // TestStep9_Layout_CanonicalFilenames pins the three canonical per-asset
 // filenames produced by processor.processRenditions:
 //
-//	{asset_id}__master.mp4    (H.264/AAC/yuv420p/30fps/1920x1080)
+//	{asset_id}__master.mp4    (H.264/AAC/yuv420p/24fps/1920x1080)
 //	{asset_id}__preview.mp4   (720p H.264/AAC proxy)
 //	{asset_id}__manifest.json (per-asset metadata ledger)
 //
@@ -256,7 +256,7 @@ func TestStep9_Codec_CanonicalValues(t *testing.T) {
 		FPS        float64
 		Container  string
 	}{
-		// godlike/06 SSOT: the master is ALWAYS H.264/AAC/yuv420p/30fps/1920x1080
+		// godlike/06 SSOT: the master is ALWAYS H.264/AAC/yuv420p/24fps/1920x1080
 		// across all languages (per Step 9 user spec). Values below MUST match
 		// the canonical strings fmt.Println()s in the FFprobe output so any
 		// processStep config drift surfaces here.
@@ -264,7 +264,7 @@ func TestStep9_Codec_CanonicalValues(t *testing.T) {
 		AudioCodec: "aac",
 		Width:      1920,
 		Height:     1080,
-		FPS:        30.0,
+		FPS:        24.0,
 		Container:  "mp4",
 	}
 
@@ -279,13 +279,13 @@ func TestStep9_Codec_CanonicalValues(t *testing.T) {
 		{"audio codec", masterRendition.AudioCodec, "aac"},
 		{"width", masterRendition.Width, 1920},
 		{"height", masterRendition.Height, 1080},
-		{"fps", masterRendition.FPS, 30.0},
+		{"fps", masterRendition.FPS, 24.0},
 		{"container extension", masterRendition.Container, "mp4"},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.got != tc.want {
-				t.Errorf("canonical codec %s = %v (type %T), want %v — drift here is a user-spec violation (Step 9 verbatim: 'H.264/AAC/yuv420p/30fps/1920x1080 unico per tutte le lingue')",
+				t.Errorf("canonical codec %s = %v (type %T), want %v — drift here is a user-spec violation (Step 9 verbatim: 'H.264/AAC/yuv420p/24fps/1920x1080 unico per tutte le lingue')",
 					tc.name, tc.got, tc.got, tc.want)
 			}
 		})

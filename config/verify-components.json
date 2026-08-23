@@ -201,13 +201,11 @@
       "AGENTS.md",
       "scripts/README.md",
       "internal/domain/document/",
-      "internal/application/document/",
       "internal/application/documents/",
       "internal/api/assets/document/"
     ],
     "go_packages": [
       "./internal/domain/document/...",
-      "./internal/application/document/...",
       "./internal/application/documents/...",
       "./internal/api/assets/document/..."
     ],

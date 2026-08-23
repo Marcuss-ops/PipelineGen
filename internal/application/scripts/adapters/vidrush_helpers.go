@@ -230,8 +230,14 @@ func uniqueLimitedStrings(values []string, limit int) []string {
 	return sliceutil.UniqueLimitedStrings(values, limit)
 }
 
-func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
-	candidates := make([]string, 0, 12)
+func buildArtlistQueries(segmentText string, explicitKeywords []string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
+	candidates := make([]string, 0, 12+len(explicitKeywords))
+	for _, keyword := range explicitKeywords {
+		if keyword = strings.TrimSpace(keyword); keyword != "" {
+			candidates = append(candidates, keyword)
+		}
+	}
+	explicitCount := len(candidates)
 	if visual := compactVisualQuery(segmentText); visual != "" {
 		candidates = append(candidates, compactArtlistQuery(visual))
 	}
@@ -243,7 +249,7 @@ func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntit
 		candidates = append(candidates, v)
 	}
 	candidates = append(candidates, phrases...)
-	return normalizeRetrievalQueries(candidates, 6)
+	return uniqueLimitedStrings(append(candidates[:explicitCount], normalizeRetrievalQueries(candidates[explicitCount:], 6)...), 5)
 }
 
 func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {

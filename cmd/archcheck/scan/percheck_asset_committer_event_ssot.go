@@ -97,7 +97,6 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	// 1. Canonical AssetCommitter files — the SOLE authority
 	//    on the asset.index.requested emission site.
 	"internal/application/assets/persistence/",
-	"internal/application/assets/processing/",
 	// 2. The canonical outboxevents package — the constants
 	//    that define EventAssetIndexRequested as the literal
 	//    value (single source of truth for the literal value).
