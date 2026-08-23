@@ -116,13 +116,11 @@
   },
   "qdrant": {
     "paths": [
-      "internal/domain/qdrantdr/",
       "internal/application/qdrant/",
       "internal/infrastructure/qdrant/",
       "scripts/operations/certify_media_registry_qdrant.sh"
     ],
     "go_packages": [
-      "./internal/domain/qdrantdr/...",
       "./internal/application/qdrant/...",
       "./internal/infrastructure/qdrant/..."
     ],
@@ -166,14 +164,12 @@
   },
   "drive": {
     "paths": [
-      "internal/domain/drive/",
       "internal/infrastructure/drive/",
       "internal/application/publish_drive/",
       "scripts/verify_drive_only_certification.sh",
       "scripts/render_clip_watermark_drive.sh"
     ],
     "go_packages": [
-      "./internal/domain/drive/...",
       "./internal/infrastructure/drive/...",
       "./internal/application/publish_drive/..."
     ],
