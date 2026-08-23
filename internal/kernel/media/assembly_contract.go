@@ -16,6 +16,10 @@ import (
 //   timebase video 1/90000 audio 1/48000, tv/bt709 progressive,
 //   GOP 48 b_frames 0 closed_gop, 1 video +1 audio (video,audio) start_pts 0,
 //   AAC-LC 48000 2ch stereo 128k, watermark/subtitles già incorporati.
+//
+// Audio profile SSOT: audio.DefaultAudioProfile() in internal/capabilities/audio
+// (aac, LC, 48000 Hz, 2 channels, stereo, 128k). This contract MUST stay
+// in sync with that profile; MuxFinalAudioCopy gates on the same values.
 const (
 	AssemblyReadyVideoContractID = "VELOX_ASSEMBLY_READY_V1"
 	AssemblyReadyVideoVersion    = 1

@@ -372,9 +372,14 @@ func buildVidRushSegmentResult(
 	imageLimit int,
 	queryText ...string,
 ) scriptpkg.VidRushSegmentResult {
+	cleanText, explicitArtlist := scriptpkg.ParseArtlistDirectives(canonicalSeg.Text)
+	canonicalSeg.Text = cleanText
+	canonicalSeg.TextHash = segmentTextHash(cleanText)
+	canonicalSeg.ArtlistKeywords = explicitArtlist
 	insights := scriptpkg.SegmentInsights{
-		SegmentID: canonicalSeg.ID,
-		TextHash:  canonicalSeg.TextHash,
+		SegmentID:         canonicalSeg.ID,
+		TextHash:          canonicalSeg.TextHash,
+		ArtlistIntentHash: scriptpkg.ArtlistSearchIntentHash(append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...)),
 	}
 	entities := make([]scriptpkg.ExtractedEntity, 0, entitiesLimit)
 	for _, person := range res.Persons {
@@ -425,7 +430,7 @@ func buildVidRushSegmentResult(
 	if len(manualArtlistQueries) > 0 {
 		insights.ArtlistQueries = uniqueLimitedStrings(manualArtlistQueries, artlistLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotPrimaryVideo) {
-		fallbackArtlistQueries := buildArtlistQueries(visualText, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
+		fallbackArtlistQueries := buildArtlistQueries(visualText, append(append([]string(nil), plan.ArtlistKeywords...), explicitArtlist...), insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
 		llmArtlistQueries := normalizeRetrievalQueries(res.ArtlistPhrases, 6)
 		llmArtlistQueries = uniqueLimitedStrings(llmArtlistQueries, artlistLimit)
 		insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)

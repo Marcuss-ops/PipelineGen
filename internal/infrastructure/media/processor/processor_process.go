@@ -258,7 +258,7 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 // processRenditions (PR-CLIPINGEST-PIPELINE step 9, July 2026) renders
 // the canonical per-asset file set per user spec:
 //
-//		{asset_id}__master.mp4    — H.264/AAC/yuv420p/30fps/1920x1080
+//		{asset_id}__master.mp4    — H.264/AAC/yuv420p/24fps/1920x1080
 //		                              (the canonical master, unique per asset,
 //	                              shared across all languages; voiceover + subtitle
 //	                              files layer on top in per-language variants)
@@ -273,11 +273,11 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 // filename `textutil.SafeName(Name) + " " + ID`). Step 9 re-shapes the
 // surface per the user spec:
 //
-//  1. The master IS the normalized output (H.264/AAC/yuv420p/30fps/1920x1080).
+//  1. The master IS the normalized output (H.264/AAC/yuv420p/24fps/1920x1080).
 //     Pre-step-9 the master was a copy of the raw source — re-encoded only
 //     if the caller passed a Normalize=false flag. Post-step-9 the master
 //     always meets the canonical codec, matching the user spec "Il master
-//     è H.264/AAC/yuv420p/30fps/1920x1080 unico per tutte le lingue".
+//     è H.264/AAC/yuv420p/24fps/1920x1080 unico per tutte le lingue".
 //  2. Filenames use the canonical `{asset_id}__<role>.<ext>` convention
 //     with the `__` separator. The `textutil.SafeName(Name) + " " + ID`
 //     human-readable form is REMOVED for the canonical assets — the
@@ -304,7 +304,7 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	baseDir := input.OutputDir
 
 	// 1. Master: normalize the raw source to the canonical
-	// H.264/AAC/yuv420p/30fps/1920x1080 codec. Pre-step-9 the master
+	// H.264/AAC/yuv420p/24fps/1920x1080 codec. Pre-step-9 the master
 	// was a copy of the raw source (untouched); step 9 makes the
 	// master IS the normalized output per user spec.
 	masterDir := filepath.Join(baseDir, "master")
@@ -314,7 +314,7 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	}
 	// Use processStep (which already zero-copy-skips when source
 	// matches target) — produces canonical codec without re-encoding
-	// when the source is already H.264/AAC/yuv420p/30fps/1920x1080.
+	// when the source is already H.264/AAC/yuv420p/24fps/1920x1080.
 	// Normalize=false is NOT honored in the rendition layout: the
 	// canonical master must always be normalized (step-9 spec), so
 	// the flag is forced off for this call.

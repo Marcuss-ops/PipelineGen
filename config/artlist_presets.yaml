@@ -22,33 +22,33 @@ presets:
     clip_duration: 7
     width: 1920
     height: 1080
-    fps: 30
+    fps: 24
     strategy: verify
 
   youtube_720p_7s:
     clip_duration: 7
     width: 1280
     height: 720
-    fps: 30
+    fps: 24
     strategy: verify
 
   stock_7s_drive:
     clip_duration: 7
     width: 1920
     height: 1080
-    fps: 30
+    fps: 24
     strategy: verify
 
   shorts_1080x1920_7s:
     clip_duration: 7
     width: 1080
     height: 1920
-    fps: 30
+    fps: 24
     strategy: verify
 
   documentary_16_9_12s:
     clip_duration: 12
     width: 1920
     height: 1080
-    fps: 30
+    fps: 24
     strategy: verify

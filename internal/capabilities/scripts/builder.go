@@ -68,6 +68,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Type:               SourceType(item.Source.Type),
 		Topic:              item.Source.Topic,
 		SourceText:         item.Source.SourceText,
+		ArtlistKeywords:    copyStrings(item.Source.ArtlistKeywords),
 		Guidelines:         item.Source.Guidelines,
 		ClipIDs:            copyStrings(item.Source.ClipIDs),
 		IntroClipIDs:       copyStrings(item.Source.IntroClipIDs),

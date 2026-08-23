@@ -278,11 +278,12 @@ func ensureInlineClipArtifactsWithoutVoiceover(processors []adapters.ProcessorNa
 
 func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
 	var parts []string
+	cleanSourceText, _ := scriptpkg.ParseArtlistDirectives(item.Source.SourceText)
 	if item.Source.Topic != "" {
 		parts = append(parts, "Topic: "+item.Source.Topic)
 	}
-	if item.Source.SourceText != "" {
-		parts = append(parts, "Source text:\n"+item.Source.SourceText)
+	if cleanSourceText != "" {
+		parts = append(parts, "Source text:\n"+cleanSourceText)
 	}
 	if guidelines := editorialGuidelines(item); guidelines != "" {
 		parts = append(parts, "Guidelines:\n"+guidelines)

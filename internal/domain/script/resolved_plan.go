@@ -51,6 +51,7 @@ type ResolvedGenerationPlan struct {
 	// For text sources it's the topic+source_text+guidelines assembly.
 	// For clip/catalog/search sources it's the clip evidence text.
 	SourceText       string                `json:"source_text"`
+	ArtlistKeywords  []string              `json:"artlist_keywords,omitempty"`
 	ResearchSources  []SourceReference     `json:"research_sources,omitempty"`
 	ResearchReport   *ResearchReport       `json:"research_report,omitempty"`
 	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`

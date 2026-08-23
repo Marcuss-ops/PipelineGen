@@ -241,6 +241,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Topic:               topic,
 		Language:            string(req.SourceLanguage),
 		SourceText:          req.Source.SourceText,
+		ArtlistKeywords:     append([]string(nil), req.Source.ArtlistKeywords...),
 		RenderedPrompt:      renderedPrompt,
 		Mode:                scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
 		SaveToDB:            req.SaveToDB,

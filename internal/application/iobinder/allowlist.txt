@@ -16,16 +16,13 @@ internal/application/assets/ingest/adapter_clip.go	database/sql	@agent/Codebuff	
 internal/application/assets/ingest/image.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/assets/lifecycle/service_voiceover.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/persistence/committer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
-internal/application/assets/processing/asset_committer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/providers/artlist/service.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/providers/artlist/service_deps.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/providers/stock/enrichment/handler_repository.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/providers/stock/enrichment/outbox_emitter.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
-internal/application/assets/staged/resolver.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/assets/texttracks/materializer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/assets/texttracks/vtt_parser.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/books/service.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
-internal/application/document/service.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/execution/steps/sqlite_store.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/images/generated_image_ingest.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/images/storage_download.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS

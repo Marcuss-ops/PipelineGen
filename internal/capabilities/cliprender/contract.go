@@ -84,8 +84,8 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if probe.AudioCodec != contract.AudioCodec {
 		return fmt.Errorf("%w: audio codec %q != %q", ErrContractMismatch, probe.AudioCodec, contract.AudioCodec)
 	}
-	if probe.AudioProfile != "" && probe.AudioProfile != "LC" {
-		return fmt.Errorf("%w: audio profile %q != LC", ErrContractMismatch, probe.AudioProfile)
+	if probe.AudioProfile != "" && probe.AudioProfile != contract.AudioProfile {
+		return fmt.Errorf("%w: audio profile %q != %q", ErrContractMismatch, probe.AudioProfile, contract.AudioProfile)
 	}
 	if probe.SampleRate != contract.SampleRate {
 		return fmt.Errorf("%w: sample rate %d != %d", ErrContractMismatch, probe.SampleRate, contract.SampleRate)
@@ -93,11 +93,11 @@ func ValidateContract(contract *ResolvedContract, probe *OutputProbe) error {
 	if probe.Channels != contract.Channels {
 		return fmt.Errorf("%w: channels %d != %d", ErrContractMismatch, probe.Channels, contract.Channels)
 	}
-	if probe.ChannelLayout != "" && probe.ChannelLayout != "stereo" {
-		return fmt.Errorf("%w: channel_layout %q != stereo", ErrContractMismatch, probe.ChannelLayout)
+	if probe.ChannelLayout != "" && probe.ChannelLayout != contract.AudioChannelLayout {
+		return fmt.Errorf("%w: channel_layout %q != %q", ErrContractMismatch, probe.ChannelLayout, contract.AudioChannelLayout)
 	}
-	if probe.AudioBitrate != "" && probe.AudioBitrate != "128k" {
-		return fmt.Errorf("%w: audio bitrate %q != 128k", ErrContractMismatch, probe.AudioBitrate)
+	if probe.AudioBitrate != "" && probe.AudioBitrate != contract.AudioBitrate {
+		return fmt.Errorf("%w: audio bitrate %q != %q", ErrContractMismatch, probe.AudioBitrate, contract.AudioBitrate)
 	}
 	if probe.VideoTimeBaseNum != 0 && probe.VideoTimeBaseDen != 0 {
 		if probe.VideoTimeBaseNum != 1 || probe.VideoTimeBaseDen != 90000 {
@@ -136,18 +136,21 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 	switch req.Output.Contract {
 	case OutputContractVeloxAssemblyReadyV1, OutputContractVeloxEditingClipV1:
 		return &ResolvedContract{
-			ContractID:   OutputContractVeloxAssemblyReadyV1,
-			Container:    "mp4",
-			VideoCodec:   "h264",
-			VideoProfile: "high",
-			PixelFormat:  "yuv420p",
-			Width:        req.Output.Width,
-			Height:       req.Output.Height,
-			FPSNum:       req.Output.FPSNum,
-			FPSDen:       req.Output.FPSDen,
-			AudioCodec:   "aac",
-			SampleRate:   48000,
-			Channels:     2,
+			ContractID:         OutputContractVeloxAssemblyReadyV1,
+			Container:          "mp4",
+			VideoCodec:         "h264",
+			VideoProfile:       "high",
+			PixelFormat:        "yuv420p",
+			Width:              req.Output.Width,
+			Height:             req.Output.Height,
+			FPSNum:             req.Output.FPSNum,
+			FPSDen:             req.Output.FPSDen,
+			AudioCodec:         "aac",
+			AudioProfile:        "LC",
+			SampleRate:         48000,
+			Channels:           2,
+			AudioChannelLayout: "stereo",
+			AudioBitrate:        "128k",
 		}, nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedContract, req.Output.Contract)

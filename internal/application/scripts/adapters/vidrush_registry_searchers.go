@@ -81,10 +81,10 @@ func (s *VidRushRegistryClipSearcher) SearchClips(ctx context.Context, title str
 		match := ArtlistClipMatch{Phrase: phrase, Remote: true}
 		for _, candidate := range candidates {
 			link := strings.TrimSpace(candidate.SourceURL)
-			if link == "" {
+			if !isM3U8URL(link) {
 				link = strings.TrimSpace(candidate.PreviewURL)
 			}
-			if link == "" {
+			if !isM3U8URL(link) {
 				continue
 			}
 			match.ClipNames = append(match.ClipNames, candidate.AssetID)
@@ -109,6 +109,11 @@ func (s *VidRushRegistryClipSearcher) SearchClips(ctx context.Context, title str
 		}
 	}
 	return out, firstErr
+}
+
+func isM3U8URL(raw string) bool {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	return strings.Contains(raw, ".m3u8")
 }
 
 // VidRushRegistryImageSearcher adapts the shared registry to the image
