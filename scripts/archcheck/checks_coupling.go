@@ -105,7 +105,6 @@ var databaseSQLLegacyBaseline = []string{
 	"internal/application/assets/artifacts/clips_adapter.go",
 	"internal/application/assets/artifacts/finalizer_test.go",
 	"internal/application/assets/artifacts/repository.go",
-	"internal/application/assets/artifacts/resolvers/resolvers.go",
 	"internal/application/assets/ingest/adapter_clip.go",
 	"internal/application/assets/maintenance/deep_cleanup.go",
 	"internal/application/assets/maintenance/run_cleanup.go",
