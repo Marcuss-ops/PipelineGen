@@ -5,12 +5,12 @@
 // are capable of inference. The two canonical models are:
 //
 //   - E5 text model (multilingual-e5-base, 768 dims) via /embed
-//   - SigLIP visual model (siglip-so400m-patch14-384, 768 dims) via /embed_visual_from_text
+//   - SigLIP visual model (siglip-so400m-patch14-384, 1152 dims) via /embed_visual
 //
 // Each probe sends a short health-check text to the sidecar and validates:
 //   - HTTP 200 response
 //   - Non-empty embedding vector
-//   - Correct dimension (768 for both models)
+//   - Correct dimension (768 for E5; 1152 for the loaded SigLIP encoder)
 //   - No sidecar error
 //
 // The sidecar URL is configured via ServerDeps.ModelsSidecarURL (defaults
@@ -196,10 +196,10 @@ func (h *ModelsHandler) probeE5(ctx context.Context) modelProbeResult {
 }
 
 // probeSigLIP sends a health-check text to the sidecar's
-// /embed_visual_from_text endpoint and validates the SigLIP
+// /embed_visual endpoint and validates the SigLIP
 // (siglip-so400m-patch14-384) model response.
 func (h *ModelsHandler) probeSigLIP(ctx context.Context) modelProbeResult {
-	return h.probeModel(ctx, "/embed_visual_from_text", "siglip-so400m-patch14-384", 768,
+	return h.probeModel(ctx, "/embed_visual", "siglip-so400m-patch14-384", 1152,
 		map[string]string{"text": "__health_check__", "model": "siglip-so400m-patch14-384"},
 		true)
 }
