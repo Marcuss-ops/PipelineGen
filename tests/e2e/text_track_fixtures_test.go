@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	texttrackssql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 )
 
@@ -47,7 +46,7 @@ func newTextTrackFixture(t *testing.T, collection string) *textTrackFixture {
 	// cascades to its segments (godlike/06 SSOT — fixture is HERMETICALLY
 	// BYTE-EQUIVALENT to the canonical production SUBSET; any drift surfaces
 	// here at e2e time, not silently at production runtime).
-	_, err = fx.DB.Exec(`
+	_, err := fx.DB.Exec(`
 CREATE TABLE IF NOT EXISTS asset_text_track_segments (
     id TEXT PRIMARY KEY,
     track_id TEXT NOT NULL,

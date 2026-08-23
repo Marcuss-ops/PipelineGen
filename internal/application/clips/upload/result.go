@@ -21,19 +21,19 @@ import "errors"
 //
 // Duration is in milliseconds (matches the legacy `int(clip.Duration.Milliseconds())`).
 type UploadClipResult struct {
-	OK          bool
-	ClipID      string
-	Name        string
-	Filename    string
-	DriveLink   string
-	DriveFileID string
-	LegacyFileMD5    string
-	Source      string
-	Category    string
-	Tags        []string
-	LocalPath   string
-	Indexed     bool
-	Duration    int
+	OK            bool
+	ClipID        string
+	Name          string
+	Filename      string
+	DriveLink     string
+	DriveFileID   string
+	LegacyFileMD5 string
+	Source        string
+	Category      string
+	Tags          []string
+	LocalPath     string
+	Indexed       bool
+	Duration      int
 }
 
 // ── Typed sentinel errors ───────────────────────────────────────────────────

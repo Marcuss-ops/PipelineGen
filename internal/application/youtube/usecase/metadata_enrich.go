@@ -418,4 +418,3 @@ func getQualityTier(score float64) string {
 	}
 	return "low"
 }
-

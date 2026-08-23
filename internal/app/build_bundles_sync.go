@@ -83,6 +83,7 @@ func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
 		DataDir:                    cfg.Storage.DataDir,
 		YtdlpPath:                  cfg.External.ResolvedYtdlpPath(),
 		ClipsFolderID:              cfg.Drive.ClipsFolder(),
+		YouTubeSubtitlesFolderID:   cfg.Drive.YouTubeSubtitlesFolder(),
 		OllamaModel:                cfg.External.OllamaModel,
 		OllamaMetadataModel:        cfg.External.OllamaMetadataModel,
 		YouTubeCookiesPath:         cfg.External.ResolveYouTubeCookiesPath(),

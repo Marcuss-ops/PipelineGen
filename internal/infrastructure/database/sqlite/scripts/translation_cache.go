@@ -15,9 +15,9 @@ package scripts
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"sync"
 	"time"

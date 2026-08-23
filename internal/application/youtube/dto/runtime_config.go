@@ -23,9 +23,10 @@ type RuntimeConfig struct {
 	YouTubeExtractTimeout int
 
 	// Paths resolved at composition time.
-	DataDir       string // cfg.Storage.DataDir
-	YtdlpPath     string // cfg.External.ResolvedYtdlpPath()
-	ClipsFolderID string // cfg.Drive.ClipsFolder()
+	DataDir                  string // cfg.Storage.DataDir
+	YtdlpPath                string // cfg.External.ResolvedYtdlpPath()
+	ClipsFolderID            string // cfg.Drive.ClipsFolder()
+	YouTubeSubtitlesFolderID string // cfg.Drive.YouTubeSubtitlesFolder()
 
 	// Ollama model selection (default "gemma4:e2b").
 	OllamaModel         string

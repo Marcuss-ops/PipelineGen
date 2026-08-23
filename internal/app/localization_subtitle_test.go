@@ -199,12 +199,16 @@ func TestLocalizationSubtitleCompiler_EmptyCuesFailsClosed(t *testing.T) {
 	}
 }
 
-func TestLocalizationSubtitleCompiler_DurationViolationFailsClosed(t *testing.T) {
+func TestLocalizationSubtitleCompiler_DurationViolationClipsToMediaBoundary(t *testing.T) {
 	c := newLocalizationSubtitleCompiler()
 	in := localizationCompileInput(t)
-	in.ClipDurationMS = 4000 // last cue ends at 6000ms > 4250ms tolerance
-	if _, err := c.Compile(context.Background(), in); err == nil {
-		t.Fatal("must fail closed on cues beyond clip duration")
+	in.ClipDurationMS = 4000
+	out, err := c.Compile(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Compile must trim cues to the media boundary: %v", err)
+	}
+	if err := texttracks.ValidateASSFile(out.LocalPath, 4000); err != nil {
+		t.Fatalf("trimmed ASS must validate against the clip duration: %v", err)
 	}
 }
 

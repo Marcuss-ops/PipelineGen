@@ -199,8 +199,8 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 		// Contract-driven: pixel format, GOP, profile, FPS.
 		"-pix_fmt", pixFmt,
 		"-g", fmt.Sprint(gop),
-		"-bf", "0",             // no B-frames (closed GOP)
-		"-flags", "+cgop",      // closed GOP
+		"-bf", "0", // no B-frames (closed GOP)
+		"-flags", "+cgop", // closed GOP
 		"-profile:v", in.Contract.VideoProfile,
 		"-r", fmt.Sprintf("%d/%d", in.Contract.FPSNum, in.Contract.FPSDen),
 		// Audio: copy bit-exact from source (contract audio already verified).

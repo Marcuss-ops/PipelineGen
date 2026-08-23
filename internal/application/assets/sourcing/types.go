@@ -82,7 +82,7 @@ type RegisterClipResult struct {
 	DurationSec    int
 	DriveLink      string
 	DriveFileID    string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	Source         string
 	Category       string
 	Tags           []string

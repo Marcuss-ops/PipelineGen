@@ -16,7 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-
 type testSourceReader struct{}
 
 var _ SourceReader = testSourceReader{}

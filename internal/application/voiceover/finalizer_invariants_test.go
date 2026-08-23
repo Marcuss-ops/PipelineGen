@@ -86,9 +86,9 @@ func TestFinalizerDelegation_UsesProcessSegmentExecute(t *testing.T) {
 			db := openFinalizerTestDB(t)
 			tts := &stubProcessTTS{
 				cannedOut: TTSOutput{
-					LocalPath: "/tmp/vo/migrated-" + c.name + ".mp3",
-					Voice:     "en_female",
-					LegacyFileMD5:  "migrated-hash-" + c.name,
+					LocalPath:     "/tmp/vo/migrated-" + c.name + ".mp3",
+					Voice:         "en_female",
+					LegacyFileMD5: "migrated-hash-" + c.name,
 				},
 			}
 			dest := &stubProcessDestResolver{
@@ -210,7 +210,7 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 			DriveFileID:    "drive-1",
 			DriveLink:      "https://drive.google.com/file/d/drive-1/view",
 			DownloadLink:   "https://drive.google.com/uc?id=drive-1",
-			LegacyFileMD5:       "abc123",
+			LegacyFileMD5:  "abc123",
 			FolderID:       "folder-1",
 			FolderPath:     "/tmp/vo",
 			ShouldSwap:     true,
@@ -242,17 +242,17 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-2",
-			RequestID:   "req-2",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "", // empty → Step 1 guard-skipped
-			LegacyFileMD5:    "abc123",
-			FolderID:    "folder-1",
+			ID:            "vo-2",
+			RequestID:     "req-2",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "", // empty → Step 1 guard-skipped
+			LegacyFileMD5: "abc123",
+			FolderID:      "folder-1",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"dedupe: empty DriveFileID"}, res.OptionalSteps,
@@ -280,17 +280,17 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-3",
-			RequestID:   "req-3",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "drive-2",
-			LegacyFileMD5:    "", // empty → Step 5 guard-skipped
-			FolderID:    "folder-1",
+			ID:            "vo-3",
+			RequestID:     "req-3",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "drive-2",
+			LegacyFileMD5: "", // empty → Step 5 guard-skipped
+			FolderID:      "folder-1",
 		})
 		require.NoError(t, err)
 		assert.Empty(t, res.OptionalSteps)
@@ -318,18 +318,18 @@ func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-6",
-			RequestID:   "req-6",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "drive-5",
-			LegacyFileMD5:    "abc123",
-			FolderID:    "folder-1",
-			ShouldSwap:  true, // no old artefacts → Step 6 guard-skipped
+			ID:            "vo-6",
+			RequestID:     "req-6",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "drive-5",
+			LegacyFileMD5: "abc123",
+			FolderID:      "folder-1",
+			ShouldSwap:    true, // no old artefacts → Step 6 guard-skipped
 			// OldDriveFileID, OldLocalPath, OldCleanedPath all empty.
 		})
 		require.NoError(t, err)
@@ -382,18 +382,18 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-lifecycle-unwired",
-			RequestID:   "req-lu",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "drive-1",
-			LegacyFileMD5:    "abc123",
-			FolderID:    "folder-1",
-			ShouldSwap:  true,
+			ID:            "vo-lifecycle-unwired",
+			RequestID:     "req-lu",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "drive-1",
+			LegacyFileMD5: "abc123",
+			FolderID:      "folder-1",
+			ShouldSwap:    true,
 		})
 
 		// Audit-P0 #2 fail-fast: error MUST NOT be nil, MUST mention
@@ -426,18 +426,18 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-outbox-unwired",
-			RequestID:   "req-ou",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "drive-2",
-			LegacyFileMD5:    "abc123",
-			FolderID:    "folder-1",
-			ShouldSwap:  true,
+			ID:            "vo-outbox-unwired",
+			RequestID:     "req-ou",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "drive-2",
+			LegacyFileMD5: "abc123",
+			FolderID:      "folder-1",
+			ShouldSwap:    true,
 		})
 
 		require.Error(t, err, "unwired Outbox is a fatal wiring error — Finalize() must return non-nil err")
@@ -465,18 +465,18 @@ func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 		defer func() { _ = tx.Rollback() }()
 
 		res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-			ID:          "vo-all-wired",
-			RequestID:   "req-aw",
-			TextHash:    "hash",
-			Text:        "hello",
-			Language:    "en",
-			Voice:       "en_female",
-			Filename:    "test.mp3",
-			LocalPath:   "/tmp/test.mp3",
-			DriveFileID: "drive-aw",
-			LegacyFileMD5:    "abc123",
-			FolderID:    "folder-1",
-			ShouldSwap:  true,
+			ID:            "vo-all-wired",
+			RequestID:     "req-aw",
+			TextHash:      "hash",
+			Text:          "hello",
+			Language:      "en",
+			Voice:         "en_female",
+			Filename:      "test.mp3",
+			LocalPath:     "/tmp/test.mp3",
+			DriveFileID:   "drive-aw",
+			LegacyFileMD5: "abc123",
+			FolderID:      "folder-1",
+			ShouldSwap:    true,
 		})
 
 		require.NoError(t, err, "all required deps wired → no fail-fast")

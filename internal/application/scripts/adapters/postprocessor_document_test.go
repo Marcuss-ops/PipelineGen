@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 

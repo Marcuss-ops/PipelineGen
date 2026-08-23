@@ -120,6 +120,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
     ON outbox_events(event_key);
+
+CREATE TABLE IF NOT EXISTS media_assets (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL DEFAULT '',
+    media_type TEXT NOT NULL DEFAULT '',
+    local_path TEXT NOT NULL DEFAULT '',
+    drive_file_id TEXT NOT NULL DEFAULT '',
+    drive_link TEXT NOT NULL DEFAULT '',
+    download_link TEXT NOT NULL DEFAULT '',
+    file_hash TEXT NOT NULL DEFAULT '',
+    lifecycle_state TEXT NOT NULL DEFAULT '',
+    index_state TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
 `
 
 // qdrantE2EDB spins up a fresh in-memory SQLite database with the

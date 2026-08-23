@@ -34,7 +34,7 @@ type LocalizeInput struct {
 	// FolderID is the Drive folder the rendered clips upload into.
 	FolderID string
 	// SubtitleFolderID is the per-clip Drive folder for the compiled ASS.
-	SubtitleFolderID string
+	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
 	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
 	// localization manifest Google Doc.

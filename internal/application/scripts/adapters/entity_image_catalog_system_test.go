@@ -60,6 +60,7 @@ func openPersistentEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			candidate_id INTEGER PRIMARY KEY,
 			asset_id TEXT NOT NULL DEFAULT '',
 			file_hash TEXT NOT NULL DEFAULT '',
+			legacy_file_md5 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
@@ -70,7 +71,7 @@ func openPersistentEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
-    legacy_file_md5 TEXT NOT NULL DEFAULT '',)`,
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -283,7 +284,7 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 	materialization := entitycatalog.Materialization{
 		CandidateID:    candidateID,
 		AssetID:        "drive-michael-jordan",
-		LegacyFileMD5:       "sha256-michael-jordan",
+		LegacyFileMD5:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-michael-jordan/view",
 		LocalPath:      "/missing/local-copy-is-not-required.jpg",
 		Status:         entitycatalog.MaterializationStatusMaterialized,

@@ -34,14 +34,14 @@ type emptyHashMediaProcessor struct{}
 
 func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	return &asset.ProcessResult{
-		ID:           input.ID,
-		Filename:     input.ID + "_processed.mp4",
-		LocalPath:    input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5:     "", // empty SHA-256
-		DriveLink:    "https://drive.google.com/file/d/" + input.ID + "-drive/view",
-		DriveFileID:  input.ID + "-drive-id",
-		DownloadLink: input.SourceURL,
-		Status:       "processed",
+		ID:            input.ID,
+		Filename:      input.ID + "_processed.mp4",
+		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
+		LegacyFileMD5: "", // empty SHA-256
+		DriveLink:     "https://drive.google.com/file/d/" + input.ID + "-drive/view",
+		DriveFileID:   input.ID + "-drive-id",
+		DownloadLink:  input.SourceURL,
+		Status:        "processed",
 	}, nil
 }
 

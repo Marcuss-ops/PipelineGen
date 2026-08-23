@@ -10,27 +10,27 @@ import (
 )
 
 type Record struct {
-	ID              string
-	RequestID       string
-	TextHash        string
-	TextPreview     string
-	Language        string
-	Voice           string
+	ID          string
+	RequestID   string
+	TextHash    string
+	TextPreview string
+	Language    string
+	Voice       string
 
 	// Deprecated (PR-VO-ASSET-ID, August 2026): location and hash
 	// facts are owned by media_assets + asset_locations (same id).
 	// These fields are zero-valued when read from rows written after
 	// migration 232 cutover. Callers must read from the media
 	// registry projection instead.
-	Filename     string
-	LocalPath    string
-	CleanedPath  string
-	FolderID     string
-	FolderPath   string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
+	Filename      string
+	LocalPath     string
+	CleanedPath   string
+	FolderID      string
+	FolderPath    string
+	DriveFileID   string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
 
 	DurationSeconds float64
 	Status          string
@@ -204,10 +204,10 @@ func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID st
 		var rec Record
 		var createdAt, updatedAt string
 		err := rows.Scan(
-				&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-				&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-				&rec.Metadata, &createdAt, &updatedAt,
-			)
+			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+			&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.Metadata, &createdAt, &updatedAt,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -250,12 +250,16 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice,
+			filename, local_path, cleaned_path, folder_id, folder_path,
+			drive_file_id, drive_link, download_link, file_hash,
 			duration_seconds, status,
 			error, strategy, metadata, fingerprint, idempotency_key, job_id,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
+		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language,
+		rec.Voice, rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
+		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5,
 		rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		rec.IdempotencyKey, rec.JobID,
@@ -345,10 +349,10 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 		var rec Record
 		var createdAt, updatedAt string
 		err := rows.Scan(
-				&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-				&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-				&rec.Metadata, &createdAt, &updatedAt,
-			)
+			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+			&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.Metadata, &createdAt, &updatedAt,
+		)
 		if err != nil {
 			return nil, err
 		}

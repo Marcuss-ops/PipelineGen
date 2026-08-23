@@ -45,9 +45,9 @@ package app
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math/rand"
 	"strings"
 	"time"

@@ -104,7 +104,7 @@ type Metrics interface {
 type noopMetrics struct{}
 
 func (noopMetrics) ObserveParity(ProjectionParity) {}
-func (noopMetrics) ObserveError()                   {}
+func (noopMetrics) ObserveError()                  {}
 
 // Service is the periodic projection-parity reconciler. Construction
 // via NewServiceFromDeps.

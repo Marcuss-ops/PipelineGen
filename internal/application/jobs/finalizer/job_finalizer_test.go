@@ -405,7 +405,8 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 		t.Errorf("asset_locations.external_id = %q", locFileID)
 	}
 
-	// 8. Verify outbox_events → asset.index.requested (canonical).
+	// 8. Documents are persisted but are not semantic-search assets, so the
+	// committer must not emit an asset.index.requested command for this PDF.
 	var outboxCount int
 	err = db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = ?`,
@@ -414,37 +415,8 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify outbox_events: %v", err)
 	}
-	if outboxCount != 1 {
-		t.Errorf("outbox_events count = %d, want 1 (asset.index.requested)", outboxCount)
-	}
-
-	// Verify the outbox payload has the canonical fields.
-	var payloadJSON string
-	err = db.QueryRowContext(ctx,
-		`SELECT payload_json FROM outbox_events WHERE aggregate_id = ? AND event_type = ?`,
-		"doc-job-001:pdf", outboxevents.EventAssetIndexRequested,
-	).Scan(&payloadJSON)
-	if err != nil {
-		t.Fatalf("verify outbox payload: %v", err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-		t.Fatalf("unmarshal outbox payload: %v", err)
-	}
-	if payload["schema_version"] != outboxevents.ReindexEnvelopeV1Schema {
-		t.Errorf("outbox payload schema_version = %v, want %v", payload["schema_version"], outboxevents.ReindexEnvelopeV1Schema)
-	}
-	if payload["asset_id"] != "doc-job-001:pdf" {
-		t.Errorf("outbox payload asset_id = %v", payload["asset_id"])
-	}
-	if _, ok := payload["source_version"]; !ok {
-		t.Error("outbox payload missing source_version")
-	}
-	if _, ok := payload["event_id"]; !ok {
-		t.Error("outbox payload missing event_id")
-	}
-	if _, ok := payload["idempotency_key"]; !ok {
-		t.Error("outbox payload missing idempotency_key")
+	if outboxCount != 0 {
+		t.Errorf("outbox_events count = %d, want 0 for non-indexable document", outboxCount)
 	}
 
 	// 8-bis. Verify outbox_events → job.completed (derived-performance
@@ -602,27 +574,10 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '',
+    tags_norm TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT '')`,
-		`ALTER TABLE media_assets ADD COLUMN category TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN namespace TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN asset_kind TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN source_type TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN semantic_role TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE media_assets ADD COLUMN tags_norm TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS asset_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,

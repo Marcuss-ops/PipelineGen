@@ -24,10 +24,10 @@ package checkpoint
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 )

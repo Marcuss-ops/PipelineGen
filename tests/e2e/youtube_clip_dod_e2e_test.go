@@ -127,11 +127,11 @@ func TestE2E_YouTubeClip_DoD12_BronerPacquiao(t *testing.T) {
 
 			// ── Build the canonical ClipAsset ──────────────────────
 			clip := youtubetypes.ClipAsset{
-				ID:         assetID,
-				VideoID:    "vdC5GXxS-qU",
-				LocalPath:  "/tmp/" + assetID + ".mp4",
-				FileHash:   testSourceVersionFor(assetID),
-				SearchText: c.searchText,
+				ID:            assetID,
+				VideoID:       "vdC5GXxS-qU",
+				LocalPath:     "/tmp/" + assetID + ".mp4",
+				LegacyFileMD5: testSourceVersionFor(assetID),
+				SearchText:    c.searchText,
 				Drive: youtubetypes.ClipAssetDrive{
 					FolderID:    "folder-e2e-dod12",
 					FolderPath:  "youtube/e2e/dod12",
@@ -186,7 +186,7 @@ func TestE2E_YouTubeClip_DoD12_BronerPacquiao(t *testing.T) {
 			// ── DoD 12 assertion #2: media_assets row ──────────────
 			var dbID, dbSource, dbSearchText, dbFileHash string
 			err = fx.DB.QueryRow(
-				`SELECT id, source, search_text, file_hash FROM media_assets WHERE id = ?`, assetID,
+				`SELECT id, source, search_text, legacy_file_md5 FROM media_assets WHERE id = ?`, assetID,
 			).Scan(&dbID, &dbSource, &dbSearchText, &dbFileHash)
 			require.NoError(t, err,
 				"DoD #2: media_assets row must exist for asset_id=%s", assetID)
@@ -195,7 +195,7 @@ func TestE2E_YouTubeClip_DoD12_BronerPacquiao(t *testing.T) {
 			require.Equal(t, "youtube", dbSource,
 				"DoD #2: media_assets.source must be 'youtube' (not 'created')")
 			require.NotEmpty(t, dbFileHash,
-				"DoD #2: media_assets.file_hash must be non-empty")
+				"DoD #2: media_assets legacy_file_md5 must be non-empty")
 			require.NotEmpty(t, dbSearchText,
 				"DoD #2: media_assets.search_text must be non-empty (DoD 10 contract)")
 			require.Contains(t, dbSearchText, c.title,

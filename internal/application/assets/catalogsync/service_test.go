@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-
 func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 	ctx := context.Background()
 

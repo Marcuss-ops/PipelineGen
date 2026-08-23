@@ -26,10 +26,10 @@
 package stockbuild
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 

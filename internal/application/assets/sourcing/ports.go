@@ -99,7 +99,7 @@ type ExistingClip struct {
 	LocalPath      string
 	DriveLink      string
 	DriveFileID    string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 
 	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
 	Summary         string   `json:"summary,omitempty"`

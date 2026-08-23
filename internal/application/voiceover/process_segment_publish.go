@@ -65,6 +65,17 @@ func (u *ProcessSegmentUseCase) publishStage(
 		metaBuf["silence_cleanup"] = out.SilenceCleanup
 	}
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
+	// Validate caller metadata before any external side effect. The final
+	// envelope is marshalled again below after publish-time fields are added,
+	// but unsupported values must fail at the metadata stage, before Drive.
+	if _, err := json.Marshal(metaBuf); err != nil {
+		return nil, newPipelineErrorCode(
+			StageMetadata,
+			false,
+			FailureMetadataSerialization,
+			fmt.Errorf("voiceover metadata serialization: %w", err),
+		)
+	}
 
 	// Semantic enrichment belongs to the canonical pipeline, immediately
 	// before publish, so both batch and per-item callers persist the same

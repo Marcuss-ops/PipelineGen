@@ -448,8 +448,6 @@ func TestPayloadValidator_SegmentsEmpty(t *testing.T) {
 	assert.Contains(t, pie.Details[0], "segments must not be empty")
 }
 
-
-
 func TestPayloadValidator_SegmentTopicEmpty(t *testing.T) {
 	t.Parallel()
 	v := NewDefaultPayloadValidator()

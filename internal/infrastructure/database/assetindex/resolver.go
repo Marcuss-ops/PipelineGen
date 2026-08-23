@@ -167,15 +167,15 @@ func (r *Resolver) resolveVoiceoverFromDB(ctx context.Context, id string) (*Asse
 // clipToAssetRecord converts a models.Clip to an AssetRecord
 func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 	rec := &AssetRecord{
-		AssetID:   source + "_" + clip.ID,
-		AssetType: getAssetTypeFromSource(source),
-		Source:    source,
-		SourceID:  clip.ID,
-		GroupName: clip.Group,
-		LocalPath: clip.LocalPath(),
-		DriveLink: clip.DriveLink(),
-		LegacyFileMD5:  clip.LegacyFileMD5(),
-		Status:    "", // status migrated to asset_processing
+		AssetID:       source + "_" + clip.ID,
+		AssetType:     getAssetTypeFromSource(source),
+		Source:        source,
+		SourceID:      clip.ID,
+		GroupName:     clip.Group,
+		LocalPath:     clip.LocalPath(),
+		DriveLink:     clip.DriveLink(),
+		LegacyFileMD5: clip.LegacyFileMD5(),
+		Status:        "", // status migrated to asset_processing
 	}
 
 	if len(clip.Metadata) > 0 {
@@ -188,15 +188,15 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 // voiceoverToAssetRecord converts a assets.Record to an AssetRecord
 func voiceoverToAssetRecord(rec *assets.Record) *AssetRecord {
 	return &AssetRecord{
-		AssetID:   "voiceover_" + rec.ID,
-		AssetType: "voiceover",
-		Source:    "voiceover",
-		SourceID:  rec.ID,
-		LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink,
-		LegacyFileMD5:  rec.LegacyFileMD5,
-		Status:    rec.Status,
-		Metadata:  rec.Metadata,
+		AssetID:       "voiceover_" + rec.ID,
+		AssetType:     "voiceover",
+		Source:        "voiceover",
+		SourceID:      rec.ID,
+		LocalPath:     rec.LocalPath,
+		DriveLink:     rec.DriveLink,
+		LegacyFileMD5: rec.LegacyFileMD5,
+		Status:        rec.Status,
+		Metadata:      rec.Metadata,
 	}
 }
 

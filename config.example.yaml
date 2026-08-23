@@ -99,6 +99,7 @@ drive:
   # Drive source folder for normal YouTube clips to index recursively.
   normal_clips_source_folder: ""
   clips_root_folder: ""
+  youtube_subtitles_root_folder: ""
   voiceover_root_folder: ""
   artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"  # canonical Drive root for Artlist output (FOLLOWUP-ARTLIST-ROOT, July 2026)
   # AI-generated images need a Drive root even when the style preset is empty.

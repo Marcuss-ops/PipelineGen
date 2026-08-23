@@ -3,8 +3,8 @@ package overlays
 import (
 	"bytes"
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"net/http"
 	"os"

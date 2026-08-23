@@ -234,7 +234,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	var source, fileHash, driveFileID, driveLink, folderPath string
 	var durationMs int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT source, file_hash, drive_file_id, drive_link, folder_path, duration_ms
+		SELECT source, legacy_file_md5, drive_file_id, drive_link, folder_path, duration_ms
 		FROM media_assets WHERE id = ?`, a.ID).
 		Scan(&source, &fileHash, &driveFileID, &driveLink, &folderPath, &durationMs); err != nil {
 		t.Fatalf("verify overlay media_assets: %v", err)
@@ -261,7 +261,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	// asset_locations carries the sha256 + Drive identity too.
 	var locKind, locExternalID, locWebView, locFileHash string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT location_kind, external_id, web_view_link, file_hash
+		SELECT location_kind, external_id, web_view_link, legacy_file_md5
 		FROM asset_locations WHERE asset_id = ?`, a.ID).
 		Scan(&locKind, &locExternalID, &locWebView, &locFileHash); err != nil {
 		t.Fatalf("verify overlay asset_locations: %v", err)

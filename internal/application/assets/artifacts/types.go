@@ -361,7 +361,7 @@ type MediaRecord struct {
 	DriveLink           string
 	DriveFileID         string
 	DownloadLink        string
-	LegacyFileMD5            string
+	LegacyFileMD5       string
 	ContentHash         string
 	Metadata            string
 	Duration            int

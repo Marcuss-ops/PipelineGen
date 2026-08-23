@@ -153,21 +153,21 @@ func TestFinalize_DedupeLookupErr_PropagatesAndStopsAllDownstreamWrites(t *testi
 	// DriveFileID is empty). Audit scenario: an upload completed
 	// (DriveFileID populated) but the dedupe SQLite query fails.
 	res, err := f.Finalize(context.Background(), realTx, &FinalizeCommand{
-		ID:           "vo-dedupe-err",
-		RequestID:    "req-dedupe-err",
-		TextHash:     "hash",
-		Text:         "hello",
-		Language:     "en",
-		Voice:        "en_female",
-		Filename:     "test.mp3",
-		LocalPath:    "/tmp/test.mp3",
-		DriveFileID:  "drive-audit",
-		DriveLink:    "https://drive.google.com/file/d/drive-audit/view",
-		DownloadLink: "https://drive.google.com/uc?id=drive-audit",
-		LegacyFileMD5:     "abc123",
-		FolderID:     "folder-1",
-		FolderPath:   "/tmp/vo",
-		ShouldSwap:   true,
+		ID:            "vo-dedupe-err",
+		RequestID:     "req-dedupe-err",
+		TextHash:      "hash",
+		Text:          "hello",
+		Language:      "en",
+		Voice:         "en_female",
+		Filename:      "test.mp3",
+		LocalPath:     "/tmp/test.mp3",
+		DriveFileID:   "drive-audit",
+		DriveLink:     "https://drive.google.com/file/d/drive-audit/view",
+		DownloadLink:  "https://drive.google.com/uc?id=drive-audit",
+		LegacyFileMD5: "abc123",
+		FolderID:      "folder-1",
+		FolderPath:    "/tmp/vo",
+		ShouldSwap:    true,
 	})
 
 	// ── (a) Error propagation contract ──

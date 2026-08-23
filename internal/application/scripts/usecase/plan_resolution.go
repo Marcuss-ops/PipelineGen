@@ -123,16 +123,16 @@ func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort
 //   - TargetWords — item.ScriptParams.TargetWords
 func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceResolutionContext {
 	return scriptpkg.SourceResolutionContext{
-		ItemID:        item.ID,
-		Title:         item.Title,
-		Language:      item.Language,
-		Tone:          item.Tone,
-		Model:         item.Model,
-		Style:         item.Style,
-		TargetWords:   item.ScriptParams.TargetWords,
-		NumClips:      item.Source.NumClips,
-		SegmentWords:  item.ScriptParams.SegmentWords,
-		Segments:      append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
+		ItemID:       item.ID,
+		Title:        item.Title,
+		Language:     item.Language,
+		Tone:         item.Tone,
+		Model:        item.Model,
+		Style:        item.Style,
+		TargetWords:  item.ScriptParams.TargetWords,
+		NumClips:     item.Source.NumClips,
+		SegmentWords: item.ScriptParams.SegmentWords,
+		Segments:     append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
 		// RequireDriveLink is hardcoded to true as the canonical
 		// fail-closed default (godlike/07 NO-FAKE-AVAILABILITY). A
 		// future source-resolution migration may introduce a non-

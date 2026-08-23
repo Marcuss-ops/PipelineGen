@@ -8,21 +8,21 @@ import (
 // AssetIndexRecord is the application-owned projection DTO for an indexed
 // media asset. Infrastructure adapters translate it to their storage model.
 type AssetIndexRecord struct {
-	AssetID      string
-	AssetType    string
-	Source       string
-	SourceID     string
-	GroupName    string
-	Subfolder    string
-	LocalPath    string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
-	ContentHash  string
-	Status       string
-	Metadata     string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	AssetID       string
+	AssetType     string
+	Source        string
+	SourceID      string
+	GroupName     string
+	Subfolder     string
+	LocalPath     string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
+	ContentHash   string
+	Status        string
+	Metadata      string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // AssetIndexPort is the narrow projection port required by Finalizer.

@@ -60,12 +60,12 @@ type ReuploadRequest struct {
 // ReuploadResult is the typed reply of ReuploadUseCase.Execute.
 // Mirrors the legacy api-output keys verbatim.
 type ReuploadResult struct {
-	OK         bool
-	Source     string
-	ClipID     string
-	DriveLink  string
-	LegacyFileMD5   string
-	UploadedAt string
+	OK            bool
+	Source        string
+	ClipID        string
+	DriveLink     string
+	LegacyFileMD5 string
+	UploadedAt    string
 }
 
 // ── Typed errors ───────────────────────────────────────────────────────
@@ -321,12 +321,12 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 	}
 
 	return &ReuploadResult{
-		OK:         true,
-		Source:     req.Source,
-		ClipID:     req.ClipID,
-		DriveLink:  clip.DriveLink(),
-		LegacyFileMD5:   clip.LegacyFileMD5(),
-		UploadedAt: timeutil.FormatRFC3339(time.Now()),
+		OK:            true,
+		Source:        req.Source,
+		ClipID:        req.ClipID,
+		DriveLink:     clip.DriveLink(),
+		LegacyFileMD5: clip.LegacyFileMD5(),
+		UploadedAt:    timeutil.FormatRFC3339(time.Now()),
 		// F2.9: PublishAction is NOT exposed on ReuploadResult (legacy
 		// handler shape preserves the 5 api-output keys verbatim).
 		// It IS propagated to the Asset via clip.SetMetadataString or

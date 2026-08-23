@@ -28,11 +28,11 @@ package finalizer
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"

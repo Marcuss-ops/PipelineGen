@@ -110,9 +110,10 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	}
 	a.SetLocalPath(outputPath)
 	a.SetLegacyFileMD5(hash)
-	// godlike/06 SSOT: both sha256 and file_hash keys for
-	// downstream consumers that probe either key.
+	// Keep the canonical SHA-256 projection and the legacy compatibility
+	// key in sync for downstream consumers that still read either name.
 	a.SetSha256(hash)
+	a.SetMetadataString("file_hash", hash)
 	if plan.SourceProvider != "" {
 		a.SetMetadataSourceProvider(plan.SourceProvider)
 	}

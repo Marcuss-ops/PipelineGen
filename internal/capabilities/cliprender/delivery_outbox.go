@@ -47,9 +47,9 @@ type ClipDriveDeliveryPayload struct {
 	SourceVersion       int    `json:"source_version"`
 
 	// Sidecar fields (optional — only present when subtitles were compiled).
-	SidecarLocalPath  string `json:"sidecar_local_path,omitempty"`
-	SidecarSHA256     string `json:"sidecar_sha256,omitempty"`
-	SidecarFilename   string `json:"sidecar_filename,omitempty"`
+	SidecarLocalPath string `json:"sidecar_local_path,omitempty"`
+	SidecarSHA256    string `json:"sidecar_sha256,omitempty"`
+	SidecarFilename  string `json:"sidecar_filename,omitempty"`
 
 	// Metadata for projection.
 	SourceAssetID string `json:"source_asset_id"`

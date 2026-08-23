@@ -300,9 +300,9 @@ func TestProcessSegmentUseCase_Execute_RequiredTimingNoBoundariesFailsJob(t *tes
 	db := openProcessTestDB(t)
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/required-no-boundaries.mp3",
-			Voice:     "en-US-RogerNeural",
-			LegacyFileMD5:  "required-nb-hash",
+			LocalPath:     "/tmp/vo/required-no-boundaries.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "required-nb-hash",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-required-nb"}

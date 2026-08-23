@@ -133,7 +133,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 			Name:          name,
 			PreviewURL:    previewURL.String,
 			DriveLink:     driveLink.String,
-			LegacyFileMD5:      fileHash.String,
+			LegacyFileMD5: fileHash.String,
 			SourcePageURL: sourcePageURL.String,
 			License:       license.String,
 			Author:        author.String,

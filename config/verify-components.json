@@ -194,13 +194,11 @@
       "AGENTS.md",
       "scripts/README.md",
       "internal/domain/document/",
-      "internal/application/documents/",
-      "internal/api/assets/document/"
+      "internal/application/documents/"
     ],
     "go_packages": [
       "./internal/domain/document/...",
-      "./internal/application/documents/...",
-      "./internal/api/assets/document/..."
+      "./internal/application/documents/..."
     ],
     "node_tests": [],
     "python_tests": [],

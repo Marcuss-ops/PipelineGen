@@ -37,9 +37,9 @@ package finalizer
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"time"
 

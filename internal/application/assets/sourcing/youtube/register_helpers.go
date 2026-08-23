@@ -221,7 +221,7 @@ func (s *Service) saveClipToDB(ctx context.Context, cmd sourcing.RegisterClipCom
 		Tags:            cmd.Tags,
 		DurationSec:     md.Duration,
 		LocalPath:       localPath,
-		LegacyFileMD5:        fileHash,
+		LegacyFileMD5:   fileHash,
 		Summary:         cmd.Summary,
 		Topics:          cmd.Topics,
 		Speakers:        cmd.Speakers,
@@ -276,7 +276,7 @@ func (s *Service) findRelated(ctx context.Context, name, category string, tags [
 type buildResultInput struct {
 	MD             *usecase.ResolvedMetadata
 	ClipID         string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	DriveFilename  string
 	LocalPath      string
 	UploadResult   *sourcing.DriveUploadResult

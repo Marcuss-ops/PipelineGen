@@ -184,7 +184,7 @@ func assetToExtractItem(a *asset.Asset) *youtubetypes.ExtractItem {
 		ID:              a.ID,
 		Name:            routeEmptyName(a.Name, a.ID),
 		Filename:        routeEmptyFilename(a.Filename, a.LocalPath()),
-		LegacyFileMD5:        a.LegacyFileMD5(),
+		LegacyFileMD5:   a.LegacyFileMD5(),
 		LocalPath:       a.LocalPath(),
 		DriveFileID:     a.DriveFileID(),
 		DriveLink:       a.DriveLink(),

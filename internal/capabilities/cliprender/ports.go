@@ -87,40 +87,40 @@ type RenderExecutor interface {
 // what the render boundary claimed to encode. Every field is exact for
 // assembly-ready gate.
 type OutputProbe struct {
-	Container   string
-	HasVideo    bool
-	VideoCodec  string
-	VideoProfile string
-	VideoLevel  string
-	PixelFormat string
-	Width       int
-	Height      int
-	FPS         float64 // legacy float projection for logs
-	FPSNum      int
-	FPSDen      int
+	Container        string
+	HasVideo         bool
+	VideoCodec       string
+	VideoProfile     string
+	VideoLevel       string
+	PixelFormat      string
+	Width            int
+	Height           int
+	FPS              float64 // legacy float projection for logs
+	FPSNum           int
+	FPSDen           int
 	VideoTimeBaseNum int
 	VideoTimeBaseDen int
 	AudioTimeBaseNum int
 	AudioTimeBaseDen int
-	SARNum      int
-	SARDen      int
-	ColorRange     string
-	ColorSpace     string
-	ColorTransfer  string
-	ColorPrimaries string
-	FieldOrder     string
+	SARNum           int
+	SARDen           int
+	ColorRange       string
+	ColorSpace       string
+	ColorTransfer    string
+	ColorPrimaries   string
+	FieldOrder       string
 	KeyframeInterval int
-	HasAudio    bool
-	AudioCodec  string
-	AudioProfile string
-	SampleRate  int
-	Channels    int
-	ChannelLayout string
-	AudioBitrate  string
-	VideoStreams int
-	AudioStreams int
-	StreamOrder  string
-	StartPTS     int64
+	HasAudio         bool
+	AudioCodec       string
+	AudioProfile     string
+	SampleRate       int
+	Channels         int
+	ChannelLayout    string
+	AudioBitrate     string
+	VideoStreams     int
+	AudioStreams     int
+	StreamOrder      string
+	StartPTS         int64
 }
 
 // OutputProber probes the rendered output file. The concrete adapter uses

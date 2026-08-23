@@ -263,7 +263,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	return s.buildResult(buildResultInput{
 		MD:             md,
 		ClipID:         clipID,
-		LegacyFileMD5:       fileHash,
+		LegacyFileMD5:  fileHash,
 		DriveFilename:  driveFilename,
 		LocalPath:      fetched.LocalPath,
 		UploadResult:   uploadResult,

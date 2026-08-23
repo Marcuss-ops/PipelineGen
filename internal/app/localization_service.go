@@ -22,9 +22,9 @@ package app
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"

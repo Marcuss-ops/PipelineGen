@@ -429,6 +429,7 @@ func (s *Service) persistVLM(ctx context.Context, a *asset.Asset) error {
 		AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
 		MediaType: string(a.MediaType), ContentHash: hash, LifecycleState: string(a.LifecycleState),
 		IndexState: a.GetMetadataString("index_state"), EmitIndexEvent: true,
+		Metadata: persistence.TypedMetadata{Tags: a.Tags, Extra: a.Metadata},
 	}); err != nil {
 		return fmt.Errorf("CommitAndIndex: %w", err)
 	}

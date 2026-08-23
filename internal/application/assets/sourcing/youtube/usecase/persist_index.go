@@ -39,7 +39,7 @@ type PersistClipCommand struct {
 	Tags           []string // user-supplied tags
 	DurationSec    int      // clip duration in whole seconds
 	LocalPath      string   // path to the downloaded .mp4 on disk
-	LegacyFileMD5       string   // MD5 hex digest (content hash for supersede gate)
+	LegacyFileMD5  string   // MD5 hex digest (content hash for supersede gate)
 	DriveLink      string   // Google Drive web view link (empty when not published)
 	DriveFileID    string   // Google Drive file ID (empty when not published)
 
@@ -77,7 +77,7 @@ type ClipRecord struct {
 	Tags           []string
 	Duration       time.Duration
 	LocalPath      string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	DriveLink      string
 	DriveFileID    string
 
@@ -115,7 +115,7 @@ func PersistClipAndIndex(ctx context.Context, indexer ClipIndexer, cmd PersistCl
 		Tags:            append([]string(nil), cmd.Tags...),
 		Duration:        time.Duration(cmd.DurationSec) * time.Second,
 		LocalPath:       cmd.LocalPath,
-		LegacyFileMD5:        cmd.LegacyFileMD5,
+		LegacyFileMD5:   cmd.LegacyFileMD5,
 		DriveLink:       cmd.DriveLink,
 		DriveFileID:     cmd.DriveFileID,
 		Summary:         cmd.Summary,

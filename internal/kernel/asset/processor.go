@@ -199,7 +199,7 @@ type RenditionSet struct {
 	ID            string
 	Filename      string
 	LocalPath     string
-	LegacyFileMD5      string
+	LegacyFileMD5 string
 	ContentHash   string
 	DriveLink     string // FORBIDDEN (Drive) — removed in step 2
 	DriveFileID   string // FORBIDDEN (Drive) — removed in step 2
@@ -218,19 +218,19 @@ type RenditionSet struct {
 
 // RenditionOutput describes a single generated technical variant of an asset.
 type RenditionOutput struct {
-	Kind       RenditionKind
-	LocalPath  string
-	Filename   string
-	LegacyFileMD5   string
-	SizeBytes  int64
-	MimeType   string
-	Width      int
-	Height     int
-	FPS        float64
-	Bitrate    int64
-	Container  string
-	Codec      string
-	ColorSpace string
+	Kind          RenditionKind
+	LocalPath     string
+	Filename      string
+	LegacyFileMD5 string
+	SizeBytes     int64
+	MimeType      string
+	Width         int
+	Height        int
+	FPS           float64
+	Bitrate       int64
+	Container     string
+	Codec         string
+	ColorSpace    string
 }
 
 // ── Backward-compatibility aliases (PR-MEDIATRANSFORMER-RENAME step 1) ──

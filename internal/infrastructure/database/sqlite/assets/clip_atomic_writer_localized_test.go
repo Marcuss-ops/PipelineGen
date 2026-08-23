@@ -205,10 +205,10 @@ func newLocalizedWriterDB(t *testing.T) *sql.DB {
 // Lifecycle state mirrors the production "ACTIVE" default.
 func makeClipAssetForTest(clipID, videoID, fileHash string) youtubetypes.ClipAsset {
 	return youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   videoID,
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/clips/" + clipID + ".mp4",
+		ID:            clipID,
+		VideoID:       videoID,
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_" + clipID,
 			FolderPath:  "youtube/" + videoID,

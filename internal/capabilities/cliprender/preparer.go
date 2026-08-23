@@ -545,7 +545,6 @@ func newTimingTracker() *timingTracker {
 	return &timingTracker{phases: make([]PhaseTiming, 0, 5)}
 }
 
-
 // recordWith is the notes-aware variant of record. The notes map is captured
 // verbatim so the Preparer can surface phase-specific facts (cache_hit,
 // bytes_downloaded, transcript cue count, ...) without losing the timing.

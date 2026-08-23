@@ -42,6 +42,8 @@
 package schema
 
 import (
+	"encoding/hex"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/google/uuid"
@@ -87,8 +89,12 @@ func AssetIDToQdrantPointID(assetID string) string {
 		return ""
 	}
 	hash := digest.SHA256Bytes([]byte(assetID))
+	raw, err := hex.DecodeString(hash)
+	if err != nil {
+		return ""
+	}
 	var b [16]byte
-	copy(b[:], hash[:16])
+	copy(b[:], raw[:16])
 	// UUID v8 per RFC 9562 §5.8: set the high nibble of byte 6 to
 	// 0x8 (custom version). The v5/v8 distinction is opaque to
 	// Qdrant (both are canonical UUID strings), but a future

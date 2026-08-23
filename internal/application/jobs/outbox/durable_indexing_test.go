@@ -504,7 +504,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	media_type TEXT NOT NULL DEFAULT '',
 	category TEXT NOT NULL DEFAULT '',
 	duration_ms INTEGER NOT NULL DEFAULT 0,
-	file_hash TEXT NOT NULL DEFAULT '',
+	legacy_file_md5 TEXT NOT NULL DEFAULT '',
 	drive_file_id TEXT NOT NULL DEFAULT '',
 	drive_link TEXT NOT NULL DEFAULT '',
 	download_link TEXT NOT NULL DEFAULT '',
@@ -537,6 +537,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '',
+    tags_norm TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS asset_versions (
@@ -544,7 +546,7 @@ CREATE TABLE IF NOT EXISTS asset_versions (
 	asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
 	version_number INTEGER NOT NULL,
 	source_uri TEXT NOT NULL DEFAULT '',
-	file_hash TEXT NOT NULL DEFAULT '',
+	legacy_file_md5 TEXT NOT NULL DEFAULT '',
 	file_size_bytes INTEGER NOT NULL DEFAULT 0,
 	mime_type TEXT NOT NULL DEFAULT '',
 	metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -561,7 +563,7 @@ CREATE TABLE IF NOT EXISTS asset_locations (
 	download_url TEXT NOT NULL DEFAULT '',
 	mime_type TEXT NOT NULL DEFAULT '',
 	file_size_bytes INTEGER NOT NULL DEFAULT 0,
-	file_hash TEXT NOT NULL DEFAULT '',
+	legacy_file_md5 TEXT NOT NULL DEFAULT '',
 	is_primary INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL DEFAULT '',
@@ -591,23 +593,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
     ON outbox_events(event_key) WHERE event_key != '';
 CREATE INDEX IF NOT EXISTS IX_outbox_events_status_next
     ON outbox_events(status, next_attempt_at);
-ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN namespace TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN asset_kind TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN semantic_role TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN tags TEXT NOT NULL DEFAULT '';
-ALTER TABLE media_assets ADD COLUMN tags_norm TEXT NOT NULL DEFAULT '';
 `
 
 func openInMemDB_Integration(t *testing.T) *sql.DB {
@@ -837,7 +822,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 
 	// Simulate: YouTube pipeline wrote stale file_hash to metadata_json.
 	if _, err := db.Exec(`UPDATE media_assets SET metadata_json = ? WHERE id = ?`,
-		`{"legacy_file_md5":"`+staleHash+`","publish_action":"drive"}`, assetID); err != nil {
+		`{"file_hash":"`+staleHash+`","publish_action":"drive"}`, assetID); err != nil {
 		t.Fatalf("simulate stale Tier 2: %v", err)
 	}
 

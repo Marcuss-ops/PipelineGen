@@ -125,7 +125,7 @@ func TestFinalizeVidRushBindings_ImageOnlyUsesDurableImagesAsBinding(t *testing.
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
-		LegacyFileMD5:           "hash-commons-image-1",
+		LegacyFileMD5:      "hash-commons-image-1",
 	}
 
 	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{{

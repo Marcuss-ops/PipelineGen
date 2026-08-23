@@ -48,10 +48,10 @@ func (f *driveFailureProcessor) Process(_ context.Context, input *asset.ProcessI
 	f.mu.Unlock()
 
 	return &asset.ProcessResult{
-		ID:        input.ID,
-		Filename:  input.ID + "_processed.mp4",
-		LocalPath: input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5:  "drivefail-hash-" + input.ID,
+		ID:            input.ID,
+		Filename:      input.ID + "_processed.mp4",
+		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
+		LegacyFileMD5: "drivefail-hash-" + input.ID,
 		// Drive fields intentionally left empty — simulates Drive upload failure
 		DriveLink:     "",
 		DriveFileID:   "",
@@ -77,12 +77,12 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *asset.ProcessI
 	f.mu.Unlock()
 
 	result := &asset.ProcessResult{
-		ID:           input.ID,
-		Filename:     input.ID + "_processed.mp4",
-		LocalPath:    input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5:     "partial-hash-" + input.ID,
-		DownloadLink: input.SourceURL,
-		Status:       "processed",
+		ID:            input.ID,
+		Filename:      input.ID + "_processed.mp4",
+		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
+		LegacyFileMD5: "partial-hash-" + input.ID,
+		DownloadLink:  input.SourceURL,
+		Status:        "processed",
 	}
 
 	// Deterministic: any clip ID ending with "-ok" gets Drive fields;

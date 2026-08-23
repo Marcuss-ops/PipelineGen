@@ -146,7 +146,14 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		subtitleFolderID := cmd.SubtitleFolderID
 		if cmd.SubtitlePerClipSubfolders {
 			var err error
-			subtitleFolderID, err = u.media.DriveFolderMgr.GetOrCreateFolder(ctx, out.Item.Name, cmd.SubtitleFolderID)
+			// Keep all subtitles for one source video together. Clip names
+			// are intentionally not used as folder names: a single source
+			// video can produce many segments.
+			videoFolderName := strings.TrimSpace(cmd.VideoID)
+			if videoFolderName == "" {
+				videoFolderName = "youtube-video"
+			}
+			subtitleFolderID, err = u.media.DriveFolderMgr.GetOrCreateFolder(ctx, videoFolderName, cmd.SubtitleFolderID)
 			if err != nil || subtitleFolderID == "" {
 				if err == nil {
 					err = errors.New("Drive returned an empty subtitle folder ID")

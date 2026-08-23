@@ -72,14 +72,14 @@ type ReprocessRequest struct {
 
 // ReprocessResult contains the output after reprocessing.
 type ReprocessResult struct {
-	ClipID       string `json:"clip_id"`
-	Source       string `json:"source"`
-	Status       string `json:"status"`
-	LocalPath    string `json:"local_path"`
-	LegacyFileMD5     string `json:"legacy_file_md5"`
-	DriveLink    string `json:"drive_link"`
-	DownloadLink string `json:"download_link"`
-	ProcessedAt  string `json:"processed_at"`
+	ClipID        string `json:"clip_id"`
+	Source        string `json:"source"`
+	Status        string `json:"status"`
+	LocalPath     string `json:"local_path"`
+	LegacyFileMD5 string `json:"legacy_file_md5"`
+	DriveLink     string `json:"drive_link"`
+	DownloadLink  string `json:"download_link"`
+	ProcessedAt   string `json:"processed_at"`
 }
 
 // Execute reprocesses the clip and returns the result.
@@ -106,14 +106,14 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	// pipeline instead of being silently ignored.
 	if !req.Force && uc.hasExistingRendition(clip) {
 		return &ReprocessResult{
-			ClipID:       req.ClipID,
-			Source:       req.Source,
-			Status:       "processed",
-			LocalPath:    clip.LocalPath(),
-			LegacyFileMD5:     clip.LegacyFileMD5(),
-			DriveLink:    clip.DriveLink(),
-			DownloadLink: clip.DownloadLink(),
-			ProcessedAt:  timeutil.FormatRFC3339(clip.UpdatedAt),
+			ClipID:        req.ClipID,
+			Source:        req.Source,
+			Status:        "processed",
+			LocalPath:     clip.LocalPath(),
+			LegacyFileMD5: clip.LegacyFileMD5(),
+			DriveLink:     clip.DriveLink(),
+			DownloadLink:  clip.DownloadLink(),
+			ProcessedAt:   timeutil.FormatRFC3339(clip.UpdatedAt),
 		}, nil
 	}
 
@@ -246,14 +246,14 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 
 	return &ReprocessResult{
-		ClipID:       req.ClipID,
-		Source:       req.Source,
-		Status:       result.Status,
-		LocalPath:    result.LocalPath,
-		LegacyFileMD5:     result.LegacyFileMD5,
-		DriveLink:    result.DriveLink,
-		DownloadLink: result.DownloadLink,
-		ProcessedAt:  timeutil.FormatRFC3339(time.Now()),
+		ClipID:        req.ClipID,
+		Source:        req.Source,
+		Status:        result.Status,
+		LocalPath:     result.LocalPath,
+		LegacyFileMD5: result.LegacyFileMD5,
+		DriveLink:     result.DriveLink,
+		DownloadLink:  result.DownloadLink,
+		ProcessedAt:   timeutil.FormatRFC3339(time.Now()),
 	}, nil
 }
 

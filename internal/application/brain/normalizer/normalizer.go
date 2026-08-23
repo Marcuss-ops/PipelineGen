@@ -9,8 +9,8 @@ package normalizer
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"unicode"
 

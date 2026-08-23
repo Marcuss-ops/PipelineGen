@@ -22,7 +22,7 @@ type Location struct {
 	DownloadURL   string       `json:"download_url,omitempty"`
 	MimeType      string       `json:"mime_type"`
 	FileSizeBytes int64        `json:"file_size_bytes"`
-	LegacyFileMD5      string       `json:"legacy_file_md5"`
+	LegacyFileMD5 string       `json:"legacy_file_md5"`
 	IsPrimary     bool         `json:"is_primary"`
 	CreatedAt     time.Time    `json:"created_at"`
 	UpdatedAt     time.Time    `json:"updated_at"`

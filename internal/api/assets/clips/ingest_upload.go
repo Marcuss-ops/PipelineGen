@@ -14,19 +14,19 @@ import (
 
 // UploadVideoClipResponse is returned after a successful video upload.
 type UploadVideoClipResponse struct {
-	OK          bool     `json:"ok"`
-	ClipID      string   `json:"clip_id"`
-	Name        string   `json:"name"`
-	Filename    string   `json:"filename"`
-	DriveLink   string   `json:"drive_link,omitempty"`
-	DriveFileID string   `json:"drive_file_id,omitempty"`
-	LegacyFileMD5    string   `json:"legacy_file_md5"`
-	Source      string   `json:"source"`
-	Category    string   `json:"category,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	LocalPath   string   `json:"local_path"`
-	Indexed     bool     `json:"indexed"`
-	Duration    int      `json:"duration,omitempty"`
+	OK            bool     `json:"ok"`
+	ClipID        string   `json:"clip_id"`
+	Name          string   `json:"name"`
+	Filename      string   `json:"filename"`
+	DriveLink     string   `json:"drive_link,omitempty"`
+	DriveFileID   string   `json:"drive_file_id,omitempty"`
+	LegacyFileMD5 string   `json:"legacy_file_md5"`
+	Source        string   `json:"source"`
+	Category      string   `json:"category,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	LocalPath     string   `json:"local_path"`
+	Indexed       bool     `json:"indexed"`
+	Duration      int      `json:"duration,omitempty"`
 }
 
 // UploadVideoClip handles POST /api/media/upload-video
@@ -125,18 +125,18 @@ func (ih *IngestHandler) UploadVideoClip(c *gin.Context) {
 
 	// 5. Map use-case result to legacy response envelope
 	apiutil.OK(c, UploadVideoClipResponse{
-		OK:          result.OK,
-		ClipID:      result.ClipID,
-		Name:        result.Name,
-		Filename:    result.Filename,
-		DriveLink:   result.DriveLink,
-		DriveFileID: result.DriveFileID,
-		LegacyFileMD5:    result.LegacyFileMD5,
-		Source:      result.Source,
-		Category:    result.Category,
-		Tags:        result.Tags,
-		LocalPath:   result.LocalPath,
-		Indexed:     result.Indexed,
-		Duration:    result.Duration,
+		OK:            result.OK,
+		ClipID:        result.ClipID,
+		Name:          result.Name,
+		Filename:      result.Filename,
+		DriveLink:     result.DriveLink,
+		DriveFileID:   result.DriveFileID,
+		LegacyFileMD5: result.LegacyFileMD5,
+		Source:        result.Source,
+		Category:      result.Category,
+		Tags:          result.Tags,
+		LocalPath:     result.LocalPath,
+		Indexed:       result.Indexed,
+		Duration:      result.Duration,
 	})
 }

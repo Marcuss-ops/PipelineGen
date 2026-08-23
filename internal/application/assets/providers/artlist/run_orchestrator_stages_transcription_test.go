@@ -41,11 +41,11 @@ type succeedMediaProcessor struct{}
 
 func (s *succeedMediaProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	return &asset.ProcessResult{
-		ID:        input.ID,
-		Filename:  input.Name + ".mp4",
-		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
-		LegacyFileMD5:  "hash-test",
-		Status:    "processed",
+		ID:            input.ID,
+		Filename:      input.Name + ".mp4",
+		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
+		LegacyFileMD5: "hash-test",
+		Status:        "processed",
 	}, nil
 }
 

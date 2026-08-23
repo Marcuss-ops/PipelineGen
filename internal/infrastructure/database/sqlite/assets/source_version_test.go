@@ -3,7 +3,7 @@
 // guarded against silent drift.
 //
 // Test strategy: each test inserts a synthetic media_assets row with a
-// controlled metadata_json + file_hash pair, then asserts which tier
+// controlled metadata_json + legacy_file_md5 pair, then asserts which tier
 // the COALESCE chain picked. sqlmock-style stubs would not honour
 // `json_extract()` (SQLite extension) so a real in-memory database is
 // required; mattn/go-sqlite3 bundles JSON1 so this works without a
@@ -32,14 +32,14 @@ func newTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = db.Close() })
 
 	// Minimal canonical schema — only the columns SourceVersionFor
-	// touches via COALESCE/index_path. file_hash is the legacy
+	// touches via COALESCE/index_path.legacy_file_md5 is the legacy
 	// top-level column (tier 3). metadata_json is the JSON bag (tiers
 	// 0 + 1 + 2 via json_extract).
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			metadata_json TEXT NOT NULL DEFAULT '{}',
-			file_hash TEXT NOT NULL DEFAULT '',
+			legacy_file_md5 TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -77,7 +77,7 @@ func newTestDB(t *testing.T) *sql.DB {
 func insertRow(t *testing.T, db *sql.DB, id, metadataJSON, fileHash string) {
 	t.Helper()
 	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO media_assets (id, metadata_json, file_hash) VALUES (?, ?, ?)`,
+		`INSERT INTO media_assets (id, metadata_json, legacy_file_md5) VALUES (?, ?, ?)`,
 		id, metadataJSON, fileHash,
 	)
 	require.NoError(t, err, "insert synthetic row %s", id)
@@ -128,7 +128,7 @@ func TestSourceVersionFor_Tier0IndexRevisionWins(t *testing.T) {
 // TestSourceVersionFor_Tier1ContentHashWins: when content_hash is
 // populated inside metadata_json (and index_revision is absent), it
 // MUST be the return value even if metadata_json.$.file_hash AND the
-// top-level file_hash column are populated with different values.
+// top-level legacy_file_md5 column are populated with different values.
 // Pin: content_hash wins on disagreement (collapse rule from PR 11).
 func TestSourceVersionFor_Tier1ContentHashWins(t *testing.T) {
 	t.Parallel()
@@ -147,13 +147,13 @@ func TestSourceVersionFor_Tier1ContentHashWins(t *testing.T) {
 
 // TestSourceVersionFor_Tier2FileHashWins: when content_hash is absent
 // but metadata_json.$.file_hash is populated, tier 2 wins. The
-// top-level legacy file_hash column is ignored (tier 3 only fills in
+// top-level legacy legacy_file_md5 column is ignored (tier 3 only fills in
 // when tier 2 is also absent).
 func TestSourceVersionFor_Tier2FileHashWins(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	insertRow(t, db, "asset-2",
-		`{"legacy_file_md5":"hash-T2"}`, /* no content_hash */
+		`{"file_hash":"hash-T2"}`, /* no content_hash */
 		"hash-T3-legacy",          /* top-level present but ignored */
 	)
 	got, err := SourceVersionFor(context.Background(), db, "asset-2")
@@ -165,7 +165,7 @@ func TestSourceVersionFor_Tier2FileHashWins(t *testing.T) {
 // ── 5. Tier 3 — top-level file_hash legacy column ────────────────────
 
 // TestSourceVersionFor_Tier3LegacyColumnWins: when both JSON tiers
-// are absent, the legacy top-level media_assets.file_hash column is
+// are absent, the legacy top-level media_assets.legacy_file_md5 column is
 // the canonical fingerprint. This is the slot that DRIFTED in the
 // pre-PR-11-followup consumer (which used Asset.LegacyFileMD5() reading
 // the same metadata slot as tier 2 — effectively skipping tier 3).

@@ -47,6 +47,7 @@ type ScriptSpec struct {
 	MinWords            int             `json:"min_words,omitempty"`
 	SegmentWords        int             `json:"segment_words,omitempty"`
 	Segments            []ScriptSegment `json:"segments,omitempty"`
+	SegmentTopics       []string        `json:"segment_topics,omitempty"`
 	SentencesPerImage   int             `json:"sentences_per_image,omitempty"`
 	ImagesPerScene      int             `json:"images_per_scene,omitempty"`
 	Style               string          `json:"style,omitempty"`

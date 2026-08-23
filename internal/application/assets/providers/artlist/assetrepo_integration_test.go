@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.

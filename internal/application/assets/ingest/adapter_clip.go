@@ -124,11 +124,11 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	// Write locations
 	if rec.LocalPath != "" {
 		loc := &asset.Location{
-			AssetID:      rec.ID,
-			LocationKind: asset.LocationKindLocal,
-			URI:          rec.LocalPath,
-			LegacyFileMD5:     rec.LegacyFileMD5,
-			IsPrimary:    true,
+			AssetID:       rec.ID,
+			LocationKind:  asset.LocationKindLocal,
+			URI:           rec.LocalPath,
+			LegacyFileMD5: rec.LegacyFileMD5,
+			IsPrimary:     true,
 		}
 		if err := a.locations.Upsert(ctx, loc); err != nil {
 			return err

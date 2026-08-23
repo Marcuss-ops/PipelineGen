@@ -109,12 +109,12 @@ func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 
 	// Test record with drive link
 	rec := &MediaRecord{
-		ID:        "test_media_001",
-		Name:      "Test Media",
-		DriveLink: "https://drive.google.com/file/d/abc123/view",
-		LocalPath: tmpFile,
-		LegacyFileMD5:  "hash123",
-		Status:    "processed",
+		ID:            "test_media_001",
+		Name:          "Test Media",
+		DriveLink:     "https://drive.google.com/file/d/abc123/view",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "hash123",
+		Status:        "processed",
 	}
 
 	opts := FinalizeOptions{
@@ -176,12 +176,12 @@ func TestMediaFinalizerFailsWhenDriveFileMissing(t *testing.T) {
 	}
 
 	rec := &MediaRecord{
-		ID:        "test_media_002",
-		Name:      "Drive intent set, upload failed",
-		DriveLink: "", // upload attempt failed → no link produced
-		LocalPath: tmpFile,
-		LegacyFileMD5:  "hash123",
-		Status:    "processed",
+		ID:            "test_media_002",
+		Name:          "Drive intent set, upload failed",
+		DriveLink:     "", // upload attempt failed → no link produced
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "hash123",
+		Status:        "processed",
 	}
 
 	opts := FinalizeOptions{
@@ -307,11 +307,11 @@ func TestMediaFinalizerLocalFileNotExists(t *testing.T) {
 
 	// Test record with non-existent local file
 	rec := &MediaRecord{
-		ID:        "test_media_005",
-		Name:      "Test Non-existent File",
-		DriveLink: "https://drive.google.com/file/d/abc/view",
-		LocalPath: "/tmp/nonexistent_file_12345.mp4",
-		LegacyFileMD5:  "hash123",
+		ID:            "test_media_005",
+		Name:          "Test Non-existent File",
+		DriveLink:     "https://drive.google.com/file/d/abc/view",
+		LocalPath:     "/tmp/nonexistent_file_12345.mp4",
+		LegacyFileMD5: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -348,10 +348,10 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 	finalizer := NewFinalizer(registry, driveVerifier, logger)
 
 	rec := &MediaRecord{
-		ID:        "test_media_006",
-		Name:      "Test DB Failure",
-		LocalPath: "/tmp/test.mp4",
-		LegacyFileMD5:  "hash123",
+		ID:            "test_media_006",
+		Name:          "Test DB Failure",
+		LocalPath:     "/tmp/test.mp4",
+		LegacyFileMD5: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -404,8 +404,9 @@ func setupTestAssetIndex(t *testing.T) *assetindex.Service {
 		status TEXT NOT NULL DEFAULT 'pending',
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-    legacy_file_md5 TEXT NOT NULL DEFAULT '',);
+		updated_at TEXT NOT NULL,
+		legacy_file_md5 TEXT NOT NULL DEFAULT ''
+	);
 	CREATE INDEX IF NOT EXISTS idx_asset_content_hash ON asset_index(content_hash);
 	CREATE INDEX IF NOT EXISTS idx_asset_source ON asset_index(source, source_id);
 	CREATE INDEX IF NOT EXISTS idx_asset_status ON asset_index(status);
@@ -450,16 +451,16 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 	}
 
 	rec := &MediaRecord{
-		ID:          "test_asset_001",
-		Name:        "Test Asset",
-		LocalPath:   tmpFile,
-		LegacyFileMD5:    "filehash123",
-		ContentHash: "contenthash123",
-		Source:      "artlist",
-		SourceID:    "clip-123",
-		Group:       "comedy",
-		Subfolder:   "politics",
-		Status:      "processed",
+		ID:            "test_asset_001",
+		Name:          "Test Asset",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "filehash123",
+		ContentHash:   "contenthash123",
+		Source:        "artlist",
+		SourceID:      "clip-123",
+		Group:         "comedy",
+		Subfolder:     "politics",
+		Status:        "processed",
 	}
 
 	opts := FinalizeOptions{
@@ -517,12 +518,12 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 	}
 
 	rec := &MediaRecord{
-		ID:          "test_asset_002",
-		Name:        "Test Asset 2",
-		LocalPath:   tmpFile,
-		LegacyFileMD5:    "filehash456",
-		ContentHash: "contenthash456",
-		Status:      "processed",
+		ID:            "test_asset_002",
+		Name:          "Test Asset 2",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "filehash456",
+		ContentHash:   "contenthash456",
+		Status:        "processed",
 	}
 
 	opts := FinalizeOptions{
@@ -588,12 +589,12 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 	}
 
 	rec := &MediaRecord{
-		ID:        "test_verify_err_001",
-		Name:      "Drive link verify transport error",
-		LocalPath: tmpFile,
-		LegacyFileMD5:  "hash_verify_err",
-		DriveLink: "https://drive.google.com/file/d/abc123/view",
-		Status:    "processed",
+		ID:            "test_verify_err_001",
+		Name:          "Drive link verify transport error",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "hash_verify_err",
+		DriveLink:     "https://drive.google.com/file/d/abc123/view",
+		Status:        "processed",
 	}
 
 	opts := FinalizeOptions{
@@ -652,14 +653,14 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 
 	// First finalize: content_hash = "ch-001", file_hash = "fh-001"
 	rec := &MediaRecord{
-		ID:          "art-001",
-		Name:        "Boxing clip",
-		LocalPath:   tmpFile,
-		LegacyFileMD5:    "fh-001",
-		ContentHash: "ch-001",
-		Source:      "artlist",
-		MediaType:   "video",
-		Status:      "processed",
+		ID:            "art-001",
+		Name:          "Boxing clip",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "fh-001",
+		ContentHash:   "ch-001",
+		Source:        "artlist",
+		MediaType:     "video",
+		Status:        "processed",
 	}
 
 	result, err := f.Finalize(context.Background(), rec, FinalizeOptions{
@@ -688,14 +689,14 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 
 	// Second finalize (republish): new hashes, content_hash MUST update
 	rec2 := &MediaRecord{
-		ID:          "art-001",
-		Name:        "Boxing clip republished",
-		LocalPath:   tmpFile,
-		LegacyFileMD5:    "fh-002",
-		ContentHash: "ch-002",
-		Source:      "artlist",
-		MediaType:   "video",
-		Status:      "processed",
+		ID:            "art-001",
+		Name:          "Boxing clip republished",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "fh-002",
+		ContentHash:   "ch-002",
+		Source:        "artlist",
+		MediaType:     "video",
+		Status:        "processed",
 	}
 
 	result2, err := f.Finalize(context.Background(), rec2, FinalizeOptions{
@@ -722,13 +723,13 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 
 	// ContentHash fallback: when ContentHash is empty, falls back to LegacyFileMD5
 	rec3 := &MediaRecord{
-		ID:        "art-002",
-		Name:      "No explicit content hash",
-		LocalPath: tmpFile,
-		LegacyFileMD5:  "fh-fallback",
-		Source:    "artlist",
-		MediaType: "video",
-		Status:    "processed",
+		ID:            "art-002",
+		Name:          "No explicit content hash",
+		LocalPath:     tmpFile,
+		LegacyFileMD5: "fh-fallback",
+		Source:        "artlist",
+		MediaType:     "video",
+		Status:        "processed",
 	}
 
 	result3, err := f.Finalize(context.Background(), rec3, FinalizeOptions{

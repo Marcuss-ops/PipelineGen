@@ -11,9 +11,9 @@ package scripts
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"

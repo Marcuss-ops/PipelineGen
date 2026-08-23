@@ -43,14 +43,14 @@ func (h *NonOpsHandler) ReprocessClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":            true,
-		"source":        result.Source,
-		"clip_id":       result.ClipID,
-		"status":        result.Status,
-		"local_path":    result.LocalPath,
-		"legacy_file_md5":     result.LegacyFileMD5,
-		"drive_link":    result.DriveLink,
-		"download_link": result.DownloadLink,
-		"processed_at":  result.ProcessedAt,
+		"ok":              true,
+		"source":          result.Source,
+		"clip_id":         result.ClipID,
+		"status":          result.Status,
+		"local_path":      result.LocalPath,
+		"legacy_file_md5": result.LegacyFileMD5,
+		"drive_link":      result.DriveLink,
+		"download_link":   result.DownloadLink,
+		"processed_at":    result.ProcessedAt,
 	})
 }
