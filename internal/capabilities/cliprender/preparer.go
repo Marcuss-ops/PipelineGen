@@ -545,13 +545,6 @@ func newTimingTracker() *timingTracker {
 	return &timingTracker{phases: make([]PhaseTiming, 0, 5)}
 }
 
-func (t *timingTracker) record(phase string, work time.Duration) {
-	ms := work.Milliseconds()
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.phases = append(t.phases, PhaseTiming{Phase: phase, WallMS: ms, WorkMS: ms})
-	t.workMS += ms
-}
 
 // recordWith is the notes-aware variant of record. The notes map is captured
 // verbatim so the Preparer can surface phase-specific facts (cache_hit,

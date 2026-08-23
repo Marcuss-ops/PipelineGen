@@ -57,17 +57,6 @@ type ownershipRelation struct {
 	RootType    string `json:"root_type"` // canonical_root | child | cache | queue | history | audit
 }
 
-// tableNode classifies one table in the ownership graph.
-type tableNode struct {
-	Table      string   `json:"table"`
-	Owner      string   `json:"owner,omitempty"`        // owner table name, "" for roots/caches
-	JoinCol    string   `json:"join_col,omitempty"`     // column referencing the owner
-	OwnerCol   string   `json:"owner_col,omitempty"`    // column in the owner (usually "id")
-	Relation   string   `json:"relation,omitempty"`     // "FK" | "LOGICAL"
-	RootType   string   `json:"root_type"`              // canonical_root | child | cache | queue | history | audit
-	PathToRoot []string `json:"path_to_root,omitempty"` // chain to reach a canonical_root
-}
-
 // ── Reachability report types ───────────────────────────────────────────
 
 // reachabilityReport is the full FASE 2 output.
