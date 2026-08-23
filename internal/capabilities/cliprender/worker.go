@@ -366,20 +366,26 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			"start_us":     req.Overlay.StartUS,
 			"end_us":       req.Overlay.EndUS,
 		})
-		if w.outputProber != nil {
-			probe, err := w.outputProber.ProbeOutput(ctx, composite.OutputPath)
-			if err != nil {
-				return nil, fmt.Errorf("clip.render: probe composited output: %w", err)
-			}
-			if err := ValidateContract(prepared.Contract, probe); err != nil {
-				return nil, fmt.Errorf("clip.render: composited output violates contract: %w", err)
-			}
-			emit("clip.render.probe.certified", "composited bytes certified exact", map[string]any{
-				"output_path": composite.OutputPath,
-				"fps_num":     probe.FPSNum,
-				"fps_den":     probe.FPSDen,
-			})
+		// Post-composite byte certification is MANDATORY when an overlay was
+		// composited. The compositor did a full decode+encode cycle — the
+		// output MUST pass exact contract validation before it reaches
+		// publication. Fail-closed: a missing prober when overlay is declared
+		// is a configuration error.
+		if w.outputProber == nil {
+			return nil, fmt.Errorf("clip.render: overlay composited but no OutputProber is wired — composited bytes MUST be certified before publication")
 		}
+		probe, err := w.outputProber.ProbeOutput(ctx, composite.OutputPath)
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: probe composited output: %w", err)
+		}
+		if err := ValidateContract(prepared.Contract, probe); err != nil {
+			return nil, fmt.Errorf("clip.render: composited output violates contract: %w", err)
+		}
+		emit("clip.render.probe.certified", "composited bytes certified exact", map[string]any{
+			"output_path": composite.OutputPath,
+			"fps_num":     probe.FPSNum,
+			"fps_den":     probe.FPSDen,
+		})
 	}
 
 	if w.publisher == nil {
