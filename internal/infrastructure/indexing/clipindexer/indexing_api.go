@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -69,7 +70,9 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 	// audio track source), so they fan out under a single guard.
 	if localPath != "" {
 		// Step 3: visual multi-frame (per-frame averaging, 120s timeout).
-		s.indexVisualMultiViaAPI(ctx, clipID, localPath, baseURL, client)
+		if !visualEmbeddingDisabled() {
+			s.indexVisualMultiViaAPI(ctx, clipID, localPath, baseURL, client)
+		}
 		// Step 4: CLAP audio (PR-AUDIO-CHANNEL-EXTENSION, July 2026).
 		// Queries like "suono di pioggia" or "musica drammatica" route
 		// through the Qdrant audio channel.
@@ -77,6 +80,15 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 	}
 
 	return nil
+}
+
+func visualEmbeddingDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_DISABLE_VISUAL_EMBEDDING"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // indexTextViaAPI calls POST /index on the embedding sidecar and persists
