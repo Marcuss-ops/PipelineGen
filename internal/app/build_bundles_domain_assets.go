@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"

@@ -26,8 +26,8 @@ import (
 
 	// DTOs (VideoCutRequest/Result, DownloaderMetadata, etc.) live in ports/.
 	// TopicSearchResponse/Result and Service stay top-level.
-	youtubesrcports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubesrcports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

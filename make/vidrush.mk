@@ -3,7 +3,7 @@
 # These targets are deliberately independent from verify-main and from live
 # providers. Live canaries remain explicit operator actions.
 
-VIDRUSH_GO_PACKAGES := ./internal/domain/script ./internal/application/scripts/adapters
+VIDRUSH_GO_PACKAGES := ./internal/capabilities/scripts ./internal/application/scripts/adapters
 VIDRUSH_WORKER_PACKAGE := ./internal/application/jobs/worker
 VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 

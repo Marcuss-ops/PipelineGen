@@ -11,7 +11,7 @@ package usecase
 import (
 	"strings"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // resolveKeepAudio is the canonical nil-check for the *bool KeepAudio

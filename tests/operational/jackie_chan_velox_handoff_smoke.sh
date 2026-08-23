@@ -24,8 +24,8 @@ for bin in jq curl; do
 done
 
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-REQUEST_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips.json"
-SPECSCENE_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips_specscene.json"
+REQUEST_FIXTURE="$ROOT_DIR/tests/fixtures/script-generation/jackie_chan_generate_clips.json"
+SPECSCENE_FIXTURE="$ROOT_DIR/tests/fixtures/script-generation/jackie_chan_generate_clips_specscene.json"
 [[ -f "$REQUEST_FIXTURE" ]] || { echo "missing request fixture: $REQUEST_FIXTURE" >&2; exit 2; }
 [[ -f "$SPECSCENE_FIXTURE" ]] || { echo "missing SpecScene fixture: $SPECSCENE_FIXTURE" >&2; exit 2; }
 

@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 // Deps holds the cache service dependencies (max 2 fields).

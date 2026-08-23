@@ -32,7 +32,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // fakeItemExecutor records per-scene Execute calls and returns a

@@ -42,7 +42,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

@@ -11,7 +11,6 @@ through `*sql.DB`, `net/http`, `os`, or `RootFolderOverride`.
 | `internal/application/iobinder` | 5 |
 | `internal/application/qdrant/maintenance` | 3 |
 | `internal/application/qdrant/reconciler` | 1 |
-| `internal/application/transcripts` | 4 |
 | `internal/application/voiceover` | 5 |
 | `internal/application/voiceover/persistence` | 1 |
 | `internal/application/workerdoctor` | 5 |

@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // step5a_FFProbeValidate runs the optional ffprobe validation. Returns

@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // Extract is the canonical clip-extraction entry point. The full pipeline

@@ -121,9 +121,6 @@ internal/application/scripts/adapters/repository.go -> github.com/Marcuss-ops/Pi
 internal/application/scripts/usecase/engine_metrics.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier
 internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client
-internal/application/transcripts/transcription.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube
-internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader
-internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp
 internal/application/translation/ollama_translator.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/voiceover/filename.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
 internal/application/voiceover/process.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability

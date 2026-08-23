@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )

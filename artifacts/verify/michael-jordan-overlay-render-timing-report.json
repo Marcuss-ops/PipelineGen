@@ -87,7 +87,7 @@
     "status": "MEASURED_PARTIAL"
   },
   "compile_benchmark_local_pipelinegen": {
-    "command": "go run ./cmd/overlaytimings",
+    "command": "go run ./tools/overlaytimings",
     "iterations": 3000,
     "unit": "us",
     "status": "MEASURED_BASELINE_NOT_LIVE_JOB",

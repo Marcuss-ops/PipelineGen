@@ -33,17 +33,17 @@ import (
 )
 
 // checkDatabaseSQLGate is the Wave 14 ratchet gate for `database/sql`
-// import surface in api/application/domain. Monitors REGGRESSIONS:
+// import surface in api/application. Monitors REGGRESSIONS:
 //
 //   - "actual"     = current rg -ln `"database/sql"` hit count across
-//     internal/api + internal/application + internal/domain
+//     internal/api + internal/application
 //   - "baseline"   = legacy baseline length (adjusted downward when
 //     existing baseline entries were removed from
 //     production — a positive signal, not a violation).
 //   - "regressions"= `actual - baseline` (new import sites added since
 //     baseline freeze). The ONLY violation source: every
 //     added path emits "new database/sql import in
-//     api/application/domain: <path>".
+//     api/application: <path>".
 //
 // Removed entries (in baseline but not in actual) are NOT regressions
 // — they are PROGRESS (-shrinkage is the gate's direction). The
@@ -53,6 +53,10 @@ import (
 //
 // Pre-PR2 this rule did not exist (the Wave 14 ratchet was a single
 // global counter). PR-5 introduced the per-path regression gate.
+//
+// NOTE: internal/domain was removed in commit b11ed83f4 (converge
+// cleanup architecture, August 2026). The gate now only scans
+// internal/api and internal/application.
 func checkDatabaseSQLGate() (map[string]int, []string) {
 	stats := map[string]int{
 		"actual":      0,
@@ -62,7 +66,6 @@ func checkDatabaseSQLGate() (map[string]int, []string) {
 	out, err := exec.Command("rg", "-ln", `"database/sql"`,
 		"internal/api",
 		"internal/application",
-		"internal/domain",
 		"--type", "go",
 	).Output()
 	if err != nil && !(execErrIsNoMatch(err)) {
@@ -79,7 +82,7 @@ func checkDatabaseSQLGate() (map[string]int, []string) {
 
 	var violations []string
 	for _, path := range added {
-		violations = append(violations, "new database/sql import in api/application/domain: "+path)
+		violations = append(violations, "new database/sql import in api/application: "+path)
 	}
 	if len(removed) > 0 {
 		stats["baseline"] = len(baseSet) - len(removed)
@@ -125,14 +128,4 @@ var databaseSQLLegacyBaseline = []string{
 	"internal/application/voiceover/groups_resolver_test.go",
 	"internal/application/voiceover/service.go",
 	"internal/application/youtube/assetrepo_integration_test.go",
-	"internal/domain/asset/assets.go",
-	"internal/domain/asset/dedup.go",
-	"internal/domain/asset/list_clips.go",
-	"internal/domain/asset/locations.go",
-	"internal/domain/asset/processing.go",
-	"internal/domain/asset/scan.go",
-	"internal/domain/asset/store_core.go",
-	"internal/domain/asset/tags.go",
-	"internal/domain/asset/utility.go",
-	"internal/domain/asset/versions.go",
 }

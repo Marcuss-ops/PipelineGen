@@ -13,8 +13,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 // GetVideoInfo fetches full YouTube metadata for the given URL by

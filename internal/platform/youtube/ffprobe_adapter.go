@@ -17,8 +17,8 @@ import (
 	"context"
 	"fmt"
 
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 // Compile-time pin: FFProbeAdapter satisfies the canonical Step 5a port.

@@ -15,7 +15,7 @@ import (
 
 	// DTOs (VideoCutRequest/Result, DownloaderMetadata, VideoChapter) live in ports/.
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 // VideoPipelineAdapter wraps videomuscles.Pipeline and converts between

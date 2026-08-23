@@ -214,7 +214,7 @@ internal/application/images/nvidia_animate.go
 # owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/extraction/intelligence.go
 # owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
-internal/application/youtube/metadata/service.go
+internal/capabilities/youtube/metadata/service.go
 # owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/orchestrator.go
 # owner=@ai-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher

@@ -21,8 +21,8 @@ package images
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
 // SearchBySlug returns up to `limit` ImageAsset preview URLs that

@@ -8,7 +8,7 @@ import (
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scenepkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

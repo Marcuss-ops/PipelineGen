@@ -13,7 +13,7 @@ import (
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	"go.uber.org/zap"
 )

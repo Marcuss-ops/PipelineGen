@@ -8,7 +8,7 @@
 package usecase
 
 import (
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // classifyExtractionRun is the canonical success/failure classifier

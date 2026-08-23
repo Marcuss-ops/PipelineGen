@@ -17,8 +17,8 @@
 package scripts
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/curation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 )
 
 // Re-exports from generation (canonical owner of job registration + workflow state).

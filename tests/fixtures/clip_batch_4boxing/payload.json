@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical batch request for the 4 Pacquiao vs Broner boxing clips. All durations are <60s and pass the canonical ProcessYouTubeSegmentUseCase::SegmentPolicy gate ([Min=4s, Max=60s]). Wire shape mirrors /api/clips/process ExtractRequest (internal/application/youtube/dto/types.go). drift source of truth: dto/types.go::ExtractRequest.",
+  "_comment": "Canonical batch request for the 4 Pacquiao vs Broner boxing clips. All durations are <60s and pass the canonical ProcessYouTubeSegmentUseCase::SegmentPolicy gate ([Min=4s, Max=60s]). Wire shape mirrors /api/clips/process ExtractRequest (internal/capabilities/youtube/dto/types.go). drift source of truth: dto/types.go::ExtractRequest.",
   "video_id": "9u4T_o3FxOU",
   "video_url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
   "drive_folder_id": "1JUA9sUmm7ZYSLYztLNbzLVptr1igno9H",

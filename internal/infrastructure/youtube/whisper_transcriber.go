@@ -21,7 +21,7 @@
 // adapter for the WhisperTranscriber interface
 // (internal/infrastructure/youtube/ports.go) and the
 // application-layer WhisperTranscriberPort
-// (internal/application/youtube/ports/ports.go). The
+// (internal/capabilities/youtube/ports/ports.go). The
 // application-layer port is a STRUCTURAL subset of the
 // infrastructure-layer interface (single method,
 // TranscribeAudioWithDetection); the same concrete instance

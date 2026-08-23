@@ -9,7 +9,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 )
 
 func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {

@@ -8,7 +8,7 @@
 //   - The 5-level acquisition chain lives in
 //     internal/application/youtube/usecase/text_track_resolver.go
 //     (commit c0bae1612). This leaf does NOT call Whisper (which
-//     is in internal/application/transcripts — the application
+//     is in internal/capabilities/transcripts — the capability
 //     layer, not infrastructure). The infra-level "fallback" here
 //     is purely a DECISION signal: given the subtitle fetch + parse
 //     outcome, return a sentinel that the orchestrator interprets

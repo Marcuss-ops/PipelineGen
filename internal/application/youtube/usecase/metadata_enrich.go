@@ -23,9 +23,9 @@ import (
 
 	"go.uber.org/zap"
 
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

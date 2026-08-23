@@ -32,7 +32,7 @@ import (
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
@@ -250,7 +250,7 @@ func TestExtractionIntentAdapter_HappyPath_TranslationLocksAndCursorOmits(t *tes
 
 	// OUTPUT ASSERTION: the adapter's marshal target. youtubetypes
 	// alias points to the same package as the pre-Fase-8 ytdomain
-	// alias (internal/application/youtube/dto) — same type, drop-in.
+	// alias (internal/capabilities/youtube/dto) — same type, drop-in.
 	payload, ok := jsvc.lastEnqueueReq.Payload.(youtubetypes.ExtractRequest)
 	if !ok {
 		t.Fatalf("Enqueue Payload type = %T, want youtubetypes.ExtractRequest value (job handler unmarshals this exact shape)",

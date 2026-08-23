@@ -10,15 +10,12 @@
 
 # File size and population caps.
 #
-# Package-size regime (2026-08-23 Cleanup Day revision):
+# Package-size regime:
 #   normal package:      ≤ 40 production .go files
 #   registered hotspot:  temporarily > 40 (tracked in architecture/package_hotspots.json,
 #                         each with owner + deadline + target subzones)
 #   emergency ceiling:   NEVER exceed 65 (this executable value)
 #
-# The prior policy set max_files_per_package=65 as a single catch-all, which
-# masked the distinction between what's tolerable temporarily (a registered
-# hotspot working toward decomposition) and what's permanently unacceptable.
 # The 40/65 regime makes both numbers canonical. History in policy.history.yaml.
 max_files_per_package: 65
 # File line cap. Files exceeding this limit are reported as violations
@@ -44,29 +41,12 @@ max_lines_per_file_strict: 600
 max_lines_strict_allowlist: docs/migrations/max-lines-strict-allowlist.txt
 cmd_main_max_lines: 200
 
-# Constructor dependency cap (per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-# §"Complexity budgets"). Phase 1 scan: counts parameters in func New<X>(...) signatures
-# (including context.Context). Exceeding this is a design failure unless a short-lived
-# exception exists. Default 8 per the CI-gates doc; operators can tune.
+# Constructor dependency cap (per CI-gates doc §"Complexity budgets").
+# Phase 1 scan: counts parameters in func New<X>(...) signatures
+# (including context.Context). Default 8.
 max_constructor_deps: 8
 
-# Struct dependency cap — Phase 1+ extension (P1.7, June 2026): counts
-# fields in Dependencies / Deps / Options structs. Mega-structs that
-# bundle >8 mandatory ports circumvent the constructor-parameter gate;
-# this rule catches them at the type level. Defaults to max_constructor_deps
-# when unset. Zero opts out.
 max_struct_deps: 8
-
-# PR-CLIPINGEST-PIPELINE step 8 (July 2026): per-struct allowance for the canonical
-# 9-component ClipIngestPipeline wiring. Mirrors the existing image-asset pattern
-# (`max_image_asset_fields: 8` is the per-struct knob; the global `max_struct_deps: 8`
-# is the default). The 9-component shape is the SOLE canonical owner at
-# internal/application/assets/ingest/clip_ingest_pipeline.go (godlike/06 SSOT);
-# the percheck_clip_ingest_pipeline_canonical_1 forward-prevention gate enforces
-# this at the type level. Without this per-struct allowance the 9-component shape
-# would be a `max_struct_deps` violation; the knob is the documented escape
-# hatch (godlike/06 SSOT — single canonical owner per fact).
-max_clip_ingest_pipeline_fields: 9
 
 # Target-tree warning residue budget. This is a monotone ratchet: warnings
 # may decrease, but a run may not exceed the committed ceiling without a
@@ -190,9 +170,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #   overlays       — GPU gate, render cache, media contract prober
 #   media          — Rust media execution executor (rustexec/VideoProcessor)
 #   renderinggen   — RenderingGen queue client (HTTP → external overlay render)
-#   delivery       — (uncommitted as of 2026-08-23, not yet in subzone list.
-#                     delivery registry, startup validators, transport contracts.
-#                     Will be added to platform_subzones with the cutover PR.)
+#   delivery       — delivery registry, startup validators, transport contracts
 #
 # Deferred migrations (exist in infrastructure/, not yet cut over):
 #
@@ -236,173 +214,12 @@ legacy_internal_roots: application, api, infrastructure, domain
 # entry is a free-form comment consumed by the human reviewer; the binary
 # only checks the structural rules above. Grandfathering never authorizes new
 # code in a migration-only root.
-known_grandfathered:
-  - "internal/application/images (25 files) — in_progress to capability/images split"
-  - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
-  - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
-  - "internal/application/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)"
-  - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
+known_grandfathered: []
 
-# ── Prometheus boundary (generic pkg-layer governance, June 2026) ─────────────
-# Hoisted out of the now-removed pkg_workerstats governance block
-# (Blocco 2.B, 2026-06-30: chore(workerstats): eliminate non-compiling
-# package) so future leaf-pkg introductions reference a self-standing
-# rule rather than re-discovering the lesson from scratch. The rule
-# codifies Option B (the now-architected "metric definitions stay in
-# internal/infrastructure/observability/; caller bridges POJO into
-# metric values field-by-field at the application boundary").
-prometheus_boundary:
-  rule: |
-    ANY leaf pkg (`pkg/<x>/`) MUST NOT IMPORT `github.com/prometheus/client_golang`
-    and MUST NOT define Prometheus metric var collectors (Gauge/Counter/Histogram
-    struct literals tagged for auto-registration). The leaf pkg layer is for
-    pure-data utilities (math, hashing, file I/O, defaults, retry, BM25, etc.)
-    and must not couple to the global `prometheus.DefaultRegisterer`; doing so
-    would leak OS-coupled concerns (system-level polling, globally-stateful
-    metric emission, test-fixture auto-registration, etc.) into the facade code
-    paths consumed by every other pkg + every application pass.
-
-    Metric definitions (collector name, label cardinality, help text, label
-    values) live canonically in `internal/infrastructure/observability/`.
-    The application-layer caller bridges a leaf pkg's pure-data POJO into
-    metric values field-by-field (one section per Collector, projecting
-    POJO fields onto GaugeVec.WithLabelValues calls at the bridge).
-
-    Historical case the rule was extracted from: pkg/workerstats
-    (eliminated 2026-06-30, Blocco 2.B, deprecation record
-    `architecture/deprecations/`)
-    was the FIRST detailed entry under leaf pkg governance because Option
-    A (aliasing metric vars into the sampler pkg) was a tempting shim.
-    The Option B decision codified here forecloses Option A permanently.
-
-    Enforcement: phase-0 documentation-only; no Check 22 / archcheck
-    family enforces this rule today. Promotion to a hard CI gate
-    (`rg -n 'prometheus/client_golang' pkg/` returning zero hits, or
-    equivalent in scripts/ci-architectural-checks.sh) is a future wave
-    entry to be tracked via architecture/current.yaml#follow_up_tickets.
-  cross_refs:
-    origin_record: architecture/deprecations/
-    metrics_home: internal/infrastructure/observability/worker_metrics.go
-    pkg_layer:    pkg/ (the leaf-utility gate per `pkg:` rule above)
-
-# ── Governance entries moved from ownership.yaml (Step 5 Commit A) ──────
-# These three sections: cross_project_refs, lint_gates, wave_qdrant_005d_hygiene
-# are policy entries, not ownership mappings. They live next to the rest
-# of policy.yaml so a single read surfaces "all the rules". Per the
-# canonical 'One owner per fact' principle (godlike/06_DATA_AND_CONFIG_OWNERSHIP.md)
-# each rule family has exactly one owner and one location.
-
-cross_project_refs:
-  heyavatar:
-    kind: cross_project_reference
-    repo_path: C:/Users/pater/Pyt/Heyavatar
-    cleanup_wave_ref: architecture/migration.yaml#wave-18
-    todo_ref: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
-    cleanup_date: 2026-06-24
-    n_files_removed: 16
-    n_directories_removed: 2
-    no_pipelinegen_files_changed: true
-    canonical_owners_after_cleanup:
-      - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor
-      - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter
-      - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter
-      - heyavatar/src/application/render_cached_avatar.render_cached_avatar
-    contract_status_post_cleanup:
-      removed:
-        - heyavatar/contracts/lip_sync_engine (orphan)
-        - heyavatar/contracts/motion_repository (orphan)
-        - heyavatar/contracts/body_asset_provider (orphan -- precompute chain removed)
-      retained:
-        - heyavatar/contracts/avatar_engine (canonical)
-        - heyavatar/contracts/compositor (canonical)
-        - heyavatar/contracts/quality_checker (canonical)
-
-# ── Lint Gates (CI ratchet, Wave 20 cross-reference) ───────────────────────
-# Cross-reference: architecture/current.yaml::Wave 20 (QDRANT-005D hygiene).
-#
-# Each CI ratchet gate has exactly ONE owning script file. The ratchet
-# enforces:
-#   1. Every gate is exposed by scripts/ci-architectural-checks.sh.
-#   2. Every Check carries explicit exit semantics + structured log line
-#      + FAIL remediation text.
-#   3. Each gate's allowlist (where applicable) is a separate file under
-#      docs/architecture/godlike/ or docs/migrations/.
-#
-# Maintenance cadence: when a Check is added/modified, update this block
-# in the same commit (single-source-of-truth principle per
-# docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
-# §"One owner per fact").
-
-# §"One owner per fact").
-lint_gates:
-  - check: 5
-    name: same-package duplicate-type-declaration lint
-    owner_script: scripts/ci-architectural-checks.sh (Check 5 block — duplicate-types)
-    gate_maintainer: qdrant-hygiene work stream (RW-PROD-013 dependency chain)
-    allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt
-    log_line_on_pass: "Check 5: 0 same-package type-redeclarations detected across internal/"
-    references_business_rule: QDRANT-RECOVERY-001 forward-prevention
-    references_ticket: "QDRANT-RECOVERY-001 (resolved by commits 2b67d701 + 38187ded; runbook 05 removed July 2026)"
-    owner_wave: 20
-    rationale: |
-      Go cannot distinguish file-level types from package-level types —
-      two .go files in the SAME package declaring `type X struct{...}`
-      produces a build error: "<X> redeclared in this block". This
-      lint catches the pattern at pre-CI time so a new type
-      declaration cannot land with a colliding same-package symbol.
-      Historically observed as the SnapshotDescription / PointPayload
-      duplicate in internal/infrastructure/qdrant/types.go + types_dr.go,
-      fixed by commits 2b67d701 + 38187ded (see docs/operations/05).
-    documented_exceptions: |
-      The wire-mirror + canonical-in-application pattern (e.g.
-      qdrant.SnapshotDescription (wire in types_dr.go) +
-      dr.SnapshotDescription (canonical application-layer in
-      internal/application/qdrant/dr/types.go)) is NOT a same-package
-      redeclaration — Go's package = (directory, name) tuple
-      distinguishes them. The lint enforces zero; the allowlist
-      exists ONLY for transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-      §"Zero-baseline rule".
-
-# ── Wave 20 owner (QDRANT-005D hygiene) ─────────────────────────────────────
-# Cross-reference: architecture/current.yaml::id-20.
-wave_qdrant_005d_hygiene:
-  owner: qdrant-hygiene work stream
-  owner_secondary: scripts/ci-architectural-checks.sh maintainer
-  rationale: |
-    Forward-prevention half of QDRANT-RECOVERY-001. Owns:
-      (a) Check 5 maintenance (scripts/ci-architectural-checks.sh same-
-          package duplicate-type-declaration lint block);
-      (b) docs/architecture/godlike/duplicate-types-allowlist.txt
-          population cadence (initial: empty; populated ONLY for
-          transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-          §"Zero-baseline rule");
-      (c) the Go-side remediation that switches the AWK lens from
-          (package_name) only → the canonical Go-package identity
-          tuple (directory_path, package_name) to clear the
-          current_count of ~14 cross-directory same-package-NAME
-          false-positives;
-      (d) the canonical note append to
-          docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
-          explaining why Go cannot distinguish file-level type
-          from package-level type and the wire-mirror + canonical-
-          in-application cycle-break requires lint enforcement.
-  blocked_by: ["16"]
-  follow_up_ticket: "QDRANT-RECOVERY-001 (resolved; runbook 05 removed July 2026)"
-  cross_refs:
-    wave: architecture/current.yaml#id-20
-    lint_gates_entry: lint_gates[check=5]
-    registration_record: |
-      Wave 20 entry (architecture/current.yaml#id-20) + this section +
-      the matching lint_gates entry were registered in the same commit
-      on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
-      §"One owner per fact" (owner registration and wave entry are
-      the same fact from two views).
 
 # ── DEBT BUDGET ─────────────────────────────────────────────────────────
 # Caps the cumulative open/in-progress carry-forward surface.
-# Both `open` and `in_progress` count toward the cap, and an
-# `in_progress` entry must declare an owner and evidence file.
-# History and operator procedure live in architecture/policy.history.yaml.
+# History and procedure live in architecture/policy.history.yaml.
 debt_budget:
   max_pre_existing_open: 9
   catalog_file: architecture/issues.yaml
@@ -539,6 +356,7 @@ hard_gates:
   # closed. The allowlist ratchets to zero as files migrate.
   - percheck_digest_md5_ban
   - percheck_digest_md5_ban_allowlist_missing
+  - percheck_legacy_hotspot_growth
   - percheck_upsert_points_sole_owner
   - percheck_frame_concept_projection_writer
   - percheck_control_plane_sql_writes

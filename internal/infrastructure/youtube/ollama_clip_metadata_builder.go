@@ -12,7 +12,7 @@
 // Ollama is best-effort, and any unavailability / timeout /
 // invalid-JSON path falls through to the formula. The formula
 // is identical to the one in
-// internal/application/youtube/metadata/service.go::calculateQualityScore
+// internal/capabilities/youtube/metadata/service.go::calculateQualityScore
 // so the production and fallback score ranges are
 // indistinguishable.
 //
@@ -33,8 +33,8 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )

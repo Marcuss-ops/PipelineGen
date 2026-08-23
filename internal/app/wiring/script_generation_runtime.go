@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"

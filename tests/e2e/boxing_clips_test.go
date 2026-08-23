@@ -5,9 +5,9 @@
 // asserts that:
 //
 //  1. The 4-segment payload is well-formed (ExtractRequest shape per
-//     internal/application/youtube/dto/types.go::ExtractRequest).
+//     internal/capabilities/youtube/dto/types.go::ExtractRequest).
 //  2. Each segment passes the canonical SegmentPolicy gate
-//     (internal/application/youtube/dto/types.go::DefaultSegmentPolicy
+//     (internal/capabilities/youtube/dto/types.go::DefaultSegmentPolicy
 //     = Min=4s / Max=60s). Anything outside the window is a fail
 //     godlike/07 P0 violation (typed FailureCodeDurationOutOfRange).
 //  3. The deterministic clipID pattern
@@ -16,7 +16,7 @@
 //     start_seconds + end_seconds + policy_version (per Commit 2/6 #4
 //     policy_version-in-filename invariant).
 //  4. Each round's canonical response shape matches
-//     internal/application/youtube/dto/types.go::ExtractItem
+//     internal/capabilities/youtube/dto/types.go::ExtractItem
 //     (status="processed" + clipID + drive_link/file_hash/local_path
 //     SHAPE only — runtime values populated by production drivers).
 //
@@ -52,7 +52,7 @@ import (
 // SHOULD fail loudly so the operator updates BOTH the production code
 // and the fixture values below in lockstep (godlike/06 SSOT).
 // godlike/07 honest-scope-lock: the canonical production values live in
-// internal/application/youtube/dto/types.go::DefaultSegmentPolicy;
+// internal/capabilities/youtube/dto/types.go::DefaultSegmentPolicy;
 // the constants below are a CLONE for the hermetic fixture validation
 // path. A future auditor can `diff` the two via a forward-pointer
 // check (PR-BOXING-SMOKES-DRIFT-DETECTION, deadline 2026-08-01).

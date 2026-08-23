@@ -2,7 +2,7 @@
 //
 // Per PR2 followup (June 2026): the application-layer port
 // `VideoMetadataFetcherPort.GetVideoMetadata` returns the canonical
-// `*DownloaderMetadata` DTO (defined in `internal/application/youtube/ports.go`)
+// `*DownloaderMetadata` DTO (defined in `internal/capabilities/youtube/ports.go`)
 // instead of an infrastructure-private struct. This adapter:
 //
 //  1. Parses raw yt-dlp dump-json into a private `ytDLPJSON` struct that
@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"strings"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

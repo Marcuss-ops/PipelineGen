@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical YouTube CLIPS fixture (not stock) for Di-Awl0XyQs — 9 consecutive celebrity-interview clips. Wire shape mirrors /api/clips/process ExtractRequest (internal/application/youtube/dto/types.go). Drift source of truth: dto/types.go::ExtractRequest + ::Segment. NOTE: 4 of 9 segments exceed the 60s default SegmentPolicy.MaxDuration; the server must run with VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS >= 118 or those segments fail with FailureCodeDurationOutOfRange.",
+  "_comment": "Canonical YouTube CLIPS fixture (not stock) for Di-Awl0XyQs — 9 consecutive celebrity-interview clips. Wire shape mirrors /api/clips/process ExtractRequest (internal/capabilities/youtube/dto/types.go). Drift source of truth: dto/types.go::ExtractRequest + ::Segment. NOTE: 4 of 9 segments exceed the 60s default SegmentPolicy.MaxDuration; the server must run with VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS >= 118 or those segments fail with FailureCodeDurationOutOfRange.",
   "url": "https://www.youtube.com/watch?v=Di-Awl0XyQs",
   "strategy": "replace",
   "concurrency": 3,

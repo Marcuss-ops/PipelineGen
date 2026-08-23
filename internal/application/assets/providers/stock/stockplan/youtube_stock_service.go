@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
