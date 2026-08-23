@@ -97,6 +97,7 @@ type ResolvedContract struct {
 	Height            int
 	FPSNum            int
 	FPSDen            int
+	KeyframeInterval  int
 	AudioCodec        string
 	AudioProfile       string
 	SampleRate        int
