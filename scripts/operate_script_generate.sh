@@ -109,8 +109,42 @@ make "${TEST_TARGET}"
 # ── Step 3: Controlled restart ──────────────────────────────────────────
 echo ""
 echo "=== Step 3/5: Controlled restart ==="
-PIPELINEGEN_BIN="${ROOT}/bin/pipelinegen" VELOX_PORT="${VELOX_PORT}" bash scripts/launch_server.sh
+# Kill any existing server on this port.
+PID_FILE="/tmp/pipelinegen.${VELOX_PORT}.pid"
+if [ -f "$PID_FILE" ]; then
+    old_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill -TERM -"$old_pid" 2>/dev/null || true
+        sleep 1
+        kill -KILL -"$old_pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+fi
+pkill -9 -f "pipelinegen" 2>/dev/null || true
+sleep 1
+fuser -k "${VELOX_PORT}/tcp" 2>/dev/null || true
+sleep 1
 
+# Launch detached.
+LOG_FILE="/tmp/pipelinegen.${VELOX_PORT}.log"
+if command -v setsid >/dev/null 2>&1; then
+  setsid "${ROOT}/bin/pipelinegen" --mode all </dev/null >"$LOG_FILE" 2>&1 &
+else
+  nohup "${ROOT}/bin/pipelinegen" --mode all </dev/null >"$LOG_FILE" 2>&1 &
+fi
+SERVER_PID=$!
+echo "$SERVER_PID" > "$PID_FILE"
+echo "Launched PID=$SERVER_PID on ${VELOX_HOST}:${VELOX_PORT}"
+
+# Wait for startup (max 15s).
+for i in $(seq 1 15); do
+  sleep 1
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://${VELOX_HOST}:${VELOX_PORT}/health" 2>/dev/null || echo "000")
+  if [[ "$HTTP" == "200" ]]; then
+    echo "Server healthy after ${i}s (HTTP $HTTP)"
+    break
+  fi
+done
 # ── Step 4: Readiness probe ────────────────────────────────────────────
 echo ""
 echo "=== Step 4/5: Readiness probe ==="

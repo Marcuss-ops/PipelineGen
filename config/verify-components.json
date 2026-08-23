@@ -9,8 +9,6 @@
       "scripts/bridges/react_agent.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
-      "scripts/launch_server.sh",
-      "scripts/launch_server_test.sh",
       "scripts/operate_script_generate.sh",
       "scripts/lib/dotenv.sh",
       "start_server.sh",
