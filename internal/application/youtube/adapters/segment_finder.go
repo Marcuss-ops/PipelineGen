@@ -7,13 +7,9 @@ import (
 
 // ── Segment discovery constants ──────────────────────────────────────────
 
-
-
 // ── Segment splitting ────────────────────────────────────────────────────
 
 // ── Segment cache ────────────────────────────────────────────────────────
-
-
 
 // buildSubtitleArgs assembles the canonical yt-dlp argv for a subtitle
 // fetch used by the segment finder. Extracted from findSegmentsFromSubtitles

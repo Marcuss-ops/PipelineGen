@@ -165,20 +165,20 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":             true,
-		"source":         source,
-		"clip_id":        clipID,
-		"exists_db":      true,
-		"name":           clip.Name,
-		"has_local_file": clip.LocalPath() != "",
-		"local_path":     clip.LocalPath(),
-		"has_drive_link": clip.DriveLink() != "" || clip.DownloadLink() != "",
-		"drive_link":     clip.DriveLink(),
-		"download_link":  clip.DownloadLink(),
-		"legacy_file_md5":      clip.LegacyFileMD5(),
-		"folder_id":      clip.FolderID(),
-		"folder_path":    clip.FolderPath(),
-		"status":         status,
+		"ok":              true,
+		"source":          source,
+		"clip_id":         clipID,
+		"exists_db":       true,
+		"name":            clip.Name,
+		"has_local_file":  clip.LocalPath() != "",
+		"local_path":      clip.LocalPath(),
+		"has_drive_link":  clip.DriveLink() != "" || clip.DownloadLink() != "",
+		"drive_link":      clip.DriveLink(),
+		"download_link":   clip.DownloadLink(),
+		"legacy_file_md5": clip.LegacyFileMD5(),
+		"folder_id":       clip.FolderID(),
+		"folder_path":     clip.FolderPath(),
+		"status":          status,
 	})
 }
 

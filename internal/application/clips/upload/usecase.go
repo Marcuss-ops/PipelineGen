@@ -309,19 +309,19 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	}
 
 	return &UploadClipResult{
-		OK:          true,
-		ClipID:      clip.ID,
-		Name:        clip.Name,
-		Filename:    driveFilename,
-		DriveLink:   clip.DriveLink(),
-		DriveFileID: clip.DriveFileID(),
-		LegacyFileMD5:    fileHash,
-		Source:      cmd.Source,
-		Category:    cmd.Category,
-		Tags:        cmd.Tags,
-		LocalPath:   localPath,
-		Indexed:     indexed,
-		Duration:    int(clip.Duration.Milliseconds()),
+		OK:            true,
+		ClipID:        clip.ID,
+		Name:          clip.Name,
+		Filename:      driveFilename,
+		DriveLink:     clip.DriveLink(),
+		DriveFileID:   clip.DriveFileID(),
+		LegacyFileMD5: fileHash,
+		Source:        cmd.Source,
+		Category:      cmd.Category,
+		Tags:          cmd.Tags,
+		LocalPath:     localPath,
+		Indexed:       indexed,
+		Duration:      int(clip.Duration.Milliseconds()),
 	}, nil
 }
 

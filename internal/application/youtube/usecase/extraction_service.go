@@ -143,7 +143,16 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	if req == nil || req.URL == "" {
 		return nil, fmt.Errorf("youtube extraction: URL is required")
 	}
-	videoID, err := urlutil.ExtractVideoID(req.URL)
+	// The configured Drive root is the permanent subtitle policy. Copy the
+	// request so callers cannot mutate their input or route subtitles into
+	// the clip-media tree.
+	request := req
+	if root := strings.TrimSpace(s.cfg.YouTubeSubtitlesFolderID); root != "" {
+		effective := *req
+		effective.SubtitleDestination = &youtubetypes.SubtitleDestinationRequest{FolderID: root, PerClipSubfolders: true}
+		request = &effective
+	}
+	videoID, err := urlutil.ExtractVideoID(request.URL)
 	if err != nil {
 		return nil, fmt.Errorf("youtube extraction: invalid url: %w", err)
 	}
@@ -155,12 +164,12 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	// Resolve the canonical segment list without mutating the caller's
 	// request (godlike/06 input immutability). The resolved selection
 	// flows through the same downstream pipeline as a local value.
-	segments := req.Segments
+	segments := request.Segments
 	if s.resolver != nil {
-		resolved, resolveErr := s.resolver.Resolve(ctx, req)
+		resolved, resolveErr := s.resolver.Resolve(ctx, request)
 		if resolveErr != nil {
 			return &youtubetypes.ExtractResponse{
-				OK: false, SourceURL: req.URL, VideoID: videoID,
+				OK: false, SourceURL: request.URL, VideoID: videoID,
 				Error: fmt.Sprintf("youtube extraction: segment selection: %v", resolveErr),
 			}, nil
 		}
@@ -168,11 +177,11 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	}
 	if len(segments) == 0 {
 		return &youtubetypes.ExtractResponse{
-			OK: false, SourceURL: req.URL, VideoID: videoID,
+			OK: false, SourceURL: request.URL, VideoID: videoID,
 			Error: "youtube extraction: at least one segment is required",
 		}, nil
 	}
-	dest := resolveDestination(req)
+	dest := resolveDestination(request)
 
 	// Resolve the requested subfolder BEFORE fan-out. The HTTP handler
 	// normalises destination.subfolder_name + create_subfolder into a
@@ -182,9 +191,9 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 	// create (or reuse) it now and upload into the CHILD — never the root.
 	// godlike/07 fail-closed: a subfolder resolution failure aborts the
 	// extraction instead of silently uploading into the wrong folder.
-	if req.Destination != nil && req.Destination.CreateSubfolder &&
-		dest.FolderID != "" && strings.TrimSpace(req.Destination.SubfolderName) != "" {
-		subName := strings.TrimSpace(req.Destination.SubfolderName)
+	if request.Destination != nil && request.Destination.CreateSubfolder &&
+		dest.FolderID != "" && strings.TrimSpace(request.Destination.SubfolderName) != "" {
+		subName := strings.TrimSpace(request.Destination.SubfolderName)
 		if s.assetDestResolver != nil {
 			// Canonical path: asset.Resolver → drive.Admin.GetOrCreateFolder.
 			resolved, rerr := s.assetDestResolver.Resolve(ctx, &assetdomain.ResolveRequest{
@@ -222,6 +231,6 @@ func (s *ExtractionService) Extract(ctx context.Context, req *youtubetypes.Extra
 		}
 	}
 
-	outDir := resolveOutDir(s.cfg.DataDir, videoID, canonicalGroup(req))
-	return s.extractFanOut(ctx, req, segments, videoID, outDir, dest.FolderID, dest.FolderPath)
+	outDir := resolveOutDir(s.cfg.DataDir, videoID, canonicalGroup(request))
+	return s.extractFanOut(ctx, request, segments, videoID, outDir, dest.FolderID, dest.FolderPath)
 }

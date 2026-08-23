@@ -38,8 +38,9 @@ func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func())
 		status TEXT NOT NULL DEFAULT 'pending',
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-    legacy_file_md5 TEXT NOT NULL DEFAULT '',);
+		updated_at TEXT NOT NULL,
+		legacy_file_md5 TEXT NOT NULL DEFAULT ''
+	);
 	`
 	db := database.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)

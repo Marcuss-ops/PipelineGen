@@ -228,11 +228,11 @@ func TestProcessAsset_ProcessedDomainStatusReturnsNilError(t *testing.T) {
 
 func TestProcessAsset_SkippedDuplicateDomainStatusReturnsNilError(t *testing.T) {
 	store := &lifecycleStoreStub{existing: &assetop.AssetRecord{
-		ID:           "existing-asset",
-		DriveLink:    "https://drive.test/existing",
-		DriveFileID:  "drive-existing",
-		DownloadLink: "https://drive.test/download",
-		LegacyFileMD5:     "hash",
+		ID:            "existing-asset",
+		DriveLink:     "https://drive.test/existing",
+		DriveFileID:   "drive-existing",
+		DownloadLink:  "https://drive.test/download",
+		LegacyFileMD5: "hash",
 	}}
 	svc := NewService(ServiceDeps{Store: store}, Config{
 		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByHash: true, SkipIfExists: true},

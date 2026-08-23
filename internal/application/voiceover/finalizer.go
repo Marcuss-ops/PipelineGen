@@ -103,7 +103,7 @@ type FinalizeCommand struct {
 	// Audio Asset State
 	LocalPath       string
 	CleanedPath     string
-	LegacyFileMD5        string // Index outbox skipped when empty
+	LegacyFileMD5   string // Index outbox skipped when empty
 	DurationSeconds float64
 
 	// Destination & Drive State
@@ -252,18 +252,18 @@ type LifecycleProjectionUpserter interface {
 // VoiceoverProjectionInput is the canonical input shape for the
 // media_assets projection UPSERT.
 type VoiceoverProjectionInput struct {
-	ID           string
-	Source       string
-	Name         string
-	Filename     string
-	FolderID     string
-	FolderPath   string
-	MediaType    string
-	LocalPath    string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
+	ID            string
+	Source        string
+	Name          string
+	Filename      string
+	FolderID      string
+	FolderPath    string
+	MediaType     string
+	LocalPath     string
+	DriveFileID   string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES. The cross-package seam at
 	// internal/app/adapters_voiceover_use_case.go converts to

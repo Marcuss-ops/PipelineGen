@@ -3,8 +3,9 @@ package artifacts
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
@@ -27,7 +28,7 @@ type ClipsRegistry struct {
 	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
-	committer persistence.AssetCommitter
+	committer  persistence.AssetCommitter
 	querySvc   *asset.Service
 	locations  asset.LocationRepository
 	processing asset.ProcessingRepository
@@ -68,7 +69,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	//
 	// Rec == nil returns a contract violation error at runtime.
 	if r.committer == nil {
-		return fmt.Errorf("clips registry committer not configured (QDRANT-asset-mutation isolation required): %w", errors.New("committer unavailable"))
+		return fmt.Errorf("clips registry committer not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
 	}
 	if rec == nil {
 		return fmt.Errorf("UpsertMedia: MediaRecord is nil (contract violation)")
@@ -114,11 +115,11 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// Write locations
 	if rec.LocalPath != "" {
 		loc := &asset.Location{
-			AssetID:      rec.ID,
-			LocationKind: asset.LocationKindLocal,
-			URI:          rec.LocalPath,
-			LegacyFileMD5:     rec.LegacyFileMD5,
-			IsPrimary:    true,
+			AssetID:       rec.ID,
+			LocationKind:  asset.LocationKindLocal,
+			URI:           rec.LocalPath,
+			LegacyFileMD5: rec.LegacyFileMD5,
+			IsPrimary:     true,
 		}
 		if err := r.locations.Upsert(ctx, loc); err != nil {
 			return err

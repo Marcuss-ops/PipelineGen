@@ -124,10 +124,7 @@ func subtitleFolderID(req *youtubetypes.ExtractRequest) string {
 }
 
 func subtitleFolderPath(req *youtubetypes.ExtractRequest) string {
-	if req == nil || req.SubtitleDestination == nil {
-		return ""
-	}
-	return req.SubtitleDestination.FolderPath
+	return ""
 }
 
 func subtitlePerClipSubfolders(req *youtubetypes.ExtractRequest) bool {

@@ -118,16 +118,16 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 		items := make([]map[string]any, 0, len(resp.Items))
 		for _, item := range resp.Items {
 			items = append(items, map[string]any{
-				"clip_id":       item.ClipID,
-				"name":          item.Name,
-				"filename":      item.Filename,
-				"status":        item.Status,
-				"drive_link":    item.DriveLink,
-				"drive_file_id": item.DriveFileID,
-				"download_link": item.DownloadLink,
-				"local_path":    item.LocalPath,
-				"legacy_file_md5":     item.LegacyFileMD5,
-				"error":         item.Error,
+				"clip_id":         item.ClipID,
+				"name":            item.Name,
+				"filename":        item.Filename,
+				"status":          item.Status,
+				"drive_link":      item.DriveLink,
+				"drive_file_id":   item.DriveFileID,
+				"download_link":   item.DownloadLink,
+				"local_path":      item.LocalPath,
+				"legacy_file_md5": item.LegacyFileMD5,
+				"error":           item.Error,
 			})
 		}
 		result["items"] = items

@@ -4,19 +4,21 @@
 // the schema in line with the broader cross-package SSOT contract.
 //
 // Covers:
+//
 //   - TestMigrations_152_CanonicalConsolidationColumnsPresent
 //     PRAGMA table_info(media_assets) lists the 13 columns added
 //     by migration 152 (source_provider, source_video_id,
 //     source_channel_id, source_url, start_ms, end_ms,
 //     original_language, title, binary_sha256, semantic_hash,	//     rights_status, policy_version). Mirrors
-	//     the structural pattern of the migration-099
-	//     QdrantAssetColumnsPresent test; each required entry MUST
-	//     be backed by a corresponding ALTER TABLE in
-	//     migrations/sqlite/152_add_canonical_metadata_columns.sql.
-	//
-	//     lifecycle_status was included in the original migration 152
-	//     but dropped in migration 230 (shadow/compatibility column —
-	//     lifecycle_state is the sole operational SSOT).
+//     the structural pattern of the migration-099
+//     QdrantAssetColumnsPresent test; each required entry MUST
+//     be backed by a corresponding ALTER TABLE in
+//     migrations/sqlite/152_add_canonical_metadata_columns.sql.
+//
+//     lifecycle_status was included in the original migration 152
+//     but dropped in migration 230 (shadow/compatibility column —
+//     lifecycle_state is the sole operational SSOT).
+//
 //   - TestMigrations_152_CanonicalConsolidationColumnsRoundTrip
 //     Migrating an empty DB is the integration-test equivalent of
 //     "FetchAsset works on fixture in-memory".
@@ -49,7 +51,7 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 	defer cleanup()
 
 	const assetID = "rt-canon-1"
-	_, err := db.Exec(		`INSERT INTO media_assets (
+	_, err := db.Exec(`INSERT INTO media_assets (
 			id, lifecycle_state, source_provider, source_video_id, source_channel_id,
 			source_url, start_ms, end_ms, original_language, title,
 			binary_sha256, semantic_hash, rights_status,

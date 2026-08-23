@@ -13,21 +13,21 @@ func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *assetop.AssetRecord {
 		return nil
 	}
 	return &assetop.AssetRecord{
-		ID:           rec.ID,
-		Name:         rec.Name,
-		Filename:     rec.Filename,
-		Source:       rec.Source,
-		MediaType:    rec.MediaType,
-		DriveFileID:  rec.DriveFileID,
-		DriveLink:    rec.DriveLink,
-		DownloadLink: rec.DownloadLink,
-		LegacyFileMD5:     rec.LegacyFileMD5,
-		LocalPath:    rec.LocalPath,
-		Status:       rec.Status,
-		Error:        rec.Error,
-		Metadata:     rec.Metadata,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
+		ID:            rec.ID,
+		Name:          rec.Name,
+		Filename:      rec.Filename,
+		Source:        rec.Source,
+		MediaType:     rec.MediaType,
+		DriveFileID:   rec.DriveFileID,
+		DriveLink:     rec.DriveLink,
+		DownloadLink:  rec.DownloadLink,
+		LegacyFileMD5: rec.LegacyFileMD5,
+		LocalPath:     rec.LocalPath,
+		Status:        rec.Status,
+		Error:         rec.Error,
+		Metadata:      rec.Metadata,
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
 	}
 }
 

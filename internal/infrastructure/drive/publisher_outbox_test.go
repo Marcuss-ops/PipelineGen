@@ -31,7 +31,11 @@ func TestPublisher_AllDestinationsRegistered(t *testing.T) {
 		require.NoError(t, err, "Resolve(%q) failed", dest)
 		require.NotEmpty(t, policy.RootFolderID, "RootFolderID empty for %q", dest)
 		require.NotNil(t, policy.PathBuilder, "PathBuilder nil for %q", dest)
-		require.True(t, policy.RequireSubpath, "RequireSubpath must be true for %q", dest)
+		if dest == delivery.DestinationArtlist {
+			require.False(t, policy.RequireSubpath, "Artlist permits root-level curated uploads")
+		} else {
+			require.True(t, policy.RequireSubpath, "RequireSubpath must be true for %q", dest)
+		}
 	}
 }
 

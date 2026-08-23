@@ -36,10 +36,10 @@ type AudioInput struct {
 // with callers that read both, but consumers should rely on
 // lifecycleResult for the Drive surface.
 type AudioResult struct {
-	LocalPath   string
-	CleanedPath string
-	LegacyFileMD5    string
-	Duration    time.Duration
+	LocalPath     string
+	CleanedPath   string
+	LegacyFileMD5 string
+	Duration      time.Duration
 	// DriveLink / DriveFileID: always zero from audioasset.Processor;
 	// Lifecycle fills. Deprecated for direct read on Processor output.
 	DriveLink   string

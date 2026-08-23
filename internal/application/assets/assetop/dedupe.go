@@ -23,21 +23,21 @@ type ExistingAssetQuery struct {
 
 // AssetRecord represents a common asset record for lifecycle management.
 type AssetRecord struct {
-	ID           string
-	Name         string
-	Filename     string
-	Source       string
-	MediaType    string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
-	LocalPath    string
-	Status       string
-	Error        string
-	Metadata     string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID            string
+	Name          string
+	Filename      string
+	Source        string
+	MediaType     string
+	DriveFileID   string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
+	LocalPath     string
+	Status        string
+	Error         string
+	Metadata      string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // AssetRecordStore defines the interface for storing and querying asset records.

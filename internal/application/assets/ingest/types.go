@@ -44,7 +44,7 @@ type Result struct {
 	DriveLink        string         `json:"drive_link"`
 	DriveFileID      string         `json:"drive_file_id"`
 	DownloadLink     string         `json:"download_link"`
-	LegacyFileMD5         string         `json:"legacy_file_md5"`
+	LegacyFileMD5    string         `json:"legacy_file_md5"`
 	ContentHash      string         `json:"content_hash"`
 	SkippedDuplicate bool           `json:"skipped_duplicate"`
 	Metadata         map[string]any `json:"metadata,omitempty"`

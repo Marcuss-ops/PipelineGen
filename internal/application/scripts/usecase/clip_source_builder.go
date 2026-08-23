@@ -79,14 +79,14 @@ type ClipSourceBuilder struct {
 }
 
 type ClipGenerationOptions struct {
-	Language      string
-	Tone          string
-	Style         string
-	Title         string
-	Model         string
-	TargetWords   int
-	NumClips      int
-	SegmentWords  int
+	Language     string
+	Tone         string
+	Style        string
+	Title        string
+	Model        string
+	TargetWords  int
+	NumClips     int
+	SegmentWords int
 	// Segments carries the per-block payload. Populated by the
 	// curate / clips resolvers via SourceResolutionContext.
 	// Currently unread at this layer; FASE 3 (engine_prompt.go)

@@ -130,21 +130,21 @@ func imageAssetToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts
 
 	_ = img
 	return &artifacts.MediaRecord{
-		ID:          img.Hash,
-		Name:        img.Description,
-		Filename:    filepath.Base(img.PathRel),
-		Source:      string(asset.SourceImage),
-		Category:    img.SubjectID,
-		Group:       img.SubjectID,
-		MediaType:   "image",
-		ExternalURL: img.SourceURL,
-		LocalPath:   imageFullPath(imagesDir, img.PathRel),
-		DriveFileID: img.DriveFileID,
-		LegacyFileMD5:    img.Hash,
-		Status:      img.Status,
-		Metadata:    img.MetadataJSON,
-		Tags:        append([]string(nil), img.Tags...),
-		SourceID:    textutil.FirstNonEmpty(img.SourceURL, img.Hash),
+		ID:            img.Hash,
+		Name:          img.Description,
+		Filename:      filepath.Base(img.PathRel),
+		Source:        string(asset.SourceImage),
+		Category:      img.SubjectID,
+		Group:         img.SubjectID,
+		MediaType:     "image",
+		ExternalURL:   img.SourceURL,
+		LocalPath:     imageFullPath(imagesDir, img.PathRel),
+		DriveFileID:   img.DriveFileID,
+		LegacyFileMD5: img.Hash,
+		Status:        img.Status,
+		Metadata:      img.MetadataJSON,
+		Tags:          append([]string(nil), img.Tags...),
+		SourceID:      textutil.FirstNonEmpty(img.SourceURL, img.Hash),
 	}
 }
 

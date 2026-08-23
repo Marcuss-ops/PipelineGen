@@ -160,7 +160,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		DriveFileID:     cmd.DriveFileID,
 		DriveLink:       cmd.DriveLink,
 		DownloadLink:    cmd.DownloadLink,
-		LegacyFileMD5:        cmd.LegacyFileMD5,
+		LegacyFileMD5:   cmd.LegacyFileMD5,
 		DurationSeconds: cmd.DurationSeconds,
 		Status:          string(StatusGenerated),
 		Strategy:        cmd.Strategy,
@@ -211,21 +211,21 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		// (fail-fast at Finalize() entry), so a non-nil
 		// LifecycleService here is always present.
 		if err := f.deps.LifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &VoiceoverProjectionInput{
-			ID:           cmd.ID,
-			Source:       "voiceover",
-			Name:         textPreview,
-			Filename:     cmd.Filename,
-			FolderID:     cmd.FolderID,
-			FolderPath:   cmd.FolderPath,
-			MediaType:    "audio",
-			LocalPath:    cmd.LocalPath,
-			DriveFileID:  cmd.DriveFileID,
-			DriveLink:    cmd.DriveLink,
-			DownloadLink: cmd.DownloadLink,
-			LegacyFileMD5:     cmd.LegacyFileMD5,
-			Language:     cmd.Language,
-			Status:       string(StatusGenerated),
-			Metadata:     string(cmd.MetaJSON),
+			ID:            cmd.ID,
+			Source:        "voiceover",
+			Name:          textPreview,
+			Filename:      cmd.Filename,
+			FolderID:      cmd.FolderID,
+			FolderPath:    cmd.FolderPath,
+			MediaType:     "audio",
+			LocalPath:     cmd.LocalPath,
+			DriveFileID:   cmd.DriveFileID,
+			DriveLink:     cmd.DriveLink,
+			DownloadLink:  cmd.DownloadLink,
+			LegacyFileMD5: cmd.LegacyFileMD5,
+			Language:      cmd.Language,
+			Status:        string(StatusGenerated),
+			Metadata:      string(cmd.MetaJSON),
 		}); err != nil {
 			return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
 		}
@@ -311,14 +311,14 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 	locations := []assetspersistence.LocationCommit{}
 	if cmd.DriveFileID != "" {
 		locations = append(locations, assetspersistence.LocationCommit{
-			Kind:        "drive",
-			Provider:    "drive",
-			ExternalID:  cmd.DriveFileID,
-			URI:         cmd.DriveLink,
-			WebViewLink: cmd.DriveLink,
-			DownloadURL: cmd.DownloadLink,
-			LegacyFileMD5:    cmd.LegacyFileMD5,
-			IsPrimary:   true,
+			Kind:          "drive",
+			Provider:      "drive",
+			ExternalID:    cmd.DriveFileID,
+			URI:           cmd.DriveLink,
+			WebViewLink:   cmd.DriveLink,
+			DownloadURL:   cmd.DownloadLink,
+			LegacyFileMD5: cmd.LegacyFileMD5,
+			IsPrimary:     true,
 		})
 	}
 	_, initIndex := asset.NewIndexableAssetState()

@@ -624,7 +624,7 @@ func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "drive-asset-michael-jordan",
-		LegacyFileMD5:       "sha256-michael-jordan",
+		LegacyFileMD5:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
 		LocalPath:      "/nonexistent/local-copy-is-not-needed.jpg",
 		Status:         entitycatalog.MaterializationStatusMaterialized,

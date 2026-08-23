@@ -227,15 +227,15 @@ type BatchResponse struct {
 }
 
 type BatchItem struct {
-	ID           string `json:"id"`
-	Voice        string `json:"voice,omitempty"`
-	Filename     string `json:"filename"`
-	LocalPath    string `json:"local_path,omitempty"`
-	CleanedPath  string `json:"cleaned_path,omitempty"`
-	DriveLink    string `json:"drive_link,omitempty"`
-	DriveFileID  string `json:"drive_file_id,omitempty"`
-	DownloadLink string `json:"download_link,omitempty"`
-	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
+	ID            string `json:"id"`
+	Voice         string `json:"voice,omitempty"`
+	Filename      string `json:"filename"`
+	LocalPath     string `json:"local_path,omitempty"`
+	CleanedPath   string `json:"cleaned_path,omitempty"`
+	DriveLink     string `json:"drive_link,omitempty"`
+	DriveFileID   string `json:"drive_file_id,omitempty"`
+	DownloadLink  string `json:"download_link,omitempty"`
+	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
 	// byte-equivalent with the pre-refactor string field.

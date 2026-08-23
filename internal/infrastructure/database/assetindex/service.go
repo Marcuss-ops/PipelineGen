@@ -53,36 +53,36 @@ func (s *Service) CreateOrUpdateFromFinalize(ctx context.Context, assetID, asset
 	now := time.Now().UTC()
 
 	rec := &AssetRecord{
-		AssetID:      assetID,
-		AssetType:    assetType,
-		Source:       source,
-		SourceID:     sourceID,
-		GroupName:    opts.GroupName,
-		Subfolder:    opts.Subfolder,
-		LocalPath:    opts.LocalPath,
-		DriveLink:    opts.DriveLink,
-		DownloadLink: opts.DownloadLink,
-		LegacyFileMD5:     opts.LegacyFileMD5,
-		ContentHash:  opts.ContentHash,
-		Status:       opts.Status,
-		Metadata:     opts.Metadata,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		AssetID:       assetID,
+		AssetType:     assetType,
+		Source:        source,
+		SourceID:      sourceID,
+		GroupName:     opts.GroupName,
+		Subfolder:     opts.Subfolder,
+		LocalPath:     opts.LocalPath,
+		DriveLink:     opts.DriveLink,
+		DownloadLink:  opts.DownloadLink,
+		LegacyFileMD5: opts.LegacyFileMD5,
+		ContentHash:   opts.ContentHash,
+		Status:        opts.Status,
+		Metadata:      opts.Metadata,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	return s.repo.Upsert(ctx, rec)
 }
 
 type CreateOrUpdateOptions struct {
-	GroupName    string
-	Subfolder    string
-	LocalPath    string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
-	ContentHash  string
-	Status       string
-	Metadata     string
+	GroupName     string
+	Subfolder     string
+	LocalPath     string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
+	ContentHash   string
+	Status        string
+	Metadata      string
 }
 
 func (s *Service) ListAll(ctx context.Context) ([]*AssetRecord, error) {

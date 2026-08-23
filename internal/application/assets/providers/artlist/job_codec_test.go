@@ -268,14 +268,14 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 		TagFolderID: "folder123",
 		Items: []RunTagItem{
 			{
-				ClipID:       "clip1",
-				Name:         "City skyline",
-				Filename:     "city.mp4",
-				Status:       "completed",
-				DriveLink:    "https://drive.google.com/file/d/abc",
-				LocalPath:    "/tmp/city.mp4",
-				LegacyFileMD5:     "hash123",
-				DownloadLink: "https://example.com/dl/abc",
+				ClipID:        "clip1",
+				Name:          "City skyline",
+				Filename:      "city.mp4",
+				Status:        "completed",
+				DriveLink:     "https://drive.google.com/file/d/abc",
+				LocalPath:     "/tmp/city.mp4",
+				LegacyFileMD5: "hash123",
+				DownloadLink:  "https://example.com/dl/abc",
 			},
 		},
 	}

@@ -55,11 +55,11 @@ type RawSpeechBoundary struct {
 
 // TTSOutput is the canonical return shape.
 type TTSOutput struct {
-	LocalPath   string
-	CleanedPath string
-	Voice       string
-	LegacyFileMD5    string
-	Duration    time.Duration
+	LocalPath     string
+	CleanedPath   string
+	Voice         string
+	LegacyFileMD5 string
+	Duration      time.Duration
 
 	// Provider is the canonical provider identifier (e.g. "edge_tts")
 	// that produced this output. Empty when the provider does not

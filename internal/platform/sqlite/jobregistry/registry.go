@@ -3,11 +3,11 @@ package jobregistry
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"

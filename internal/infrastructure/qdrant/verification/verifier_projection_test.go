@@ -71,9 +71,9 @@ func TestComputeProjectionParity_Both(t *testing.T) {
 func TestProjectionReport_PassesRule(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name               string
-		report             ProjectionVerificationReport
-		wantPassed         bool
+		name       string
+		report     ProjectionVerificationReport
+		wantPassed bool
 	}{
 		{
 			name: "all green passes",
@@ -360,5 +360,4 @@ func mockProjectionQdrant(t *testing.T, spec projectionMockSpec) *httptest.Serve
 			http.NotFound(w, r)
 		}
 	}))
-}// stubAssetStore is defined in verifier_test.go (same package).
-
+} // stubAssetStore is defined in verifier_test.go (same package).

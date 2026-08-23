@@ -12,8 +12,8 @@
 package stager
 
 import (
-	"crypto/sha256"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -240,7 +240,7 @@ func (s *HTTPSourceStager) Prepare(ctx context.Context, req acquisition.PrepareR
 	// Build an assets.SourceRef from the acquisition.SourceRef for the
 	// existing StageSourceV2 implementation.
 	ref := assets.SourceRef{
-		URL:            req.Source.URL,
+		URL:             req.Source.URL,
 		DownloadSection: req.Source.DownloadSection,
 		ForceKeyframes:  req.Source.ForceKeyframes,
 		MergeFormat:     req.Source.MergeFormat,

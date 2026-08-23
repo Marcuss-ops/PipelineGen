@@ -27,10 +27,10 @@ func TestSilenceCleanupReportEmittedAsEventAndPersistedInMetadata(t *testing.T) 
 	log := zap.New(core)
 
 	tts := &stubProcessTTS{cannedOut: TTSOutput{
-		LocalPath: "/tmp/vo/scene-0.mp3",
-		Voice:     "it-IT-DiegoNeural",
-		LegacyFileMD5:  "abc123",
-		Duration:  45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
+		LocalPath:     "/tmp/vo/scene-0.mp3",
+		Voice:         "it-IT-DiegoNeural",
+		LegacyFileMD5: "abc123",
+		Duration:      45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
 	}}
 	audioPost := &stubProcessAudioPost{cannedOut: AudioPostOutput{
 		CleanedPath: "/tmp/vo/cleaned_scene-0.mp3",

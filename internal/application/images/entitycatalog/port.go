@@ -86,7 +86,7 @@ type Candidate struct {
 type Materialization struct {
 	CandidateID    int64
 	AssetID        string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	DriveFileID    string
 	DriveLink      string
 	LocalPath      string

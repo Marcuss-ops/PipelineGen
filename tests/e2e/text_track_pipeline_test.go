@@ -334,7 +334,7 @@ func TestE2E_TextTrackMaterializeJobPipeline_OutboxEmissionSingle(t *testing.T) 
 	require.True(t, ok,
 		"handler result must carry languages_materialized ([]string) per godlike/06 contract")
 	require.Equal(t, 3, len(materialized),
-		"languages_materialized must contain exactly 3 entries (it retranslated, es + fr created)")
+		"languages_materialized must contain the retranslated Italian track plus the newly created es and fr tracks")
 	failed, ok := res["languages_failed"].(map[string]string)
 	require.True(t, ok,
 		"handler result must carry languages_failed (map[string]string) per godlike/06 contract")

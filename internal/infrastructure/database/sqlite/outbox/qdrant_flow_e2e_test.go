@@ -679,10 +679,10 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 	const clipID = "yt_qdrant_e2e_10_60_v1"
 	fileHash := "abcdef0123456789abcdef0123456789" // 32-char MD5 hex
 	item := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "qdrant_e2e",
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/" + clipID + ".mp4",
+		ID:            clipID,
+		VideoID:       "qdrant_e2e",
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_e2e",
 			FolderPath:  "youtube/qdrant_e2e",

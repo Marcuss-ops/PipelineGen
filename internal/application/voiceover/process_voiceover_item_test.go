@@ -209,11 +209,11 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/test_en.mp3",
-			CleanedPath: "",
-			Voice:       "en_female",
-			LegacyFileMD5:    "abc123",
-			Duration:    45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
+			LocalPath:     "/tmp/vo/test_en.mp3",
+			CleanedPath:   "",
+			Voice:         "en_female",
+			LegacyFileMD5: "abc123",
+			Duration:      45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
@@ -294,9 +294,9 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/test_en.mp3",
-			Voice:     "en_female",
-			LegacyFileMD5:  "abc123",
+			LocalPath:     "/tmp/vo/test_en.mp3",
+			Voice:         "en_female",
+			LegacyFileMD5: "abc123",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
@@ -387,10 +387,10 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/peritem-orphan.mp3",
-			CleanedPath: "",
-			Voice:       "en_female",
-			LegacyFileMD5:    "peritem-orphan-hash",
+			LocalPath:     "/tmp/vo/peritem-orphan.mp3",
+			CleanedPath:   "",
+			Voice:         "en_female",
+			LegacyFileMD5: "peritem-orphan-hash",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem"}
@@ -545,10 +545,10 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/peritem-nil-outbox.mp3",
-			CleanedPath: "",
-			Voice:       "en_female",
-			LegacyFileMD5:    "peritem-nil-outbox-hash",
+			LocalPath:     "/tmp/vo/peritem-nil-outbox.mp3",
+			CleanedPath:   "",
+			Voice:         "en_female",
+			LegacyFileMD5: "peritem-nil-outbox-hash",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem-nil"}
@@ -624,9 +624,9 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/test_en.mp3",
-			Voice:     "en_female",
-			LegacyFileMD5:  "abc123",
+			LocalPath:     "/tmp/vo/test_en.mp3",
+			Voice:         "en_female",
+			LegacyFileMD5: "abc123",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}

@@ -142,7 +142,7 @@ func validArtlistCommand(assetID string) ArtlistPublishCommand {
 		DriveFileID:   "drive-file-" + assetID,
 		DriveLink:     "https://drive.google.com/file/d/drive-file-" + assetID + "/view",
 		DownloadLink:  "https://drive.google.com/uc?export=download&id=drive-file-" + assetID,
-		LegacyFileMD5:      "sha256:" + assetID + "-hash",
+		LegacyFileMD5: "sha256:" + assetID + "-hash",
 		SourceVersion: "sha256:" + assetID + "-hash",
 	}
 }
@@ -164,7 +164,7 @@ type mediaAssetRow struct {
 	DriveFileID    string
 	DriveLink      string
 	DownloadLink   string
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	SourceVersion  string
 	LifecycleState string
 	CreatedAt      string

@@ -38,14 +38,14 @@ type DownloadAndHashCommand struct {
 // Every downstream step in Register() (metadata, drive, db) reads from
 // these fields.
 type DownloadAndHashResult struct {
-	LocalPath string            // path to the downloaded .mp4 on disk
-	AssetID   string            // provider-side asset identifier
-	Name      string            // fetched video title
-	Duration  time.Duration     // fetched video duration
-	Bytes     int64             // file size in bytes
-	Metadata  map[string]string // provider metadata (description, uploader, etc.)
-	LegacyFileMD5  string            // MD5 hex digest (empty when hasher is nil or fails)
-	ClipID    string            // canonical yt_<videoID>_<hash8> identifier
+	LocalPath     string            // path to the downloaded .mp4 on disk
+	AssetID       string            // provider-side asset identifier
+	Name          string            // fetched video title
+	Duration      time.Duration     // fetched video duration
+	Bytes         int64             // file size in bytes
+	Metadata      map[string]string // provider metadata (description, uploader, etc.)
+	LegacyFileMD5 string            // MD5 hex digest (empty when hasher is nil or fails)
+	ClipID        string            // canonical yt_<videoID>_<hash8> identifier
 }
 
 // Fetcher is the narrow port for downloading a video from an external
@@ -127,14 +127,14 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 	clipID := deriveClipID(cmd.VideoID, fileHash)
 
 	return &DownloadAndHashResult{
-		LocalPath: fetched.LocalPath,
-		AssetID:   fetched.AssetID,
-		Name:      fetched.Name,
-		Duration:  fetched.Duration,
-		Bytes:     fetched.Bytes,
-		Metadata:  fetched.Metadata,
-		LegacyFileMD5:  fileHash,
-		ClipID:    clipID,
+		LocalPath:     fetched.LocalPath,
+		AssetID:       fetched.AssetID,
+		Name:          fetched.Name,
+		Duration:      fetched.Duration,
+		Bytes:         fetched.Bytes,
+		Metadata:      fetched.Metadata,
+		LegacyFileMD5: fileHash,
+		ClipID:        clipID,
 	}, nil
 }
 

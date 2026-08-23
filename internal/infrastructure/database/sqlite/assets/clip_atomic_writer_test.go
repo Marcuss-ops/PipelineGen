@@ -175,10 +175,10 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 
 	const clipID = "yt_abc123_10_60_v1"
 	item := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "abc123",
-		LegacyFileMD5:  sha256Hex("happy-path"),
-		LocalPath: "/tmp/clips/yt_abc123_10_60_v1.mp4",
+		ID:            clipID,
+		VideoID:       "abc123",
+		LegacyFileMD5: sha256Hex("happy-path"),
+		LocalPath:     "/tmp/clips/yt_abc123_10_60_v1.mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_xyz",
 			FolderPath:  "youtube/abc123",
@@ -291,11 +291,11 @@ func TestClipAtomicWriter_IdempotentOnSameContent(t *testing.T) {
 	const clipID = "yt_idem_001_5_30_v1"
 	fileHash := sha256Hex("idem-content")
 	item := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "idem_001",
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/" + clipID + ".mp4",
-		Drive:     youtubetypes.ClipAssetDrive{},
+		ID:            clipID,
+		VideoID:       "idem_001",
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/" + clipID + ".mp4",
+		Drive:         youtubetypes.ClipAssetDrive{},
 		Coordinates: youtubetypes.ClipAssetCoordinates{
 			StartSec: 5,
 			EndSec:   30,
@@ -350,7 +350,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	itemA := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "supersede_001",
-		LegacyFileMD5:      sha256Hex("content-A"),
+		LegacyFileMD5: sha256Hex("content-A"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede A", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -359,7 +359,7 @@ func TestClipAtomicWriter_DifferentFileHashEmitsSecondRow(t *testing.T) {
 	itemB := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "supersede_001",
-		LegacyFileMD5:      sha256Hex("content-B"),
+		LegacyFileMD5: sha256Hex("content-B"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Supersede B", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -421,11 +421,11 @@ func TestClipAtomicWriter_TerminalConflictReturnsError(t *testing.T) {
 	const clipID = "yt_terminal_001_10_60_v1"
 	fileHash := sha256Hex("terminal-conflict-content")
 	item := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "terminal_001",
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/" + clipID + ".mp4",
-		Drive:     youtubetypes.ClipAssetDrive{},
+		ID:            clipID,
+		VideoID:       "terminal_001",
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/" + clipID + ".mp4",
+		Drive:         youtubetypes.ClipAssetDrive{},
 		Coordinates: youtubetypes.ClipAssetCoordinates{
 			StartSec: 10,
 			EndSec:   60,
@@ -522,7 +522,7 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 	item := youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       "closed_db_001",
-		LegacyFileMD5:      sha256Hex("closed-db-content"),
+		LegacyFileMD5: sha256Hex("closed-db-content"),
 		LocalPath:     "/tmp/" + clipID + ".mp4",
 		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Closed DB Probe", NormalizedGroup: "general"},
 		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 10, EndSec: 60, Duration: 50},
@@ -565,10 +565,10 @@ func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
 	// ── Step 1: Write the initial media_assets row via ClipAtomicWriter ──
 	fileHash := sha256Hex("broner-pacquiao-146-155")
 	asset := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "vdC5GXxS-qU",
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/clips/" + clipID + ".mp4",
+		ID:            clipID,
+		VideoID:       "vdC5GXxS-qU",
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_broner",
 			FolderPath:  "youtube/vdC5GXxS-qU",
@@ -702,10 +702,10 @@ func TestClipMetadataWriter_MetadataJSON_AllRequiredFields(t *testing.T) {
 	// Step 1: write initial media_assets row via ClipAtomicWriter.
 	fileHash := sha256Hex("audit-shortlist-broner-pacquiao")
 	asset := youtubetypes.ClipAsset{
-		ID:        clipID,
-		VideoID:   "vdC5GXxS-qU",
-		LegacyFileMD5:  fileHash,
-		LocalPath: "/tmp/clips/" + clipID + ".mp4",
+		ID:            clipID,
+		VideoID:       "vdC5GXxS-qU",
+		LegacyFileMD5: fileHash,
+		LocalPath:     "/tmp/clips/" + clipID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_audit",
 			FolderPath:  "youtube/vdC5GXxS-qU",

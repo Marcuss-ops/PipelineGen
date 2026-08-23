@@ -182,6 +182,9 @@ func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 // payload_validator.go or elsewhere.
 func validateScriptSegmentShape(sp scriptpkg.ScriptSpec, ref string) []string {
 	var d []string
+	if len(sp.SegmentTopics) > 0 && len(sp.Segments) > 0 {
+		d = append(d, ref+": script_params.segment_topics and script_params.segments cannot both be set")
+	}
 	// PR-CS-1 / FASE 6 (DoD #8): ScriptSegment validation
 	// (stateless, semantic). Two checks:
 	//   1. Empty-present vs absent — explicit [] is rejected

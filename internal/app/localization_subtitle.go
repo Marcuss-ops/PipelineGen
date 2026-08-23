@@ -20,9 +20,9 @@ package app
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,6 +115,11 @@ func (c *localizationSubtitleCompiler) Compile(_ context.Context, in localizatio
 	// A transcript can contain a final cue from the original source timeline
 	// beyond the extracted clip boundary. Keep the transcript in the DB, but
 	// clip only the rendered interval so ASS validation matches the media.
+	// A positive duration is required here because the generated ASS is tied
+	// to a concrete media artifact; callers without a duration must fail closed.
+	if in.ClipDurationMS <= 0 {
+		return nil, errors.New("localization: subtitle compile: clip duration is required")
+	}
 	cues := trimLocalizationCues(in.Cues, in.ClipDurationMS)
 	if len(cues) == 0 {
 		return nil, errors.New("localization: subtitle compile: no cues remain inside clip duration")

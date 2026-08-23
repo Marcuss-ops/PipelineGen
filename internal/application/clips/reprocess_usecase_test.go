@@ -60,9 +60,9 @@ func (p *fakeReprocessProcessor) Process(ctx context.Context, input *asset.Proce
 		return p.result, nil
 	}
 	return &asset.ProcessResult{
-		Status:    "processed",
-		LocalPath: "out/result.mp4",
-		LegacyFileMD5:  "result-hash",
+		Status:        "processed",
+		LocalPath:     "out/result.mp4",
+		LegacyFileMD5: "result-hash",
 	}, nil
 }
 
@@ -360,7 +360,7 @@ func TestReprocessExecute_PersistsDriveIdentityFromResult(t *testing.T) {
 		result: &asset.ProcessResult{
 			Status:        "processed",
 			LocalPath:     "out/result.mp4",
-			LegacyFileMD5:      "result-hash",
+			LegacyFileMD5: "result-hash",
 			DriveFileID:   "new-drive-file-id",
 			DriveLink:     "https://drive.google.com/file/d/new-drive-file-id/view",
 			DownloadLink:  "https://drive.google.com/uc?id=new-drive-file-id",
@@ -402,9 +402,9 @@ func TestReprocessExecute_EmptyDriveFieldsDoNotClobber(t *testing.T) {
 	clip, _ := driveBackedClip(t, "clip-driveempty")
 	proc := &fakeReprocessProcessor{
 		result: &asset.ProcessResult{
-			Status:    "processed",
-			LocalPath: "out/result.mp4",
-			LegacyFileMD5:  "result-hash",
+			Status:        "processed",
+			LocalPath:     "out/result.mp4",
+			LegacyFileMD5: "result-hash",
 			// DriveFileID / MD5 / PublishAction intentionally empty:
 			// a nil/non-published result must not erase prior values.
 		},

@@ -212,9 +212,9 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject(t *testing.
 	db := openProcessTestDB(t)
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/stage3-empty-proj.mp3",
-			Voice:     "it-IT-ElsaNeural",
-			LegacyFileMD5:  "hash-stage3-ep-001",
+			LocalPath:     "/tmp/vo/stage3-empty-proj.mp3",
+			Voice:         "it-IT-ElsaNeural",
+			LegacyFileMD5: "hash-stage3-ep-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage3-empty-proj"}
@@ -279,10 +279,10 @@ func TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCle
 	db := openProcessTestDB(t)
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/fase4-orphan.mp3",
-			CleanedPath: "/tmp/vo/fase4-orphan-cleaned.mp3",
-			Voice:       "en-US-RogerNeural",
-			LegacyFileMD5:    "hash-fase4-001",
+			LocalPath:     "/tmp/vo/fase4-orphan.mp3",
+			CleanedPath:   "/tmp/vo/fase4-orphan-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-fase4-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-orphan"}
@@ -397,9 +397,9 @@ func TestProcessSegmentUseCase_Execute_FASE4_NilOutboxEnqueuer_NoPanic(t *testin
 	db := openProcessTestDB(t)
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/fase4-nil.mp3",
-			Voice:     "en-US-RogerNeural",
-			LegacyFileMD5:  "hash-fase4-nil",
+			LocalPath:     "/tmp/vo/fase4-nil.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-fase4-nil",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-nil"}
@@ -458,10 +458,10 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupBeginTxFail_Warns(t *t
 	repo := newStubVoRepoFailSecondBeginTx(t, fmt.Errorf("sqlite: disk I/O error"))
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/fase4-begintx-fail.mp3",
-			CleanedPath: "/tmp/vo/fase4-begintx-fail-cleaned.mp3",
-			Voice:       "en-US-RogerNeural",
-			LegacyFileMD5:    "hash-fase4-begintx",
+			LocalPath:     "/tmp/vo/fase4-begintx-fail.mp3",
+			CleanedPath:   "/tmp/vo/fase4-begintx-fail-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-fase4-begintx",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-begintx"}
@@ -549,10 +549,10 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupEnqueueFail_Warns(t *t
 	db := openProcessTestDB(t)
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/fase4-enqueue-fail.mp3",
-			CleanedPath: "/tmp/vo/fase4-enqueue-fail-cleaned.mp3",
-			Voice:       "en-US-RogerNeural",
-			LegacyFileMD5:    "hash-fase4-enqueue",
+			LocalPath:     "/tmp/vo/fase4-enqueue-fail.mp3",
+			CleanedPath:   "/tmp/vo/fase4-enqueue-fail-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-fase4-enqueue",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-enqueue"}
@@ -661,10 +661,10 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_RealFinalizer_HappyPath(t *test
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/e2e-happy.mp3",
-			CleanedPath: "/tmp/vo/e2e-happy-cleaned.mp3",
-			Voice:       "en-US-RogerNeural",
-			LegacyFileMD5:    "hash-e2e-happy-001",
+			LocalPath:     "/tmp/vo/e2e-happy.mp3",
+			CleanedPath:   "/tmp/vo/e2e-happy-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-e2e-happy-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-e2e-happy-001"}
@@ -780,10 +780,10 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay(t *testing.T)
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/e2e-idem.mp3",
-			CleanedPath: "/tmp/vo/e2e-idem-cleaned.mp3",
-			Voice:       "it-IT-ElsaNeural",
-			LegacyFileMD5:    "hash-e2e-idem-001",
+			LocalPath:     "/tmp/vo/e2e-idem.mp3",
+			CleanedPath:   "/tmp/vo/e2e-idem-cleaned.mp3",
+			Voice:         "it-IT-ElsaNeural",
+			LegacyFileMD5: "hash-e2e-idem-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-e2e-idem-001"}
@@ -898,10 +898,10 @@ func TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer(t *
 
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath:   "/tmp/vo/fase6-orphan.mp3",
-			CleanedPath: "/tmp/vo/fase6-orphan-cleaned.mp3",
-			Voice:       "en-US-RogerNeural",
-			LegacyFileMD5:    "hash-fase6-001",
+			LocalPath:     "/tmp/vo/fase6-orphan.mp3",
+			CleanedPath:   "/tmp/vo/fase6-orphan-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			LegacyFileMD5: "hash-fase6-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase6-orphan"}

@@ -6,16 +6,17 @@ import (
 
 // ── Typed accessors (domain-level properties stored in Metadata) ────
 
-func (m *Asset) ExternalURL() string        { return m.SourceURL }
-func (m *Asset) SetExternalURL(v string)    { m.SourceURL = v }
-func (m *Asset) DriveFileID() string        { return m.GetMetadataString("drive_file_id") }
-func (m *Asset) SetDriveFileID(v string)    { m.SetMetadataString("drive_file_id", v) }
-func (m *Asset) DriveLink() string          { return m.GetMetadataString("drive_link") }
-func (m *Asset) SetDriveLink(v string)      { m.SetMetadataString("drive_link", v) }
-func (m *Asset) DownloadLink() string       { return m.GetMetadataString("download_link") }
-func (m *Asset) SetDownloadLink(v string)   { m.SetMetadataString("download_link", v) }
-func (m *Asset) LocalPath() string          { return m.GetMetadataString("local_path") }
-func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", v) }
+func (m *Asset) ExternalURL() string      { return m.SourceURL }
+func (m *Asset) SetExternalURL(v string)  { m.SourceURL = v }
+func (m *Asset) DriveFileID() string      { return m.GetMetadataString("drive_file_id") }
+func (m *Asset) SetDriveFileID(v string)  { m.SetMetadataString("drive_file_id", v) }
+func (m *Asset) DriveLink() string        { return m.GetMetadataString("drive_link") }
+func (m *Asset) SetDriveLink(v string)    { m.SetMetadataString("drive_link", v) }
+func (m *Asset) DownloadLink() string     { return m.GetMetadataString("download_link") }
+func (m *Asset) SetDownloadLink(v string) { m.SetMetadataString("download_link", v) }
+func (m *Asset) LocalPath() string        { return m.GetMetadataString("local_path") }
+func (m *Asset) SetLocalPath(v string)    { m.SetMetadataString("local_path", v) }
+
 // LegacyFileMD5 returns the legacy file digest (stored under key "legacy_file_md5").
 //
 // Deprecated: MD5 is compatibility-only — it may hold an MD5 digest (from a
@@ -27,14 +28,14 @@ func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", 
 //	BinarySHA256()    → binary_sha256 projection of content_sha256
 //	DriveMD5()        → google_drive_md5 (Drive provider receipt only, NOT identity)
 //	LegacyFileMD5()   → legacy_file_md5 (compatibility-only, never identity)
-func (m *Asset) LegacyFileMD5() string           { return m.GetMetadataString("legacy_file_md5") }
-func (m *Asset) SetLegacyFileMD5(v string)       { m.SetMetadataString("legacy_file_md5", v) }
+func (m *Asset) LegacyFileMD5() string     { return m.GetMetadataString("legacy_file_md5") }
+func (m *Asset) SetLegacyFileMD5(v string) { m.SetMetadataString("legacy_file_md5", v) }
 
 // ContentHash returns the canonical content SHA-256 identity (key "content_hash"
 // and/or "content_sha256"). This is the primary byte-identity hash: two
 // logical assets with identical bytes share ONE content hash (CAS invariant).
-func (m *Asset) ContentHash() string        { return m.GetMetadataString("content_hash") }
-func (m *Asset) SetContentHash(v string)    { m.SetMetadataString("content_hash", v) }
+func (m *Asset) ContentHash() string     { return m.GetMetadataString("content_hash") }
+func (m *Asset) SetContentHash(v string) { m.SetMetadataString("content_hash", v) }
 
 // BinarySHA256 returns the binary SHA-256 projection of the content identity.
 // It reads the dedicated "binary_sha256" key first; if absent, it falls back

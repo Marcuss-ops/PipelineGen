@@ -37,12 +37,12 @@
 package staging
 
 import (
-	"crypto/sha256"
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"os"
 	"path/filepath"

@@ -137,7 +137,7 @@ type Version struct {
 	AssetID       string    `json:"asset_id"`
 	VersionNumber int       `json:"version_number"`
 	SourceURI     string    `json:"source_uri"`
-	LegacyFileMD5      string    `json:"legacy_file_md5"`
+	LegacyFileMD5 string    `json:"legacy_file_md5"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
 	MimeType      string    `json:"mime_type"`
 	MetadataJSON  string    `json:"metadata_json,omitempty"`
@@ -150,16 +150,16 @@ type Version struct {
 // rather than a stored entity — see processing_types.go for the persistent
 // ProcessingRecord shape.
 type AssetExecutionResult struct {
-	ID           string `json:"id,omitempty"`
-	Source       string `json:"source,omitempty"`     // e.g. "youtube", "artlist", "voiceover"
-	MediaType    string `json:"media_type,omitempty"` // e.g. "video", "audio", "image"
-	Filename     string `json:"filename,omitempty"`
-	LocalPath    string `json:"local_path,omitempty"`
-	DriveLink    string `json:"drive_link,omitempty"`
-	DownloadLink string `json:"download_link,omitempty"`
-	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
-	Status       string `json:"status,omitempty"` // e.g. "processed", "skipped_existing", "failed"
-	Error        string `json:"error,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Source        string `json:"source,omitempty"`     // e.g. "youtube", "artlist", "voiceover"
+	MediaType     string `json:"media_type,omitempty"` // e.g. "video", "audio", "image"
+	Filename      string `json:"filename,omitempty"`
+	LocalPath     string `json:"local_path,omitempty"`
+	DriveLink     string `json:"drive_link,omitempty"`
+	DownloadLink  string `json:"download_link,omitempty"`
+	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
+	Status        string `json:"status,omitempty"` // e.g. "processed", "skipped_existing", "failed"
+	Error         string `json:"error,omitempty"`
 }
 
 // Filter defines query parameters for listing assets.

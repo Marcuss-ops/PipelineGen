@@ -22,7 +22,12 @@ type fakeCommitter struct {
 }
 
 func (c *fakeCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
-	c.asset = &asset.Asset{ID: req.AssetID, Source: asset.Source(req.Source)}
+	c.asset = &asset.Asset{
+		ID:       req.AssetID,
+		Source:   asset.Source(req.Source),
+		Tags:     append([]string(nil), req.Metadata.Tags...),
+		Metadata: req.Metadata.ToMap(),
+	}
 	return persistence.CommitResult{}, c.err
 }
 func (c *fakeCommitter) CommitAsset(ctx context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {

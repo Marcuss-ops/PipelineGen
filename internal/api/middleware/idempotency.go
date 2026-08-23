@@ -39,9 +39,9 @@ package middleware
 import (
 	"bytes"
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"net/http"
 	"strings"

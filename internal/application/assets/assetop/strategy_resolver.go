@@ -10,9 +10,9 @@ import (
 // potentially expensive download starts. Callers populate it from the
 // canonical media_assets row for the same stable asset identity.
 type ExistingAssetEvidence struct {
-	DriveFileID string
-	DriveLink   string
-	LegacyFileMD5    string
+	DriveFileID   string
+	DriveLink     string
+	LegacyFileMD5 string
 }
 
 // ExistingAssetDecision is the canonical pre-download strategy verdict.

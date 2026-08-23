@@ -76,12 +76,12 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			// download_link metadata keys via the typed accessors. Keep the
 			// underscored keys as a compatibility fallback for older staged
 			// assets and test fixtures.
-			DownloadLink: defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
-			DriveLink:    defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
-			DriveFileID:  defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
-			LocalPath:    defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
-			LegacyFileMD5:     defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
-			Metadata:     cloneMetadata(clip.Metadata),
+			DownloadLink:  defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
+			DriveLink:     defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
+			DriveFileID:   defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
+			LocalPath:     defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
+			LegacyFileMD5: defaults.String(clip.LegacyFileMD5(), clip.GetMetadataString("_file_hash")),
+			Metadata:      cloneMetadata(clip.Metadata),
 		}
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
 		item.Name = defaults.String(item.Name, clip.Name)
@@ -89,9 +89,9 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 		if req.DryRun {
 			decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
-				DriveFileID: item.DriveFileID,
-				DriveLink:   item.DriveLink,
-				LegacyFileMD5:    item.LegacyFileMD5,
+				DriveFileID:   item.DriveFileID,
+				DriveLink:     item.DriveLink,
+				LegacyFileMD5: item.LegacyFileMD5,
 			})
 			item.Status = "dry_run"
 			if decision.Skip {
@@ -105,9 +105,9 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		}
 
 		decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
-			DriveFileID: item.DriveFileID,
-			DriveLink:   item.DriveLink,
-			LegacyFileMD5:    item.LegacyFileMD5,
+			DriveFileID:   item.DriveFileID,
+			DriveLink:     item.DriveLink,
+			LegacyFileMD5: item.LegacyFileMD5,
 		})
 		if decision.Skip {
 			item.Status = "skipped_existing"

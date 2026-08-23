@@ -399,11 +399,11 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 		// ── YouTube: persist via real adapter + verify envelope ───
 
 		ytClip := youtubetypes.ClipAsset{
-			ID:         ytReq.AssetID,
-			VideoID:    "vdC5GXxS-qU",
-			LocalPath:  ytReq.LocalPath,
-			FileHash:   ytReq.ContentHash,
-			SearchText: ytReq.SearchText,
+			ID:            ytReq.AssetID,
+			VideoID:       "vdC5GXxS-qU",
+			LocalPath:     ytReq.LocalPath,
+			LegacyFileMD5: ytReq.ContentHash,
+			SearchText:    ytReq.SearchText,
 			Drive: youtubetypes.ClipAssetDrive{
 				FolderID:    ytReq.FolderID,
 				FolderPath:  ytReq.FolderPath,

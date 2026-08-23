@@ -50,7 +50,7 @@ var (
 	errArtlistEmptyDriveFileID   = errors.New("artlist publish: drive_file_id is required (godlike/07 — no fake availability)")
 	errArtlistEmptyDriveLink     = errors.New("artlist publish: drive_link is required (godlike/07 — no fake availability)")
 	errArtlistEmptyDownloadLink  = errors.New("artlist publish: download_link is required (godlike/07 — no fake availability)")
-	errArtlistEmptyLegacyFileMD5      = errors.New("artlist publish: file_hash is required (godlike/07 — supersede gate requires a fingerprint)")
+	errArtlistEmptyLegacyFileMD5 = errors.New("artlist publish: file_hash is required (godlike/07 — supersede gate requires a fingerprint)")
 	errArtlistEmptySourceVersion = errors.New("artlist publish: source_version is required (godlike/07 — supersede gate requires a fingerprint)")
 )
 

@@ -174,25 +174,25 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 
 	now := time.Now().UTC()
 	rec := &assets.Record{
-		ID:           id,
-		RequestID:    "sync_" + time.Now().Format("20060102"),
-		TextHash:     file.ID, // Use drive file ID as hash for synced files
-		TextPreview:  file.Name,
-		Language:     language,
-		Voice:        "", // Unknown for synced files
-		Filename:     file.Name,
-		LocalPath:    "",
-		CleanedPath:  "",
-		FolderID:     folderID,
-		FolderPath:   filePath,
-		DriveFileID:  file.ID,
-		DriveLink:    link,
-		DownloadLink: "https://drive.google.com/uc?id=" + file.ID,
-		LegacyFileMD5:     "",
-		Status:       "processed",
-		Strategy:     "sync",
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:            id,
+		RequestID:     "sync_" + time.Now().Format("20060102"),
+		TextHash:      file.ID, // Use drive file ID as hash for synced files
+		TextPreview:   file.Name,
+		Language:      language,
+		Voice:         "", // Unknown for synced files
+		Filename:      file.Name,
+		LocalPath:     "",
+		CleanedPath:   "",
+		FolderID:      folderID,
+		FolderPath:    filePath,
+		DriveFileID:   file.ID,
+		DriveLink:     link,
+		DownloadLink:  "https://drive.google.com/uc?id=" + file.ID,
+		LegacyFileMD5: "",
+		Status:        "processed",
+		Strategy:      "sync",
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	if existing != nil {

@@ -50,7 +50,7 @@ func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5:      "gate01-hash-" + input.ID,
+		LegacyFileMD5: "gate01-hash-" + input.ID,
 		ContentHash:   "gate01-contenthash-" + input.ID,
 		DriveLink:     "https://drive.google.com/file/d/" + input.ID + "-drive/view",
 		DriveFileID:   input.ID + "-drive-id",

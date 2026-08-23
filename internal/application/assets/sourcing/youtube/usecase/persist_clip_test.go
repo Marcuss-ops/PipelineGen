@@ -48,7 +48,7 @@ func TestPersistClipAndEmitEvent_HappyPath(t *testing.T) {
 		Tags:            []string{"boxing", "training"},
 		DurationSec:     30,
 		LocalPath:       "/tmp/clip.mp4",
-		LegacyFileMD5:        "a1b2c3d4e5f6a7b8",
+		LegacyFileMD5:   "a1b2c3d4e5f6a7b8",
 		DriveLink:       "https://drive.google.com/file/d/xyz123/view",
 		DriveFileID:     "xyz123",
 		Summary:         "A boxing training video",
@@ -99,7 +99,7 @@ func TestPersistClipAndEmitEvent_NilPersister_SkipsUpsert(t *testing.T) {
 	emitter := &stubOutboxEmitter{}
 
 	cmd := PersistAndEmitCommand{
-		ClipID:   "yt_test_id",
+		ClipID:        "yt_test_id",
 		LegacyFileMD5: "feedface",
 	}
 
@@ -129,7 +129,7 @@ func TestPersistClipAndEmitEvent_NilEmitter_SkipsEvent(t *testing.T) {
 	persister := &stubClipPersister{clipID: "yt_persisted_id"}
 
 	cmd := PersistAndEmitCommand{
-		ClipID:   "yt_test_id",
+		ClipID:        "yt_test_id",
 		LegacyFileMD5: "cafebabe",
 	}
 
@@ -152,7 +152,7 @@ func TestPersistClipAndEmitEvent_NilEmitter_SkipsEvent(t *testing.T) {
 
 func TestPersistClipAndEmitEvent_BothNil_NoOp(t *testing.T) {
 	cmd := PersistAndEmitCommand{
-		ClipID:   "yt_fallback_id",
+		ClipID:        "yt_fallback_id",
 		LegacyFileMD5: "deadbeef",
 	}
 
@@ -179,7 +179,7 @@ func TestPersistClipAndEmitEvent_EmitterError_PartialSuccess(t *testing.T) {
 	emitter := &stubOutboxEmitter{err: sentinel}
 
 	cmd := PersistAndEmitCommand{
-		ClipID:   "yt_test_id",
+		ClipID:        "yt_test_id",
 		LegacyFileMD5: "cafef00d",
 	}
 
@@ -216,7 +216,7 @@ func TestPersistClipAndEmitEvent_PersisterError_Aborts(t *testing.T) {
 	emitter := &stubOutboxEmitter{}
 
 	cmd := PersistAndEmitCommand{
-		ClipID:   "yt_test_id",
+		ClipID:        "yt_test_id",
 		LegacyFileMD5: "baadf00d",
 	}
 

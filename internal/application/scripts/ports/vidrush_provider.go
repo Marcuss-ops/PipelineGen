@@ -29,12 +29,12 @@ type VidRushSearchRequest struct {
 // LocalArtifact is the provider-to-verifier handoff. Providers may resolve a
 // stream URL and download into LocalPath, but they do not write media_assets.
 type LocalArtifact struct {
-	Candidate scriptpkg.SegmentAssetCandidate
-	LocalPath string
-	MIMEType  string
-	SizeBytes int64
-	LegacyFileMD5  string
-	Manifest  *job.ArtifactManifest
+	Candidate     scriptpkg.SegmentAssetCandidate
+	LocalPath     string
+	MIMEType      string
+	SizeBytes     int64
+	LegacyFileMD5 string
+	Manifest      *job.ArtifactManifest
 }
 
 // VerifiedArtifact is the only artifact shape accepted by the common
@@ -44,7 +44,7 @@ type VerifiedArtifact struct {
 	LocalPath        string
 	MIMEType         string
 	SizeBytes        int64
-	LegacyFileMD5         string
+	LegacyFileMD5    string
 	DurationMs       int64
 	Width            int
 	Height           int

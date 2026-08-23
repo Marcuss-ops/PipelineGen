@@ -11,10 +11,10 @@ type SourceResolutionContext struct {
 	Model    string `json:"model,omitempty"`
 	Style    string `json:"style,omitempty"`
 
-	TargetWords   int             `json:"target_words,omitempty"`
-	NumClips      int             `json:"num_clips,omitempty"`
-	SegmentWords  int             `json:"segment_words,omitempty"`
-	Segments      []ScriptSegment `json:"segments,omitempty"`
+	TargetWords  int             `json:"target_words,omitempty"`
+	NumClips     int             `json:"num_clips,omitempty"`
+	SegmentWords int             `json:"segment_words,omitempty"`
+	Segments     []ScriptSegment `json:"segments,omitempty"`
 
 	RequireDriveLink bool `json:"-"`
 	// RequireLocalMedia is true only for execution paths that will render

@@ -16,12 +16,12 @@ package cliprender
 // materializer. It carries only the fields materialization needs — never a
 // raw caller-supplied path (asset_id is the only identity the API accepts).
 type AssetRef struct {
-	AssetID     string
-	MediaType   string
-	LocalPath   string // registered local copy (may be absent)
-	DriveFileID string // canonical Drive source (may be absent)
-	LegacyFileMD5    string // registry-persisted hash (may be absent)
-	DurationMS  int64
+	AssetID       string
+	MediaType     string
+	LocalPath     string // registered local copy (may be absent)
+	DriveFileID   string // canonical Drive source (may be absent)
+	LegacyFileMD5 string // registry-persisted hash (may be absent)
+	DurationMS    int64
 }
 
 // MaterializedAsset is a local, content-addressed artifact ready for the
@@ -93,37 +93,37 @@ func (t *TranscriptResult) HasText() bool {
 // (aac, LC, 48000 Hz, 2 channels, stereo, 128k). If that SSOT changes, the
 // Resolve implementation and ValidateContract must be updated together.
 type ResolvedContract struct {
-	ContractID        string
-	Container         string
-	VideoCodec        string
-	VideoProfile      string
-	VideoLevel        string
-	PixelFormat       string
-	Width             int
-	Height            int
-	FPSNum            int
-	FPSDen            int
-	VideoTimeBaseNum  int
-	VideoTimeBaseDen  int
-	AudioTimeBaseNum  int
-	AudioTimeBaseDen  int
-	SARNum            int
-	SARDen            int
-	ColorRange        string
-	ColorSpace        string
-	ColorTransfer     string
-	ColorPrimaries    string
-	FieldOrder        string
-	KeyframeInterval  int
-	AudioCodec        string
+	ContractID         string
+	Container          string
+	VideoCodec         string
+	VideoProfile       string
+	VideoLevel         string
+	PixelFormat        string
+	Width              int
+	Height             int
+	FPSNum             int
+	FPSDen             int
+	VideoTimeBaseNum   int
+	VideoTimeBaseDen   int
+	AudioTimeBaseNum   int
+	AudioTimeBaseDen   int
+	SARNum             int
+	SARDen             int
+	ColorRange         string
+	ColorSpace         string
+	ColorTransfer      string
+	ColorPrimaries     string
+	FieldOrder         string
+	KeyframeInterval   int
+	AudioCodec         string
 	AudioProfile       string
-	SampleRate        int
-	Channels          int
+	SampleRate         int
+	Channels           int
 	AudioChannelLayout string
 	AudioBitrate       string
-	VideoStreams      int
-	AudioStreams      int
-	StartPTS          int64
+	VideoStreams       int
+	AudioStreams       int
+	StartPTS           int64
 }
 
 // PhaseTiming records one preparation phase. WorkMS is the phase's own

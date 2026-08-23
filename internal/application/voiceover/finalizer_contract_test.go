@@ -45,17 +45,17 @@ func TestFinalize_DedupeGate_ReuseToOne(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 
 	res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-		ID:          "vo-new-001",
-		RequestID:   "req-1",
-		TextHash:    "hash",
-		Text:        "hello",
-		Language:    "en",
-		Voice:       "en_female",
-		Filename:    "test.mp3",
-		LocalPath:   "/tmp/test.mp3",
-		DriveFileID: "drive-1",
-		LegacyFileMD5:    "abc123",
-		FolderID:    "folder-1",
+		ID:            "vo-new-001",
+		RequestID:     "req-1",
+		TextHash:      "hash",
+		Text:          "hello",
+		Language:      "en",
+		Voice:         "en_female",
+		Filename:      "test.mp3",
+		LocalPath:     "/tmp/test.mp3",
+		DriveFileID:   "drive-1",
+		LegacyFileMD5: "abc123",
+		FolderID:      "folder-1",
 	})
 
 	require.NoError(t, err)
@@ -92,10 +92,10 @@ func TestFinalize_DedupeGate_AmbiguousToOne(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 
 	res, err := f.Finalize(context.Background(), tx, &FinalizeCommand{
-		ID:          "vo-amb-001",
-		DriveFileID: "drive-amb",
-		LegacyFileMD5:    "hash",
-		FolderID:    "folder-1",
+		ID:            "vo-amb-001",
+		DriveFileID:   "drive-amb",
+		LegacyFileMD5: "hash",
+		FolderID:      "folder-1",
 	})
 
 	require.Error(t, err, "FASE 2 dedupe gate: count>1 MUST return error")
@@ -140,7 +140,7 @@ func TestFinalize_DedupeGate_Continue(t *testing.T) {
 		LocalPath:      "/tmp/test.mp3",
 		DriveFileID:    "drive-1",
 		DriveLink:      "https://drive.google.com/file/d/drive-1/view",
-		LegacyFileMD5:       "abc123",
+		LegacyFileMD5:  "abc123",
 		FolderID:       "folder-1",
 		FolderPath:     "/tmp/vo",
 		ShouldSwap:     true,
@@ -198,7 +198,7 @@ func TestFinalize_IdempotencyGate_ReuseShortCircuitsAllSteps(t *testing.T) {
 		ID:             "vo-new-idem-001",
 		IdempotencyKey: "sha256:job-1:en:hash-abc",
 		DriveFileID:    "drive-1",
-		LegacyFileMD5:       "abc123",
+		LegacyFileMD5:  "abc123",
 		FolderID:       "folder-1",
 	})
 
@@ -243,18 +243,18 @@ func TestFinalize_MediaAssetsProjection_VerifiedInputShape(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 
 	cmd := &FinalizeCommand{
-		ID:           "vo-proj-001",
-		Text:         "This is a test voiceover for the projection contract.",
-		Filename:     "projection-test.mp3",
-		FolderID:     "folder-proj-001",
-		FolderPath:   "/tmp/vo/proj",
-		LocalPath:    "/tmp/vo/proj/output.mp3",
-		DriveFileID:  "drive-proj-001",
-		DriveLink:    "https://drive.google.com/file/d/drive-proj-001/view",
-		DownloadLink: "https://drive.google.com/uc?id=drive-proj-001",
-		LegacyFileMD5:     "sha256-proj-hash-001",
-		Language:     "it-IT",
-		MetaJSON:     []byte(`{"style_group":"cinematic"}`),
+		ID:            "vo-proj-001",
+		Text:          "This is a test voiceover for the projection contract.",
+		Filename:      "projection-test.mp3",
+		FolderID:      "folder-proj-001",
+		FolderPath:    "/tmp/vo/proj",
+		LocalPath:     "/tmp/vo/proj/output.mp3",
+		DriveFileID:   "drive-proj-001",
+		DriveLink:     "https://drive.google.com/file/d/drive-proj-001/view",
+		DownloadLink:  "https://drive.google.com/uc?id=drive-proj-001",
+		LegacyFileMD5: "sha256-proj-hash-001",
+		Language:      "it-IT",
+		MetaJSON:      []byte(`{"style_group":"cinematic"}`),
 	}
 
 	res, err := f.Finalize(context.Background(), tx, cmd)
@@ -317,7 +317,7 @@ func TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads(t *testing.T) {
 
 	cmd := &FinalizeCommand{
 		ID:             "vo-outbox-001",
-		LegacyFileMD5:       "abc123hash",
+		LegacyFileMD5:  "abc123hash",
 		DriveFileID:    "new-drive-id",
 		ShouldSwap:     true,
 		OldDriveFileID: "old-drive-id",
@@ -375,7 +375,7 @@ func TestFinalize_IndexOutbox_GuardedEmptyFileHash(t *testing.T) {
 
 	cmd := &FinalizeCommand{
 		ID:             "vo-empty-hash-001",
-		LegacyFileMD5:       "", // empty → Step 5 guard-skipped
+		LegacyFileMD5:  "", // empty → Step 5 guard-skipped
 		DriveFileID:    "drive-empty-hash",
 		ShouldSwap:     true,
 		OldDriveFileID: "old-drive-empty",

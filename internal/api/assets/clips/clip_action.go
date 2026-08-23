@@ -148,12 +148,12 @@ func (h *ActionHandler) ReuploadClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":          result.OK,
-		"source":      result.Source,
-		"clip_id":     result.ClipID,
-		"drive_link":  result.DriveLink,
-		"legacy_file_md5":   result.LegacyFileMD5,
-		"uploaded_at": result.UploadedAt,
+		"ok":              result.OK,
+		"source":          result.Source,
+		"clip_id":         result.ClipID,
+		"drive_link":      result.DriveLink,
+		"legacy_file_md5": result.LegacyFileMD5,
+		"uploaded_at":     result.UploadedAt,
 	})
 }
 

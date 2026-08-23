@@ -12,6 +12,7 @@ CREATE TABLE media_assets (
     id TEXT PRIMARY KEY,
     media_type TEXT NOT NULL DEFAULT '',
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     content_sha256 TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE media_asset_sources (
@@ -158,17 +159,17 @@ func TestBackfillContentLinks_Idempotent(t *testing.T) {
 const contentSHA256BackfillSchema = `
 CREATE TABLE media_assets (
     id TEXT PRIMARY KEY,
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     binary_sha256 TEXT NOT NULL DEFAULT '',
     content_sha256 TEXT NOT NULL DEFAULT ''
 );
 `
 
 // TestBackfillContentSHA256_64HexGuard pins the byte-identity reconstruction
-// contract: content_sha256 is copied from file_hash ONLY when file_hash is a
-// valid 64-hex SHA-256. A 32-char MD5 (clip_atomic_writer's empty-file
-// fallback) and a 64-char non-hex value are skipped and left UNKNOWN, and an
-// already-populated content_sha256 is never overwritten.
+// contract: content_sha256 is copied from legacy_file_md5 ONLY when
+// legacy_file_md5 is a valid 64-hex SHA-256. A 32-char MD5
+// (clip_atomic_writer's empty-file fallback) and a 64-char non-hex value are
+// skipped and left UNKNOWN, and an already-populated content_sha256 is never overwritten.
 func TestBackfillContentSHA256_64HexGuard(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -191,7 +192,7 @@ func TestBackfillContentSHA256_64HexGuard(t *testing.T) {
 	nonhex := strings.Repeat("z", 64)    // 64 chars but not hex
 
 	if _, err := db.Exec(`
-		INSERT INTO media_assets (id, file_hash, binary_sha256, content_sha256) VALUES
+		INSERT INTO media_assets (id, legacy_file_md5, binary_sha256, content_sha256) VALUES
 			('asset-sha',      ?, '', ''),
 			('asset-md5',      ?, '', ''),
 			('asset-nonhex',   ?, '', ''),

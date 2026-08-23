@@ -17,9 +17,9 @@ import (
 func TestCoverageRatio(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name   string
-		p      ProjectionParity
-		want   float64
+		name string
+		p    ProjectionParity
+		want float64
 	}{
 		{
 			name: "full coverage 527/527",

@@ -169,7 +169,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		"drive_file_id":   res.DriveFileID,
 		"drive_folder_id": res.DriveFolderID,
 		"drive_path":      res.DrivePath,
-		"legacy_file_md5":       res.LegacyFileMD5,
+		"legacy_file_md5": res.LegacyFileMD5,
 		"source":          res.Source,
 		"location": gin.H{
 			"category": res.Category,

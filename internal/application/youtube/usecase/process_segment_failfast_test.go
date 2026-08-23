@@ -41,10 +41,14 @@ func (stubVideoPipeline) DownloadAndCutYouTubeVideo(_ context.Context, _ youtube
 // stubHashService satisfies HashServicePort (four methods: SHA256 + MD5).
 type stubHashService struct{}
 
-func (stubHashService) SHA256File(_ string) (string, error) { return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil }
-func (stubHashService) SHA256String(_ string) string        { return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
-func (stubHashService) MD5String(_ string) string           { return "" }
-func (stubHashService) MD5File(_ string) (string, error)    { return "", nil }
+func (stubHashService) SHA256File(_ string) (string, error) {
+	return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil
+}
+func (stubHashService) SHA256String(_ string) string {
+	return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+func (stubHashService) MD5String(_ string) string        { return "" }
+func (stubHashService) MD5File(_ string) (string, error) { return "", nil }
 
 // stubAtomicWriter satisfies ClipAtomicWriter (single method). Returns
 // nil unconditionally; tests only exercise ctor panic shape, not

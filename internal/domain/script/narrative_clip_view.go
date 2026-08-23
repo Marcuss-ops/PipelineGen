@@ -59,15 +59,15 @@ var AllowedNarrativeClipViewJSONFields = []string{
 // be added here, not to the allow-list, before a regression seal
 // can be lifted.
 var ForbiddenNarrativeClipViewJSONFields = []string{
-	"clip_id",      // canonical media_assets.id fragment
-	"asset_id",     // exact same id under a different label
-	"drive_link",   // Google Drive URL — internal locator
-	"legacy_file_md5",    // content_hash / source_version locator
-	"local_path",   // filesystem-absolute path — internal locator
-	"source_url",   // origin URL (YouTube / Pexels / etc.)
-	"speaker",      // diarization label — speaker identity leak
-	"commentator",  // play-by-play identity leak
-	"raw_metadata", // opaque metadata blob — source-side state
+	"clip_id",         // canonical media_assets.id fragment
+	"asset_id",        // exact same id under a different label
+	"drive_link",      // Google Drive URL — internal locator
+	"legacy_file_md5", // content_hash / source_version locator
+	"local_path",      // filesystem-absolute path — internal locator
+	"source_url",      // origin URL (YouTube / Pexels / etc.)
+	"speaker",         // diarization label — speaker identity leak
+	"commentator",     // play-by-play identity leak
+	"raw_metadata",    // opaque metadata blob — source-side state
 }
 
 // Typed validation errors. Each is exposed as a sentinel so callers

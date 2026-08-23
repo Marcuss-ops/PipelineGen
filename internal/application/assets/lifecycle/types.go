@@ -52,11 +52,11 @@ type FinalizeInput struct {
 	FolderID   string
 	FolderPath string
 
-	DriveLink    string
-	DriveFileID  string
-	DownloadLink string
-	LegacyFileMD5     string
-	Metadata     string
+	DriveLink     string
+	DriveFileID   string
+	DownloadLink  string
+	LegacyFileMD5 string
+	Metadata      string
 
 	Duration     int
 	RequireLocal bool
@@ -69,7 +69,7 @@ type FinalizeResult struct {
 	OK             bool
 	Status         string
 	DeliveryStatus asset.AssetPublishStatus
-	LegacyFileMD5       string
+	LegacyFileMD5  string
 	ContentHash    string
 	DriveLink      string
 	DriveFileID    string
@@ -109,21 +109,21 @@ type UploadOnlyResult struct {
 // two structs are deliberately separate so a schema evolution to one
 // table does NOT drift the other.
 type VoiceoverProjectionInput struct {
-	ID           string // primary key (shared with voiceovers.id)
-	Source       string // always "voiceover" — caller sets it
-	Name         string // = text_preview (≤100 chars)
-	Filename     string // canonical file name (e.g. vo_en_*.mp3)
-	FolderID     string
-	FolderPath   string
-	MediaType    string // "audio"
-	LocalPath    string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	LegacyFileMD5     string
-	Language     string
-	Status       string // "completed" on happy path
-	Metadata     string // JSON envelope (mirrors voiceovers.metadata)
+	ID            string // primary key (shared with voiceovers.id)
+	Source        string // always "voiceover" — caller sets it
+	Name          string // = text_preview (≤100 chars)
+	Filename      string // canonical file name (e.g. vo_en_*.mp3)
+	FolderID      string
+	FolderPath    string
+	MediaType     string // "audio"
+	LocalPath     string
+	DriveFileID   string
+	DriveLink     string
+	DownloadLink  string
+	LegacyFileMD5 string
+	Language      string
+	Status        string // "completed" on happy path
+	Metadata      string // JSON envelope (mirrors voiceovers.metadata)
 }
 
 // Use assetop types for compatibility

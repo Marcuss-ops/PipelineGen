@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strings"
 
-	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
+	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 )
 
 // CanonicalYouTubeURL normalizes a YouTube URL to the standard watch format.

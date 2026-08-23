@@ -6,20 +6,23 @@
 // for the projection that is LIVE right now:
 //
 //  1. Resolve the runtime alias target (the active collection).
+//
 //  2. Load the canonical eligible asset IDs from SQLite. The loader is
 //     SQLiteAssetStore.ListAllAssetIDs, whose WHERE clause is the
 //     SearchIndexEligibilitySQL SSOT — the exact same boundary the
 //     Qdrant projection (indexing.IndexWriter / asset_store) uses.
+//
 //  3. Scroll EVERY point in the active collection and collect the
 //     payload asset_ids.
+//
 //  4. Compute the set parity (plan item #8 — "Il verifier deve
 //     confrontare il set GIUSTO"):
 //
-//	eligible_sqlite   = |SQLiteEligibleAssetIDs|
-//	qdrant_points     = |QdrantActiveAssetIDs|
-//	missing_in_qdrant = eligible but absent in Qdrant (projection bug)
-//	orphan_in_qdrant  = in Qdrant but absent/ineligible in SQLite
-//	                    (stale projection)
+//     eligible_sqlite   = |SQLiteEligibleAssetIDs|
+//     qdrant_points     = |QdrantActiveAssetIDs|
+//     missing_in_qdrant = eligible but absent in Qdrant (projection bug)
+//     orphan_in_qdrant  = in Qdrant but absent/ineligible in SQLite
+//     (stale projection)
 //
 // PASS (report.Passed) requires ALL of:
 //

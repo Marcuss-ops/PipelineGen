@@ -25,9 +25,9 @@ package channels
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

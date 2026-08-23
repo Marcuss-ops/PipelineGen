@@ -148,17 +148,17 @@ func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) (s
 // from run-record EvaluateRunState (per-status verdict rule). Adding a
 // new value MUST land in BOTH places in the SAME PR to avoid drift.
 type RunTagItem struct {
-	ClipID       string `json:"clip_id"`
-	Name         string `json:"name"`
-	Filename     string `json:"filename"`
-	Status       string `json:"status"`
-	DownloadURL  string `json:"download_url,omitempty"`
-	DriveLink    string `json:"drive_link,omitempty"`
-	DriveFileID  string `json:"drive_file_id"`
-	DownloadLink string `json:"download_link,omitempty"`
-	LocalPath    string `json:"local_path,omitempty"`
-	LegacyFileMD5     string `json:"legacy_file_md5,omitempty"`
-	Error        string `json:"error,omitempty"`
+	ClipID        string `json:"clip_id"`
+	Name          string `json:"name"`
+	Filename      string `json:"filename"`
+	Status        string `json:"status"`
+	DownloadURL   string `json:"download_url,omitempty"`
+	DriveLink     string `json:"drive_link,omitempty"`
+	DriveFileID   string `json:"drive_file_id"`
+	DownloadLink  string `json:"download_link,omitempty"`
+	LocalPath     string `json:"local_path,omitempty"`
+	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
+	Error         string `json:"error,omitempty"`
 	// Metadata carries provider provenance through processing into the
 	// canonical finalizer payload.
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -349,26 +349,26 @@ type ImportClipRequest struct {
 
 // ImportClipResponse is the result of a single-clip import.
 type ImportClipResponse struct {
-	OK           bool           `json:"ok"`
-	ClipID       string         `json:"clip_id,omitempty"`
-	Name         string         `json:"name,omitempty"`
-	Description  string         `json:"description,omitempty"`
-	Status       string         `json:"status,omitempty"`
-	DriveLink    string         `json:"drive_link,omitempty"`
-	DriveFileID  string         `json:"drive_file_id,omitempty"`
-	LocalPath    string         `json:"local_path,omitempty"`
-	LegacyFileMD5     string         `json:"legacy_file_md5,omitempty"`
-	DownloadLink string         `json:"download_link,omitempty"`
-	ClipPageURL  string         `json:"clip_page_url,omitempty"`
-	ThumbnailURL string         `json:"thumbnail_url,omitempty"`
-	PreviewURL   string         `json:"preview_url,omitempty"`
-	Tags         []string       `json:"tags,omitempty"`
-	Categories   []string       `json:"categories,omitempty"`
-	Creator      string         `json:"creator,omitempty"`
-	Country      string         `json:"country,omitempty"`
-	Location     string         `json:"location,omitempty"`
-	Error        string         `json:"error,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
+	OK            bool           `json:"ok"`
+	ClipID        string         `json:"clip_id,omitempty"`
+	Name          string         `json:"name,omitempty"`
+	Description   string         `json:"description,omitempty"`
+	Status        string         `json:"status,omitempty"`
+	DriveLink     string         `json:"drive_link,omitempty"`
+	DriveFileID   string         `json:"drive_file_id,omitempty"`
+	LocalPath     string         `json:"local_path,omitempty"`
+	LegacyFileMD5 string         `json:"legacy_file_md5,omitempty"`
+	DownloadLink  string         `json:"download_link,omitempty"`
+	ClipPageURL   string         `json:"clip_page_url,omitempty"`
+	ThumbnailURL  string         `json:"thumbnail_url,omitempty"`
+	PreviewURL    string         `json:"preview_url,omitempty"`
+	Tags          []string       `json:"tags,omitempty"`
+	Categories    []string       `json:"categories,omitempty"`
+	Creator       string         `json:"creator,omitempty"`
+	Country       string         `json:"country,omitempty"`
+	Location      string         `json:"location,omitempty"`
+	Error         string         `json:"error,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // SearchResponse represents a search response with canonical asset types.

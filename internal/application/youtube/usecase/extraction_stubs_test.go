@@ -29,10 +29,14 @@ func (testStubClipCache) GetExisting(_ context.Context, _ string) (*youtubetypes
 // testStubHash satisfies youtubeports.HashServicePort as a no-op.
 type testStubHash struct{}
 
-func (testStubHash) SHA256File(_ string) (string, error) { return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil }
-func (testStubHash) SHA256String(_ string) string        { return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
-func (testStubHash) MD5String(_ string) string           { return "" }
-func (testStubHash) MD5File(_ string) (string, error)    { return "stubhash", nil }
+func (testStubHash) SHA256File(_ string) (string, error) {
+	return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil
+}
+func (testStubHash) SHA256String(_ string) string {
+	return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+func (testStubHash) MD5String(_ string) string        { return "" }
+func (testStubHash) MD5File(_ string) (string, error) { return "stubhash", nil }
 
 // testStubClipAtomicWriter satisfies youtubeports.ClipAtomicWriter
 // as a no-op (CommitClipAndIndexEvent returns nil always).

@@ -392,11 +392,11 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessIn
 	}
 
 	return &asset.ProcessResult{
-		ID:        input.ID,
-		Filename:  input.Name + ".mp4",
-		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
-		LegacyFileMD5:  "hash-test",
-		Status:    "processed",
+		ID:            input.ID,
+		Filename:      input.Name + ".mp4",
+		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
+		LegacyFileMD5: "hash-test",
+		Status:        "processed",
 	}, nil
 }
 

@@ -35,7 +35,7 @@ func TestPersistClipAndIndex_HappyPath(t *testing.T) {
 		Tags:            []string{"boxing", "training"},
 		DurationSec:     30,
 		LocalPath:       "/tmp/clip.mp4",
-		LegacyFileMD5:        "a1b2c3d4e5f6a7b8",
+		LegacyFileMD5:   "a1b2c3d4e5f6a7b8",
 		DriveLink:       "https://drive.google.com/file/d/xyz123/view",
 		DriveFileID:     "xyz123",
 		Summary:         "A boxing training video",

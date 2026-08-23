@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-
 func writeFakeSolarScraper(t *testing.T) string {
 	t.Helper()
 	scraperDir := filepath.Join(t.TempDir(), "node-scraper")

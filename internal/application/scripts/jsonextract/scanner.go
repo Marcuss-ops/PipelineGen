@@ -70,8 +70,6 @@ func (m Mode) String() string {
 	}
 }
 
-
-
 // ── Scanner ─────────────────────────────────────────────────────────
 
 // Scanner decodes raw LLM output bytes into a typed

@@ -22,7 +22,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
@@ -257,7 +256,7 @@ const assetColumns = `
 	id, name, source, media_type, lifecycle_state,
 	COALESCE(drive_link, '') AS drive_link,
 	COALESCE(local_path, '') AS local_path,
-	COALESCE(file_hash, '') AS file_hash,
+	COALESCE(legacy_file_md5, '') AS file_hash,
 	COALESCE(json_extract(metadata_json, '$.youtube_video_id'), '') AS youtube_video_id,
 	COALESCE(json_extract(metadata_json, '$.youtube_url'), '')     AS youtube_url,
 	COALESCE(json_extract(metadata_json, '$.start_time'), '')     AS start_time,
@@ -421,8 +420,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL DEFAULT '',
-    tags TEXT NOT NULL DEFAULT '[]',
-    tags_norm TEXT NOT NULL DEFAULT '',
     embedding_json TEXT NOT NULL DEFAULT '[]',
     duration_ms INTEGER NOT NULL DEFAULT 0,
     url TEXT NOT NULL DEFAULT '',
@@ -438,7 +435,9 @@ CREATE TABLE IF NOT EXISTS media_assets (
     drive_file_id TEXT,
     drive_link TEXT,
     download_link TEXT,
-    legacy_file_md5 TEXT,
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
+    file_hash TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
     audio_embedding TEXT NOT NULL DEFAULT '[]',
     language TEXT NOT NULL DEFAULT '',
     width INTEGER NOT NULL DEFAULT 0,
@@ -449,6 +448,23 @@ CREATE TABLE IF NOT EXISTS media_assets (
     parent_folder_id TEXT NOT NULL DEFAULT '',
     folder_path TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    namespace TEXT NOT NULL DEFAULT '',
+    asset_kind TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    semantic_role TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    tags_norm TEXT NOT NULL DEFAULT '',
     filename TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     thumb_url TEXT NOT NULL DEFAULT '',
@@ -475,6 +491,48 @@ CREATE TABLE IF NOT EXISTS media_assets (
     index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
     index_state_updated_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS asset_text_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id TEXT NOT NULL,
+    language_code TEXT NOT NULL,
+    text_kind TEXT NOT NULL,
+    text_content TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT 'provided',
+    source_language_code TEXT NOT NULL DEFAULT '',
+    is_original INTEGER NOT NULL DEFAULT 0,
+    provider TEXT NOT NULL DEFAULT '',
+    model_name TEXT NOT NULL DEFAULT '',
+    model_version TEXT NOT NULL DEFAULT '',
+    prompt_version TEXT NOT NULL DEFAULT '',
+    text_hash TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    translation_key TEXT NOT NULL DEFAULT '',
+    is_current INTEGER NOT NULL DEFAULT 1,
+    source_track_id INTEGER,
+    source_text_hash TEXT NOT NULL DEFAULT '',
+    confidence REAL,
+    status TEXT NOT NULL DEFAULT 'READY',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_text_tracks_current
+    ON asset_text_tracks(asset_id, language_code, text_kind)
+    WHERE is_current = 1;
+CREATE INDEX IF NOT EXISTS idx_asset_text_tracks_asset ON asset_text_tracks(asset_id);
+CREATE TABLE IF NOT EXISTS asset_text_track_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL,
+    sequence_no INTEGER NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    text_hash TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (track_id) REFERENCES asset_text_tracks(id) ON DELETE CASCADE,
+    UNIQUE(track_id, sequence_no)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_text_track_segments_track
+    ON asset_text_track_segments(track_id, sequence_no);
 CREATE TABLE IF NOT EXISTS asset_locations (
     id TEXT PRIMARY KEY,
     asset_id TEXT NOT NULL,
@@ -485,7 +543,7 @@ CREATE TABLE IF NOT EXISTS asset_locations (
     download_url TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
-    file_hash TEXT NOT NULL DEFAULT '',
+    legacy_file_md5 TEXT NOT NULL DEFAULT '',
     is_primary INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -622,10 +680,10 @@ func newE2EFixture(t *testing.T, collection string) *e2eFixture {
 func commitYouTubeClip(t *testing.T, fx *e2eFixture, assetID, summary, youTubeVideoID string) error {
 	t.Helper()
 	clip := youtubetypes.ClipAsset{
-		ID:        assetID,
-		VideoID:   youTubeVideoID,
-		FileHash:  testSourceVersionFor(assetID),
-		LocalPath: "/tmp/" + assetID + ".mp4",
+		ID:            assetID,
+		VideoID:       youTubeVideoID,
+		LegacyFileMD5: testSourceVersionFor(assetID),
+		LocalPath:     "/tmp/" + assetID + ".mp4",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder-e2e",
 			FolderPath:  "youtube/e2e",

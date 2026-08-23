@@ -347,7 +347,7 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 		ID:            "yt_abc_10_60_v1",
 		VideoID:       "abc",
 		LocalPath:     "/tmp/yt_abc_10_60_v1.mp4",
-		LegacyFileMD5:      "abc123",
+		LegacyFileMD5: "abc123",
 		PolicyVersion: "v1",
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    "folder_x",

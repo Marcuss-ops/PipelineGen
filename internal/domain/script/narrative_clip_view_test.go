@@ -176,15 +176,15 @@ func TestNarrativeClipView_JSONMarshallingStripsForbidden(t *testing.T) {
 	t.Parallel()
 
 	forbiddenSentinels := map[string]string{
-		"clip_id":      "FORBIDDEN_KEY_clip_id_string_in_transcript",
-		"asset_id":     "FORBIDDEN_KEY_asset_id_string_in_transcript",
-		"drive_link":   "FORBIDDEN_KEY_drive_link_string_in_transcript",
-		"legacy_file_md5":    "FORBIDDEN_KEY_file_hash_string_in_transcript",
-		"local_path":   "FORBIDDEN_KEY_local_path_string_in_transcript",
-		"source_url":   "FORBIDDEN_KEY_source_url_string_in_transcript",
-		"speaker":      "FORBIDDEN_KEY_speaker_string_in_transcript",
-		"commentator":  "FORBIDDEN_KEY_commentator_string_in_transcript",
-		"raw_metadata": "FORBIDDEN_KEY_raw_metadata_string_in_transcript",
+		"clip_id":         "FORBIDDEN_KEY_clip_id_string_in_transcript",
+		"asset_id":        "FORBIDDEN_KEY_asset_id_string_in_transcript",
+		"drive_link":      "FORBIDDEN_KEY_drive_link_string_in_transcript",
+		"legacy_file_md5": "FORBIDDEN_KEY_file_hash_string_in_transcript",
+		"local_path":      "FORBIDDEN_KEY_local_path_string_in_transcript",
+		"source_url":      "FORBIDDEN_KEY_source_url_string_in_transcript",
+		"speaker":         "FORBIDDEN_KEY_speaker_string_in_transcript",
+		"commentator":     "FORBIDDEN_KEY_commentator_string_in_transcript",
+		"raw_metadata":    "FORBIDDEN_KEY_raw_metadata_string_in_transcript",
 	}
 
 	for _, forbiddenKey := range scriptpkg.ForbiddenNarrativeClipViewJSONFields {

@@ -169,18 +169,18 @@ func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finali
 
 	for _, r := range item.Renditions {
 		artifact.Renditions = append(artifact.Renditions, finalization.AssetRenditionLocation{
-			Kind:      string(r.Kind),
-			Provider:  "local",
-			URI:       r.LocalPath,
-			MimeType:  r.MimeType,
-			SizeBytes: r.SizeBytes,
-			LegacyFileMD5:  r.LegacyFileMD5,
-			Width:     r.Width,
-			Height:    r.Height,
-			FPS:       r.FPS,
-			Bitrate:   r.Bitrate,
-			Container: r.Container,
-			Codec:     r.Codec,
+			Kind:          string(r.Kind),
+			Provider:      "local",
+			URI:           r.LocalPath,
+			MimeType:      r.MimeType,
+			SizeBytes:     r.SizeBytes,
+			LegacyFileMD5: r.LegacyFileMD5,
+			Width:         r.Width,
+			Height:        r.Height,
+			FPS:           r.FPS,
+			Bitrate:       r.Bitrate,
+			Container:     r.Container,
+			Codec:         r.Codec,
 		})
 	}
 

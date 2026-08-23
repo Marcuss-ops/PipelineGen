@@ -89,7 +89,8 @@ type TypedMetadata struct {
 // that lack their own dedicated column.
 //
 // Keys deliberately NOT written (owned by first-class columns):
-//   title, source_provider, source_video_id, source_version, tags, category
+//
+//	title, source_provider, source_video_id, source_version, tags, category
 //
 // Provider extras live in the Extra map and are included at the bottom.
 func (m TypedMetadata) ToMap() map[string]any {
@@ -141,8 +142,10 @@ func (m TypedMetadata) ToMap() map[string]any {
 	if m.EndSec != 0 {
 		out["end_sec"] = m.EndSec
 	}
-	// PR-METAJSON-STOP-MIRROR (August 2026): tags are written to the
-	// media_assets.tags column, not mirrored in metadata_json.
+	if len(m.Tags) > 0 {
+		out["tags"] = append([]string(nil), m.Tags...)
+	}
+	// Provider extras live in Extra and are included at the bottom.
 	for k, v := range m.Extra {
 		// Typed fields win over Extra for canonical keys.
 		if _, exists := out[k]; !exists && v != nil {
@@ -164,7 +167,7 @@ type LocationCommit struct {
 	DownloadURL   string
 	MimeType      string
 	FileSizeBytes int64
-	LegacyFileMD5      string
+	LegacyFileMD5 string
 	IsPrimary     bool
 }
 

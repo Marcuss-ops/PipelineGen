@@ -22,13 +22,7 @@ import (
 func openProjectionTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db := openTestDB(t)
-	_, err := db.Exec(`ALTER TABLE media_assets ADD COLUMN asset_kind TEXT`)
-	require.NoError(t, err)
-	_, err = db.Exec(`ALTER TABLE media_assets ADD COLUMN namespace TEXT`)
-	require.NoError(t, err)
-	_, err = db.Exec(`ALTER TABLE media_assets ADD COLUMN source_type TEXT`)
-	require.NoError(t, err)
-	_, err = db.Exec(`ALTER TABLE media_assets ADD COLUMN deleted_at TEXT`)
+	_, err := db.Exec(`ALTER TABLE media_assets ADD COLUMN deleted_at TEXT`)
 	require.NoError(t, err)
 	return db
 }

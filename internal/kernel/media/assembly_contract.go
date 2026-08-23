@@ -22,10 +22,11 @@ import (
 // Only assembly-ready clips may enter the assembler.
 //
 // Frozen values for VELOX_ASSEMBLY_READY_V1 (2026-08-23, unico SSOT):
-//   container mp4, h264 high 4.0 yuv420p, 1920x1080, 24/1, 1/1 SAR,
-//   timebase video 1/90000 audio 1/48000, tv/bt709 progressive,
-//   GOP 48 b_frames 0 closed_gop, 1 video +1 audio (video,audio) start_pts 0,
-//   AAC-LC 48000 2ch stereo 128k.
+//
+//	container mp4, h264 high 4.0 yuv420p, 1920x1080, 24/1, 1/1 SAR,
+//	timebase video 1/90000 audio 1/48000, tv/bt709 progressive,
+//	GOP 48 b_frames 0 closed_gop, 1 video +1 audio (video,audio) start_pts 0,
+//	AAC-LC 48000 2ch stereo 128k.
 //
 // Audio profile SSOT: audio.DefaultAudioProfile() in internal/capabilities/audio
 // (aac, LC, 48000 Hz, 2 channels, stereo, 128k). This contract MUST stay
@@ -35,8 +36,8 @@ const (
 	AssemblyMediaContractVersion = 1
 
 	// Legacy alias kept for source compatibility during migration.
-	AssemblyReadyVideoContractID      = AssemblyMediaContractID
-	AssemblyReadyVideoVersion         = AssemblyMediaContractVersion
+	AssemblyReadyVideoContractID = AssemblyMediaContractID
+	AssemblyReadyVideoVersion    = AssemblyMediaContractVersion
 )
 
 // FrameRate is a rational framerate. Exact equality via cross-multiplication
@@ -104,7 +105,7 @@ type AssemblyMediaContract struct {
 
 	KeyframeInterval int  `json:"keyframe_interval"` // GOP
 	BFrames          int  `json:"b_frames"`          // 0 = no B-frames
-	ClosedGOP        bool `json:"closed_gop"`         // must be true for assembly-ready
+	ClosedGOP        bool `json:"closed_gop"`        // must be true for assembly-ready
 
 	AudioCodec         string `json:"audio_codec"`
 	AudioProfile       string `json:"audio_profile"`
@@ -223,29 +224,29 @@ func (c AssemblyMediaContract) ValidateExact() error {
 
 // StreamSignature is the exact ffprobe-derived signature for copy-gate.
 type StreamSignature struct {
-	VideoCodec     string   `json:"video_codec"`
-	VideoProfile   string   `json:"video_profile"`
-	VideoLevel     string   `json:"video_level"`
-	PixelFormat    string   `json:"pixel_format"`
-	Width          int      `json:"width"`
-	Height         int      `json:"height"`
-	SAR            Rational `json:"sar"`
-	FPS            FrameRate `json:"fps"`
-	VideoTimeBase  Rational `json:"video_time_base"`
-	AudioTimeBase  Rational `json:"audio_time_base"`
-	ColorRange     string   `json:"color_range"`
-	ColorSpace     string   `json:"color_space"`
-	ColorTransfer  string   `json:"color_transfer"`
-	ColorPrimaries string   `json:"color_primaries"`
-	FieldOrder     string   `json:"field_order"`
-	AudioCodec     string   `json:"audio_codec"`
-	AudioProfile   string   `json:"audio_profile"`
-	AudioSampleRate int     `json:"audio_sample_rate"`
-	AudioChannels   int     `json:"audio_channels"`
-	AudioChannelLayout string `json:"channel_layout"`
-	VideoStreams int `json:"video_streams"`
-	AudioStreams int `json:"audio_streams"`
-	StreamOrder  string `json:"stream_order"` // e.g. "v:0,a:1"
+	VideoCodec         string    `json:"video_codec"`
+	VideoProfile       string    `json:"video_profile"`
+	VideoLevel         string    `json:"video_level"`
+	PixelFormat        string    `json:"pixel_format"`
+	Width              int       `json:"width"`
+	Height             int       `json:"height"`
+	SAR                Rational  `json:"sar"`
+	FPS                FrameRate `json:"fps"`
+	VideoTimeBase      Rational  `json:"video_time_base"`
+	AudioTimeBase      Rational  `json:"audio_time_base"`
+	ColorRange         string    `json:"color_range"`
+	ColorSpace         string    `json:"color_space"`
+	ColorTransfer      string    `json:"color_transfer"`
+	ColorPrimaries     string    `json:"color_primaries"`
+	FieldOrder         string    `json:"field_order"`
+	AudioCodec         string    `json:"audio_codec"`
+	AudioProfile       string    `json:"audio_profile"`
+	AudioSampleRate    int       `json:"audio_sample_rate"`
+	AudioChannels      int       `json:"audio_channels"`
+	AudioChannelLayout string    `json:"channel_layout"`
+	VideoStreams       int       `json:"video_streams"`
+	AudioStreams       int       `json:"audio_streams"`
+	StreamOrder        string    `json:"stream_order"` // e.g. "v:0,a:1"
 }
 
 // Fingerprint returns sha256 of canonical JSON.
@@ -258,29 +259,29 @@ func (s StreamSignature) Fingerprint() string {
 // FromContract builds the expected signature from the frozen contract.
 func StreamSignatureFromContract(c AssemblyMediaContract) StreamSignature {
 	return StreamSignature{
-		VideoCodec:     c.VideoCodec,
-		VideoProfile:   c.VideoProfile,
-		VideoLevel:     c.VideoLevel,
-		PixelFormat:    c.PixelFormat,
-		Width:          c.Width,
-		Height:         c.Height,
-		SAR:            c.SAR,
-		FPS:            c.FPS,
-		VideoTimeBase:  c.VideoTimeBase,
-		AudioTimeBase:  c.AudioTimeBase,
-		ColorRange:     c.ColorRange,
-		ColorSpace:     c.ColorSpace,
-		ColorTransfer:  c.ColorTransfer,
-		ColorPrimaries: c.ColorPrimaries,
-		FieldOrder:     c.FieldOrder,
-		AudioCodec:     c.AudioCodec,
-		AudioProfile:   c.AudioProfile,
-		AudioSampleRate: c.AudioSampleRate,
-		AudioChannels:   c.AudioChannels,
+		VideoCodec:         c.VideoCodec,
+		VideoProfile:       c.VideoProfile,
+		VideoLevel:         c.VideoLevel,
+		PixelFormat:        c.PixelFormat,
+		Width:              c.Width,
+		Height:             c.Height,
+		SAR:                c.SAR,
+		FPS:                c.FPS,
+		VideoTimeBase:      c.VideoTimeBase,
+		AudioTimeBase:      c.AudioTimeBase,
+		ColorRange:         c.ColorRange,
+		ColorSpace:         c.ColorSpace,
+		ColorTransfer:      c.ColorTransfer,
+		ColorPrimaries:     c.ColorPrimaries,
+		FieldOrder:         c.FieldOrder,
+		AudioCodec:         c.AudioCodec,
+		AudioProfile:       c.AudioProfile,
+		AudioSampleRate:    c.AudioSampleRate,
+		AudioChannels:      c.AudioChannels,
 		AudioChannelLayout: c.AudioChannelLayout,
-		VideoStreams: 1,
-		AudioStreams: 1,
-		StreamOrder:  "v:0,a:1",
+		VideoStreams:       1,
+		AudioStreams:       1,
+		StreamOrder:        "v:0,a:1",
 	}
 }
 

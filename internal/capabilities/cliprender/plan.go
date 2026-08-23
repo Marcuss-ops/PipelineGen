@@ -11,11 +11,11 @@ package cliprender
 // path, or an unresolved block rejects the plan before any process starts.
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 
