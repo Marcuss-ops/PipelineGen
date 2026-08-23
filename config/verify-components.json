@@ -12,7 +12,7 @@
       "scripts/operate_script_generate.sh",
       "scripts/lib/dotenv.sh",
       "start_server.sh",
-      "examples/scripts/",
+      "tests/fixtures/script/",
       "examples/worker_integration/"
     ],
     "go_packages": [
@@ -86,11 +86,7 @@
       "internal/api/assets/artlist/",
       "internal/infrastructure/artlist/",
       "scripts/youtube_boxer_stock_e2e.py",
-      "scripts/check_ma_v3.py",
-      "scripts/poll_ma_v3.py",
-      "scripts/poll_ma_v3b.py",
-      "scripts/probe_ma_clips.py",
-      "out/stock-e2e-muhammad-ali-10m.payload.json"
+      "tests/fixtures/stock/"
     ],
     "go_packages": [
       "./internal/application/assets/providers/stock/...",
@@ -189,11 +185,9 @@
       "README.md",
       "AGENTS.md",
       "scripts/README.md",
-      "internal/domain/document/",
       "internal/application/documents/"
     ],
     "go_packages": [
-      "./internal/domain/document/...",
       "./internal/application/documents/..."
     ],
     "node_tests": [],
@@ -240,13 +234,11 @@
   },
   "images": {
     "paths": [
-      "internal/domain/image/",
       "internal/application/images/",
       "internal/api/images/",
       "scripts/verify_nlp_online_images_docs_certification.sh"
     ],
     "go_packages": [
-      "./internal/domain/image/...",
       "./internal/application/images/...",
       "./internal/api/images/..."
     ],
@@ -419,7 +411,6 @@
   },
   "youtube": {
     "paths": [
-      "internal/domain/youtube/",
       "internal/application/youtube/",
       "internal/application/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
@@ -440,7 +431,6 @@
       "docker-compose.yml"
     ],
     "go_packages": [
-      "./internal/domain/youtube/...",
       "./internal/application/youtube/...",
       "./internal/application/assets/providers/youtube/...",
       "./internal/application/assets/sourcing/youtube/...",
