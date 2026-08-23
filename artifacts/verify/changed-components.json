@@ -20,7 +20,7 @@
     "cmd/admin/verify_projection.go",
     "cmd/admin/verify_projection_test.go",
     "docs/AGENT_SCRIPT_GENERATION_RUNBOOK.md",
-    "examples/scripts/margot_robbie_laughter_20.json",
+    "tests/fixtures/script-generation/margot_robbie_laughter_20.json",
     "internal/app/adapters_voiceover_repo.go",
     "internal/app/capabilities/audio_asset_resolver_adapter.go",
     "internal/app/capabilities/audio_asset_resolver_adapter_test.go",
@@ -49,8 +49,8 @@
     "internal/application/voiceover/persistence/repository.go",
     "internal/application/voiceover/process_segment.go",
     "internal/application/voiceover/process_voiceover_item.go",
-    "internal/application/youtube/ports/hash.go",
-    "internal/application/youtube/ports/ports.go",
+    "internal/capabilities/youtube/ports/hash.go",
+    "internal/capabilities/youtube/ports/ports.go",
     "internal/application/youtube/usecase/cache_prewarm.go",
     "internal/application/youtube/usecase/extraction_callbacks_iface.go",
     "internal/application/youtube/usecase/process_segment_step3to5.go",
@@ -448,7 +448,7 @@
     "docs/AGENT_SCRIPT_GENERATION_RUNBOOK.md": [
       "docs"
     ],
-    "examples/scripts/margot_robbie_laughter_20.json": [
+    "tests/fixtures/script-generation/margot_robbie_laughter_20.json": [
       "script"
     ],
     "internal/app/adapters_voiceover_repo.go": [
@@ -937,10 +937,10 @@
     "internal/application/voiceover/process_voiceover_item.go": [
       "voiceover"
     ],
-    "internal/application/youtube/ports/hash.go": [
+    "internal/capabilities/youtube/ports/hash.go": [
       "youtube"
     ],
-    "internal/application/youtube/ports/ports.go": [
+    "internal/capabilities/youtube/ports/ports.go": [
       "youtube"
     ],
     "internal/application/youtube/usecase/cache_prewarm.go": [

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

@@ -39,7 +39,7 @@
 #   null job_id after POST   -> PR-CLIPS-JOB-ENQUEUE
 #                              SSOT: internal/application/jobs/dispatcher.go
 #   HTTP 400 validation     -> PR-CLIPS-VALIDATION-PREFLIGHT
-#                              SSOT: internal/application/youtube/dto/types.go
+#                              SSOT: internal/capabilities/youtube/dto/types.go
 #   FAILED status terminal  -> walks Step 1-9 typed-error chain
 #                              SSOT: internal/application/jobs/registry.go
 #   30 polls × 5s stuck      -> PR-CLIPS-BROKER-TIMEOUT
@@ -272,7 +272,7 @@ case "$HTTP" in
     400)
         echo "FAIL: HTTP 400 validation rejected payload (PR-CLIPS-VALIDATION-PREFLIGHT)" >&2
         jq . "$TMPDIR_RUN/${REQ_TAG}-post.json" >&2 || cat "$TMPDIR_RUN/${REQ_TAG}-post.json" >&2
-        echo "  SSOT Owner: internal/application/youtube/dto/types.go" >&2
+        echo "  SSOT Owner: internal/capabilities/youtube/dto/types.go" >&2
         exit 1
         ;;
     404)

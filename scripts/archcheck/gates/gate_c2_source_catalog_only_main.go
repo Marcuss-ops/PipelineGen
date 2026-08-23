@@ -123,7 +123,7 @@ func activeMilestoneCap(now time.Time) (int, bool) {
 
 func scanWorkingTree(root string) ([]violationRow, error) {
 	var files []string
-	for _, subtree := range []string{"internal/application", "internal/api", "internal/domain"} {
+	for _, subtree := range []string{"internal/application", "internal/api"} {
 		err := filepath.WalkDir(filepath.Join(root, subtree), func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -169,7 +169,7 @@ func scanGitRef(root, ref string) (int, bool, error) {
 	if err := cmd.Run(); err != nil {
 		return 0, false, nil
 	}
-	cmd = exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", "internal/application", "internal/api", "internal/domain")
+	cmd = exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", ref, "--", "internal/application", "internal/api")
 	listing, err := cmd.Output()
 	if err != nil {
 		return 0, false, err

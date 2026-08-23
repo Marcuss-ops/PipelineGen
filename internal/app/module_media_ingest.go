@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
-	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"

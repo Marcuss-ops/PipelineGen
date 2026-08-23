@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"go.uber.org/zap"
 )
 

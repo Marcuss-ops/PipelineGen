@@ -5,7 +5,7 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

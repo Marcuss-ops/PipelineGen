@@ -19,7 +19,7 @@ import (
 	"errors"
 	"testing"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // fullStats builds an ExtractStats envelope with the canonical fields

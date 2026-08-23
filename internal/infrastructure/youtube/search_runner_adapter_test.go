@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	// SearchRunnerPort + sentinel errors live in ports/.
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

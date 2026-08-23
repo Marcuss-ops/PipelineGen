@@ -13,7 +13,7 @@
 //	which is reserved for callers that live below the application seam
 //	(e.g. service-lifecycle tooling, ECS pre-build hooks). The
 //	application-layer `SearchRunnerPort` in
-//	`internal/application/youtube/ports/ports.go` is what
+//	`internal/capabilities/youtube/ports/ports.go` is what
 //	`composition.go::BuildDomainBundle` wires into `youtube.ServiceDeps.SearchRunner`.
 //
 //	This file adds the missing adapter: `SearchRunnerAdapter` wraps
@@ -39,7 +39,7 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

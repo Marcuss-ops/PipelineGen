@@ -1,7 +1,7 @@
 package adapters
 
 import (
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // ── URL helpers (from util.go) ───────────────────────────────────────────

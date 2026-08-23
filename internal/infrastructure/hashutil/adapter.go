@@ -2,7 +2,7 @@
 // for the YouTube application layer's HashServicePort.
 //
 // COMPOSITION-ROOT USE ONLY — application code depends on
-// ports.HashServicePort (declared in internal/application/youtube/ports/ports.go)
+// ports.HashServicePort (declared in internal/capabilities/youtube/ports/ports.go)
 // and never on this concrete adapter. This keeps the application→infra seam
 // narrow (Pattern 0: port abstraction layer, AGENTS.md June 2026).
 //
@@ -13,7 +13,7 @@ package hashutil
 import (
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )

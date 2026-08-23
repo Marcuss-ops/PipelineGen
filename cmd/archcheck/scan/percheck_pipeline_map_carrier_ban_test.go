@@ -71,7 +71,7 @@ func TestScanPipelineMapCarrierBan_TrackEventInlineMetadataExempt(t *testing.T) 
 	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_postprocess.go",
 		`package usecase
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 type PreparedGeneration struct{}
 

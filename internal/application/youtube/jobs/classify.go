@@ -23,7 +23,7 @@
 //	    otherwise                → ErrExtractionTerminal
 //
 // The retryable substring taxonomy mirrors the existing
-// `internal/application/youtube/dto.IsTransientDownloadError` predicate
+// `internal/capabilities/youtube/dto.IsTransientDownloadError` predicate
 // (also used inside the canonical use case for inner download retries).
 package jobs
 
@@ -32,7 +32,7 @@ import (
 	"fmt"
 	"strings"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // ErrExtractionTerminal is the sentinel for non-retryable extraction

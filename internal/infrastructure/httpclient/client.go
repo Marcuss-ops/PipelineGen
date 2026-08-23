@@ -50,7 +50,7 @@ func NewDefaultClient(timeout time.Duration) *DefaultClient {
 // HTTPClient returns the underlying *http.Client for callers that
 // need to pass it to a third-party interface which does not yet
 // accept ports.Client (e.g., the image retrieval providers in
-// internal/application/images/retrieved/ — those still take
+// internal/capabilities/images/retrieved/ — those still take
 // *http.Client because their interface contract pre-dates this
 // port). Use sparingly — preferring ports.Client is the canonical
 // pattern; HTTPClient() is an escape hatch for the migration

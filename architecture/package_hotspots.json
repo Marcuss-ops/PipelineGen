@@ -144,26 +144,6 @@
       ]
     },
     {
-      "path": "internal/application/voiceover",
-      "owner": "internal/application/voiceover",
-      "deadline": "2026-10-15",
-      "baseline_files": 41,
-      "baseline": {
-        "files": 41,
-        "max_loc": 8135
-      },
-      "current": {
-        "files": 41,
-        "max_loc": 8135
-      },
-      "target_packages": [
-        "internal/capabilities/voiceover/workflow",
-        "internal/capabilities/voiceover/translation",
-        "internal/capabilities/voiceover/persistence",
-        "internal/capabilities/voiceover/delivery"
-      ]
-    },
-    {
       "path": "internal/infrastructure/database/sqlite/assets",
       "owner": "internal/infrastructure/database/sqlite/assets",
       "deadline": "2026-09-30",

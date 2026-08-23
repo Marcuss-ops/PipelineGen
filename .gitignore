@@ -79,6 +79,8 @@ web-admin/dist/
 # Runtime output directories (test fixtures, worker downloads)
 # ============================================
 /out/
+/researchlive
+/yt-clip-tests/
 **/completed_videos/
 **/worker_downloads/
 **/script_assets/
@@ -230,12 +232,12 @@ local.env
 # /_reindex_qdrant. Rebuild on demand: `go build -o seed_test_asset ./cmd/admin/seed_test_asset/`.
 /seed_test_asset
 
-# Worker integration reference binary (built locally from examples/worker_integration/main.go).
+# Worker integration reference binary (built locally from tests/operational/worker-integration/main.go).
 # Anchored with leading '/' so the pattern matches only the root-level build artifact
-# (NOT recursive source-file exclusion under examples/worker_integration/). 9.16 MB ELF
+# (NOT recursive source-file exclusion under tests/operational/worker-integration/). 9.16 MB ELF
 # (dynamically linked, includes debug info). Forward-prevention per godlike/07 — same
 # pattern as /archcheck + /_reindex_qdrant + /seed_test_asset. Rebuild on demand:
-#   go build -o worker_integration ./examples/worker_integration/main.go
+#   go build -o worker_integration ./tests/operational/worker-integration/main.go
 /worker_integration
 
 # Docker secrets (never commit tokens)

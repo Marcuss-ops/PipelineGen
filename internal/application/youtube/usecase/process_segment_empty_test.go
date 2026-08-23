@@ -3,7 +3,7 @@ package usecase
 import (
 	"testing"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/stretchr/testify/require"
 )
 

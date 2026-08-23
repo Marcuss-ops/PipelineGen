@@ -15,8 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 )
 
 // llmStubBuilder is a ClipMetadataBuilder fake that returns a fully

@@ -7,7 +7,7 @@
 // Problem this solves:
 //
 //	YouTube has CanonicalClipMetadata (35 fields) at
-//	internal/application/youtube/dto/metadata_types.go and Stock has
+//	internal/capabilities/youtube/dto/metadata_types.go and Stock has
 //	ChunkState + ChunkMetadataEntry + StockRunMetadata (40+ fields) at
 //	internal/application/assets/providers/stock/stockpipeline/. Both
 //	pipelines independently write metadata that eventually lands in

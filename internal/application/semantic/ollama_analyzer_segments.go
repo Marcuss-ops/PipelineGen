@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

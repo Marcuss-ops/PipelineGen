@@ -60,7 +60,7 @@ import (
 var hardcodedENScopeFiles = []string{
 	"internal/application/youtube/usecase/text_track_resolver.go",
 	"internal/capabilities/youtube/usecase/segment_selection.go",
-	"internal/application/youtube/ports/ports.go",
+	"internal/capabilities/youtube/ports/ports.go",
 	"internal/infrastructure/youtube/subtitles.go",
 	"internal/infrastructure/youtube/ports.go",
 	"internal/kernel/asset/text_track_repository.go",

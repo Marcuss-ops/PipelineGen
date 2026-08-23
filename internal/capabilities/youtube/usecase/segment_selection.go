@@ -22,7 +22,7 @@
 // godlike/06 inline ports (TranscriptFetcherPort / AnalyzerPort) are the
 // forward-pointer FASE-X shapes previously declared by the retired
 // extract-important pipeline; they stay here until the future mechanical
-// port-move consolidates them into internal/application/youtube/ports/ports.go.
+// port-move consolidates them into internal/capabilities/youtube/ports/ports.go.
 package usecase
 
 import (
@@ -32,7 +32,7 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )

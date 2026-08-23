@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 func TestAggregateFanOutStats_UnknownStatusFailsClosed(t *testing.T) {

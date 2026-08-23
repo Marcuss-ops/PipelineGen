@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 )
 
 func TestSQLiteEntityImageCatalogRetiredCandidateIsTerminalOnProviderUpsert(t *testing.T) {

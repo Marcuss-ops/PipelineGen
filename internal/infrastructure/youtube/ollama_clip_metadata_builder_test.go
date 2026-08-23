@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 )
 
 // TestBuild_DeterministicFallbackNilClient pins the P1 #15 contract:

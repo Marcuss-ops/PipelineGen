@@ -1,40 +1,114 @@
-# Python Scripts — PipelineGen
+# Scripts — PipelineGen
 
-## Directory Structure (June 2026)
+## Directory Structure (August 2026)
 
 ```
 scripts/
-├── core/                  # Shared libraries (single source of truth)
-│   └── ollama_client.py   #   Client Ollama unico: generate(), chat(), generate_json()
-├── bridges/               # Go→Python bridges (chiamati da Go via exec.Command)
-│   ├── animate_image.py    #   Zoom-out MP4 da immagine statica
-│   ├── book_processor/     #   Pipeline riscrittura libri (PDF/EPUB)
-│   ├── book_summarizer.py  #   Entry point CLI per book_processor
-│   ├── generate_embedding.py  # One-shot embedding E5
-│   ├── semantic_tagger.py  #   Metadata semantico via Ollama + taxonomy
-│   └── tts_edge.py         #   Text-to-speech via Edge TTS
-├── services/              # Server ML persistenti (FastAPI, chiamati via HTTP)
-│   ├── embedding_server.py #   E5 embeddings + CLIP + CLAP
-│   └── reranker_server.py  #   CrossEncoder reranking
-├── tools/                 # Utility CLI manuali (non chiamate da Go)
-│   ├── analyze_interesting_segments.py
-│   ├── agent_script_writer.py
-│   ├── batch_generate_and_merge.py
-│   ├── benchmark_search.py
-│   ├── generate_drive_token.py
-│   ├── send_batch_book.py
-│   ├── send_batch_book_v2.py
-│   ├── sketchfab_client.py
-│   ├── synth_sfx.py
-│   ├── transcribe_detect_lang.py
-│   └── update_language.py
-├── experiments/           # Sperimentali, non in produzione
-│   └── sound_designer.py  #   SFX automatico via Vision LLM
-├── tests/                 # Test manuali / suite
-│   ├── test_all_exports.py
-│   └── test_book_summarizer.py
-├── ci-architectural-checks.sh
-└── README.md
+├── core/                         # Shared libraries
+│   └── ollama_client.py           #  Ollama client: generate(), chat(), generate_json()
+├── bridges/                      # Go→Python bridges (called from Go via exec.Command)
+│   ├── argos_bridge/              #  Argos Translate bridge (core, server)
+│   ├── argos_server.py            #  Argos translation server entrypoint
+│   ├── argos_translator.py        #  Argos translation CLI
+│   ├── book_processor/            #  Book rewriting pipeline (PDF/EPUB)
+│   ├── book_summarizer.py         #  Book processor entry point
+│   ├── edge_tts_bridge/           #  Edge TTS bridge (boundaries, server, request, voice_resolver)
+│   ├── generate_embedding.py      #  One-shot E5 embedding
+│   ├── local_nlp_gpu.py           #  Local NLP GPU utilities
+│   ├── login.py                   #  Authentication bridge
+│   ├── semantic_tagger/           #  Semantic metadata via Ollama + taxonomy
+│   ├── slide_worker.py            #  Slide worker entry point
+│   ├── slide_worker_runtime/      #  Slide generation runtime (generation, extraction, dispatcher, etc.)
+│   ├── storage_utils.py           #  Storage utilities
+│   ├── tts_edge.py                #  Text-to-speech via Edge TTS (single call)
+│   ├── tts_edge_server.py         #  Persistent Edge TTS server
+│   └── whisper_transcriber.py     #  Whisper transcription bridge
+├── services/                     # Persistent ML servers (HTTP, called from Go)
+│   ├── embedding_server/          #  E5 embeddings + CLIP + CLAP (__main__, models, audio, text, visual)
+│   ├── reranker_server.py         #  CrossEncoder reranking
+│   └── device_policy.py           #  GPU/CPU device selection policy
+├── tools/                        # Manual CLI utilities (not called from Go)
+│   ├── argos_install_models.py    #  Install Argos Translate language models
+│   ├── generate_drive_token.py    #  OAuth2 token generation for Google Drive
+│   ├── resolve_drive_ids.py       #  Resolve Drive file/folder IDs
+│   ├── sync_drive_qdrant.py       #  Sync Drive contents to Qdrant
+│   ├── transcribe_detect_lang.py  #  Transcription + language detection
+│   ├── whisper_preflight.py       #  Whisper preflight check
+│   └── whisper_runtime.py         #  Whisper runtime execution
+├── tests/                        # Manual test data
+│   └── seed_search_data.sql       #  Search test seed data
+├── admin/                        # Administrative Go tooling
+│   ├── architecture_p1_finalize.py
+│   ├── generate_routes_yaml.go    #  Route manifest generator
+│   ├── routes_yaml_ast.go
+│   ├── routes_yaml_dedup.go
+│   ├── routes_yaml_discovery.go
+│   └── routes_yaml_types.go
+├── archcheck/                    # Architecture governance CLI (legacy-burndown ratchet)
+│   ├── main.go                    #  CLI entrypoint
+│   ├── baseline/                  #  Baseline comparison + seeding
+│   ├── gate/                      #  Gate runner
+│   ├── gates/                     #  C2 gates (registry, route manifest, source catalog)
+│   ├── testdata/                  #  Test fixtures (deprecations, report schema)
+│   ├── checks*.go                 #  Architecture checks
+│   ├── deprecations_*.go          #  Deprecation loader, validator, migrator
+│   ├── phase0_*.go                #  Phase 0 report-mode checks
+│   └── snapshot_test.go           #  Golden-file snapshot test
+├── ci/                           # CI verification scripts
+│   ├── architecture/checks/       #  Per-check shell scripts (15–73)
+│   ├── architecture/checks/lib/   #  Shared CI libraries (00–59)
+│   ├── verify-*.py                #  Python verification runners
+│   ├── verify-changed.sh
+│   ├── verify-split-contract.sh
+│   ├── verify-stock-claim.sh
+│   ├── verify-stock-receipt.sh
+│   ├── ci-*.sh                    #  CI helpers (clean checkout, no-secrets, submodule, etc.)
+│   ├── get-fingerprint.sh
+│   ├── node-version-check.sh
+│   ├── reconcile-pipeline.py
+│   └── whisper-deployment-contract_test.py
+├── lib/                          # Shell libraries
+│   ├── dotenv.sh
+│   └── artlist_pipeline_*.sh      #  Artlist pipeline helpers
+├── systemd/                      # Systemd units and sudoers
+│   ├── pipelinegenctl
+│   ├── pipelinegen.service.d/     #  whisper.conf, youtube-dlp.conf
+│   ├── ollama.service.d/          #  gpu.conf
+│   ├── artlist-scraper-headful.conf
+│   ├── sudoers/                   #  Operator access installers
+│   └── README.md
+├── hooks/                        # Git hooks
+│   ├── pre-commit
+│   └── pre-push
+├── operations/                   # Operational shell scripts
+│   ├── certify_media_registry_qdrant.sh
+│   └── inspect_media_asset.sh
+├── overlay-cert/                 # Overlay certification
+│   └── verify_overlay_prepare_live.py
+├── seed_fixture/                 # Fixture seeding tool
+│   └── main.go
+├── start_embedding_server.sh      #  Embedding sidecar launcher
+├── operate_script_generate.sh     #  Operational script generation
+├── worker-bootstrap-smoke.sh      #  Worker bootstrap smoke test
+├── verify-ffmpeg.sh               #  FFmpeg verification
+├── verify-image-digest.sh         #  Image digest verification
+├── verify-whisper.sh              #  Whisper verification
+├── verify_nlp_online_images_docs_certification.sh
+├── batch_index_drive_clips.md     #  Batch indexing documentation
+├── ci-architectural-checks.sh     #  Architectural CI checks entrypoint
+├── ci-bypass-audit.sh            #  CI bypass audit
+├── cosign-sign.sh                 #  Cosign image signing
+├── regenerate_token.sh            #  Token regeneration
+├── rotate_token.sh                #  Token rotation
+├── velox_client.py                #  Velox broker client
+├── run_stock.py                   #  Stock pipeline runner
+├── youtube_boxer_stock_e2e.py     #  YouTube boxer stock E2E script
+├── yt-dlp-pipeline                #  yt-dlp pipeline wrapper
+├── with-velox-auth                #  Velox auth wrapper
+├── with-velox-auth_test.sh        #  Velox auth wrapper test
+├── generate_drive_token.py        #  Root-level token generation
+├── requirements-argos.txt         #  Argos Python dependencies
+└── requirements-whisper.txt       #  Whisper Python dependencies
 ```
 
 ## Architecture Note
@@ -45,75 +119,13 @@ When adding new functionality, prefer Go for orchestration and API logic. Use Py
 
 ---
 
-## Shared Library: `core/ollama_client.py`
-
-- **Metodi**: `generate()` (raw prompt), `chat()` (structured messages), `generate_json()` (con cleanup markdown)
-- **Endpoint**: Supporta sia `/api/generate` che `/api/chat` di Ollama
-- **Usato da**: `bridges/book_processor/llm.py`, `bridges/agent_writer/llm.py`, `bridges/semantic_tagger.py`, `experiments/sound_designer.py`
-- **Dependencies**: solo stdlib (`urllib`, `json`, `re`)
-
----
-
-## Go→Python Bridges (`bridges/`)
-
-Chiamati dal backend Go via `exec.Command`.
-
-| Script | Chiamato da | Dipendenze |
-|--------|-------------|------------|
-| `book_summarizer.py` + `book_processor/` | `internal/media/books/service.go` | Ollama, PyMuPDF, ffmpeg |
-| `semantic_tagger.py` | `internal/media/semantic/tagger.go` | Ollama, PyYAML |
-| `generate_embedding.py` | `internal/media/association/embeddings.go` | sentence-transformers |
-| `tts_edge.py` | `internal/media/audioasset/processor.go` | edge-tts |
-| `animate_image.py` | `docs/images/animate.go` | ffmpeg |
-
----
-
-## ML Services Persistente (`services/`)
-
-Server FastAPI che girano come processi separati e vengono chiamati via HTTP.
-
-| Script | Porta | Chiamato da |
-|--------|-------|-------------|
-| `embedding_server.py` | 8001 | `internal/media/clipindexer/`, `realtime/embedding_adapter.go` |
-| `reranker_server.py` | 8091 | `internal/reranker/client.go` |
-
----
-
-## Utility CLI (`tools/`)
-
-Script standalone per operazioni batch o one-shot. **Non chiamati da Go.**
-
-| Script | Scopo |
-|--------|-------|
-| `update_language.py` | Rilevamento lingua batch via faster-whisper |
-| `transcribe_detect_lang.py` | Trascrizione + lingua via faster-whisper |
-| `sketchfab_client.py` | Client API Sketchfab (search + download) |
-| `generate_drive_token.py` | Generazione token OAuth2 Google Drive |
-| `benchmark_search.py` | Benchmark ricerca semantica |
-| `agent_script_writer.py` | Generazione script batch |
-| `send_batch_book.py` / `send_batch_book_v2.py` | Invio batch libri (2 versioni) |
-| `batch_generate_and_merge.py` | Generazione + merge batch |
-| `analyze_interesting_segments.py` | Analisi segmenti interessanti |
-| `synth_sfx.py` | Sintesi effetti sonori |
-
----
-
 ## Environment Variables
 
 | Variable | Default | Used by |
 |----------|---------|---------|
-| `OLLAMA_URL` | `http://localhost:11434` | `bridges/semantic_tagger.py` |
-| `EMBEDDING_SERVER_URL` | `http://127.0.0.1:8001` | `start_embedding_server.sh` / Go clip indexer |
+| `OLLAMA_URL` | `http://localhost:11434` | bridges/semantic_tagger, core/ollama_client |
+| `EMBEDDING_SERVER_URL` | `http://127.0.0.1:8001` | start_embedding_server.sh, Go clip indexer |
 | `PIPELINEGEN_EMBEDDING_DEVICE` | `auto` | Embedding sidecar device: `auto`, `cpu`, or `cuda` |
-| `PIPELINEGEN_EMBEDDING_REQUIRE_GPU` | `0` | Embedding sidecar: fail closed when CUDA is unavailable or a model loads on CPU |
+| `PIPELINEGEN_EMBEDDING_REQUIRE_GPU` | `0` | Embedding sidecar: fail closed when CUDA is unavailable |
 | `PIPELINEGEN_RERANKER_DEVICE` | `auto` | Reranker device: `auto`, `cpu`, or `cuda` |
 | `PIPELINEGEN_RERANKER_REQUIRE_GPU` | `0` | Reranker: fail closed when GPU is required but unavailable |
-
-The embedding `/health` response reports `requested_device`, effective `device`,
-`cuda_available`, `gpu_required`, and the effective `text_device`,
-`visual_device`, and `audio_device`. The reranker `/health` response reports
-`requested_device`, effective `device`, `model_device`, `cuda_available`, and
-`gpu_required`. `cuda` is explicit and fail-closed; `auto` selects CUDA when
-available and otherwise uses CPU unless the corresponding `*_REQUIRE_GPU=1`
-flag is set. These controls are independent from Whisper's `VELOX_WHISPER_DEVICE`
-contract.

@@ -10,7 +10,7 @@ import (
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"

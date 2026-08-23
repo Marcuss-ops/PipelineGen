@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// DTOs (VideoThumbnail, etc.) now live in ports/.
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

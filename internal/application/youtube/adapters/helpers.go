@@ -2,7 +2,7 @@
 package adapters
 
 import (
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // getGroupFromDestination extracts group name from destination request.

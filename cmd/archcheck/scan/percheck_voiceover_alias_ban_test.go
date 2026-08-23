@@ -201,7 +201,7 @@ func TestScanVoiceoverAliasBan_TestFileExempt(t *testing.T) {
 	// Production-code file with ONE retired alias — flagged.
 	writeFixtureAliasBan(t, root, "internal/application/somewhere/prod.go", `package somewhere
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
 func Bad() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 `)
@@ -209,7 +209,7 @@ func Bad() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 	// Test file with the same retired alias — exempt.
 	writeFixtureAliasBan(t, root, "internal/application/somewhere/prod_test.go", `package somewhere
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
 func TestRetiredAliasRegressionGuard(t *testing.T) {
 	_ = voiceover.VoiceoverRecord{}
@@ -255,8 +255,8 @@ func TestScanVoiceoverAliasBan_DetectsProductionCodeHit(t *testing.T) {
 	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/types.go", `package voiceover_smuggle
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/persistence"
 )
 
 var (
@@ -389,7 +389,7 @@ func TestScanVoiceoverAliasBan_SkipsDirs(t *testing.T) {
 	// Fixture A: a "vendored" file under top-level vendor/ tree — exempt.
 	writeFixtureAliasBan(t, root, "vendor/legacy/voiceover_stub.go", `package legacy
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 func Stub() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 `)
 
@@ -408,7 +408,7 @@ func selfFlag() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 
 	// Fixture D: under node_modules — exempt (basename skip).
 	writeFixtureAliasBan(t, root, "node_modules/some-pkg/voiceover.go", `package somepkg
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 func X() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 `)
 
@@ -475,7 +475,7 @@ func TestScanVoiceoverAliasBan_NoCoverageHoleInCanonicalFile(t *testing.T) {
 	// voiceover/types.go would still be a real violation).
 	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/types.go", `package voiceover_smuggle
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
 // Canonical narrative README for the 6 retired aliases:
 //   - voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord)
@@ -866,7 +866,7 @@ func TestScanVoiceoverAliasBan_ProductionOnlyPreservesViolations(t *testing.T) {
 	// productionOnly ACTUALLY silences the comment-only detection.
 	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/prodcodeprod.go", `package voiceover_smuggle
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
 // Legacy migration comment: voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord)
 // MUST be SILENCED in productionOnly mode (residue accounting suppressed).

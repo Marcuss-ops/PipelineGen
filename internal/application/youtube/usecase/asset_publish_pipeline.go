@@ -67,7 +67,7 @@
 // PublisherPort inline interface below is a FASE-X forward-pointer
 // mirroring the TranscriptFetcherPort / AnalyzerPort pattern in
 // segment_selection.go. A future mechanical port-move will
-// consolidate it into `internal/application/youtube/ports/ports.go`
+// consolidate it into `internal/capabilities/youtube/ports/ports.go`
 // alongside IssuerResolver / CutEngine — current location is
 // intentional to keep this PR focused on Step 10 only.
 //
@@ -139,7 +139,7 @@ var (
 // TranscriptFetcherPort / AnalyzerPort pattern
 // established by segment_selection.go (godlike/06 FASE-X
 // forward-pointer: future mechanical port-move consolidates inline
-// ports into internal/application/youtube/ports/ports.go).
+// ports into internal/capabilities/youtube/ports/ports.go).
 type AssetPublisherPort interface {
 	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
 }

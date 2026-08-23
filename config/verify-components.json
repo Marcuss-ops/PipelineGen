@@ -13,8 +13,8 @@
       "scripts/lib/dotenv.sh",
       "start_server.sh",
       "tests/fixtures/script/",
-      "examples/worker_integration/",
-      "examples/scripts/"
+      "tests/operational/worker-integration/",
+      "tests/fixtures/script-generation/"
     ],
     "go_packages": [
       "./internal/kernel/script/...",
@@ -37,7 +37,7 @@
       "internal/infrastructure/webresearch/",
       "internal/infrastructure/database/sqlite/scripts/",
       "config/lexicons/",
-      "researchlive"
+      "tools/researchlive/"
     ],
     "go_packages": [
       "./internal/application/scripts/usecase/...",

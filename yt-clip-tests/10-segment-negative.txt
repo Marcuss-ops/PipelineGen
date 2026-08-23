@@ -1,1 +1,0 @@
-{"error":"seconds_per_segment must be supplied via /api/media/register-batch (single-clip endpoint emits one clip_id; fan-out is the batch's job). See PR-YT-SECONDS-PER-SEGMENT-WIRE for the canonical surface.","ok":false}

@@ -18,8 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
 // ── Compile-time satisfaction pins ──────────────────────────────────

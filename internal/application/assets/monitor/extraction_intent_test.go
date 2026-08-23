@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // ── Compile-time godlike/06 SSOT surface pins (package-level) ─────────────

@@ -1,5 +1,7 @@
 package youtube
 
+import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+
 // Canonical youtube job type constants.
 // Per godlike/02 capability-specific constants live in their owning domain package.
 const (
@@ -34,3 +36,18 @@ const (
 	// canonical Qdrant search-text column from raw captions).
 	TypeRebuildSearchText = "youtube.rebuild_search_text"
 )
+
+// MustRegister registers the YouTube-owned job definition at the composition
+// root. The capability owns the wire identity and its runtime definition;
+// application packages only provide handlers and use-case orchestration.
+func MustRegister(reg job.MutableJobRegistry) error {
+	return reg.RegisterDefinition(job.JobDefinition{
+		Type:           TypeClipExtract,
+		Description:    "youtube clip extraction (URL -> media_assets row + outbox)",
+		ExecutionClass: job.ExecutionCreatorAllowed,
+		Queue:          "default",
+		RequiredCapabilities: []job.Capability{
+			"media.clip.extract",
+		},
+	})
+}

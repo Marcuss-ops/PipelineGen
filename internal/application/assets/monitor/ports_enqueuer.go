@@ -5,7 +5,7 @@ import (
 	"context"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // ActiveKeyPrefix is the canonical job.ActiveKey prefix for channel-sync extraction jobs.

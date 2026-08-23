@@ -31,7 +31,7 @@ import (
 
 // Compile-time assertion: the Step10MetricsAdapter satisfies the
 // canonical interface signature expected by the composition root.
-// (The full interface lives in internal/application/youtube/ports/ports.go;
+// (The full interface lives in internal/capabilities/youtube/ports/ports.go;
 // we re-declare the single-method shape here to avoid an import edge
 // from observability→application — the same compile-time pin in the
 // composition root catches signature drift on both sides.)

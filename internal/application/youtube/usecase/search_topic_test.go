@@ -3,7 +3,7 @@ package usecase
 import (
 	"testing"
 
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 // CPR-CC-6 Phase 2 (June 2026): moved from internal/application/youtube/.

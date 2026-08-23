@@ -74,7 +74,7 @@ deprecations:
     - id: MONITOR-YOUTUBE-DIRECT-IMPORT
       owner_capability: internal/application/assets/monitor
       exact_symbol: |
-        import ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+        import ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
         (the ytdomain import in monitor/ports.go — pins the canonical
         ExtractionSegment type alias = ytdomain.Segment AND owns the
         ExtractionIntent.Segments typed surface for monitor.JobEnqueuer;

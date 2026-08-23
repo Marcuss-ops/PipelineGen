@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // step2_CacheLookup is the canonical owner of Step 2. Returns:

@@ -38,7 +38,7 @@ import (
 	"context"
 	"fmt"
 
-	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	transcripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 
 	"go.uber.org/zap"

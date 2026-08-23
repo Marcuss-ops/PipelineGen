@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // Destination is the canonical typed envelope for an extraction's

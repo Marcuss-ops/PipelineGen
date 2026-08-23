@@ -40,7 +40,7 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 		{"internal/application/scripts/usecase/services", bucketScripts},
 		{"internal/kernel/script", bucketScripts},
 		// Media.
-		{"internal/application/youtube/metadata", bucketMedia},
+		{"internal/capabilities/youtube/metadata", bucketMedia},
 		{"internal/application/media", bucketMedia},
 		// Clip.
 		{"internal/application/clip/processor", bucketClip},
@@ -68,9 +68,9 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 // `internal/application/*` rules without a precedence error.
 func TestCategorize_LongestPrefixWins(t *testing.T) {
 	// Both "internal/application/youtube" and (hypothetically)
-	// "internal/application" could match "internal/application/youtube/metadata";
+	// "internal/application" could match "internal/capabilities/youtube/metadata";
 	// a generic media bucket that matches the shorter prefix must NOT win.
-	got := determineDeprecationBucket("internal/application/youtube/metadata")
+	got := determineDeprecationBucket("internal/capabilities/youtube/metadata")
 	if got != bucketMedia {
 		t.Errorf("expected media bucket wins for youtube/metadata, got %q", got)
 	}

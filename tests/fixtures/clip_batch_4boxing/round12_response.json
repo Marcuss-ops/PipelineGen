@@ -4,7 +4,7 @@
   "_video_id": "9u4T_o3FxOU",
   "_policy_version": "v1",
   "_canonical_pipeline_path": "ProcessYouTubeSegmentUseCase::Execute",
-  "_drift_source_of_truth": "internal/application/youtube/dto/types.go::ExtractItem",
+  "_drift_source_of_truth": "internal/capabilities/youtube/dto/types.go::ExtractItem",
   "_segment_input_match": "matches tests/fixtures/clip_batch_4boxing/payload.json::segments[2]",
   "expected_status": "processed",
   "expected_clip_id": "yt_9u4T_o3FxOU_1657_1698_v1",
