@@ -108,6 +108,17 @@ func TestFFmpegOverlayCompositor_BlendsSegmentOntoSource(t *testing.T) {
 		OutputPath: outPath,
 		Width:      320,
 		Height:     240,
+		Contract: &cliprender.ResolvedContract{
+			VideoCodec:       "h264",
+			VideoProfile:     "high",
+			PixelFormat:      "yuv420p",
+			Width:            320,
+			Height:           240,
+			FPSNum:           24,
+			FPSDen:           1,
+			KeyframeInterval: 48,
+			AudioCodec:       "aac",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Composite: %v", err)

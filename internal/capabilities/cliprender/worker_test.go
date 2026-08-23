@@ -91,6 +91,19 @@ func (f *fakeOverlayCompositor) Composite(_ context.Context, in OverlayComposite
 	return f.composite, nil
 }
 
+// fakeOutputProber returns a canned probe for post-render certification.
+type fakeOutputProber struct {
+	probe *OutputProbe
+	err   error
+}
+
+func (f *fakeOutputProber) ProbeOutput(_ context.Context, _ string) (*OutputProbe, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.probe, nil
+}
+
 func TestWorker_ExecutesSealedPlanThroughRenderExecutor(t *testing.T) {
 	w, _, _ := newTestWorker(t)
 	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
@@ -353,6 +366,15 @@ func TestWorker_OverlayLineageProjectedIntoResult(t *testing.T) {
 	}}
 	w.WithOverlaySegmentResolver(resolver)
 	w.WithOverlayCompositor(compositor)
+	// Post-composite probe is mandatory when overlay is declared.
+	w.WithOutputProber(&fakeOutputProber{probe: &OutputProbe{
+		Container: "mp4", HasVideo: true, HasAudio: true,
+		VideoCodec: "h264", VideoProfile: "high", PixelFormat: "yuv420p",
+		Width: 1920, Height: 1080, FPS: 24.0, FPSNum: 24, FPSDen: 1,
+		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000, Channels: 2,
+		ChannelLayout: "stereo", AudioBitrate: "128k",
+		VideoStreams: 1, AudioStreams: 1, StartPTS: 0,
+	}})
 
 	result, err := w.Handle(context.Background(), &job.Job{ID: "job-overlay-lineage", Payload: renderJobPayload(t, req)}, nil)
 	if err != nil {
