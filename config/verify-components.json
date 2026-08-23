@@ -13,7 +13,8 @@
       "scripts/lib/dotenv.sh",
       "start_server.sh",
       "tests/fixtures/script/",
-      "examples/worker_integration/"
+      "examples/worker_integration/",
+      "examples/scripts/"
     ],
     "go_packages": [
       "./internal/kernel/script/...",
@@ -424,7 +425,6 @@
       "scripts/ci/whisper-deployment-contract_test.py",
       "scripts/tools/whisper_preflight.py",
       "scripts/tools/whisper_runtime.py",
-      "scripts/tools/test_whisper_preflight.py",
       "scripts/systemd/pipelinegen.service.d/whisper.conf",
       "scripts/systemd/pipelinegen.service.d/youtube-dlp.conf",
       "scripts/yt-dlp-pipeline",
