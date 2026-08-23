@@ -164,27 +164,6 @@
       ]
     },
     {
-      "path": "internal/domain/asset",
-      "owner": "internal/domain/asset",
-      "deadline": "2026-10-31",
-      "baseline_files": 45,
-      "baseline": {
-        "files": 45,
-        "max_loc": 4500
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "note": "Migrated to internal/kernel/asset (WAVE-24-ASSET-KERNEL-MIGRATION, completed July 2026)",
-      "target_packages": [
-        "internal/domain/asset/identity",
-        "internal/domain/asset/metadata",
-        "internal/domain/asset/lifecycle",
-        "internal/domain/asset/delivery"
-      ]
-    },
-    {
       "path": "internal/infrastructure/database/sqlite/assets",
       "owner": "internal/infrastructure/database/sqlite/assets",
       "deadline": "2026-09-30",
