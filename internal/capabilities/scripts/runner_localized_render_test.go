@@ -249,6 +249,11 @@ func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
 	require.Equal(t, RunStatusCompleted, final.Status)
 
 	require.NotNil(t, final.Result, "run result must be populated")
+	deadline := time.Now().Add(5 * time.Second)
+	for len(final.Result.LocalizedRenders) < 6 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+		final = awaitCompletion(t, repo, runID, time.Second)
+	}
 	require.Len(t, final.Result.LocalizedRenders, 6, "every (scene, language) fan-out must record its produced video")
 	for _, rendered := range final.Result.LocalizedRenders {
 		require.Equal(t, "final-video-asset-1", rendered.AssetID, "produced video asset id must be recorded")
