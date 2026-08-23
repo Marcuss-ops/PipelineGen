@@ -239,7 +239,7 @@ func (h *SystemHandler) checkVoiceover(ctx context.Context, resp *DoctorResponse
 	scriptPath := filepath.Join(h.cfg.PythonScriptsDir, "bridges", "tts_edge.py")
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		resp.Checks["voiceover_script"] = "missing"
-		resp.Fixes = append(resp.Fixes, "Restore scripts/tts_edge.py")
+		resp.Fixes = append(resp.Fixes, "Restore scripts/bridges/tts_edge.py")
 	} else {
 		resp.Checks["voiceover_script"] = "ok"
 	}
