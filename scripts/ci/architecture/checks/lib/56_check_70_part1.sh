@@ -13,7 +13,8 @@
 # transaction + outbox orchestration owned by the committer.
 #
 # Allowlist:
-#   - internal/application/assets/processing/asset_committer.go : the canonical AssetCommitter implementation.
+#   - internal/application/assets/persistence/committer.go : the canonical AssetCommitter port.
+#   - internal/infrastructure/database/sqlite/assets/asset_committer.go : the canonical SQLite implementation.
 #   - *_test.go                                                   : tests may exercise the underlying primitives directly.
 #   - internal/application/assets/finalizer/**                   : the finalizer interface definition and its tests.
 #   - internal/application/assets/mutations/**                   : the dispatcher interface definition and its tests.
@@ -41,8 +42,8 @@ if [ -n "$asset_committer_hits" ]; then
     echo "FAIL: direct asset persistence call outside AssetCommitter:"
     echo "$asset_committer_hits"
     echo ""
-    echo "Fix: route persistence through processing.AssetCommitter.Commit or"
-    echo "     processing.AssetCommitter.EnqueueAndIndex. The committer is the"
+    echo "Fix: route persistence through persistence.AssetCommitter.CommitAsset or"
+    echo "     persistence.AssetCommitter.CommitTx. The committer is the"
     echo "     single owner of the asset persistence transaction + outbox"
     echo "     orchestration."
     exit 1

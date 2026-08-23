@@ -31,8 +31,9 @@ import (
 )
 
 // OverlayCanvasSpec is the target render canvas for the derived OverlayPlan.
-// The runner defaults it to the validated golden canary (1280×720 @ 30 FPS)
-// via SetOverlayCanvas; a zero spec always falls back to the default.
+// The runner's withDefaults() resolves a zero spec to the production contract
+// (1920×1080 @ 24 FPS), matching the AssemblyReadyVideoContract.
+// Golden/certification tests use GoldenOverlayCanvas (1280×720 @ 30 FPS) explicitly.
 type OverlayCanvasSpec struct {
 	Width      int
 	Height     int
@@ -40,13 +41,17 @@ type OverlayCanvasSpec struct {
 	Background *capabilityoverlay.OverlayBackground
 }
 
-// DefaultOverlayCanvas is the validated golden canary canvas (1280×720,
+// GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
 // 30 FPS, 5 seconds of job) — the same canvas the cross-repo canary renders.
-var DefaultOverlayCanvas = OverlayCanvasSpec{Width: 1280, Height: 720, FPS: 30}
+// Production runners derive from the AssemblyReadyVideoContract (1920×1080 @ 24).
+var GoldenOverlayCanvas = OverlayCanvasSpec{Width: 1280, Height: 720, FPS: 30}
 
 func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 	if c.Width <= 0 || c.Height <= 0 || c.FPS <= 0 {
-		return DefaultOverlayCanvas
+		// Production default: derived from the AssemblyReadyVideoContract
+		// (1920×1080 @ 24/1). Golden/certification paths use GoldenOverlayCanvas
+		// explicitly.
+		return OverlayCanvasSpec{Width: 1920, Height: 1080, FPS: 24}
 	}
 	return c
 }

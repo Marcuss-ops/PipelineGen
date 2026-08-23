@@ -24,13 +24,12 @@
     "percheck_asset_committer_event_ssot": {
       "rule_id": "percheck_asset_committer_event_ssot",
       "scope": "internal/ + tests/ + cmd/",
-      "canonical_owner": "internal/application/assets/persistence/committer.go + internal/application/assets/processing/asset_committer.go (the AssetCommitter chain, via mutations.AssetMutationDispatcher in single TX)",
+      "canonical_owner": "internal/application/assets/persistence/committer.go + internal/infrastructure/database/sqlite/assets/asset_committer.go (the AssetCommitter port and canonical SQLite implementation in single TX)",
       "forbidden_literal": "'asset.index.requested' or 'asset.index.requested.v1' envelope string",
       "forbidden_pattern": "['\"]asset\\.index\\.requested(\\.v1)?['\"]",
       "exempt_surface": [
         "cmd/archcheck/scan/**",
         "internal/application/assets/persistence/",
-        "internal/application/assets/processing/",
         "internal/infrastructure/database/sqlite/outboxevents/",
         "internal/application/assets/mutations/",
         "internal/application/assets/finalizer/",

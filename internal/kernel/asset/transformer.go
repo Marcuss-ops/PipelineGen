@@ -7,7 +7,7 @@
 // upload to Drive, or touch the database/outbox.
 //
 // Download, Drive upload, and DB/outbox persistence are orchestrated
-// by the caller (see internal/application/assets/processing).
+// by the caller in the asset application flow.
 package asset
 
 import "context"
@@ -44,13 +44,13 @@ type TransformInput struct {
 // It carries only local media metadata; Drive/DB concerns are removed
 // from this DTO.
 type TransformResult struct {
-	ID          string
-	Filename    string
-	LocalPath   string
-	LegacyFileMD5    string
-	ContentHash string
-	Status      string
-	Error       string
+	ID            string
+	Filename      string
+	LocalPath     string
+	LegacyFileMD5 string
+	ContentHash   string
+	Status        string
+	Error         string
 	// Renditions lists the generated technical variants for this asset.
 	// Empty for processors that have not been updated to the rendition
 	// contract; callers must treat nil/empty as "only the canonical

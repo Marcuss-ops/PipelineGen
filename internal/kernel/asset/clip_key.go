@@ -58,9 +58,8 @@
 // # Caller responsibilities
 //
 //  1. Compute ClipKey EARLY in the clip-create flow, before any
-//     use of clip_storage_index. The port (internal/domain/clips/
-//     idempotency.go::Idempotency.Inspect) reads/writes by clip_key
-//     only.
+//     use of clip_storage_index. The storage-index adapter reads/writes
+//     by clip_key only.
 //  2. The asset_id (media_assets.id UUID) is NOT a clip_key input —
 //     it is a downstream SQLite primary key that RecordPersistence
 //     stamps onto the storage row. The clip_key is the LOGICAL

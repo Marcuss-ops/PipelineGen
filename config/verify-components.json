@@ -62,7 +62,6 @@
   },
   "clips": {
     "paths": [
-      "internal/domain/clips/",
       "internal/application/clips/",
       "internal/api/assets/clips/",
       "scripts/ingest_local_clips_batch.sh",
@@ -70,7 +69,6 @@
       "scripts/verify_5_other_clip_audio_certification.sh"
     ],
     "go_packages": [
-      "./internal/domain/clips/...",
       "./internal/application/clips/...",
       "./internal/api/assets/clips/..."
     ],
