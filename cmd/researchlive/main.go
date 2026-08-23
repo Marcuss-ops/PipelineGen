@@ -26,13 +26,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	webclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -86,13 +86,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	coordinator := app.NewResearchSearchCoordinator(
-		&app.SubjectIdentityAdapter{
+	coordinator := research.NewResearchSearchCoordinator(
+		&research.SubjectIdentityAdapter{
 			Resolve: func(subject string) scriptpkg.SubjectIdentity {
 				return usecase.NewSubjectIdentityResolver().Resolve(subject)
 			},
 		},
-		&app.QueryPlannerAdapter{
+		&research.QueryPlannerAdapter{
 			FullPlan: func(identity scriptpkg.SubjectIdentity, maxQueries int) []string {
 				return usecase.NewQueryPlanner().FullPlan(identity, maxQueries)
 			},

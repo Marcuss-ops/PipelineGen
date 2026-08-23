@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestApplyGroundingPolicy_ClipsPrimary(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/publication"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

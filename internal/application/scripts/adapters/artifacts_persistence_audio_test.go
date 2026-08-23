@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 

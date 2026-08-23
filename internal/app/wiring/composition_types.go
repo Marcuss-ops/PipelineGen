@@ -10,9 +10,9 @@ package wiring
 import (
 	"context"
 
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 
 	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/application/artifact_finalize"

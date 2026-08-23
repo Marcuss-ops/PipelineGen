@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -41,7 +41,7 @@ func (a *searxngAdapter) Search(ctx context.Context, query string, limit int) ([
 // structurally: Go interfaces are satisfied by method sets, so the cmd can
 // wire the coordinator into the resolver without naming the port type.
 type coordinatorBridge struct {
-	c *app.ResearchSearchCoordinator
+	c *research.ResearchSearchCoordinator
 }
 
 func (b *coordinatorBridge) SearchWithFallback(ctx context.Context, subject string, queries []string, targetPool int) []usecase.CoordinatorSearchResult {

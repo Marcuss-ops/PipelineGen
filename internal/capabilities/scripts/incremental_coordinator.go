@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // VidRushBarrier is the run-scoped final barrier for incremental VidRush

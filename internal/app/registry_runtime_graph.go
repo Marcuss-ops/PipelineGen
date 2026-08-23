@@ -15,13 +15,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

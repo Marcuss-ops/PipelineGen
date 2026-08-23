@@ -84,6 +84,7 @@ type goldenCase struct {
 	forbidEntities []wantEntity
 	wantPhrases    []string // must be present in ImportantPhrases
 }
+
 func TestGoldenBattery_ImageSearch(t *testing.T) {
 	runBattery(t, "en", goldenCases())
 }

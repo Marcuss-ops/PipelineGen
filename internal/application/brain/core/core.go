@@ -15,8 +15,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // orchestratorVersion is the canonical version stamp of the Brain

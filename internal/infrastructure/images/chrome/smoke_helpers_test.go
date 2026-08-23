@@ -32,24 +32,41 @@ package chrome
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"go.uber.org/zap"
 )
+
+type smokeFixture struct {
+	t            *testing.T
+	stdInR       *os.File
+	stdInW       *os.File
+	stdOutR      *os.File
+	stdOutW      *os.File
+	cmd          *exec.Cmd
+	p            *ChromeImageProvider
+	capturedMu   sync.Mutex
+	capturedReqs []map[string]any
+}
+
+func (f *smokeFixture) Close() {
+	if f == nil {
+		return
+	}
+	_ = f.stdInR.Close()
+	_ = f.stdInW.Close()
+	_ = f.stdOutR.Close()
+	_ = f.stdOutW.Close()
+}
 func newSmokeFixture(t *testing.T) *smokeFixture {
 	t.Helper()
 	stdInR, stdInW, err := os.Pipe()
@@ -215,4 +232,3 @@ func (f *smokeFixture) lastRequest() map[string]any {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
-
