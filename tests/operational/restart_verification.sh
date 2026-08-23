@@ -265,7 +265,7 @@ log_pass "Preflight vitals: pipelinegen_pids=${pre_pg} scraper_pids=${pre_scrape
 # AND at least ONE scraper process must be live; otherwise a restart of
 # "down services" is meaningless.
 if [[ "${pre_pg}" -lt 1 ]]; then
-    log_fail "Restart preflight: ZERO live pipelinegen processes found — restart test requires live services to restart FROM. Run start.sh first"
+    log_fail "Restart preflight: ZERO live pipelinegen processes found — restart test requires live services to restart FROM. Run `make run` first"
     exit 1
 fi
 if [[ "${pre_scraper}" -lt 1 ]]; then

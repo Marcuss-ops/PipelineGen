@@ -66,6 +66,10 @@ preflight: go-version-check node-version-check
 		echo "warning: 'docker compose config' skipped — docker not on PATH"; \
 	fi
 	@grep -q '^FROM .*golang:1.25' Dockerfile
+	@test -d migrations/sqlite || { echo "❌ migrations/sqlite/ missing — server cannot apply migrations" >&2; exit 1; }
+	@N=$$(ls -1 migrations/sqlite/*.sql 2>/dev/null | wc -l); if [ "$${N}" -eq 0 ]; then echo "❌ migrations/sqlite/ is empty — no .sql files found" >&2; exit 1; fi
+	@test -f .env || echo "⚠️  .env not found — copy .env.example to .env (server may refuse boot without VELOX_ADMIN_TOKEN)" >&2
+	@echo "✅ SQLite migrations: $$N files"
 	@echo "Preflight passed"
 
 # verify-format — Cleanup Plan P0-3 followup (June 2026): the actually
