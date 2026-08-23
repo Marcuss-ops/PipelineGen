@@ -1,8 +1,7 @@
 package entities
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 
@@ -43,6 +42,6 @@ const StableEntityIDLen = 16
 // the 64-bit space. This is the identity used for entity dedup, asset cache
 // reuse and statistics: it is deterministic across scenes, runs and repos.
 func StableEntityID(entityType, name string) string {
-	sum := sha256.Sum256([]byte(CanonicalKey(entityType, name)))
-	return "ent_" + hex.EncodeToString(sum[:])[:StableEntityIDLen]
+	sum := digest.SHA256Bytes([]byte(CanonicalKey(entityType, name)))
+	return "ent_" + sum[:StableEntityIDLen]
 }

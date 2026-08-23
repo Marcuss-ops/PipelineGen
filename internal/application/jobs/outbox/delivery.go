@@ -45,12 +45,11 @@ package outbox
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"net/http"
 	"time"
@@ -561,8 +560,7 @@ func (h *DeliveryHandler) recordDelivery(ctx context.Context, req *deliveryReque
 // the SHA-256 of the empty string (a fixed constant), not "" — keeping
 // the column stable for audits.
 func hashBody(b []byte) string {
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	return digest.SHA256Bytes(b)
 }
 
 // truncate returns at most n bytes of b. Used only for log lines; the

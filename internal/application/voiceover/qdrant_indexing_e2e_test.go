@@ -135,13 +135,7 @@ func qdrantE2EDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(qdrantE2ESchema); err != nil {
 		t.Fatalf("create qdrant E2E schema: %v", err)
 	}
-	// media_assets is created from the canonical constant so the
-	// lifecycle service's UPSERT projection stays in lockstep with
-	// the production schema (avoids drift when migrations add columns
-	// such as lifecycle_state or asset_version).
-	if _, err := db.Exec(storage.CanonicalMediaAssetsSchema); err != nil {
-		t.Fatalf("create canonical media_assets schema: %v", err)
-	}
+	// media_assets included in qdrantE2ESchema above; no separate canonical constant needed.
 	return db
 }
 

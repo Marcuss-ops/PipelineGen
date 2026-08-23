@@ -126,5 +126,5 @@ func renderResult(jobID string, st *veloxclient.JobStatusResponse) {
 // worker process is restarted with the same arguments.
 func buildStableReqID(parts ...string) string {
 	canonical := strings.Join(parts, "|")
-	return hashutil.MD5String(canonical) // 32 hex chars; server accepts up to 64
+	return hashutil.LegacyMD5String(canonical) // 32 hex chars; server accepts up to 64
 }

@@ -57,7 +57,11 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
 	}
 	if d.canonicalCommitter != nil {
-		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequestFromAsset(clip, contentHash)); err != nil {
+		if _, err := d.canonicalCommitter.CommitAndIndex(ctx, persistence.CommitRequest{
+			AssetID: clip.ID, Source: string(clip.Source), Name: clip.Name, Filename: clip.Filename,
+			MediaType: string(clip.MediaType), ContentHash: contentHash, LifecycleState: string(clip.LifecycleState),
+			IndexState: clip.GetMetadataString("index_state"), EmitIndexEvent: true,
+		}); err != nil {
 			return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: canonical commit: %w", err)
 		}
 		return nil

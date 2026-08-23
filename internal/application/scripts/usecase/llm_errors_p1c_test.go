@@ -357,7 +357,7 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 	// "JSON-shaped but not V1" is just as much a contract
 	// violation as "V1 JSON when prose was requested", but the
 	// graceful decode makes both shapes succeed.
-	t.Run("malformed_JSON_also_graceful", func(t *testing.T) {
+	t.Run("malformed_JSON_rejected", func(t *testing.T) {
 		t.Parallel()
 		badGen := &fakeOllamaGen{
 			result: &scriptports.GenerationResult{
@@ -368,17 +368,12 @@ func TestLLMErrors_P1C_JSONInsteadOfPlainText(t *testing.T) {
 			},
 		}
 		badEng := buildTestEngine(badGen, nil)
-		badResult, badErr := badEng.Generate(context.Background(), makeLLMErrorTestPlan())
+		_, badErr := badEng.Generate(context.Background(), makeLLMErrorTestPlan())
 
-		// PIN CURRENT BEHAVIOR (sibling to SUT BUG 6): the
-		// engine gracefully wraps bad JSON as plain text via
-		// ModeCompatibility. The error path is unreachable
-		// for any input that ModeCompatibility can wrap.
-		require.NoError(t, badErr,
-			"PIN CURRENT BEHAVIOR: bad JSON is gracefully wrapped by ModeCompatibility (V1 → legacy array → plain-text) — see SUT BUG 6 in file header. The engine's scanner NEVER returns an error from this path.")
-		require.NotNil(t, badResult)
-		assert.Contains(t, badResult.Output.Text, "foo",
-			"the bad JSON is wrapped as plain text (ModeCompatibility fallback): %q", badResult.Output.Text)
+		// ModeCompatibility removed: JSON-shaped input that isn't valid V1
+		// is now rejected with ErrModelOutputMalformed.
+		require.Error(t, badErr,
+			"malformed JSON must now be rejected (ModeCompatibility removed)")
 	})
 }
 

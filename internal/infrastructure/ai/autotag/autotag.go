@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
@@ -32,7 +32,7 @@ type Service struct {
 	db          *sql.DB
 	repo        asset.Repository
 	vlmClient   *vlm.Client
-	dispatcher  mutations.AssetMutationDispatcher
+	committer   persistence.AssetCommitter
 	enrichState enrichment.EnrichStateMachinePort
 	log         *zap.Logger
 
@@ -52,7 +52,7 @@ type ServiceDeps struct {
 	DB            *sql.DB
 	Repo          asset.Repository
 	VLMClient     *vlm.Client
-	Dispatcher    mutations.AssetMutationDispatcher
+	Committer     persistence.AssetCommitter
 	EnrichState   enrichment.EnrichStateMachinePort
 	Log           *zap.Logger
 	VideoAnalysis VideoAnalysisDeps
@@ -81,7 +81,7 @@ func NewService(deps ServiceDeps) *Service {
 		db:            deps.DB,
 		repo:          deps.Repo,
 		vlmClient:     deps.VLMClient,
-		dispatcher:    deps.Dispatcher,
+		committer:     deps.Committer,
 		enrichState:   deps.EnrichState,
 		log:           deps.Log,
 		videoSampler:  deps.VideoAnalysis.Sampler,
@@ -425,8 +425,12 @@ func (s *Service) persistVLM(ctx context.Context, a *asset.Asset) error {
 	if err != nil {
 		return err
 	}
-	if err := s.dispatcher.EnqueueAndIndex(ctx, a, hash); err != nil {
-		return fmt.Errorf("EnqueueAndIndex: %w", err)
+	if _, err := s.committer.CommitAndIndex(ctx, persistence.CommitRequest{
+		AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
+		MediaType: string(a.MediaType), ContentHash: hash, LifecycleState: string(a.LifecycleState),
+		IndexState: a.GetMetadataString("index_state"), EmitIndexEvent: true,
+	}); err != nil {
+		return fmt.Errorf("CommitAndIndex: %w", err)
 	}
 	return nil
 }

@@ -63,27 +63,18 @@ func uniqueToken(i int) string {
 	return fmt.Sprintf("PM-d84c12-KS-S%d", i)
 }
 
-// ── DoD #1: OLD format — SegmentTopics renders continuous + ordered, no SEGMENT markers ──
+// ── DoD #1: no segments → no Branch-A markers ───────────────────────
+// SegmentTopics has been removed. When Segments is absent, the prompt
+// must contain no Branch-A markers.
 
-func TestSegments_OLDFormat_segmentTopics_ContinuousOrderedNoMarkers(t *testing.T) {
+func TestSegments_NoSegments_NoBranchAMarkers(t *testing.T) {
 	t.Parallel()
-	// Legacy Branch B path: SegmentTopics set, NO Segments, NO clip
-	// evidence. The engine's Branch A (buildSegmentInstructions) is
-	// gated on len(Segments)>0, so for a SegmentTopics-only plan it
-	// returns ""; Branch B (buildClipGroundingInstructions) emits per-
-	// clip grounding (only when plan has ClipEvidence). For a "pure
-	// legacy" plan (SegmentTopics only, no clips), the combined
-	// prompt output is empty — which TRIVIALLY satisfies DoD #1
-	// "no SEGMENT N markers in OLD format".
-	//
-	// This test pins:
-	//   1. Branch A returns "" when Segments is absent (gate).
-	//   2. The combined prompt is empty of Branch-A markers
-	//      (SEGMENT N, Topic:, Source text:, Target words:).
-	//   3. The legacy SegmentTopics values themselves are preserved
-	//      on the plan (no field-conversion regression).
+	// No Segments, no clip evidence.
+	// buildSegmentInstructions (Branch A) is gated on len(Segments)>0
+	// so it returns ""; buildClipGroundingInstructions returns "" when
+	// plan.HasClips() is false. The combined prompt is empty.
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:         "OLD Format Plan",
+		Title:         "No Segments Plan",
 		Topic:         "legacy topic",
 		Language:      "en",
 		Tone:          "documentary",
@@ -91,16 +82,12 @@ func TestSegments_OLDFormat_segmentTopics_ContinuousOrderedNoMarkers(t *testing.
 		SourceKind:    "text",
 		PromptVersion: "v1",
 		PromptProfile: "default-v1",
-		// Legacy SegmentTopics path — Branch A inactive, Branch B
-		// gated on clip evidence (absent in this plan).
-		SegmentTopics: []string{"alpha", "beta", "gamma"},
 	}
-	// DoD #1 invariant 1: Branch A is gated on len(Segments)>0.
+	// Branch A is gated on len(Segments)>0.
 	if gotA := buildSegmentInstructions(plan); gotA != "" {
-		t.Fatalf("DoD #1: Branch A (buildSegmentInstructions) MUST be gated on len(Segments)>0; got %q for Segments-absent plan", gotA)
+		t.Fatalf("Branch A (buildSegmentInstructions) MUST be gated on len(Segments)>0; got %q for Segments-absent plan", gotA)
 	}
-	// DoD #1 invariant 2: combined prompt has no Branch-A markers
-	// (legacy format MUST NOT emit them).
+	// Combined prompt has no Branch-A markers.
 	combined := buildSegmentInstructions(plan) + buildClipGroundingInstructions(plan)
 	bannedLabels := []string{
 		"SEGMENT 1", "SEGMENT 2", "SEGMENT 3",
@@ -108,16 +95,8 @@ func TestSegments_OLDFormat_segmentTopics_ContinuousOrderedNoMarkers(t *testing.
 	}
 	for _, b := range bannedLabels {
 		if strings.Contains(combined, b) {
-			t.Errorf("DoD #1: legacy format MUST NOT emit %q; got:\n%s", b, combined)
+			t.Errorf("legacy format MUST NOT emit %q; got:\n%s", b, combined)
 		}
-	}
-	// DoD #1 invariant 3: legacy SegmentTopics values preserved on
-	// the plan struct (no field-conversion regression). We assert
-	// here so the wiring is locked at the unit boundary even though
-	// Branch A doesn't render them.
-	wantTopics := []string{"alpha", "beta", "gamma"}
-	if !equalStringSlice(plan.SegmentTopics, wantTopics) {
-		t.Errorf("DoD #1: legacy SegmentTopics MUST be preserved verbatim on the plan; want %v got %v", wantTopics, plan.SegmentTopics)
 	}
 }
 
@@ -441,45 +420,6 @@ func TestSegments_PayloadValidator_RejectsEmptyTopic(t *testing.T) {
 	}
 }
 
-// ── DoD #8.c: Payload validator rejects Segments + SegmentTopics mutex ──
-
-func TestSegments_PayloadValidator_RejectsMutex(t *testing.T) {
-	t.Parallel()
-	v := NewDefaultPayloadValidator()
-	env := &scriptpkg.GenerationEnvelopeV2{
-		Version: 2,
-		Preset:  scriptpkg.PresetCustom,
-		Items: []scriptpkg.GenerationItemV2{
-			{
-				ID:    "mutex",
-				Title: "Mutex",
-				Source: scriptpkg.SourceSpec{
-					Type:  scriptpkg.SourceText,
-					Topic: "x",
-				},
-				ScriptParams: scriptpkg.ScriptSpec{
-					TargetWords:   100,
-					SegmentTopics: []string{"a", "b"}, // legacy alias
-					Segments: []scriptpkg.ScriptSegment{
-						{Topic: "x"},
-					}, // new payload — MUTEX violation
-				},
-			},
-		},
-	}
-	err := v.ValidateEnvelope(env)
-	if err == nil {
-		t.Fatal("DoD #8.c MUST reject Segments + SegmentTopics both-set; got nil")
-	}
-	var pie *scriptpkg.PlanInvalidError
-	if !errAs(err, &pie) {
-		t.Fatalf("DoD #8.c should surface as PlanInvalidError; got %T: %v", err, err)
-	}
-	if !containsAny(pie.Details, "cannot both be set") {
-		t.Fatalf("DoD #8.c detail MUST mention mutex rejection; got %v", pie.Details)
-	}
-}
-
 // ── DoD #8.d: Payload validator rejects negative TargetWords ──
 
 func TestSegments_PayloadValidator_RejectsNegativeTargetWords(t *testing.T) {
@@ -605,10 +545,7 @@ func containsAny(haystack []string, needle string) bool {
 	return false
 }
 
-// equalStringSlice is an order-preserving shallow equal-check used
-// by TestSegments_OLDFormat_segmentTopics_ContinuousOrderedNoMarkers
-// to assert the legacy SegmentTopics slice is preserved verbatim on
-// the plan struct (no field-conversion regression).
+// equalStringSlice is an order-preserving shallow equal-check.
 func equalStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

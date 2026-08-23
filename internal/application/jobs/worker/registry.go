@@ -131,8 +131,7 @@ func (r *Registry) ProducesArtifacts(jobType string) bool {
 // is complete.
 //
 // Returns the receiver for fluent chaining. Nil-safe no-op.
-//
-// AZIONE 7 (July 2026): seeds the map consumed by ProducesArtifacts above.
+//// AZIONE 7 (July 2026): seeds the map consumed by ProducesArtifacts above.
 func (r *Registry) SetProducesArtifacts(jobType string, v bool) *Registry {
 	if r == nil {
 		return nil
@@ -142,6 +141,24 @@ func (r *Registry) SetProducesArtifacts(jobType string, v bool) *Registry {
 	r.producesArtifacts[jobType] = v
 	return r
 }
+
+// SeedProducesArtifacts bulk-seeds the producesArtifacts map from a
+// pre-built map (typically appjobs.Compose().ProducesArtifactsMap()).
+// Unlike SetProducesArtifacts, this accepts a batch map so the caller
+// doesn't need to iterate in application code. Nil-safe no-op.
+func (r *Registry) SeedProducesArtifacts(m map[string]bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for tp, v := range m {
+		r.producesArtifacts[tp] = v
+	}
+}
+
+
+
 
 // JobTypes returns a sorted, defensive copy of all registered job types.
 // The returned slice is safe to modify without affecting the registry.

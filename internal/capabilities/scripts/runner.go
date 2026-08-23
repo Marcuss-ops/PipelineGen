@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -216,6 +217,30 @@ type Runner struct {
 	// fence (a data race on LocalizedRenders would corrupt the run record).
 	localizedRenderMu sync.Mutex
 
+	// voiceoverPublishDrainer drains the async voiceover publish pool
+	// (P0.4: separate TTS pool from publish pool). After the voiceover
+	// phase completes, the runner calls Wait() to ensure all Drive
+	// uploads + timing publishes + DB commits have finished before
+	// audio compile and docs stages read the results. Nil means
+	// synchronous publish (backward compat).
+	voiceoverPublishDrainer interface{ Wait() }
+
+	// mediaPreflight runs the fail-fast asset verification in parallel
+	// with Gemma (P0.5). When wired, the preflight verifies clip files,
+	// original audio streams, BGM/SFX assets, Drive folders, and watermark
+	// assets AFTER normalize and concurrently with scene text generation.
+	// Nil means the preflight is skipped (backward compat for tests).
+	// The preflight result is joined after runSceneTextPhase; failures
+	// fail the run before TTS is invoked.
+	mediaPreflight MediaPreflight
+
+	// recordSubStage records a sub-stage observation on the canonical
+	// Run clock (P1.2 observability gap closure). It always measures
+	// wall-clock time from the caller's perspective via time.Since, and
+	// delegates to kernobs.RecordStage so the kernel never re-times it.
+	// When no Run is bound to ctx, the call is a no-op.
+	recordSubStage func(ctx context.Context, stage string, started time.Time, err error)
+
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch): the editorial/visual decision layer the
 	// golden battery certifies (entity typing + canonicalization + query
@@ -351,6 +376,27 @@ func (r *Runner) SetOverlayRenderEnqueuer(enqueuer OverlayRenderEnqueuer) {
 func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 	if r != nil {
 		r.localizedRenderEnqueuer = enqueuer
+	}
+}
+
+// SetVoiceoverPublishDrainer wires the async voiceover publish pool
+// (P0.4: separate TTS pool from publish pool). After the voiceover
+// phase, the runner drains the pool so Drive links are hydrated before
+// downstream stages (audio compile, docs) consume them. A nil drainer
+// means synchronous publish (backward compat).
+func (r *Runner) SetVoiceoverPublishDrainer(drainer interface{ Wait() }) {
+	if r != nil {
+		r.voiceoverPublishDrainer = drainer
+	}
+}
+
+// SetMediaPreflight wires the fail-fast media requirement verification
+// (P0.5). When wired, the runner fires the preflight in parallel with
+// Gemma and fails the run at the join point if any check failed. Nil
+// means the preflight is skipped (backward compat).
+func (r *Runner) SetMediaPreflight(preflight MediaPreflight) {
+	if r != nil {
+		r.mediaPreflight = preflight
 	}
 }
 
@@ -843,14 +889,35 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	}) {
 		return
 	}
-	coordinator, err := r.beginVidRush(ctx, runID, req)
-	if err != nil {
-		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+	var coordinator *VidRushIncrementalCoordinator
+	var beginVidRushErr error
+	kernobs.MeasureStage(ctx, "begin_vidrush", func(stageCtx context.Context) error {
+		coordinator, beginVidRushErr = r.beginVidRush(stageCtx, runID, req)
+		return beginVidRushErr
+	})
+	if beginVidRushErr != nil {
+		r.failRunWithRetry(ctx, runID, StageNormalizing, beginVidRushErr)
 		return
 	}
 	if coordinator != nil {
 		defer r.endVidRush(runID)
 	}
+
+	// ── P0.5 Media Preflight (parallel with Gemma) ────────────────
+	// After normalize, start the fail-fast asset verification in a
+	// goroutine. It checks clip files, original audio streams, BGM/SFX,
+	// and watermark assets while Gemma generates scene text. Join
+	// after runSceneTextPhase; preflight failures fail the run BEFORE
+	// any TTS work is done.
+	var preflightDone <-chan PreflightResult
+	if r.mediaPreflight != nil {
+		pfCh := make(chan PreflightResult, 1)
+		preflightDone = pfCh
+		go func() {
+			pfCh <- r.mediaPreflight.Run(ctx, req)
+		}()
+	}
+
 	var result *GenerateResult
 	if !r.measurePhase(ctx, kernobs.StageGenerate, func(c context.Context) bool {
 		var ok bool
@@ -859,6 +926,41 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 	}) {
 		return
 	}
+
+	// ── Pipeline KPI: generate phase milestones ────────────────
+	// For streaming mode, the coordinator records first_scene_ready
+	// earlier; for serial/clip mode, we record it at phase completion.
+	if run := kernobs.FromContext(ctx); run != nil {
+		elapsed := run.ElapsedMs()
+		// Only set first_scene_ready if not already set by coordinator.
+		if run.Report().KPIs.GenerateFirstSceneReadyMs == 0 {
+			kernobs.RecordKPIMilestone(ctx, "generate_first_scene_ready_ms", elapsed)
+		}
+		kernobs.RecordKPIMilestone(ctx, "generate_finished_ms", elapsed)
+	}
+
+	// ── Join media preflight ────────────────────────────────────
+	if preflightDone != nil {
+		preflightJoinStarted := time.Now()
+		pfResult := <-preflightDone
+		if pfResult.HasFailures() {
+			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), fmt.Errorf("preflight: %d failures", len(pfResult.Failures)))
+		} else {
+			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "media_preflight_join"}, preflightJoinStarted, time.Now(), nil)
+		}
+		r.log.Info("media preflight completed",
+			zap.String("run_id", runID),
+			zap.Int("failures", len(pfResult.Failures)),
+			zap.Int64("wall_ms", pfResult.WallMS))
+		if pfResult.HasFailures() {
+			r.log.Warn("media preflight FAILED — run aborted before TTS",
+				zap.String("run_id", runID),
+				zap.String("failures", pfResult.Error()))
+			r.failRunWithRetry(ctx, runID, StagePreflight, fmt.Errorf("media preflight: %s", pfResult.Error()))
+			return
+		}
+	}
+
 	if result == nil {
 		result = &GenerateResult{Scenes: []Scene{}, Render: req.Render, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 	}
@@ -918,8 +1020,57 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 			// CPU render overlaps both TTS (main goroutine) and NLP (VidRush
 			// enrichments) instead of waiting for the audio join.
 			skel := r.renderDocumentSkeletons(req, result)
+
+			// ── P1.1 Audio prefetch ──────────────────────────────
+			// Resolve BGM/SFX assets and materialize original clip
+			// audio in parallel with TTS so the heavy I/O is done
+			// before audio compile starts. Best-effort: skip when
+			// the required source is nil (audio compile handles the
+			// fail-closed check at its own boundary).
+			var prefetched *AudioPrefetchResult
+			if (len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 ||
+				req.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip) &&
+				r.audioAssetSource != nil {
+				bgmIDs := make([]string, len(req.BackgroundMusic))
+				for i, b := range req.BackgroundMusic {
+					bgmIDs[i] = b.AssetID
+				}
+				sfxIDs := make([]string, len(req.SoundEffects))
+				for i, s := range req.SoundEffects {
+					sfxIDs[i] = s.AssetID
+				}
+				var clipIDs []string
+				for _, s := range result.Scenes {
+					for _, c := range s.Clips {
+						if c != nil && c.ID != "" {
+							clipIDs = append(clipIDs, c.ID)
+						}
+					}
+					if s.Clip != nil && s.Clip.ID != "" {
+						clipIDs = append(clipIDs, s.Clip.ID)
+					}
+				}
+				var clipAudioSource ClipAudioAssetSource
+				if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
+					clipAudioSource = candidate
+				}
+				pf, pfErr := PrefetchAudioAssets(prepareCtx, bgmIDs, sfxIDs, r.audioAssetSource, clipIDs, clipAudioSource, req.MixPolicy)
+				if pfErr != nil {
+					r.log.Warn("audio prefetch failed — audio compile will run with synchronous resolution",
+						zap.String("run_id", runID),
+						zap.Error(pfErr))
+				} else {
+					prefetched = pf
+				}
+			}
+
 			res, err := r.runVidRushJoinAndPrepare(prepareCtx, runID, req, snapshot)
-			prepareDone <- vidRushPrepareOutcome{result: res, skeletons: skel, err: err}
+			prepareDone <- vidRushPrepareOutcome{
+				result:     res,
+				skeletons:  skel,
+				prefetched: prefetched,
+				err:        err,
+			}
 		}()
 
 		// TTS runs in the main goroutine, in parallel with the prepare branch.
@@ -931,13 +1082,22 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		}
 
 		// Join the prepare branch; an error fails the run (fail-closed).
-		outcome := <-prepareDone
+		// MeasureStage attributes this wait (VidRush + DocsPrepare + AudioPrefetch
+		// finishing after TTS) so it no longer leaks into unattributed time.
+		var outcome vidRushPrepareOutcome
+		kernobs.MeasureStage(ctx, "prepare_join", func(stageCtx context.Context) error {
+			outcome = <-prepareDone
+			return outcome.err
+		})
 		if outcome.err != nil {
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, outcome.err)
 			return
 		}
 		applyVidRushPrepareProjections(result, outcome.result)
 		skeletons = outcome.skeletons
+		// Store the prefetched audio assets so the audio compile phase
+		// can consume them without blocking on I/O.
+		result.AudioPrefetch = outcome.prefetched
 		r.checkpoint(ctx, runID, result)
 	}
 

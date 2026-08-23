@@ -2,8 +2,7 @@ package jobregistry
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"strings"
 	"time"
@@ -113,8 +112,8 @@ func (r *JobRegistryExecutionRecorder) RecordOperation(ctx context.Context, exec
 }
 
 func operationEventID(jobID, operationID, status string) string {
-	sum := sha256.Sum256([]byte(jobID + "\x00" + operationID + "\x00" + status))
-	return "artifact_operation_" + hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(jobID + "\x00" + operationID + "\x00" + status))
+	return "artifact_operation_" + sum
 }
 
 func registryStep(exec scriptgen.ExecutionContext, step scriptgen.ExecutionStep, status, message string) capregistry.Step {
@@ -122,8 +121,8 @@ func registryStep(exec scriptgen.ExecutionContext, step scriptgen.ExecutionStep,
 }
 
 func metricID(jobID, stepID, name string) string {
-	sum := sha256.Sum256([]byte(jobID + "\x00" + stepID + "\x00" + name))
-	return "script_metric_" + hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(jobID + "\x00" + stepID + "\x00" + name))
+	return "script_metric_" + sum
 }
 func registryTime(value time.Time) string {
 	if value.IsZero() {

@@ -45,6 +45,7 @@ import (
 	"time"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -168,7 +169,26 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		broker.WithArtifactFolderResolver(newSQLiteArtifactFolderResolver(root.DB.DB))
 		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 	} else {
-		log.Warn("JobFinalizer NOT wired into local broker (one or more deps nil — root.Outbox, root.Outbox.EventsRepo, or root.DB). Path B artifact-producing jobs will fail at CompleteWithArtifacts with ErrFinalizerNotConfigured.",
+		// PR-COMPLETE-WORKER-FAIL-BOOT (Aug 2026): if the canonical
+		// registry declares ANY artifact-producing job type with
+		// ArtifactOwnershipWorkerSpine (CompleteWithArtifacts required),
+		// a missing finalizer wiring is a BOOT FAILURE, not a WARN.
+		//
+		// A server that cannot complete artifact-producing jobs MUST
+		// NOT start — the deferred failure (ErrFinalizerNotConfigured at
+		// CompleteWithArtifacts time) would orphan every such job in
+		// RUNNING until lease expiry (~5 min), creating a silent outage
+		// that is much harder to diagnose than a boot-time crash loop.
+		spineTypes := appjobs.SpineJobTypes()
+		if len(spineTypes) > 0 {
+			partialCleanup()
+			return nil, nil, nil, fmt.Errorf(
+				"FAIL BOOT: cannot wire JobFinalizer for artifact-producing jobs (root.Outbox=%v, root.Outbox.EventsRepo=%v, root.DB=%v). %d registered job type(s) require CompleteWithArtifacts: %v. Fix: ensure the outbox, events repo, and DB are available at composition time.",
+				root.Outbox == nil, root.Outbox != nil && root.Outbox.EventsRepo == nil, root.DB == nil,
+				len(spineTypes), spineTypes,
+			)
+		}
+		log.Warn("JobFinalizer NOT wired into local broker (one or more deps nil — root.Outbox, root.Outbox.EventsRepo, or root.DB). No worker-spine job types registered, so this is safe.",
 			zap.Bool("Outbox_nil", root.Outbox == nil))
 	}
 

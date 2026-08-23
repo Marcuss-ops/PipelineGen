@@ -217,7 +217,7 @@ func sanitizeSegment(s string) string {
 //  3. Post-flight size check (using actual written byte count):
 //     if written != ref.SizeBytes -> ErrSizeMismatch (best-effort
 //     cleans up the partial file).
-//  4. Hash compare: if hex(sha256.Sum256()) != ref.SHA256 ->
+//  4. Hash compare: if hex(digest.SHA256Bytes()) != ref.SHA256 ->
 //     ErrHashMismatch (best-effort cleans up).
 //
 // Path-containment: assertContained(root, targetPath) is called

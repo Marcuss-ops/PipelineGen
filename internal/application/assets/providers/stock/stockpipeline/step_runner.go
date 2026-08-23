@@ -11,12 +11,12 @@
 package stockpipeline
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sync"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -30,7 +30,7 @@ type StepRunner interface {
 	PolicyVersion() string
 
 	Planner() ClipPlanner
-	SourceStager() assets.SourceStager
+	SourceStager() acquisition.SourceStager
 	Cutter() VideoCutter
 	Renderer() StockRenderer
 	Builder() ManifestBuilder
@@ -89,17 +89,17 @@ func (a *orchestratorRunner) BatchRepository() StockBatchRepository {
 
 var _ StepRunner = (*orchestratorRunner)(nil)
 
-func (a *orchestratorRunner) Cfg() OrchestratorConfig           { return a.orch.cfg }
-func (a *orchestratorRunner) RunInput() *RunInput               { return a.in }
-func (a *orchestratorRunner) JobID() string                     { return a.orch.cfg.JobId }
-func (a *orchestratorRunner) PolicyVersion() string             { return a.orch.cfg.PolicyVersion }
-func (a *orchestratorRunner) Planner() ClipPlanner              { return a.orch.planner }
-func (a *orchestratorRunner) SourceStager() assets.SourceStager { return a.orch.stager }
-func (a *orchestratorRunner) Cutter() VideoCutter               { return a.orch.cutter }
-func (a *orchestratorRunner) Renderer() StockRenderer           { return a.orch.renderer }
-func (a *orchestratorRunner) Builder() ManifestBuilder          { return a.orch.builder }
-func (a *orchestratorRunner) Writer() TransactionalAssetWriter  { return a.orch.writer }
-func (a *orchestratorRunner) Projection() ProjectionPort        { return a.orch.projection }
+func (a *orchestratorRunner) Cfg() OrchestratorConfig                { return a.orch.cfg }
+func (a *orchestratorRunner) RunInput() *RunInput                    { return a.in }
+func (a *orchestratorRunner) JobID() string                          { return a.orch.cfg.JobId }
+func (a *orchestratorRunner) PolicyVersion() string                  { return a.orch.cfg.PolicyVersion }
+func (a *orchestratorRunner) Planner() ClipPlanner                   { return a.orch.planner }
+func (a *orchestratorRunner) SourceStager() acquisition.SourceStager { return a.orch.stager }
+func (a *orchestratorRunner) Cutter() VideoCutter                    { return a.orch.cutter }
+func (a *orchestratorRunner) Renderer() StockRenderer                { return a.orch.renderer }
+func (a *orchestratorRunner) Builder() ManifestBuilder               { return a.orch.builder }
+func (a *orchestratorRunner) Writer() TransactionalAssetWriter       { return a.orch.writer }
+func (a *orchestratorRunner) Projection() ProjectionPort             { return a.orch.projection }
 func (a *orchestratorRunner) SourceDurationProbe() SourceDurationProbe {
 	return a.orch.sourceProbe
 }
@@ -145,8 +145,8 @@ func (a *orchestratorRunner) RunFingerprint() string {
 // Replaces the direct internal/infrastructure/files.SHA256String import
 // (godlike/06 import-boundary discipline).
 func sha256String(text string) string {
-	h := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(text))
+	return h
 }
 
 func defaultStepRunnerLog() *zap.Logger {

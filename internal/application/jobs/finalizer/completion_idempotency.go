@@ -37,8 +37,7 @@ package finalizer
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -145,8 +144,8 @@ func hashJSONString(s string) string {
 	if s == "" || s == "null" {
 		s = "{}"
 	}
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(s))
+	return h
 }
 
 // ── Completion fingerprint (§ 4.5 idempotency) ─────────────────────

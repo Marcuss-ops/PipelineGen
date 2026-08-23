@@ -18,6 +18,13 @@ type targetWordsChecker struct{}
 func (targetWordsChecker) Name() string { return "target_words_tolerance" }
 
 func (targetWordsChecker) Check(in qualityGateInput) []string {
+	// Clip narration is intentionally short and naturally varies with the
+	// supplied clip. Its per-segment validator already enforces the bounded
+	// clip budget; applying the documentary aggregate target here rejects
+	// valid one- or two-sentence intros (especially with Gemma).
+	if in.plan.ClipEvidence != nil {
+		return nil
+	}
 	if in.plan.TargetWords > 0 && strings.TrimSpace(in.sourceText) != "" && strings.TrimSpace(in.plan.TranslateTo) == "" {
 		lower := float64(in.plan.TargetWords) * minTargetWordsRatio
 		upper := float64(in.plan.TargetWords) * maxTargetWordsRatio

@@ -25,13 +25,13 @@
 package asset
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // VisualSummary is the canonical domain model for one row in
@@ -313,6 +313,5 @@ func ComputeSourceHash(
 	b.WriteString(preprocessingVersion)
 	b.WriteString(";frames:")
 	b.WriteString(fmt.Sprintf("%d", frameCount))
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(b.String())
 }

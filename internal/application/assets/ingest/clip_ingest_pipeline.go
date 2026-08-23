@@ -20,7 +20,7 @@
 //  1. Downloader            — source bytes (production: YouTubeStager /
 //     ArtlistStager / StockStager).
 //  2. MediaNormalizer       — canonical container/codec normalization.
-//  3. ContentHasher         — canonical SHA-256 (AssetMutationDispatcher
+//  3. ContentHasher         — canonical SHA-256 (AssetCommitter
 //     supersede-gate fingerprint).
 //  4. ArtifactStore         — typed-narrow companion writer for
 //     locations/processing.
@@ -28,12 +28,11 @@
 //  6. ClipEnricher          — semantic + visual metadata attachment.
 //  7. TextTrackTranslator  — localize source-language text tracks.
 //  8. SearchTextComposer    — BM25 + vector-search text envelope.
-//  9. AssetMutationDispatcher — canonical SSOT atomic media_assets +
+//  9. AssetCommitter — canonical SSOT atomic media_assets +
 //     outbox_events write surface (QDRANT-002).
 //
 // All 3 providers (YouTube / Artlist / Stock) MUST flow through the
-// SAME AssetMutationDispatcher instance (composition-root enforces,
-// percheck_clip_ingest_pipeline_canonical_1 enforces at the type level).
+// SAME persistence.AssetCommitter instance (composition-root enforces).
 //
 // State-traversal mapping (per PR-CATALOG-MULTILINGUA step 7's canonical
 // 14-state ASSET STATE MACHINES — see internal/domain/asset):
@@ -52,12 +51,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -172,15 +172,15 @@ var ErrClipIngestPipelineSourceRefEmpty = errors.New("clip_ingest_pipeline: sour
 // ClipIngestPipeline is the canonically-named 9-component pipeline
 // (godlike/06 SSOT — single canonical owner per fact).
 type ClipIngestPipeline struct {
-	Downloader              Downloader
-	MediaNormalizer         MediaNormalizer
-	ContentHasher           ContentHasher
-	ArtifactStore           ArtifactStore
-	Transcriber             Transcriber
-	ClipEnricher            ClipEnricher
-	TextTrackTranslator     TextTrackTranslator
-	SearchTextComposer      SearchTextComposer
-	AssetMutationDispatcher mutations.AssetMutationDispatcher
+	Downloader          Downloader
+	MediaNormalizer     MediaNormalizer
+	ContentHasher       ContentHasher
+	ArtifactStore       ArtifactStore
+	Transcriber         Transcriber
+	ClipEnricher        ClipEnricher
+	TextTrackTranslator TextTrackTranslator
+	SearchTextComposer  SearchTextComposer
+	AssetCommitter      persistence.AssetCommitter
 }
 
 // MediaProcessingDeps bundles the first 4 clip-ingest pipeline ports
@@ -204,10 +204,10 @@ type EnrichmentDeps struct {
 // ClipIngestPipelineDeps mirrors the 9 fields for the constructor
 // (single positional arg keeps max_constructor_deps: 8 satisfied).
 type ClipIngestPipelineDeps struct {
-	MediaProcessing         MediaProcessingDeps
-	Enrichment              EnrichmentDeps
-	AssetMutationDispatcher mutations.AssetMutationDispatcher
-	Log                     *zap.Logger
+	MediaProcessing MediaProcessingDeps
+	Enrichment      EnrichmentDeps
+	AssetCommitter  persistence.AssetCommitter
+	Log             *zap.Logger
 }
 
 // depsValidate fails fast if any of the 9 components is nil.
@@ -236,8 +236,8 @@ func depsValidate(d ClipIngestPipelineDeps) error {
 	if d.Enrichment.SearchTextComposer == nil {
 		return fmt.Errorf("%w: SearchTextComposer", ErrClipIngestPipelineFailClosed)
 	}
-	if d.AssetMutationDispatcher == nil {
-		return fmt.Errorf("%w: AssetMutationDispatcher", ErrClipIngestPipelineFailClosed)
+	if d.AssetCommitter == nil {
+		return fmt.Errorf("%w: AssetCommitter", ErrClipIngestPipelineFailClosed)
 	}
 	return nil
 }
@@ -254,15 +254,15 @@ func NewClipIngestPipeline(deps ClipIngestPipelineDeps) (*ClipIngestPipeline, er
 		log = zap.NewNop()
 	}
 	return &ClipIngestPipeline{
-		Downloader:              deps.MediaProcessing.Downloader,
-		MediaNormalizer:         deps.MediaProcessing.MediaNormalizer,
-		ContentHasher:           deps.MediaProcessing.ContentHasher,
-		ArtifactStore:           deps.MediaProcessing.ArtifactStore,
-		Transcriber:             deps.Enrichment.Transcriber,
-		ClipEnricher:            deps.Enrichment.ClipEnricher,
-		TextTrackTranslator:     deps.Enrichment.TextTrackTranslator,
-		SearchTextComposer:      deps.Enrichment.SearchTextComposer,
-		AssetMutationDispatcher: deps.AssetMutationDispatcher,
+		Downloader:          deps.MediaProcessing.Downloader,
+		MediaNormalizer:     deps.MediaProcessing.MediaNormalizer,
+		ContentHasher:       deps.MediaProcessing.ContentHasher,
+		ArtifactStore:       deps.MediaProcessing.ArtifactStore,
+		Transcriber:         deps.Enrichment.Transcriber,
+		ClipEnricher:        deps.Enrichment.ClipEnricher,
+		TextTrackTranslator: deps.Enrichment.TextTrackTranslator,
+		SearchTextComposer:  deps.Enrichment.SearchTextComposer,
+		AssetCommitter:      deps.AssetCommitter,
 	}, nil
 }
 
@@ -302,8 +302,8 @@ func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref assets.SourceRef) (
 
 	// Stage 4a — ArtifactStore (typed-narrow companion write).
 	if err := p.ArtifactStore.StoreArtifact(ctx, &artifacts.MediaRecord{
-		LegacyFileMD5:  hash.ContentHash,
-		LocalPath: normalized.LocalPath,
+		LegacyFileMD5: hash.ContentHash,
+		LocalPath:     normalized.LocalPath,
 	}); err != nil {
 		return nil, fmt.Errorf("clip_ingest_pipeline.ArtifactStore.StoreArtifact: %w", err)
 	}
@@ -314,36 +314,37 @@ func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref assets.SourceRef) (
 		return nil, fmt.Errorf("clip_ingest_pipeline.Transcriber.Transcribe: %w", err)
 	}
 
-	// Stage 5 — AssetMutationDispatcher (QDRANT-002 invariant: atomic
+	// Stage 5 — AssetCommitter (QDRANT-002 invariant: atomic
 	// media_assets UPSERT + outbox_events INSERT in single tx).
-	//
-	// The Asset literal carries only ID + Source here; the canonical
-	// finalizer (composition-root wired) populates MediaType / Filename
-	// / Category / etc. from elsewhere. Keeping this literal narrow
-	// avoids coupling the canonical pipeline surface to the (potentially
-	// evolving) domain-shape reference at the application-layer boundary.
-	assetRow := &asset.Asset{
-		ID:     hash.ContentHash,
-		Source: asset.Source(ref.URL),
-	}
-	if err := p.AssetMutationDispatcher.EnqueueAndIndex(ctx, assetRow, hash.ContentHash); err != nil {
-		return nil, fmt.Errorf("clip_ingest_pipeline.AssetMutationDispatcher.EnqueueAndIndex: %w", err)
+	if _, err := p.AssetCommitter.CommitAndIndex(ctx, persistence.CommitRequest{
+		AssetID:        hash.ContentHash,
+		Source:         ref.URL,
+		Filename:       filepath.Base(normalized.LocalPath),
+		MediaType:      "video",
+		ContentHash:    hash.ContentHash,
+		LifecycleState: "DISCOVERED",
+		IndexState:     "INDEX_PENDING",
+		EmitIndexEvent: true,
+	}); err != nil {
+		return nil, fmt.Errorf("clip_ingest_pipeline.AssetCommitter.CommitAndIndex: %w", err)
 	}
 
+	assetID := hash.ContentHash
+
 	// Stage 6 — ClipEnricher.
-	if err := p.ClipEnricher.Enrich(ctx, assetRow.ID, normalized, transcript); err != nil {
+	if err := p.ClipEnricher.Enrich(ctx, assetID, normalized, transcript); err != nil {
 		return nil, fmt.Errorf("clip_ingest_pipeline.ClipEnricher.Enrich: %w", err)
 	}
 
 	// Stage 7 — TextTrackTranslator.
-	translations, err := p.TextTrackTranslator.Translate(ctx, assetRow.ID, transcript)
+	translations, err := p.TextTrackTranslator.Translate(ctx, assetID, transcript)
 	if err != nil {
 		return nil, fmt.Errorf("clip_ingest_pipeline.TextTrackTranslator.Translate: %w", err)
 	}
 
 	// Stage 8 — SearchTextComposer.
 	ctxBag := ClipIngestContext{
-		AssetID:         assetRow.ID,
+		AssetID:         assetID,
 		Source:          ref.URL,
 		NormalizedMedia: normalized,
 		ContentHash:     hash.ContentHash,
@@ -357,7 +358,7 @@ func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref assets.SourceRef) (
 
 	return &ClipIngestResult{
 		OK:         true,
-		AssetID:    assetRow.ID,
+		AssetID:    assetID,
 		Source:     ref.URL,
 		FinalState: asset.StateAssetIndexed,
 		SearchText: searchText,

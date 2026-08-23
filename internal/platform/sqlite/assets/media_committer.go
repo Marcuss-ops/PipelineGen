@@ -437,6 +437,7 @@ func persistenceToMediaRequest(r persistence.CommitRequest) mediacommit.CommitMe
 			SourceURL: r.SourceURL, Title: r.Title, SourceProvider: r.SourceProvider,
 			SourceVideoID: r.SourceVideoID, StartMs: r.StartMs, EndMs: r.EndMs,
 			Metadata: r.Metadata, Locations: r.Locations,
+			Image: optionalImageDraft(r),
 		},
 		Source: mediacommit.AssetSourceDraft{
 			SourceType: r.Source, SourceURI: sourceRef, SourceVersion: sourceVersion, IsPrimary: true,
@@ -453,6 +454,16 @@ func optionalContent(hash string) *mediacommit.ContentIdentity {
 		return nil
 	}
 	return &mediacommit.ContentIdentity{ContentSHA256: hash}
+}
+
+func optionalImageDraft(r persistence.CommitRequest) *mediacommit.ImageDraft {
+	if r.Origin == "" && r.Provider == "" {
+		return nil
+	}
+	return &mediacommit.ImageDraft{
+		Origin:   r.Origin,
+		Provider: r.Provider,
+	}
 }
 
 func mediaToPersistenceResult(r mediacommit.CommitMediaAssetResult) persistence.CommitResult {

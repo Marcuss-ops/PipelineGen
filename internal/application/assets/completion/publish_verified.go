@@ -62,7 +62,6 @@ package completion
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -427,7 +426,7 @@ func (s *Service) verifyFinalChecksum(
 		return nil
 	}
 
-	observed, err := files.HashFile(va.LocalPath, sha256.New())
+	observed, err := files.SHA256File(va.LocalPath)
 	if err != nil {
 		return fmt.Errorf(
 			"completion.publishOne[%s]: hash recompute on %q: %w",

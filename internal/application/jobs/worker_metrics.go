@@ -2,10 +2,9 @@ package jobs
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"strings"
 	"time"
@@ -342,8 +341,8 @@ func executionStepID(jobID, attemptID string, revision int) string {
 	return jobID + ":worker:" + attemptID
 }
 func metricID(jobID, stepID, name string) string {
-	sum := sha256.Sum256([]byte(jobID + "\x00" + stepID + "\x00" + name))
-	return "metric_" + hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(jobID + "\x00" + stepID + "\x00" + name))
+	return "metric_" + sum
 }
 func payloadHash(raw string) string {
 	// Canonical empty guard: jobregistry.hashPayload maps an empty or
@@ -358,8 +357,8 @@ func payloadHash(raw string) string {
 			raw = string(b)
 		}
 	}
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(raw))
+	return sum
 }
 func rawJSON(raw []byte) string {
 	if len(raw) == 0 || !json.Valid(raw) {

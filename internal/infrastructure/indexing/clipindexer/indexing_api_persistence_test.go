@@ -27,7 +27,7 @@ import (
 // metadata_json) was the root cause of outbox-completed but empty
 // Qdrant search results for YouTube clips.
 func TestFetchClipSearchInputs_ColumnSearchTextPreferred(t *testing.T) {
-	db := drive.NewTestDBWithSchema(t, drive.CanonicalMediaAssetsSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	ctx := context.Background()
@@ -37,8 +37,8 @@ func TestFetchClipSearchInputs_ColumnSearchTextPreferred(t *testing.T) {
 	// This is the exact scenario that was broken before the fix.
 	t.Run("ColumnSearchText_Present_MetadataJsonEmpty", func(t *testing.T) {
 		richText := "Pacquiao vs Broner press conference confrontation boxing training highlights"
-		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, search_text, metadata_json)
-			VALUES ('yt_col_only', 'Round_7_Broner_barcolla', 'youtube', '[]', ?, '{}')`,
+		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, search_text, metadata_json, lifecycle_state, index_state)
+			VALUES ('yt_col_only', 'Round_7_Broner_barcolla', 'youtube', '[]', ?, '{}', 'ACTIVE', 'DISCOVERED')`,
 			richText)
 		require.NoError(t, err)
 
@@ -52,8 +52,8 @@ func TestFetchClipSearchInputs_ColumnSearchTextPreferred(t *testing.T) {
 	// This is the existing working pattern — must continue to work.
 	t.Run("MetadataJsonSearchText_Present_ColumnEmpty", func(t *testing.T) {
 		richText := "Artlist clip ambient music background score"
-		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, metadata_json)
-			VALUES ('art_meta_only', 'Ambient Score', 'artlist', '[]', ?)`,
+		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, metadata_json, lifecycle_state, index_state)
+			VALUES ('art_meta_only', 'Ambient Score', 'artlist', '[]', ?, 'ACTIVE', 'DISCOVERED')`,
 			`{"search_text":"`+richText+`"}`)
 		require.NoError(t, err)
 
@@ -67,8 +67,8 @@ func TestFetchClipSearchInputs_ColumnSearchTextPreferred(t *testing.T) {
 	t.Run("BothPresent_ColumnWins", func(t *testing.T) {
 		columnText := "column_text_wins"
 		metaText := "meta_text_loses"
-		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, search_text, metadata_json)
-			VALUES ('yt_both', 'Test', 'youtube', '[]', ?, '{"search_text":"`+metaText+`"}')`,
+		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, search_text, metadata_json, lifecycle_state, index_state)
+			VALUES ('yt_both', 'Test', 'youtube', '[]', ?, '{"search_text":"`+metaText+`"}', 'ACTIVE', 'DISCOVERED')`,
 			columnText)
 		require.NoError(t, err)
 
@@ -79,8 +79,8 @@ func TestFetchClipSearchInputs_ColumnSearchTextPreferred(t *testing.T) {
 
 	// Sub-test 4: neither present — returns empty (no panic, no dangling fragment).
 	t.Run("NeitherPresent_ReturnsEmpty", func(t *testing.T) {
-		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, metadata_json)
-			VALUES ('empty_clip', 'Empty Clip', 'youtube', '[]', '{}')`)
+		_, err := db.Exec(`INSERT INTO media_assets (id, name, source, tags, metadata_json, lifecycle_state, index_state)
+			VALUES ('empty_clip', 'Empty Clip', 'youtube', '[]', '{}', 'ACTIVE', 'DISCOVERED')`)
 		require.NoError(t, err)
 
 		searchText, name, err := svc.fetchClipSearchInputs(ctx, "empty_clip")

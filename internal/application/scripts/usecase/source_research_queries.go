@@ -12,9 +12,8 @@
 package usecase
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -111,8 +110,8 @@ func researchTitle(topic, title string) string {
 }
 
 func hashResearch(s string) string {
-	h := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(s))))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(strings.ToLower(strings.TrimSpace(s))))
+	return h
 }
 
 func trimResearch(s string, n int) string {

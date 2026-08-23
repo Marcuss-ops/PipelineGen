@@ -310,19 +310,6 @@ func TestCacheFingerprint_P1A_PerFieldMutationSensitivity(t *testing.T) {
 			},
 		},
 		{
-			// SUT BUG: this test FAILS. SegmentTopics is excluded
-			// from GenerationFingerprintInput by design (cache_key.go
-			// comment lines 20-22). The user spec lists SegmentTopics
-			// as a field that must change the fingerprint. The fix
-			// is to add SegmentTopics to the canonical schema. See
-			// commit body for the full TDD-reveals-bug context.
-			name: "segment_topics",
-			mutate: func(b scriptpkg.ResolvedGenerationPlan) scriptpkg.ResolvedGenerationPlan {
-				b.SegmentTopics = []string{"MUTATED-1", "MUTATED-2"}
-				return b
-			},
-		},
-		{
 			name: "tone",
 			mutate: func(b scriptpkg.ResolvedGenerationPlan) scriptpkg.ResolvedGenerationPlan {
 				b.Tone = "dramatic"

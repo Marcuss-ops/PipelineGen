@@ -14,9 +14,8 @@
 package acquisition
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"unicode"
 )
@@ -90,8 +89,8 @@ func Wrap(sentinel error, detail string) error {
 // DeriveIdempotencyKey + DeriveCleanupToken (changing the prefix
 // is a wire-format break for the staging registry).
 func sha256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(s))
+	return sum
 }
 
 // safeBaseName sanitises an arbitrary input into a filesystem-safe

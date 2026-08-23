@@ -32,6 +32,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // driver lock per AGENTS.md
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -148,6 +149,11 @@ func (resumeStubStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSo
 	return nil
 }
 func (resumeStubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error { return nil }
+
+func (resumeStubStager) Prepare(_ context.Context, _ acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	return nil, nil
+}
+func (resumeStubStager) Release(_ context.Context, _ string) error { return nil }
 
 // failingResumeStore preserves the canonical Store surface while making
 // the one resume read fail. Embedding delegates every mutation to the

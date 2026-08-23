@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -303,7 +304,16 @@ func (h *Handler) handleReindex(c *gin.Context) {
 		contentHash = a.ID
 	}
 
-	if err := h.mutator.EnqueueAndIndex(ctx, a, contentHash); err != nil {
+	if h.committer == nil {
+		h.log.Error("failed to reindex: committer not wired", zap.String("id", id))
+		apiutil.Error(c, http.StatusServiceUnavailable, "reindex unavailable: committer not wired")
+		return
+	}
+	if _, err := h.committer.CommitAndIndex(ctx, persistence.CommitRequest{
+		AssetID: a.ID, Source: string(a.Source), Name: a.Name, Filename: a.Filename,
+		MediaType: string(a.MediaType), ContentHash: contentHash, LifecycleState: string(a.LifecycleState),
+		IndexState: a.GetMetadataString("index_state"), EmitIndexEvent: true,
+	}); err != nil {
 		h.log.Error("failed to enqueue reindex", zap.String("id", id), zap.Error(err))
 		apiutil.InternalError(c, err)
 		return

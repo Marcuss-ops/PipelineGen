@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
-	assetapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
@@ -40,7 +40,7 @@ type ImageStorageService struct {
 	// sourceStager is the canonical port for staging remote URLs into
 	// deterministic local files. downloadAndIngest routes web image
 	// downloads through it.
-	sourceStager  assetapp.SourceStager
+	sourceStager  acquisition.SourceStager
 	dedup         singleflight.Group
 	log           *zap.Logger
 	gaServerURL   string

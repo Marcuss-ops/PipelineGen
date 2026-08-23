@@ -178,12 +178,10 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 					zap.String("title", title),
 					zap.Int("word_count", result.WordCount))
 			}
-			// P0.8 (June 2026) + post-rename (July 2026): jsonextract.Scanner
-			// in ModeCompatibility on the cache-replay path. The fresh
-			// generation path (further below) uses ModeFreshPlainText
-			// (deprecated same-value alias: ModeStrict). All ModeCompatibility
-			// fallbacks are declared and measured via Prometheus counters.
-			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
+			// Cache-replay path uses ModeFreshPlainText (canonical V1-only).
+			// Legacy arrays and pre-V1 shapes are no longer supported;
+			// migrate with pip-admin migrate-legacy-cache before upgrading.
+			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeFreshPlainText}
 			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
 			if decodeErr != nil {
 				return nil, decodeErr
@@ -234,18 +232,6 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	}
 
 	// Build ollama request from the resolved plan.
-	// PR-CS-1 FASE 14 — emit branch telemetry at the canonical
-	// orchestrator site. godlike/06 SSOT: builders must be pure;
-	// the orchestrator owns side-effects. This placement also
-	// closes the BRANCH-B telemetry gap (SegmentTopics-only plans
-	// without clip evidence) — see commit message for details.
-	if e.branchMetric != nil {
-		if len(plan.Segments) > 0 {
-			e.branchMetric.RecordScriptGenerationBranch("a", plan.Language)
-		} else if len(plan.SegmentTopics) > 0 {
-			e.branchMetric.RecordScriptGenerationBranch("b", plan.Language)
-		}
-	}
 	builtPrompt := renderedPrompt
 	// PR-CS-1 / FASE 3: ScriptSegment blocks + canonical footer are
 	// emitted BEFORE the legacy ClipGroundingInstructions so they
@@ -308,32 +294,18 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			zap.Int("est_duration_s", genResult.EstDuration))
 	}
 
-	// P0.8 (June 2026) + post-rename (July 2026): jsonextract.Scanner
-	// in ModeFreshPlainText (canonical; deprecated same-value alias ModeStrict)
-	// — V1 JSON fast lane first, then ParsePlainTextFresh (canonical
-	// primary path for plain prose per the LLM-PLAIN-TEXT-CONTRACT
-	// wave). Legacy arrays and invalid V1 envelopes still produce
-	// ErrModelOutputMalformed so the retry path below can downgrade
-	// to ModeCompatibility for cache-replay of pre-V1 rows.
-	// The cache-replay path at the top of this function uses
-	// ModeCompatibility directly (declared fallback with Prometheus
-	// metrics).
+	// P0.8 (June 2026) + PR-5 flip + DL-MODECOMPAT-REMOVAL (August 2026):
+	// jsonextract.Scanner in ModeFreshPlainText is the SOLE decoder.
+	// V1 JSON fast lane first, then ParsePlainTextFresh (canonical
+	// primary path for plain prose per the LLM-PLAIN-TEXT-CONTRACT).
+	// Legacy arrays and invalid V1 envelopes produce ErrModelOutputMalformed
+	// with no retry — the LLM must honour the current contract.
+	// ModeCompatibility was removed August 2026 — legacy cache replay
+	// of pre-V1 rows uses the admin migrate-legacy-cache tool instead.
 	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeFreshPlainText}
 	output, decodeErr := scanner.Scan([]byte(genResult.Script), "fresh")
 	if decodeErr != nil {
-		if e.log != nil {
-			e.log.Warn("engine: ModeFreshPlainText decode failed, retrying with ModeCompatibility",
-				zap.Error(decodeErr))
-		}
-		scanner.Mode = jsonextract.ModeCompatibility
-		output, decodeErr = scanner.Scan([]byte(genResult.Script), "fresh-fallback")
-		if decodeErr != nil {
-			return nil, fmt.Errorf("engine: model output decode failed (fresh + compatibility): %w", decodeErr)
-		}
-		if e.log != nil {
-			e.log.Info("engine: ModeCompatibility fallback succeeded",
-				zap.Int("word_count", genResult.WordCount))
-		}
+		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
 	}
 
 	// PR-CS-1 / FASE 4 (DoD #7): scrub non-prose artefacts BEFORE

@@ -32,6 +32,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
@@ -112,8 +113,15 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 		}
 		seen[stageKey] = true
 
-		ref := assets.SourceRef{URL: stagingSourceURL(plan)}
-		sa, stageErr := stager.StageSource(ctx, ref)
+		req := acquisition.PrepareRequest{
+			Source: acquisition.SourceRef{URL: stagingSourceURL(plan)},
+			IdempotencyKey: acquisition.DeriveIdempotencyKey(acquisition.SourceRef{
+				URL:           stagingSourceURL(plan),
+				PolicyVersion: runner.PolicyVersion(),
+			}),
+			CallerRef: "stock.stage_sources",
+		}
+		prepared, stageErr := stager.Prepare(ctx, req)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
 			// Mirrors YouTube (process_segment.go Step 4a) + Artlist pattern.
@@ -122,25 +130,28 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 			// for this URL means clips referencing it will fail at cut.
 			state.SourceErrors[plan.SourceID] = stageErr.Error()
 			if runner.Log() != nil {
-				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource failed — graceful degradation",
+				runner.Log().Warn("orchestrator: stock.stage_sources: Prepare failed — graceful degradation",
 					zap.String("source_id", plan.SourceID),
 					zap.Error(stageErr))
 			}
 			continue
 		}
-		if sa == nil {
-			// Defensive nil-asset path: StageSource returned (nil, nil).
+		if prepared == nil {
+			// Defensive nil-asset path: Prepare returned (nil, nil).
 			// Treated as soft failure (Warn + continue, no defer).
-			state.SourceErrors[plan.SourceID] = "source stager returned nil asset without an error"
+			state.SourceErrors[plan.SourceID] = "source stager returned nil context without an error"
 			if runner.Log() != nil {
-				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource returned nil asset — defensive skip",
+				runner.Log().Warn("orchestrator: stock.stage_sources: Prepare returned nil context — defensive skip",
 					zap.String("source_id", plan.SourceID))
 			}
 			continue
 		}
-		// Stamp the original SourceID on the staged asset so downstream
-		// extraction can map every clip plan for this video to one file.
-		sa.SourceID = stageKey
+		// Convert PrepareContext to StagedAsset for the pipeline state.
+		sa := &assets.StagedAsset{
+			LocalPath: prepared.LocalPath,
+			Bytes:     prepared.SizeBytes,
+			SourceID:  stageKey,
+		}
 		staged = append(staged, sa)
 		// Publish immediately to the shared RunState so the
 		// orchestrator-level deferred cleanup can see this asset

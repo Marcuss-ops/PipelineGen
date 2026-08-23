@@ -28,8 +28,7 @@
 package semanticdoc
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 
@@ -210,6 +209,6 @@ func composeTranscript(in Input) string {
 // hashDocumentText returns the SHA-256 hex fingerprint of the exact document
 // text sent to the embedder (semantic_document_hash).
 func hashDocumentText(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(text))
+	return sum
 }

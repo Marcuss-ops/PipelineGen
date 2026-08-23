@@ -5,13 +5,13 @@ package mediaenrichment
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -101,9 +101,9 @@ func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, la
 		}
 		payload := map[string]any{"asset_id": assetID, "text_kind": track.TextKind, "text_hash": track.TextHash, "source": "qdrant-recovery", "projection": projection}
 		body, _ := json.Marshal(payload)
-		sum := sha256.Sum256(body)
+		sum := digest.SHA256Bytes(body)
 		eventID := uuid.NewString()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO registry_events(event_id,asset_id,event_type,actor,after_hash,payload_json,created_at) VALUES(?,?,?,?,?,?,datetime('now'))`, eventID, assetID, "TEXT_TRACK_RECOVERED", "qdrant-recovery", hex.EncodeToString(sum[:]), body); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO registry_events(event_id,asset_id,event_type,actor,after_hash,payload_json,created_at) VALUES(?,?,?,?,?,?,datetime('now'))`, eventID, assetID, "TEXT_TRACK_RECOVERED", "qdrant-recovery", sum, body); err != nil {
 			return fmt.Errorf("registry event: %w", err)
 		}
 	}

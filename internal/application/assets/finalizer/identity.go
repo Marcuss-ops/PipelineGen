@@ -1,9 +1,8 @@
 package finalizer
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
@@ -32,6 +31,6 @@ func ComputeAssetID(kind finalization.ArtifactKind, sourceID string, sourceVersi
 	} else {
 		input = fmt.Sprintf("%s::%d", kind, sourceVersion)
 	}
-	h := sha256.Sum256([]byte(input))
-	return hex.EncodeToString(h[:16])
+	h := digest.SHA256Bytes([]byte(input))
+	return h[:16]
 }

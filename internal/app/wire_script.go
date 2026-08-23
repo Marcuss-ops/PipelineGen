@@ -177,7 +177,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// (GENERATING_VOICEOVERS).
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		root.AI.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
+		voiceGenerator := wiring.NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
+		voiceMap := make(map[string]string)
+		if registry, registryErr := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg)); registryErr == nil {
+			for _, spec := range registry.EnabledLanguages() {
+				if spec.EdgeTTSVoice != "" {
+					voiceMap[spec.Code] = spec.EdgeTTSVoice
+				}
+			}
+		}
+		voiceGenerator.ConfigureVoices(voiceMap)
+		root.AI.ScriptVoiceoverGenerator = voiceGenerator
 		log.Info("wireScriptFlow: wiring.ScriptVoiceoverGenerator wired",
 			zap.String("output_dir", voPath))
 	} else {

@@ -448,36 +448,7 @@ func TestPayloadValidator_SegmentsEmpty(t *testing.T) {
 	assert.Contains(t, pie.Details[0], "segments must not be empty")
 }
 
-func TestPayloadValidator_SegmentsAndSegmentTopicsMutex(t *testing.T) {
-	t.Parallel()
-	v := NewDefaultPayloadValidator()
-	env := &scriptpkg.GenerationEnvelopeV2{
-		Version: 2,
-		Preset:  scriptpkg.PresetCustom,
-		Items: []scriptpkg.GenerationItemV2{
-			{
-				ID:    "mutex",
-				Title: "Mutex",
-				Source: scriptpkg.SourceSpec{
-					Type:  scriptpkg.SourceText,
-					Topic: "x",
-				},
-				ScriptParams: scriptpkg.ScriptSpec{
-					TargetWords:   100,
-					SegmentTopics: []string{"a", "b"},
-					Segments: []scriptpkg.ScriptSegment{
-						{Topic: "x"},
-					},
-				},
-			},
-		},
-	}
-	err := v.ValidateEnvelope(env)
-	require.Error(t, err)
-	var pie *scriptpkg.PlanInvalidError
-	require.ErrorAs(t, err, &pie)
-	assert.Contains(t, pie.Details[0], "cannot both be set")
-}
+
 
 func TestPayloadValidator_SegmentTopicEmpty(t *testing.T) {
 	t.Parallel()

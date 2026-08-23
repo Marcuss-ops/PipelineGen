@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -21,21 +21,14 @@ import (
 // dell'orchestrator e arrivare ai resilience ports under test.
 type stubStager struct{}
 
-func (stubStager) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
-	return &assets.StagedAsset{LocalPath: "/tmp/stub-stager", Bytes: 0}, nil
+func (stubStager) Prepare(_ context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	return &acquisition.PrepareContext{
+		LocalPath:    "/tmp/stub-stager",
+		CleanupToken: "/tmp/stub-stager",
+	}, nil
 }
 
-func (stubStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
-}
-
-func (stubStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
-	return nil
-}
-
-func (stubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
-	return nil
-}
+func (stubStager) Release(_ context.Context, _ string) error { return nil }
 
 // stubWriter supporta le 3 failure-mode dei test:
 //   - modeA (forceFail=true): ritorna errore alla PRIMA chiamata.
@@ -124,7 +117,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-a", Lease: testLease("test-a"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		assets.SourceStager(stubStager{}),
+		stubStager{},
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: w, Projection: noopProjection{}},
 	).
@@ -156,7 +149,7 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-b", Lease: testLease("test-b"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		assets.SourceStager(stubStager{}),
+		stubStager{},
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stubBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
 	).
@@ -188,7 +181,7 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-c", Lease: testLease("test-c"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		assets.SourceStager(stubStager{}),
+		stubStager{},
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: stubProjection{}},
 	).

@@ -30,15 +30,16 @@ type ResolvedGenerationPlan struct {
 	ID string `json:"id,omitempty"`
 
 	// ── Identity ──────────────────────────────────────────────────────
-	Title     string    `json:"title"`
-	Project   string    `json:"project,omitempty"`
-	Topic     string    `json:"topic"`
-	Language  string    `json:"language"`
-	Tone      string    `json:"tone"`
-	Model     string    `json:"model"`
-	Mode      string    `json:"mode"` // "text", "clip_to_script", "batch"
-	MediaMode MediaMode `json:"media_mode,omitempty"`
-	AudioMode string    `json:"audio_mode,omitempty"`
+	Title       string    `json:"title"`
+	Project     string    `json:"project,omitempty"`
+	Topic       string    `json:"topic"`
+	Language    string    `json:"language"`
+	Tone        string    `json:"tone"`
+	Model       string    `json:"model"`
+	Concurrency int       `json:"concurrency,omitempty"`
+	Mode        string    `json:"mode"` // "text", "clip_to_script", "batch"
+	MediaMode   MediaMode `json:"media_mode,omitempty"`
+	AudioMode   string    `json:"audio_mode,omitempty"`
 	// Timing is the canonical voiceover timing policy resolved for this
 	// item (copied from the caller's audio.timing). nil means the pipeline
 	// applies the canonical defaults (best_effort / word / [json]) —
@@ -73,7 +74,6 @@ type ResolvedGenerationPlan struct {
 	NumClips          int             `json:"num_clips,omitempty"`
 	IntroClipIDs      []string        `json:"intro_clip_ids,omitempty"`
 	SegmentWords      int             `json:"segment_words,omitempty"`
-	SegmentTopics     []string        `json:"segment_topics,omitempty"`
 	Segments          []ScriptSegment `json:"segments,omitempty"`
 	SentencesPerImage int             `json:"sentences_per_image,omitempty"`
 	ImagesPerScene    int             `json:"images_per_scene,omitempty"`
@@ -228,7 +228,7 @@ func (p *ResolvedGenerationPlan) HasPostprocessor(name string) bool {
 // Scope of cloning — the slice fields callers have historically
 // mutated after BuildPlan returned:
 //
-//   - SegmentTopics, Segments (text-segment metadata)
+//   - Segments (text-segment metadata)
 //   - Languages (translation target list)
 //   - Postprocessors (postprocessor execution order)
 //
@@ -259,7 +259,6 @@ func (p *ResolvedGenerationPlan) HasPostprocessor(name string) bool {
 // downstream type assertion `plan.ClipEvidence != nil` is the
 // canonical nil-guard at the consumer.
 func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan {
-	p.SegmentTopics = slices.Clone(p.SegmentTopics)
 	p.Segments = slices.Clone(p.Segments)
 	p.Languages = slices.Clone(p.Languages)
 	p.Postprocessors = slices.Clone(p.Postprocessors)

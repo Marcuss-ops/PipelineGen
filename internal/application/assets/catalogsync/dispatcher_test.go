@@ -16,37 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// dispatcherTestSchema composes the canonical media_assets CREATE TABLE
-// (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus the
-// outbox_events companion tables that Dispatcher reads/writes.
-//
-// The unique index on outbox_events(event_key) makes Dispatcher.EnqueueAndIndex
-// idempotent: a duplicate Enqueue with the same event_key is silently swallowed.
-const dispatcherTestSchema = drive.CanonicalMediaAssetsSchema + `
-	CREATE TABLE outbox_events (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		event_type TEXT NOT NULL,
-		aggregate_id TEXT NOT NULL DEFAULT '',
-		aggregate_type TEXT NOT NULL DEFAULT '',
-		payload_json TEXT NOT NULL DEFAULT '',
-		event_key TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'pending',
-		attempt_count INTEGER NOT NULL DEFAULT 0,
-		max_attempts INTEGER NOT NULL DEFAULT 10,
-		last_error TEXT NOT NULL DEFAULT '',
-		next_attempt_at TEXT,
-		worker_id TEXT NOT NULL DEFAULT '',
-		lease_id TEXT NOT NULL DEFAULT '',
-		lease_expiry TEXT,
-		completed_at TEXT,
-		created_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL DEFAULT ''
-	);
-	CREATE UNIQUE INDEX ux_outbox_events_event_key
-		ON outbox_events(event_key);
-	CREATE INDEX idx_outbox_events_status
-		ON outbox_events(status, next_attempt_at);
-`
 
 type testSourceReader struct{}
 
@@ -68,7 +37,7 @@ func (testSourceReader) ListFiles(context.Context, string) ([]RemoteFile, error)
 // is no goroutine: the outbox event IS the indexing trigger.
 func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	ctx := context.Background()
-	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
@@ -146,7 +115,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 // only, skipping the outbox enqueue (folders are not vector-indexable).
 func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T) {
 	ctx := context.Background()
-	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
@@ -200,7 +169,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 // runtime defence-in-depth check that survives ctor-time wiring changes.
 func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	ctx := context.Background()
-	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())

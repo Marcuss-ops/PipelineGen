@@ -8,11 +8,10 @@
 package submission
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -82,8 +81,8 @@ func (f *SubmitRequestFactory) Build(cmd GenerateCommand) (opsapp.SubmitRequest,
 	// fingerprint intentionally omits transport/editorial fields such as
 	// title, but a reused key with a changed title is still a different
 	// HTTP payload and must conflict.
-	sum := sha256.Sum256(payload)
-	requestHash := hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes(payload)
+	requestHash := sum
 
 	policy, err := f.policy.Resolve(scriptpkg.TypeGenerate)
 	if err != nil {

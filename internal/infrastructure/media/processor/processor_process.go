@@ -74,7 +74,7 @@ func hashFileSHA256(path string) string {
 	if path == "" {
 		return ""
 	}
-	d, err := digest.SHA256File(path)
+	d, _, err := digest.SHA256File(path)
 	if err != nil {
 		return ""
 	}
@@ -491,7 +491,7 @@ func (p *Processor) buildRenditionOutput(ctx context.Context, kind asset.Renditi
 	if info, err := os.Stat(path); err == nil {
 		out.SizeBytes = info.Size()
 	}
-	if hash, err := digest.SHA256File(path); err == nil {
+	if hash, _, err := digest.SHA256File(path); err == nil {
 		out.LegacyFileMD5 = hash
 	}
 	if info, err := p.ffmpeg.Probe(ctx, path); err == nil {

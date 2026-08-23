@@ -97,7 +97,11 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				policy = capabilityaudio.MixVoiceoverWithDuckedClip
 			}
 			var clipAudioSource ClipAudioAssetSource
-			if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
+			if result.AudioPrefetch != nil && result.AudioPrefetch.ClipAudioSource != nil {
+				// P1.1: use prefetched clip audio paths (already materialized
+				// during TTS). The adapter serves cache hits without blocking.
+				clipAudioSource = result.AudioPrefetch.ClipAudioSource
+			} else if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
 				clipAudioSource = candidate
 			}
 			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
@@ -114,13 +118,18 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			// sealed plan by CompileAudioWithIntents. Absent intents keep the
 			// legacy primary-only CompileWithMixPolicy path.
 			if len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 {
-				if r.audioAssetSource == nil {
+				audioSource := r.audioAssetSource
+				// P1.1: use prefetched BGM/SFX paths (already resolved during TTS).
+				if result.AudioPrefetch != nil && result.AudioPrefetch.AudioSource != nil {
+					audioSource = result.AudioPrefetch.AudioSource
+				}
+				if audioSource == nil {
 					cause := fmt.Errorf("audio intent block requires an audio asset resolver")
 					r.failExecutionStep(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, *result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), r.audioAssetSource, policy, req.BackgroundMusic, req.SoundEffects)
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, *result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects)
 			} else {
 				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
 			}

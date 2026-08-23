@@ -25,8 +25,7 @@
 package stock
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -110,8 +109,8 @@ func RunFingerprintFor(input SeedInput) (seed string, err error) {
 	if err := input.Validated(); err != nil {
 		return "", fmt.Errorf("stock.RunFingerprintFor: %w", err)
 	}
-	h := sha256.Sum256([]byte(input.canonicalForm()))
-	return hex.EncodeToString(h[:]), nil
+	h := digest.SHA256Bytes([]byte(input.canonicalForm()))
+	return h, nil
 }
 
 // ── Sampler ─────────────────────────────────────────────────────

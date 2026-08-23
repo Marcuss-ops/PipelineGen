@@ -12,14 +12,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
-
-var _ assets.SourceStager = (*StockStager)(nil)
 
 type StockStager struct {
 	svc         *Service
@@ -70,7 +69,7 @@ func (s *StockStager) fs() (LocalFSPort, error) {
 	return s.svc.localFS, nil
 }
 
-func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (result *assets.StagedAsset, err error) {
+func (s *StockStager) stageSource(ctx context.Context, ref assets.SourceRef) (result *assets.StagedAsset, err error) {
 	if s.svc == nil {
 		return nil, fmt.Errorf("stock stager: service not wired")
 	}
@@ -184,19 +183,6 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 	}, nil
 }
 
-func (s *StockStager) StageSourceV2(ctx context.Context, ref asset.SourceRef) (*asset.StagedSource, error) {
-	staged, err := s.StageSource(ctx, assets.SourceRef(ref))
-	if err != nil {
-		return nil, err
-	}
-	return &asset.StagedSource{
-		LocalPath: staged.LocalPath,
-		Bytes:     staged.Bytes,
-		SourceID:  ref.URL,
-		SourceRef: ref,
-	}, nil
-}
-
 func isYouTubeSourceURL(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -206,13 +192,50 @@ func isYouTubeSourceURL(raw string) bool {
 	return host == "youtu.be" || strings.HasSuffix(host, ".youtube.com") || host == "youtube.com"
 }
 
-func (s *StockStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
-	if staged == nil {
-		return nil
+
+
+// ── acquisition.SourceStager adapter (Prepare / Release) ─────────────
+
+// Compile-time assertion: StockStager satisfies acquisition.SourceStager.
+var _ acquisition.SourceStager = (*StockStager)(nil)
+
+// Prepare bridges the legacy StageSource method to the acquisition.SourceStager
+// interface. The StockStager's StageSource already handles caching, shared leases,
+// and Drive/YouTube staging — this adapter wraps the result into the
+// acquisition.PrepareContext shape.
+func (s *StockStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
-	staged.CleanedUp = true
-	return s.Cleanup(ctx, &assets.StagedAsset{
-		LocalPath: staged.LocalPath,
-		Bytes:     staged.Bytes,
+	ref := assets.SourceRef{
+		URL:             req.Source.URL,
+		DownloadSection: req.Source.DownloadSection,
+		ForceKeyframes:  req.Source.ForceKeyframes,
+		MergeFormat:     req.Source.MergeFormat,
+	}
+	staged, err := s.stageSource(ctx, ref)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", acquisition.ErrAcquisitionPrepareFailed, err)
+	}
+	if staged == nil {
+		return nil, fmt.Errorf("%w: StageSource returned nil", acquisition.ErrAcquisitionPrepareFailed)
+	}
+	return &acquisition.PrepareContext{
+		ID:           staged.SourceID,
+		LocalPath:    staged.LocalPath,
+		SizeBytes:    staged.Bytes,
+		CleanupToken: staged.LocalPath, // LocalPath doubles as cleanup token for legacy path
+		ExpiresAt:    time.Now().Add(24 * time.Hour), // legacy path has no TTL
+	}, nil
+}
+
+// Release bridges the legacy Cleanup method to the acquisition.SourceStager
+// interface. The cleanupToken is the LocalPath from Prepare.
+func (s *StockStager) Release(ctx context.Context, cleanupToken string) error {
+	if cleanupToken == "" {
+		return fmt.Errorf("%w: empty cleanup token", acquisition.ErrAcquisitionInvalidToken)
+	}
+	return s.cleanup(ctx, &assets.StagedAsset{
+		LocalPath: cleanupToken,
 	})
 }

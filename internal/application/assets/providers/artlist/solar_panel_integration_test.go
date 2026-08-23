@@ -17,16 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// solarTestSchema composes the canonical media_assets CREATE TABLE
-// (see internal/storage/canonical.go) plus the companion clip_search_terms
-// table. Same composition rationale as artlistTestSchema.
-const solarTestSchema = drive.CanonicalMediaAssetsSchema + `
-	CREATE TABLE IF NOT EXISTS clip_search_terms (
-		clip_id TEXT NOT NULL,
-		term TEXT NOT NULL,
-		PRIMARY KEY (clip_id, term)
-	);
-`
 
 func writeFakeSolarScraper(t *testing.T) string {
 	t.Helper()
@@ -100,7 +90,7 @@ process.stdout.write(JSON.stringify({
 func TestSolarPanelSearch(t *testing.T) {
 	scraperDir := writeFakeSolarScraper(t)
 	tmpDir := t.TempDir()
-	db := drive.NewTestDBWithSchema(t, solarTestSchema)
+	db := drive.NewMigratedTestDB(t)
 	defer db.Close()
 
 	logger := zap.NewNop()

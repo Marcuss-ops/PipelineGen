@@ -318,7 +318,7 @@ func classifyChild(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 	ownerLiveExpr := ownerLiveCondition(owner)
 	var live int
 	q := fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND %s)`,
+		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND (%s))`,
 		qt(t), qt(col), qt(col), qt(owner), qt(ownerCol), qt(col), ownerLiveExpr,
 	)
 	_ = db.QueryRowContext(ctx, q).Scan(&live)
@@ -328,7 +328,7 @@ func classifyChild(ctx context.Context, db *sql.DB, t string, row *auditTableRow
 	ownerStaleExpr := ownerStaleCondition(owner)
 	var staleRef int
 	q2 := fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND %s)`,
+		`SELECT COUNT(*) FROM %s c WHERE c.%s IS NOT NULL AND c.%s!='' AND EXISTS (SELECT 1 FROM %s o WHERE o.%s=c.%s AND (%s))`,
 		qt(t), qt(col), qt(col), qt(owner), qt(ownerCol), qt(col), ownerStaleExpr,
 	)
 	_ = db.QueryRowContext(ctx, q2).Scan(&staleRef)
@@ -498,7 +498,7 @@ func countChildDups(ctx context.Context, db *sql.DB, t string, fkCol string) int
 func ownerLiveCondition(ownerTable string) string {
 	switch ownerTable {
 	case "media_assets":
-		return `o.lifecycle_state IN ('ACTIVE','PUBLISHED','STAGING') AND (o.deleted_at IS NULL OR o.deleted_at='')`
+		return `o.lifecycle_state IN ('ACTIVE','PUBLISHED','STAGING') AND o.deleted_at=''`
 	case "jobs":
 		return `o.status IN ('PENDING','LEASED','RUNNING','RETRY_WAIT')`
 	default:
@@ -509,7 +509,7 @@ func ownerLiveCondition(ownerTable string) string {
 func ownerStaleCondition(ownerTable string) string {
 	switch ownerTable {
 	case "media_assets":
-		return `o.lifecycle_state='DELETED' OR (o.deleted_at IS NOT NULL AND o.deleted_at!='')`
+		return `o.lifecycle_state='DELETED' OR o.deleted_at!=''`
 	case "jobs":
 		return `o.status IN ('SUCCEEDED','FAILED','CANCELLED')`
 	default:

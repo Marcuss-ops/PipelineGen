@@ -1,15 +1,27 @@
 deprecations:
     - id: DL-SCRIPT-BRANCH-B-001
       owner_capability: internal/application/scripts/usecase/buildClipGroundingInstructions+SegmentTopics
-      exact_symbol: buildClipGroundingInstructions SegmentTopics block (internal/application/scripts/usecase/engine_prompt.go)
+      exact_symbol: buildClipGroundingInstructions SegmentTopics prompt block (internal/application/scripts/usecase/engine_prompt.go)
       file: internal/application/scripts/usecase/engine_prompt.go
       file_line: "0"
-      replacement: 'Branch A (ScriptSegment canonical via buildSegmentInstructions) is the enforced default for ALL languages; Branch B remains as legacy fallback only when env VELOX_SCRIPTS_SEGMENT_DEFAULT=false. Source of truth: PR-CS-1 FASE 14.'
+      replacement: 'Branch B (SegmentTopics prompt rendering in buildClipGroundingInstructions) REMOVED August 2026. Only Branch A (ScriptSegment via buildSegmentInstructions) remains. Source of truth: PR-CS-1 FASE 14.'
       introduction_date: "2026-07-12"
-      removal_date: "2026-09-15"
-      tracking_issue: PR-CS-1 cutover activation (FASE 14); WAVE-21 (2026-07-31, IT-only) + WAVE-22 (2026-09-15, all languages); architecture/current.yaml PRE-EXISTING-BUILD-ISSUES-2026-07-04
-      compatibility_test: 'increment script_generation_branch_total{branch="b"} is monitored by ScriptLegacyBranchBResidual alert (config/alerting_rules.yml); alert MUST stay silent once WAVE-22 passes 2026-09-15. Pre-WAVE-21 baseline: ~100% Branch B. Post-WAVE-21 (IT): ~0% Branch B. Post-WAVE-22 (all): ~0% Branch B.'
-      usage_metric: Recorded at script_generation_branch_total{branch=*, country=*}; Branch B residue MUST trend to 0 by WAVE-22 (2026-09-15) deadline.
+      removal_date: "2026-08-22"
+      tracking_issue: PR-CS-1 cutover activation (FASE 14); WAVE-21 (2026-07-31, IT-only) + WAVE-22 cutover advanced to 2026-08-22 (all languages)
+      compatibility_test: 'rg "VELOX_SCRIPTS_SEGMENT_DEFAULT" internal/ returns 0 hits. rg "SegmentTopics" internal/ --type go returns 0 non-comment hits. script_generation_branch_total metric removed. ScriptGenerationBranchRecorder interface removed.'
+      usage_metric: Branch B code + flag + telemetry + SegmentTopics field + auto-conversion layer ALL physically removed.
       migration_phase: CONTRACT
-      status: in_progress
-      notes: PR-CS-1 FASE 14 cutover activation. Branch A (ScriptSegment) is the canonical default; Branch B (legacy SegmentTopics) retained as a flag-controlled fallback ONLY (VELOX_SCRIPTS_SEGMENT_DEFAULT=false). Removal scheduled for 2026-09-15 in WAVE-22. Dashboard alert ScriptLegacyBranchBResidual enforces fail-closed no-fake-availability on the residual.
+      status: completed
+      notes: |-
+        FULL CLEANUP complete. Branch B (SegmentTopics) eliminated:
+          - VELOX_SCRIPTS_SEGMENT_DEFAULT config flag: DELETED
+          - SegmentTopics block in buildClipGroundingInstructions: DELETED
+          - Branch "b" telemetry in engine_generate.go: DELETED
+          - ScriptGenerationBranchTotal metric: DELETED
+          - ScriptGenerationBranchRecorder interface: DELETED
+          - ScriptLegacyBranchBResidual alerting rule: DELETED
+          - SegmentTopics field in ResolvedGenerationPlan/ScriptSpec: DELETED
+          - SegmentTopics → Segments auto-conversion: DELETED
+          - SegmentTopics mutex validation: DELETED
+          - All callers migrated to Segments.
+        Cross-refs: godlike/06 §"One owner per fact", PR-CS-1 FASE 14.

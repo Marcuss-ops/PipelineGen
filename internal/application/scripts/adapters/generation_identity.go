@@ -9,8 +9,7 @@
 package adapters
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 
@@ -61,6 +60,6 @@ func BuildEnvelopeIdentity(env *scriptpkg.GenerationEnvelopeV2) string {
 
 // sha256Hex returns the first 16 hex chars of the SHA-256 digest of s.
 func sha256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])[:16]
+	sum := digest.SHA256Bytes([]byte(s))
+	return sum[:16]
 }

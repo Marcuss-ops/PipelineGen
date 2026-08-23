@@ -172,6 +172,13 @@ type VoiceoverItemResult struct {
 	// semantic enrichment is unavailable.
 	SearchText string
 
+	// CacheHit reports that this result was served from the cross-run
+	// SQLite fingerprint cache: no TTS synthesis, Drive upload, timing
+	// publish, or DB finalize ran for this item. Downstream consumers
+	// use it to report honest warm-run reuse metrics instead of
+	// counting a cache lookup as a provider TTS call.
+	CacheHit bool
+
 	// ID is the canonical voiceover row identifier (buildVoiceoverID
 	// shape: vo_<sha256[:16]>) — same value as voiceovers.id column.
 	ID string

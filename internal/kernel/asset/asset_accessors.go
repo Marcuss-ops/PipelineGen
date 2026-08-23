@@ -60,8 +60,8 @@ func (m *Asset) SetDriveMD5(v string) { m.SetMetadataString("google_drive_md5", 
 // LegacyFileMD5 returns the legacy MD5 hash (key "legacy_file_md5") from
 // pre-SHA-256 code paths (e.g. old YouTube extractions). This exists for
 // compatibility only — it is NEVER used for identity or deduplication.
-func (m *Asset) LegacyFileMD5() string     { return m.GetMetadataString("legacy_file_md5") }
-func (m *Asset) SetLegacyFileMD5(v string) { m.SetMetadataString("legacy_file_md5", v) }
+//
+// Note: the first definition is at the top of the file (canonical block).
 func (m *Asset) FolderID() string           { return m.GetMetadataString("folder_id") }
 func (m *Asset) SetFolderID(v string)       { m.SetMetadataString("folder_id", v) }
 func (m *Asset) FolderPath() string         { return m.GetMetadataString("folder_path") }

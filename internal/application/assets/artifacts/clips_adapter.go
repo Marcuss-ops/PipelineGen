@@ -3,10 +3,11 @@ package artifacts
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -22,33 +23,27 @@ type ClipsRegistry struct {
 	// stay on their respective narrow typed ports (asset_locations +
 	// asset processing) and are NOT subject to the dispatcher SSOT.
 	assets asset.Repository
-	// dispatcher is the canonical mutations.AssetMutationDispatcher SSOT
+	// committer is the canonical persistence.AssetCommitter SSOT
 	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
-	dispatcher mutations.AssetMutationDispatcher
+	committer persistence.AssetCommitter
 	querySvc   *asset.Service
 	locations  asset.LocationRepository
 	processing asset.ProcessingRepository
 }
 
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
-// positional `dispatcher` arg so the registry's UpsertMedia path
+// positional `committer` arg so the registry's UpsertMedia path
 // enforces the canonical outbox+tx writer (QDRANT-002 atomicity
-// invariant). Composition-root pre-rejection lives in the wiring
-// sites (internal/app/build_bundles_domain.go::BuildDomainBundle+buildIngestService
-// + internal/app/module_media.go::WireMediaIngest +
-// internal/app/module_sources.go::wireArtlistLifecycle +
-// internal/app/registry_helpers.go::initMediaProcessor). Rec == nil
-// returns a contract violation error at runtime (see UpsertMedia
-// method godoc for the runtime contract).
+// invariant).
 func NewClipsRegistry(
 	db *sql.DB,
 	assets asset.Repository,
 	querySvc *asset.Service,
 	locations asset.LocationRepository,
 	processing asset.ProcessingRepository,
-	dispatcher mutations.AssetMutationDispatcher,
+	committer persistence.AssetCommitter,
 ) *ClipsRegistry {
 	return &ClipsRegistry{
 		db:         db,
@@ -56,7 +51,7 @@ func NewClipsRegistry(
 		querySvc:   querySvc,
 		locations:  locations,
 		processing: processing,
-		dispatcher: dispatcher,
+		committer:  committer,
 	}
 }
 
@@ -72,8 +67,8 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// propagation boundary.
 	//
 	// Rec == nil returns a contract violation error at runtime.
-	if r.dispatcher == nil {
-		return fmt.Errorf("clips registry dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	if r.committer == nil {
+		return fmt.Errorf("clips registry committer not configured (QDRANT-asset-mutation isolation required): %w", errors.New("committer unavailable"))
 	}
 	if rec == nil {
 		return fmt.Errorf("UpsertMedia: MediaRecord is nil (contract violation)")
@@ -105,13 +100,15 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	}
 
 	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
-	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
+	// media_assets UPSERT through the canonical persistence.AssetCommitter
 	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
-	// INSERT in one tx) applies uniformly to artifacts-driven write paths. The
-	// strict fail-closed nil dispatcher check fires at the top of this function
-	// (before asset-derivation) so the dispatcher surface is reached first.
-	if err := r.dispatcher.EnqueueAndIndex(ctx, m, rec.LegacyFileMD5); err != nil {
-		return fmt.Errorf("dispatcher enqueue: %w", err)
+	// INSERT in one tx) applies uniformly to artifacts-driven write paths.
+	if _, err := r.committer.CommitAndIndex(ctx, persistence.CommitRequest{
+		AssetID: m.ID, Source: string(m.Source), Name: m.Name, Filename: m.Filename,
+		MediaType: string(m.MediaType), ContentHash: rec.LegacyFileMD5, LifecycleState: string(m.LifecycleState),
+		IndexState: m.GetMetadataString("index_state"), EmitIndexEvent: true,
+	}); err != nil {
+		return fmt.Errorf("committer enqueue: %w", err)
 	}
 
 	// Write locations

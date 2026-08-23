@@ -146,15 +146,7 @@ func runVerifyArtlistPipeline(args []string) error {
 	}
 
 	if status.Processed > 0 {
-		fmt.Print("Step 5: Verifying clip indexing... ")
-		if err := verifyClipIndexing(cfg); err != nil {
-			fmt.Printf("FAILED: %v\n", err)
-			allOK = false
-		} else {
-			fmt.Println("✅ OK")
-		}
-	} else {
-		fmt.Printf("Step 5: Skipping clip indexing verification (no new clips processed)\n")
+		fmt.Printf("Step 5: Skipping clip indexing verification (legacy artlist DB decommissioned)\n")
 	}
 
 	fmt.Println()
@@ -285,40 +277,5 @@ func verifyJobInDB(runID string, cfg *config.Config) error {
 	if status != "completed" {
 		return fmt.Errorf("job status is '%s', expected 'completed'", status)
 	}
-	return nil
-}
-
-func verifyClipIndexing(cfg *config.Config) error {
-	artlistDB := filepath.Join(cfg.Storage.DataDir, "artlist", "artlist.db.sqlite")
-	if _, err := os.Stat(artlistDB); err != nil {
-		artlistDB = filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
-		if _, err := os.Stat(artlistDB); err != nil {
-			return fmt.Errorf("cannot find artlist db: %w", err)
-		}
-	}
-
-	cmd := exec.Command("sqlite3", artlistDB, "SELECT id FROM clips WHERE search_terms IS NOT NULL ORDER BY updated_at DESC LIMIT 1")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("sqlite query for latest clip failed: %w", err)
-	}
-
-	clipID := strings.TrimSpace(string(output))
-	if clipID == "" {
-		return fmt.Errorf("no clips found in artlist database")
-	}
-
-	verifyCmd := exec.Command("sqlite3", artlistDB, "SELECT search_text FROM clips WHERE id = ?", clipID)
-	verifyOutput, err := verifyCmd.Output()
-	if err != nil {
-		return fmt.Errorf("verify search_text failed: %w", err)
-	}
-
-	searchText := strings.TrimSpace(string(verifyOutput))
-	if searchText == "" || searchText == "(null)" {
-		return fmt.Errorf("search_text is empty for clip %s - indexing may have failed", clipID)
-	}
-
-	fmt.Printf("  Clip %s indexed: search_text present (%d chars)\n", clipID, len(searchText))
 	return nil
 }

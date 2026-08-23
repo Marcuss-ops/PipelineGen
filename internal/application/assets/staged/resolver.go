@@ -27,7 +27,7 @@
 // return IDENTICAL *StagedArtifact shapes (sans pointer identity):
 //   - Path    : deterministic from DB lookup (stable across calls).
 //   - SHA256  : deterministic from on-disk bytes (recomputed every call
-//     via os.Open + io.Copy + sha256.Sum256 — NEVER cached).
+//     via os.Open + io.Copy + digest.SHA256Bytes — NEVER cached).
 //   - Bytes   : deterministic from os.Stat.Size() (recomputed every
 //     call — NEVER cached).
 //   - Source  : deterministic from DB lookup (stable across calls).
@@ -43,12 +43,11 @@ package staged
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ── StagedArtifact typed envelope ──────────────────────────────────
@@ -81,7 +80,7 @@ type StagedArtifact struct {
 	// short/long pair once verified.go is migrated.
 	LocalPath string
 	// SHA256 is the hex-encoded SHA-256 hash of the file at Path. Source:
-	// on-disk recompute via os.Open + io.Copy + sha256.Sum256. Recomputed
+	// on-disk recompute via os.Open + io.Copy + digest.SHA256Bytes. Recomputed
 	// every call (NOT cached) per the user's idempotency spec.
 	SHA256 string
 	// Bytes is the file size at Path. Source: os.Stat.Size(). Recomputed
@@ -193,7 +192,7 @@ var _ StagedArtifactResolver = (*Resolver)(nil)
 //	                                   local file (godlike/07 tripwire).
 //
 //	(3) SHA-256 live recompute        — recomputes via os.Open + io.Copy
-//	                                   + sha256.Sum256 every call (NEVER
+//	                                   + digest.SHA256Bytes every call (NEVER
 //	                                   cached).
 //
 // Step (3) is the user-spec idempotency anchor: SHA + Bytes are
@@ -266,20 +265,15 @@ func (r *Resolver) ResolveStagedArtifact(ctx context.Context, artifactID string)
 	}, nil
 }
 
-// recomputeSHA256 streams the file through sha256.Sum256 and returns the
+// recomputeSHA256 streams the file through digest.SHA256Bytes and returns the
 // hex-encoded digest. io.Copy with a hash destination handles arbitrarily-
 // large files (canonical production asset sizes range from KB PNGs to
 // GB-scale videos; streaming avoids peak-memory pressure on large
 // artifacts).
 func recomputeSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+	h, _, err := digest.SHA256File(path)
 	if err != nil {
-		return "", fmt.Errorf("open: %w", err)
+		return "", fmt.Errorf("digest: %w", err)
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("io.Copy: %w", err)
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return h, nil
 }

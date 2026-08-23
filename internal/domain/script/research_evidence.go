@@ -1,10 +1,9 @@
 package script
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
 )
@@ -171,8 +170,8 @@ func (p *ResearchEvidencePack) ComputeFingerprint() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(raw)
+	return sum, nil
 }
 
 func (p *ResearchEvidencePack) Clone() *ResearchEvidencePack {

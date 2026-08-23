@@ -15,9 +15,8 @@
 // TargetWords with SLICE ORDER preserved verbatim. A reorder IS
 // a different identity (not a canonical no-op). This is the
 // canonical reverse of the pre-FASE-7 Segment-sizing exclusion
-// listed below (NumClips / SegmentWords / SegmentTopics remain
-// EXCLUDED — those are the legacy alias and the per-scene
-// planner dimensions, not the new per-block payload).
+// listed below (NumClips / SegmentWords remain EXCLUDED — those
+// are the per-scene planner dimensions, not the per-block payload).
 //
 // EXPLICITLY excludes output flags (they don't change the text):
 //   - SaveToDB (transport)
@@ -27,8 +26,7 @@
 //   - ForceRefresh (cache-bypass control, not identity)
 //   - Segment sizing (NumClips, SegmentWords) — these affect scene
 //     planning but are not part of the canonical text-identity
-//     fingerprint. SegmentTopics is included via the canonical
-//     fingerprint input because it changes generated script shape.
+//     fingerprint.
 //
 // The PR 2 acceptance criteria:
 //   - same request -> same CacheKey (deterministic)

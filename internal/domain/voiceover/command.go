@@ -14,8 +14,8 @@
 package voiceover
 
 import (
-	"crypto/sha256"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 
@@ -54,15 +54,8 @@ type GenerateVoiceoverCommand struct {
 // Two commands with identical inputs produce identical IDs — this is the
 // deduplication key.
 func (c GenerateVoiceoverCommand) ID() string {
-	h := sha256.New()
-	h.Write([]byte(c.Text))
-	h.Write([]byte(":"))
-	h.Write([]byte(c.Locale))
-	h.Write([]byte(":"))
-	h.Write([]byte(c.Voice))
-	h.Write([]byte(":"))
-	h.Write([]byte(c.Destination.FolderID))
-	return fmt.Sprintf("vo_%x", h.Sum(nil))[:26] // "vo_" + 23 hex chars (92 bits of entropy)
+	h := digest.SHA256String(strings.Join([]string{c.Text, c.Locale, c.Voice, c.Destination.FolderID}, ":"))
+	return fmt.Sprintf("vo_%s", h[:23]) // "vo_" + 23 hex chars (92 bits of entropy)
 }
 
 // Normalize returns a copy of the command with Locale lowercased and

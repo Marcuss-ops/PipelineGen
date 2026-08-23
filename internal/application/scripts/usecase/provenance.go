@@ -3,8 +3,7 @@
 package usecase
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -50,6 +49,6 @@ func hashSourceText(plan scriptpkg.ResolvedGenerationPlan) string {
 	if plan.ClipEvidence != nil {
 		parts = append(parts, strings.TrimSpace(plan.ClipEvidence.ModelSourceText()))
 	}
-	h := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(strings.Join(parts, "\n")))
+	return h
 }

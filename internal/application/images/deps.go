@@ -10,7 +10,7 @@
 package images
 
 import (
-	assetapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -72,7 +72,7 @@ type ImagesGenAIDeps struct {
 type ImagesExternalDeps struct {
 	IngestSvc    *ingest.Service
 	Committer    persistence.AssetCommitter
-	SourceStager assetapp.SourceStager
+	SourceStager acquisition.SourceStager
 	VeloxBaseURL string
 	GACfg        GoogleAccountingConfig
 	RemoteFetch  RemoteFetchPort

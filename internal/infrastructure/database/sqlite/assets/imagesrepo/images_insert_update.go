@@ -2,7 +2,7 @@
 //
 // images_insert_update.go owns the write-path methods:
 // AddImage, dualWriteImageDetails, UpsertGeneratedDetails,
-// UpsertRetrievedDetails, UpdateOrigin, UpdateImageMetadata,
+// UpsertRetrievedDetails, UpdateImageMetadata,
 // UpdateEmbeddingStatus, UpdateEmbeddingData.
 // Extracted from images_repository.go (July 2026, LONG-FILES-SPLIT-2026-07-06).
 package imagesrepo
@@ -171,20 +171,6 @@ func (r *ImagesRepository) UpsertRetrievedDetails(ctx context.Context, d *asset.
 			provider = excluded.provider
 	`, d.AssetID, d.SourceImageURL, d.SourcePageURL, d.License, d.Author,
 		d.SearchQuery, d.RetrievedAt, d.Provider)
-	return err
-}
-
-// UpdateOrigin updates media_assets.origin and media_assets.provider for
-// the row keyed by legacy_file_md5. FASE 4 CUTOVER.
-func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provider string) error {
-	if hash == "" {
-		return fmt.Errorf("UpdateOrigin: hash is empty")
-	}
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE media_assets
-		SET origin = ?, provider = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE source = 'image' AND legacy_file_md5 = ?
-	`, origin, provider, hash)
 	return err
 }
 

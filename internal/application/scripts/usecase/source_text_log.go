@@ -14,8 +14,7 @@
 package usecase
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -54,8 +53,8 @@ func SourceTextLogFields(text string, cfg adapters.NormalizationConfig) map[stri
 
 // hashSourceTextForLog returns a SHA-256 hex digest of the raw text.
 func hashSourceTextForLog(text string) string {
-	h := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(text))
+	return h
 }
 
 // previewSourceText returns the first maxRunes runes of text. It

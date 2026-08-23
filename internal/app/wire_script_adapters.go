@@ -45,8 +45,7 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"math/rand"
@@ -287,8 +286,8 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			assetID = strings.TrimSpace(r.Name)
 		}
 		if assetID == "" {
-			sum := sha256.Sum256([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
-			assetID = hex.EncodeToString(sum[:])
+			sum := digest.SHA256Bytes([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
+			assetID = sum
 		}
 		return scriptpkg.SegmentAssetCandidate{
 			AssetID: assetID, Provider: "internet_images", Query: strings.TrimSpace(req.Query),

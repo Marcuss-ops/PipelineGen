@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
@@ -14,7 +14,7 @@ import (
 // ProductionPipelineDeps groups the execution ports for the live stock run.
 type ProductionPipelineDeps struct {
 	Planner  ClipPlanner
-	Stager   assets.SourceStager
+	Stager   acquisition.SourceStager
 	Cutter   VideoCutter
 	Renderer StockRenderer
 	Builder  ManifestBuilder

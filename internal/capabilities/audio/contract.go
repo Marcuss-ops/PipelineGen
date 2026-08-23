@@ -6,11 +6,10 @@
 package audio
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"strings"
 )
@@ -465,8 +464,8 @@ func (p CompiledAudioPlan) Hash() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("hash audio plan: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(b)
+	return sum, nil
 }
 
 func (p *CompiledAudioPlan) Seal() error {
@@ -486,6 +485,6 @@ func (t CanonicalTimeline) Hash() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("hash canonical timeline: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(b)
+	return sum, nil
 }

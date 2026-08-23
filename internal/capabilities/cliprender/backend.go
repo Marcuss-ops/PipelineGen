@@ -188,21 +188,27 @@ func (r *RenderBackendResolver) Resolve(_ context.Context, _ ClipRenderPlanV1, c
 }
 
 // ResolveBackend probes host capabilities and resolves the backend through
-// the resolver. A missing probe/resolver, or a failed probe, resolves to the
-// software FFmpeg fallback (never a silent GPU claim) — the request's
-// require_gpu gate still rejects that outcome where GPU was mandatory.
+// the resolver. A missing probe/resolver, or a failed probe, is a typed
+// error (ErrBackendUnavailable) — the worker is DEGRADED / NOT READY when
+// it cannot probe host capabilities, never silently falling back to a
+// software path that may hide a broken wiring. A caller that explicitly
+// expects the FFmpeg fallback (e.g. a CPU-only worker) must wire a probe
+// that reports empty capabilities so the intent is explicit.
 func ResolveBackend(
 	ctx context.Context,
 	probe BackendCapabilityProbe,
 	resolver *RenderBackendResolver,
 	plan ClipRenderPlanV1,
 ) (RenderBackend, error) {
-	if probe == nil || resolver == nil {
-		return BackendFFmpegFallback, nil
+	if probe == nil {
+		return "", fmt.Errorf("%w: backend capability probe is not wired (DEGRADED — no host capability information)", ErrBackendUnavailable)
+	}
+	if resolver == nil {
+		return "", fmt.Errorf("%w: render backend resolver is not wired (NOT READY — cannot select a backend)", ErrBackendUnavailable)
 	}
 	capabilities, err := probe.ProbeCapabilities(ctx)
 	if err != nil {
-		return BackendFFmpegFallback, nil
+		return "", fmt.Errorf("%w: capability probe failed: %w (DEGRADED — host capabilities unknown)", ErrBackendUnavailable, err)
 	}
 	return resolver.Resolve(ctx, plan, capabilities)
 }

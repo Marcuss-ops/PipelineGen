@@ -53,6 +53,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -221,6 +222,59 @@ type ProcessSegmentCommand struct {
 	OldCleanedPath string
 }
 
+// VoiceoverCacheLookup is the optional cross-run cache port. When wired,
+// ProcessSegmentUseCase.Execute checks the content fingerprint BEFORE
+// Stage 1 (TTS); on a verified hit the entire TTS + upload + finalize
+// pipeline is short-circuited and the result is built from the cached
+// DB row. When nil (pre-cache callers), the cache check is skipped.
+//
+// godlike/07 honest-limitation: the cache trusts the DB row — if the
+// Drive file was deleted externally the cached link becomes stale.
+// A future BLOC can add an optional Drive probe step.
+type VoiceoverCacheLookup interface {
+	// Lookup returns a cache hit when the fingerprint matches a row
+	// with a reusable status AND a non-empty DriveFileID. When timing
+	// is required, the metadata column must also carry timing links
+	// (timing_json_link); otherwise the hit is downgraded to a miss
+	// (the audio exists but the timing bundle is not hydrated).
+	Lookup(ctx context.Context, fingerprint string, timingRequired bool) (*VoiceoverCacheHit, error)
+}
+
+// AsyncPublishPool is the optional bounded pool for publish+finalize
+// work (Drive upload + timing publish + SQLite commit). When wired,
+// ProcessSegmentUseCase.Execute fires Stage 3+4 in a background goroutine
+// via this pool AFTER Stage 1+2 complete, freeing the TTS slot immediately.
+// The pool bounds concurrency so Drive uploads never overwhelm the network.
+//
+// Submit enqueues the publish+finalize work. It must not block indefinitely
+// (a full pool is a configuration error, surfaced as a warn log).
+//
+// Wait blocks until all previously submitted tasks complete. The runner
+// calls this after the voiceover phase but before audio compile so Drive
+// links are hydrated on the scenes before downstream stages consume them.
+//
+// When nil (backward compat), Execute runs all 4 stages synchronously.
+type AsyncPublishPool interface {
+	Submit(ctx context.Context, fn func())
+	Wait()
+}
+
+// VoiceoverCacheHit carries the cached row data needed to build a
+// VoiceoverItemResult without running TTS or upload.
+type VoiceoverCacheHit struct {
+	ID            string
+	Voice         string
+	Filename      string
+	DriveFileID   string
+	DriveLink     string
+	DownloadLink  string
+	LocalPath     string
+	CleanedPath   string
+	DurationMs    int64
+	LegacyFileMD5 string
+	MetaJSON      []byte
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // ProcessSegmentDeps — narrow dep surface for the per-item pipeline
 // ────────────────────────────────────────────────────────────────────────
@@ -253,9 +307,11 @@ type ProcessSegmentDeps struct {
 	AudioPostProcessor  AudioPostProcessor // nil-safe
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository persistence.Repository
-	Finalizer           VoiceoverFinalizer // mandatory (P0.4 Fase 3a)
-	TxOutboxEnqueuer    TxOutboxEnqueuer   // optional (FASE 4 orphan-cleanup path; nil-safe)
-	SemanticTagger      SemanticTaggerFunc // optional; enriches canonical metadata when wired
+	Finalizer           VoiceoverFinalizer   // mandatory (P0.4 Fase 3a)
+	TxOutboxEnqueuer    TxOutboxEnqueuer     // optional (FASE 4 orphan-cleanup path; nil-safe)
+	SemanticTagger      SemanticTaggerFunc   // optional; enriches canonical metadata when wired
+	VoiceoverCache      VoiceoverCacheLookup // optional; cross-run cache — nil-safe, skip cache when nil
+	AsyncPublish        AsyncPublishPool     // optional; nil = synchronous (backward compat). When wired, Stage 3+4 run in a bounded background pool so the TTS slot is freed after synthesis.
 	Logger              *zap.Logger
 }
 
@@ -346,6 +402,39 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// timing observations.
 	log := u.deps.Logger
 
+	// ── Cross-run voiceover cache check ─────────────────────────────
+	// Before invoking TTS (expensive) + Drive upload + timing publish,
+	// check whether a previous run already produced the same voiceover
+	// for the same content fingerprint (textHash + language + voice +
+	// folderID + timing policy + silence policy). A verified cache hit
+	// short-circuits the entire 4-stage pipeline and returns the
+	// existing result — 0 TTS calls, 0 Drive uploads.
+	timingPolicy := audio.DefaultTimingRequest()
+	if cmd.Timing != nil {
+		timingPolicy = cmd.Timing.Normalized()
+	}
+	if u.deps.VoiceoverCache != nil {
+		fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
+		hit, lookupErr := u.deps.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
+		if lookupErr != nil {
+			log.Warn("voiceover cache lookup error — falling through to full pipeline",
+				zap.String("fingerprint", fingerprint),
+				zap.String("language", string(cmd.Language)),
+				zap.Error(lookupErr))
+		} else if hit != nil {
+			log.Info("voiceover cache HIT — reusing existing audio, skipping TTS + upload + finalize",
+				zap.String("fingerprint", fingerprint),
+				zap.String("cached_id", hit.ID),
+				zap.String("drive_file_id", hit.DriveFileID),
+				zap.String("language", string(cmd.Language)))
+			observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
+			return buildCachedResult(cmd, hit, timingPolicy, log), nil
+		}
+		log.Info("voiceover cache MISS — full pipeline will run",
+			zap.String("fingerprint", fingerprint),
+			zap.String("language", string(cmd.Language)))
+	}
+
 	// Stage 1: TTSProvider.Synthesize.
 	// P0.2 Fase 2c (July 2026): RemoveSilence is ALWAYS false here.
 	// AudioPostProcessor owns silence removal (Stage 2), not the TTS
@@ -357,10 +446,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// Timing capture lifecycle: capture.started fires before synthesis and
 	// capture.completed after, so operators can trace boundary capture
 	// without ever logging the per-word array.
-	timingPolicy := audio.DefaultTimingRequest()
-	if cmd.Timing != nil {
-		timingPolicy = cmd.Timing.Normalized()
-	}
+	// timingPolicy is already resolved before the cache check above.
 	if timingPolicy.Mode != audio.TimingDisabled {
 		timingEvent(log, "voiceover.timing.capture.started", cmd, "", "", 0, 0)
 	}
@@ -452,6 +538,49 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTTS, false, FailureNoLocalPayload, fmt.Errorf("%s", out.Error))
 	}
+
+	// ── Async publish path (P0.4: separate TTS pool from publish pool) ──
+	// When AsyncPublish is wired, Stage 3 (Drive upload + timing) and
+	// Stage 4 (SQLite finalize) run in a background goroutine via the
+	// bounded publish pool. The TTS slot is freed immediately after
+	// synthesis so the next scene can start TTS while Drive upload and
+	// DB commit run concurrently.
+	//
+	// The partial result carries local file paths (LocalPath, CleanedPath,
+	// DurationMs, Voice, Filename, ID) and a StatusGenerated status.
+	// DriveFileID, DriveLink, DownloadLink, and Timing are NOT populated —
+	// they are committed to the DB by the async goroutine and become
+	// visible to downstream DB readers after the publish pool drains.
+	if u.deps.AsyncPublish != nil {
+		out.Status = StatusGenerated
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
+		observability.VoiceoverJobsTotal.WithLabelValues("generated").Inc()
+
+		// Capture by-value copies for the closure so there is no race
+		// between the caller (which reads the returned partial result)
+		// and the background goroutine (which mutates its own copy
+		// during publish+finalize).
+		capturedCmd := *cmd
+		capturedOut := *out
+		capturedTTS := ttsOut
+		var capturedPost *AudioPostOutput
+		if post != nil {
+			cp := *post
+			capturedPost = &cp
+		}
+
+		log.Info("voiceover: async publish submitted — TTS slot freed",
+			zap.String("scene_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+			zap.Int64("duration_ms", out.DurationMs))
+
+		u.deps.AsyncPublish.Submit(ctx, func() {
+			u.runAsyncPublish(ctx, &capturedCmd, &capturedOut, &capturedTTS, capturedPost, log)
+		})
+
+		return out, nil
+	}
+
 	// Stage 3: VoiceoverPublisher.Publish — delegates to publishStage
 	// (process_segment_publish.go) for metadata building + idempotency
 	// key derivation + Drive upload + the timing bundle publish (audio
@@ -520,7 +649,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		MetaJSON:        pub.MetaJSON,
 		LocalPath:       out.LocalPath,
 		CleanedPath:     out.CleanedPath,
-		LegacyFileMD5:        out.LegacyFileMD5,
+		LegacyFileMD5:   out.LegacyFileMD5,
 		DurationSeconds: ttsOut.Duration.Seconds(),
 		FolderID:        cmd.Dest.FolderID,
 		FolderPath:      cmd.Dest.FolderPath,
@@ -593,4 +722,190 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	return out, nil
 }
 
+// buildCachedResult constructs a VoiceoverItemResult from a cache hit
+// without running TTS, audio post-processing, Drive upload, or DB
+// finalize. The result carries the cached DriveFileID, DriveLink,
+// DownloadLink, LocalPath, DurationMs, and Voice from the DB row.
+//
+// When the metadata column carries timing links, a VoiceoverTimingResult
+// is reconstructed so downstream consumers (script binding, docs render)
+// receive the same shape as a cold-run result. Word-level timing data
+// (the SpeechTimingArtifact) is NOT reconstructed — only the summary
+// fields and links are hydrated; consumers that need per-word timing
+// must download the timing.json artifact from Drive.
+func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timingPolicy audio.TimingRequest, log *zap.Logger) *VoiceoverItemResult {
+	out := &VoiceoverItemResult{
+		Language:      cmd.Language,
+		Voice:         hit.Voice,
+		Filename:      hit.Filename,
+		ID:            hit.ID,
+		Status:        StatusCompleted,
+		CacheHit:      true,
+		DriveFileID:   hit.DriveFileID,
+		DriveLink:     hit.DriveLink,
+		DownloadLink:  hit.DownloadLink,
+		LocalPath:     hit.LocalPath,
+		CleanedPath:   hit.CleanedPath,
+		DurationMs:    hit.DurationMs,
+		LegacyFileMD5: hit.LegacyFileMD5,
+	}
+
+	// Reconstruct the timing result from the persisted metadata when
+	// timing was requested. The full word-level artifact is not stored
+	// in the metadata column (only the SSOT timing.json on Drive has
+	// it), so the summary fields are hydrated from metadata.
+	if timingPolicy.Mode != audio.TimingDisabled && len(hit.MetaJSON) > 0 {
+		var meta map[string]any
+		if err := json.Unmarshal(hit.MetaJSON, &meta); err == nil {
+			if jsonLink, ok := meta["timing_json_link"].(string); ok && jsonLink != "" {
+				timingRes := &VoiceoverTimingResult{Status: TimingStatusCompleted}
+				timingRes.JSONLink = jsonLink
+				if srtLink, _ := meta["timing_srt_link"].(string); srtLink != "" {
+					timingRes.SRTLink = srtLink
+				}
+				if vttLink, _ := meta["timing_vtt_link"].(string); vttLink != "" {
+					timingRes.VTTLink = vttLink
+				}
+				if boundaryMode, _ := meta["timing_boundary_mode"].(string); boundaryMode != "" {
+					timingRes.BoundaryMode = boundaryMode
+				}
+				if wordCount, ok := meta["timing_word_count"].(float64); ok {
+					timingRes.WordCount = int(wordCount)
+				}
+				if durationUS, ok := meta["timing_duration_us"].(float64); ok {
+					timingRes.DurationUS = int64(durationUS)
+				}
+				if audioSHA, _ := meta["audio_sha256"].(string); audioSHA != "" {
+					timingRes.AudioSHA256 = audioSHA
+				}
+				out.Timing = timingRes
+			}
+		}
+	}
+
+	setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
+
+	log.Info("voiceover cache HIT result built",
+		zap.String("id", out.ID),
+		zap.String("drive_file_id", out.DriveFileID),
+		zap.String("language", string(cmd.Language)),
+		zap.Int64("duration_ms", out.DurationMs))
+
+	return out
+}
+
 // enqueueOrphanCleanup is defined in process_segment_orphan.go.
+
+// runAsyncPublish executes Stage 3 (Drive upload + timing publish) and
+// Stage 4 (SQLite finalize) in a background goroutine via the async
+// publish pool. It is only called when AsyncPublish is wired.
+//
+// The method accepts by-pointer copies of the command, partial result,
+// and TTS output — the originals are owned by the caller (which already
+// returned the partial result to free the TTS slot). Errors are logged
+// at Warn level; the caller cannot observe the outcome synchronously
+// (by design — the TTS slot is freed before publish completes).
+//
+// godlike/07 honest-limitation: publish failures in the async path are
+// NOT surfaced to the immediate caller. The DB row carries the failure
+// in its status/error columns; the run result's per-scene Voiceover
+// reference remains StatusGenerated with local paths. Downstream
+// observability dashboards must read the DB to detect async failures.
+func (u *ProcessSegmentUseCase) runAsyncPublish(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	out *VoiceoverItemResult,
+	ttsOut *TTSOutput,
+	post *AudioPostOutput,
+	log *zap.Logger,
+) {
+	// Stage 3: publish (Drive upload + timing bundle).
+	pub, pubErr := u.publishStage(ctx, cmd, out, ttsOut, post, log)
+	if pubErr != nil {
+		log.Warn("voiceover async publish failed",
+			zap.String("scene_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+			zap.Error(pubErr))
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		return
+	}
+
+	// Stage 4: BeginTx + Finalize + Commit.
+	tx, txErr := u.deps.VoiceoverRepository.BeginTx(ctx)
+	if txErr != nil {
+		log.Warn("voiceover async finalize tx begin failed",
+			zap.String("scene_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+			zap.Error(txErr))
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		// FASE 4 orphan-cleanup: the Drive file was uploaded but
+		// the DB tx couldn't start. Enqueue a cleanup event.
+		if out.DriveFileID != "" && u.deps.TxOutboxEnqueuer != nil {
+			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
+		}
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
+	finalizeCmd := &FinalizeCommand{
+		Fingerprint:     fingerprint,
+		IdempotencyKey:  pub.IdemKey,
+		JobID:           cmd.JobID,
+		ID:              cmd.ID,
+		RequestID:       cmd.RequestID,
+		TextHash:        string(cmd.TextHash),
+		Text:            cmd.Text,
+		Language:        cmd.Language,
+		Voice:           out.Voice,
+		Filename:        cmd.Filename,
+		Strategy:        cmd.Strategy,
+		MetaJSON:        pub.MetaJSON,
+		LocalPath:       out.LocalPath,
+		CleanedPath:     out.CleanedPath,
+		LegacyFileMD5:   out.LegacyFileMD5,
+		DurationSeconds: ttsOut.Duration.Seconds(),
+		FolderID:        cmd.Dest.FolderID,
+		FolderPath:      cmd.Dest.FolderPath,
+		DriveFileID:     out.DriveFileID,
+		DriveLink:       out.DriveLink,
+		DownloadLink:    out.DownloadLink,
+		ShouldSwap:      cmd.ShouldSwap,
+		OldDriveFileID:  cmd.OldDriveFileID,
+		OldLocalPath:    cmd.OldLocalPath,
+		OldCleanedPath:  cmd.OldCleanedPath,
+	}
+
+	finalizeRes, finalizeErr := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
+	if finalizeErr != nil {
+		log.Warn("voiceover async finalize failed",
+			zap.String("scene_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+			zap.Error(finalizeErr))
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		_ = tx.Rollback()
+		if out.DriveFileID != "" && u.deps.TxOutboxEnqueuer != nil {
+			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
+		}
+		return
+	}
+
+	if finalizeRes != nil && finalizeRes.Reused {
+		out.ID = finalizeRes.ID
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		log.Warn("voiceover async finalize commit failed",
+			zap.String("scene_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+			zap.Error(commitErr))
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		return
+	}
+
+	log.Info("voiceover async publish+finalize completed",
+		zap.String("scene_id", cmd.ID),
+		zap.String("language", string(cmd.Language)),
+		zap.String("drive_file_id", out.DriveFileID))
+	observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
+}

@@ -28,6 +28,7 @@ type sceneReadyCoordinator struct {
 	results    map[int]Scene
 	errors     []error
 	wg         sync.WaitGroup
+	renderWg   sync.WaitGroup
 	started    time.Time
 	transCalls int
 	ttsCalls   int
@@ -166,12 +167,13 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		}); err != nil {
 			return Scene{}, err
 		}
-		// Localized render fan-out: fire the render the moment this language's
-		// TTS is final, so Rust starts on this clip while later scenes are
-		// still being translated/voiced (never a global join). For the source
-		// language, the coordinator may carry the narration only in the
-		// source-text slot; use it as the render text instead of submitting
-		// an empty subtitle track.
+		// Localized render fan-out: fire the render in a separate goroutine
+		// the moment this language's TTS is final, so Rust starts on this
+		// clip while later scenes are still being translated/voiced — and,
+		// critically, the TTS worker slot is freed immediately instead of
+		// being held for the entire render duration. The renderGate inside
+		// the adapter already bounds render concurrency; the OnRendered /
+		// OnFailed callbacks capture the certified result asynchronously.
 		renderText := out.Text[lang]
 		if strings.TrimSpace(renderText) == "" {
 			renderText = out.Text[c.req.SourceLanguage]
@@ -185,40 +187,49 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			renderText = sourceText
 		}
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
-		if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
-			RunID:          c.runID,
-			ParentJobID:    c.exec.JobID,
-			SceneID:        out.ID,
-			SceneIndex:     out.Index,
-			Language:       lang,
-			Text:           renderText,
-			Voiceover:      out.Voiceover[lang],
-			SourceLanguage: c.req.SourceLanguage,
-			SourceText:     sourceText,
-			ClipID:         clipID,
-			ClipAssetID:    clipAssetID,
-			ClipSHA256:     clipSHA256,
-			ClipDurationMS: clipDurationMS,
-			Render:         c.req.Render,
-			// Record the produced video the moment the fan-out certifies it
-			// (streaming path). The coordinator has no result pointer of its
-			// own, so it accumulates the certified videos here and the runner
-			// merges them into the run result once the stream joins.
-			OnRendered: func(rendered LocalizedRenderResult) error {
+		lang := lang
+		c.renderWg.Add(1)
+		go func() {
+			defer c.renderWg.Done()
+			if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
+				RunID:          c.runID,
+				ParentJobID:    c.exec.JobID,
+				SceneID:        out.ID,
+				SceneIndex:     out.Index,
+				Language:       lang,
+				Text:           renderText,
+				Voiceover:      out.Voiceover[lang],
+				SourceLanguage: c.req.SourceLanguage,
+				SourceText:     sourceText,
+				ClipID:         clipID,
+				ClipAssetID:    clipAssetID,
+				ClipSHA256:     clipSHA256,
+				ClipDurationMS: clipDurationMS,
+				Render:         c.req.Render,
+				OnRendered: func(rendered LocalizedRenderResult) error {
+					c.mu.Lock()
+					c.rendered = append(c.rendered, rendered)
+					c.mu.Unlock()
+					return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+				},
+				OnFailed: func(failure LocalizedRenderFailure) error {
+					c.mu.Lock()
+					c.failures = append(c.failures, failure)
+					c.mu.Unlock()
+					return nil
+				},
+			}); err != nil {
+				// The adapter is nil-safe (returns nil when render not
+				// registered). A non-nil error here is a real failure —
+				// record it but do NOT fail the scene (TTS is done).
 				c.mu.Lock()
-				c.rendered = append(c.rendered, rendered)
+				c.failures = append(c.failures, LocalizedRenderFailure{
+					SceneID: out.ID, Language: lang, ClipID: clipID,
+					ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
+				})
 				c.mu.Unlock()
-				return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
-			},
-			OnFailed: func(failure LocalizedRenderFailure) error {
-				c.mu.Lock()
-				c.failures = append(c.failures, failure)
-				c.mu.Unlock()
-				return nil
-			},
-		}); err != nil {
-			return Scene{}, fmt.Errorf("localized render scene %s lang %s: %w", out.ID, lang, err)
-		}
+			}
+		}()
 	}
 	if (mode == capabilityaudio.AudioModeCombinedTimeline || out.Clip == nil) && len(tts) > 0 && tts[0].Duration > 0 {
 		out.DurationMS = int64(tts[0].Duration*1000 + 0.5)
@@ -231,10 +242,20 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 }
 
 func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Scene, *TranslationPipelineMetrics, *AudioPipelineMetrics, error) {
+	// Wait for all scene processors (translation + TTS) to finish.
 	done := make(chan struct{})
 	go func() { c.wg.Wait(); close(done) }()
 	select {
 	case <-done:
+	case <-ctx.Done():
+		return nil, nil, nil, ctx.Err()
+	}
+	// Wait for all async render goroutines to finish so renderedVideos()
+	// and renderFailures() are complete when the caller collects them.
+	renderDone := make(chan struct{})
+	go func() { c.renderWg.Wait(); close(renderDone) }()
+	select {
+	case <-renderDone:
 	case <-ctx.Done():
 		return nil, nil, nil, ctx.Err()
 	}
@@ -252,18 +273,36 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 		ordered[i] = value
 	}
 	var translation, voiceover kernobs.OperationSummary
+	dbCacheHits := 0
+	for i := range ordered {
+		for _, ref := range ordered[i].Voiceover {
+			if ref.Cached {
+				dbCacheHits++
+			}
+		}
+	}
 	if run := kernobs.FromContext(ctx); run != nil {
 		report := run.Report()
 		translation = kernobs.SummarizeOperations(report, "translation", "translate")
 		voiceover = kernobs.SummarizeOperations(report, "voiceover", "synthesize")
+		// Cache-hit acquisitions still emit a synthesize observation but
+		// never reach the TTS provider: subtract them so TTSCalls counts
+		// real provider synthesis calls.
+		if fresh := voiceover.Calls - int64(dbCacheHits); fresh > 0 {
+			voiceover.Calls = fresh
+		} else {
+			voiceover.Calls = 0
+		}
 	}
 	if translation.Calls == 0 {
 		translation.Calls = int64(c.transCalls)
 	}
-	if voiceover.Calls == 0 {
-		voiceover.Calls = int64(c.ttsCalls)
+	if voiceover.Calls == 0 && dbCacheHits < c.ttsCalls {
+		// Unbound run fallback: count only the fresh (non-cached)
+		// acquisitions so a fully-served warm stream reports 0.
+		voiceover.Calls = int64(c.ttsCalls - dbCacheHits)
 	}
-	return ordered, &TranslationPipelineMetrics{Calls: int(translation.Calls), Concurrency: c.runner.translationConcurrency, WallMS: translation.WallMs}, &AudioPipelineMetrics{TTSCalls: int(voiceover.Calls), TTSMS: voiceover.TotalMs}, nil
+	return ordered, &TranslationPipelineMetrics{Calls: int(translation.Calls), Concurrency: c.runner.translationConcurrency, WallMS: translation.WallMs}, &AudioPipelineMetrics{TTSCalls: int(voiceover.Calls), TTSMS: voiceover.TotalMs, VoiceoverDBCacheHits: dbCacheHits}, nil
 }
 
 // renderedVideos returns the certified produced videos accumulated from the

@@ -38,10 +38,9 @@ package adapters
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 
@@ -378,8 +377,8 @@ func computeIdempotencyKey(plan *scriptpkg.ResolvedGenerationPlan) string {
 		plan.TargetWords,
 		plan.Language,
 	)
-	sum := sha256.Sum256([]byte(tuple))
-	return hex.EncodeToString(sum[:])[:16]
+	sum := digest.SHA256Bytes([]byte(tuple))
+	return sum[:16]
 }
 
 // sanitizeSpecSceneOutputForPersistence returns a deep copy of the

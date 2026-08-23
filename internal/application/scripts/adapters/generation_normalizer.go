@@ -124,6 +124,7 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		item.Tone = cfg.DefaultTone
 	}
 	if strings.TrimSpace(item.Model) == "" {
+		item.ModelAuto = true
 		item.Model = cfg.OllamaModel
 	}
 
@@ -189,8 +190,9 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 	if item.Source.NumClips <= 0 && item.Source.MaxClips > 0 {
 		item.Source.NumClips = item.Source.MaxClips
 	}
-	if item.Source.NumClips <= 0 && len(item.ScriptParams.SegmentTopics) > 0 {
-		item.Source.NumClips = len(item.ScriptParams.SegmentTopics)
+	// Derive NumClips from Segments count when not explicitly set.
+	if item.Source.NumClips <= 0 && len(item.ScriptParams.Segments) > 0 {
+		item.Source.NumClips = len(item.ScriptParams.Segments)
 	}
 	if item.ScriptParams.SegmentWords <= 0 && item.ScriptParams.TargetWords > 0 && item.Source.NumClips > 0 {
 		item.ScriptParams.SegmentWords = item.ScriptParams.TargetWords / item.Source.NumClips
@@ -248,6 +250,7 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		}
 	}
 	if strings.TrimSpace(item.Model) == "" {
+		item.ModelAuto = true
 		item.Model = "llama3.2"
 	}
 

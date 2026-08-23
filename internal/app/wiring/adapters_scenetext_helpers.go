@@ -95,7 +95,6 @@ func genRequestToResolutionContext(req scriptgen.GenerateRequest) scriptpkg.Sour
 		Language:          string(req.SourceLanguage),
 		TargetWords:       req.ScriptParams.TargetWords,
 		SegmentWords:      req.ScriptParams.SegmentWords,
-		SegmentTopics:     copyStrings(req.ScriptParams.SegmentTopics),
 		Segments:          scriptpkg.CloneScriptSegments(req.ScriptParams.Segments),
 		NumClips:          req.Source.NumClips,
 		RequireDriveLink:  true,

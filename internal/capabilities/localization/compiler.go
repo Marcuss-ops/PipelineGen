@@ -21,14 +21,13 @@ package localization
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Compiler compiles a LocalizedClipPlan into the canonical sealed
@@ -194,8 +193,7 @@ func localizedRevision(localized LocalizedClipPlan) string {
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical
 // 64-hex SHA-256, the shape render.RenderExecutionPolicy requires for its
 // target-profile hash. Deterministic: the same string always folds to the
-// same digest.
+// same digest. Delegates to kernel/digest (SSOT).
 func canonicalSHA256(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256String(s)
 }

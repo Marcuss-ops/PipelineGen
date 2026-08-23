@@ -150,10 +150,8 @@ func TestBuildCacheKey_SegmentSizingFieldsExcluded(t *testing.T) {
 	p2 := basePlan()
 	p1.NumClips = 2
 	p1.SegmentWords = 120
-	p1.SegmentTopics = []string{"A", "B"}
 	p2.NumClips = 3
 	p2.SegmentWords = 180
-	p2.SegmentTopics = []string{"A", "B"}
 	assert.Equal(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2),
 		"NumClips and SegmentWords must not change the canonical cache key")
 }

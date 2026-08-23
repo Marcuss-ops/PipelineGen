@@ -49,9 +49,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -103,29 +102,17 @@ type syntheticStager struct {
 	durationSec float64
 }
 
-var _ assets.SourceStager = (*syntheticStager)(nil)
+var _ acquisition.SourceStager = (*syntheticStager)(nil)
 
-func (s *syntheticStager) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
-	return &assets.StagedAsset{
-		LocalPath:   s.path,
-		Bytes:       0, // bytes are irrelevant for the pre-cut path
-		DurationSec: s.durationSec,
+func (s *syntheticStager) Prepare(_ context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	return &acquisition.PrepareContext{
+		LocalPath:    s.path,
+		SizeBytes:    0,
+		CleanupToken: s.path,
 	}, nil
 }
 
-func (s *syntheticStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
-	return nil
-}
-
-// Cleanup implements assets.SourceStager (legacy method).
-func (s *syntheticStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
-	return nil
-}
-
-// StageSourceV2 implements assets.SourceStager.
-func (f *syntheticStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
-}
+func (s *syntheticStager) Release(_ context.Context, _ string) error { return nil }
 
 // ffmpegCutter is the DoD 8 test fixture for the canonical VideoCutter
 // port. It invokes the real ffmpeg binary via os/exec to stream-copy
@@ -573,7 +560,7 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 			ClipDurationSec:  5,
 		},
 		NewExplicitPlanner(clips),
-		assets.SourceStager(stager),
+		stager,
 		cutter,
 		passthroughRenderer{},
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},

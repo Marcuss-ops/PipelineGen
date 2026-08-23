@@ -2,8 +2,7 @@ package youtube
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"errors"
 	"fmt"
 	"os"
@@ -138,8 +137,8 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(data)
+	return sum, nil
 }
 
 func nowUTC() time.Time { return time.Now().UTC() }

@@ -72,8 +72,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -102,33 +102,32 @@ type recordingStager struct {
 // way it accepts *StockStager / *ArtlistStager / *YouTubeStager in
 // production. Drift in the port signature is a build failure rather
 // than a runtime panic.
-var _ assets.SourceStager = (*recordingStager)(nil)
+var _ acquisition.SourceStager = (*recordingStager)(nil)
 
-// StageSource records the call and returns the stubbed result.
-// Tests configure stagedAsset + stageErr before the run.
-func (r *recordingStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
+// Prepare records the call and returns a PrepareContext derived from the
+// stubbed stagedAsset. Tests configure stagedAsset + stageErr before the run.
+func (r *recordingStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
 	r.stageCalls++
-	r.lastRef = ref
-	return r.stagedAsset, r.stageErr
+	r.lastRef = assets.SourceRef{URL: req.Source.URL, DownloadSection: req.Source.DownloadSection, ForceKeyframes: req.Source.ForceKeyframes, MergeFormat: req.Source.MergeFormat}
+	if r.stageErr != nil {
+		return nil, r.stageErr
+	}
+	if r.stagedAsset == nil {
+		return nil, nil
+	}
+	return &acquisition.PrepareContext{
+		ID:           r.stagedAsset.SourceID,
+		LocalPath:    r.stagedAsset.LocalPath,
+		SizeBytes:    r.stagedAsset.Bytes,
+		CleanupToken: r.stagedAsset.LocalPath,
+	}, nil
 }
 
-// Cleanup records the call + the staged asset the orchestrator hands
-// to the cleanup. Tests configure cleanupErr to drive the "cleanup
-// failure tolerated" path.
-func (r *recordingStager) Cleanup(_ context.Context, staged *assets.StagedAsset) error {
+// Release records the cleanup call.
+func (r *recordingStager) Release(_ context.Context, cleanupToken string) error {
 	r.cleanupCalls++
-	r.cleanedStaged = staged
+	r.cleanedStaged = &assets.StagedAsset{LocalPath: cleanupToken}
 	return r.cleanupErr
-}
-
-// CleanupStagedSource implements assets.SourceStager.
-func (r *recordingStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
-	return nil
-}
-
-// StageSourceV2 implements assets.SourceStager.
-func (f *recordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
 }
 
 // newWiringTestOrchestrator is a tiny constructor for tests that
@@ -270,10 +269,13 @@ func TestOrchestrator_RunResilient_CleanupDeferredOnStageSuccess(t *testing.T) {
 	}
 
 	if rec.cleanupCalls != 1 {
-		t.Errorf("Cleanup called %d times, want 1 (defer must fire after RunResilient returns)", rec.cleanupCalls)
+		t.Errorf("Release called %d times, want 1 (defer must fire after RunResilient returns)", rec.cleanupCalls)
 	}
-	if rec.cleanedStaged != rec.stagedAsset {
-		t.Errorf("Cleanup received %p, want %p (defer must pass the SAME *assets.StagedAsset that StageSource returned, no copy)", rec.cleanedStaged, rec.stagedAsset)
+	if rec.cleanedStaged == nil {
+		t.Fatal("Release did not record a cleaned asset")
+	}
+	if rec.cleanedStaged.LocalPath != rec.stagedAsset.LocalPath {
+		t.Errorf("Release LocalPath = %q, want %q (must match Prepare's LocalPath)", rec.cleanedStaged.LocalPath, rec.stagedAsset.LocalPath)
 	}
 }
 

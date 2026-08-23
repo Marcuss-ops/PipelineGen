@@ -25,7 +25,7 @@ package channels
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -86,7 +86,7 @@ func (DefaultIDGenerator) IDFor(category, url string) string {
 	if category == "" || url == "" {
 		return ""
 	}
-	hash := sha256.Sum256([]byte(category + ":" + url))
+	hash := digest.SHA256Bytes([]byte(category + ":" + url))
 	return fmt.Sprintf("%s_%x", category, hash[:8])
 }
 

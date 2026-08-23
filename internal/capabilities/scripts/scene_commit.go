@@ -9,8 +9,7 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
 )
@@ -81,6 +80,6 @@ func NewSceneCommitted(runID string, scene Scene, language Language, revision in
 // hash and therefore fences out stale enrichment results.
 func SceneTextHash(text string) string {
 	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " ")
-	sum := sha256.Sum256([]byte(normalized))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(normalized))
+	return sum
 }

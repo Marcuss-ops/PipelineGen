@@ -87,7 +87,6 @@ type ClipGenerationOptions struct {
 	TargetWords   int
 	NumClips      int
 	SegmentWords  int
-	SegmentTopics []string
 	// Segments carries the per-block payload. Populated by the
 	// curate / clips resolvers via SourceResolutionContext.
 	// Currently unread at this layer; FASE 3 (engine_prompt.go)

@@ -170,11 +170,10 @@ func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 // (HTTP handler path via ValidateEnvelope) so both entry points
 // surface the same ScriptSegment invariants.
 //
-// Captures the 3 ScriptSegment shape checks:
-//  1. Mutex with legacy SegmentTopics alias — both set is malformed.
-//  2. Empty-present vs absent — explicit [] is rejected (distinct
+// Captures the 2 ScriptSegment shape checks:
+//  1. Empty-present vs absent — explicit [] is rejected (distinct
 //     from caller-omitted which is the silent default).
-//  3. Per-segment topic required — every block MUST declare a
+//  2. Per-segment topic required — every block MUST declare a
 //     non-blank Topic for the engine prompt-renderer to emit
 //     "Topic: {topic}" header.
 //
@@ -184,16 +183,12 @@ func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 func validateScriptSegmentShape(sp scriptpkg.ScriptSpec, ref string) []string {
 	var d []string
 	// PR-CS-1 / FASE 6 (DoD #8): ScriptSegment validation
-	// (stateless, semantic). Three checks:
-	//   1. Mutex with legacy SegmentTopics alias — both set is malformed.
-	//   2. Empty-present vs absent — explicit [] is rejected
+	// (stateless, semantic). Two checks:
+	//   1. Empty-present vs absent — explicit [] is rejected
 	//      (distinct from caller-omitted which is the silent default).
-	//   3. Per-segment topic required — every block MUST declare a
+	//   2. Per-segment topic required — every block MUST declare a
 	//      non-blank Topic for the engine prompt-renderer to emit
 	//      "Topic: {topic}" header.
-	if len(sp.Segments) > 0 && len(sp.SegmentTopics) > 0 {
-		d = append(d, ref+": script_params.segment_topics and script_params.segments cannot both be set")
-	}
 	if sp.Segments != nil && len(sp.Segments) == 0 {
 		d = append(d, ref+": script_params.segments must not be empty when present")
 	}

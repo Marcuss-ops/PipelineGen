@@ -14,10 +14,9 @@ package images
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 
@@ -328,8 +327,8 @@ func ComputeSourceHash(provider, prompt, style string, width, height int, model 
 	model = strings.TrimSpace(strings.ToLower(model))
 
 	payload := fmt.Sprintf("%s|%s|%s|%d|%d|%s", provider, prompt, style, width, height, model)
-	h := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(payload))
+	return h
 }
 
 // IsRetryable returns true if the error is a typed retryable error

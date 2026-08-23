@@ -12,8 +12,8 @@
 package stager
 
 import (
-	"context"
 	"crypto/sha256"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -22,7 +22,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"go.uber.org/zap"
 )
@@ -109,10 +111,11 @@ func (s *HTTPSourceStager) lockFor(path string) *sync.Mutex {
 	return v.(*sync.Mutex)
 }
 
-// StageSourceV2 downloads ref.URL into a deterministic local file
+// stageSourceV2 downloads ref.URL into a deterministic local file
 // under s.stagingDir and returns a *StagedSource with the
-// IntermediateHash. See assets.SourceStager for the contract.
-func (s *HTTPSourceStager) StageSourceV2(ctx context.Context, ref assets.SourceRef) (*assets.StagedSource, error) {
+// IntermediateHash. This is the internal implementation used by
+// Prepare; callers should use the acquisition.SourceStager port.
+func (s *HTTPSourceStager) stageSourceV2(ctx context.Context, ref assets.SourceRef) (*assets.StagedSource, error) {
 	if strings.TrimSpace(ref.URL) == "" {
 		return nil, fmt.Errorf("stager.StageSourceV2: SourceRef.URL is required")
 	}
@@ -197,9 +200,9 @@ func (s *HTTPSourceStager) StageSourceV2(ctx context.Context, ref assets.SourceR
 	}, nil
 }
 
-// CleanupStagedSource removes the staged file. Idempotent: a second
+// cleanupStagedSource removes the staged file. Idempotent: a second
 // call for the same staged value is a no-op.
-func (s *HTTPSourceStager) CleanupStagedSource(ctx context.Context, staged *assets.StagedSource) error {
+func (s *HTTPSourceStager) cleanupStagedSource(_ context.Context, staged *assets.StagedSource) error {
 	if staged == nil {
 		return nil
 	}
@@ -227,10 +230,51 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func (s *HTTPSourceStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
-	return nil, fmt.Errorf("stager: StageSource not implemented, use StageSourceV2 instead")
+// Prepare implements acquisition.SourceStager. It wraps StageSourceV2
+// with the acquisition.PrepareRequest/PrepareContext contract.
+func (s *HTTPSourceStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	if req.Source.URL == "" {
+		return nil, fmt.Errorf("stager.Prepare: Source.URL is required")
+	}
+
+	// Build an assets.SourceRef from the acquisition.SourceRef for the
+	// existing StageSourceV2 implementation.
+	ref := assets.SourceRef{
+		URL:            req.Source.URL,
+		DownloadSection: req.Source.DownloadSection,
+		ForceKeyframes:  req.Source.ForceKeyframes,
+		MergeFormat:     req.Source.MergeFormat,
+	}
+
+	staged, err := s.stageSourceV2(ctx, ref)
+	if err != nil {
+		return nil, fmt.Errorf("stager.Prepare: %w", err)
+	}
+
+	// Derive the cleanup token from the SourceRef.
+	cleanupToken := acquisition.DeriveCleanupToken(req.Source)
+
+	// Default TTL: 24 hours.
+	ttl := req.TTL
+	if ttl == 0 {
+		ttl = 24 * time.Hour
+	}
+
+	return &acquisition.PrepareContext{
+		ID:           staged.SourceID,
+		SourceRef:    req.Source,
+		LocalPath:    staged.LocalPath,
+		SHA256:       staged.IntermediateHash,
+		SizeBytes:    staged.Bytes,
+		ExpiresAt:    time.Now().UTC().Add(ttl),
+		CleanupToken: cleanupToken,
+	}, nil
 }
 
-func (s *HTTPSourceStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
+// Release implements acquisition.SourceStager. It removes the staged file.
+func (s *HTTPSourceStager) Release(_ context.Context, cleanupToken string) error {
+	// HTTPSourceStager does not maintain a registry; for now, this is a no-op.
+	// The caller is responsible for removing files via CleanupStagedSource.
+	_ = cleanupToken
 	return nil
 }

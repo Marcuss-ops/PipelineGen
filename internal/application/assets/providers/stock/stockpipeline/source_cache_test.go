@@ -425,7 +425,7 @@ func TestStageSource_T1_CacheMissDownloadsAndPopulates(t *testing.T) {
 	stager, cache, _ := setupTestEnv(t, fd)
 
 	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
-	staged, err := stager.StageSource(context.Background(), ref)
+	staged, err := stager.stageSource(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("StageSource returned err: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestStageSource_T2_CacheHitNoSecondDownload(t *testing.T) {
 	stager, cache, cap := setupTestEnv(t, fd)
 
 	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("first StageSource err: %v", err)
 	}
 	if fd.Count() != 1 {
@@ -463,7 +463,7 @@ func TestStageSource_T2_CacheHitNoSecondDownload(t *testing.T) {
 		t.Fatalf("expected 1 cache entry after first call, got %d", cache.Count())
 	}
 
-	staged2, err := stager.StageSource(context.Background(), ref)
+	staged2, err := stager.stageSource(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("second StageSource err: %v", err)
 	}
@@ -494,12 +494,12 @@ func TestStageSource_T3_CacheHitLogFormatting(t *testing.T) {
 		URL:             "https://www.youtube.com/watch?v=QdSbtEo3x_Y",
 		DownloadSection: "10-14",
 	}
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("first StageSource err: %v", err)
 	}
 
 	before := len(cap.Messages())
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("second StageSource err: %v", err)
 	}
 	newLogs := cap.Messages()[before:]
@@ -539,10 +539,10 @@ func TestStageSource_T4_DifferentSectionsTwoDownloads(t *testing.T) {
 	if keyA == keyB {
 		t.Fatalf("different download sections produced same cache key (test pre-condition violated): %q", keyA)
 	}
-	if _, err := stager.StageSource(context.Background(), refA); err != nil {
+	if _, err := stager.stageSource(context.Background(), refA); err != nil {
 		t.Fatalf("clip A err: %v", err)
 	}
-	if _, err := stager.StageSource(context.Background(), refB); err != nil {
+	if _, err := stager.stageSource(context.Background(), refB); err != nil {
 		t.Fatalf("clip B err: %v", err)
 	}
 	if fd.Count() != 2 {
@@ -560,7 +560,7 @@ func TestStageSource_T5_CacheFileMissing_InvalidatesAndRedownloads(t *testing.T)
 	stager, cache, _ := setupTestEnv(t, fd)
 
 	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("first StageSource err: %v", err)
 	}
 	cacheKey := DeriveSourceCacheKey(ref.URL, "", "", false)
@@ -572,7 +572,7 @@ func TestStageSource_T5_CacheFileMissing_InvalidatesAndRedownloads(t *testing.T)
 	cache.mu.Unlock()
 
 	beforeCount := fd.Count()
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("second StageSource err: %v", err)
 	}
 	if fd.Count() != beforeCount+1 {
@@ -602,7 +602,7 @@ func TestStageSource_T6_CacheFileSizeMismatch_InvalidatesAndRedownloads(t *testi
 	stager, cache, _ := setupTestEnv(t, fd)
 
 	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("first StageSource err: %v", err)
 	}
 	cacheKey := DeriveSourceCacheKey(ref.URL, "", "", false)
@@ -612,7 +612,7 @@ func TestStageSource_T6_CacheFileSizeMismatch_InvalidatesAndRedownloads(t *testi
 	cache.mu.Unlock()
 
 	beforeCount := fd.Count()
-	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+	if _, err := stager.stageSource(context.Background(), ref); err != nil {
 		t.Fatalf("second StageSource err: %v", err)
 	}
 	if fd.Count() != beforeCount+1 {
@@ -642,7 +642,7 @@ func TestStageSource_T7_ConcurrentCollapsesToOneDownload(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			<-barrier
-			sa, err := stager.StageSource(context.Background(), ref)
+			sa, err := stager.stageSource(context.Background(), ref)
 			results[idx] = sa
 			errs[idx] = err
 		}(i)
@@ -685,7 +685,7 @@ func TestStageSource_T9_ConcurrentSingleflightReturnsIndependentPaths(t *testing
 		go func(idx int) {
 			defer wg.Done()
 			<-barrier
-			sa, err := stager.StageSource(context.Background(), ref)
+			sa, err := stager.stageSource(context.Background(), ref)
 			results[idx] = sa
 			errs[idx] = err
 		}(i)
@@ -772,7 +772,7 @@ func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testin
 		go func(idx int) {
 			defer wg.Done()
 			<-barrier
-			sa, err := stager.StageSource(context.Background(), ref)
+			sa, err := stager.stageSource(context.Background(), ref)
 			results[idx] = sa
 			errs[idx] = err
 		}(i)
@@ -820,7 +820,7 @@ func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testin
 	if leaderIdx < 0 {
 		t.Fatal("expected one concurrent result to own the shared lease")
 	}
-	if err := stager.Cleanup(context.Background(), results[leaderIdx]); err != nil {
+	if err := stager.cleanup(context.Background(), results[leaderIdx]); err != nil {
 		t.Fatalf("leader Cleanup err: %v", err)
 	}
 	cacheEntry, cacheErr := cache.GetByCacheKey(context.Background(), DeriveSourceCacheKey(ref.URL, "", "", false))
@@ -859,7 +859,7 @@ func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testin
 		if i == leaderIdx {
 			continue
 		}
-		if err := stager.Cleanup(context.Background(), results[i]); err != nil {
+		if err := stager.cleanup(context.Background(), results[i]); err != nil {
 			t.Errorf("goroutine[%d] Cleanup err: %v", i, err)
 		}
 	}

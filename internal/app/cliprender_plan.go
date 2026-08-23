@@ -86,7 +86,7 @@ func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 		return nil, fmt.Errorf("create subtitle output dir %q: %w", in.OutputDir, err)
 	}
 	localPath := filepath.Join(in.OutputDir, "subtitles.ass")
-	sum := digest.SHA256Bytes(content)
+	sum := digest.SHA256String(content)
 	sha := sum
 	// Reuse an already materialized artifact for the same canonical
 	// transcript/style. The run-local file is a hard link to the durable

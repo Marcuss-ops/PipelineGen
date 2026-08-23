@@ -19,6 +19,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -265,7 +266,19 @@ func (p *GenerationPreparer) Prepare(
 		// ── Phase 4b: Clip evidence support check ─────────────────────────
 		// For clip-based sources, the caller-provided source_text must not
 		// exceed what the resolved clip evidence duration can support.
-		if err := enforceClipEvidenceTextSupport(&plan, p.cfg); err != nil {
+		clipEvidenceCfg := p.cfg
+		if clipEvidenceCfg.WordsPerSecondClipEvidence <= 0 {
+			clipEvidenceCfg.WordsPerSecondClipEvidence = defaultWordsPerSecondClipEvidence
+		}
+		// Source resolution replaces plan.SourceText with the canonical
+		// model-facing evidence projection. Validate the caller's explicit
+		// source_text before that replacement, otherwise an oversized request
+		// can evade the duration budget.
+		clipSupportPlan := plan
+		if explicit := strings.TrimSpace(item.Source.SourceText); explicit != "" {
+			clipSupportPlan.SourceText = explicit
+		}
+		if err := enforceClipEvidenceTextSupport(&clipSupportPlan, clipEvidenceCfg); err != nil {
 			return p.logPhaseError(item, "plan_validation", scriptpkg.ErrPlanInvalid, err, tracker)
 		}
 

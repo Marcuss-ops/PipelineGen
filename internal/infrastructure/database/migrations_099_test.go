@@ -9,7 +9,7 @@
 //     PRAGMA table_info(media_assets) lists the 9 columns added by
 //     migration 099 (youtube_video_id, youtube_url, start_time,
 //     end_time, workspace_id, channel_id, license,
-//     source_version, style). Mirrors the CanonicalMediaAssetsSchema
+//     source_version, style). Mirrors the migration chain schema
 //     in canonical.go — drift here means a future in-memory DB
 //     created from canonical.go would diverge from a legacy DB
 //     that has applied 099.

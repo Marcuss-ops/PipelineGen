@@ -3,6 +3,7 @@ package assets
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -15,20 +16,33 @@ type Record struct {
 	TextPreview     string
 	Language        string
 	Voice           string
-	Filename        string
-	LocalPath       string
-	CleanedPath     string
-	FolderID        string
-	FolderPath      string
-	DriveFileID     string
-	DriveLink       string
-	DownloadLink    string
-	LegacyFileMD5        string
+
+	// Deprecated (PR-VO-ASSET-ID, August 2026): location and hash
+	// facts are owned by media_assets + asset_locations (same id).
+	// These fields are zero-valued when read from rows written after
+	// migration 232 cutover. Callers must read from the media
+	// registry projection instead.
+	Filename     string
+	LocalPath    string
+	CleanedPath  string
+	FolderID     string
+	FolderPath   string
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	LegacyFileMD5     string
+
 	DurationSeconds float64
 	Status          string
 	Error           string
 	Strategy        string
 	Metadata        string
+
+	// AssetID is the canonical media_assets reference. Equal to ID
+	// (the voiceover finalizer creates media_assets with the same
+	// primary key). Populated by migration 233 for legacy rows.
+	AssetID string
+
 	// Fingerprint is the P0.4 deterministic cache key for the
 	// pre-TTS idempotence gate. Computed by
 	// voiceover.ComputeVoiceoverFingerprint (sha256 over workspace +
@@ -39,20 +53,11 @@ type Record struct {
 	Fingerprint string
 
 	// IdempotencyKey is the FASE 3 (July 2026) deterministic retry-safe
-	// deduplication key. Populated from the voiceover pipeline's
-	// BuildVoiceoverIdempotencyKey(jobID, language, textHash).
-	// The UNIQUE INDEX idx_voiceovers_idempotency (migration 132)
-	// enforces ONE row per non-empty key.
-	// The coarser UNIQUE INDEX idx_voiceovers_job_language (migration 133)
-	// enforces ONE row per (job_id, language) pair — distinct jobs
-	// with the same content produce distinct keys but the job-level
-	// constraint still guarantees at most one voiceover per language.
+	// deduplication key.
 	IdempotencyKey string
 
 	// JobID is the canonical job identifier that produced this voiceover
-	// item (FASE 3, July 2026). Enables operator audit-trail correlation.
-	// The UNIQUE INDEX idx_voiceovers_job_language (migration 133)
-	// ensures at most ONE voiceover row per (job_id, language) pair.
+	// item (FASE 3, July 2026).
 	JobID string
 
 	CreatedAt time.Time
@@ -84,27 +89,17 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO voiceovers (
-			id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, legacy_file_md5, duration_seconds, status,
+			id, request_id, text_hash, text_preview, language, voice,
+			duration_seconds, status,
 			error, strategy, metadata, fingerprint, idempotency_key, job_id,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			request_id = excluded.request_id,
 			text_hash = excluded.text_hash,
 			text_preview = excluded.text_preview,
 			language = excluded.language,
 			voice = excluded.voice,
-			filename = excluded.filename,
-			local_path = excluded.local_path,
-			cleaned_path = excluded.cleaned_path,
-			folder_id = excluded.folder_id,
-			folder_path = excluded.folder_path,
-			drive_file_id = excluded.drive_file_id,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			legacy_file_md5 = excluded.legacy_file_md5,
 			duration_seconds = excluded.duration_seconds,
 			status = excluded.status,
 			error = excluded.error,
@@ -115,8 +110,7 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			job_id = excluded.job_id,
 			updated_at = excluded.updated_at
 	`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
-		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.DurationSeconds,
+		rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), now)
@@ -126,9 +120,8 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 
 func (r *VoiceoversRepository) GetByID(ctx context.Context, id string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
+			duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE id = ?`, id)
 
@@ -136,9 +129,7 @@ func (r *VoiceoversRepository) GetByID(ctx context.Context, id string) (*Record,
 	var createdAt, updatedAt string
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
@@ -155,24 +146,24 @@ func (r *VoiceoversRepository) GetByID(ctx context.Context, id string) (*Record,
 	return &rec, nil
 }
 
+// Deprecated (PR-VO-ASSET-ID, August 2026): the folder_id dimension is
+// being dropped by migration 232. The replacement lookup uses the voiceover
+// fingerprint (BuildVoiceoverContentFingerprint) for cache-hit detection.
 func (r *VoiceoversRepository) FindExisting(ctx context.Context, textHash, language, folderID string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
+			duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers
-		WHERE text_hash = ? AND language = ? AND folder_id = ?
+		WHERE text_hash = ? AND language = ?
 		ORDER BY created_at DESC LIMIT 1
-	`, textHash, language, folderID)
+	`, textHash, language)
 
 	var rec Record
 	var createdAt, updatedAt string
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
 		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
@@ -199,9 +190,8 @@ func (r *VoiceoversRepository) MarkStatus(ctx context.Context, id, status, errMs
 
 func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID string) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
+			duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
 	if err != nil {
@@ -214,12 +204,10 @@ func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID st
 		var rec Record
 		var createdAt, updatedAt string
 		err := rows.Scan(
-			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-			&rec.Metadata, &createdAt, &updatedAt,
-		)
+				&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+				&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+				&rec.Metadata, &createdAt, &updatedAt,
+			)
 		if err != nil {
 			return nil, err
 		}
@@ -230,37 +218,11 @@ func (r *VoiceoversRepository) ListByRequestID(ctx context.Context, requestID st
 	return records, rows.Err()
 }
 
+// Deprecated (PR-VO-ASSET-ID, August 2026): voiceovers.folder_id is
+// being dropped by migration 232. Callers must list by media_assets +
+// asset_locations projection instead.
 func (r *VoiceoversRepository) ListByFolderID(ctx context.Context, folderID string) ([]*Record, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
-			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
-		FROM voiceovers WHERE folder_id = ? ORDER BY created_at`, folderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var records []*Record
-	for rows.Next() {
-		var rec Record
-		var createdAt, updatedAt string
-		err := rows.Scan(
-			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-			&rec.Metadata, &createdAt, &updatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		rec.CreatedAt = timeutil.ParseRFC3339(createdAt)
-		rec.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-		records = append(records, &rec)
-	}
-	return records, rows.Err()
+	return nil, fmt.Errorf("voiceovers.ListByFolderID: deprecated — folder_id column dropped by migration 232; use media_assets projection instead")
 }
 
 func (r *VoiceoversRepository) Delete(ctx context.Context, id string) error {
@@ -287,16 +249,14 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 	rec.UpdatedAt = time.Now()
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
-			id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, legacy_file_md5, duration_seconds, status,
+			id, request_id, text_hash, text_preview, language, voice,
+			duration_seconds, status,
 			error, strategy, metadata, fingerprint, idempotency_key, job_id,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
-		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
-		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.DurationSeconds,
+		rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
@@ -333,9 +293,8 @@ func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprin
 		return nil, nil
 	}
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
+			duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), COALESCE(fingerprint, ''), created_at, updated_at
 		FROM voiceovers
 		WHERE fingerprint = ?
@@ -346,9 +305,7 @@ func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprin
 	var createdAt, updatedAt string
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink, &rec.LegacyFileMD5,
-		&rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy, &rec.Metadata,
+		&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy, &rec.Metadata,
 		&rec.Fingerprint, &createdAt, &updatedAt,
 	)
 
@@ -364,38 +321,18 @@ func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprin
 	return &rec, nil
 }
 
+// Deprecated (PR-VO-ASSET-ID, August 2026): voiceovers.drive_file_id is
+// being dropped by migration 232. Callers must look up by media_assets +
+// asset_locations instead. This function will be removed once all callers
+// have migrated to the media registry projection.
 func (r *VoiceoversRepository) GetByDriveFileID(ctx context.Context, fileID string) (*Record, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
-			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
-		FROM voiceovers
-		WHERE drive_file_id = ? OR drive_link LIKE ? OR download_link LIKE ?`,
-		fileID, "%"+fileID+"%", "%"+fileID+"%")
-
-	var rec Record
-	var createdAt, updatedAt string
-	err := row.Scan(
-		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-		&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-		&rec.Metadata, &createdAt, &updatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	rec.CreatedAt = timeutil.ParseRFC3339(createdAt)
-	rec.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-	return &rec, nil
+	return nil, fmt.Errorf("voiceovers.GetByDriveFileID: deprecated — drive_file_id column dropped by migration 232; use media_assets projection instead")
 }
 
 func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
-			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
-			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(legacy_file_md5, ''), duration_seconds, COALESCE(status, ''),
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''),
+			duration_seconds, COALESCE(status, ''),
 			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers ORDER BY created_at`)
 	if err != nil {
@@ -408,12 +345,10 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 		var rec Record
 		var createdAt, updatedAt string
 		err := rows.Scan(
-			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
-			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
-			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
-			&rec.LegacyFileMD5, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-			&rec.Metadata, &createdAt, &updatedAt,
-		)
+				&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+				&rec.Voice, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+				&rec.Metadata, &createdAt, &updatedAt,
+			)
 		if err != nil {
 			return nil, err
 		}

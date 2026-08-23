@@ -5,11 +5,10 @@
 package texttracks
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func hashSHA256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(s))
+	return sum
 }

@@ -481,9 +481,8 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 		"the injected JSON text flows through verbatim")
 
 	// Companion: malformed JSON (JSON-shaped but not V1)
-	// is ALSO gracefully wrapped by ModeCompatibility.
-	// This is the SAME SUT BUG 4 (scanner too lenient).
-	t.Run("malformed_also_graceful", func(t *testing.T) {
+	// is now rejected by the scanner (ModeCompatibility removed).
+	t.Run("malformed_json_rejected", func(t *testing.T) {
 		t.Parallel()
 		badGen := &fakeOllamaGen{
 			result: &scriptports.GenerationResult{
@@ -495,8 +494,8 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 		}
 		badEng := buildTestEngine(badGen, nil)
 		_, badErr := badEng.Generate(context.Background(), makeP2BPlanWithInjection())
-		require.NoError(t, badErr,
-			"PIN CURRENT BEHAVIOR: bad JSON is also gracefully wrapped (sibling to SUT BUG 4 — the scanner never errors on any input that ModeCompatibility can wrap)")
+		require.Error(t, badErr,
+			"malformed JSON must now be rejected (ModeCompatibility removed)")
 	})
 }
 

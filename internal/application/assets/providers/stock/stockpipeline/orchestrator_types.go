@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
@@ -128,7 +128,7 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/s
 type Orchestrator struct {
 	cfg      OrchestratorConfig
 	planner  ClipPlanner
-	stager   assets.SourceStager
+	stager   acquisition.SourceStager
 	cutter   VideoCutter
 	renderer StockRenderer
 	// builder emits the typed *job.ArtifactManifest from (workflowID,

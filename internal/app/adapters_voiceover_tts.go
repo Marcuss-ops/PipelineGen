@@ -117,11 +117,11 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 	}
 
 	out := voiceover.TTSOutput{
-		LocalPath:   res.LocalPath,
-		CleanedPath: res.CleanedPath,
-		Voice:       res.Voice,
-		LegacyFileMD5:    res.LegacyFileMD5,
-		Duration:    res.Duration,
+		LocalPath:     res.LocalPath,
+		CleanedPath:   res.CleanedPath,
+		Voice:         res.Voice,
+		LegacyFileMD5: res.LegacyFileMD5,
+		Duration:      res.Duration,
 		// The canonical provider identity for the Edge TTS bridge. The
 		// bridge captures audio + WordBoundary in ONE synthesis pass, so
 		// the provider identity is fixed here (never inferred downstream).

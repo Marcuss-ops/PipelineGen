@@ -1,3 +1,4 @@
+-- database: primary
 -- 229_rename_file_hash_to_legacy_file_md5.sql
 --
 -- EXPAND + BACKFILL phase (godlike/06 SSOT — expand → backfill → cutover
@@ -15,16 +16,13 @@
 -- name in the same change.
 --
 -- Tables:
---   media_assets, media_files, asset_locations, voiceovers,
+--   media_assets, asset_locations, voiceovers,
 --   asset_versions, stock_source_cache, asset_subtitle_artifacts,
 --   artlist_clips, entity_image_catalog_candidates,
 --   entity_image_catalog_materializations
 
 ALTER TABLE media_assets ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
 UPDATE media_assets SET legacy_file_md5 = file_hash WHERE file_hash != '';
-
-ALTER TABLE media_files ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
-UPDATE media_files SET legacy_file_md5 = file_hash WHERE file_hash != '';
 
 ALTER TABLE asset_locations ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
 UPDATE asset_locations SET legacy_file_md5 = file_hash WHERE file_hash != '';
@@ -45,7 +43,6 @@ ALTER TABLE artlist_clips ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
 UPDATE artlist_clips SET legacy_file_md5 = file_hash WHERE file_hash != '';
 
 ALTER TABLE entity_image_catalog_candidates ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
-UPDATE entity_image_catalog_candidates SET legacy_file_md5 = file_hash WHERE file_hash != '';
 
 ALTER TABLE entity_image_catalog_materializations ADD COLUMN legacy_file_md5 TEXT NOT NULL DEFAULT '';
 UPDATE entity_image_catalog_materializations SET legacy_file_md5 = file_hash WHERE file_hash != '';

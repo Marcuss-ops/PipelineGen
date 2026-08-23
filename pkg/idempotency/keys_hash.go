@@ -5,10 +5,10 @@
 package idempotency
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // BuildKey constructs a run-level dedup key from a provider-type
@@ -115,8 +115,7 @@ func BuildKey(provider string, canonical map[string]any) (string, error) {
 		// fmt.Sprintf fallback path; BuildKey fails closed.
 		return "", ErrInvalidRunForDedup
 	}
-	sum := sha256.Sum256(raw)
-	return fmt.Sprintf("%x", sum), nil
+	return digest.SHA256Bytes(raw), nil
 }
 
 // BuildKeyString constructs a run-level dedup key from a
@@ -187,6 +186,5 @@ func BuildKeyString(provider, raw string) (string, error) {
 	if raw == "" {
 		return "", ErrInvalidRunForDedup
 	}
-	sum := sha256.Sum256([]byte(raw))
-	return fmt.Sprintf("%x", sum), nil
+	return digest.SHA256String(raw), nil
 }

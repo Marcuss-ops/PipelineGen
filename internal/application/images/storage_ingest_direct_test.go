@@ -130,7 +130,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 		)`,
 		// Image projection written after the canonical CommitAsset call.
 		// The recording committer replaces the production media commit in
-		// these tests, so provide only the columns needed by UpdateOrigin.
+		// these tests, so provide only the columns needed by the recording committer.
 		`CREATE TABLE IF NOT EXISTS media_assets (
 			id TEXT PRIMARY KEY,
 			source TEXT NOT NULL DEFAULT '',

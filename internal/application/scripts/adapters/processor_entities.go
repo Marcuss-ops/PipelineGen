@@ -570,8 +570,8 @@ func segmentQueryContext(plan *scriptpkg.ResolvedGenerationPlan, segment scriptp
 			}
 		}
 	}
-	if len(plan.SegmentTopics) > 0 && segment.Position >= 0 && segment.Position < len(plan.SegmentTopics) {
-		if topic := strings.TrimSpace(plan.SegmentTopics[segment.Position]); topic != "" {
+	if segment.Position >= 0 && segment.Position < len(plan.Segments) {
+		if topic := strings.TrimSpace(plan.Segments[segment.Position].Topic); topic != "" {
 			return topic
 		}
 	}

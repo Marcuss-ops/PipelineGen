@@ -250,7 +250,6 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Duration:            req.ScriptParams.Duration,
 		MinWords:            req.ScriptParams.MinWords,
 		SegmentWords:        req.ScriptParams.SegmentWords,
-		SegmentTopics:       append([]string(nil), req.ScriptParams.SegmentTopics...),
 		Segments:            append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
 		SentencesPerImage:   req.ScriptParams.SentencesPerImage,
 		ImagesPerScene:      req.ScriptParams.ImagesPerScene,

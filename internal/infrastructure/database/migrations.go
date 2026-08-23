@@ -1,10 +1,9 @@
 package storage
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -547,8 +546,7 @@ func parseMigrationVersion(filename string) (int, error) {
 
 // sha256Hex returns the hex-encoded SHA-256 hash of the input bytes.
 func sha256Hex(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+	return digest.SHA256Bytes(data)
 }
 
 // MigrateStatus represents the status of a single migration file.

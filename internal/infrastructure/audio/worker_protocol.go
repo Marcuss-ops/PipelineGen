@@ -27,10 +27,11 @@ import (
 
 // ttsSynthesizeRequest is the JSON body sent to POST /synthesize.
 type ttsSynthesizeRequest struct {
-	Text  string `json:"text"`
-	Lang  string `json:"lang"`
-	Voice string `json:"voice,omitempty"`
-	Out   string `json:"out"`
+	Text               string `json:"text"`
+	Lang               string `json:"lang"`
+	Voice              string `json:"voice,omitempty"`
+	Out                string `json:"out"`
+	AllowVoiceFallback bool   `json:"allow_voice_fallback,omitempty"`
 }
 
 // ttsSynthesizeResponse is the JSON response from the Python server.
@@ -62,10 +63,11 @@ type ttsSynthesizeResponse struct {
 //     success but the file is gone)
 func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	reqBody := ttsSynthesizeRequest{
-		Text:  input.Text,
-		Lang:  input.Language,
-		Voice: input.Voice,
-		Out:   filepath.Join(input.OutputDir, input.Filename),
+		Text:               input.Text,
+		Lang:               input.Language,
+		Voice:              input.Voice,
+		Out:                filepath.Join(input.OutputDir, input.Filename),
+		AllowVoiceFallback: input.AllowVoiceFallback,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

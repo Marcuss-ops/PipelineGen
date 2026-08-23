@@ -384,6 +384,16 @@ type ClipAudioAssetSource interface {
 	ResolveClipAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
 }
 
+// MediaPreflight is the optional fail-fast media requirement verification
+// port (P0.5). When wired, the runner fires it in a goroutine in parallel
+// with Gemma; after scene text generation completes, the runner joins the
+// preflight and fails the run if any check failed. Nil means the preflight
+// is skipped (backward compat for tests and deployments without wired
+// resolvers).
+type MediaPreflight interface {
+	Run(ctx context.Context, req GenerateRequest) PreflightResult
+}
+
 // FinalAudioPublishResult is the canonical publication outcome: the canonical
 // MediaRegistry asset ID plus the public Drive link. It never carries a local
 // filesystem path.

@@ -12,7 +12,7 @@
 package stockpipeline
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
@@ -41,11 +41,11 @@ import (
 // is only used by non-broker callers (tests, CLI). Custom resilience
 // ports are test-only and use the helper in
 // orchestrator_test_helpers_test.go.
-func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	return newStockPipeline(cfg, planner, stager, cutter, renderer)
 }
 
-func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}

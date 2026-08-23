@@ -49,6 +49,7 @@ type RunReport struct {
 	Counters               RunCounters       `json:"counters,omitempty"`
 	Waits                  []WaitReport      `json:"waits,omitempty"`
 	Children               *ChildrenSummary  `json:"children,omitempty"`
+	KPIs                   PipelineKPIs      `json:"kpis,omitempty"`
 	ErrorCode              string            `json:"error_code,omitempty"`
 	Error                  string            `json:"error,omitempty"`
 }
@@ -141,6 +142,43 @@ type ChildrenSummary struct {
 	Completed          int   `json:"completed"`
 	Failed             int   `json:"failed"`
 	AccumulatedChildMs int64 `json:"accumulated_child_ms,omitempty"`
+}
+
+// PipelineKPIs carries the canonical pipeline key performance indicators
+// measured on the Run's own clock. Every field is a duration in milliseconds
+// relative to the run's StartedAt. Zero means the milestone was not reached.
+type PipelineKPIs struct {
+	// GenerateFirstSceneReadyMs is the wall offset when the first scene
+	// text was emitted by the SceneTextReady coordinator (streaming mode)
+	// or when the generate phase finished (serial mode).
+	GenerateFirstSceneReadyMs int64 `json:"generate_first_scene_ready_ms"`
+	// GenerateFinishedMs is the wall offset when the scene text generation
+	// phase completed.
+	GenerateFinishedMs int64 `json:"generate_finished_ms"`
+	// TTSFirstStartedMs is the wall offset when the first TTS synthesis
+	// request was dispatched to the provider.
+	TTSFirstStartedMs int64 `json:"tts_first_started_ms"`
+	// RenderFirstStartedMs is the wall offset when the first localized
+	// render was enqueued.
+	RenderFirstStartedMs int64 `json:"render_first_started_ms"`
+	// AudioCompileStartedMs is the wall offset when the audio compile
+	// phase began.
+	AudioCompileStartedMs int64 `json:"audio_compile_started_ms"`
+	// AudioCompileFinishedMs is the wall offset when the audio compile
+	// phase completed.
+	AudioCompileFinishedMs int64 `json:"audio_compile_finished_ms"`
+	// DocsPublishStartedMs is the wall offset when the document publish
+	// phase began.
+	DocsPublishStartedMs int64 `json:"docs_publish_started_ms"`
+	// DocsPublishFinishedMs is the wall offset when the document publish
+	// phase completed.
+	DocsPublishFinishedMs int64 `json:"docs_publish_finished_ms"`
+
+	// Invariants (computed at finish time)
+	InvariantRenderBeforeGenerateFinished bool `json:"invariant_render_before_generate_finished"`
+	InvariantTTSNeverWaitsRender          bool `json:"invariant_tts_never_waits_render"`
+	InvariantTTSNeverWaitsDrive           bool `json:"invariant_tts_never_waits_drive"`
+	InvariantUnattributedBelowFivePercent bool `json:"invariant_unattributed_below_five_percent"`
 }
 
 func (r *RunReport) JSON() ([]byte, error) { return json.Marshal(r) }

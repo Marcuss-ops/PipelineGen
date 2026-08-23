@@ -2,10 +2,9 @@ package artlist
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -133,6 +132,6 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
+	sum := digest.SHA256Bytes(data)
+	return sum, nil
 }

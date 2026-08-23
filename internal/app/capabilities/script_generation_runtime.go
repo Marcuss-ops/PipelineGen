@@ -162,11 +162,22 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		if matErr != nil {
 			return nil, fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
 		}
-		runner.SetAudioAssetSource(&audioAssetSourceAdapter{
+		audioAdapter := &audioAssetSourceAdapter{
 			assets:    root.Repos.Assets,
 			canonical: canonical,
+		}
+		runner.SetAudioAssetSource(audioAdapter)
+
+		// P0.5: wire the MediaPreflight. Runs fail-fast asset verification
+		// (clip existence, original audio, BGM/SFX/watermark) in parallel
+		// with Gemma scene text generation.
+		runner.SetMediaPreflight(&mediaPreflightAdapter{
+			clipProber:           &assetServiceClipProber{assets: root.Repos.Assets},
+			audioAssetSource:     audioAdapter,
+			clipAudioAssetSource: audioAdapter,
 		})
-		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path)")
+
+		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
@@ -303,6 +314,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		ttsConcurrency = scriptgen.DefaultTTSConcurrency
 	}
 	runner.SetTTSConcurrency(ttsConcurrency)
+	// P0.4: wire the async voiceover publish pool drainer so the runner
+	// waits for Drive uploads + timing publishes + DB commits before
+	// audio compile and docs stages. Nil pool (synchronous path) is safe.
+	if root.Domains != nil && root.Domains.VoiceoverPublishPool != nil {
+		runner.SetVoiceoverPublishDrainer(root.Domains.VoiceoverPublishPool)
+	}
 	// Serial mode is the controlled-benchmark "before" toggle: entities →
 	// voiceover (no overlap) with single-slot NLP/TTS pools.
 	runner.SetSerialMode(cfg.Scripts.SerialMode)

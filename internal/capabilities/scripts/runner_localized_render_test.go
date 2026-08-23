@@ -42,8 +42,10 @@ func (e *recordingLocalizedRenderEnqueuer) snapshot() []LocalizedRenderInput {
 
 // TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage pins the batch
 // path fan-out: the moment each (scene, language) TTS completes, a localized
-// render is enqueued — one per language per scene, in (scene_index,
-// language_priority) order under a single-slot pool.
+// render is enqueued — one per language per scene.
+// P0.4 async render: render fire is a goroutine so enqueue order IS
+// non-deterministic; the test asserts only the set of enqueued work, not
+// the order.
 func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
@@ -73,12 +75,14 @@ func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 		"scene-1:en", "scene-1:es",
 		"scene-2:en", "scene-2:es",
 	}
+	got := make([]string, len(inputs))
 	for i, in := range inputs {
-		require.Equal(t, want[i], in.SceneID+":"+string(in.Language), "fan-out must follow (scene_index, language_priority)")
+		got[i] = in.SceneID + ":" + string(in.Language)
 		require.Equal(t, runID, in.RunID)
 		require.NotEmpty(t, in.Text, "localized render must carry the scene text")
 		require.NotEmpty(t, in.Voiceover.ID, "localized render must carry the voiceover asset")
 	}
+	require.ElementsMatch(t, want, got, "fan-out must enqueue all (scene, language) pairs")
 }
 
 // TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady pins the
@@ -164,6 +168,7 @@ func TestLocalizedRenderClipFields(t *testing.T) {
 // TestRunner_LocalizedRenderFanout_CarriesSourceClip proves the fan-out hands
 // the source-clip reference to the enqueuer, so the real Rust adapter can
 // resolve (asset_id, sha256, duration) without re-deriving them.
+// P0.4 async render: enqueue happens in goroutines; wait up to 5s for all 6.
 func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
@@ -185,6 +190,19 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status)
+
+	// Async render goroutines may still be in-flight after run completion;
+	// wait for all 6 to land.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if len(enq.snapshot()) >= 6 {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	inputs := enq.snapshot()
 	require.Len(t, inputs, 6, "3 scenes × 2 languages")

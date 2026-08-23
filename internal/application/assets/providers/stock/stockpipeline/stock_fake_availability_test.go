@@ -37,8 +37,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // mapStager is a test stub that delegates StageSource decisions to a
@@ -53,27 +53,26 @@ type mapStager struct {
 	handler func(assets.SourceRef) (*assets.StagedAsset, error)
 }
 
-var _ assets.SourceStager = (*mapStager)(nil)
+var _ acquisition.SourceStager = (*mapStager)(nil)
 
-func (m *mapStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
-	return m.handler(ref)
+func (m *mapStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	ref := assets.SourceRef{URL: req.Source.URL, DownloadSection: req.Source.DownloadSection, ForceKeyframes: req.Source.ForceKeyframes, MergeFormat: req.Source.MergeFormat}
+	sa, err := m.handler(ref)
+	if err != nil {
+		return nil, err
+	}
+	if sa == nil {
+		return nil, nil
+	}
+	return &acquisition.PrepareContext{
+		ID:           sa.SourceID,
+		LocalPath:    sa.LocalPath,
+		SizeBytes:    sa.Bytes,
+		CleanupToken: sa.LocalPath,
+	}, nil
 }
 
-// Cleanup is a no-op for tests — the orchestrator's deferred cleanup
-// will call it, but tests don't assert on cleanup behavior.
-func (m *mapStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
-	return nil
-}
-
-// Cleanup implements assets.SourceStager (legacy method).
-func (m *mapStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
-	return nil
-}
-
-// StageSourceV2 implements assets.SourceStager.
-func (f *mapStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
-}
+func (m *mapStager) Release(_ context.Context, _ string) error { return nil }
 
 // mapCutter is a test stub that delegates Cut decisions to a
 // per-request handler. Returns CutBatchResult with the
@@ -121,7 +120,7 @@ func (m *mapRenderer) Render(ctx context.Context, req RenderRequest) (RenderResu
 // unreachable through RunResilient; it's a guard for direct
 // step.Run callers only. This is why the tests below always pass
 // a non-nil mapStager (even if its handler returns errors).
-func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func newFakeAvailOrchestrator(stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	return NewTestStockOrchestrator(
 		OrchestratorConfig{
 			JobId:            "fake-avail-test",

@@ -198,3 +198,18 @@ func (r *Registry) ProducesArtifactsMap() map[string]bool {
 	}
 	return out
 }
+
+// SpineJobTypes returns the set of registered job types that require
+// CompleteWithArtifacts (ArtifactOwnershipWorkerSpine). Used by the
+// composition root to FAIL BOOT when the JobFinalizer cannot be wired
+// because any of these types would be orphaned in RUNNING state.
+// The canonical registry is built by Compose().
+func SpineJobTypes() []string {
+	reg := Compose()
+	m := reg.ProducesArtifactsMap()
+	out := make([]string, 0, len(m))
+	for t := range m {
+		out = append(out, t)
+	}
+	return out
+}

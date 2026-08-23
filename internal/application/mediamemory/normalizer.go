@@ -25,9 +25,8 @@ package mediamemory
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"unicode"
 
@@ -135,8 +134,8 @@ func (n *defaultNormalizer) Normalize(_ context.Context, text, language string) 
 // pointer to a clipview-style shared constant if a sister package
 // starts needing the same hash).
 func (n *defaultNormalizer) Fingerprint(language, normalizedText string) string {
-	sum := sha256.Sum256([]byte(language + ":" + normalizedText + ":" + n.intentVersion))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(language + ":" + normalizedText + ":" + n.intentVersion))
+	return sum
 }
 
 // ── Helpers (lowercase helpers, exported for sibling tests) ───────

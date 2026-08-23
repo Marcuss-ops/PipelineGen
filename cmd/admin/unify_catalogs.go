@@ -51,11 +51,16 @@ func runUnifyCatalogs(args []string) error {
 	fmt.Println("  Stock: 2105 assets migrated to media.db.sqlite (source='stock')")
 	fmt.Println("  Artlist: 2752 assets migrated to media.db.sqlite (source='artlist')")
 	fmt.Println("")
-	fmt.Println("You can now safely remove legacy databases:")
-	fmt.Println("  - data/stock/stock.db.sqlite")
-	fmt.Println("  - data/artlist/artlist.db.sqlite")
-	fmt.Println("  - data/artlist_videos.db")
-	fmt.Println("  - data/clips.db.sqlite")
+	fmt.Println("Legacy databases can be deleted after reconciliation + backup:")
+	fmt.Println("  pip-admin row-reconcile stock   # verify every stock row exists in media_assets")
+	fmt.Println("  pip-admin row-reconcile artlist # verify every artlist row exists in media_assets")
+	fmt.Println("  pip-admin hash-reconcile        # verify content hashes match")
+	fmt.Println("  pip-admin location-reconcile    # verify Drive/file paths match")
+	fmt.Println("  pip-admin backup-primary        # backup media.db.sqlite")
+	fmt.Println("  rm -v data/stock/stock.db.sqlite")
+	fmt.Println("  rm -v data/artlist/artlist.db.sqlite")
+	fmt.Println("  rm -v data/artlist_videos.db")
+	fmt.Println("  rm -v data/clips.db.sqlite")
 
 	return nil
 }

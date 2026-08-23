@@ -107,12 +107,6 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 	}
 
 	segments := append([]scriptpkg.ScriptSegment(nil), plan.Segments...)
-	if len(segments) == 0 && len(plan.SegmentTopics) > 0 {
-		segments = make([]scriptpkg.ScriptSegment, 0, len(plan.SegmentTopics))
-		for _, topic := range plan.SegmentTopics {
-			segments = append(segments, scriptpkg.ScriptSegment{Topic: topic})
-		}
-	}
 	if len(segments) == 0 {
 		scenes, trace, batchErr := g.GenerateSceneTextWithTrace(ctx, req)
 		if batchErr != nil {
@@ -137,7 +131,6 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		// single-topic surface so the multi-segment paragraph validator does
 		// not expect a five-paragraph envelope inside one call.
 		segmentReq.ScriptParams.Segments = nil
-		segmentReq.ScriptParams.SegmentTopics = []string{segment.Topic}
 		segmentReq.ScriptParams.SingleScene = true
 		segmentTarget := segment.TargetWords
 		if segmentTarget <= 0 {
@@ -183,7 +176,6 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		} else {
 			segmentPlan.Segments = nil
 		}
-		segmentPlan.SegmentTopics = []string{segment.Topic}
 		segmentPlan.SingleScene = true
 		segmentPlan.Topic = strings.TrimSpace(segment.Topic)
 		segmentPlan.TargetWords = segmentReq.ScriptParams.TargetWords

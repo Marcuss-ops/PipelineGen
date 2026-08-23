@@ -126,11 +126,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// parallel with SceneAnalysis from the SceneTextReady boundary. Each
 		// item is independent; results are applied in canonical order below.
 		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
-		// Record the reuse decision before dispatch. This is intentionally
-		// labelled as scene-projection reuse: the current runner can skip an
-		// already attached voiceover, but it does not yet claim a SQLite
-		// fingerprint hit. That distinction makes the next DB-cache change
-		// auditable instead of hiding misses as successful reuse.
+		// Record the dispatch plan before fan-out. VoiceoverReused is
+		// scene-projection reuse only (a reference already attached before
+		// this phase); DB fingerprint hits are counted per item AFTER
+		// dispatch and reported in VoiceoverDBCacheHits.
 		requested, reused := 0, 0
 		for _, scene := range result.Scenes {
 			for _, lang := range orderedSceneLanguages(scene.Text, req.SourceLanguage, req.Languages) {
@@ -146,18 +145,25 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		result.AudioMetrics.VoiceoverRequested = requested
 		result.AudioMetrics.VoiceoverReused = reused
 		result.AudioMetrics.VoiceoverGenerated = len(work)
-		r.log.Info("voiceover cache audit",
+		r.log.Info("voiceover dispatch audit",
 			zap.String("run_id", runID),
 			zap.Int("requested", requested),
 			zap.Int("scene_projection_reused", reused),
 			zap.Int("generated", len(work)),
-			zap.String("db_cache_status", "not_consulted"),
 		)
+		var dbCacheHits int
 		if len(work) > 0 {
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.
 			var applyMu sync.Mutex
+			var ttsStartedOnce, renderStartedOnce sync.Once
 			results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
+				// ── Pipeline KPI: first TTS dispatch ───────────────
+				ttsStartedOnce.Do(func() {
+					if run := kernobs.FromContext(opCtx); run != nil {
+						kernobs.RecordKPIMilestone(opCtx, "tts_first_started_ms", run.ElapsedMs())
+					}
+				})
 				var audioRef AudioReference
 				ttsErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
 					Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize,
@@ -233,42 +239,52 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				r.checkpoint(ctx, runID, result)
 				applyMu.Unlock()
 
-				// Localized render fan-out: enqueue the render for this
-				// (scene, language) the moment its TTS is final — outside the
-				// apply lock so the enqueue never blocks the other workers.
+				// Localized render fan-out: fire the render in a separate
+				// goroutine the moment this language's TTS is final, so the
+				// TTS worker slot is freed immediately instead of being held
+				// for the entire render duration. The renderGate inside the
+				// adapter already bounds render concurrency; OnRendered /
+				// OnFailed capture the certified result asynchronously.
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
-				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-					RunID:          runID,
-					ParentJobID:    exec.JobID,
-					SceneID:        item.sceneID,
-					SceneIndex:     item.scene.Index,
-					Language:       item.lang,
-					Text:           renderText,
-					Voiceover:      audioRef,
-					SourceLanguage: req.SourceLanguage,
-					SourceText:     sourceText,
-					ClipID:         clipID,
-					ClipAssetID:    clipAssetID,
-					ClipSHA256:     clipSHA256,
-					ClipDurationMS: clipDurationMS,
-					Render:         req.Render,
-					// Record the produced video on the run result the moment the
-					// fan-out certifies it, so the final MP4 is never orphaned
-					// from the run that produced it. Called outside the apply
-					// lock from concurrent workers; recordLocalizedRender fences
-					// the result append itself.
-					OnRendered: func(rendered LocalizedRenderResult) error {
-						return r.recordLocalizedRender(ctx, exec, result, rendered)
-					},
-					OnFailed: func(failure LocalizedRenderFailure) error {
-						r.localizedRenderMu.Lock()
-						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-						r.localizedRenderMu.Unlock()
-						return nil
-					},
-				}); err != nil {
-					return voiceoverResult{}, fmt.Errorf("enqueue localized render scene %s lang %s: %w", item.sceneID, item.lang, err)
-				}
+				// ── Pipeline KPI: first render enqueue ───────────
+				renderStartedOnce.Do(func() {
+					if run := kernobs.FromContext(ctx); run != nil {
+						kernobs.RecordKPIMilestone(ctx, "render_first_started_ms", run.ElapsedMs())
+					}
+				})
+				go func(item voiceoverWork, audioRef AudioReference) {
+					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+						RunID:          runID,
+						ParentJobID:    exec.JobID,
+						SceneID:        item.sceneID,
+						SceneIndex:     item.scene.Index,
+						Language:       item.lang,
+						Text:           renderText,
+						Voiceover:      audioRef,
+						SourceLanguage: req.SourceLanguage,
+						SourceText:     sourceText,
+						ClipID:         clipID,
+						ClipAssetID:    clipAssetID,
+						ClipSHA256:     clipSHA256,
+						ClipDurationMS: clipDurationMS,
+						Render:         req.Render,
+						OnRendered: func(rendered LocalizedRenderResult) error {
+							return r.recordLocalizedRender(ctx, exec, result, rendered)
+						},
+						OnFailed: func(failure LocalizedRenderFailure) error {
+							r.localizedRenderMu.Lock()
+							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+							r.localizedRenderMu.Unlock()
+							return nil
+						},
+					}); err != nil {
+						r.log.Warn("async localized render enqueue failed",
+							zap.String("scene_id", item.sceneID),
+							zap.String("language", string(item.lang)),
+							zap.String("clip_id", clipID),
+							zap.Error(err))
+					}
+				}(item, audioRef)
 				return voiceoverResult{audioRef: audioRef, metric: metric}, nil
 			})
 			if err != nil {
@@ -277,6 +293,25 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 				return false
 			}
+			// ── Cross-run DB cache accounting ─────────────────────────
+			// Each result carries the Cached flag surfaced by the per-item
+			// pipeline: true means the SQLite fingerprint lookup hit and the
+			// entire TTS + upload + finalize work was skipped for the item.
+			dbCacheHits = 0
+			for i := range results {
+				if results[i].audioRef.Cached {
+					dbCacheHits++
+				}
+			}
+			result.AudioMetrics.VoiceoverDBCacheHits = dbCacheHits
+			r.log.Info("voiceover db cache audit",
+				zap.String("run_id", runID),
+				zap.Int("requested", requested),
+				zap.Int("generated", len(work)),
+				zap.Int("db_cache_hits", dbCacheHits),
+				zap.Int("db_cache_misses", len(work)-dbCacheHits),
+				zap.String("db_cache_status", "consulted"),
+			)
 			// Voiceover references and narration-driven durations were applied
 			// per unit inside the workers (durable per-unit checkpoint). This
 			// loop only projects the canonical-order observability: per-scene
@@ -306,19 +341,41 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				}
 			}
 		}
-		// Project the TTS count + duration from the canonical voiceover
-		// operations — never a local counter or a second timer. Without a
-		// bound Run (test / dry-run) the count falls back to the work length;
-		// the authoritative wall time stays zero.
+		// Project the TTS count from the canonical voiceover operations —
+		// never a local timer. Cache-hit acquisitions still emit a synthesize
+		// observation (the MeasureOperation wraps the whole Generate call),
+		// but they never reach the TTS provider: subtract them so TTSCalls
+		// counts real provider synthesis calls. Without a bound Run
+		// (test / dry-run) the fresh-work count is the fallback; the
+		// authoritative wall time stays zero.
 		var tts kernobs.OperationSummary
 		if run := kernobs.FromContext(ctx); run != nil {
 			tts = kernobs.SummarizeOperations(run.Report(), "voiceover", "synthesize")
-		}
-		if tts.Calls == 0 {
-			tts.Calls = int64(len(work))
+			if fresh := tts.Calls - int64(dbCacheHits); fresh > 0 {
+				tts.Calls = fresh
+			} else {
+				tts.Calls = int64(len(work) - dbCacheHits)
+			}
+		} else {
+			tts.Calls = int64(len(work) - dbCacheHits)
 		}
 		result.AudioMetrics.TTSMS = tts.TotalMs
 		result.AudioMetrics.TTSCalls = int(tts.Calls)
+
+		// P0.4: drain the async voiceover publish pool. All TTS synthesis
+		// goroutines have returned, but Drive uploads + timing publishes +
+		// SQLite commits may still be in-flight. Waiting here ensures
+		// DriveFileID/DriveLink/TimingBundle are hydrated on the DB before
+		// audio compile and docs stages read the results.
+		if r.voiceoverPublishDrainer != nil {
+			publishDrainStarted := time.Now()
+			r.voiceoverPublishDrainer.Wait()
+			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(result.AudioMetrics.VoiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
+			r.log.Info("voiceover publish pool drained",
+				zap.String("run_id", runID),
+				zap.Int("generated", result.AudioMetrics.VoiceoverGenerated))
+		}
+
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
 	if voiceoverSkipped {

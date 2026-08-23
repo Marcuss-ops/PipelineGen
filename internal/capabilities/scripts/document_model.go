@@ -1,9 +1,8 @@
 package scriptgeneration
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"strings"
 
@@ -19,8 +18,8 @@ func documentSpecSceneSHA256(model *scriptpkg.ModelScriptOutputV1) string {
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes(raw)
+	return sum
 }
 
 // modelScriptOutputForDocument adapts the runner's durable Scene aggregate to

@@ -153,7 +153,7 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		// PR-VO-TYPED-PRIMITIVES (July 2026): req.Languages is now
 		// []Language so `lang` is already typed (Language). The
 		// processLanguage signature takes the typed value verbatim.
-		item := s.processLanguage(ctx, requestID, textHash, lang, req, dest)
+		item := s.processLanguage(ctx, requestID, string(textHash), lang, req, dest)
 		if item.Status == StatusFailed {
 			ok = false
 		}

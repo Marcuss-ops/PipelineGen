@@ -74,7 +74,6 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		TargetWords:      resCtx.TargetWords,
 		NumClips:         resCtx.NumClips,
 		SegmentWords:     resCtx.SegmentWords,
-		SegmentTopics:    append([]string(nil), resCtx.SegmentTopics...),
 		Segments:         canonicalSegments,
 		SourceText:       src.SourceText,
 		TranscriptPolicy: src.TranscriptPolicy,

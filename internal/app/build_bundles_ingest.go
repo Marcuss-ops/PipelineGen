@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -70,7 +71,7 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 			Name:          r.Name,
 			PreviewURL:    r.PreviewURL,
 			DriveLink:     r.DriveLink,
-			LegacyFileMD5:      r.LegacyFileMD5,
+			LegacyFileMD5: r.LegacyFileMD5,
 			SourcePageURL: r.SourcePageURL,
 			Author:        r.Author,
 			Width:         r.Width,
@@ -125,7 +126,7 @@ func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *imagesrep
 // drops the previously-threaded *wiring.OutboxBundle arg (it was never read
 // inside the function body) — the caller still constructs mutationsDisp
 // from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *wiring.Databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *wiring.RepoBundle, search *wiring.SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *wiring.Databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *wiring.RepoBundle, search *wiring.SearchBundle, mutationsDisp mutations.AssetMutationDispatcher, committer assetspersistence.AssetCommitter) *ingest.Service {
 	if driveUploader == nil {
 		return nil
 	}
@@ -135,13 +136,13 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *wiring.Databas
 	if mutationsDisp == nil {
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
-	imagesRegistry := imagesregistry.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log, mutationsDisp)
+	imagesRegistry := imagesregistry.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log, committer)
 	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
-	clipRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	clipRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), committer)
 	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	stockRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	stockRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), committer)
 	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	downloader := downloader.NewMediaDownloader(90 * time.Second)
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy

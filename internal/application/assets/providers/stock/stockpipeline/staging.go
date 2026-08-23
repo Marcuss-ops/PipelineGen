@@ -50,7 +50,7 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 
 // Cleanup removes the staged file's parent temp directory AND
 // releases the shared-lease refcount (if any).
-func (s *StockStager) Cleanup(_ context.Context, staged *appassets.StagedAsset) error {
+func (s *StockStager) cleanup(_ context.Context, staged *appassets.StagedAsset) error {
 	if staged == nil || staged.LocalPath == "" {
 		return nil
 	}

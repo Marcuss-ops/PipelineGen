@@ -8,7 +8,7 @@ from edge_tts import Communicate
 
 from edge_tts_bridge.boundaries import boundary_line, remove_partials
 from edge_tts_bridge.request import edge_boundary_mode, normalize_language
-from edge_tts_bridge.voice_resolver import resolve_voice
+from edge_tts_bridge.voice_resolver import VoiceResolutionError, resolve_voice
 
 
 async def main():
@@ -17,6 +17,8 @@ async def main():
     p.add_argument("--lang", default="it")
     p.add_argument("--out", required=True)
     p.add_argument("--voice")
+    p.add_argument("--allow-voice-fallback", action="store_true",
+                   help="Allow automatic voice selection when --voice is omitted (debug/smoke tests only)")
     p.add_argument("--boundary", default="word", choices=("word", "sentence"))
     a = p.parse_args()
 
@@ -28,7 +30,19 @@ async def main():
         sys.exit(1)
 
     lang = normalize_language(a.lang)
-    voice = a.voice or await resolve_voice(lang)
+    if a.voice:
+        voice = a.voice
+    elif a.allow_voice_fallback:
+        voice = await resolve_voice(lang, allow_fallback=True)
+    else:
+        print(json.dumps({
+            "ok": False,
+            "error": (
+                f"No voice provided for language {lang!r}. "
+                f"Pass --voice or --allow-voice-fallback (debug/smoke tests only)."
+            )
+        }))
+        sys.exit(1)
 
     out_path = os.path.abspath(a.out)
     audio_part = out_path + ".part"

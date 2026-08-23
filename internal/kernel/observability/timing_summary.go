@@ -30,6 +30,7 @@ type TimingSummary struct {
 	UnattributedMs int64 `json:"unattributed_ms"`
 	// UnattributedPercent is UnattributedMs as a percentage of wall_ms.
 	UnattributedPercent float64 `json:"unattributed_percent"`
+	OverlappedMs        int64   `json:"overlapped_ms"`
 	// BottleneckStage is the top-level stage with the largest wall time.
 	BottleneckStage string `json:"bottleneck_stage,omitempty"`
 	// BottleneckOperation is "component.operation" of the dominant operation
@@ -90,6 +91,7 @@ func (r *RunReport) timingSummaryWithWall(wallMs int64) TimingSummary {
 		AttributedMs:        bd.AttributedStageMs,
 		UnattributedMs:      bd.UnattributedMs,
 		UnattributedPercent: bd.UnattributedPercent,
+		OverlappedMs:        bd.OverlappedMs,
 		BottleneckStage:     bd.BottleneckStage,
 		BottleneckOperation: bd.BottleneckOperation,
 		BottleneckPercent:   bd.BottleneckPercent,

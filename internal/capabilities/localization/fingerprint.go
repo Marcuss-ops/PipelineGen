@@ -29,10 +29,10 @@ package localization
 // already canonical (BCP-47 tag, hex hashes) at the plan boundary.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Fingerprint returns the canonical deterministic SHA-256 hex digest of the
@@ -51,8 +51,7 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		watermarkFingerprint(plan),
 		strings.TrimSpace(plan.Version),
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	return digest.Fingerprint(parts...)
 }
 
 func watermarkFingerprint(plan LocalizedClipPlan) string {

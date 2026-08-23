@@ -12,7 +12,7 @@
 package scriptgeneration
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"fmt"
 	"strings"
 
@@ -93,7 +93,7 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 // normally receive different cues.
 func randomWhooshID(timeline audio.CanonicalTimeline, index int, intent scriptpkg.SoundEffectIntent) string {
 	seed := fmt.Sprintf("%d:%d:%d:%s:%d:%d", timeline.DurationUS, index, intent.AtMS, intent.SceneID, intent.OffsetMS, intent.SourceInMS)
-	digest := sha256.Sum256([]byte(seed))
+	digest := digest.SHA256Bytes([]byte(seed))
 	return fmt.Sprintf("whoosh%d", int(digest[0])%9+1)
 }
 

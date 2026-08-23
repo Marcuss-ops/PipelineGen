@@ -1,10 +1,9 @@
 package stockplan
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"net/url"
 	"sort"
@@ -226,7 +225,7 @@ type SelectedSegment struct {
 	CacheKey        string  `json:"cache_key"`
 	LocalPath       string  `json:"local_path,omitempty"`
 	AssetID         string  `json:"asset_id,omitempty"`
-	LegacyFileMD5        string  `json:"legacy_file_md5,omitempty"`
+	LegacyFileMD5   string  `json:"legacy_file_md5,omitempty"`
 	DriveLink       string  `json:"drive_link,omitempty"`
 	QdrantPointID   string  `json:"qdrant_point_id,omitempty"`
 	Status          string  `json:"status"`
@@ -267,8 +266,8 @@ func (p PartialDownloadPlan) YTDLPSection() string {
 	return fmt.Sprintf("*%.3f-%.3f", float64(p.StartMs)/1000, float64(p.EndMs)/1000)
 }
 func (p PartialDownloadPlan) CacheKey() string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("youtube:%s:%d:%d:%s", p.VideoID, p.StartMs, p.EndMs, p.ProfileVersion)))
-	return hex.EncodeToString(h[:])
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("youtube:%s:%d:%d:%s", p.VideoID, p.StartMs, p.EndMs, p.ProfileVersion)))
+	return h
 }
 func tokens(s string) map[string]struct{} {
 	o := map[string]struct{}{}

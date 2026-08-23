@@ -1,8 +1,7 @@
 package youtubediscoveries
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"time"
 )
 
@@ -21,8 +20,8 @@ import (
 // a v2 row for the SAME (channelID, videoID) produce different ids
 // — important because the two co-exist under UNIQUE.
 func deriveDiscoveryID(channelID, videoID, policyVersion string) string {
-	h := sha256.Sum256([]byte(channelID + ":" + videoID + ":" + policyVersion))
-	return "disc_" + hex.EncodeToString(h[:8])
+	h := digest.SHA256Bytes([]byte(channelID + ":" + videoID + ":" + policyVersion))
+	return "disc_" + h[:8]
 }
 
 // ComputeRetryBackoffSeconds returns the exponential-backoff delay

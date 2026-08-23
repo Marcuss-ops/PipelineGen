@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "margot-robbie-10-correct",
+  "force_refresh": false,
+  "items": [
+    {
+      "id": "margot-robbie-10-correct",
+      "project": "margot-robbie-10-correct",
+      "title": "Margot Robbie — 10 verified funny clips",
+      "language": "en",
+      "tone": "fast, playful and concise",
+    "model": "auto",
+      "style": "Write one short, playful narrator introduction for each supplied clip, in the exact supplied order. Use only the matching description as factual grounding. Do not copy the description, do not mention these instructions, do not merge clips, and do not invent quotes or events.",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "yt_Bl5630CeYFs_19_32_v1",
+          "yt_Bl5630CeYFs_50_66_v1",
+          "yt_Bl5630CeYFs_150_171_v1",
+          "yt_Bl5630CeYFs_210_235_v1",
+          "yt_Bl5630CeYFs_346_365_v1",
+          "yt_Bl5630CeYFs_377_387_v1",
+          "yt_Bl5630CeYFs_404_421_v1",
+          "yt_Bl5630CeYFs_431_449_v1",
+          "yt_2Hls8pQuLgM_427_457_v1",
+          "yt_5vTDEj_bFh8_165_225_v1"
+        ],
+        "ordering_strategy": "input_order",
+        "num_clips": 10
+      },
+      "script_params": {
+        "target_words": 180,
+        "segment_words": 18,
+        "segments": [
+          {"id":"scene-00","kind":"clip","topic":"J.K. Rowling questions","source_text":"Margot dice che passerebbe la giornata con J.K. Rowling per farle un milione e 73 domande.","clip_ids":["yt_Bl5630CeYFs_19_32_v1"],"target_words":18},
+          {"id":"scene-01","kind":"clip","topic":"Australian national anthem","source_text":"Margot suona l'inno nazionale australiano al piano in modo buffo e improvvisato.","clip_ids":["yt_Bl5630CeYFs_50_66_v1"],"target_words":18},
+          {"id":"scene-02","kind":"clip","topic":"Brunch and taramasalata","source_text":"Margot descrive la dinamica dei suoi brunch e definisce il taramasalata disgustoso.","clip_ids":["yt_Bl5630CeYFs_150_171_v1"],"target_words":18},
+          {"id":"scene-03","kind":"clip","topic":"Suicide Squad tattoos","source_text":"Margot ammette di aver tatuato il cast di Suicide Squad e si rende conto di non aver mai dato il bicchiere d'acqua promesso.","clip_ids":["yt_Bl5630CeYFs_210_235_v1"],"target_words":18},
+          {"id":"scene-04","kind":"clip","topic":"Surfing rating","source_text":"Margot valuta ironicamente la propria abilità nel surf con un 2 su 10.","clip_ids":["yt_Bl5630CeYFs_346_365_v1"],"target_words":18},
+          {"id":"scene-05","kind":"clip","topic":"Stripey toe socks","source_text":"Margot stronca il trend dei calzini a righe con le dita.","clip_ids":["yt_Bl5630CeYFs_377_387_v1"],"target_words":18},
+          {"id":"scene-06","kind":"clip","topic":"50 Cent and Tiny Kitchen","source_text":"Margot racconta di essere rimasta senza parole incontrando 50 Cent e confessa la sua ossessione per Tiny Kitchen.","clip_ids":["yt_Bl5630CeYFs_404_421_v1"],"target_words":18},
+          {"id":"scene-07","kind":"clip","topic":"Tarantino set traditions","source_text":"Margot racconta i retroscena comici e le tradizioni sul set di Tarantino.","clip_ids":["yt_Bl5630CeYFs_431_449_v1"],"target_words":18},
+          {"id":"scene-08","kind":"clip","topic":"Raspberry pie crust","source_text":"Ryan svela la sua abilità nel preparare torte ai lamponi.","clip_ids":["yt_2Hls8pQuLgM_427_457_v1"],"target_words":18},
+          {"id":"scene-09","kind":"clip","topic":"Barbie rollerblading paparazzi","source_text":"Margot racconta l'imbarazzo sul set all'aperto di Barbie con abiti fluo e paparazzi.","clip_ids":["yt_5vTDEj_bFh8_165_225_v1"],"target_words":18}
+        ]
+      },
+      "output": {
+      "extract_entities": "disabled",
+      "generate_metadata": "disabled",
+      "generate_timeline": true,
+      "save_to_db": false,
+      "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
+      "render": {"enabled": false, "assemble_final": false}
+      },
+      "docs": {"enabled": true, "languages": ["en"], "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"},
+      "audio": {"mode": "CHUNKED_VOICEOVER", "mix_policy": "VOICEOVER_ONLY"}
+    }
+  ]
+}

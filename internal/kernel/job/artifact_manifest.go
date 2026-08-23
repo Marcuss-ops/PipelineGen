@@ -19,11 +19,10 @@
 package job
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"io"
 	"strings"
 )
@@ -523,9 +522,9 @@ func ComputeSHA256(f FileReader, path string) (string, error) {
 	}
 	defer file.Close()
 
-	h := sha256.New()
-	if _, err := io.Copy(h, file); err != nil {
+	sum, err := digest.SHA256Reader(file)
+	if err != nil {
 		return "", fmt.Errorf("sha256: read %s: %w", path, err)
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return sum, nil
 }

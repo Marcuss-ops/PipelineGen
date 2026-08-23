@@ -29,13 +29,13 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID: item.ID, Title: title, Topic: topic, Language: item.Language,
 		Tone: item.Tone, Model: item.Model, Mode: scriptpkg.ModeForSource(item.Source.Type),
-		MediaMode: item.MediaMode, SourceText: item.Source.SourceText,
+		Concurrency: item.ScriptParams.Concurrency,
+		MediaMode:   item.MediaMode, SourceText: item.Source.SourceText,
 		Guidelines: editorialGuidelines(item), TargetWords: item.ScriptParams.TargetWords,
 		SingleScene: item.ScriptParams.SingleScene, Duration: item.ScriptParams.Duration,
 		MinWords: item.ScriptParams.MinWords, NumClips: item.Source.NumClips,
 		IntroClipIDs:      append([]string(nil), item.Source.IntroClipIDs...),
 		SegmentWords:      item.ScriptParams.SegmentWords,
-		SegmentTopics:     append([]string(nil), item.ScriptParams.SegmentTopics...),
 		Segments:          append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
 		SentencesPerImage: item.ScriptParams.SentencesPerImage,
 		ImagesPerScene:    item.ScriptParams.ImagesPerScene, Style: item.Style,
@@ -83,7 +83,47 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	plan.RenderedPrompt = buildEditorialPrompt(item)
 	plan.SourceKind = string(item.Source.Type)
 	plan.PromptProfile = "default-v1"
+	plan.Model, plan.Concurrency = resolveModelPolicy(item, plan)
 	return plan
+}
+
+const (
+	shortScriptWordLimit = 300
+	smallGemmaModel      = "gemma4:e2b"
+	largeGemmaModel      = "gemma4:e4b"
+)
+
+func resolveModelPolicy(item scriptpkg.GenerationItemV2, plan scriptpkg.ResolvedGenerationPlan) (string, int) {
+	model := strings.TrimSpace(plan.Model)
+	if !item.ModelAuto && model != "" && !strings.EqualFold(model, "auto") {
+		if plan.Concurrency <= 0 {
+			if strings.Contains(strings.ToLower(model), "e2b") {
+				plan.Concurrency = 4
+			} else {
+				plan.Concurrency = 2
+			}
+		}
+		return model, plan.Concurrency
+	}
+	target := plan.TargetWords
+	if target <= 0 {
+		for _, seg := range plan.Segments {
+			target += seg.TargetWords
+		}
+	}
+	if target <= 0 {
+		target = len(strings.Fields(plan.SourceText))
+	}
+	if target > 0 && target <= shortScriptWordLimit {
+		if plan.Concurrency <= 0 {
+			plan.Concurrency = 4
+		}
+		return smallGemmaModel, plan.Concurrency
+	}
+	if plan.Concurrency <= 0 {
+		plan.Concurrency = 2
+	}
+	return largeGemmaModel, plan.Concurrency
 }
 
 // BuildPlans builds plans for an already-normalized envelope.

@@ -81,7 +81,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		wireCanonicalImageCommitter(params.repos.ImageRepo, canonicalCommitter)
 	}
 	voCommitter := canonicalCommitter
-	voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverPipeline(params.ctx, params.cfg, params.dbs, params.log,
+	voiceoverRepo, voiceoverProcessItem, audioProcessor, publishPool, err := buildVoiceoverPipeline(params.ctx, params.cfg, params.dbs, params.log,
 		params.drive.DriveUploader,
 		params.drive.Publisher,
 		params.search.AssetIndexService, params.process.ClipIndexerService,
@@ -100,7 +100,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}
 
-	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.DriveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp)
+	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.DriveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp, canonicalCommitter)
 
 	imageSvc, metaWriter := buildImagesService(buildImagesParams{
 		Cfg:           params.cfg,
@@ -156,7 +156,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 
 	autotagSvc := autotag.NewService(autotag.ServiceDeps{
 		DB: params.dbs.DualPool.Writer, Repo: params.repos.Assets.Repository(),
-		VLMClient: params.process.VLMClient, Dispatcher: params.mutationsDisp,
+		VLMClient: params.process.VLMClient, Committer: canonicalCommitter,
 		EnrichState: enrichState, Log: params.log,
 		VideoAnalysis: autotag.VideoAnalysisDeps{
 			Sampler: videoSampler, VLM: visualVLM,
@@ -187,6 +187,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 
 	params.bundle.VoiceoverSync = vosyncSvc
 	params.bundle.VoiceoverProcessItem = voiceoverProcessItem
+	params.bundle.VoiceoverPublishPool = publishPool
 	params.bundle.ImageService = imageSvc
 	params.bundle.IngestService = ingestSvc
 	params.bundle.BooksService = booksSvc

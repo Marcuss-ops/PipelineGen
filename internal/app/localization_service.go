@@ -22,8 +22,7 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -284,7 +283,9 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	// that every other render flows through.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	executor := newLocalizationRenderPlanExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer}, root.MediaExec.Profile, log)
+	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
+	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
+	executor := newLocalizationRenderPlanExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, resolver: backendResolver, probe: backendProbe}, root.MediaExec.Profile, log)
 
 	uploader := &localizationDriveUploader{publisher: root.Drive.Publisher}
 	docPublisher := &localizationDocPublisher{doc: root.Drive.DocClient}
@@ -342,8 +343,7 @@ func canonicalFactHash(v any) string {
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	return digest.SHA256Bytes(b)
 }
 
 // localizationTrackStore is the narrow combined seam the composition root

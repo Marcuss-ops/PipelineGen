@@ -291,7 +291,15 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), finalizationTimeout)
 	defer finalCancel()
 
+	postWriterFinalizeStarted := time.Now().UTC()
 	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)
+	// CompleteWithArtifacts is outside the dispatcher-owned pipeline stages,
+	// but it is still on the worker critical path. Record it explicitly so
+	// SQLite contention, artifact publication, or finalizer retries cannot be
+	// misreported as unattributed wall time.
+	kernobs.RecordStage(jobCtx, kernobs.StageInfo{
+		Stage: kernobs.StageName("post_writer_finalize"),
+	}, postWriterFinalizeStarted, time.Now().UTC(), dispatchErr)
 	w.log.Info("worker: post-writer finalization complete",
 		zap.String("job_id", j.ID),
 		zap.String("job_type", j.Type),

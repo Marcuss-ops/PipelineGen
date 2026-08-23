@@ -2,9 +2,8 @@ package drive
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"strings"
 
@@ -203,8 +202,8 @@ func (d *DocClientImpl) findDocByIdempotencyKey(ctx context.Context, folderID, k
 }
 
 func sha256Hex(content string) string {
-	sum := sha256.Sum256([]byte(content))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(content))
+	return sum
 }
 
 func (d *DocClientImpl) setAppProperty(ctx context.Context, docID, key, value string) error {

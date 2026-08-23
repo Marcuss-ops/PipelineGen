@@ -42,7 +42,7 @@
 package schema
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/google/uuid"
 )
@@ -86,7 +86,7 @@ func AssetIDToQdrantPointID(assetID string) string {
 	if assetID == "" {
 		return ""
 	}
-	hash := sha256.Sum256([]byte(assetID))
+	hash := digest.SHA256Bytes([]byte(assetID))
 	var b [16]byte
 	copy(b[:], hash[:16])
 	// UUID v8 per RFC 9562 §5.8: set the high nibble of byte 6 to

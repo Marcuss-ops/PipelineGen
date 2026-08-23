@@ -19,9 +19,8 @@ package mediaregistry
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 )
 
@@ -66,16 +65,16 @@ type CanonicalIdentityResolver interface {
 // sha256(asset_id | source_type | source_uri | source_version). It remains
 // available only for compatibility with legacy rows and migration tests.
 func DeriveAssetSourceID(assetID, sourceType, sourceURI, sourceVersion string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{assetID, sourceType, sourceURI, sourceVersion}, "|")))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(strings.Join([]string{assetID, sourceType, sourceURI, sourceVersion}, "|")))
+	return sum
 }
 
 // DeriveCanonicalSourceID derives the source identity from the source tuple
 // itself. AssetID is deliberately absent: one provider source must resolve to
 // one canonical asset even when legacy callers disagree about the asset ID.
 func DeriveCanonicalSourceID(sourceType, sourceURI, sourceVersion string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{sourceType, sourceURI, sourceVersion}, "|")))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(strings.Join([]string{sourceType, sourceURI, sourceVersion}, "|")))
+	return sum
 }
 
 // BackfillReport is the expand/backfill/cutover report produced by the

@@ -22,7 +22,7 @@
 package localization
 
 import (
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -227,9 +227,9 @@ func validateBCP47(code string) error {
 // (the canonical SHA-256 digest shape). Mirrors the cliprender gate so the
 // two render contracts share one digest-shape rule.
 func isSHA256Hex(value string) bool {
-	if len(value) != sha256.Size*2 {
+	if len(value) != digest.SHA256HexLength {
 		return false
 	}
 	decoded, err := hex.DecodeString(value)
-	return err == nil && strings.ToLower(value) == value && len(decoded) == sha256.Size
+	return err == nil && strings.ToLower(value) == value && len(decoded) == digest.SHA256HexLength/2
 }

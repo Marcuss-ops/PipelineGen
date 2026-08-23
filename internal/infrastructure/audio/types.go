@@ -11,12 +11,16 @@ import "time"
 type AudioInput struct {
 	Text          string
 	Language      string
-	Voice         string // optional: overrides auto-detected voice (passed as --voice)
+	Voice         string // the explicit voice identifier (required in production; passed as --voice)
 	Filename      string
 	OutputDir     string
 	Strategy      string // "replace", "skip", "fail"
 	RemoveSilence bool
 	UseStdin      bool // pipe text via stdin instead of --text (avoids OS arg limits)
+	// AllowVoiceFallback enables the Python sidecar's automatic voice
+	// selection when Voice is empty. Default false (production fail-closed).
+	// Set to true only in debug / smoke test contexts.
+	AllowVoiceFallback bool
 }
 
 // AudioResult carries the outcome of a single TTS generation.

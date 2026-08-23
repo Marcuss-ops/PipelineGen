@@ -28,7 +28,7 @@ package finalizer
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -154,6 +154,6 @@ func (f *Finalizer) markSucceeded(
 // randomHex returns a random hex string of n bytes (2n characters).
 // The output is derived from SHA-256 truncated to n bytes. n must be ≤ 32.
 func randomHex(n int) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("job_finalizer_%d_%d", time.Now().UnixNano(), n)))
-	return hex.EncodeToString(h[:n])
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("job_finalizer_%d_%d", time.Now().UnixNano(), n)))
+	return hex.EncodeToString([]byte(h)[:n])
 }

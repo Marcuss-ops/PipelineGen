@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -84,16 +85,6 @@ func (u *ProcessSegmentUseCase) publishStage(
 		}
 	}
 
-	metaJSON, err := json.Marshal(metaBuf)
-	if err != nil {
-		return nil, newPipelineErrorCode(
-			StageMetadata,
-			false,
-			FailureMetadataSerialization,
-			fmt.Errorf("voiceover metadata serialization: %w", err),
-		)
-	}
-
 	// Derive deterministic idempotency key.
 	var idemKey string
 	if cmd.JobID != "" {
@@ -136,6 +127,40 @@ func (u *ProcessSegmentUseCase) publishStage(
 		return nil, err
 	}
 	out.Timing = timingRes
+
+	// Inject timing links into the metadata so the cross-run voiceover
+	// cache can verify timing artifacts without re-downloading audio.
+	// These links survive in the voiceovers.metadata JSON column.
+	if timingRes != nil {
+		if timingRes.JSONLink != "" {
+			metaBuf["timing_json_link"] = timingRes.JSONLink
+		}
+		if timingRes.SRTLink != "" {
+			metaBuf["timing_srt_link"] = timingRes.SRTLink
+		}
+		if timingRes.VTTLink != "" {
+			metaBuf["timing_vtt_link"] = timingRes.VTTLink
+		}
+		if timingRes.AudioSHA256 != "" {
+			metaBuf["audio_sha256"] = timingRes.AudioSHA256
+		}
+		metaBuf["timing_boundary_mode"] = timingRes.BoundaryMode
+		metaBuf["timing_word_count"] = timingRes.WordCount
+		metaBuf["timing_duration_us"] = timingRes.DurationUS
+		metaBuf["timing_status"] = timingRes.Status
+	}
+	metaBuf["drive_file_id"] = fileID
+	metaBuf["drive_link"] = out.DriveLink
+
+	metaJSON, err := json.Marshal(metaBuf)
+	if err != nil {
+		return nil, newPipelineErrorCode(
+			StageMetadata,
+			false,
+			FailureMetadataSerialization,
+			fmt.Errorf("voiceover metadata serialization: %w", err),
+		)
+	}
 
 	return &publishStageResult{MetaJSON: metaJSON, IdemKey: idemKey}, nil
 }
@@ -284,33 +309,82 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		}
 	}()
 
-	for format, data := range projections {
-		filename := timingProjectionFilename(base, format)
-		localPath := filepath.Join(dir, filename)
-		if err := os.WriteFile(localPath, data, 0o644); err != nil {
-			return u.timingPublishFailure(cmd, log, policy, fmt.Errorf("write timing projection %s: %w", filename, err))
-		}
-		written = append(written, localPath)
+	// ── Publish all timing projections in parallel ───────────────
+	// P2: JSON, SRT, VTT uploads are independent Drive writes that
+	// can run concurrently (typically 1-3 projections per scene).
+	// Each goroutine writes its own staging file + publishes to Drive,
+	// so the total publish latency is MAX(of N), not SUM(of N).
+	// Bounded to 3 (the max number of formats: json + srt + vtt).
+	const timingPublishConcurrency = 3
+	type timingPubResult struct {
+		format audio.TimingFormat
+		fileID string
+	}
+	timingPubSem := make(chan struct{}, timingPublishConcurrency)
+	var timingPubWg sync.WaitGroup
+	timingPubResults := make([]timingPubResult, 0, len(projections))
+	var timingPubMu sync.Mutex
+	var timingPubFirstErr error
 
-		fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-			ID:             cmd.ID + "-timing-" + string(format),
-			LocalPath:      localPath,
-			Filename:       filename,
-			FolderID:       cmd.Dest.FolderID,
-			Project:        cmd.Project,
-			Language:       string(cmd.Language),
-			IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, TimingPolicyFingerprint(cmd.Timing, cmd.RemoveSilence), string(format)),
-		})
-		if err != nil {
-			return u.timingPublishFailure(cmd, log, policy, fmt.Errorf("publish timing projection %s: %w", filename, err))
-		}
-		switch format {
+	for format, data := range projections {
+		format, data := format, data
+		timingPubWg.Add(1)
+		go func() {
+			defer timingPubWg.Done()
+			timingPubSem <- struct{}{}
+			defer func() { <-timingPubSem }()
+
+			filename := timingProjectionFilename(base, format)
+			localPath := filepath.Join(dir, filename)
+			if err := os.WriteFile(localPath, data, 0o644); err != nil {
+				timingPubMu.Lock()
+				if timingPubFirstErr == nil {
+					timingPubFirstErr = fmt.Errorf("write timing projection %s: %w", filename, err)
+				}
+				timingPubMu.Unlock()
+				return
+			}
+			// Track the written file for cleanup.
+			timingPubMu.Lock()
+			written = append(written, localPath)
+			timingPubMu.Unlock()
+
+			fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
+				ID:             cmd.ID + "-timing-" + string(format),
+				LocalPath:      localPath,
+				Filename:       filename,
+				FolderID:       cmd.Dest.FolderID,
+				Project:        cmd.Project,
+				Language:       string(cmd.Language),
+				IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, TimingPolicyFingerprint(cmd.Timing, cmd.RemoveSilence), string(format)),
+			})
+			if err != nil {
+				timingPubMu.Lock()
+				if timingPubFirstErr == nil {
+					timingPubFirstErr = fmt.Errorf("publish timing projection %s: %w", filename, err)
+				}
+				timingPubMu.Unlock()
+				return
+			}
+			timingPubMu.Lock()
+			timingPubResults = append(timingPubResults, timingPubResult{format: format, fileID: fileID})
+			timingPubMu.Unlock()
+		}()
+	}
+	timingPubWg.Wait()
+
+	if timingPubFirstErr != nil {
+		return u.timingPublishFailure(cmd, log, policy, timingPubFirstErr)
+	}
+
+	for _, r := range timingPubResults {
+		switch r.format {
 		case audio.TimingJSON:
-			res.JSONLink = CanonicalDriveWebURL(fileID)
+			res.JSONLink = CanonicalDriveWebURL(r.fileID)
 		case audio.TimingSRT:
-			res.SRTLink = CanonicalDriveWebURL(fileID)
+			res.SRTLink = CanonicalDriveWebURL(r.fileID)
 		case audio.TimingVTT:
-			res.VTTLink = CanonicalDriveWebURL(fileID)
+			res.VTTLink = CanonicalDriveWebURL(r.fileID)
 		}
 	}
 

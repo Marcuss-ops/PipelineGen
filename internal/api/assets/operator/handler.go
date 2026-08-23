@@ -58,6 +58,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -75,6 +76,7 @@ type Handler struct {
 	jobStats      JobStatsReader
 	outboxPort    outbox.MonitorPort
 	mutator       mutations.AssetMutationDispatcher
+	committer     persistence.AssetCommitter
 	allowedRoots  []string
 	log           *zap.Logger
 }
@@ -91,6 +93,7 @@ type Dependencies struct {
 	JobStats      JobStatsReader
 	OutboxPort    outbox.MonitorPort
 	Mutator       mutations.AssetMutationDispatcher
+	Committer     persistence.AssetCommitter
 	AllowedRoots  []string // directories allowed for file previews
 }
 
@@ -104,6 +107,7 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 		jobStats:      deps.JobStats,
 		outboxPort:    deps.OutboxPort,
 		mutator:       deps.Mutator,
+		committer:     deps.Committer,
 		allowedRoots:  deps.AllowedRoots,
 		log:           log,
 	}

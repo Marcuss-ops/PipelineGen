@@ -71,17 +71,17 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		return nil
 	}
 	return &sourcing.ExistingClip{
-		ID:          c.ID,
-		Name:        c.Name,
-		Filename:    c.Filename,
-		Duration:    c.Duration,
-		Source:      string(c.Source),
-		Category:    c.Category,
-		Tags:        append([]string(nil), c.Tags...),
-		LocalPath:   c.LocalPath(),
-		DriveLink:   c.DriveLink(),
-		DriveFileID: c.DriveFileID(),
-		LegacyFileMD5:    c.LegacyFileMD5(),
+		ID:            c.ID,
+		Name:          c.Name,
+		Filename:      c.Filename,
+		Duration:      c.Duration,
+		Source:        string(c.Source),
+		Category:      c.Category,
+		Tags:          append([]string(nil), c.Tags...),
+		LocalPath:     c.LocalPath(),
+		DriveLink:     c.DriveLink(),
+		DriveFileID:   c.DriveFileID(),
+		LegacyFileMD5: c.LegacyFileMD5(),
 		// source_url convergence (godlike/06): the typed field is the
 		// canonical owner; the metadata key is a provenance mirror for
 		// legacy rows. Read field-first so a round-trip through the mapper

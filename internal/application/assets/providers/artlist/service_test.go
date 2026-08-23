@@ -27,100 +27,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
 
-// artlistTestSchema composes the full canonical media_assets CREATE TABLE
-// (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus
-// the companion clip_search_terms table used by artlist Search indexing.
-// Composing the canonical block keeps this fixture in lockstep with
-// production migrations and assets.ClipsRepository.mediaAssetColumns: a new
-// canonical column added by migration 060 only requires touching one
-// place, not every fixture.
-const artlistTestSchema = drive.CanonicalMediaAssetsSchema + `
-	CREATE TABLE IF NOT EXISTS clip_search_terms (
-		clip_id TEXT NOT NULL,
-		term TEXT NOT NULL,
-		PRIMARY KEY (clip_id, term)
-	);
-
-	CREATE TABLE IF NOT EXISTS asset_locations (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
-		location_kind TEXT NOT NULL,
-		uri TEXT NOT NULL,
-		external_id TEXT NOT NULL DEFAULT '',
-		web_view_link TEXT NOT NULL DEFAULT '',
-		download_url TEXT NOT NULL DEFAULT '',
-		mime_type TEXT NOT NULL DEFAULT '',
-		file_size_bytes INTEGER NOT NULL DEFAULT 0,
-		file_hash TEXT NOT NULL DEFAULT '',
-		is_primary INTEGER NOT NULL DEFAULT 0,
-		created_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL DEFAULT '',
-		UNIQUE (asset_id, location_kind)
-	);
-
-	CREATE TABLE IF NOT EXISTS asset_versions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
-		version_number INTEGER NOT NULL,
-		source_uri TEXT NOT NULL DEFAULT '',
-		file_hash TEXT NOT NULL DEFAULT '',
-		file_size_bytes INTEGER NOT NULL DEFAULT 0,
-		mime_type TEXT NOT NULL DEFAULT '',
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		created_at TEXT NOT NULL DEFAULT '',
-		UNIQUE (asset_id, version_number)
-	);
-
-	CREATE TABLE IF NOT EXISTS asset_renditions (
-		id TEXT PRIMARY KEY,
-		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
-		location_id INTEGER,
-		kind TEXT NOT NULL DEFAULT 'master',
-		container TEXT,
-		codec TEXT,
-		width INTEGER,
-		height INTEGER,
-		fps REAL,
-		bitrate INTEGER,
-		color_space TEXT,
-		sha256 TEXT,
-		size_bytes INTEGER NOT NULL DEFAULT 0,
-		created_at TEXT DEFAULT (datetime('now')),
-		updated_at TEXT DEFAULT (datetime('now')),
-		FOREIGN KEY (location_id) REFERENCES asset_locations(id) ON DELETE SET NULL
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_asset_renditions_asset_kind
-		ON asset_renditions (asset_id, kind);
-
-	CREATE TABLE IF NOT EXISTS outbox_events (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		event_type TEXT NOT NULL,
-		aggregate_id TEXT NOT NULL DEFAULT '',
-		aggregate_type TEXT NOT NULL DEFAULT '',
-		payload_json TEXT NOT NULL DEFAULT '',
-		event_key TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'pending',
-		attempt_count INTEGER NOT NULL DEFAULT 0,
-		max_attempts INTEGER NOT NULL DEFAULT 10,
-		last_error TEXT NOT NULL DEFAULT '',
-		next_attempt_at TEXT,
-		worker_id TEXT NOT NULL DEFAULT '',
-		lease_id TEXT NOT NULL DEFAULT '',
-		lease_expiry TEXT,
-		completed_at TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL DEFAULT ''
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
-		ON outbox_events(event_key);
-`
 
 // createTestDB creates a temporary SQLite database for testing
 func createTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	return drive.NewTestDBWithSchema(t, artlistTestSchema)
+	return drive.NewMigratedTestDB(t)
 }
 
 // outboxEventCount returns the number of asset.index.requested outbox

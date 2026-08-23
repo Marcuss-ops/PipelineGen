@@ -18,6 +18,7 @@
 package jsonextract
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -63,7 +64,7 @@ func ParsePlainTextFresh(raw []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 	//     output pattern where the model double-wraps its JSON.
 	rawStr := strings.TrimSpace(string(raw))
 	if isLegacyJSONShape(rawStr) {
-		return nil, fmt.Errorf("%w: legacy JSON envelope detected on fresh plain-text path; the LLM is honouring the deprecated V1 contract — caller MUST either re-emit without JSON framing OR explicitly opt-in via ModeCompatibility for cache-replay",
+		return nil, fmt.Errorf("%w: legacy JSON envelope detected on fresh plain-text path; the LLM is honouring the deprecated V1 contract — caller MUST re-emit without JSON framing. Pre-V1 cache rows can be migrated via admin migrate-legacy-cache tool",
 			scriptpkg.ErrModelOutputMalformed)
 	}
 
@@ -99,4 +100,61 @@ func isLegacyJSONShape(text string) bool {
 		return looksLikeJSON(strings.TrimSpace(unquoted))
 	}
 	return false
+}
+
+// ── Shared helpers (moved from legacy_converter.go post-migration) ──
+
+// cleanFallbackText removes obvious JSON-envelope noise from a raw
+// prose fallback before it reaches downstream splitters.
+//
+// The compatibility path lands here only after structured decoding
+// failed, so this is intentionally conservative: it strips a leading
+// JSON-looking envelope when there is trailing prose to preserve, and
+// otherwise leaves the text alone.
+func cleanFallbackText(raw string) string {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return ""
+	}
+
+	if unquoted, ok := tryUnquoteJSONString(text); ok {
+		text = strings.TrimSpace(unquoted)
+	}
+
+	if len(text) == 0 {
+		return ""
+	}
+
+	if text[0] == '{' || text[0] == '[' {
+		open := text[0]
+		close := closingDelim(open)
+		if end := findMatchingDelim(text, open, close); end > 0 {
+			head := strings.TrimSpace(text[:end+1])
+			tail := strings.TrimSpace(text[end+1:])
+			if tail != "" && isJsonEnvelopeNoise(head) {
+				return tail
+			}
+			if isJsonEnvelopeNoise(head) {
+				if extracted := extractFallbackEnvelopeText(head); extracted != "" {
+					return extracted
+				}
+			}
+		}
+	}
+
+	return text
+}
+
+func isJsonEnvelopeNoise(text string) bool {
+	return strings.Contains(text, `"schema_version"`) ||
+		strings.Contains(text, `"specscene"`) ||
+		strings.Contains(text, `"text"`)
+}
+
+func extractFallbackEnvelopeText(text string) string {
+	var output scriptpkg.ModelScriptOutputV1
+	if err := json.Unmarshal([]byte(text), &output); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output.Text)
 }

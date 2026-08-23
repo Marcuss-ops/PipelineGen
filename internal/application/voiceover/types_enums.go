@@ -53,6 +53,20 @@ const (
 	StatusFailed Status = "failed"
 )
 
+// IsReusableStatus returns true when the voiceover row status represents a
+// completed, uploaded, or generated artifact that can be safely reused
+// across runs. Failed, processing, and empty statuses are NOT reusable.
+// This is the canonical gate used by the voiceover cache to decide whether
+// a fingerprint-matched row can short-circuit TTS + upload.
+func IsReusableStatus(s Status) bool {
+	switch s {
+	case StatusCompleted, StatusUploaded, StatusGenerated:
+		return true
+	default:
+		return false
+	}
+}
+
 // FailureCode is the structured per-failure-mode code. fail() appends
 // the call's FailureCode to item.Errors so callers can correlate the
 // canonical StatusFailed with the specific failure mode. Each constant

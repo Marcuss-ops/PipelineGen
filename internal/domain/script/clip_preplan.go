@@ -1,9 +1,8 @@
 package script
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
@@ -17,8 +16,8 @@ func CanonicalizeSourceText(s string) string {
 
 // ComputeSourceHash hashes the canonicalized source text.
 func ComputeSourceHash(s string) string {
-	sum := sha256.Sum256([]byte(CanonicalizeSourceText(s)))
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes([]byte(CanonicalizeSourceText(s)))
+	return sum
 }
 
 // SourceAnchor is an immutable byte-range reference into canonical source text.

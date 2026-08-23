@@ -367,6 +367,61 @@ func (r *Run) AddBytesUploaded(n int64) {
 func (r *Run) IncArtifactCreated() { r.addCounter(func(c *RunCounters) { c.ArtifactsCreated++ }) }
 func (r *Run) IncArtifactReused()  { r.addCounter(func(c *RunCounters) { c.ArtifactsReused++ }) }
 
+// RecordKPIMilestone records a pipeline KPI timestamp as a wall-clock offset
+// in milliseconds from the run's own started clock. Zero offsets are silently
+// ignored ("not reached"). The field name is a pointer into PipelineKPIs.
+func (r *Run) RecordKPIMilestone(field string, offsetMs int64) {
+	if r == nil || offsetMs <= 0 || field == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return
+	}
+	switch field {
+	case "generate_first_scene_ready_ms":
+		r.report.KPIs.GenerateFirstSceneReadyMs = offsetMs
+	case "generate_finished_ms":
+		r.report.KPIs.GenerateFinishedMs = offsetMs
+	case "tts_first_started_ms":
+		r.report.KPIs.TTSFirstStartedMs = offsetMs
+	case "render_first_started_ms":
+		r.report.KPIs.RenderFirstStartedMs = offsetMs
+	case "audio_compile_started_ms":
+		r.report.KPIs.AudioCompileStartedMs = offsetMs
+	case "audio_compile_finished_ms":
+		r.report.KPIs.AudioCompileFinishedMs = offsetMs
+	case "docs_publish_started_ms":
+		r.report.KPIs.DocsPublishStartedMs = offsetMs
+	case "docs_publish_finished_ms":
+		r.report.KPIs.DocsPublishFinishedMs = offsetMs
+	}
+}
+
+// SetKPIs computes and records the pipeline invariant checks on the Run's
+// own report. It must be called before Finish so the invariants are
+// persisted.
+func (r *Run) SetKPIs(kpis PipelineKPIs) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return
+	}
+	r.report.KPIs = kpis
+}
+
+// RecordKPIMilestone is the context-bound form: records the milestone on the
+// run bound to ctx, or is a no-op when no run is bound.
+func RecordKPIMilestone(ctx context.Context, field string, offsetMs int64) {
+	if run := FromContext(ctx); run != nil {
+		run.RecordKPIMilestone(field, offsetMs)
+	}
+}
+
 func (r *Run) RegisterChild(child *RunReport) {
 	if r == nil || child == nil {
 		return

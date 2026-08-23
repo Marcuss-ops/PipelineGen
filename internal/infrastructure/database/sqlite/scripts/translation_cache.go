@@ -15,9 +15,8 @@ package scripts
 
 import (
 	"context"
-	"crypto/sha256"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -251,6 +250,6 @@ func (c *Cache) SweepStale(ctx context.Context, maxAgeDays int) (int64, error) {
 func cacheKey(sourceText, targetLanguage string) string {
 	normalized := strings.ToLower(strings.TrimSpace(sourceText))
 	payload := normalized + "|" + strings.TrimSpace(targetLanguage)
-	hash := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(hash[:])
+	hash := digest.SHA256Bytes([]byte(payload))
+	return hash
 }

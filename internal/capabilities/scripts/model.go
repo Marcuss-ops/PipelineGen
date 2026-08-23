@@ -154,6 +154,11 @@ type AudioReference struct {
 	// SSOT stays in Timing (never inlined). Nil when no timing bundle was
 	// published (timing disabled / unavailable / failed).
 	TimingBundle *scriptpkg.VoiceoverTimingBinding `json:"timing_bundle,omitempty"`
+	// Cached reports that this voiceover was reused from the cross-run
+	// SQLite fingerprint cache: zero TTS provider calls, uploads, or
+	// finalize work were spent for this item. It is the runner-facing
+	// signal behind AudioMetrics.VoiceoverDBCacheHits.
+	Cached bool `json:"cached,omitempty"`
 }
 
 // DocumentReference identifies a published Google Doc.
@@ -278,11 +283,18 @@ type AudioPipelineMetrics struct {
 	AudioSpeed         float64           `json:"audio_speed"`
 	AudioEncodePasses  int               `json:"audio_encode_passes"`
 	TTSScenes          []TTSSSceneMetric `json:"tts_scenes,omitempty"`
-	// These counters describe reuse visible to the script runner. They do not
-	// claim a DB cache hit until the voiceover repository is consulted.
+	// VoiceoverRequested counts every (scene, language) text that needed a
+	// voiceover. VoiceoverReused counts scene-projection reuse (a voiceover
+	// reference already attached before dispatch). VoiceoverGenerated counts
+	// the items dispatched to the voiceover pipeline.
 	VoiceoverRequested int `json:"voiceover_requested,omitempty"`
 	VoiceoverReused    int `json:"voiceover_reused,omitempty"`
 	VoiceoverGenerated int `json:"voiceover_generated,omitempty"`
+	// VoiceoverDBCacheHits counts the dispatched items served by the
+	// cross-run SQLite fingerprint cache (0 TTS calls, 0 uploads, 0
+	// finalize). Warm identical runs report Generated == DBCacheHits and
+	// TTSCalls == 0.
+	VoiceoverDBCacheHits int `json:"voiceover_db_cache_hits,omitempty"`
 }
 
 type TTSSSceneMetric struct {
@@ -654,6 +666,11 @@ type GenerateResult struct {
 	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`
 	FinalVideoRequired      bool                     `json:"final_video_required,omitempty"`
 	FinalVideo              *FinalVideoReference     `json:"final_video,omitempty"`
+
+	// AudioPrefetch carries pre-resolved audio assets (BGM/SFX paths +
+	// clip audio materialization) populated by the P1.1 prefetch goroutine
+	// during TTS. Nil means prefetch was not needed or not wired.
+	AudioPrefetch *AudioPrefetchResult `json:"-"`
 }
 
 type FinalVideoReference struct {
@@ -747,6 +764,7 @@ type Stage string
 
 const (
 	StageNormalizing          Stage = "NORMALIZING"
+	StagePreflight            Stage = "MEDIA_PREFLIGHT" // P0.5: fail-fast asset verification (runs in parallel with GENERATING_SCENE_TEXT)
 	StageGeneratingSceneText  Stage = "GENERATING_SCENE_TEXT"
 	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
 	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"

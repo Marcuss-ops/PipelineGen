@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+	"go.uber.org/zap"
 )
 
 // TestDBOpts controls behavior of NewTestDB.
@@ -97,7 +98,10 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 }
 
 // NewTestDBWithSchema creates a test database and runs the given schema SQL.
-// Use this when you need specific tables created before your test runs.
+//
+// DEPRECATED (PR-MIGRATIONS-SSOT, August 2026): prefer NewMigratedTestDB(t)
+// which runs the full migration chain. Use NewMigratedTestDBWithExtra(t, extra)
+// when you need migration tables plus test-specific extras.
 //
 // Usage:
 //
@@ -120,7 +124,7 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 // from migrations/sqlite/, and returns the open *sql.DB. This is the
 // canonical fixture helper for tests that need the production schema.
 //
-// PR-MIGRATIONS-SSOT (August 2026): replaces NewTestDBWithSchema(drive.CanonicalMediaAssetsSchema).
+// PR-MIGRATIONS-SSOT (August 2026): constants removed; use NewMigratedTestDB.
 // Tests must not duplicate schema constants — the migration chain is the sole
 // physical schema authority.
 //
@@ -137,9 +141,25 @@ func NewMigratedTestDB(t *testing.T) *sql.DB {
 	}
 
 	db := NewTestDB(t, nil)
-	if err := migrateAll(db, nil, dbPath, "primary"); err != nil {
+	if err := migrateAll(db, zap.NewNop(), dbPath, "primary"); err != nil {
 		db.Close()
 		t.Fatalf("NewMigratedTestDB: apply migrations: %v", err)
+	}
+	return db
+}
+
+// NewMigratedTestDBWithExtra creates a fully-migrated DB and then applies
+// additional schema SQL on top. Use this when tests need core migration
+// tables plus test-specific extras.
+func NewMigratedTestDBWithExtra(t *testing.T, extraSchema string) *sql.DB {
+	t.Helper()
+
+	db := NewMigratedTestDB(t)
+	if extraSchema != "" {
+		if _, err := db.Exec(extraSchema); err != nil {
+			db.Close()
+			t.Fatalf("NewMigratedTestDBWithExtra: apply extra schema: %v\nSchema:\n%s", err, extraSchema)
+		}
 	}
 	return db
 }

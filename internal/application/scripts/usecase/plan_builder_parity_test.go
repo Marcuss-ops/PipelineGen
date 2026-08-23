@@ -50,7 +50,6 @@ func TestBuildPlanParityWithGeneration(t *testing.T) {
 				Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceCatalog, Topic: "catalog", Guidelines: "source guidance"},
 				ScriptParams: scriptpkg.ScriptSpec{
 					Guidelines: "script guidance", TargetWords: 400, MinWords: 200,
-					SegmentTopics: []string{"one", "two"},
 					Segments:      []scriptpkg.ScriptSegment{{ID: "s1", Topic: "one", SourceText: "text"}},
 				},
 				Output: scriptpkg.OutputSpec{StockEnabled: scriptpkg.ToggleEnabled, StockBindings: []scriptpkg.StockBindingInput{{}}},

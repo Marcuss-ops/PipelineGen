@@ -23,10 +23,9 @@
 package scriptgeneration
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"html"
 	"strings"
 
@@ -47,8 +46,8 @@ func SpecSceneSHA256(spec scriptpkg.SpecSceneOutput) string {
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
+	sum := digest.SHA256Bytes(raw)
+	return sum
 }
 
 // DocumentSceneText is the minimal scene input available at SceneTextReady:
