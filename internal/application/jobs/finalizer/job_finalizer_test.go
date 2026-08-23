@@ -582,7 +582,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			source_provider TEXT NOT NULL DEFAULT '',
 			source_version TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT '',
-			updated_at TEXT NOT NULL DEFAULT ''
+			updated_at TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
     search_text TEXT NOT NULL DEFAULT '',
@@ -603,7 +603,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',)`,
+    status TEXT NOT NULL DEFAULT '')`,
 		`ALTER TABLE media_assets ADD COLUMN category TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE media_assets ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`,

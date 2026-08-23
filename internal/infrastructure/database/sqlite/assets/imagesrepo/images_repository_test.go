@@ -69,7 +69,7 @@ var fase4TestSchema = []string{
 		origin TEXT NOT NULL DEFAULT '',
 		provider TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -91,7 +91,7 @@ var fase4TestSchema = []string{
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',)`,
+    status TEXT NOT NULL DEFAULT '')`,
 	`CREATE TABLE IF NOT EXISTS generated_image_details (
 		asset_id TEXT PRIMARY KEY,
 		prompt_original TEXT NOT NULL DEFAULT '',

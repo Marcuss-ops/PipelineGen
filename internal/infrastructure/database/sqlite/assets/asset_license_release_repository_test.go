@@ -49,7 +49,7 @@ func newLicenseReleaseTestDB(t *testing.T) *sql.DB {
 			visual_embedding TEXT,
 			transcript_embedding TEXT,
 			created_at TEXT,
-			updated_at TEXT
+			updated_at TEXT,
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     lifecycle_state TEXT NOT NULL DEFAULT '',
@@ -71,7 +71,7 @@ func newLicenseReleaseTestDB(t *testing.T) *sql.DB {
     namespace TEXT NOT NULL DEFAULT '',
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
-    semantic_role TEXT NOT NULL DEFAULT '',);
+    semantic_role TEXT NOT NULL DEFAULT '');
 
 		CREATE TABLE asset_licenses (
 			id TEXT PRIMARY KEY,

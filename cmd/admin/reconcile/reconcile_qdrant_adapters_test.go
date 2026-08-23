@@ -101,7 +101,7 @@ func setupAdminOutboxTable(t *testing.T) *sql.DB {
 		);
 		CREATE TABLE media_assets (
 			id          TEXT PRIMARY KEY,
-			updated_at  TEXT NOT NULL
+			updated_at  TEXT NOT NULL,
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -127,7 +127,7 @@ func setupAdminOutboxTable(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '',
     drive_folder_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',);
+    status TEXT NOT NULL DEFAULT '');
 		INSERT INTO media_assets (id, updated_at)
 		    VALUES ('test-asset-1', '2026-07-01T00:00:00Z');
 	`)

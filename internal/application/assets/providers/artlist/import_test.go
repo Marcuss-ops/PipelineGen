@@ -165,7 +165,7 @@ func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 
 	var source, driveFileID, driveLink, fileHash string
 	require.NoError(t, db.QueryRow(`
-		SELECT source, COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(file_hash, '')
+		SELECT source, COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(legacy_file_md5, '')
 		FROM media_assets WHERE id = ?
 	`, "346928").Scan(&source, &driveFileID, &driveLink, &fileHash))
 	assert.Equal(t, "artlist", source)

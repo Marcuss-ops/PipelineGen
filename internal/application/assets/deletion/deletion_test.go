@@ -178,7 +178,7 @@ func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
 			scene_type           TEXT NOT NULL DEFAULT '',
 			quality_score        REAL NOT NULL DEFAULT 0.0,
 			reuse_count          INTEGER NOT NULL DEFAULT 0,
-			last_used_at         TEXT NOT NULL DEFAULT ''
+			last_used_at         TEXT NOT NULL DEFAULT '',
     index_state TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
     thumbnail_url TEXT NOT NULL DEFAULT '',
@@ -196,7 +196,7 @@ func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
     namespace TEXT NOT NULL DEFAULT '',
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
-    semantic_role TEXT NOT NULL DEFAULT '',)
+    semantic_role TEXT NOT NULL DEFAULT '')
 	`)
 	if err != nil {
 		t.Fatalf("create media_assets fixture: %v", err)

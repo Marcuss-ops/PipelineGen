@@ -53,7 +53,7 @@ func newLifecycleTestDB(t *testing.T) *sql.DB {
 			filename TEXT, error TEXT,
 			thumb_url TEXT, phash TEXT,
 			search_text TEXT, scene_type TEXT,
-			quality_score REAL, reuse_count INTEGER, last_used_at TEXT
+			quality_score REAL, reuse_count INTEGER, last_used_at TEXT,
     index_state TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
     thumbnail_url TEXT NOT NULL DEFAULT '',
@@ -71,7 +71,7 @@ func newLifecycleTestDB(t *testing.T) *sql.DB {
     namespace TEXT NOT NULL DEFAULT '',
     asset_kind TEXT NOT NULL DEFAULT '',
     source_type TEXT NOT NULL DEFAULT '',
-    semantic_role TEXT NOT NULL DEFAULT '',)
+    semantic_role TEXT NOT NULL DEFAULT '')
 	`)
 	require.NoError(t, err, "create media_assets")
 
