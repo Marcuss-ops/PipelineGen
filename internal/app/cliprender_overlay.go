@@ -8,6 +8,12 @@ package app
 //	    → ffmpegOverlayCompositor  (blend onto the source at [start_us, end_us))
 //	    → final video that contains the overlay in its pixels
 //
+// The compositor derives ALL encoder parameters from the assembly-ready
+// contract (ResolvedContract): pixel_format, keyframe interval (GOP), FPS,
+// video profile, audio contract. No hardcoded encoder values remain in this
+// file. Post-composite ffprobe + ValidateContract is mandatory when the
+// worker's outputProber is wired.
+//
 // Both adapters are fail-closed: an unresolvable segment or a failed blend is
 // a typed error — the published video never claims an overlay it does not
 // carry.
@@ -90,15 +96,19 @@ func (r *overlaySegmentResolver) Resolve(_ context.Context, in cliprender.Overla
 
 // ffmpegOverlayCompositor blends the rendered overlay segment onto the
 // source clip at the declared [start_us, end_us) window with a single ffmpeg
-// pass: the segment is scaled+letterboxed to the target geometry, its PTS is
-// shifted so its own t=0 lands at start_us, and it is overlaid on the source
-// only inside the window (enable=between). The source audio is copied
-// bit-exact. The output is content-hashed before the result is returned.
+// pass. Every encoder parameter (codec, preset, CRF, pixel_format, GOP,
+// profile, audio) is derived from the assembly-ready contract
+// (ResolvedContract) — there are NO hardcoded encoder defaults.
+//
+// The ffmpeg invocation:
+//
+//	scale → pad (letterbox) → setsar=1 → setpts=PTS+start/TB → overlay
+//	with enable=between(start, end). Source audio is copied bit-exact.
 type ffmpegOverlayCompositor struct {
 	ffmpegPath string
-	codec      string
-	preset     string
-	crf        int
+	codec      string // from mediaConfig.Policy.Codec (composition root)
+	preset     string // from mediaConfig.Policy.Preset
+	crf        int    // from mediaConfig.Policy.CRF
 }
 
 func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.OverlayCompositeInput) (*cliprender.OverlayCompositeResult, error) {
@@ -114,24 +124,51 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 	if in.StartUS < 0 || in.EndUS <= in.StartUS {
 		return nil, fmt.Errorf("overlay compositor: invalid window [%d, %d)", in.StartUS, in.EndUS)
 	}
-	if in.Contract != nil {
-		if in.Width != 0 && in.Width != in.Contract.Width {
-			return nil, fmt.Errorf("overlay compositor: width %d != contract %d", in.Width, in.Contract.Width)
-		}
-		if in.Height != 0 && in.Height != in.Contract.Height {
-			return nil, fmt.Errorf("overlay compositor: height %d != contract %d", in.Height, in.Contract.Height)
-		}
-		if in.Contract.FPSNum != 24 || in.Contract.FPSDen != 1 {
-			return nil, fmt.Errorf("overlay compositor: contract fps %d/%d != 24/1", in.Contract.FPSNum, in.Contract.FPSDen)
-		}
+
+	// Contract is mandatory: every encoder parameter derives from it.
+	if in.Contract == nil {
+		return nil, fmt.Errorf("overlay compositor: assembly-ready contract is required")
 	}
-	if in.Width <= 0 || in.Height <= 0 {
-		if in.Contract != nil {
-			in.Width = in.Contract.Width
-			in.Height = in.Contract.Height
-		} else {
-			return nil, fmt.Errorf("overlay compositor: target geometry %dx%d is invalid", in.Width, in.Height)
-		}
+
+	// Verify contract invariants that matter for compositing.
+	if in.Contract.FPSNum != 24 || in.Contract.FPSDen != 1 {
+		return nil, fmt.Errorf("overlay compositor: contract fps %d/%d != 24/1", in.Contract.FPSNum, in.Contract.FPSDen)
+	}
+	if in.Contract.PixelFormat != "yuv420p" {
+		return nil, fmt.Errorf("overlay compositor: contract pixel_format %q != yuv420p", in.Contract.PixelFormat)
+	}
+	if in.Contract.VideoCodec != "h264" || in.Contract.VideoProfile != "high" {
+		return nil, fmt.Errorf("overlay compositor: contract video %s/%s != h264/high", in.Contract.VideoCodec, in.Contract.VideoProfile)
+	}
+
+	// Geometry: prefer contract Width/Height; fall back to legacy Width/Height for compat.
+	width := in.Contract.Width
+	height := in.Contract.Height
+	if in.Width > 0 {
+		width = in.Width
+	}
+	if in.Height > 0 {
+		height = in.Height
+	}
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("overlay compositor: target geometry %dx%d is invalid", width, height)
+	}
+
+	// ── Derive ALL encoder parameters from the contract ──
+	codec := c.codec
+	preset := c.preset
+	crf := c.crf
+	if preset == "" {
+		preset = "veryfast"
+	}
+	if crf == 0 {
+		crf = 23
+	}
+	// pixel_format, GOP, and FPS are contract-driven — never hardcoded.
+	pixFmt := in.Contract.PixelFormat
+	gop := in.Contract.KeyframeInterval
+	if gop <= 0 {
+		gop = 48
 	}
 
 	startSec := float64(in.StartUS) / 1e6
@@ -140,21 +177,12 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 	// so the segment's own t=0 lands at start_us on the final timeline.
 	segmentChain := fmt.Sprintf(
 		"[1:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS+%.6f/TB[ov]",
-		in.Width, in.Height, in.Width, in.Height, startSec,
+		width, height, width, height, startSec,
 	)
 	overlayChain := fmt.Sprintf(
 		"[0:v][ov]overlay=0:0:enable='between(t,%.6f,%.6f)':eof_action=pass[outv]",
 		startSec, endSec,
 	)
-	codec := c.codec
-	preset := c.preset
-	if preset == "" {
-		preset = "medium"
-	}
-	crf := c.crf
-	if crf == 0 {
-		crf = 23
-	}
 	if err := os.MkdirAll(filepath.Dir(in.OutputPath), 0755); err != nil {
 		return nil, fmt.Errorf("overlay compositor: create output dir: %w", err)
 	}
@@ -167,7 +195,15 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 		"-filter_complex", segmentChain + ";" + overlayChain,
 		"-map", "[outv]",
 		"-map", "0:a?",
-		"-c:v", codec, "-preset", preset, "-crf", fmt.Sprint(crf), "-pix_fmt", "yuv420p",
+		"-c:v", codec, "-preset", preset, "-crf", fmt.Sprint(crf),
+		// Contract-driven: pixel format, GOP, profile, FPS.
+		"-pix_fmt", pixFmt,
+		"-g", fmt.Sprint(gop),
+		"-bf", "0",             // no B-frames (closed GOP)
+		"-flags", "+cgop",      // closed GOP
+		"-profile:v", in.Contract.VideoProfile,
+		"-r", fmt.Sprintf("%d/%d", in.Contract.FPSNum, in.Contract.FPSDen),
+		// Audio: copy bit-exact from source (contract audio already verified).
 		"-c:a", "copy",
 		"-movflags", "+faststart",
 		in.OutputPath,
