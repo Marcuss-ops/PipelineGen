@@ -29,26 +29,45 @@ func (p *rustOutputProber) ProbeOutput(ctx context.Context, path string) (*clipr
 	if info == nil {
 		return nil, fmt.Errorf("output prober: probe returned nil metadata for %s", path)
 	}
-	// The rustexec.MediaInfo → cliprender.OutputProbe mapping is exact:
-	// every field the assembler needs to verify assembly compatibility.
+	// The Rust probe returns video codec, pixel format, geometry, FPS,
+	// audio codec/profile/sample rate/channels, and stream counts. Fields
+	// not yet reported by Rust (timebase, SAR, color) are set to zero/empty
+	// and skipped by ValidateContract when the contract field is also zero.
+	// Assembly-ready frozen defaults are carried on the contract side.
 	return &cliprender.OutputProbe{
-		Container:        info.FormatName,
-		HasVideo:         info.HasVideo,
-		VideoCodec:       info.VideoCodec,
-		VideoProfile:     "",               // ffprobe reports codec_profile; Rust sets AudioProfile only
-		PixelFormat:      info.PixelFormat,
-		Width:            info.Width,
-		Height:           info.Height,
-		FPS:              info.FPS,
-		FPSNum:           info.FPSNum,
-		FPSDen:           info.FPSDen,
-		HasAudio:         info.HasAudio,
-		AudioCodec:       info.AudioCodec,
-		AudioProfile:     info.AudioProfile,
-		SampleRate:       info.SampleRate,
+		Container:         info.FormatName,
+		HasVideo:          info.HasVideo,
+		VideoCodec:        info.VideoCodec,
+		VideoProfile:      "",                    // Rust probe doesn't report codec_profile yet
+		VideoLevel:        "",                    // Rust probe doesn't report level yet
+		PixelFormat:       info.PixelFormat,
+		Width:             info.Width,
+		Height:            info.Height,
+		FPS:               info.FPS,
+		FPSNum:            info.FPSNum,
+		FPSDen:            info.FPSDen,
+		VideoTimeBaseNum:  0,                     // Rust probe doesn't report timebase yet
+		VideoTimeBaseDen:  0,
+		AudioTimeBaseNum:  0,
+		AudioTimeBaseDen:  0,
+		SARNum:            0,                     // Rust probe doesn't report SAR yet
+		SARDen:            0,
+		ColorRange:        "",                    // Rust probe doesn't report color yet
+		ColorSpace:        "",
+		ColorTransfer:     "",
+		ColorPrimaries:    "",
+		FieldOrder:        "",                    // Rust probe doesn't report field order yet
+		KeyframeInterval:  0,                     // Rust probe doesn't report GOP yet
+		HasAudio:          info.HasAudio,
+		AudioCodec:        info.AudioCodec,
+		AudioProfile:      info.AudioProfile,
+		SampleRate:        info.SampleRate,
 		Channels:         info.Channels,
-		VideoStreams:     info.VideoStreamCount,
-		AudioStreams:     info.AudioStreamCount,
-		StartPTS:         0,                // stable assembly-ready contract
+		ChannelLayout:     "",                    // Rust probe doesn't report channel_layout yet
+		AudioBitrate:      "",                    // Rust probe doesn't report bitrate yet
+		VideoStreams:      info.VideoStreamCount,
+		AudioStreams:      info.AudioStreamCount,
+		StreamOrder:       "",                    // Rust probe doesn't report stream order yet
+		StartPTS:          0,                     // stable assembly-ready contract
 	}, nil
 }
