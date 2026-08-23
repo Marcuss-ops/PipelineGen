@@ -44,7 +44,7 @@ func main() {
 	flag.Parse()
 
 	result := buildResult()
-	plan, err := scriptgen.CompileOverlayPlan(result, "en", scriptgen.DefaultOverlayCanvas, jobID, videoID, projectID)
+	plan, err := scriptgen.CompileOverlayPlan(result, "en", scriptgen.GoldenOverlayCanvas, jobID, videoID, projectID)
 	if err != nil {
 		fatalf("compile overlay plan: %v", err)
 	}

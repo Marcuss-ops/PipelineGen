@@ -93,7 +93,6 @@ def main(argv: Iterable[str] | None = None) -> int:
                 "./internal/infrastructure/database/sqlite/outboxevents",
                 "./internal/application/assets/providers/stock/enrichment",
                 "./internal/application/assets/providers/stock/stockpipeline",
-                "./internal/domain/clips",
                 "./internal/application/jobs/completion",
                 "./internal/application/jobs/outbox",
             ],

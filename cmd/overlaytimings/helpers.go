@@ -38,7 +38,7 @@ func measureAutoSelect(result *scriptgen.GenerateResult) (meanUS, minUS float64)
 	var min time.Duration = 1<<63 - 1
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
-		if _, err := scriptgen.CompileOverlayPlan(result, "en", scriptgen.DefaultOverlayCanvas, "golden-content-06-full-scene", "video-golden-content-06-full-scene", "golden-content"); err != nil {
+		if _, err := scriptgen.CompileOverlayPlan(result, "en", scriptgen.GoldenOverlayCanvas, "golden-content-06-full-scene", "video-golden-content-06-full-scene", "golden-content"); err != nil {
 			fmt.Fprintf(os.Stderr, "auto-select: %v\n", err)
 			os.Exit(1)
 		}
@@ -104,7 +104,7 @@ var golden06Words = strings.Fields(golden06Script)
 // script → auto-selection → structural layers (background + light leak) → real
 // asset hashes. Returns the finalized plan ready for CompileChrononPlan.
 func content06Plan() capabilityoverlay.OverlayPlan {
-	plan, err := scriptgen.CompileOverlayPlan(golden06Result(), "en", scriptgen.DefaultOverlayCanvas, "golden-content-06-full-scene", "video-golden-content-06-full-scene", "golden-content")
+	plan, err := scriptgen.CompileOverlayPlan(golden06Result(), "en", scriptgen.GoldenOverlayCanvas, "golden-content-06-full-scene", "video-golden-content-06-full-scene", "golden-content")
 	if err != nil || plan == nil {
 		fmt.Fprintf(os.Stderr, "golden06 plan: %v\n", err)
 		os.Exit(1)

@@ -50,7 +50,7 @@ package job
 // Type parameter T is the caller-facing typed result. Common
 // examples already wired through this envelope:
 //
-//   - DocumentResult (internal/application/document/types.go)
+//   - DocumentResult (the document application types)
 //     — the canonical first adopter of the typed Result contract.
 //
 // Future adopters (voiceover, lessons, books, etc.) MUST migrate

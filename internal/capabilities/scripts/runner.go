@@ -184,7 +184,7 @@ type Runner struct {
 	scriptDocsFolderID string
 
 	// overlayCanvas is the target render canvas for the derived OverlayPlan.
-	// Zero means the golden canary default (1280×720 @ 30 FPS) applies.
+	// Zero means the production contract default (1920×1080 @ 24 FPS) applies.
 	overlayCanvas OverlayCanvasSpec
 
 	// overlayRegistry is the canonical entity type→template registry used

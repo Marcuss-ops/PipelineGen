@@ -130,6 +130,7 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
 	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
@@ -304,6 +305,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
@@ -389,6 +391,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
 	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 
@@ -410,9 +413,9 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	prep := prepEnq.reqs[0]
 	require.Equal(t, runID, prep.PlanID)
 	require.Equal(t, runID, prep.VideoID)
-	require.Equal(t, DefaultOverlayCanvas.Width, prep.Width)
-	require.Equal(t, DefaultOverlayCanvas.Height, prep.Height)
-	require.Equal(t, DefaultOverlayCanvas.FPS, prep.FPS)
+	require.Equal(t, GoldenOverlayCanvas.Width, prep.Width)
+	require.Equal(t, GoldenOverlayCanvas.Height, prep.Height)
+	require.Equal(t, GoldenOverlayCanvas.FPS, prep.FPS)
 	require.NoError(t, prep.Validate())
 
 	want := map[string]string{
@@ -456,6 +459,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
 	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
+	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(&fakeOverlayPrepareEnqueuer{failErr: errors.New("renderinggen queue down")})
 
@@ -478,7 +482,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 // plan (nil, not an error) — the same legitimate no-op the phrase and entity
 // projections implement.
 func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
-	plan, err := CompileOverlayPlan(nil, "en", DefaultOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlan(nil, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
 	require.Nil(t, plan)
 
@@ -486,7 +490,7 @@ func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
 	}}
-	plan, err = CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "plan-1", "video-1", "")
+	plan, err = CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
 	require.Nil(t, plan)
 }
@@ -522,7 +526,7 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 		}},
 		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 300_000}},
 	}
-	plan, err := CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the spoken keyword must still produce a plan")
 	require.Len(t, plan.Items, 1, "unspoken phrase skipped, spoken keyword kept")
@@ -600,7 +604,7 @@ func TestCompileOverlayPlan_ChosenEntityCardCarriesResolvedAsset(t *testing.T) {
 		},
 	}
 
-	plan, err := CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the spoken entity must still produce a plan")
 	byID := map[string]capabilityoverlay.OverlayItem{}
@@ -627,8 +631,8 @@ func TestCompileOverlayPlan_RequiresPlanAndVideoID(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
 	}}
-	_, err := CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "", "video-1", "")
+	_, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "", "video-1", "")
 	require.Error(t, err)
-	_, err = CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "plan-1", "", "")
+	_, err = CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "", "")
 	require.Error(t, err)
 }

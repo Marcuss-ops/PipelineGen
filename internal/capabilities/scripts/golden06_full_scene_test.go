@@ -112,7 +112,7 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	}
 
 	// 1. Script → auto content selection → OverlayPlan.
-	plan, err := CompileOverlayPlan(result, "en", DefaultOverlayCanvas, "golden-06", "video-golden-06", "golden-06-project")
+	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "golden-06", "video-golden-06", "golden-06-project")
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the script scene must derive an OverlayPlan")
 	require.NoError(t, plan.Validate())

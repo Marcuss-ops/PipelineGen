@@ -45,11 +45,6 @@ func TestScanAssetCommitterEventSSOT_CanonicalExempt(t *testing.T) {
 const AssetIndexRequestedLiteral = "asset.index.requested"
 func CommitAsset() {}
 `)
-	makeFileForCommitterEventTest(t, root, "internal/application/assets/processing/asset_committer.go",
-		`package processing
-const AssetIndexRequestedLiteral = "asset.index.requested.v1"
-func Commit() {}
-`)
 	rep := &report.Report{}
 	ScanAssetCommitterEventSSOT(root, nil, rep, true)
 	if got := len(rep.Violations); got != 0 {
