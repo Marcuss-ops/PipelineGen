@@ -1,9 +1,0 @@
-# internal/application/jobs/iobinder/allowlist.txt
-#
-# Format (tab-separated):
-#   path    symbol    owner    deadline    rationale
-#
-# The canonical key is "path:symbol". Entries without a matching live hit
-# are treated as stale and cause a CI failure. Every entry must carry an
-# explicit owner, deadline, and rationale.
-assets/service.go	os.Open	@agent/Codebuff	2026-08-20	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
