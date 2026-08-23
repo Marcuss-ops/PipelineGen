@@ -33,7 +33,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // matrixOutcome describes the expected per-cell result.

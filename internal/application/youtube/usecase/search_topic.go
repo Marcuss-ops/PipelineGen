@@ -22,6 +22,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -376,7 +377,7 @@ func meaningfulTokens(text string) []string {
 // isStopWord returns true when s is a noise token that shouldn't affect
 // the similarity score.
 func isStopWord(s string) bool {
-	if textutil.IsStopWord(s) {
+	if linguistics.IsStopWord(s) {
 		return true
 	}
 	// Also check known YouTube noise tokens that are not in the standard

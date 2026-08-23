@@ -22,7 +22,7 @@
 // # Phase 5(a) — Ports declared in this push
 //
 //   - JobFinalizer          (alias to internal/domain/finalization.JobFinalizer)
-//   - Publisher             (alias to internal/application/assets/delivery.Publisher)
+//   - Publisher             (alias to internal/capabilities/delivery.Publisher)
 //   - OperationRepository   (alias to internal/application/operations.OperationsRepository)
 //   - Clock                 (NEW interface)
 //   - MetricsSink           (NEW interface)

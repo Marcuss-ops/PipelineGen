@@ -1,7 +1,7 @@
 package generation
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

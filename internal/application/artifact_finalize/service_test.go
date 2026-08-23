@@ -53,8 +53,8 @@ import (
 	"testing"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	_ "github.com/mattn/go-sqlite3"
 
 	"go.uber.org/zap"
@@ -129,7 +129,7 @@ func validStage() *artifact.ArtifactStage {
 		Mime:        "audio/mpeg",
 		Requirement: artifact.RequirementRequired,
 		Destination: "drive:voiceover/test",
-		State:       artifact.StateStaged,
+		State:       artifact.ArtifactStageStateStaged,
 	}
 }
 
@@ -170,20 +170,20 @@ func insertAndPublish(t *testing.T, repo *artifactstages.Repository, id string, 
 		t.Fatalf("Insert %s (req=%q): %v", id, requirement, err)
 	}
 	switch targetState {
-	case artifact.StatePublished:
+	case artifact.ArtifactStageStatePublished:
 		loc := `{"kind":"drive","uri":"file-` + id + `"}`
 		if err := repo.MarkPublished(context.Background(), id, loc, insertTime); err != nil {
 			t.Fatalf("MarkPublished %s: %v", id, err)
 		}
-	case artifact.StateSucceeded:
+	case artifact.ArtifactStageStateSucceeded:
 		if err := repo.MarkSucceeded(context.Background(), id); err != nil {
 			t.Fatalf("MarkSucceeded %s: %v", id, err)
 		}
-	case artifact.StateFailedPermanent:
+	case artifact.ArtifactStageStateFailedPermanent:
 		if err := repo.MarkFailedPermanent(context.Background(), id, "test failure: "+id); err != nil {
 			t.Fatalf("MarkFailedPermanent %s: %v", id, err)
 		}
-	case artifact.StateStaged:
+	case artifact.ArtifactStageStateStaged:
 		// Already STAGED on insert; nothing to do.
 	default:
 		t.Fatalf("insertAndPublish: unsupported targetState=%q", targetState)
@@ -210,8 +210,8 @@ func TestFinalizerService_Finalize_HappyPath(t *testing.T) {
 	svc, repo := newFinalizer(t)
 	ctx := context.Background()
 
-	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-opt-1", artifact.RequirementOptional, artifact.StatePublished)
+	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-opt-1", artifact.RequirementOptional, artifact.ArtifactStageStatePublished)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if err != nil {
@@ -242,7 +242,7 @@ func TestFinalizerService_Finalize_HappyPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID %s: %v", id, err)
 		}
-		if st.State != artifact.StateSucceeded {
+		if st.State != artifact.ArtifactStageStateSucceeded {
 			t.Errorf("GetByID %s: State = %q, want SUCCEEDED", id, st.State)
 		}
 	}
@@ -265,9 +265,9 @@ func TestFinalizerService_Finalize_RejectsMissingRequired(t *testing.T) {
 
 	// 1 REQUIRED PUBLISHED (would flip on its own) + 2 REQUIRED
 	// STAGED (block readiness).
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-req-staged-1", artifact.RequirementRequired, artifact.StateStaged)
-	insertAndPublish(t, repo, "art-req-staged-2", artifact.RequirementRequired, artifact.StateStaged)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-req-staged-1", artifact.RequirementRequired, artifact.ArtifactStageStateStaged)
+	insertAndPublish(t, repo, "art-req-staged-2", artifact.RequirementRequired, artifact.ArtifactStageStateStaged)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if !errors.Is(err, artifact.ErrArtifactRequiredMissing) {
@@ -312,7 +312,7 @@ func TestFinalizerService_Finalize_RejectsMissingRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID pub: %v", err)
 	}
-	if pub.State != artifact.StatePublished {
+	if pub.State != artifact.ArtifactStageStatePublished {
 		t.Errorf("State = %q, want PUBLISHED (readiness gate MUST NOT flip any row on failure)", pub.State)
 	}
 }
@@ -328,8 +328,8 @@ func TestFinalizerService_Finalize_RejectsRequiredFailedPermanent(t *testing.T) 
 	svc, repo := newFinalizer(t)
 	ctx := context.Background()
 
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-req-failed-1", artifact.RequirementRequired, artifact.StateFailedPermanent)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-req-failed-1", artifact.RequirementRequired, artifact.ArtifactStageStateFailedPermanent)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if !errors.Is(err, artifact.ErrArtifactRequiredMissing) {
@@ -341,7 +341,7 @@ func TestFinalizerService_Finalize_RejectsRequiredFailedPermanent(t *testing.T) 
 
 	// Verify NO row was flipped.
 	pub, _ := repo.GetByID(ctx, "art-req-pub-1")
-	if pub.State != artifact.StatePublished {
+	if pub.State != artifact.ArtifactStageStatePublished {
 		t.Errorf("State = %q, want PUBLISHED", pub.State)
 	}
 }
@@ -357,9 +357,9 @@ func TestFinalizerService_Finalize_OptionalStillStaged_NotBlocking(t *testing.T)
 	svc, repo := newFinalizer(t)
 	ctx := context.Background()
 
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-opt-staged-1", artifact.RequirementOptional, artifact.StateStaged)
-	insertAndPublish(t, repo, "art-opt-staged-2", artifact.RequirementOptional, artifact.StateStaged)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-opt-staged-1", artifact.RequirementOptional, artifact.ArtifactStageStateStaged)
+	insertAndPublish(t, repo, "art-opt-staged-2", artifact.RequirementOptional, artifact.ArtifactStageStateStaged)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if err != nil {
@@ -370,12 +370,12 @@ func TestFinalizerService_Finalize_OptionalStillStaged_NotBlocking(t *testing.T)
 	}
 	// The required row flipped; the optional rows stay staged.
 	pub, _ := repo.GetByID(ctx, "art-req-pub-1")
-	if pub.State != artifact.StateSucceeded {
+	if pub.State != artifact.ArtifactStageStateSucceeded {
 		t.Errorf("required State = %q, want SUCCEEDED", pub.State)
 	}
 	for _, id := range []string{"art-opt-staged-1", "art-opt-staged-2"} {
 		st, _ := repo.GetByID(ctx, id)
-		if st.State != artifact.StateStaged {
+		if st.State != artifact.ArtifactStageStateStaged {
 			t.Errorf("optional %s State = %q, want STAGED (NOT flipped)", id, st.State)
 		}
 	}
@@ -393,8 +393,8 @@ func TestFinalizerService_Finalize_OptionalFailedPermanent_NotBlocking(t *testin
 	svc, repo := newFinalizer(t)
 	ctx := context.Background()
 
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-opt-failed-1", artifact.RequirementOptional, artifact.StateFailedPermanent)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-opt-failed-1", artifact.RequirementOptional, artifact.ArtifactStageStateFailedPermanent)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if err != nil {
@@ -407,7 +407,7 @@ func TestFinalizerService_Finalize_OptionalFailedPermanent_NotBlocking(t *testin
 		t.Errorf("OptionalFailed = %d, want 1 (counter observability)", got.OptionalFailed)
 	}
 	pub, _ := repo.GetByID(ctx, "art-req-pub-1")
-	if pub.State != artifact.StateSucceeded {
+	if pub.State != artifact.ArtifactStageStateSucceeded {
 		t.Errorf("required State = %q, want SUCCEEDED", pub.State)
 	}
 }
@@ -452,9 +452,9 @@ func TestFinalizerService_Finalize_AlreadySucceeded_Idempotent(t *testing.T) {
 	// 1 REQUIRED already-SUCCEEDED + 1 REQUIRED PUBLISHED +
 	// 1 OPTIONAL PUBLISHED. Total flips in this invocation: 2.
 	// Total required: 2 (already-Succeeded + Published).
-	insertAndPublish(t, repo, "art-req-already-1", artifact.RequirementRequired, artifact.StateSucceeded)
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-opt-pub-1", artifact.RequirementOptional, artifact.StatePublished)
+	insertAndPublish(t, repo, "art-req-already-1", artifact.RequirementRequired, artifact.ArtifactStageStateSucceeded)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-opt-pub-1", artifact.RequirementOptional, artifact.ArtifactStageStatePublished)
 
 	got, err := svc.Finalize(ctx, "job-test-1")
 	if err != nil {
@@ -492,8 +492,8 @@ func TestFinalizerService_Finalize_ConcurrentReflipIdempotent(t *testing.T) {
 	svc, repo := newFinalizer(t)
 	ctx := context.Background()
 
-	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.StatePublished)
-	insertAndPublish(t, repo, "art-opt-pub-1", artifact.RequirementOptional, artifact.StatePublished)
+	insertAndPublish(t, repo, "art-req-pub-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
+	insertAndPublish(t, repo, "art-opt-pub-1", artifact.RequirementOptional, artifact.ArtifactStageStatePublished)
 
 	// Simulate concurrent flip: promote the required row to
 	// SUCCEEDED BEFORE Finalize runs. The standard
@@ -523,7 +523,7 @@ func TestFinalizerService_Finalize_ConcurrentReflipIdempotent(t *testing.T) {
 	// SUCCEEDED on the manual MarkSucceeded above).
 	for _, id := range []string{"art-req-pub-1", "art-opt-pub-1"} {
 		st, _ := repo.GetByID(ctx, id)
-		if st.State != artifact.StateSucceeded {
+		if st.State != artifact.ArtifactStageStateSucceeded {
 			t.Errorf("GetByID %s: State = %q, want SUCCEEDED (idempotent path)", id, st.State)
 		}
 	}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ComputeAssetID derives a deterministic AssetID from the asset's logical

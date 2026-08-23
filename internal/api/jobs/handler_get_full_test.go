@@ -36,7 +36,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -100,7 +100,7 @@ func (s *stubServiceForGetFull) Retry(_ context.Context, _ string) (*job.Job, er
 var _ job.Service = (*stubServiceForGetFull)(nil)
 
 // pushedType is the canonical job-type discriminator for script.generate
-// jobs (lives canonical SSOT at internal/domain/script/job_types.go,
+// jobs (lives canonical SSOT at internal/kernel/script/job_types.go,
 // re-exported at internal/domain/job/job.go). Tests reference this
 // constant directly instead of literal "script.generate" to maintain
 // godlike/06 SSOT (one canonical owner per fact).
@@ -181,7 +181,7 @@ func TestGetFull_TopLevelErrorFieldPopulated(t *testing.T) {
 // typed-error sentinel reaches the response payload as a substring.
 // The probe text is derived from scriptpkg.ErrScriptGenerationFailed.Error()
 // so the test stays in lockstep with the canonical sentinel at
-// internal/domain/script/generation_errors.go.
+// internal/kernel/script/generation_errors.go.
 func TestGetFull_TypedSentinelVerbatimPresence(t *testing.T) {
 	const sentinelPrefix = "generation: script generation failed" // matches ErrScriptGenerationFailed.Error()
 	const phaseSentinelPrefix = "generation: postprocess failed"  // matches ErrPostprocessFailed.Error()

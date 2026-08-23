@@ -45,7 +45,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"

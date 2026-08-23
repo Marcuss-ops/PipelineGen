@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestAssetLocationReconciliation_PersistedSpecSceneAndManifestContainNoUnusableLinks(t *testing.T) {

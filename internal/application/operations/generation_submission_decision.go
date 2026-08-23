@@ -26,7 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

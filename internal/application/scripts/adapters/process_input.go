@@ -1,6 +1,6 @@
 package adapters
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // ProcessInput is the typed envelope passed to every postprocessor.
 type ProcessInput struct {

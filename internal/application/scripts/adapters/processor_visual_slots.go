@@ -6,8 +6,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	visual "github.com/Marcuss-ops/PipelineGen/internal/application/visual"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // VisualSlotsProcessor resolves timeline-level intro and post-segment clips

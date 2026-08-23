@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

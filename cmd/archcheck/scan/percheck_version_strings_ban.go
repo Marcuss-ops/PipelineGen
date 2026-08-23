@@ -5,12 +5,12 @@
 // registry.
 //
 // The canonical version registry lives in
-// internal/domain/media/version.go. Every component that needs to
+// internal/kernel/media/version.go. Every component that needs to
 // expose a version MUST reference a constant from that file instead
 // of repeating the literal string.
 //
 // Exempt zones:
-//   - internal/domain/media/version.go — the canonical SSOT owner.
+//   - internal/kernel/media/version.go — the canonical SSOT owner.
 //   - **/*_test.go — test fixtures may use literal versions for
 //     regression checks.
 //   - cmd/archcheck/scan — the scanner itself.
@@ -37,7 +37,7 @@ var versionStringsSSOTRe = regexp.MustCompile(`"(brain|intent-registry|multiling
 
 const versionStringsSSOTRule = "percheck_version_strings_ban"
 
-const versionStringsSSOTNote = "forbidden hardcoded pipeline version string outside the canonical version registry (internal/domain/media/version.go). Components MUST reference a version constant from the registry so that version changes propagate from a single source of truth."
+const versionStringsSSOTNote = "forbidden hardcoded pipeline version string outside the canonical version registry (internal/kernel/media/version.go). Components MUST reference a version constant from the registry so that version changes propagate from a single source of truth."
 
 var versionStringsSSOTSkipDirs = map[string]bool{
 	".git":         true,
@@ -50,7 +50,7 @@ var versionStringsSSOTSkipPathPrefixes = []string{
 }
 
 var versionStringsSSOTExemptPathPrefixes = []string{
-	"internal/domain/media",
+	"internal/kernel/media",
 }
 
 const versionStringsSSOTScanScope = "internal/"

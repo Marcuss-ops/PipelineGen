@@ -12,7 +12,7 @@ import (
 	"testing"
 	"unicode"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"

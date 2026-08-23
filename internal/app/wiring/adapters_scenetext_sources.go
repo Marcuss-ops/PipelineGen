@@ -11,7 +11,7 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func researchTrace(plan *scriptpkg.ResolvedGenerationPlan) scriptpkg.SourceTrace {

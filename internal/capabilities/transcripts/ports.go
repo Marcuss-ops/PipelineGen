@@ -3,7 +3,7 @@ package transcripts
 import (
 	"context"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 // SubtitleSource retrieves one canonical transcript document for a video URL.

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"go.uber.org/zap"

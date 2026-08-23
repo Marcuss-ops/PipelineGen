@@ -125,6 +125,8 @@ var canonicalJobTypes = []string{
 	TypeIntegrityVerify,        // application/jobs/registry_integrity.go
 	TypeAssetCleanup,           // application/jobs/registry_integrity.go
 	TypeClipRender,             // capabilities/cliprender/request.go (canonical clip post-processing, August 2026)
+	TypeAssemblyPrepare,        // kernel/assembly/contract.go
+	TypeAssemblyFinalize,       // kernel/assembly/contract.go
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending

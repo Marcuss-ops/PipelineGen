@@ -6,12 +6,12 @@
 package usecase
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 ) // GenerateOneUseCase orchestrates the unified pipeline for a single
 // generation item. It owns only the four phase collaborators and
 // the canonical logger — no monolithic configuration state.

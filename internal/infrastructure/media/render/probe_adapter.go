@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // Compile-time check that FFProbeSourceDurationProbe satisfies

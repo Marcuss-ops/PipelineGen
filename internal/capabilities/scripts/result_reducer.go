@@ -9,8 +9,8 @@ package scriptgeneration
 import (
 	"sort"
 
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // SegmentSceneMerger projects one immutable segment enrichment result onto its

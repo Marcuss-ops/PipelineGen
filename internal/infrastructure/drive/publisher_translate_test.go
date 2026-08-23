@@ -22,7 +22,7 @@ package drive
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 )
 
 // TestPublisherActionFor_DrivePutActionMapping exercises the 4-arm

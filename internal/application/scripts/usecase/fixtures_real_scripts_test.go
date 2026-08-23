@@ -44,7 +44,7 @@ import (
 	"strings"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Fixture 1: SPORT — Pacquiao vs Broner, 19 gennaio 2019 ──────────

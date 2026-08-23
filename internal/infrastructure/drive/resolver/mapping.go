@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 )
 
 // ── DoD #5: per-destination root resolution ─────────────────────────────

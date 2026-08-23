@@ -17,7 +17,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/stretchr/testify/assert"
 )
 

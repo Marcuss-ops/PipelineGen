@@ -22,7 +22,7 @@ package mediamemory
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // BindingService is the canonical port for media_bindings

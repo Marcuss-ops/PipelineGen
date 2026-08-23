@@ -1,7 +1,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

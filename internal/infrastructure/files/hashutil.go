@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
+	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )

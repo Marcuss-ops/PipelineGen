@@ -2,7 +2,7 @@
 //
 // Hermetic tests for StoreService. Uses t.TempDir() for the
 // workspace (auto-cleanup via t.Cleanup) + a fakeRepository
-// implementing artifact.Repository in-memory (no SQLite
+// implementing artifact.ArtifactStageRepository in-memory (no SQLite
 // dependency for the application-layer test).
 //
 // Coverage (~7 cases):
@@ -35,10 +35,10 @@ import (
 	"testing"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// ── fakeRepository — in-memory implementation of artifact.Repository ─
+// ── fakeRepository — in-memory implementation of artifact.ArtifactStageRepository ─
 
 type fakeRepository struct {
 	mu        sync.Mutex
@@ -142,7 +142,7 @@ func (f *fakeRepository) MarkPublished(_ context.Context, id, publishedLocation 
 	if !ok {
 		return artifact.WrapArtifactStageNotFound(id)
 	}
-	row.State = artifact.StatePublished
+	row.State = artifact.ArtifactStageStatePublished
 	row.PublishedLocation = publishedLocation
 	row.PublishedAt = &publishedAt
 	return nil
@@ -155,7 +155,7 @@ func (f *fakeRepository) MarkSucceeded(_ context.Context, id string) error {
 	if !ok {
 		return artifact.WrapArtifactStageNotFound(id)
 	}
-	row.State = artifact.StateSucceeded
+	row.State = artifact.ArtifactStageStateSucceeded
 	return nil
 }
 
@@ -166,7 +166,7 @@ func (f *fakeRepository) MarkFailedPermanent(_ context.Context, id, lastError st
 	if !ok {
 		return artifact.WrapArtifactStageNotFound(id)
 	}
-	row.State = artifact.StateFailedPermanent
+	row.State = artifact.ArtifactStageStateFailedPermanent
 	row.LastError = lastError
 	return nil
 }
@@ -183,7 +183,7 @@ func (f *fakeRepository) IncrementAttemptCount(_ context.Context, id string) err
 }
 
 // Compile-time anchor.
-var _ artifact.Repository = (*fakeRepository)(nil)
+var _ artifact.ArtifactStageRepository = (*fakeRepository)(nil)
 
 // ── Test helpers ──────────────────────────────────────────────────────
 
@@ -266,7 +266,7 @@ func TestStoreService_Stage_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if stored.State != artifact.StateStaged {
+	if stored.State != artifact.ArtifactStageStateStaged {
 		t.Errorf("stored.State = %q, want STAGED", stored.State)
 	}
 	if stored.Requirement != artifact.RequirementRequired {

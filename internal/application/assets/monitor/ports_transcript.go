@@ -4,7 +4,7 @@ package monitor
 import (
 	"context"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 // TranscriptProvider abstracts transcript retrieval for a YouTube URL.

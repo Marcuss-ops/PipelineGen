@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/google/uuid"
 )
 

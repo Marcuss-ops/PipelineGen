@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // TestParseTimeSeconds pins the dual-format timestamp parser: plain float

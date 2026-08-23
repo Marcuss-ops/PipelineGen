@@ -63,7 +63,7 @@ import (
 // TestGenerate_ValidationContract_V2RejectionPaths is the canonical
 // P0.A table-driven suite. The 12 sub-paths exercise the union of:
 //
-//  1. env.Validate() in internal/domain/script/generation_envelope.go —
+//  1. env.Validate() in internal/kernel/script/generation_envelope.go —
 //     structural checks (version, items, source.type, clip_ids shape,
 //     language allowlist, policy values, policy<->source compatibility).
 //     Returns *PlanInvalidError → mapped to 400 with

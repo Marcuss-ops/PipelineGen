@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"

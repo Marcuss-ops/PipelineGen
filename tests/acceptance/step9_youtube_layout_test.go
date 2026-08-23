@@ -16,7 +16,7 @@
 //
 //   - canonical YouTubeAssetPath shape: youtube/{channel_id}/
 //     {video_id}/clips/{asset_id}/. The YouTubeAssetPath builder
-//     in internal/application/assets/delivery/registry.go is the
+//     in internal/platform/delivery/registry_transport.go is the
 //     SOLE canonical owner; the battery probes the SOMETIMES-
 //     SAFENED segment shape (the pathutil.SafeFolderName helper
 //     rejects empty strings + winslash-injection).

@@ -24,7 +24,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -34,7 +35,7 @@ import (
 // Publisher implements delivery.Publisher. It resolves the destination,
 // builds the folder hierarchy, normalises the filename, and uploads.
 type Publisher struct {
-	registry      *delivery.DestinationRegistry
+	registry      *platformdelivery.DestinationRegistry
 	folders       FolderManagerPort
 	files         FileUploaderPort
 	log           *zap.Logger
@@ -81,7 +82,7 @@ func (p *Publisher) SetCatalogWriter(writer CatalogFolderWriter) {
 // because adapter constructors typically receive a logger from the same
 // parent root and a nil logger shouldn't block a fail-fast path.
 func NewPublisher(
-	registry *delivery.DestinationRegistry,
+	registry *platformdelivery.DestinationRegistry,
 	folders FolderManagerPort,
 	files FileUploaderPort,
 	log *zap.Logger,

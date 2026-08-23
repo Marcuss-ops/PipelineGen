@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	appoverlays "github.com/Marcuss-ops/PipelineGen/internal/app/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
@@ -61,7 +60,7 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	// probe port (rustexec.VideoProcessor.Probe → ffprobe) + content hash.
 	// The renderer's exit code alone is never a validity criterion.
 	prober := infraoverlays.NewMediaContractProber(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
-	handlers, err := appoverlays.NewHandlerSet(cache, renderer, gate, prober, os.Getenv("RENDERINGGEN_VERSION"))
+	handlers, err := wiring.NewHandlerSet(cache, renderer, gate, prober, os.Getenv("RENDERINGGEN_VERSION"))
 	if err != nil {
 		return nil, nil, err
 	}

@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -65,8 +65,10 @@ import (
 // are used ONLY by the 3 fail-closed test callers here.
 type (
 	dummyStagingStore struct{ staging.Store }
-	dummyArtifactRepo struct{ artifact.Repository }
-	dummyPublisher    struct{ delivery.Publisher }
+	dummyArtifactRepo struct {
+		artifact.ArtifactStageRepository
+	}
+	dummyPublisher struct{ delivery.Publisher }
 )
 
 // ── 4. PR 3 + QDRANT-CHAIN-VERIFY fail-closed invariants ──────────────

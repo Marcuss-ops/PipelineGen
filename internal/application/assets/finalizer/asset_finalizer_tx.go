@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )

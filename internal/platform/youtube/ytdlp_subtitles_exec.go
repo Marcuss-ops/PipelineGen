@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 // buildSubtitleArgs appends subtitle-specific arguments to the canonical

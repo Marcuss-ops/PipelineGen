@@ -15,7 +15,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 
 // Compile-time pins (godlike/06 SSOT discipline): the stubs

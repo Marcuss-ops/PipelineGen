@@ -8,7 +8,6 @@ sections:
   - capability_inventory/api.yaml
   - capability_inventory/application-assets.yaml
   - capability_inventory/application-services.yaml
-  - capability_inventory/migration.yaml
 
 normalization:
   - "assets/artlist is a sibling of assets/clips"

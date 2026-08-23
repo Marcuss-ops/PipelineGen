@@ -52,7 +52,7 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // postprocessor list — used by tests that need to register a

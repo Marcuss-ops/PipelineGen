@@ -9,8 +9,8 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // EntitiesProcessor extracts entities and visual search terms for each

@@ -24,7 +24,7 @@ import (
 	"fmt"
 
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // BuildGenerateRequest is the sole canonical builder for

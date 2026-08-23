@@ -6,7 +6,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )

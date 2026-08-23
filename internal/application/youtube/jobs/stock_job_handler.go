@@ -7,7 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )

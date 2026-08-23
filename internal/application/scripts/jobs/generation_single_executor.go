@@ -23,7 +23,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"

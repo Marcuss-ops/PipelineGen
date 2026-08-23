@@ -5,7 +5,7 @@ package brain
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // Brain is the canonical single entry point of the brain capability.

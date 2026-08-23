@@ -9,7 +9,7 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 type Candidate struct {

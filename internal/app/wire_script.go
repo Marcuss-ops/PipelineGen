@@ -67,7 +67,6 @@ package app
 import (
 	"context"
 	"fmt"
-	appcap "github.com/Marcuss-ops/PipelineGen/internal/app/capabilities"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
@@ -309,7 +308,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		if root.DB != nil && root.DB.DB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
 			finalAudioCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
 		}
-		durableRunner, runtimeErr := appcap.BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
+		durableRunner, runtimeErr := wiring.BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}

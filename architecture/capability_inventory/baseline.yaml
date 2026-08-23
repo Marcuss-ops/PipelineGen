@@ -1,5 +1,6 @@
 version: 1
 generated_at: "2026-06-29T18:25:55Z"
+updated_at: "2026-08-23"
 source_scan_root: internal/
 excludes:
   - path: pkg/**
@@ -10,6 +11,65 @@ excludes:
     reason: operational tooling outside the capability tree
   - path: cmd/**
     reason: composition-entry binaries, not capabilities
+
+# ── Capability Ownership Map (2026-08-23 Cleanup Day) ──────────────────────
+# Each of the 26 on-disk packages in internal/capabilities/ is assigned to
+# exactly ONE of the 10 macro capabilities declared in policy.yaml. This is
+# the canonical ownership table. Every package MUST resolve to one macro owner;
+# no package may be "shared" — the macro owner is the namespace owner for
+# governance purposes (import gates, file caps, CI ratchets).
+#
+# Governing rule: ONE CONCEPT → ONE OWNER → ONE CANONICAL PACKAGE.
+capability_ownership_map:
+  - macro_owner: assets
+    packages:
+      - assets          # canonical asset types, search, provider registry
+      - artifactcache   # artifact caching for pipeline blobs
+      - enrichment      # media enrichment, semantic enricher
+      - mediacommit     # canonical media committer contract
+      - mediaregistry   # canonical media/asset identity registry
+  - macro_owner: artlist
+    packages: []
+    note: "artlist provider adapters live in infrastructure/artlist and application/assets/providers/artlist; dedicated capability packages are not yet on disk"
+  - macro_owner: youtube
+    packages:
+      - youtube         # YouTube-specific asset types and job enums
+      - transcripts     # transcript processing (primarily YouTube-sourced)
+  - macro_owner: scripts
+    packages:
+      - scripts         # script generation orchestration and runner
+      - audio           # BGM/SFX audio resolution, loop expansion, timeline
+      - cliprender      # clip rendering pipeline (plan, worker, rendering)
+      - entities        # entity extraction, compatibility, projections
+      - overlays        # overlay semantics (presets, timing, sampling, Chronon)
+      - render          # render contracts, fingerprinting, phases
+      - research        # research coordinator, ranking, fallback
+  - macro_owner: images
+    packages:
+      - images          # image generation, searching, delivery
+      - imagesearch     # deterministic image search intent resolver
+  - macro_owner: voiceover
+    packages: []
+    note: "voiceover capability code is still migrating from internal/application/voiceover/ and internal/app/adapters_voiceover_*.go; dedicated capability package not yet on disk"
+  - macro_owner: content
+    packages:
+      - localization    # subtitle localization, drive upload, doc publish
+      - multilingual    # multilingual content operations
+  - macro_owner: channels
+    packages: []
+    note: "channels capability code is still in internal/application/channels/; dedicated capability package not yet on disk"
+  - macro_owner: jobs
+    packages:
+      - jobs            # job orchestration, workers, module composition
+      - jobregistry     # durable execution ledger contract
+      - checkpoint      # durable per-job checkpoint/state contract
+      - replay          # replay bundle contract + engine
+  - macro_owner: system
+    packages:
+      - system          # system HTTP capability
+      - controlplane    # control plane verification
+      - performance     # benchmark workloads and performance contracts
+      - projectionretention  # Qdrant projection retention policy
 
 gates_baseline:
   - gate_id: C2-A

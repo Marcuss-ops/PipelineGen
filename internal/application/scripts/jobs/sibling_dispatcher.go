@@ -50,7 +50,7 @@ import (
 	"encoding/json"
 	"time"
 
-	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 

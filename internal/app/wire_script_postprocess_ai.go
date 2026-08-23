@@ -36,10 +36,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/prometheus/client_golang/prometheus"
 

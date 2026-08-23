@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // intentCompileTimeline is a 75s three-scene timeline (25s each) with

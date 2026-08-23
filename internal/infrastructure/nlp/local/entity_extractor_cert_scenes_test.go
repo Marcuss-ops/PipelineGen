@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // certScene is one controlled scene from the NLP certification payload.

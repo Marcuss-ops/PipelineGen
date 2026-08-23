@@ -48,6 +48,7 @@ const (
 	ArtifactKindEntities         = "entities"
 	ArtifactKindVoiceover        = "voiceover"
 	ArtifactKindFinalAudio       = "final_audio"
+	ArtifactKindFinalVideo       = "final_video"
 	ArtifactKindImage            = "image"
 	ArtifactKindClipBindings     = "clip_bindings"
 	ArtifactKindArtifactManifest = "artifact_manifest"

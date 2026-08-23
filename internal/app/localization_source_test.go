@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // fakeLocalizationAssetResolver returns a fixed AssetRef (or error), recording

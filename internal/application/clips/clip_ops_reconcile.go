@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	jobcatalog "github.com/Marcuss-ops/PipelineGen/internal/domain/catalog"
+	jobcatalog "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +21,7 @@ func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string)
 		return nil, ErrReconcileQueueUnavailable
 	}
 	resp, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
-		Type: jobcatalog.TypeSync,
+		Type: jobcatalog.TypeCatalogSync,
 		Payload: map[string]any{
 			"source":     source,
 			"folder_id":  folderID,

@@ -3,7 +3,7 @@
 // POST /api/script/generate.
 //
 // It complements the structural checks in
-// internal/domain/script/generation_envelope.go with limits that
+// internal/kernel/script/generation_envelope.go with limits that
 // require runtime configuration (source_text size, token budget,
 // ratio to target words).
 package usecase
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

@@ -67,7 +67,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 

@@ -2,7 +2,7 @@
 //
 // Forward-prevention gate that BANS the use of canonical slot
 // string literals outside the canonical SSOT file
-// internal/domain/media/slot.go.
+// internal/kernel/media/slot.go.
 //
 // Distinctive slot names ("primary_video", "secondary_image",
 // "evidence_overlay") are forbidden in production code anywhere
@@ -17,7 +17,7 @@
 // etc.) so the closed set can evolve in one place.
 //
 // Exempt zones:
-//   - internal/domain/media/slot.go — the canonical SSOT owner.
+//   - internal/kernel/media/slot.go — the canonical SSOT owner.
 //   - **/*_test.go — regression-guard surface.
 //   - cmd/archcheck/scan/ — the scanner's own source code.
 //
@@ -47,7 +47,7 @@ var slotStringsContextRe = regexp.MustCompile(`(?i)slot`)
 
 const slotStringsSSOTRule = "percheck_slot_strings_ban"
 
-const slotStringsSSOTNote = "forbidden hardcoded slot string literal outside the canonical SSOT file. Slot kinds MUST be referenced via the typed constants in internal/domain/media/slot.go (e.g. media.SlotPrimaryVideo, media.SlotSecondaryImage). Hardcoded slot strings are a godlike/06 SSOT violation."
+const slotStringsSSOTNote = "forbidden hardcoded slot string literal outside the canonical SSOT file. Slot kinds MUST be referenced via the typed constants in internal/kernel/media/slot.go (e.g. media.SlotPrimaryVideo, media.SlotSecondaryImage). Hardcoded slot strings are a godlike/06 SSOT violation."
 
 var slotStringsSSOTSkipDirs = map[string]bool{
 	".git":         true,
@@ -66,7 +66,7 @@ var slotStringsSSOTSkipPathPrefixes = []string{
 
 // slotStringsSSOTCanonicalPath is the canonical SSOT file for slot
 // string literals.
-const slotStringsSSOTCanonicalPath = "internal/domain/media/slot.go"
+const slotStringsSSOTCanonicalPath = "internal/kernel/media/slot.go"
 
 // slotStringsSSOTScanScope is the prefix the gate applies to.
 const slotStringsSSOTScanScope = "internal/"

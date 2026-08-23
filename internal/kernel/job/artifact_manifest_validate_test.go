@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	finalization "github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ── Validate ─────────────────────────────────────────────────────────

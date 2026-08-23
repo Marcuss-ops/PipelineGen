@@ -13,7 +13,7 @@ package dr
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
 )
 
 // SnapshotDescription is the canonical DR snapshot shape (type alias).

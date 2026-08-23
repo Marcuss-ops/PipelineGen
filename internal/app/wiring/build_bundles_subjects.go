@@ -26,7 +26,7 @@ package wiring
 import (
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subjects"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 
 	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/subjectsrepo"
 )

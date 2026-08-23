@@ -12,7 +12,8 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -298,7 +299,7 @@ func compactVisualQuery(text string) string {
 	if len(textutil.Tokenize(text)) > 15 {
 		return ""
 	}
-	tokens := textutil.TokenizeWithStopWords(text)
+	tokens := textutil.TokenizeWithStopWords(text, linguistics.DefaultStopWords())
 	if len(tokens) > 8 {
 		tokens = tokens[:8]
 	}
@@ -309,7 +310,7 @@ func compactVisualQuery(text string) string {
 }
 
 func compactArtlistQuery(query string) string {
-	tokens := textutil.TokenizeWithStopWords(query)
+	tokens := textutil.TokenizeWithStopWords(query, linguistics.DefaultStopWords())
 	if len(tokens) > 6 {
 		tokens = tokens[len(tokens)-6:]
 	}
@@ -361,7 +362,7 @@ func normalizeRetrievalQuery(raw string, maxWords int) string {
 	if len(rawTokens) > maxWords {
 		return ""
 	}
-	tokens := textutil.TokenizeWithStopWords(raw)
+	tokens := textutil.TokenizeWithStopWords(raw, linguistics.DefaultStopWords())
 	if len(tokens) < 2 || len(tokens) > maxWords {
 		return ""
 	}

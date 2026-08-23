@@ -16,7 +16,7 @@
 // boundary so the ranker's wire envelope stays clean.
 package mediamemory
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 // LayoutKind is the canonical closed-set of layer layouts.
 // The renderer reads this verbatim as `Layer.Layout`.
@@ -65,7 +65,7 @@ func IsKnownLayout(k LayoutKind) bool {
 // default — the renderer reads this verbatim. Per-binding
 // overrides are a forward-pin.
 //
-// The actual mapping lives in internal/domain/media/slot.go;
+// The actual mapping lives in internal/kernel/media/slot.go;
 // this function is a thin adapter that converts the canonical
 // string layout into the mediamemory LayoutKind type so existing
 // callers keep working while the SSOT moves to the media package.

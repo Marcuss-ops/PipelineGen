@@ -3,6 +3,7 @@ package client
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -16,7 +17,7 @@ func tokenSet(text string) map[string]struct{} {
 
 func isNoisyExtractionCandidate(text string) bool {
 	lower := strings.ToLower(text)
-	if lower == "" || textutil.IsStopWord(lower) {
+	if lower == "" || linguistics.IsStopWord(lower) {
 		return true
 	}
 	// These are schema labels that small models sometimes echo as extracted

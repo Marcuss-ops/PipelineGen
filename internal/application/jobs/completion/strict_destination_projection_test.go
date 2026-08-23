@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // TestKindFromDestination_StrictMode_LocksCutoverFromKindDocument pins the

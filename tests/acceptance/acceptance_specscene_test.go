@@ -10,7 +10,7 @@
 //     scene-id/index/JSON literals in the text itself).
 //   - SpecScene.Validate() returns nil on a well-formed scene
 //     (Godlike-06 SSOT shape contract from
-//     internal/domain/script/model_output.go).
+//     internal/kernel/script/model_output.go).
 //   - SpecScene.Bindings.Clip MUST carry the canonical
 //     (asset_id, DriveLink) pair: ClipID is non-empty and
 //     matches a canonical asset_id, DriveLink is non-empty.
@@ -24,8 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestSpecScene_TextIsCleanProse: the scene.Text field carries
@@ -33,13 +32,13 @@ import (
 // rejects empty text; we additionally pin that no protocol
 // markers leak into it.
 func TestSpecScene_TextIsCleanProse(t *testing.T) {
-	scene := script.SpecScene{
+	scene := scriptpkg.SpecScene{
 		ID:    "scene-spec-001",
 		Index: 0,
 		Text:  "The camera pans across the moonlit cathedral as the choir enters.",
-		Kind:  script.SceneClip,
-		Bindings: script.SceneBindings{
-			Clip: &script.ClipBinding{
+		Kind:  scriptpkg.SceneClip,
+		Bindings: scriptpkg.SceneBindings{
+			Clip: &scriptpkg.ClipBinding{
 				ClipID:    "clip-asset-clean-001",
 				ClipTitle: "Cathedral Choir Entrance",
 				DriveLink: "https://drive.google.com/file/d/clip-asset-clean-001",

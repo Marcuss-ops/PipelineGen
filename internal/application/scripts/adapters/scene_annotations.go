@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // VidRushSceneMerger projects one immutable VidRush segment result onto its

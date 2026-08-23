@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -205,7 +206,7 @@ func extractSearchKeywords(phrase, title string, specialNames []string) string {
 	if len(keywords) < 3 {
 		for _, w := range strings.Fields(phrase) {
 			clean := strings.Trim(strings.ToLower(w), ".,;:!?\"'")
-			if len(clean) < 3 || textutil.IsStopWord(clean) {
+			if len(clean) < 3 || linguistics.IsStopWord(clean) {
 				continue
 			}
 			keywords = append(keywords, clean)
@@ -223,7 +224,7 @@ func extractTopicKeywords(title string) string {
 	var kept []string
 	for _, w := range words {
 		clean := strings.Trim(strings.ToLower(w), ".,;:!?\"'()")
-		if len(clean) < 3 || textutil.IsStopWord(clean) {
+		if len(clean) < 3 || linguistics.IsStopWord(clean) {
 			continue
 		}
 		kept = append(kept, clean)

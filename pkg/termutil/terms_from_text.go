@@ -12,6 +12,7 @@ type TermOptions struct {
 	MinLen      int
 	Lowercase   bool
 	RemoveStops bool
+	StopWords   map[string]struct{}
 	Unique      bool
 	UniqueCI    bool
 	Limit       int
@@ -69,8 +70,10 @@ func filterTerms(input []string, opts TermOptions) []string {
 		if term == "" {
 			continue
 		}
-		if opts.RemoveStops && textutil.IsStopWord(term) {
-			continue
+		if opts.RemoveStops {
+			if _, isStop := opts.StopWords[term]; isStop {
+				continue
+			}
 		}
 		if opts.MinLen > 0 && len(term) < opts.MinLen {
 			continue

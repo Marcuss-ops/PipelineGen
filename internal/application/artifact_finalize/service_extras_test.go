@@ -42,8 +42,8 @@ import (
 	"errors"
 	"testing"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -85,7 +85,7 @@ func TestFinalizerService_Finalize_AbortsOnCancelledContext(t *testing.T) {
 	// something to scan; the cancelled ctx should abort
 	// BEFORE the scan, so Scanned MUST remain 0 even with
 	// a seeded row.
-	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.StatePublished)
+	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
 
 	// Build a context already cancelled (NOT a deferred
 	// cancel — the cancel MUST happen BEFORE Finalize so
@@ -140,7 +140,7 @@ func TestFinalizerService_Finalize_AbortsOnCancelledContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get seeded row post-abort: %v", err)
 	}
-	if st.State != artifact.StatePublished {
+	if st.State != artifact.ArtifactStageStatePublished {
 		t.Errorf("post-abort State = %q, want PUBLISHED (abort MUST NOT flip rows)", st.State)
 	}
 }
@@ -177,7 +177,7 @@ func TestFinalizerService_Finalize_LogFieldsStableOnHappyPath(t *testing.T) {
 		t.Fatalf("NewFinalizerService: %v", err)
 	}
 
-	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.StatePublished)
+	insertAndPublish(t, repo, "art-req-1", artifact.RequirementRequired, artifact.ArtifactStageStatePublished)
 
 	if _, err := svc.Finalize(context.Background(), "job-test-1"); err != nil {
 		t.Fatalf("Finalize: %v", err)

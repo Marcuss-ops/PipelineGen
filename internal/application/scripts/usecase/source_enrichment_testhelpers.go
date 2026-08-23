@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // fakeTopicSourceCache is a test double for scriptports.TopicSourceCache.

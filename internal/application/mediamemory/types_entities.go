@@ -32,7 +32,7 @@ package mediamemory
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // MediaConcept is the canonical concept row. UNIQUE(language,

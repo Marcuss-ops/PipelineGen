@@ -15,7 +15,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // sqliteArtifactFolderResolver reads media_assets.folder_id for a parent video.

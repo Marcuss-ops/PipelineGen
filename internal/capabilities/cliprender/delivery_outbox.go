@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"go.uber.org/zap"
 )
 

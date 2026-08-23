@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type WebSearchHit struct {

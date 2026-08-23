@@ -8,7 +8,7 @@ literals=$(rg -n --type go \
     -e '"(script\.generate_batch|media\.curate|script\.generate_from_catalog)"\s*[:,)]' \
     --glob '!**/domain/job/job.go' \
     --glob '!**/domain/media/job_types.go' \
-    --glob '!**/domain/script/**' \
+    --glob '!**/kernel/script/**' \
     --glob '!**/*_test.go' \
     internal/ 2>/dev/null \
     | awk -F: '{

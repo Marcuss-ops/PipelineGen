@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"golang.org/x/text/unicode/norm"
 )
 

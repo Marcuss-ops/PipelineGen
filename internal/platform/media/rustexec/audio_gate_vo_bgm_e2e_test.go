@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestListenGateVOPlusBGM25s: one voiceover speech window [0,15) over a

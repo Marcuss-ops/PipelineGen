@@ -3,9 +3,9 @@
 // slimmed this file to one responsibility).
 //
 // Historical scope (Phase 4 / June 2026, REMOVED):
-//   - UtilityHandler struct + ctor + Slugify method → relocated to
-//     `utility.go` (no-arg `NewUtilityHandler()` matches the
-//     build_bundles_core.go caller).
+//   - UtilityHandler struct + ctor + Slugify method → absorbed into
+//     internal/api/system/handler.go (2026-08-23 Cleanup Day).
+//     Prior location `utility.go` deleted; no standalone UtilityModule.
 //   - HealthHandler struct + ctor + Health/Ready methods → relocated
 //     to `health.go` (the deep-check `/health` URL contract from the
 //     codex/health-ready-contract, June 2026, lives there now).

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {

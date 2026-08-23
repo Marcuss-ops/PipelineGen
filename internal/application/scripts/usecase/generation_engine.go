@@ -18,8 +18,8 @@ import (
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // GeneratedDraft holds the canonical output of the engine phase.

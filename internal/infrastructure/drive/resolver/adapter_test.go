@@ -18,9 +18,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

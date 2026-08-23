@@ -33,7 +33,7 @@ import (
 	"fmt"
 	"sync"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // defaultImageSceneConcurrency caps the in-flight parallel image-

@@ -3,7 +3,7 @@ package jobs
 import (
 	"time"
 
-	youtubejob "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	youtubejob "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 )
 
 // registerExtractionEntries registers all extraction/YouTube job types

@@ -53,7 +53,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // mockTranslatorSuffix appends a deterministic suffix to every input.

@@ -18,4 +18,3 @@ records:
       file: records/translation.yaml
       count: 0
 audit_file: audit.yaml
-open_questions_file: open_questions.yaml

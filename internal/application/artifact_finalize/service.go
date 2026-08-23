@@ -55,7 +55,7 @@ import (
 
 	"go.uber.org/zap"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Compile-time assertion: *finalizerService satisfies the
@@ -69,13 +69,13 @@ var _ Finalizer = (*finalizerService)(nil)
 // the typed port via the Finalizer interface field on the
 // FinalizerBundle.
 type finalizerService struct {
-	// repo is the artifact.Repository port (single-writer for
+	// repo is the artifact.ArtifactStageRepository port (single-writer for
 	// the artifact_stages table per Push 3.1a SSOT). The
 	// finalizer consumes the 3 read paths (ListByJob, indirect
 	// via the scan) + the MarkSucceeded fenced-CAS path. Later
 	// pushes may add ListByState for batch invocations, but the
 	// per-job API stays canonical.
-	repo artifact.Repository
+	repo artifact.ArtifactStageRepository
 
 	// log is *zap.Logger for the Info-level "finalize completed"
 	// audit line + the Debug-level "no stages for job_id" trace.
@@ -87,7 +87,7 @@ type finalizerService struct {
 // log (godlike/07 fail-fast at construction; zero-value log
 // produces no log lines, which defeats the audit-trail
 // contract).
-func NewFinalizerService(repo artifact.Repository, log *zap.Logger) (*finalizerService, error) {
+func NewFinalizerService(repo artifact.ArtifactStageRepository, log *zap.Logger) (*finalizerService, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("artifact_finalize.NewFinalizerService: repo is required")
 	}
@@ -193,13 +193,13 @@ func (s *finalizerService) Finalize(ctx context.Context, jobID string) (*Finaliz
 		// telemetry counters.
 		if st.Requirement != artifact.RequirementRequired {
 			switch st.State {
-			case artifact.StateStaged:
+			case artifact.ArtifactStageStateStaged:
 				result.OptionalStillStaged++
-			case artifact.StateFailedPermanent:
+			case artifact.ArtifactStageStateFailedPermanent:
 				result.OptionalFailed++
-			case artifact.StatePublished:
+			case artifact.ArtifactStageStatePublished:
 				eligible = append(eligible, st)
-			case artifact.StateSucceeded:
+			case artifact.ArtifactStageStateSucceeded:
 				// Already finalised on a previous Finalize
 				// invocation. Skip silently (idempotent
 				// re-finalize); no counter needed (Scanned
@@ -210,14 +210,14 @@ func (s *finalizerService) Finalize(ctx context.Context, jobID string) (*Finaliz
 		// REQUIRED path.
 		result.RequiredTotal++
 		switch st.State {
-		case artifact.StatePublished:
+		case artifact.ArtifactStageStatePublished:
 			eligible = append(eligible, st)
-		case artifact.StateSucceeded:
+		case artifact.ArtifactStageStateSucceeded:
 			// Already finalised on a previous Finalize
 			// invocation. Skip silently; the row is counted
 			// in RequiredTotal (telemetry reflects the input
 			// shape, not the action taken).
-		case artifact.StateStaged, artifact.StateFailedPermanent:
+		case artifact.ArtifactStageStateStaged, artifact.ArtifactStageStateFailedPermanent:
 			requiredMissing = append(requiredMissing, st.ID)
 		}
 	}

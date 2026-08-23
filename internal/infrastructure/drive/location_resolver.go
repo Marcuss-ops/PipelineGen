@@ -18,7 +18,7 @@ import (
 
 	"google.golang.org/api/googleapi"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // AssetLocationResolverAdapter implements script.AssetLocationResolver

@@ -31,7 +31,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"

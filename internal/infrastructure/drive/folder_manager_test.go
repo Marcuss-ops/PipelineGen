@@ -3,8 +3,9 @@ package drive_test
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // Compile-time assertion: DriveFolderManagerAdapter satisfies the
@@ -44,12 +45,12 @@ var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
 // (declared in the delivery package, import direction is
 // drive → delivery which is already established by drive/publisher.go).
 // Future drift that removes ProbeFolderAccess from this adapter
-// without updating delivery.StartupRootsProbe surfaces as a build
+// without updating platformdelivery.StartupRootsProbe surfaces as a build
 // failure here, not a runtime panic at first ValidateDriveRoots
 // call site. The two assertions side-by-side catch drift on either
 // the wide surface (EnsureFolder + ProbeFolderAccess) or the narrow
 // validator surface (ProbeFolderAccess-only).
-var _ delivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
+var _ platformdelivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
 
 // TestDriveFolderManagerAdapterImplementsFolderManagerPort makes the
 // compile-time assertion visible as a `go test` pass line, which is
@@ -59,5 +60,5 @@ var _ delivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
 // trivial.
 func TestDriveFolderManagerAdapterImplementsFolderManagerPort(t *testing.T) {
 	var _ drivepkg.FolderManagerPort = (*drivepkg.DriveFolderManagerAdapter)(nil)
-	var _ delivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
+	var _ platformdelivery.StartupRootsProbe = (*drivepkg.DriveFolderManagerAdapter)(nil)
 }

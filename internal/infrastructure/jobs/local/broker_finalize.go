@@ -9,8 +9,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 
 // ErrFinalizerNotConfigured is returned when CompleteWithArtifacts is

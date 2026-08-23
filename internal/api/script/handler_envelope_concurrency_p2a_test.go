@@ -37,7 +37,7 @@
 // "honest lock" backlog):
 //
 //  1. GenerationEnvelopeV2.Validate() fails the ENTIRE envelope
-//     on the first item error (see internal/domain/script/
+//     on the first item error (see internal/kernel/script/
 //     generation_envelope.go:87-150). The user spec mandates
 //     "errore di un item non corrompe gli altri" (an error in
 //     one item must not corrupt the others). Today, ONE invalid

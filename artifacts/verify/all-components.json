@@ -77,7 +77,7 @@
       "duration_ms": 0,
       "timeout_seconds": 300.0,
       "commands": [
-        "go test ./internal/domain/script/...",
+        "go test ./internal/kernel/script/...",
         "go test ./internal/application/scripts/...",
         "go test ./internal/api/script/..."
       ],
@@ -88,9 +88,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/domain/script/...",
+          "command": "go test ./internal/kernel/script/...",
           "kind": "go",
-          "source": "./internal/domain/script/..."
+          "source": "./internal/kernel/script/..."
         },
         {
           "status": "PASS",
@@ -514,7 +514,7 @@
       "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
-        "go test ./internal/domain/voiceover/...",
+        "go test ./internal/capabilities/voiceover/...",
         "go test ./internal/application/voiceover/...",
         "go test ./internal/api/assets/voiceover/..."
       ],
@@ -525,9 +525,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/domain/voiceover/...",
+          "command": "go test ./internal/capabilities/voiceover/...",
           "kind": "go",
-          "source": "./internal/domain/voiceover/..."
+          "source": "./internal/capabilities/voiceover/..."
         },
         {
           "status": "PASS",

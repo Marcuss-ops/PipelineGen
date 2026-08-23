@@ -33,7 +33,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	domainvo "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainvo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // ---------------------------------------------------------------------------

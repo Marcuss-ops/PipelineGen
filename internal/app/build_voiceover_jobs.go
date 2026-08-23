@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
-	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +

@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

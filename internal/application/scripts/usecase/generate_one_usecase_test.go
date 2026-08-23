@@ -31,8 +31,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // stubPostProcessor implements adapters.PostProcessor for tests.

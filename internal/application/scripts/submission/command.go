@@ -8,7 +8,7 @@
 // policy/hash/scope decisions.
 package submission
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 // GenerateCommand carries the facts the transport layer extracted
 // from an HTTP request. It intentionally contains no HTTP-specific

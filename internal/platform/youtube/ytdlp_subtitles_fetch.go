@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 )
 
 // Fetch downloads the timed transcript once and assembles the canonical

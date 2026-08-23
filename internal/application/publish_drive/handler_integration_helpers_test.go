@@ -55,9 +55,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	migration "github.com/Marcuss-ops/PipelineGen/migrations/sqlite"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -131,7 +131,7 @@ func validStageForTest(id string) *artifact.ArtifactStage {
 		Mime:         "audio/mpeg",
 		Requirement:  artifact.RequirementRequired,
 		Destination:  "drive:voiceover/test",
-		State:        artifact.StateStaged,
+		State:        artifact.ArtifactStageStateStaged,
 		AttemptCount: 0,
 	}
 }

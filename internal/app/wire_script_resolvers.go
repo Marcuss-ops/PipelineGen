@@ -43,8 +43,9 @@ import (
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
@@ -176,7 +177,7 @@ func buildScriptSourceResolvers(
 			multiSearcher,
 			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
 		)
-		if err := researchResolver.SetResearchRanker(&ollamaResearchRanker{client: gen.GetClient(), model: cfg.External.OllamaModel, logger: log}); err != nil {
+		if err := researchResolver.SetResearchRanker(research.NewResearchRanker(gen.GetClient(), cfg.External.OllamaModel, log)); err != nil {
 			panic(fmt.Sprintf("script research ranker: %v", err))
 		}
 		if err := researchResolver.SetLexicon(linguistics.DefaultLexicon()); err != nil {
@@ -187,12 +188,12 @@ func buildScriptSourceResolvers(
 		}
 
 		// Wire the subject-aware search coordinator.
-		identityAdapter := &SubjectIdentityAdapter{
+		identityAdapter := &research.SubjectIdentityAdapter{
 			Resolve: func(subject string) scriptpkg.SubjectIdentity {
 				return usecase.NewSubjectIdentityResolver().Resolve(subject)
 			},
 		}
-		plannerAdapter := &QueryPlannerAdapter{
+		plannerAdapter := &research.QueryPlannerAdapter{
 			FullPlan: func(identity scriptpkg.SubjectIdentity, maxQueries int) []string {
 				return usecase.NewQueryPlanner().FullPlan(identity, maxQueries)
 			},
@@ -200,9 +201,9 @@ func buildScriptSourceResolvers(
 		// The coordinator drives the provider registry directly (subject-aware
 		// escalation per provider); the MultiWebSearcher stays wired to the
 		// resolver as its dumb merge/dedup searcher for the fallback path.
-		coordinator := NewResearchSearchCoordinator(identityAdapter, plannerAdapter, providers, log)
+		coordinator := research.NewResearchSearchCoordinator(identityAdapter, plannerAdapter, providers, log)
 		coordinator.SetTargetPool(cfg.External.ResearchTargetPoolSize)
-		researchResolver.SetSearchCoordinator(&coordinatorAdapter{coordinator: coordinator})
+		researchResolver.SetSearchCoordinator(&researchCoordinatorAdapter{coordinator: coordinator})
 		// Fold the provider policy into the research cache fingerprint so
 		// SearXNG-only and SearXNG+DDG deployments never share cache entries.
 		researchResolver.SetResearchPolicyVersion(researchPolicyVersion(cfg))

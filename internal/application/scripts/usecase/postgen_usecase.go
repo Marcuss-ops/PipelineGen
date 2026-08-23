@@ -23,7 +23,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
@@ -35,7 +35,7 @@ import (
 // PostGenResult encapsulates the outputs of the post-generation phase.
 // PR 8 (June 2026): the in-package VideoMetadata alias is gone —
 // the canonical shape is scriptpkg.VideoMetadata
-// (internal/domain/script/generation_result.go).
+// (internal/kernel/script/generation_result.go).
 type PostGenResult struct {
 	EntitiesJSON  string
 	Insights      ScriptInsights

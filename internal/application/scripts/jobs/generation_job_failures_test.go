@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
@@ -184,7 +184,7 @@ func TestGenerateJobHandler_SingleFailureReturnsError(t *testing.T) {
 	}
 	// 3. ErrGenerationFailed must be in the unwrap chain — the
 	//    broker classifies specific errors for retry decisions.
-	//    ErrGenerationFailed lives in domain/script (alias
+	//    ErrGenerationFailed lives in kernel/script (alias
 	//    domainScript); domain/job has Job + TypeScriptGenerate
 	//    only.
 	if !errors.Is(runErr, domainScript.ErrGenerationFailed) {

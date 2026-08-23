@@ -14,7 +14,7 @@
 package scene
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )

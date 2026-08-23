@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // sqlTxAdapter wraps a *sql.Tx so it satisfies finalization.Transaction.

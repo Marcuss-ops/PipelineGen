@@ -7,7 +7,7 @@
 // canonical defaults for these knobs.
 package mediamemory
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 // Default policy constants. They are intentionally unexported so
 // callers cannot bypass the resolver and invent their own defaults.

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	capabilities "github.com/Marcuss-ops/PipelineGen/internal/app/capabilities"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -24,12 +23,12 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -440,7 +439,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 			}
 		}
 	}
-	chrononRenderer := capabilities.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
+	chrononRenderer := wiring.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
 	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, chronon: chrononRenderer, resolver: backendResolver, probe: backendProbe})
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")

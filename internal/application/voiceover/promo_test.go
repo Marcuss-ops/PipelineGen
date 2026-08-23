@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	domainvo "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainvo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // stubItemExecutor is the canonical test-double for

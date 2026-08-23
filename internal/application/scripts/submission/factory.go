@@ -15,8 +15,8 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Factory errors. These are typed so the HTTP transport can map

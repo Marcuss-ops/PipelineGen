@@ -7,7 +7,7 @@ package usecase
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
 // languageMatchChecker fails when the detected language differs from the

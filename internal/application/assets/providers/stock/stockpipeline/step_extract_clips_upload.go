@@ -7,7 +7,7 @@
 package stockpipeline
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // clipUploadTask is a prepared clip ready for concurrent Drive upload.

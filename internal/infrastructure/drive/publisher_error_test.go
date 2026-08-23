@@ -6,8 +6,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -55,7 +56,7 @@ func TestPublisher_RejectsDirectRootUpload(t *testing.T) {
 			MediaRootFolder: "root-id",
 		},
 	}
-	reg := delivery.NewDestinationRegistry(cfg)
+	reg := platformdelivery.NewDestinationRegistry(cfg)
 
 	// Build a publisher with the real registry — all destinations require
 	// subpath, so a request with empty Group/Subject should fail at the

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )

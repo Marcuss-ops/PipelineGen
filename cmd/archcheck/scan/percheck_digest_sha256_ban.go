@@ -73,6 +73,11 @@ const digestSHA256ImportPath = `"crypto/sha256"`
 // crypto/sha256 for application hashing (godlike/06 SSOT).
 const digestSHA256SSOTRoot = "internal/kernel/digest/"
 
+// The pure primitive is exposed from pkg/digest so leaf packages do not need
+// to import internal/. internal/kernel/digest remains the semantic contract
+// and compatibility facade for the target tree.
+const digestSHA256LeafSSOTRoot = "pkg/digest/"
+
 // digestSHA256AllowlistFile is the on-disk SSOT for grandfathered
 // imports still in migration. Path is repo-relative (resolved against
 // the scan root). Each non-comment, non-blank line is ONE repo-relative
@@ -259,7 +264,7 @@ func digestSHA256InScope(relSlash string) bool {
 // SSOT root (internal/kernel/digest/) or a permanent TLS/protocol
 // exemption.
 func digestSHA256Exempt(relSlash string) bool {
-	if strings.HasPrefix(relSlash, digestSHA256SSOTRoot) {
+	if strings.HasPrefix(relSlash, digestSHA256SSOTRoot) || strings.HasPrefix(relSlash, digestSHA256LeafSSOTRoot) {
 		return true
 	}
 	return hasAnyPathPrefix(relSlash, digestSHA256PermanentExemptPrefixes)

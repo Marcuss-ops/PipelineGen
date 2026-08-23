@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

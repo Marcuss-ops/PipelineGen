@@ -3,8 +3,8 @@ package adapters
 import (
 	"strings"
 
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

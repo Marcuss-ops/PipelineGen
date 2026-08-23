@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // ProductionPipelineDeps groups the execution ports for the live stock run.

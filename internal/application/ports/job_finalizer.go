@@ -20,7 +20,7 @@
 package ports
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // JobFinalizer is the canonical Fase 5(a) alias for the

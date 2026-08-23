@@ -10,7 +10,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"

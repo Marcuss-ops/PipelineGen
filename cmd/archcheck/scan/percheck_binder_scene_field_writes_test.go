@@ -53,7 +53,7 @@ func writeFakeScenePlannerCanonical(t *testing.T, tempDir string) string {
 	// gate because they live in the canonical owner.
 	body := "// Canonical ScenePlanner owner (Wave 1.3 exempt).\n" +
 		"package scene\n\n" +
-		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n\n" +
+		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n\n" +
 		"func (p *ScenePlanner) PlanFromClipEvidence(plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SpecScene {\n" +
 		"\tscenes := make([]scriptpkg.SpecScene, 3)\n" +
 		"\tscenes[0].Text = \"first\"\n" +
@@ -88,7 +88,7 @@ func writeFakeBinderViolation(t *testing.T, tempDir string) string {
 		"// binder.go (not dirty_binder.go) matches the user's\n" +
 		"// literal scenario for the load-bearing assertion.\n" +
 		"package scene\n\n" +
-		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n\n" +
+		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n\n" +
 		"func dirty() {\n" +
 		"\tvar scenes []scriptpkg.SpecScene\n" +
 		"\tscenes = append(scenes, scriptpkg.SpecScene{})\n" +
@@ -115,7 +115,7 @@ func writeFakeBinderTestExempt(t *testing.T, tempDir string) string {
 		// _test.go suffix → exempt per gate policy.
 		"// regression-guard allowlist.\n" +
 		"package scene\n\n" +
-		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n\n" +
+		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n\n" +
 		"func TestSceneFieldAssignmentExempted(t *testing.T) {\n" +
 		"\tscenes := []scriptpkg.SpecScene{{Text: \"\"}}\n" +
 		"\tscenes[0].Text = \"fixture\"\n" +
@@ -170,7 +170,7 @@ func writeFakeOutOfScopeSibling(t *testing.T, tempDir string) string {
 		// normal SpecScene literal — out of scope, must NOT
 		// trip the gate.
 		"package images\n\n" +
-		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n\n" +
+		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n\n" +
 		"func outOfScope() []scriptpkg.SpecScene {\n" +
 		"\treturn []scriptpkg.SpecScene{\n" +
 		"\t\t{ID: \"s0\", Index: 0, Text: \"legit\", Kind: scriptpkg.SceneClip},\n" +
@@ -277,7 +277,7 @@ func TestScanBinderSceneFieldWrites_AllBannedFieldsTrip(t *testing.T) {
 		{
 			name: "scene.Text",
 			body: "package scene\n" +
-				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n" +
+				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n" +
 				"func tripText() {\n" +
 				"\tscene := scriptpkg.SpecScene{}\n" +
 				"\tscene.Text = \"fail\"\n" +
@@ -287,7 +287,7 @@ func TestScanBinderSceneFieldWrites_AllBannedFieldsTrip(t *testing.T) {
 		{
 			name: "scenes[0].Title",
 			body: "package scene\n" +
-				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n" +
+				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n" +
 				"func tripTitle() {\n" +
 				"\tscenes := []scriptpkg.SpecScene{{}}\n" +
 				"\tscenes[0].Title = \"fail\"\n" +
@@ -297,7 +297,7 @@ func TestScanBinderSceneFieldWrites_AllBannedFieldsTrip(t *testing.T) {
 		{
 			name: "scenes[i].Kind",
 			body: "package scene\n" +
-				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n" +
+				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n" +
 				"func tripKind() {\n" +
 				"\tscenes := []scriptpkg.SpecScene{{}}\n" +
 				"\tscenes[0].Kind = scriptpkg.SceneIntro\n" +
@@ -307,7 +307,7 @@ func TestScanBinderSceneFieldWrites_AllBannedFieldsTrip(t *testing.T) {
 		{
 			name: "scene.Index",
 			body: "package scene\n" +
-				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n" +
+				"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n" +
 				"func tripIndex() {\n" +
 				"\tscene := scriptpkg.SpecScene{}\n" +
 				"\tscene.Index = 5\n" +
@@ -432,7 +432,7 @@ func TestScanBinderSceneFieldWrites_PermittedBindingWritesIgnored(t *testing.T) 
 		"// no-cycling invariant). The gate MUST NOT trip on\n" +
 		"// binding writes — they are canonical for the binder.\n" +
 		"package scene\n\n" +
-		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/domain/script\"\n\n" +
+		"import scriptpkg \"github.com/Marcuss-ops/PipelineGen/internal/kernel/script\"\n\n" +
 		"func permittedWrites() {\n" +
 		"\tscenes := []scriptpkg.SpecScene{{}}\n" +
 		"\tscenes[0].Bindings.Clip = &scriptpkg.ClipBinding{ClipID: \"c-a\"}\n" +

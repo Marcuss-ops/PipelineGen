@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestBuildPlan_CopiesProvidedVideoMetadata(t *testing.T) {

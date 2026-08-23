@@ -29,7 +29,7 @@ import (
 	"context"
 
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Typed error sentinels (PR-noop-adapters-purge, 2026-07-25) ────────────
@@ -45,7 +45,7 @@ import (
 // adapter refuses to perform silent-success and propagates the
 // unwired condition to the caller as a typed error.
 // The sentinels are ALIASES of the canonical scriptpkg sentinels
-// (internal/domain/script/generation_errors.go) — godlike/06 SSOT:
+// (internal/kernel/script/generation_errors.go) — godlike/06 SSOT:
 // one canonical owner per fact. The adapters package re-exports them
 // so processors and typed-fail adapters keep a single local name while
 // errors.Is walkers match the domain-level sentinel.

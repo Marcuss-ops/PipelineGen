@@ -14,8 +14,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"go.uber.org/zap"
 )
 

@@ -1,7 +1,7 @@
 {
   "script": {
     "paths": [
-      "internal/domain/script/",
+      "internal/kernel/script/",
       "internal/application/scripts/",
       "internal/api/script/",
       "internal/infrastructure/nlp/",
@@ -16,7 +16,7 @@
       "examples/worker_integration/"
     ],
     "go_packages": [
-      "./internal/domain/script/...",
+      "./internal/kernel/script/...",
       "./internal/application/scripts/...",
       "./internal/api/script/..."
     ],
@@ -218,14 +218,14 @@
       "cleaned_jackie-chan-is-seen-on-graham_en-US.mp3",
       "internal/api/assets/voiceover/",
       "internal/application/voiceover/",
-      "internal/domain/voiceover/",
+      "internal/capabilities/voiceover/",
       "jackie-chan-is-seen-on-graham_en-US.mp3",
       "scripts/bridges/edge_tts_bridge/",
       "scripts/bridges/tts_edge.py",
       "scripts/bridges/tts_edge_server.py"
     ],
     "go_packages": [
-      "./internal/domain/voiceover/...",
+      "./internal/capabilities/voiceover/...",
       "./internal/application/voiceover/...",
       "./internal/api/assets/voiceover/..."
     ],

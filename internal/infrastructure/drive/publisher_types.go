@@ -10,7 +10,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 )
 
 // ── Composition-time fail-fast sentinels (P0 #3, June 2026) ────────────────

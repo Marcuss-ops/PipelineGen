@@ -13,7 +13,7 @@ import (
 	"reflect"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -220,7 +220,7 @@ func fallbackSpecialNames(segment string, limit int, language string) []string {
 		if len([]rune(match)) < 3 {
 			continue
 		}
-		if textutil.IsStopWordForLanguage(lower, language) || textutil.IsStopWord(lower) {
+		if linguistics.IsStopWordForLanguage(lower, language) || linguistics.IsStopWord(lower) {
 			continue
 		}
 		// A word that also occurs lowercase elsewhere is a common noun
@@ -300,7 +300,7 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 	// Skip first 2 words to avoid sentence-start function words
 	startIdx := 0
 	for i := 0; i < len(words) && i < 3; i++ {
-		if !textutil.IsStopWord(strings.ToLower(words[i])) {
+		if !linguistics.IsStopWord(strings.ToLower(words[i])) {
 			startIdx = i
 			break
 		}
@@ -310,7 +310,7 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 		w2 := strings.ToLower(words[i+1])
 
 		// Skip if either word is a stop word
-		if textutil.IsStopWord(w1) || textutil.IsStopWord(w2) {
+		if linguistics.IsStopWord(w1) || linguistics.IsStopWord(w2) {
 			continue
 		}
 		// Skip if either word is a function word (article, preposition, etc.)
@@ -342,7 +342,7 @@ func extractSignificantWords(text string, limit int, language string) []string {
 	var out []string
 	for _, w := range words {
 		wLower := strings.ToLower(w)
-		if len(w) < 3 || textutil.IsStopWord(wLower) || textutil.IsStopWordForLanguage(wLower, language) {
+		if len(w) < 3 || linguistics.IsStopWord(wLower) || linguistics.IsStopWordForLanguage(wLower, language) {
 			continue
 		}
 		if _, ok := seen[wLower]; ok {

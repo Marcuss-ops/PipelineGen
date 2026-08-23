@@ -8,8 +8,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -80,7 +80,7 @@ func TestHandlerIntegration_Drain_MalformedEnvelope_ErrorsBeforeAnyCAS(t *testin
 	if getErr != nil {
 		t.Fatalf("GetByID post-malformed-env: %v", getErr)
 	}
-	if got.State != artifact.StateStaged {
+	if got.State != artifact.ArtifactStageStateStaged {
 		t.Errorf("state = %q, want STAGED (malformed envelope MUST NOT have triggered MarkPublished)", got.State)
 	}
 	if got.PublishedLocation != "" {
@@ -147,7 +147,7 @@ func TestHandlerIntegration_Drain_PublisherFailureLeavesRowStaged(t *testing.T) 
 	if getErr != nil {
 		t.Fatalf("GetByID post-publisher-fail: %v", getErr)
 	}
-	if got.State != artifact.StateStaged {
+	if got.State != artifact.ArtifactStageStateStaged {
 		t.Errorf("state = %q, want STAGED (Publisher-failure MUST NOT have flipped state)", got.State)
 	}
 	if got.PublishedLocation != "" {

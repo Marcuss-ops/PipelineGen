@@ -11,7 +11,7 @@ import (
 	"time"
 
 	stocktypes "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline/types"
-	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 )

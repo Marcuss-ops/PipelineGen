@@ -36,7 +36,7 @@
 //     job-type registry queried by validateScriptGenerateWiring).
 //   - internal/domain/job: job.TypeScriptGenerate (the canonical
 //     job-type ID validated in step (a) of the 3-invariant check).
-//   - internal/domain/script: scriptpkg.PlanInvalidError (the
+//   - internal/kernel/script: scriptpkg.PlanInvalidError (the
 //     typed error returned from validateRequiredProcessors).
 //   - internal/application/scripts/adapters: PostProcessorRegistry
 //   - ProcessorRequired policy classification (the validator's
@@ -57,9 +57,9 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )

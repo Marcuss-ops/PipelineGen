@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )

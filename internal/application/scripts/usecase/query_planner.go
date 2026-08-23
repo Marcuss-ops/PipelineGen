@@ -18,7 +18,7 @@ package usecase
 import (
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // QueryPlanner produces search query variants for a given identity

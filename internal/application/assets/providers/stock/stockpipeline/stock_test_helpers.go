@@ -27,7 +27,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // noopRenderer is a trivial StockRenderer that always returns success.

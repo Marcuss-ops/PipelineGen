@@ -61,8 +61,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 
 // Sender is the Pattern 0 port for the canonical Sender-side single-TX

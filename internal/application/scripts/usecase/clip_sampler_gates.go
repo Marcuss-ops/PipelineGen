@@ -39,8 +39,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // \u2500\u2500 Compile-time gate thresholds (audit-stable constants) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500

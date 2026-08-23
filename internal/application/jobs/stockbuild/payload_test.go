@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/subjects"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 )
 
 // validPayload returns a fixture that passes Validate(). Reused

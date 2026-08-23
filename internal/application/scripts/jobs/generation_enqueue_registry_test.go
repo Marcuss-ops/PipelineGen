@@ -27,7 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

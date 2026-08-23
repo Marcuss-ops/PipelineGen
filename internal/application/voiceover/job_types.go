@@ -1,7 +1,7 @@
 package voiceover
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

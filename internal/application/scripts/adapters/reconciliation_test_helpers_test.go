@@ -9,7 +9,7 @@ package adapters
 import (
 	"context"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // stubVerifier is a test double for script.AssetLocationVerifier.

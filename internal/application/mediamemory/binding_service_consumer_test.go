@@ -13,7 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"testing"
 	"time"
 )

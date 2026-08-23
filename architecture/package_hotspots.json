@@ -76,11 +76,11 @@
         "max_loc": 9396
       },
       "target_packages": [
-        "internal/application/assets/providers/stock/stockpipeline/ingest",
-        "internal/application/assets/providers/stock/stockpipeline/finalize",
-        "internal/application/assets/providers/stock/stockpipeline/publish",
-        "internal/application/assets/providers/stock/stockpipeline/cleanup",
-        "internal/application/assets/providers/stock/stockpipeline/reconcile"
+        "internal/capabilities/assets/stock/ingest",
+        "internal/capabilities/assets/stock/finalize",
+        "internal/capabilities/assets/stock/publish",
+        "internal/capabilities/assets/stock/cleanup",
+        "internal/capabilities/assets/stock/reconcile"
       ]
     },
     {
@@ -117,10 +117,10 @@
         "max_loc": 6760
       },
       "target_packages": [
-        "internal/application/images/workflow",
-        "internal/application/images/generation",
-        "internal/application/images/delivery",
-        "internal/application/images/persistence"
+        "internal/capabilities/images/workflow",
+        "internal/capabilities/images/generation",
+        "internal/capabilities/images/delivery",
+        "internal/capabilities/images/persistence"
       ]
     },
     {
@@ -137,10 +137,10 @@
         "max_loc": 5218
       },
       "target_packages": [
-        "internal/application/jobs/queue",
-        "internal/application/jobs/worker",
-        "internal/application/jobs/policy",
-        "internal/application/jobs/outbox"
+        "internal/capabilities/jobs/queue",
+        "internal/capabilities/jobs/worker",
+        "internal/capabilities/jobs/policy",
+        "internal/capabilities/jobs/outbox"
       ]
     },
     {
@@ -157,10 +157,10 @@
         "max_loc": 8135
       },
       "target_packages": [
-        "internal/application/voiceover/workflow",
-        "internal/application/voiceover/translation",
-        "internal/application/voiceover/persistence",
-        "internal/application/voiceover/delivery"
+        "internal/capabilities/voiceover/workflow",
+        "internal/capabilities/voiceover/translation",
+        "internal/capabilities/voiceover/persistence",
+        "internal/capabilities/voiceover/delivery"
       ]
     },
     {
@@ -191,38 +191,6 @@
     }
   ],
   "root_migrations": [
-    {
-      "path": "internal/youtube",
-      "owner": "youtube migration owner",
-      "deadline": "2026-08-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/capabilities/youtube",
-        "internal/platform/youtube"
-      ]
-    },
-    {
-      "path": "internal/transcription",
-      "owner": "transcription migration owner",
-      "deadline": "2026-08-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/capabilities/transcripts",
-        "internal/platform/ytdlp"
-      ]
-    },
-    {
-      "path": "internal/scriptgeneration",
-      "owner": "script generation migration owner",
-      "deadline": "2026-09-30",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/capabilities/scripts"
-      ]
-    },
     {
       "path": "internal/api",
       "owner": "API transport migration owner",
@@ -275,6 +243,39 @@
         "internal/infrastructure/webresearch/dedup.go",
         "internal/infrastructure/webresearch/provider_duckduckgo.go",
         "internal/infrastructure/webresearch/multi_provider.go"
+      ]
+    }
+  ],
+  "completed_migrations": [
+    {
+      "path": "internal/youtube",
+      "owner": "youtube migration owner",
+      "completed_at": "2026-08-23",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem. Code migrated to internal/capabilities/youtube and internal/platform/youtube. Legacy import path banned via percheck_legacy_root_ban.go (cmd/archcheck). Last deadline was 2026-08-31.",
+      "targets": [
+        "internal/capabilities/youtube",
+        "internal/platform/youtube"
+      ]
+    },
+    {
+      "path": "internal/transcription",
+      "owner": "transcription migration owner",
+      "completed_at": "2026-08-23",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem. Code migrated to internal/capabilities/transcripts and internal/application/transcripts/. Legacy import path banned via percheck_legacy_root_ban.go. Last deadline was 2026-08-31.",
+      "targets": [
+        "internal/capabilities/transcripts"
+      ]
+    },
+    {
+      "path": "internal/scriptgeneration",
+      "owner": "script generation migration owner",
+      "completed_at": "2026-08-23",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem. Code migrated to internal/capabilities/scripts. Legacy import path banned via percheck_legacy_root_ban.go. Last deadline was 2026-09-30.",
+      "targets": [
+        "internal/capabilities/scripts"
       ]
     }
   ]

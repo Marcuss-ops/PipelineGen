@@ -78,7 +78,7 @@ func BuildStagingBundle(dbs *wiring.Databases, cfg *config.Config, log *zap.Logg
 		return nil, fmt.Errorf("build staging: dbs.DualPool.Writer is nil (composition root failed to construct the DualPool before BuildStagingBundle)")
 	}
 	repo := artifactstages.NewRepository(dbs.DualPool.Writer)
-	// Conformance with artifact.Repository is pinned at the
+	// Conformance with artifact.ArtifactStageRepository is pinned at the
 	// wiring.StagingBundle.Repository field type + the canonical anchor
 	// at internal/infrastructure/database/sqlite/artifact_stages/repository.go:51
 	// (`var _ artifact.Repository = (*Repository)(nil)`). The

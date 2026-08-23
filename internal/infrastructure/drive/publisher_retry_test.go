@@ -6,7 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -17,10 +18,10 @@ func TestYouTubeClipPath_IsDeterministic(t *testing.T) {
 		Subject: "abc123",
 	}
 
-	first, err := delivery.YouTubeClipPath(req)
+	first, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 
-	second, err := delivery.YouTubeClipPath(req)
+	second, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 
 	require.Equal(t, first, second)
@@ -33,11 +34,11 @@ func TestYouTubeClipPath_IsDeterministicAcrossRetries_DOD_9_2(t *testing.T) {
 		Subject: "Pacquiao vs Broner",
 	}
 
-	first, err := delivery.YouTubeClipPath(req)
+	first, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 
 	for i := 0; i < 100; i++ {
-		retry, err := delivery.YouTubeClipPath(req)
+		retry, err := platformdelivery.YouTubeClipPath(req)
 		require.NoError(t, err, "retry %d must not fail", i)
 		require.Equal(t, first, retry,
 			"retry %d: YouTubeClipPath must be byte-stable idempotent — same inputs must produce same segments", i)
@@ -52,7 +53,7 @@ func TestYouTubeClipPath_PathBuilderSanitisesSpecialCharacters_DOD_9_3(t *testin
 		Subject: "game:7/OT",
 	}
 
-	segs, err := delivery.YouTubeClipPath(req)
+	segs, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 
 	// SafeFolderName replaces / and : with safe alternatives (spaces/hyphens).
@@ -70,7 +71,7 @@ func TestYouTubeClipPath_CategoryBoxeSubjectPacquiaoVsBroner_DOD_9_1(t *testing.
 		Subject: "Pacquiao vs Broner",
 	}
 
-	segs, err := delivery.YouTubeClipPath(req)
+	segs, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err, "YouTubeClipPath must succeed with Group=Boxe and Subject='Pacquiao vs Broner'")
 
 	// SafeFolderName preserves alphanum, spaces, and hyphens verbatim —
@@ -203,7 +204,7 @@ func TestYouTubeClipPath_ExplicitFolderViaRootOverride_StillBuildsNestedSegments
 		Subject:        "e35PVH3ksFA",
 	}
 
-	segments, err := delivery.YouTubeClipPath(req)
+	segments, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 	require.Equal(t, []string{"Matt Damon", "e35PVH3ksFA"}, segments,
 		"YouTubeClipPath must build {group}/{video_id} under a ParentFolderID")
@@ -221,7 +222,7 @@ func TestYouTubeClipPath_ExplicitFolderViaRootOverride_WithoutGroupFallsBackToUn
 		Subject:        "uVoMqnwEdBQ",
 	}
 
-	segments, err := delivery.YouTubeClipPath(req)
+	segments, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 	require.Equal(t, []string{"youtube_uncategorized", "uVoMqnwEdBQ"}, segments,
 		"YouTubeClipPath must fall back to youtube_uncategorized when group/category are empty")
@@ -233,7 +234,7 @@ func TestYouTubeClipPath_WithDestinationFolderID_UsesFolderVerbatim(t *testing.T
 		Subject:             "qQIsvIOQS8U",
 	}
 
-	segs, err := delivery.YouTubeClipPath(req)
+	segs, err := platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 	require.Empty(t, segs)
 
@@ -241,7 +242,7 @@ func TestYouTubeClipPath_WithDestinationFolderID_UsesFolderVerbatim(t *testing.T
 		DestinationFolderID: "explicit-root",
 		Group:               "boxing-channels",
 	}
-	segs, err = delivery.YouTubeClipPath(req)
+	segs, err = platformdelivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 	require.Empty(t, segs)
 }

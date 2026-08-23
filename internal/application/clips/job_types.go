@@ -1,7 +1,7 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

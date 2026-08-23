@@ -15,14 +15,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
-	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Step 8 helper (P0 Commit 3, July 2026) ───────────────────────────

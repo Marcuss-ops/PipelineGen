@@ -15,7 +15,7 @@ type Source string
 // left here only as a forward pointer for readers scanning asset_types.go
 // for the Asset struct. See media_type.go for the full history and
 // rationale (Phase 1 local decl → Phase 3 alias of media.MediaType →
-// Wave-14 native decl after internal/domain/media is deleted).
+// Wave-14 native decl after internal/kernel/media is deleted).
 
 // Metadata is an open-ended key-value store for asset properties
 // that don't have dedicated columns.

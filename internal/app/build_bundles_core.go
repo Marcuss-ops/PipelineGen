@@ -10,7 +10,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
@@ -204,8 +203,8 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 	}
 
 	return &wiring.UtilityBundle{
-		Utility: transport.NewUtilityHandler(), HealthService: svc,
-		ReadyChecker: rc,
+		HealthService: svc,
+		ReadyChecker:  rc,
 	}
 }
 

@@ -32,7 +32,7 @@
 package mediamemory
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // VisualIntent is the resolver input. Produced by the upstream

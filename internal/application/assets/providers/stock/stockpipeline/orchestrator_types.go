@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
 // OrchestratorConfig parameterises Orchestrator at construction.

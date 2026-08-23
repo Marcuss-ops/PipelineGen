@@ -6,7 +6,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // buildProvenance assembles the GenerationProvenance block from the

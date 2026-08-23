@@ -58,7 +58,7 @@ var frozenRenderingForbiddenImportSubstrings = []string{
 	"internal/application/scripts",
 
 	// Script domain model — same rationale.
-	"internal/domain/script",
+	"internal/kernel/script",
 
 	// TTS / voiceover — Creator-side capability.
 	"voiceover",

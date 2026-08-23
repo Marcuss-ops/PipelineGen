@@ -11,7 +11,7 @@ import (
 	"context"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

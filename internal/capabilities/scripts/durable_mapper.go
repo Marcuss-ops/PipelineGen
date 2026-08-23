@@ -3,7 +3,7 @@ package scriptgeneration
 import (
 	"strings"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // durableResultToDomain preserves the canonical SpecScene/voiceover surface

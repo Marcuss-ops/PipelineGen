@@ -19,7 +19,7 @@
 //     land HERE; this port no longer carries local-port struct
 //     shadows for ClipPrePlan / ClipSearchSlot / SourceAnchor.
 //     godlike/06 SSOT (one canonical owner per fact): the
-//     internal/domain/script package owns the wire shape; the
+//     internal/kernel/script package owns the wire shape; the
 //     port re-exports them by alias so the planner's return
 //     types are the canonical struct by construction. No shape
 //     change. No data-loss. PlanRequest stays local because the
@@ -39,7 +39,7 @@ package usecase
 import (
 	"context"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Input ───────────────────────────────────────────────────────────────

@@ -28,7 +28,7 @@
 //   - Any other MarkPublished error → wrapped upstream error.
 //
 // Pattern 0 (AGENTS.md): the handler depends ONLY on typed ports
-// (artifact.Repository + delivery.Publisher) — never on
+// (artifact.ArtifactStageRepository + delivery.Publisher) — never on
 // infrastructure concrete (drive.Uploader, FolderManager) or
 // domain internals.
 package publish_drive
@@ -42,7 +42,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
@@ -129,7 +129,7 @@ type Handler struct {
 	// (fenced CAS for Mark* primitives). The handler uses
 	// MarkPublished to transition the row to PUBLISHED state
 	// with a JSON PublishedLocation payload.
-	repo artifact.Repository
+	repo artifact.ArtifactStageRepository
 
 	// publisher is the canonical Drive upload canal
 	// (delivery.Publisher interface; concrete =
@@ -150,7 +150,7 @@ type Handler struct {
 // NewHandler constructs the canonical FASE 3 Drive-upload
 // worker. godlike/07 fail-fast at construction: caller MUST
 // supply a non-nil repo + non-nil publisher + non-nil log.
-func NewHandler(repo artifact.Repository, publisher delivery.Publisher, log *zap.Logger) (*Handler, error) {
+func NewHandler(repo artifact.ArtifactStageRepository, publisher delivery.Publisher, log *zap.Logger) (*Handler, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("publish_drive.NewHandler: repo is required")
 	}

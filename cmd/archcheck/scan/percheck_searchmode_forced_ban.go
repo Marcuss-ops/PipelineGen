@@ -4,7 +4,7 @@
 // SearchModeANN inside adapters, infrastructure, and transport code.
 //
 // The canonical mode is owned by the domain policy
-// (internal/domain/media/search_policy.go) and resolved by the
+// (internal/kernel/media/search_policy.go) and resolved by the
 // application-layer ResolutionPolicyResolver
 // (internal/application/mediamemory/policy_resolver.go). Adapters
 // MUST forward the resolved policy.Mode verbatim and MUST NOT fall
@@ -12,7 +12,7 @@
 //
 // Exempt zones:
 //   - internal/application/search — the SearchMode enum SSOT.
-//   - internal/domain/media — the ResolutionSearchPolicy SSOT.
+//   - internal/kernel/media — the ResolutionSearchPolicy SSOT.
 //   - internal/api/mediasearch — the thin transport maps the
 //     incoming wire value to search.SearchMode; it does not force ANN.
 //   - **/*_test.go — test fixtures.
@@ -39,7 +39,7 @@ var searchModeForcedRe = regexp.MustCompile(`(?:\b[Mm]ode\s*:\s*(?:search\.)?Sea
 
 const searchModeForcedRule = "percheck_searchmode_forced_ban"
 
-const searchModeForcedNote = "forbidden hardcoded SearchModeANN assignment. The search mode must be derived from ResolutionSearchPolicy.Mode; adapters/infrastructure must not force ANN. See internal/domain/media/search_policy.go and internal/application/mediamemory/policy_resolver.go."
+const searchModeForcedNote = "forbidden hardcoded SearchModeANN assignment. The search mode must be derived from ResolutionSearchPolicy.Mode; adapters/infrastructure must not force ANN. See internal/kernel/media/search_policy.go and internal/application/mediamemory/policy_resolver.go."
 
 var searchModeForcedSkipDirs = map[string]bool{
 	".git":         true,
@@ -53,7 +53,7 @@ var searchModeForcedSkipPathPrefixes = []string{
 
 var searchModeForcedExemptPathPrefixes = []string{
 	"internal/application/search",
-	"internal/domain/media",
+	"internal/kernel/media",
 	"internal/api/mediasearch",
 }
 

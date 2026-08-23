@@ -23,7 +23,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,7 +46,7 @@ func degenerateEmptyPathBuilder(_ delivery.PublishRequest) ([]string, error) {
 // the refactor, the check lives in the helper so this test verifies
 // the Publish path still rejects (which it does, via the helper).
 func TestPublisher_PublishRejectsRequireSubpath(t *testing.T) {
-	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+	reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 		delivery.DestinationYouTubeClip: {
 			RootFolderID:   "clips-root",
 			PathBuilder:    degenerateEmptyPathBuilder,
@@ -82,7 +83,7 @@ func TestPublisher_PublishRejectsRequireSubpath(t *testing.T) {
 // future drift — if a developer reverts the refactor and ResolveFolder
 // gets a duplicated Steps-1-4 block again, this test catches them.
 func TestPublisher_ResolveFolder_HonorsRequireSubpath(t *testing.T) {
-	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+	reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 		delivery.DestinationYouTubeClip: {
 			RootFolderID:   "clips-root",
 			PathBuilder:    degenerateEmptyPathBuilder,
@@ -126,7 +127,7 @@ func TestPublisher_ResolveFolder_HonorsRequireSubpath(t *testing.T) {
 // counterpart. With a degenerate registry but a real PathBuilder that
 // returns segments, both Publish and ResolveFolder should succeed.
 func TestPublisher_ResolveFolder_SuccessWhenSubpathProvided(t *testing.T) {
-	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+	reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 		delivery.DestinationYouTubeClip: {
 			RootFolderID: "clips-root",
 			PathBuilder: func(_ delivery.PublishRequest) ([]string, error) {
@@ -187,7 +188,7 @@ func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 		dest := dest
 		// ── Direction A: RequireSubpath=true + empty segments → REJECT ──
 		t.Run(string(dest)+"/reject", func(t *testing.T) {
-			reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+			reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 				dest: {
 					RootFolderID:   "root-" + string(dest),
 					PathBuilder:    degenerateEmptyPathBuilder,
@@ -245,7 +246,7 @@ func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 		// skips it). Initialising `result` here would mislead readers
 		// into expecting EnsureFolder to be exercised.
 		t.Run(string(dest)+"/accept", func(t *testing.T) {
-			reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+			reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 				dest: {
 					RootFolderID:   "root-" + string(dest),
 					PathBuilder:    degenerateEmptyPathBuilder,
@@ -292,10 +293,10 @@ func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 //
 // This test lives in publisher_policies_test.go (alongside the
 // other /accept and /reject policy tests) because it requires
-// `delivery.NewDestinationRegistryWithPolicies`, which is itself
+// `platformdelivery.NewDestinationRegistryWithPolicies`, which is itself
 // build-tag gated via internal/application/assets/delivery/registry_test_factories.go.
 func TestPublisher_FolderPathEmptyForRootUpload(t *testing.T) {
-	reg := delivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
+	reg := platformdelivery.NewDestinationRegistryWithPolicies(map[delivery.DestinationKey]delivery.DestinationPolicy{
 		delivery.DestinationYouTubeClip: {
 			RootFolderID:   "clips-root",
 			PathBuilder:    degenerateEmptyPathBuilder,

@@ -33,8 +33,8 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 )
 

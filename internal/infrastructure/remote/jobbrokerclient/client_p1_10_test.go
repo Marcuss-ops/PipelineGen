@@ -31,7 +31,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	jobbrokerclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 )
 

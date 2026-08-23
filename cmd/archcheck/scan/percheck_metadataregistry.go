@@ -42,9 +42,9 @@ var metadataAllowlist = map[string]bool{
 	"internal/domain/finalization/types_published_artifact.go": true, // owner: platform-finalization, deadline: 2026-08-15
 	"internal/domain/finalization/types_verified_artifact.go":  true, // owner: platform-finalization, deadline: 2026-08-15
 	"internal/domain/remote/staged_artifact_reference.go":      true, // owner: platform-finalization, deadline: 2026-08-15
-	"internal/domain/script/generation_errors.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
-	"internal/domain/script/generation_result.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
-	"internal/domain/script/narrative_clip_view.go":            true, // owner: platform-script-domain, deadline: 2026-08-15
+	"internal/kernel/script/generation_errors.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
+	"internal/kernel/script/generation_result.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
+	"internal/kernel/script/narrative_clip_view.go":            true, // owner: platform-script-domain, deadline: 2026-08-15
 }
 
 // ScanMetadataRegistry walks <root>/internal/domain/** for non-test

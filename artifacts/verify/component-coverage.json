@@ -15456,367 +15456,367 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/domain/script/asset_location_commit.go": {
+    "internal/kernel/script/asset_location_commit.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/asset_location_verification.go": {
+    "internal/kernel/script/asset_location_verification.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/binding_status.go": {
+    "internal/kernel/script/binding_status.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/cache_key.go": {
+    "internal/kernel/script/cache_key.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/cache_key_test.go": {
+    "internal/kernel/script/cache_key_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/clip_binding.go": {
+    "internal/kernel/script/clip_binding.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/clip_binding_helpers.go": {
+    "internal/kernel/script/clip_binding_helpers.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/clip_binding_helpers_test.go": {
+    "internal/kernel/script/clip_binding_helpers_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/clip_evidence.go": {
+    "internal/kernel/script/clip_evidence.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/clip_preplan.go": {
+    "internal/kernel/script/clip_preplan.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/downstream.go": {
+    "internal/kernel/script/downstream.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/downstream_test.go": {
+    "internal/kernel/script/downstream_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/errors.go": {
+    "internal/kernel/script/errors.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/extraction_requests.go": {
+    "internal/kernel/script/extraction_requests.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/fingerprint.go": {
+    "internal/kernel/script/fingerprint.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/fingerprint_test.go": {
+    "internal/kernel/script/fingerprint_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_decode.go": {
+    "internal/kernel/script/generation_decode.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_envelope.go": {
+    "internal/kernel/script/generation_envelope.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_errors.go": {
+    "internal/kernel/script/generation_errors.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_languages.go": {
+    "internal/kernel/script/generation_languages.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_registry.go": {
+    "internal/kernel/script/generation_registry.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_result.go": {
+    "internal/kernel/script/generation_result.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_source_validation.go": {
+    "internal/kernel/script/generation_source_validation.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/generation_validation.go": {
+    "internal/kernel/script/generation_validation.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/immutability_test.go": {
+    "internal/kernel/script/immutability_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/job_types.go": {
+    "internal/kernel/script/job_types.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/json_contract_roundtrip_test.go": {
+    "internal/kernel/script/json_contract_roundtrip_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/media_bindings.go": {
+    "internal/kernel/script/media_bindings.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/media_mode.go": {
+    "internal/kernel/script/media_mode.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/media_mode_test.go": {
+    "internal/kernel/script/media_mode_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/model_output.go": {
+    "internal/kernel/script/model_output.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/model_output_errors.go": {
+    "internal/kernel/script/model_output_errors.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/model_output_test.go": {
+    "internal/kernel/script/model_output_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/model_output_validation.go": {
+    "internal/kernel/script/model_output_validation.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/narrative_clip_view.go": {
+    "internal/kernel/script/narrative_clip_view.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/narrative_clip_view_test.go": {
+    "internal/kernel/script/narrative_clip_view_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/output_spec.go": {
+    "internal/kernel/script/output_spec.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/output_spec_json.go": {
+    "internal/kernel/script/output_spec_json.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/output_spec_test.go": {
+    "internal/kernel/script/output_spec_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/payload.go": {
+    "internal/kernel/script/payload.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/repository.go": {
+    "internal/kernel/script/repository.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/research.go": {
+    "internal/kernel/script/research.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/research_cache.go": {
+    "internal/kernel/script/research_cache.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/research_validation_test.go": {
+    "internal/kernel/script/research_validation_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/resolved_plan.go": {
+    "internal/kernel/script/resolved_plan.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/sampler_provenance.go": {
+    "internal/kernel/script/sampler_provenance.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/scene_bindings.go": {
+    "internal/kernel/script/scene_bindings.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/scene_metadata.go": {
+    "internal/kernel/script/scene_metadata.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/script.go": {
+    "internal/kernel/script/script.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/script_spec.go": {
+    "internal/kernel/script/script_spec.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/source_resolution.go": {
+    "internal/kernel/script/source_resolution.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/source_spec.go": {
+    "internal/kernel/script/source_spec.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/source_spec_planner_roundtrip_test.go": {
+    "internal/kernel/script/source_spec_planner_roundtrip_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/spec.go": {
+    "internal/kernel/script/spec.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/spec_test.go": {
+    "internal/kernel/script/spec_test.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/specscene.go": {
+    "internal/kernel/script/specscene.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/stock_binding_input.go": {
+    "internal/kernel/script/stock_binding_input.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/toggle.go": {
+    "internal/kernel/script/toggle.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/vidrush.go": {
+    "internal/kernel/script/vidrush.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/vidrush_contract.go": {
+    "internal/kernel/script/vidrush_contract.go": {
       "owners": [
         "script"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/script/visual_plan.go": {
+    "internal/kernel/script/visual_plan.go": {
       "owners": [
         "script"
       ],
@@ -15864,25 +15864,25 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/domain/voiceover/command.go": {
+    "internal/capabilities/voiceover/command.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/voiceover/errors.go": {
+    "internal/capabilities/voiceover/errors.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/voiceover/job_types.go": {
+    "internal/capabilities/voiceover/job_types.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/domain/voiceover/result.go": {
+    "internal/capabilities/voiceover/result.go": {
       "owners": [
         "voiceover"
       ],

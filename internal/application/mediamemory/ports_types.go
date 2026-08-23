@@ -6,7 +6,7 @@ package mediamemory
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // QueryCacheEntry is the persisted shape of one cache hit. Kept here

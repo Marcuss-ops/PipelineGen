@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // compileResultEntityTimeline derives the deterministic entity→timestamp

@@ -29,7 +29,7 @@ package usecase
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ApplyPreset is a thin wrapper that delegates to the canonical

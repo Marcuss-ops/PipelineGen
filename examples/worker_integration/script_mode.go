@@ -34,7 +34,7 @@ func runScriptMode(cfg *workerConfig) {
 	// Resolve clip_ids once: consumed by both the payload source map
 	// (items[].source.clip_ids) and the deterministic reqID hash.
 	// Empty + duplicate validation mirrors the server-side validator
-	// in internal/domain/script/generation_envelope.go
+	// in internal/kernel/script/generation_envelope.go
 	// (validateGenerationSourceClips) — fail-closed here means we never
 	// burn a network round-trip on a payload the server would reject,
 	// and the operator sees the exact error before submission (godlike/07).
@@ -50,7 +50,7 @@ func runScriptMode(cfg *workerConfig) {
 				log.Fatalf("clip_ids cannot contain empty or whitespace-only values (godlike/07 fail-closed)")
 			}
 			if _, dup := seen[id]; dup {
-				log.Fatalf("duplicate clip_id %q (validateGenerationSourceClips forbids dups in internal/domain/script/generation_envelope.go)", id)
+				log.Fatalf("duplicate clip_id %q (validateGenerationSourceClips forbids dups in internal/kernel/script/generation_envelope.go)", id)
 			}
 			seen[id] = struct{}{}
 		}
@@ -157,7 +157,7 @@ func buildScriptPayload(cfg *workerConfig, parsedClipIDs []string) (map[string]a
 //
 // For source.type="clips": grounding_policy and fallback_policy are
 // set to the canonical clip-native defaults (clips_primary + strict)
-// per internal/domain/script/source_spec.go. The plan builder may
+// per internal/kernel/script/source_spec.go. The plan builder may
 // refine these downstream based on evidence but the worker write-time
 // defaults are godlike/06 SSOT single-canonical-owner-per-fact — no
 // alternate leaf-pkg SSOT candidate lives in this file.
@@ -193,7 +193,7 @@ func buildSourceMap(source, topic string, clipIDs []string) map[string]any {
 // empty segments. Duplicates are NOT removed here — the caller validates
 // against the server-side identity rule (no duplicates allowed;
 // see validateGenerationSourceClips in
-// internal/domain/script/generation_envelope.go).
+// internal/kernel/script/generation_envelope.go).
 func parseClipIDs(csv string) []string {
 	if strings.TrimSpace(csv) == "" {
 		return nil

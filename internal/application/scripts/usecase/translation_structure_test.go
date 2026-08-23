@@ -6,7 +6,7 @@
 // file lives ONLY at translation_structure_test.go; the canonical
 // TranslateScriptSpec function lives ONLY at translation.go; the
 // scene.Bindings.Clip + scene.Bindings.Image field types live
-// ONLY at internal/domain/script/model_output.go.
+// ONLY at internal/kernel/script/model_output.go.
 //
 // Per godlike/07 NO-FAKE-AVAILABILITY: 7 hermetic invariants all
 // in one test (no LLM, no real translator — the translator is a
@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // itPrefixTranslator byte-prefixes "IT: " to every text segment. The
