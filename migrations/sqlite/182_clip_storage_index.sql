@@ -7,7 +7,7 @@
 -- (see internal/kernel/asset/clip_key.go::ClipKey).
 --
 -- The clip_storage_index table records per-layer presence bits so
--- the storage-index adapter
+-- the domain port (internal/domain/clips/idempotency.go::Idempotency)
 -- can detect the 4 storage cases (SQLite alive / Drive alive /
 -- Qdrant alive / all/none) on every clip-create invocation. The
 -- "each run naturally idempotent" guarantee from the user spec
@@ -26,8 +26,9 @@
 --   - has_db is REQUIRED (godlike/07: established persistence is
 --     the precondition for the other 2 layers). The presence
 --     bits are bit-typed integers (0/1) rather than SQLite
---     boolean to keep the column portable across engines; the
---     application projects these values into typed runtime booleans.
+--     boolean to keep the column portable across engines;
+--     LayerPresence (domain/clips) is the typed runtime bool
+--     projection.
 --
 --   - asset_id is the media_assets.id UUID. Set when
 --     RecordPersistence flips has_db 0→1; carried along so
