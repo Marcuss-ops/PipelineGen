@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/require"
-
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 )
 
 func goldenCases() []goldenCase {

@@ -3,9 +3,9 @@ package adapters
 import (
 	"strings"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── mergePostProcessResult: aggregate helper ──────────────────────────

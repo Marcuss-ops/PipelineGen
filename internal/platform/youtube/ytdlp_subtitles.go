@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

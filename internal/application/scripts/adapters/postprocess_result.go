@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PostProcessResult carries the output of a single processor.

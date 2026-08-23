@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // BuildChatMessages builds the message list for the chat API.

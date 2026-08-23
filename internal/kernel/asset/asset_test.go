@@ -21,7 +21,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestArtifactIsHardAliasFromArtifacts(t *testing.T) {
@@ -31,7 +30,7 @@ func TestArtifactIsHardAliasFromArtifacts(t *testing.T) {
 		name string
 		typ  reflect.Type
 	}{
-		{"artifact.Artifact", reflect.TypeOf(artifact.Artifact{})},
+		{"artifacts.Artifact", reflect.TypeOf(artifacts.Artifact{})},
 		{"artifacts.Artifact", reflect.TypeOf(artifacts.Artifact{})},
 	}
 

@@ -3,8 +3,8 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/gin-gonic/gin"
 )
 

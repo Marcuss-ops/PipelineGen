@@ -5,9 +5,9 @@ package adapters
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PipelineResult aggregates the postprocessor outputs across the

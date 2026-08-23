@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 

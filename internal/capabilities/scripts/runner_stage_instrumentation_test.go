@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestSceneAnalysisRecordsNLPExtract pins that a per-scene VidRush enrichment

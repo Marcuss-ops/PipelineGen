@@ -18,8 +18,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // RegisterJobHandlers is the THIRD (innermost) link in the canonical

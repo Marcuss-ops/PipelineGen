@@ -18,8 +18,8 @@ package scriptgeneration
 
 import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"time"
 )

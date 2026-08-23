@@ -3,8 +3,8 @@ package adapters
 import (
 	"strings"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func stageForProcessor(name ProcessorName) job.StageName {

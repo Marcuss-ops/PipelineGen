@@ -30,9 +30,9 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	completiontransport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

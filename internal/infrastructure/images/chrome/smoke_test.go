@@ -31,25 +31,18 @@
 package chrome
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"image"
-	"image/color"
-	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/zap"
 )
+
 func TestSmoke_WhiteboardSketch_Accepted(t *testing.T) {
 	fix := newSmokeFixture(t)
 	outputPath := filepath.Join(t.TempDir(), "whiteboard.png")
