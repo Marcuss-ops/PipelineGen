@@ -271,11 +271,10 @@ if [ "$REQUIRE_QDRANT" = "1" ]; then
     }')
     S11_FILE="$OUT_DIR/step11_qdrant_scroll.json"
     # Build the Qdrant headers: api-key when QDRANT_API_KEY is set
-    # (mirrors artlist_live_e2e_verify.sh's QHEADERS pattern). A
-    # secured Qdrant cluster returns 401/403 without the api-key
-    # header, so this is REQUIRED for production. Inline curl because
-    # the generic http_post helper doesn't carry per-call custom
-    # headers.
+    # (mirrors the Artlist battery's QHEADERS pattern). A secured
+    # Qdrant cluster returns 401/403 without the api-key header, so
+    # this is REQUIRED for production. Inline curl because the generic
+    # http_post helper doesn't carry per-call custom headers.
     if [ -n "${QDRANT_API_KEY:-}" ]; then
         Q_HTTP=$(curl -sS --max-time 30 -X POST \
             -H "X-Velox-Admin-Token: $TOKEN" \

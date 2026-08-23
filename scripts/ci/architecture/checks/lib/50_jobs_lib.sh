@@ -23,16 +23,13 @@
 # messaggi di errore e i codici di uscita" contract).
 #
 # Invocation modes supported by the orchestrator:
-#   - `bash scripts/ci/architecture/checks/50_jobs.sh` direct invocation
-#     from REPO_ROOT cwd (matches the historical wiring of CI).
-#   - `source` from scripts/ci/architecture/checks/all_checks.sh, where
-#     BASH_SOURCE[0] still resolves to 50_jobs.sh (sourced frames push
-#     a new BASH_SOURCE[0]) and SCRIPT_DIR/REPO_ROOT are the standard
+#   - `source` from scripts/ci-architectural-checks.sh (the live CI
+#     dispatcher), where SCRIPT_DIR/REPO_ROOT are the standard
 #     <architectural-checks>/<repo-root> tuple.
 #
 # Fail-fast: the orchestrator passes `--exit-on-fail` semantics by
 # chaining `bash sub || exit 1`; the lib MUST NOT itself emit `exit`
-# (a sourced orchestrator would propagate exit to all_checks.sh's
+# (a sourced orchestrator would propagate exit to the dispatcher's
 # `set -e`, and 50_jobs_lib.sh being `.`'d from inside the orchestrator
 # could cause the parent shell to abort before the loop starts).
 # Helpers defined here are pure: they return via stdout and never
