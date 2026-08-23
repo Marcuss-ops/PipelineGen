@@ -5,19 +5,23 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-type processingTestDispatcher struct{}
+type processingTestCommitter struct{}
 
-func (processingTestDispatcher) EnqueueAndIndex(context.Context, *asset.Asset, string) error {
-	return nil
+func (processingTestCommitter) CommitTx(context.Context, persistence.Transaction, persistence.CommitRequest) (persistence.CommitResult, error) {
+	return persistence.CommitResult{}, nil
 }
-func (processingTestDispatcher) EnqueueAndRestore(context.Context, string) error { return nil }
-func (processingTestDispatcher) EnqueueAndDelete(context.Context, string) error  { return nil }
+func (processingTestCommitter) CommitAndIndex(context.Context, persistence.CommitRequest) (persistence.CommitResult, error) {
+	return persistence.CommitResult{}, nil
+}
+func (processingTestCommitter) CommitAsset(context.Context, persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	return persistence.CommittedAsset{}, nil
+}
 
-var _ mutations.AssetMutationDispatcher = processingTestDispatcher{}
+var _ persistence.AssetCommitter = processingTestCommitter{}
 
 type registryProcessingErrorRepo struct {
 	completeErr error
@@ -50,7 +54,7 @@ var _ asset.ProcessingRepository = (*registryProcessingErrorRepo)(nil)
 func TestClipsRegistryUpsertMediaPropagatesProcessingError(t *testing.T) {
 	cause := errors.New("registry complete failed")
 	processing := &registryProcessingErrorRepo{completeErr: cause}
-	registry := NewClipsRegistry(nil, nil, nil, nil, processing, processingTestDispatcher{})
+	registry := NewClipsRegistry(nil, nil, nil, nil, processing, processingTestCommitter{})
 
 	err := registry.UpsertMedia(context.Background(), &MediaRecord{ID: "clip-registry", Status: "ACTIVE"})
 
