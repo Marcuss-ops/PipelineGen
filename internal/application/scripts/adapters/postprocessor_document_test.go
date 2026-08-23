@@ -9,19 +9,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 type documentServiceStub struct{ titles, content []string }
 type emptyDocumentReferenceStub struct{}
 
-func (*emptyDocumentReferenceStub) CreateDoc(context.Context, string, string, FolderResolver, string, string, bool) (string, string, error) {
+func (*emptyDocumentReferenceStub) CreateDoc(context.Context, string, string, scriptports.FolderResolver, string, string, bool) (string, string, error) {
 	return "", "", nil
 }
 func (*emptyDocumentReferenceStub) UpdateDoc(context.Context, string, string, string) error {
 	return nil
 }
-func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string, _ FolderResolver, folderID, key string, forceRefresh bool) (string, string, error) {
+func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string, _ scriptports.FolderResolver, folderID, key string, forceRefresh bool) (string, string, error) {
 	s.titles = append(s.titles, title+"|"+folderID+"|"+key)
 	s.content = append(s.content, content)
 	if forceRefresh {

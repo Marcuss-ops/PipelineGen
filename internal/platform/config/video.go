@@ -6,15 +6,35 @@ import (
 
 // CanonicalVideoProfile describes the materialized video artifact. It contains
 // no encoder choice: the same profile can be produced by libx264 or NVENC.
+// FPS is deprecated: use FPSNum/FPSDen rational. FPS remains as legacy projection (round).
 type CanonicalVideoProfile struct {
 	Width            int
 	Height           int
-	FPS              int
+	FPS              int `json:"fps"` // deprecated: use FPSNum/FPSDen
+	FPSNum           int `json:"fps_num"`
+	FPSDen           int `json:"fps_den"`
 	KeyframeInterval int
 	AudioCodec       string
 	AudioBitrate     string
 	SampleRate       int
 	Channels         int
+}
+
+// FrameRate returns the rational FPS. Canonical is 24/1.
+func (p CanonicalVideoProfile) FrameRate() (num, den int) {
+	if p.FPSNum > 0 && p.FPSDen > 0 {
+		return p.FPSNum, p.FPSDen
+	}
+	if p.FPS > 0 {
+		return p.FPS, 1
+	}
+	return 24, 1
+}
+
+// FPSFloat is projection for logs/UI only.
+func (p CanonicalVideoProfile) FPSFloat() float64 {
+	n, d := p.FrameRate()
+	return float64(n) / float64(d)
 }
 
 // WithDefaults makes partially populated profiles safe for direct consumers.
@@ -25,8 +45,20 @@ func (p CanonicalVideoProfile) WithDefaults() CanonicalVideoProfile {
 	if p.Height <= 0 {
 		p.Height = 1080
 	}
+	if p.FPSNum <= 0 || p.FPSDen <= 0 {
+		if p.FPS > 0 {
+			p.FPSNum = p.FPS
+			p.FPSDen = 1
+		} else {
+			p.FPSNum = 24
+			p.FPSDen = 1
+		}
+	}
 	if p.FPS <= 0 {
-		p.FPS = 24
+		p.FPS = p.FPSNum / p.FPSDen
+		if p.FPS <= 0 {
+			p.FPS = 24
+		}
 	}
 	if p.KeyframeInterval <= 0 {
 		p.KeyframeInterval = 48
@@ -73,7 +105,9 @@ type VideoEncoderPolicy struct {
 type VideoConfig struct {
 	Width  int `yaml:"width" default:"1920"`
 	Height int `yaml:"height" default:"1080"`
-	FPS    int `yaml:"fps" default:"24"`
+	FPS    int `yaml:"fps" default:"24"` // deprecated: use FPSNum/FPSDen
+	FPSNum int `yaml:"fps_num" default:"24"`
+	FPSDen int `yaml:"fps_den" default:"1"`
 	// Codec, Preset and CRF are encoder policy. They are deliberately kept
 	// separate from CanonicalVideoProfile, which describes only the artifact.
 	Codec              string   `yaml:"codec" default:"libx264"`
@@ -103,8 +137,20 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	if v.Height <= 0 {
 		v.Height = 1080
 	}
+	if v.FPSNum <= 0 || v.FPSDen <= 0 {
+		if v.FPS > 0 {
+			v.FPSNum = v.FPS
+			v.FPSDen = 1
+		} else {
+			v.FPSNum = 24
+			v.FPSDen = 1
+		}
+	}
 	if v.FPS <= 0 {
-		v.FPS = 24
+		v.FPS = v.FPSNum / v.FPSDen
+		if v.FPS <= 0 {
+			v.FPS = 24
+		}
 	}
 	if v.Duration <= 0 {
 		v.Duration = 7
@@ -181,6 +227,8 @@ func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
 		Width:            v.Width,
 		Height:           v.Height,
 		FPS:              v.FPS,
+		FPSNum:           v.FPSNum,
+		FPSDen:           v.FPSDen,
 		KeyframeInterval: v.KeyframeInterval,
 		AudioCodec:       v.AudioCodec,
 		AudioBitrate:     v.AudioBitrate,

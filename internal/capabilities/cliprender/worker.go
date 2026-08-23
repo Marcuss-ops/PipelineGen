@@ -44,6 +44,7 @@ type Worker struct {
 	publisher         RenderPublisher        // optional in unit tests; required by production wiring
 	overlayResolver   OverlaySegmentResolver // optional until overlay compositing is wired
 	overlayCompositor OverlayCompositor      // optional until overlay compositing is wired
+	outputProber      OutputProber           // probes actual bytes for exact contract validation
 	log               *zap.Logger
 }
 
@@ -111,6 +112,16 @@ func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
 func (w *Worker) WithOverlayCompositor(c OverlayCompositor) *Worker {
 	if w != nil {
 		w.overlayCompositor = c
+	}
+	return w
+}
+
+// WithOutputProber attaches the post-render byte probe. When wired, the worker
+// certifies actual bytes via ProbeOutput→ValidateContract before Publish and
+// again after overlay composition. Optional in tests; required in production.
+func (w *Worker) WithOutputProber(p OutputProber) *Worker {
+	if w != nil {
+		w.outputProber = p
 	}
 	return w
 }
@@ -279,6 +290,24 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but backend resolved to %q (a GPU backend is required)", outcome.Backend)
 	}
 
+	// ── Post-render byte certification (exact contract) ──────────────────
+	if w.outputProber != nil {
+		probe, err := w.outputProber.ProbeOutput(ctx, outcome.OutputPath)
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: probe rendered output: %w", err)
+		}
+		if err := ValidateContract(prepared.Contract, probe); err != nil {
+			return nil, fmt.Errorf("clip.render: rendered output violates contract: %w", err)
+		}
+		emit("clip.render.probe.certified", "rendered bytes certified exact", map[string]any{
+			"output_path": outcome.OutputPath,
+			"fps_num":     probe.FPSNum,
+			"fps_den":     probe.FPSDen,
+			"width":       probe.Width,
+			"height":      probe.Height,
+		})
+	}
+
 	// ── Overlay compositing (entity overlays) ───────────────────────────
 	// When the request declares an overlay, the final video must contain
 	// THAT overlay in its pixels: resolve the rendered segment from the
@@ -321,6 +350,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			OutputPath: filepath.Join(runDir, "composited-clip.mp4"),
 			Width:      int(prepared.Contract.Width),
 			Height:     int(prepared.Contract.Height),
+			Contract:   prepared.Contract,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("clip.render: composite overlay: %w", err)
@@ -336,6 +366,20 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			"start_us":     req.Overlay.StartUS,
 			"end_us":       req.Overlay.EndUS,
 		})
+		if w.outputProber != nil {
+			probe, err := w.outputProber.ProbeOutput(ctx, composite.OutputPath)
+			if err != nil {
+				return nil, fmt.Errorf("clip.render: probe composited output: %w", err)
+			}
+			if err := ValidateContract(prepared.Contract, probe); err != nil {
+				return nil, fmt.Errorf("clip.render: composited output violates contract: %w", err)
+			}
+			emit("clip.render.probe.certified", "composited bytes certified exact", map[string]any{
+				"output_path": composite.OutputPath,
+				"fps_num":     probe.FPSNum,
+				"fps_den":     probe.FPSDen,
+			})
+		}
 	}
 
 	if w.publisher == nil {

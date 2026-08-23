@@ -84,18 +84,43 @@ type RenderExecutor interface {
 // OutputProbe is the capability-owned projection of the rendered output's
 // media facts, collected by the OutputProber port AFTER render_clip. The
 // probe reads the actual bytes on disk — contract validation never trusts
-// what the render boundary claimed to encode.
+// what the render boundary claimed to encode. Every field is exact for
+// assembly-ready gate.
 type OutputProbe struct {
+	Container   string
 	HasVideo    bool
 	VideoCodec  string
+	VideoProfile string
+	VideoLevel  string
 	PixelFormat string
 	Width       int
 	Height      int
-	FPS         float64
+	FPS         float64 // legacy float projection for logs
+	FPSNum      int
+	FPSDen      int
+	VideoTimeBaseNum int
+	VideoTimeBaseDen int
+	AudioTimeBaseNum int
+	AudioTimeBaseDen int
+	SARNum      int
+	SARDen      int
+	ColorRange     string
+	ColorSpace     string
+	ColorTransfer  string
+	ColorPrimaries string
+	FieldOrder     string
+	KeyframeInterval int
 	HasAudio    bool
 	AudioCodec  string
+	AudioProfile string
 	SampleRate  int
 	Channels    int
+	ChannelLayout string
+	AudioBitrate  string
+	VideoStreams int
+	AudioStreams int
+	StreamOrder  string
+	StartPTS     int64
 }
 
 // OutputProber probes the rendered output file. The concrete adapter uses
@@ -178,7 +203,8 @@ type OverlaySegmentResolver interface {
 // OverlayCompositeInput is the fully-resolved input for the compositing
 // pass. Every value comes from the worker (source clip, resolved segment,
 // declared window, output path); the compositor never resolves anything
-// itself.
+// itself. Width/Height are legacy; Contract is the assembly-ready contract
+// (FPS/timebase/color/GOP) that the compositor MUST honor exactly.
 type OverlayCompositeInput struct {
 	RunID      string
 	SourcePath string // the rendered source clip (rendered-clip.mp4)
@@ -186,8 +212,9 @@ type OverlayCompositeInput struct {
 	StartUS    int64 // declared window on the final timeline
 	EndUS      int64
 	OutputPath string
-	Width      int // target geometry (contract)
+	Width      int // target geometry (contract) — deprecated: use Contract
 	Height     int
+	Contract   *ResolvedContract // assembly-ready contract (FPS/timebase/color exact)
 }
 
 // OverlayCompositeResult is the typed outcome of the compositing pass.

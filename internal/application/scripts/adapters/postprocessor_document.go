@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -19,10 +20,10 @@ const stageDocumentPublish kernobs.StageName = "document.publish"
 // DocumentsProcessor publishes the canonical SpecScene representation to
 // Google Docs when the request explicitly enables document output.
 type DocumentsProcessor struct {
-	service DocumentsService
+	service scriptports.DocumentsService
 }
 
-func NewDocumentsProcessor(service DocumentsService) *DocumentsProcessor {
+func NewDocumentsProcessor(service scriptports.DocumentsService) *DocumentsProcessor {
 	return &DocumentsProcessor{service: service}
 }
 
