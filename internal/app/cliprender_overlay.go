@@ -114,8 +114,24 @@ func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.O
 	if in.StartUS < 0 || in.EndUS <= in.StartUS {
 		return nil, fmt.Errorf("overlay compositor: invalid window [%d, %d)", in.StartUS, in.EndUS)
 	}
+	if in.Contract != nil {
+		if in.Width != 0 && in.Width != in.Contract.Width {
+			return nil, fmt.Errorf("overlay compositor: width %d != contract %d", in.Width, in.Contract.Width)
+		}
+		if in.Height != 0 && in.Height != in.Contract.Height {
+			return nil, fmt.Errorf("overlay compositor: height %d != contract %d", in.Height, in.Contract.Height)
+		}
+		if in.Contract.FPSNum != 24 || in.Contract.FPSDen != 1 {
+			return nil, fmt.Errorf("overlay compositor: contract fps %d/%d != 24/1", in.Contract.FPSNum, in.Contract.FPSDen)
+		}
+	}
 	if in.Width <= 0 || in.Height <= 0 {
-		return nil, fmt.Errorf("overlay compositor: target geometry %dx%d is invalid", in.Width, in.Height)
+		if in.Contract != nil {
+			in.Width = in.Contract.Width
+			in.Height = in.Contract.Height
+		} else {
+			return nil, fmt.Errorf("overlay compositor: target geometry %dx%d is invalid", in.Width, in.Height)
+		}
 	}
 
 	startSec := float64(in.StartUS) / 1e6

@@ -11,15 +11,34 @@ import (
 
 // VideoProfile describes the fully resolved video artifact independently of
 // configuration, transport, or encoder implementation.
+// FPS is deprecated: use FPSNum/FPSDen rational. FPS remains as legacy projection.
 type VideoProfile struct {
 	Width            int
 	Height           int
-	FPS              int
+	FPS              int `json:"fps"` // deprecated: use FPSNum/FPSDen
+	FPSNum           int `json:"fps_num"`
+	FPSDen           int `json:"fps_den"`
 	KeyframeInterval int
 	AudioCodec       string
 	AudioBitrate     string
 	SampleRate       int
 	Channels         int
+}
+
+// FrameRate returns rational FPS. Canonical 24/1.
+func (p VideoProfile) FrameRate() (num, den int) {
+	if p.FPSNum > 0 && p.FPSDen > 0 {
+		return p.FPSNum, p.FPSDen
+	}
+	if p.FPS > 0 {
+		return p.FPS, 1
+	}
+	return 24, 1
+}
+
+func (p VideoProfile) FPSFloat() float64 {
+	n, d := p.FrameRate()
+	return float64(n) / float64(d)
 }
 
 // WithDefaults makes a partially populated profile safe for direct consumers.
@@ -30,8 +49,20 @@ func (p VideoProfile) WithDefaults() VideoProfile {
 	if p.Height <= 0 {
 		p.Height = 1080
 	}
+	if p.FPSNum <= 0 || p.FPSDen <= 0 {
+		if p.FPS > 0 {
+			p.FPSNum = p.FPS
+			p.FPSDen = 1
+		} else {
+			p.FPSNum = 24
+			p.FPSDen = 1
+		}
+	}
 	if p.FPS <= 0 {
-		p.FPS = 24
+		p.FPS = p.FPSNum / p.FPSDen
+		if p.FPS <= 0 {
+			p.FPS = 24
+		}
 	}
 	if p.KeyframeInterval <= 0 {
 		p.KeyframeInterval = 48
