@@ -1,4 +1,4 @@
-package asset_test
+package metadata_test
 
 import (
 	"errors"
