@@ -264,7 +264,7 @@ The two are **not duplicates**: §1 covers facts at per-route / per-DB-table lev
 
 See [`stock-e2e-asset-pipeline-debug.md`](stock-e2e-asset-pipeline-debug.md) for the full **canonical paths + env-var contract** table.
 
-> *§-anchor for script grep compatibility: governance rules per-rule-split to `scripts/ci/architecture/checks/check_<NN>_<rule>.sh`. The dispatcher's canonical-list header at the top of `scripts/ci/architecture/checks/all_checks.sh` is the SSOT for the full 12-rule enumeration (godlike/06 one canonical owner per fact). Of those 12, only **Check 69** (NoAutoTriggerLiveBattery) and **Check 70** (LiveBatteryCopyByteEquivalence) directly gate this runbook's §10.6 + §10.8 surface; the other 10 governance rules gate domain surfaces orthogonal to runbook mechanics and are NOT runtime-preconditions for any stock-e2e phase.*
+> *§-anchor for script grep compatibility: governance rules are per-rule-split under `scripts/ci/architecture/checks/lib/check_<NN>_*.sh` and dispatched via `scripts/ci-architectural-checks.sh` (godlike/06 one canonical owner per fact). Of those rules, only **Check 69** (NoAutoTriggerLiveBattery) and **Check 70** (LiveBatteryCopyByteEquivalence) directly gate this runbook's §10.6 + §10.8 surface; the other governance rules gate domain surfaces orthogonal to runbook mechanics and are NOT runtime-preconditions for any stock-e2e phase.*
 
 
 
@@ -387,16 +387,16 @@ Wire the `cmp -s` equivalence check into `make verify-main` (or `scripts/ci-arch
 
 ### §11.0 — Operator env contract (Artlist clean-test minimum set)
 
-**Owner canonico**: §11.0 is the SSOT for the operator-facing env-var minimum of the **Artlist clean test** (`tests/operational/artlist_live_e2e_verify.sh`). It is INTENTIONALLY SEPARATE from §10.2 (which owns the Stock live-battery env contract). Per godlike/06 one canonical owner per fact: do not duplicate these rows in §10.2.
+**Owner canonico**: §11.0 is the SSOT for the operator-facing env-var minimum of the **Artlist clean test** battery (`tests/operational/artlist/run_all.sh`, invoked via `make verify-artlist-live`). It is INTENTIONALLY SEPARATE from §10.2 (which owns the Stock live-battery env contract). Per godlike/06 one canonical owner per fact: do not duplicate these rows in §10.2.
 
 | Variable                       | Required? | Canonical default                                            | Effect if unset                                                                                            | Canonical reference                                                                            |
 |--------------------------------|-----------|--------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | `VELOX_ADMIN_TOKEN`            | REQUIRED  | env-only (canonical source: `.env` → `internal/platform/config/middleware.AdminToken` via `AuthSecurityPort`); rotate via `scripts/rotate_token.sh` + §11.2 | `/api/jobs/*` returns **HTTP 401** per `internal/api/middleware/admin_token.go::RequireAdminToken`; SQLite path still works | `internal/platform/config/middleware` (`AuthSecurityPort.AdminToken`); rotation recipe `scripts/rotate_token.sh` + §11.2 |
 | `VELOX_PORT`                   | required  | `8000`                                                       | Server listen port (also used as `BASE=http://127.0.0.1:${VELOX_PORT}` in shell snippets)                  | `.env.example:16`, `cmd/server/main.go:47`, §10.2                                              |
 | `VELOX_DRIVE_ARTLIST_ROOT`     | required  | (none)                                                       | Artlist uploads land in the operator-supplied default `ArtlistRootFolder` (may be empty on dev)           | `internal/platform/config/drive.go:20` (`ArtlistRootFolder` env-tagged `VELOX_DRIVE_ARTLIST_ROOT`), `.env.example:90`, `architecture/issues.yaml::{ROOT_DRY_RUN}` |
-| `SCROLL_TIMEOUT`               | required  | `120` (in-script, doc-public default per §11.0; operator override honoured)              | Direct scraper (`POST /search` port 9123) needs ~72s on cold Chromium; total budget enforced as a `Promise.race` backstop in `node-scraper/artlist_server.js::handleSearch`      | `tests/operational/artlist_live_e2e_verify.sh:165` (`SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"`); `node-scraper/artlist_server.js::handleSearch` `Promise.race`  |
-| `SKIP_HERMETICS`               | required  | `0` (unset)                                                  | If unset, the wrapper runs the hermetic precondition + `go test '^TestGate'`. Set `1` to bypass.          | `tests/operational/artlist_live_e2e_verify.sh:99` + `:372`                                                          |
-| `SCRAPER_CONNECT_TIMEOUT_SECONDS` | required  | `5` (in-script per bash wrapper; doc-public default per §11.0; operator override honoured) | Wrapper bash falls through to bare `--max-time` semantics with no connect-budget enforcement if unset (failure mode is a multi-minute wait for a dead scraper host rather than a 5s fail-loud). Node `handleSearch` logs `BUDGET connect=N total=M` per request so operators can correlate fail-loud timings against the actual envelope. | `tests/operational/artlist_live_e2e_verify.sh:165` (snippet); the 6 split curl invocations across the 6 bash wrappers — `tests/operational/artlist_live_e2e_verify.sh`, `scripts/artlist_pipeline_live_test.sh`, `scripts/tests/scraper_artlist_startup_e2e.sh`, `tests/operational/artlist_scraper_failure_smoke.sh`, `tests/operational/artlist_preflight_smoke.sh`, `tests/operational/artlist_scraper_timeouts_smoke.sh`; `.env.example`; `docker-compose.yml` `artlist-scraper.environment`; `node-scraper/artlist_server.js::handleSearch` log line |
+| `SCROLL_TIMEOUT`               | required  | `120` (in-script, doc-public default per §11.0; operator override honoured)              | Direct scraper (`POST /search` port 9123) needs ~72s on cold Chromium; total budget enforced as a `Promise.race` backstop in `node-scraper/artlist_server.js::handleSearch`      | `scripts/lib/artlist_pipeline_preflight.sh:33` (`SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"`); `node-scraper/artlist_server.js::handleSearch` `Promise.race`  |
+| `SKIP_HERMETICS`               | required  | `0` (unset)                                                  | If unset, the wrapper runs the hermetic precondition + `go test '^TestGate'`. Set `1` to bypass.          | `.env.example`; `docker-compose.yml` `artlist-scraper.environment`                                                  |
+| `SCRAPER_CONNECT_TIMEOUT_SECONDS` | required  | `5` (in-script per bash wrapper; doc-public default per §11.0; operator override honoured) | Wrapper bash falls through to bare `--max-time` semantics with no connect-budget enforcement if unset (failure mode is a multi-minute wait for a dead scraper host rather than a 5s fail-loud). Node `handleSearch` logs `BUDGET connect=N total=M` per request so operators can correlate fail-loud timings against the actual envelope. | `scripts/lib/artlist_pipeline_preflight.sh:34` (snippet); `.env.example`; `docker-compose.yml` `artlist-scraper.environment`; `node-scraper/artlist_server.js::handleSearch` log line |
 
 **Pre-rotation token recipe (canonical; never echo cleartext)**:
 
@@ -421,9 +421,7 @@ echo "VELOX_PORT=${VELOX_PORT} SCROLL_TIMEOUT=${SCROLL_TIMEOUT} SKIP_HERMETICS=$
 ```bash
 # The five canonical env vars (read-only scan; no rewrite).
 grep -nE '^[[:space:]]*(VELOX_PORT|VELOX_DRIVE_ARTLIST_ROOT|SCROLL_TIMEOUT|SKIP_HERMETICS|VELOX_ADMIN_TOKEN|SCRAPER_CONNECT_TIMEOUT_SECONDS)' \
-  .env.example tests/operational/artlist_live_e2e_verify.sh scripts/artlist_pipeline_live_test.sh \
-  scripts/tests/scraper_artlist_startup_e2e.sh tests/operational/artlist_scraper_failure_smoke.sh \
-  tests/operational/artlist_preflight_smoke.sh tests/operational/artlist_scraper_timeouts_smoke.sh \
+  .env.example tests/operational/artlist/run_all.sh scripts/lib/artlist_pipeline_preflight.sh \
   internal/platform/config/*.go 2>/dev/null | head -50
 # Any drift between the canonical references (above) and this §11.0 table MUST update BOTH atomically per godlike/06 lockstep.
 ```
@@ -603,7 +601,7 @@ Per godlike/06 SSOT (one canonical owner per fact). For the operator who lands o
 2. **API path chosen**: `§11.2` returns `HTTP 200` AFTER rotation+restart; otherwise proceed at §11.3.
 3. **SQLite schema verified**: the diagnosis used ONLY canonical columns (`retry_count`, no `level/stage/error_code` in `job_events`).
 4. **Forward-pointer resolved**: §11.5 row applied (commit on the canonical owner file, NOT here).
-5. **Pre-flight re-run**: `bash tests/operational/artlist_live_e2e_verify.sh` (per the post-rotation cleanup card; OUT-OF-SCOPE for §11 but mandatory before the post-fix live re-run is treated as clean).
+5. **Pre-flight re-run**: `make verify-artlist-live` (per the post-rotation cleanup card; OUT-OF-SCOPE for §11 but mandatory before the post-fix live re-run is treated as clean).
 6. **Lockstep**: lock OR drive-by fix on the canonical owner file landed on `main`; §11 stays doc-only and never edits code.
 
 ### §11.7 — Sign-off + lockstep

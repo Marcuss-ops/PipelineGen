@@ -33,8 +33,8 @@
 #     restart via setsid, wait for /api/health to come back to 200.
 #     No `systemctl` calls (the box may not be a systemd host); no
 #     `sudo` (the runbook says NEVER use sudo in test scripts per
-#     worker-certification-checklist.md). Pattern mirrors the existing
-#     failure-mode script (tests/operational/artlist_scraper_failure_smoke.sh:121).
+#     worker-certification-checklist.md). Pattern mirrors the canonical
+#     operator runbook.
 #   - second run: invoke 05_pipeline_fresh.sh as a SECOND subprocess;
 #     MUST exit 0 with the same verdict pattern. If it does — restart
 #     semantics are demonstrably clean and the DoD Restart verification
@@ -435,8 +435,8 @@ if [[ "${down}" -ne 1 ]]; then
     exit 1
 fi
 
-# ── Bring them back up (canonical setsid pattern from
-# artlist_scraper_failure_smoke.sh:121 — matches operator runbook).
+# ── Bring them back up (canonical setsid pattern — matches operator
+# runbook).
 log_info "Starting PipelineGen via setsid ${PIPELINEGEN_BIN} --mode all..."
 ( cd "$(dirname "${PIPELINEGEN_BIN}")" && setsid "$(basename "${PIPELINEGEN_BIN}")" --mode all > "${WORK_DIR}/pipelinegen.log" 2>&1 & disown )
 log_info "Starting node-scraper via setsid node ${SCRAPER_ENTRY}..."
