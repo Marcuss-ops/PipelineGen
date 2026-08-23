@@ -11,7 +11,6 @@
       "scripts/with-velox-auth_test.sh",
       "scripts/launch_server.sh",
       "scripts/launch_server_test.sh",
-      "scripts/start.sh",
       "scripts/operate_script_generate.sh",
       "scripts/lib/dotenv.sh",
       "start_server.sh",

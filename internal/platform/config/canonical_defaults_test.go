@@ -68,7 +68,6 @@ func TestConfig_CanonicalPort_Is8000AcrossRuntimeSurfaces(t *testing.T) {
 		{"Dockerfile", "EXPOSE 8000", "EXPOSE 8080"},
 		{"docker-compose.yml", `"8081:8000"`, `"8081:8080"`},
 		{"docker-compose.yml", `VELOX_MASTER_URL: "http://pipelinegen-server:8000"`, `VELOX_MASTER_URL: "http://pipelinegen-server:8080"`},
-		{"scripts/start.sh", `VELOX_PORT:=8000`, `VELOX_PORT:=8080`},
 	}
 
 	for _, s := range surfaces {

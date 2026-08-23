@@ -205,7 +205,7 @@ VELOX_PORT=8000
 - **Config layer Go**: `cfg.Security.WorkerToken` ← `VELOX_WORKER_TOKEN`;
   ogni modifica richiede `sudo systemctl restart pipelinegen` (l'EnvironmentFile
   è letto solo all'avvio).
-- **Verifica**: `scripts/start.sh` esegue `check_token VELOX_WORKER_TOKEN`
+- **Verifica**: `make preflight` valida `.env`; `make doctor` (dopo il boot) verifica i token
   (64-hex obbligatorio, pattern placeholder rifiutati).
 
 ### Come i worker lo usano
