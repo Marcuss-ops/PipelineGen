@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -465,12 +466,12 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 		log.Warn("wireScriptFlow: localized render fan-out not wired (localization service unavailable)", zap.Error(err))
 		return
 	}
-	resolver, resolverErr := newClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 	if resolverErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset resolver unavailable)", zap.Error(resolverErr))
 		return
 	}
-	materializer, materializerErr := newClipRenderMaterializer(root.Drive.Reader, filepath.Join(cfg.Storage.TempPath(), "localization"), log)
+	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(root.Drive.Reader, filepath.Join(cfg.Storage.TempPath(), "localization"), log)
 	if materializerErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset materializer unavailable)", zap.Error(materializerErr))
 		return
@@ -478,15 +479,16 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *wiring.ComposeRoot, l
 	// Reuse the canonical clip-render transcript resolver. It first reads the
 	// READY timed transcript from SQLite; only a cache miss may invoke Whisper,
 	// and the generated result is persisted by that resolver.
-	transcriptResolver := &clipRenderTranscriptResolver{repo: root.Repos.TextTrackRepo, log: log}
+	transcriptResolver := clipadapters.NewClipRenderTranscriptResolver(log)
+	transcriptResolver.SetRepo(root.Repos.TextTrackRepo)
 	if root.TextTracks != nil {
-		transcriptResolver.acquire = root.TextTracks.AcquireService
+		transcriptResolver.SetAcquire(root.TextTracks.AcquireService)
 	}
 	if root.Domains != nil {
-		transcriptResolver.cueWriter = root.Domains.CueWriter
+		transcriptResolver.SetCueWriter(root.Domains.CueWriter)
 	}
-	if streaming, streamErr := newClipRenderStreamingTranscriber(cfg, log); streamErr == nil {
-		transcriptResolver.streaming = streaming
+	if streaming, streamErr := clipadapters.NewClipRenderStreamingTranscriber(cfg, log); streamErr == nil {
+		transcriptResolver.SetStreaming(streaming)
 	} else {
 		log.Warn("wireScriptFlow: streaming subtitle generation unavailable; using acquisition fallback", zap.Error(streamErr))
 	}

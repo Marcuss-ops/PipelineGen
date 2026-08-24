@@ -1,4 +1,4 @@
-package app
+package adapters
 
 import (
 	"context"
@@ -8,17 +8,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
-// rustOutputProber adapts rustexec.VideoProcessor.Probe (the canonical Rust
+// RustOutputProber adapts rustexec.VideoProcessor.Probe (the canonical Rust
 // probe boundary) into cliprender.OutputProber. It reads the actual bytes on
 // disk — contract validation never trusts what the render boundary claimed to
 // encode. Every field is exact for the assembly-ready gate. Fail-closed:
 // a missing, unreadable, or unprobeable output is a typed error, never a
 // silent empty probe.
-type rustOutputProber struct {
+type RustOutputProber struct {
 	processor *rustexec.VideoProcessor
 }
 
-func (p *rustOutputProber) ProbeOutput(ctx context.Context, path string) (*cliprender.OutputProbe, error) {
+func (p *RustOutputProber) ProbeOutput(ctx context.Context, path string) (*cliprender.OutputProbe, error) {
 	if p == nil || p.processor == nil {
 		return nil, fmt.Errorf("output prober: VideoProcessor is required")
 	}

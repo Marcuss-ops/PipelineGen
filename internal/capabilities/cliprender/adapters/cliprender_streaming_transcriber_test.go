@@ -1,4 +1,4 @@
-package app
+package adapters
 
 // cliprender_streaming_transcriber_test.go — unit test for the streaming
 // PCM transcriber (spec §4: zero temp WAV). Uses stub ffmpeg/bridge scripts
@@ -57,9 +57,9 @@ if len(data) == 0:
 print(%s)
 `
 
-func newTestStreamingTranscriber(t *testing.T, ffmpegPath, bridgePath string) *clipRenderStreamingTranscriber {
+func newTestStreamingTranscriber(t *testing.T, ffmpegPath, bridgePath string) *ClipRenderStreamingTranscriber {
 	t.Helper()
-	return &clipRenderStreamingTranscriber{
+	return &ClipRenderStreamingTranscriber{
 		pythonBin:  "python3",
 		scriptPath: bridgePath,
 		ffmpegPath: ffmpegPath,
@@ -140,7 +140,7 @@ func TestNewClipRenderStreamingTranscriber_FailClosed(t *testing.T) {
 	// From the package test cwd the repo-root bridge script is not
 	// resolvable and/or python3 is absent — either way construction must
 	// fail closed with a typed error (never a half-wired transcriber).
-	_, err := newClipRenderStreamingTranscriber(nil, zap.NewNop())
+	_, err := NewClipRenderStreamingTranscriber(nil, zap.NewNop())
 	if err == nil {
 		t.Fatalf("expected construction error, got nil")
 	}

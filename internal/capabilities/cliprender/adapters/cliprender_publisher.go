@@ -1,4 +1,4 @@
-package app
+package adapters
 
 import (
 	"context"
@@ -18,14 +18,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// clipRenderPublisher is the composition-root adapter for the final render
+// ClipRenderPublisher is the composition-root adapter for the final render
 // boundary. Drive publication goes through delivery.Publisher; the derived
 // asset and its location are committed through the canonical AssetCommitter.
 //
 // Every boundary step (hash, upload video, upload sidecar, taxonomy resolve,
 // SQLite commit) is logged with structured zap entries and timed so the
 // pipelinegen call chain can be reconstructed from logs alone.
-type clipRenderPublisher struct {
+type ClipRenderPublisher struct {
 	drive     delivery.Publisher
 	committer persistence.AssetCommitter
 	log       *zap.Logger
@@ -34,19 +34,19 @@ type clipRenderPublisher struct {
 	commitMu sync.Mutex
 }
 
-// newClipRenderPublisher builds the publisher; log is required so each
+// NewClipRenderPublisher builds the publisher; log is required so each
 // publication phase is observable.
-func newClipRenderPublisher(drive delivery.Publisher, committer persistence.AssetCommitter, log *zap.Logger) (*clipRenderPublisher, error) {
+func NewClipRenderPublisher(drive delivery.Publisher, committer persistence.AssetCommitter, log *zap.Logger) (*ClipRenderPublisher, error) {
 	if drive == nil || committer == nil {
 		return nil, errors.New("clip.render publisher: Drive publisher and asset committer are required")
 	}
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &clipRenderPublisher{drive: drive, committer: committer, log: log}, nil
+	return &ClipRenderPublisher{drive: drive, committer: committer, log: log}, nil
 }
 
-func (p *clipRenderPublisher) publishPhase(phase, runID string, fields ...zap.Field) {
+func (p *ClipRenderPublisher) publishPhase(phase, runID string, fields ...zap.Field) {
 	all := append([]zap.Field{
 		zap.String("subsystem", "clip_render_publish"),
 		zap.String("phase", phase),
@@ -67,7 +67,7 @@ type publishMetrics struct {
 	SidecarUploaded      bool  `json:"sidecar_upload_succeeded"`
 }
 
-func (p *clipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderPublishInput) (*cliprender.RenderPublishResult, error) {
+func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderPublishInput) (*cliprender.RenderPublishResult, error) {
 	if p == nil || p.drive == nil || p.committer == nil {
 		return nil, fmt.Errorf("clip.render publisher: Drive publisher and asset committer are required")
 	}

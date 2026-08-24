@@ -26,6 +26,7 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -358,7 +359,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Parallel-preparation adapters (composition root owns mechanics,
 	// the capability owns the ports). Every adapter is fail-closed at
 	// call time when a dependency is missing.
-	resolver, err := newClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, err := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset resolver: %w", err)
 	}
@@ -366,28 +367,28 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer, err := newClipRenderMaterializer(driveReader, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
+	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
-	transcriptResolver := &clipRenderTranscriptResolver{log: log}
+	transcriptResolver := clipadapters.NewClipRenderTranscriptResolver(log)
 	if root.Repos != nil {
-		transcriptResolver.repo = root.Repos.TextTrackRepo
+		transcriptResolver.SetRepo(root.Repos.TextTrackRepo)
 	}
 	if root.TextTracks != nil {
-		transcriptResolver.acquire = root.TextTracks.AcquireService
+		transcriptResolver.SetAcquire(root.TextTracks.AcquireService)
 	}
 	if root.Domains != nil {
-		transcriptResolver.cueWriter = root.Domains.CueWriter
+		transcriptResolver.SetCueWriter(root.Domains.CueWriter)
 	}
 	// Streaming PCM transcriber (spec §4: zero temp WAV). Construction is
 	// fail-closed with a typed error when python3/ffmpeg/bridge are missing;
 	// the resolver falls back to the canonical WAV-chain with a warning.
-	if streaming, err := newClipRenderStreamingTranscriber(cfg, log); err != nil {
+	if streaming, err := clipadapters.NewClipRenderStreamingTranscriber(cfg, log); err != nil {
 		log.Warn("registerClipRender: streaming transcriber unavailable; transcript generation will use the WAV chain",
 			zap.String("reason", err.Error()))
 	} else {
-		transcriptResolver.streaming = streaming
+		transcriptResolver.SetStreaming(streaming)
 	}
 
 	preparer, err := cliprender.NewPreparer(
@@ -407,7 +408,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Deterministic ASS compiler (canonical texttracks content generator —
 	// single owner). Subtitles.enabled=true without a wired compiler fails
 	// closed in the worker; this wiring makes burn+sidecar always available.
-	worker.WithSubtitleCompiler(&clipRenderSubtitleCompiler{})
+	worker.WithSubtitleCompiler(clipadapters.NewClipRenderSubtitleCompiler())
 
 	// Rust render boundary: shared executor + resolved media execution
 	// config (encoder policy + profile owned by the composition root, never
@@ -440,12 +441,12 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		}
 	}
 	chrononRenderer := wiring.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
-	worker.WithRenderExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, chronon: chrononRenderer, resolver: backendResolver, probe: backendProbe})
+	worker.WithRenderExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, chrononRenderer, backendResolver, backendProbe))
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}
 	var committer assetspersistence.AssetCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
-	publisher, publisherErr := newClipRenderPublisher(root.Drive.Publisher, committer, log)
+	publisher, publisherErr := clipadapters.NewClipRenderPublisher(root.Drive.Publisher, committer, log)
 	if publisherErr != nil {
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
@@ -466,17 +467,17 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if cacheErr != nil {
 		return fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
 	}
-	worker.WithOverlaySegmentResolver(&overlaySegmentResolver{cache: overlayCache})
-	worker.WithOverlayCompositor(&ffmpegOverlayCompositor{
-		ffmpegPath: cfg.External.FfmpegPath,
-		codec:      mediaConfig.Policy.Codec,
-		preset:     mediaConfig.Policy.Preset,
-		crf:        mediaConfig.Policy.CRF,
-	})
+	worker.WithOverlaySegmentResolver(clipadapters.NewOverlaySegmentResolver(overlayCache))
+	worker.WithOverlayCompositor(clipadapters.NewFFmpegOverlayCompositor(
+		cfg.External.FfmpegPath,
+		mediaConfig.Policy.Codec,
+		mediaConfig.Policy.Preset,
+		mediaConfig.Policy.CRF,
+	))
 	// Post-render OutputProber: probes actual bytes on disk via the canonical
 	// Rust probe boundary. Mandatory for overlay compositing; validates
 	// rendered output against the assembly-ready contract before publication.
-	outputProber := &rustOutputProber{processor: rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)}
+	outputProber := clipadapters.NewRustOutputProber(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
 	worker.WithOutputProber(outputProber)
 	log.Info("registerClipRender: clip render boundary wired (Chronon complex compositor + Rust media boundary + OutputProber)",
 		zap.String("rust_muscles", cfg.External.RustMusclesPath),

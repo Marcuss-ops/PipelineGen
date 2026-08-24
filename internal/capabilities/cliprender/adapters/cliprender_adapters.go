@@ -1,4 +1,4 @@
-package app
+package adapters
 
 // cliprender_adapters.go wires the concrete adapters for the clip.render
 // parallel preparation phase. The capability (internal/capabilities/cliprender)
@@ -26,26 +26,26 @@ import (
 
 // ── AssetResolver ────────────────────────────────────────────────────
 
-// clipRenderAssetResolver maps a canonical asset_id to the capability's
+// ClipRenderAssetResolver maps a canonical asset_id to the capability's
 // AssetRef via the canonical asset registry.
-type clipRenderAssetResolver struct {
+type ClipRenderAssetResolver struct {
 	assets *asset.Service
 	log    *zap.Logger
 }
 
-// newClipRenderAssetResolver wires the resolver with the canonical asset
+// NewClipRenderAssetResolver wires the resolver with the canonical asset
 // service. log is required so each resolve call is observable.
-func newClipRenderAssetResolver(assets *asset.Service, log *zap.Logger) (*clipRenderAssetResolver, error) {
+func NewClipRenderAssetResolver(assets *asset.Service, log *zap.Logger) (*ClipRenderAssetResolver, error) {
 	if assets == nil {
 		return nil, errors.New("clip.render: asset registry not wired")
 	}
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &clipRenderAssetResolver{assets: assets, log: log}, nil
+	return &ClipRenderAssetResolver{assets: assets, log: log}, nil
 }
 
-func (r *clipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID string) (*cliprender.AssetRef, error) {
+func (r *ClipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID string) (*cliprender.AssetRef, error) {
 	if r == nil || r.assets == nil {
 		return nil, errors.New("clip.render: asset registry not wired")
 	}
@@ -95,21 +95,21 @@ func (r *clipRenderAssetResolver) ResolveAsset(ctx context.Context, assetID stri
 
 // ── AssetMaterializer ────────────────────────────────────────────────
 
-// clipRenderMaterializer ensures the asset bytes are local. Precedence:
+// ClipRenderMaterializer ensures the asset bytes are local. Precedence:
 // (1) the registry's local_path when the file exists, (2) a content-addressed
 // scratch copy already downloaded in a prior run, (3) a fresh Drive download
 // into scratch. A missing local copy AND missing Drive source fails closed.
-// clipRenderMaterializer is the clip.render-facing adapter that delegates
+// ClipRenderMaterializer is the clip.render-facing adapter that delegates
 // every asset type (video, image, watermark, background) to the single
 // CanonicalAssetMaterializer.
-type clipRenderMaterializer struct {
+type ClipRenderMaterializer struct {
 	canonical *drivepkg.CanonicalAssetMaterializer
 	log       *zap.Logger
 }
 
-// newClipRenderMaterializer wires the materializer over the canonical
+// NewClipRenderMaterializer wires the materializer over the canonical
 // implementation. log is required so every materialize call is observable.
-func newClipRenderMaterializer(drive drivepkg.Reader, scratchDir string, log *zap.Logger) (*clipRenderMaterializer, error) {
+func NewClipRenderMaterializer(drive drivepkg.Reader, scratchDir string, log *zap.Logger) (*ClipRenderMaterializer, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -117,10 +117,10 @@ func newClipRenderMaterializer(drive drivepkg.Reader, scratchDir string, log *za
 	if err != nil {
 		return nil, err
 	}
-	return &clipRenderMaterializer{canonical: canonical, log: log}, nil
+	return &ClipRenderMaterializer{canonical: canonical, log: log}, nil
 }
 
-func (m *clipRenderMaterializer) Materialize(ctx context.Context, ref cliprender.AssetRef) (*cliprender.MaterializedAsset, error) {
+func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender.AssetRef) (*cliprender.MaterializedAsset, error) {
 	if m == nil || m.canonical == nil {
 		return nil, errors.New("clip.render: Drive reader not wired (asset materialization requires it)")
 	}

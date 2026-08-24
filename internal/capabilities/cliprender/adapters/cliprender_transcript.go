@@ -1,12 +1,12 @@
-package app
+package adapters
 
 // cliprender_transcript.go wires the streaming transcription path for the
 // clip.render preparation phase:
 //
-//   - clipRenderStreamingTranscriber — FFmpeg decodes the source STRAIGHT to a
+//   - ClipRenderStreamingTranscriber — FFmpeg decodes the source STRAIGHT to a
 //     raw s16le 16kHz mono PCM pipe into the Whisper bridge stdin: no WAV (or
 //     any audio intermediate) ever touches disk (feature spec §4).
-//   - clipRenderTranscriptResolver — reuses the canonical READY text track
+//   - ClipRenderTranscriptResolver — reuses the canonical READY text track
 //     when it exists; generates (streaming preferred, WAV chain fallback) and
 //     persists otherwise.
 //
@@ -33,7 +33,7 @@ import (
 
 // ── Streaming transcriber (zero temp WAV) ────────────────────────────
 
-// clipRenderStreamingTranscriber decodes the source audio with FFmpeg STRAIGHT
+// ClipRenderStreamingTranscriber decodes the source audio with FFmpeg STRAIGHT
 // to a raw s16le 16kHz mono PCM pipe and streams it into the Whisper bridge's
 // stdin (feature spec §4): MP4 → FFmpeg decode → PCM pipe → Whisper numpy
 // array. No WAV (or any audio intermediate) ever touches disk.
@@ -41,7 +41,7 @@ import (
 // The bridge (scripts/bridges/whisper_transcriber.py --pcm-stdin) delegates
 // to scripts/tools/transcribe_detect_lang.py --pcm-stdin, which feeds the PCM
 // to faster-whisper as an in-memory float32 array.
-type clipRenderStreamingTranscriber struct {
+type ClipRenderStreamingTranscriber struct {
 	pythonBin  string
 	scriptPath string
 	ffmpegPath string
@@ -49,10 +49,10 @@ type clipRenderStreamingTranscriber struct {
 	log        *zap.Logger
 }
 
-// newClipRenderStreamingTranscriber constructs the streaming transcriber.
+// NewClipRenderStreamingTranscriber constructs the streaming transcriber.
 // Fail-closed at construction: missing python/ffmpeg/bridge script is a typed
 // error (the caller decides whether to fall back to the WAV-based chain).
-func newClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*clipRenderStreamingTranscriber, error) {
+func NewClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*ClipRenderStreamingTranscriber, error) {
 	pythonBin := "python3"
 	scriptPath := "scripts/bridges/whisper_transcriber.py"
 	ffmpegPath := "ffmpeg"
@@ -68,7 +68,7 @@ func newClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*cl
 	if _, err := exec.LookPath(ffmpegPath); err != nil {
 		return nil, fmt.Errorf("streaming transcriber: ffmpeg %q not on PATH: %w", ffmpegPath, err)
 	}
-	return &clipRenderStreamingTranscriber{
+	return &ClipRenderStreamingTranscriber{
 		pythonBin:  pythonBin,
 		scriptPath: scriptPath,
 		ffmpegPath: ffmpegPath,
@@ -80,7 +80,7 @@ func newClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*cl
 // TranscribeStream decodes source → PCM pipe → Whisper bridge and returns the
 // typed transcript. Fail-closed: any subprocess failure, parse error, or
 // script error is a typed error — never a placeholder transcript.
-func (s *clipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, source *cliprender.MaterializedAsset, language string) (*cliprender.TranscriptResult, error) {
+func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, source *cliprender.MaterializedAsset, language string) (*cliprender.TranscriptResult, error) {
 	if source == nil || source.LocalPath == "" {
 		return nil, errors.New("clip.render: streaming transcribe requires a materialized source")
 	}
@@ -190,18 +190,18 @@ func (s *clipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 
 // ── TranscriptResolver ───────────────────────────────────────────────
 
-// clipRenderTranscriptResolver reuses the canonical READY text track when it
+// ClipRenderTranscriptResolver reuses the canonical READY text track when it
 // exists and generates (streaming PCM preferred, Whisper chain fallback) +
 // optionally persists when it does not.
-type clipRenderTranscriptResolver struct {
+type ClipRenderTranscriptResolver struct {
 	repo      asset.TextTrackRepository
 	acquire   *texttracks.AcquireService
-	streaming *clipRenderStreamingTranscriber
+	streaming *ClipRenderStreamingTranscriber
 	cueWriter texttracks.TimedCueWriter
 	log       *zap.Logger
 }
 
-func (r *clipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender.TranscriptInput) (*cliprender.TranscriptResult, bool, error) {
+func (r *ClipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender.TranscriptInput) (*cliprender.TranscriptResult, bool, error) {
 	if r.repo == nil {
 		return nil, false, errors.New("clip.render: text track repository not wired")
 	}
@@ -233,7 +233,7 @@ func (r *clipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 	}, true, nil
 }
 
-func (r *clipRenderTranscriptResolver) Generate(ctx context.Context, in cliprender.TranscriptInput, source *cliprender.MaterializedAsset) (*cliprender.TranscriptResult, error) {
+func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprender.TranscriptInput, source *cliprender.MaterializedAsset) (*cliprender.TranscriptResult, error) {
 	if source == nil || source.LocalPath == "" {
 		return nil, fmt.Errorf("%w: no materialized source audio", cliprender.ErrTranscriptGenerationUnavailable)
 	}
@@ -283,7 +283,7 @@ func (r *clipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 // finalizeGenerated computes the canonical text hash, persists the READY
 // text track + cues when the request asks for it, and returns the typed
 // capability result.
-func (r *clipRenderTranscriptResolver) finalizeGenerated(
+func (r *ClipRenderTranscriptResolver) finalizeGenerated(
 	ctx context.Context,
 	in cliprender.TranscriptInput,
 	source *cliprender.MaterializedAsset,
@@ -318,7 +318,7 @@ func (r *clipRenderTranscriptResolver) finalizeGenerated(
 // track (idempotent upsert on UNIQUE(asset_id, language_code, text_kind))
 // and the timed cues when present. Streaming transcripts are whisper
 // provider; the WAV-chain marks its source type from the acquisition result.
-func (r *clipRenderTranscriptResolver) persistResult(
+func (r *ClipRenderTranscriptResolver) persistResult(
 	ctx context.Context,
 	assetID string,
 	source *cliprender.MaterializedAsset,
