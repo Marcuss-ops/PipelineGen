@@ -36,7 +36,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 	"go.uber.org/zap"
 )
 

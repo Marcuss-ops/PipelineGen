@@ -34,7 +34,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 )
 
 // maybeWrapNamespace wraps the PathBuilder with the given namespace when

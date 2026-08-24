@@ -43,7 +43,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 )
 
 // ── Per-cluster sub-bundles (PR-GRUPOC-1, July 2026) ──────────────────

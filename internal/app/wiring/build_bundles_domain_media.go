@@ -30,7 +30,7 @@ import (
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
-	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 	"go.uber.org/zap"
 )
 

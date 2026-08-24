@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/stretchr/testify/assert"

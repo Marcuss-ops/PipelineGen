@@ -29,7 +29,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 )
 
