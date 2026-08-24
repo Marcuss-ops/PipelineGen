@@ -3,7 +3,7 @@
 //
 // This file is a thin compatibility layer that re-exports the typed
 // port + bounded-reason enum from the leaf sub-package
-// `internal/application/scripts/ports/metrics`. The leaf
+// `internal/capabilities/scripts/ports/metrics`. The leaf
 // sub-package was created to break the import cycle:
 //
 //	observability → ports → jobs → sqlite/jobs → observability
@@ -50,7 +50,7 @@
 package ports
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 )
 
 // TranslationWarningReason is the bounded enum for Prometheus

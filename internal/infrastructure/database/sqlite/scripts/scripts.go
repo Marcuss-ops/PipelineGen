@@ -7,7 +7,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 type ScriptRepository struct {

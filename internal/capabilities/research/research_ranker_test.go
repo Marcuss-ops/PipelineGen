@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

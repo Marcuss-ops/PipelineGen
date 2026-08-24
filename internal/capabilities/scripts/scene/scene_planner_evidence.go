@@ -1,4 +1,4 @@
-// internal/application/scripts/scene/scene_planner_evidence.go —
+// internal/capabilities/scripts/scene/scene_planner_evidence.go —
 // clip-evidence scene narration (PlanFromClipEvidence) + evidence
 // text cleaning. Extracted from scene_planner.go; no behavior
 // change.

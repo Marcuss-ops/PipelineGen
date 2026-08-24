@@ -12,7 +12,7 @@
 #   1. Pre-flight — required tools, server, token, DB
 #   2. TTS worker health — persistent or legacy fallback
 #   3. Enqueue — canonical Plan V2 envelope (per the test fixtures in
-#                internal/application/scripts/jobs/generation_job_failures_test.go)
+#                internal/capabilities/scripts/jobs/generation_job_failures_test.go)
 #   4. Poll — /api/jobs/{id}/full until terminal
 #   5. 4-table check — voiceovers / upload_intents / outbox_events / media_assets
 #   6. Verdict — PASS only if job=SUCCEEDED AND all 4 tables populated

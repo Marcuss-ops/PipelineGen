@@ -3,7 +3,7 @@ package adapters
 import (
 	"time"
 
-	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 )
 
 func entityImageCatalogMetricsFor(metrics any) scriptmetrics.EntityImageCatalogMetrics {

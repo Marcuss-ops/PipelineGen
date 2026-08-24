@@ -6,16 +6,16 @@
   "rules": {
     "percheck_assetbinder_no_scenesynthesizer": {
       "rule_id": "percheck_assetbinder_no_scenesynthesizer",
-      "scope": "internal/application/scripts/scene/binder.go",
-      "canonical_owner": "internal/application/scripts/scene/scene_planner.go (the ScenePlanner)",
+      "scope": "internal/capabilities/scripts/scene/binder.go",
+      "canonical_owner": "internal/capabilities/scripts/scene/scene_planner.go (the ScenePlanner)",
       "forbidden_patterns": ["SceneSynthesizer", "/scripts/scene/synthesizer"],
       "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],
       "residue_allowed": []
     },
     "percheck_binder_scene_field_writes": {
       "rule_id": "percheck_binder_scene_field_writes",
-      "scope": "internal/application/scripts/scene/",
-      "canonical_owner": "internal/application/scripts/scene/scene_planner.go (the ScenePlanner)",
+      "scope": "internal/capabilities/scripts/scene/",
+      "canonical_owner": "internal/capabilities/scripts/scene/scene_planner.go (the ScenePlanner)",
       "forbidden_fields": ["Text", "Title", "Kind", "Index"],
       "forbidden_pattern": "\\bscenes?\\s*(\\[[^\\]]*\\])?\\s*\\.\\s*(Text|Title|Kind|Index)\\s*=",
       "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],

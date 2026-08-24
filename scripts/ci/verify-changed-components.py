@@ -58,6 +58,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "scripts/with-velox-auth",
         "scripts/with-velox-auth_test.sh",
         "comic-video-maker",
+        "researchlive",
     }
 )
 ALL_COMPONENT_PREFIXES = (

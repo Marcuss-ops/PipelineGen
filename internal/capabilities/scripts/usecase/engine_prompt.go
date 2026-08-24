@@ -216,7 +216,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 // text envelope, specscene, scene IDs, scene indexes, kind labels,
 // bindings) is owned by downstream Go code (SceneSynthesizer +
 // scene binder + postprocessor registry — see
-// internal/application/scripts/scene/synthesizer.go and
+// internal/capabilities/scripts/scene/synthesizer.go and
 // internal/application/scripts/adapters/processor_*.go).
 //
 // The model is FORBIDDEN from producing:

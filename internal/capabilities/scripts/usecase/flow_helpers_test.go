@@ -2,7 +2,7 @@
 // P0.6 no-silent-fallback translator contract. The per-phrase
 // translation-failure contract is now owned by the canonical
 // artlist_phrase.PhraseAssetSearchService (see
-// internal/application/scripts/artlist_phrase/service_test.go for
+// internal/capabilities/scripts/artlist_phrase/service_test.go for
 // the 16 hermetic TDD tests covering DedupeEmpty, TranslateEach,
 // contextualQuery, mergeHits, and the full SearchPhrases pipeline).
 //

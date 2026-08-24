@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // stubTranslator is a hermetic PhraseTranslator for tests.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"

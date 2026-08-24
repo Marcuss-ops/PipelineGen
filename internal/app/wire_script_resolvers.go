@@ -40,7 +40,7 @@ import "time"
 import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"

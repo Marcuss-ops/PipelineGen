@@ -214,7 +214,7 @@ func TestRunner_WithRegistry_NilIsTolerant(t *testing.T) {
 // NOT silenced by a silent default.
 //
 // Other split of duties (helper layer for EnqueueGenerationJob): pinned
-// in internal/application/scripts/jobs/generation_enqueue_registry_test.go.
+// in internal/capabilities/scripts/jobs/generation_enqueue_registry_test.go.
 
 // TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault:
 // PR-jobs-retry-contract strict typed contract — when a registry is

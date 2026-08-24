@@ -32,7 +32,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

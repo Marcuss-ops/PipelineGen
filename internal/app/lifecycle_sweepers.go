@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"

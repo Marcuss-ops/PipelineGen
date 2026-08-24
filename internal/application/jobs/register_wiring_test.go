@@ -39,7 +39,7 @@
 // Excludes scripts/jobs/generation_job.go::GenerateJobHandler.RegisterJobs
 // because that method takes ports.Broker (not *jobs.Service) — its
 // wiring contract is locked by tests in
-// internal/application/scripts/jobs/generation_job_test.go.
+// internal/capabilities/scripts/jobs/generation_job_test.go.
 package jobs_test
 
 import (

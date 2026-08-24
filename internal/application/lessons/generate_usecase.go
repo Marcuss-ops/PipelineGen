@@ -21,7 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/apiutil"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

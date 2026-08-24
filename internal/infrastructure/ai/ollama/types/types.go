@@ -13,7 +13,7 @@ import "encoding/json"
 // OutputMode = OutputModePlainText unconditionally; the LLM emits
 // raw narrative prose per the plainTextInstruction suffix (see
 // engine_prompt.go), and the downstream SceneSynthesizer + scene
-// binder (internal/application/scripts/scene/) + postprocessor
+// binder (internal/capabilities/scripts/scene/) + postprocessor
 // pipeline own all structured fields. OutputModeScriptV1 is
 // RETAINED for backward-compat with cached rows and pre-wave
 // callers; the decode path uses jsonextract.Scanner (mode

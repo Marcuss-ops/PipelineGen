@@ -6,7 +6,7 @@
 //   - internal/application/scripts/adapters/processor_voiceover.go
 //     (PostProcess path; ProcessorPolicy = BestEffort — failures
 //     collect as warnings, not errors).
-//   - internal/application/scripts/jobs/job_helpers.go
+//   - internal/capabilities/scripts/jobs/job_helpers.go
 //     (async job worker path; the same fanout feeds the canonical
 //     outbox event payload shape).
 //

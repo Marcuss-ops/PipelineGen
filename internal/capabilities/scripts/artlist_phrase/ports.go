@@ -14,7 +14,7 @@ package artlist_phrase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // PhraseMatch is the canonical return type for

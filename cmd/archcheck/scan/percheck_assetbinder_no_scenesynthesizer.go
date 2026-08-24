@@ -5,8 +5,8 @@
 // godlike/06 SSOT that the SceneAssetBinder is the SOLE owner of
 // the scene-binding responsibility, independent of the Scene-
 // Synthesizer side. The canonical AssetBinder lives at
-// `internal/application/scripts/scene/binder.go` and the canonical
-// SceneSynthesizer lives at `internal/application/scripts/scene/
+// `internal/capabilities/scripts/scene/binder.go` and the canonical
+// SceneSynthesizer lives at `internal/capabilities/scripts/scene/
 // synthesizer.go`. Synthesizing scenes via the Synthesizer from
 // inside the binder is a godlike/06 SSOT drift: the two
 // responsibilities (SHAPE the scene vs BIND the metadata) are
@@ -26,7 +26,7 @@
 //
 // scanner policy (mirrors percheck_assetbinder_ssot precedent):
 //   - scan scope: ONLY the canonical binder file
-//     (internal/application/scripts/scene/binder.go). Other
+//     (internal/capabilities/scripts/scene/binder.go). Other
 //     files in the scene/ package may legitimately reference
 //     the Synthesizer.
 //   - skip `_test.go` files (regression-guard surface
@@ -53,7 +53,7 @@ import (
 // assetBinderSynthesizerScopePath is the canonical binder file
 // whose scope this gate inspects. Only this file MUST be free of
 // any SceneSynthesizer reference (import or symbol).
-const assetBinderSynthesizerScopePath = "internal/application/scripts/scene/binder.go"
+const assetBinderSynthesizerScopePath = "internal/capabilities/scripts/scene/binder.go"
 
 // assetBinderSynthesizerForbiddenPatterns are the literal
 // substrings the gate trips on. Both represent the SceneSynthesizer
@@ -86,7 +86,7 @@ const assetBinderSynthesizerRule = "percheck_assetbinder_no_scenesynthesizer"
 // synthesizer reference inside the canonical binder file. The
 // message references the godlike/06 SSOT + the binder/synthesizer
 // boundary so the migration path is auditable inline.
-const assetBinderSynthesizerNote = "forbidden SceneSynthesizer reference inside the canonical SceneAssetBinder (PR-DIAGNOSI-FINALE rule 1, July 2026); godlike/06 SSOT requires the binder (internal/application/scripts/scene/binder.go) to be the SOLE owner of scene-binding mutations. Synthesizer residence in the scene/ package is legitimate for pre-binder orchestration (e.g. prose-fallback synthesis of N scenes from M clips), but the binder MUST NOT call back into the Synthesizer (re-runs synthesis / overwrites already-shaped scene.Text — silent P0 #2 invariant regression). Route scene-synthesis through a typed port if the binder legitimately needs synthesized scenes."
+const assetBinderSynthesizerNote = "forbidden SceneSynthesizer reference inside the canonical SceneAssetBinder (PR-DIAGNOSI-FINALE rule 1, July 2026); godlike/06 SSOT requires the binder (internal/capabilities/scripts/scene/binder.go) to be the SOLE owner of scene-binding mutations. Synthesizer residence in the scene/ package is legitimate for pre-binder orchestration (e.g. prose-fallback synthesis of N scenes from M clips), but the binder MUST NOT call back into the Synthesizer (re-runs synthesis / overwrites already-shaped scene.Text — silent P0 #2 invariant regression). Route scene-synthesis through a typed port if the binder legitimately needs synthesized scenes."
 
 // assetBinderSynthesizerWarn is the residue-emitter for comment-
 // only references. Mirrors percheck_assetbinder_ssot's residue-
@@ -124,7 +124,7 @@ func ScanAssetBinderNoSynthesizer(root string, pol *policy.Policy, r *report.Rep
 		// opened the operator MUST investigate. Surface a
 		// violation rather than silently passing.
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/application/scripts/scene",
+			Package:     "internal/capabilities/scripts/scene",
 			File:        assetBinderSynthesizerScopePath,
 			Line:        0,
 			Rule:        assetBinderSynthesizerRule,
@@ -168,7 +168,7 @@ func ScanAssetBinderNoSynthesizer(root string, pol *policy.Policy, r *report.Rep
 				continue
 			}
 			r.Violations = append(r.Violations, report.Violation{
-				Package:     "internal/application/scripts/scene",
+				Package:     "internal/capabilities/scripts/scene",
 				File:        assetBinderSynthesizerScopePath,
 				Line:        lineNo,
 				Rule:        assetBinderSynthesizerRule,

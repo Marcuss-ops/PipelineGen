@@ -15,7 +15,7 @@
 // clip_source_builder implementation lives inside
 // internal/application/scripts/usecase.ClipSourceBuilder (used by
 // the source-cluster). MediaCurator lives in
-// internal/application/scripts/dto.MediaCurator. This file owns
+// internal/capabilities/scripts/dto.MediaCurator. This file owns
 // the composition-root-local adapter (imageGenSvcAdapter) that
 // is the seam between the concrete imgservice service and the
 // consumer's typed ImageGenService — i.e. the "curation" surface

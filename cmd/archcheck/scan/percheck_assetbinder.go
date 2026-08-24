@@ -3,14 +3,14 @@
 // scan/percheck_assetbinder.go owns the forward-prevention gate for
 // the canonical per-scene asset binder. After the Phase 2 postprocessor
 // unification, the ONLY place that assigns clip/stock bindings to
-// scenes is internal/application/scripts/scene/binder.go. Any other
+// scenes is internal/capabilities/scripts/scene/binder.go. Any other
 // production code that directly mutates scene.Bindings.Clip or
 // scene.Bindings.Stock, or constructs scriptpkg.ClipBinding /
 // scriptpkg.StockBinding literals, bypasses the canonical binder and
 // risks P0 #2 / P1 #10 invariant regressions.
 //
 // Allowlist:
-//   - internal/application/scripts/scene/binder.go : the canonical binder.
+//   - internal/capabilities/scripts/scene/binder.go : the canonical binder.
 //   - *_test.go                                    : tests may construct fixtures directly.
 //   - internal/kernel/script types                 : domain types own ClipBinding/StockBinding definitions.
 //
@@ -33,7 +33,7 @@ import (
 )
 
 // assetBinderRelPath is the canonical binder file.
-const assetBinderRelPath = "internal/application/scripts/scene/binder.go"
+const assetBinderRelPath = "internal/capabilities/scripts/scene/binder.go"
 
 // assetBinderForbiddenPatterns pairs a regex substring with a human-readable
 // description. The scanner looks for these substrings in production code
@@ -111,7 +111,7 @@ func scanAssetBinderFile(root, path, relPath string, r *report.Report) {
 				Rule:        "percheck_assetbinder_ssot",
 				Severity:    string(report.SeverityError),
 				MatchedRule: "scene_asset_binder_ssot",
-				Note:        "direct " + p.desc + " outside canonical SceneAssetBinder (internal/application/scripts/scene/binder.go); route binding through SceneAssetBinder.BindClips / BindStock",
+				Note:        "direct " + p.desc + " outside canonical SceneAssetBinder (internal/capabilities/scripts/scene/binder.go); route binding through SceneAssetBinder.BindClips / BindStock",
 			})
 		}
 	}

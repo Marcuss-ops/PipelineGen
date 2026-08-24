@@ -62,7 +62,7 @@ var _ ClipsFolderExtPort = (*clipsFolderExtAdapter)(nil)
 
 // ExtractDriveFolderID trims whitespace and forwards to
 // clips.ExtractDriveFolderID. The defensive trim preserves the
-// pre-refactor behaviour of internal/application/scripts/jobs/job_helpers.go
+// pre-refactor behaviour of internal/capabilities/scripts/jobs/job_helpers.go
 // which called `clips.ExtractDriveFolderID(strings.TrimSpace(...))`
 // twice (lines ~46-47 for voiceoverFolderID + voRootID).
 func (a *clipsFolderExtAdapter) ExtractDriveFolderID(raw string) string {

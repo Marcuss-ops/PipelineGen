@@ -4,7 +4,7 @@
 // canonical job-policy literals that the application-layer
 // submission factory owns. The literals scope/job-type/priority/
 // max-retries, by architecture rule, must live exclusively in
-// `internal/application/scripts/submission/{command,factory,policy}.go`,
+// `internal/capabilities/scripts/submission/{command,factory,policy}.go`,
 // not in any HTTP handler or script-flow glue.
 //
 // A leaked literal in internal/api (production code) means the
@@ -89,7 +89,7 @@ const apiPolicyLiteralsRule = "percheck_api_policy_literals"
 // apiPolicyLiteralsNote is the violation Note for any
 // production-code surface that imports-or-references the
 // canonical job-policy literals.
-const apiPolicyLiteralsNote = "forbidden policy literal in internal/api (PR-SUBMISSION-FACTORY forward-prevention gate, July 2026); godlike/07 NO-FAKE-AVAILABILITY boundary: the HTTP transport layer must NOT own job-policy decisions. The canonical application-layer owner is internal/application/scripts/submission/{command,factory,policy}.go. The handler must build a submission.GenerateCommand and delegate SubmitRequest assembly to *submission.SubmitRequestFactory. Move the literal to the factory, build from there, and have the handler call `factory.Build(cmd)` instead. Test-fixture residue (baseline-scan allowlist) is documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
+const apiPolicyLiteralsNote = "forbidden policy literal in internal/api (PR-SUBMISSION-FACTORY forward-prevention gate, July 2026); godlike/07 NO-FAKE-AVAILABILITY boundary: the HTTP transport layer must NOT own job-policy decisions. The canonical application-layer owner is internal/capabilities/scripts/submission/{command,factory,policy}.go. The handler must build a submission.GenerateCommand and delegate SubmitRequest assembly to *submission.SubmitRequestFactory. Move the literal to the factory, build from there, and have the handler call `factory.Build(cmd)` instead. Test-fixture residue (baseline-scan allowlist) is documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
 
 // apiPolicyLiteralsRe matches the canonical job-policy
 // literal names as a word-boundary regex. Mirrors the

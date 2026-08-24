@@ -17,7 +17,7 @@
 //
 // Future-proofing note: ports.Broker uses `handler any` (rather than
 // the job-system `HandlerFunc` concrete signature) because the
-// canonical Broker interface in `internal/application/scripts/ports`
+// canonical Broker interface in `internal/capabilities/scripts/ports`
 // is a typed-port surface that propagates the `func(ctx, *job.Job,
 // *appjobs.JobTools)` shape from the job system. The mock splits the
 // recording into (type, handler) pairs so a type assertion in the

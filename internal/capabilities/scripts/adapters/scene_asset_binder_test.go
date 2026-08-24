@@ -1,7 +1,7 @@
 // Package adapters — scene_asset_binder_test.go: TDD tests locking
 // the adapter-layer behaviour of SceneAssetBinder.BindClips.
 //
-// The binder itself lives at internal/application/scripts/scene/
+// The binder itself lives at internal/capabilities/scripts/scene/
 // binder.go (canonical); these tests pin the adapter-layer
 // observation surface (the canonical user of BindClips is
 // ClipBindingsProcessor).
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

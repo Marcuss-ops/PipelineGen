@@ -237,7 +237,7 @@ const (
 	// becomes a script.generate_item job with its own broker-side
 	// retry envelope. Concurrency=4 per-worker per Step 11B/12B
 	// sibling-fan-out budget; independent per-item retry. The
-	// parent aggregator (internal/application/scripts/jobs/
+	// parent aggregator (internal/capabilities/scripts/jobs/
 	// parent_aggregator.go) ticks the children and emits FinalizeAggregateParent
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.

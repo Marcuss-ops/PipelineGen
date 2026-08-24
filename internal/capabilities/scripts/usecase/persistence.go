@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -327,7 +327,7 @@ func scriptCacheStatus(status string) string {
 // source of truth.
 //
 // godlike/06 SSOT: the helper used to live at
-// internal/application/scripts/dto/compat_types.go as the canonical
+// internal/capabilities/scripts/dto/compat_types.go as the canonical
 // (export-named) SerializeEntityResultRoundTrip. After PR-LEGACY-
 // CLEANUP-2026-07-10 Item 2 retired the entire dto/compat_types.go
 // file + the PostProcessArtifact ` = any` alias, the helper moved

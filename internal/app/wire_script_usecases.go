@@ -43,9 +43,9 @@
 //     that produces normCfg, sourceReg, clipSourceBuilder,
 //     clipSearchPort (AZIONE 2 companion file).
 //   - internal/application/scripts/usecase: use-case constructors.
-//   - internal/application/scripts/jobs: GenerateJobHandler,
+//   - internal/capabilities/scripts/jobs: GenerateJobHandler,
 //     ScriptGenerateItemPayload, FanoutItemBroker port.
-//   - internal/application/scripts/ports: VoiceoverGroupsAdapter.
+//   - internal/capabilities/scripts/ports: VoiceoverGroupsAdapter.
 //   - internal/application/assets/destination: Resolver (canonical
 //     concrete post-2026-07-22 PR-VOICEOVER-GROUPSRESOLVER-RETIRE;
 //     retired the legacy type-alias shim at
@@ -64,9 +64,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"

@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // validSlotsPlan returns a canonical 1-slot plan used as the

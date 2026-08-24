@@ -19,7 +19,7 @@
 // surface breaks each compile-time assertion below):
 //
 //   - internal/kernel/job/service.go::Service             (kernel canonical Service)
-//   - internal/application/scripts/ports/ports.go::Broker (scripts broker port)
+//   - internal/capabilities/scripts/ports/ports.go::Broker (scripts broker port)
 //   - internal/api/module_descriptor.go::JobRegistrar     (api capability-standard)
 //   - internal/app/creator_runtime.go::brokerAdapter      (creator runtime inline adapter)
 //

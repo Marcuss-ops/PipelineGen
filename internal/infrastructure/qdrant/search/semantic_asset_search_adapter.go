@@ -26,7 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 

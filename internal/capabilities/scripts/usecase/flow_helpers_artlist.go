@@ -30,8 +30,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/artlist_phrase"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/artlist_phrase"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 )
 
@@ -146,7 +146,7 @@ func convertPhraseMatchClips(hits []ports.AssetSearchHit) []ScriptAssetSuggestio
 //
 // godlike/06 SSOT: the adapter is internal to the usecase package;
 // the canonical PhraseTranslator port lives at
-// internal/application/scripts/artlist_phrase/ports.go.
+// internal/capabilities/scripts/artlist_phrase/ports.go.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a nil TranslationPort returns a
 // typed error (never silently empty text + auto-fallback to the
@@ -202,7 +202,7 @@ const DefaultArtlistMinScore = 0.7
 //
 // godlike/06 SSOT: the adapter is internal to the usecase package;
 // the canonical PhraseAssetSearcher port lives at
-// internal/application/scripts/artlist_phrase/ports.go.
+// internal/capabilities/scripts/artlist_phrase/ports.go.
 type phraseSearcherAdapter struct {
 	svc ClipServices
 }

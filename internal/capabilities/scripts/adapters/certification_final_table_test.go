@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"

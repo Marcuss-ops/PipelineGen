@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"

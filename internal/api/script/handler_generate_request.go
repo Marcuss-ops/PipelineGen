@@ -16,7 +16,7 @@
 //
 // PR-SUBMISSION-FACTORY (July 2026): buildRequestHash and
 // buildGenerateSubmitRequest were moved to
-// internal/application/scripts/submission. The transport layer now
+// internal/capabilities/scripts/submission. The transport layer now
 // only extracts the command; the application factory builds the
 // SubmitRequest (scope, job type, policy, hash).
 //
@@ -41,7 +41,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -152,7 +152,7 @@ func validateIdempotencyKey(c *gin.Context) (string, bool) {
 // response and the caller must early-return.
 //
 // PR-SUBMISSION-FACTORY (July 2026): the SubmitRequest assembly was
-// moved to internal/application/scripts/submission. The transport
+// moved to internal/capabilities/scripts/submission. The transport
 // layer now only extracts the command and delegates assembly to the
 // application layer.
 func buildGenerateCommand(

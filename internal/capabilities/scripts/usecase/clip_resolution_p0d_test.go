@@ -66,7 +66,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

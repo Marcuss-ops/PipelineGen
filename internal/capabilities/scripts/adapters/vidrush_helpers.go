@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"

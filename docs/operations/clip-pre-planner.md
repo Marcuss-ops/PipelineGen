@@ -90,7 +90,7 @@ typed envelope carrying candidates, scores, and source hints.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/usecase/source_resolver_search.go` (orchestration), `internal/application/assets/search/ports.go` (`SearchResult` port), `internal/domain/asset/search_core.go` (`SearchResult` type), `internal/application/scripts/dto/curation_types.go` (`SearchResultInfo`) |
+| **Primary code paths** | `internal/application/scripts/usecase/source_resolver_search.go` (orchestration), `internal/application/assets/search/ports.go` (`SearchResult` port), `internal/domain/asset/search_core.go` (`SearchResult` type), `internal/capabilities/scripts/dto/curation_types.go` (`SearchResultInfo`) |
 | **Godlike contract** | godlike/06 SSOT: `assets/search/ports.go` is the only canonical search port; alternative search wrappers MUST route through it. godlike/07: empty result set is a typed failure, not a silent pass. |
 | **Inputs** | `ClipPlan` slots |
 | **Outputs** | `SearchResult` with `[]Candidate` + scores |
@@ -166,7 +166,7 @@ clip identifiers and segment timing to the slots authored by stage 2.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/scene/binder.go` (`BindClipsFromManifest`) |
+| **Primary code paths** | `internal/capabilities/scripts/scene/binder.go` (`BindClipsFromManifest`) |
 | **Godlike contract** | godlike/06 SSOT: `BindClipsFromManifest` is the canonical binding pipeline; alternative binders MUST route through the same scene package. godlike/07: an unresolved ref MUST fail closed with a typed sentinel — never a partial binding. |
 | **Inputs** | generated envelope from stage 6 + `ClipPlan` from stage 2 |
 | **Outputs** | typed binding manifest (per scene package contract) |

@@ -31,7 +31,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 
 	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
