@@ -208,7 +208,7 @@ target_internal_roots: app, kernel, capabilities, platform
 # exception must be an existing owner/deadline/target entry in
 # architecture/package_hotspots.json::root_migrations. The migration registry
 # is governance metadata, not permission to extend a legacy root.
-legacy_internal_roots: application, api, infrastructure, domain
+legacy_internal_roots: application, api, infrastructure
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
 # entry is a free-form comment consumed by the human reviewer; the binary
@@ -282,11 +282,7 @@ hard_gates:
   # Wave-25 (P1-7 + P1-4 step 1/2 retirement) forward-prevention
   # gate: any *.go import of a deleted legacy root (canonical
   # enumeration in cmd/archcheck/scan/percheck_legacy_root_ban.go
-  # legacyRootImportBanned) is a hard CI failure. Promoted from
-  # the Wave-25 soft report-only state to a hard gate now that
-  # the P1-7 cutover has eliminated all backwards-compatible
-  # consumers of `internal/domain/job`; the percheck now has a
-  # zero legal-call-site footprint by construction.
+  # legacyRootImportBanned) is a hard CI failure.
   - percheck_legacy_root_ban
   # Retired duplicate SQLite assets/clips implementation: only the idempotency
   # adapter remains in that directory; new implementation files and imports fail.
