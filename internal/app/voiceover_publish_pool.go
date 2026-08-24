@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // voiceoverPublishPool implements voiceover.AsyncPublishPool with a
@@ -26,7 +27,7 @@ import (
 // means the pool is saturated and the caller should tune the
 // concurrency cap.
 type voiceoverPublishPool struct {
-	sem chan struct{}
+	sem concurrent.Semaphore
 	wg  sync.WaitGroup
 	log *zap.Logger
 }
@@ -42,7 +43,7 @@ func NewVoiceoverPublishPool(concurrency int, log *zap.Logger) voiceover.AsyncPu
 		log = zap.NewNop()
 	}
 	return &voiceoverPublishPool{
-		sem: make(chan struct{}, concurrency),
+		sem: concurrent.NewSemaphore(concurrency),
 		log: log,
 	}
 }
@@ -57,8 +58,8 @@ func NewVoiceoverPublishPool(concurrency int, log *zap.Logger) voiceover.AsyncPu
 func (p *voiceoverPublishPool) Submit(_ context.Context, fn func()) {
 	p.wg.Add(1)
 	go func() {
-		p.sem <- struct{}{}
-		defer func() { <-p.sem }()
+		p.sem.Acquire()
+		defer p.sem.Release()
 		defer p.wg.Done()
 		fn()
 	}()

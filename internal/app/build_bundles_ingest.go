@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

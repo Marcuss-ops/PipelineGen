@@ -4,7 +4,7 @@ import (
 	"context"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 )
 
 type imagesSemanticAdapter struct {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"

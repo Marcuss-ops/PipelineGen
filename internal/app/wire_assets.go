@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"

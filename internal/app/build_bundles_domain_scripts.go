@@ -13,8 +13,8 @@ import (
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

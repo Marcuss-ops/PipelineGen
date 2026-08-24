@@ -20,7 +20,7 @@
 //	FASE 6 advanced capability (July 2026):
 //	  - TempWritableChecker + defaultTempWritableChecker
 //	    (constructed inline in WithTempPath on the orchestrator)
-//	  - TTSChecker (concrete owned by internal/infrastructure/process)
+//	  - TTSChecker (concrete owned by internal/platform/process)
 //	  - DriveRootChecker + driveRootAdapter + NewDriveRootChecker
 //	  - OllamaChecker + ollamaHealthAdapter + NewOllamaChecker
 //	  - OutboxChecker + outboxPoolProbe + NewOutboxChecker
@@ -202,7 +202,7 @@ func (c *defaultTempWritableChecker) CheckTempWritable(path string) error {
 }
 
 // TTSChecker is the application port for the Python TTS bridge probe.
-// The subprocess-backed concrete lives in internal/infrastructure/process.
+// The subprocess-backed concrete lives in internal/platform/process.
 type TTSChecker interface {
 	CheckTTS(ctx context.Context) error
 }

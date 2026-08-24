@@ -49,7 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	gdrive "google.golang.org/api/drive/v3"

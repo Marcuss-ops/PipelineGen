@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 )
 
 // ErrStockClipsOutOfRange (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)

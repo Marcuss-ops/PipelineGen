@@ -19,7 +19,7 @@ import (
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"

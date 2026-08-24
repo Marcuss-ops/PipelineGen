@@ -41,7 +41,7 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	searchprofile "github.com/Marcuss-ops/PipelineGen/internal/application/search/profile"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
 // Canonical vector names for the semantic backend. Mirrors the

@@ -21,7 +21,7 @@
 //
 // Exempt zones (per the same family precedent as
 // percheck_qdrant_index_import_ban):
-//  1. internal/infrastructure/indexing/clipindexer/** — the
+//  1. internal/platform/qdrant/indexing/clipindexer/** — the
 //     canonical writer package. setIndexedAt lives here.
 //  2. **/*_test.go — regression-guard surface legitimately needs
 //     fixture setups (e.g. simulating the worker's INDEXED write
@@ -79,7 +79,7 @@ var indexedStateWriterSSOTSkipPathPrefixes = []string{
 // package. setIndexedAt (the only function that writes the INDEXED
 // state to media_assets) lives here. Files under this prefix are
 // exempt.
-const indexedStateWriterSSOTCanonicalPath = "internal/infrastructure/indexing/clipindexer/"
+const indexedStateWriterSSOTCanonicalPath = "internal/platform/qdrant/indexing/clipindexer/"
 
 // indexedStateWriterSSOTScanScope is the prefix the gate applies to.
 // Production .go files under this prefix are scanned. _test.go files
@@ -109,7 +109,7 @@ const indexedStateWriterSSOTScopeMarker = "INDEXED_WRITER_SCOPE: clipindexer"
 
 // indexedStateWriterSSOTNote is the violation Note for any
 // non-canonical SQL write to index_state='INDEXED'.
-const indexedStateWriterSSOTNote = "forbidden SQL write to media_assets.index_state='INDEXED' from a non-canonical file; the canonical INDEXED state transition is via the outbox consumer pipeline: IndexingHandler.Handle (internal/application/jobs/outbox/indexing_handle.go) -> clipindexer.IndexClip (internal/infrastructure/indexing/clipindexer/indexing.go) -> setIndexedAt (internal/infrastructure/indexing/clipindexer/indexing_state.go, single atomic UPDATE with CAS fence on source_version + index_state='INDEXING'). Workflows MUST NOT bypass the outbox consumer; the only way to transition to INDEXED is via the canonical outbox consumer. _test.go files are exempt (regression-guard surface). The comment-marker `// INDEXED_WRITER_SCOPE: clipindexer` in a file header is the documented allowlist for edge cases (none today). Per godlike/06 SSOT (one canonical owner per fact), the only legitimate writer to index_state='INDEXED' is setIndexedAt. Per the user directive (Italian, July 2026): 'Fare in modo che lo stato asset.index.state=INDEXED passi solo dal consumer outbox dedicato.'"
+const indexedStateWriterSSOTNote = "forbidden SQL write to media_assets.index_state='INDEXED' from a non-canonical file; the canonical INDEXED state transition is via the outbox consumer pipeline: IndexingHandler.Handle (internal/application/jobs/outbox/indexing_handle.go) -> clipindexer.IndexClip (internal/platform/qdrant/indexing/clipindexer/indexing.go) -> setIndexedAt (internal/platform/qdrant/indexing/clipindexer/indexing_state.go, single atomic UPDATE with CAS fence on source_version + index_state='INDEXING'). Workflows MUST NOT bypass the outbox consumer; the only way to transition to INDEXED is via the canonical outbox consumer. _test.go files are exempt (regression-guard surface). The comment-marker `// INDEXED_WRITER_SCOPE: clipindexer` in a file header is the documented allowlist for edge cases (none today). Per godlike/06 SSOT (one canonical owner per fact), the only legitimate writer to index_state='INDEXED' is setIndexedAt. Per the user directive (Italian, July 2026): 'Fare in modo che lo stato asset.index.state=INDEXED passi solo dal consumer outbox dedicato.'"
 
 // indexedStateWriterSSOTWarnBucket is the centralized residue-emitter.
 // Mirrors qdrantImportBanWarnBucket + assetStateWarn.

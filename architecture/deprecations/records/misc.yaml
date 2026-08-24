@@ -174,9 +174,9 @@ deprecations:
         must explicitly reject pre-migration values. CI gate does NOT flag
         never-removal entries.
     - id: PR-JOB-STATUS-DEFENSIVE
-      owner_capability: internal/infrastructure/health
+      owner_capability: internal/platform/health
       exact_symbol: jobs_checker.go::livenessQuery LOWER(status) IN ('running','leased','pending')
-      file: internal/infrastructure/health/jobs_checker.go
+      file: internal/platform/health/jobs_checker.go
       file_line: "78"
       replacement: |
         livenessQuery no LOWER() fold; rely on canonical migration 066/070
@@ -186,7 +186,7 @@ deprecations:
       tracking_issue: 'PR-JOB-STATUS-UPPERCASE-MIGRATION (owner: internal/platform/sqlite/jobs)'
       compatibility_test: |
         After data migration writes all jobs.status as UPPERCASE, remove the
-        LOWER() fold in livenessQuery and re-run `go test ./internal/infrastructure/health/... -short`.
+        LOWER() fold in livenessQuery and re-run `go test ./internal/platform/health/... -short`.
       usage_metric: |
         Until the data migration ships, zero usages of legacy lowercase status
         literals remain in application code; the SQL fold is the only defensive read.

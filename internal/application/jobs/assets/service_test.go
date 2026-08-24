@@ -15,7 +15,7 @@ import (
 
 	database "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
 func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func()) {

@@ -77,7 +77,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

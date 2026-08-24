@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // testFS is the canonical LocalFSPort used across the source cache

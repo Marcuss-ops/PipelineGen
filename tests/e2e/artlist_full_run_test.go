@@ -44,7 +44,7 @@ import (
 	"go.uber.org/zap"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/scraper"
 )
 
 // mockPublisher is the E2E stand-in for the production Drive

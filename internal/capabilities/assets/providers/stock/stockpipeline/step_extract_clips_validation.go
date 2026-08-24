@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 )
 
 // validateAndProbeSourceDuration resolves the source duration and bounds-checks

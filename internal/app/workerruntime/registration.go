@@ -30,9 +30,9 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
+	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/assettransferclient"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

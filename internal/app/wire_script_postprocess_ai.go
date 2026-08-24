@@ -37,7 +37,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

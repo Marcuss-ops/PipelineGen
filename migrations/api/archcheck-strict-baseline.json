@@ -46,7 +46,7 @@
         "internal/api/assets/soundeffect/",
         "internal/api/images/",
         "internal/infrastructure/observability/",
-        "internal/infrastructure/qdrant/search/",
+        "internal/platform/qdrant/search/",
         "tests/"
       ],
       "residue_allowed": [
@@ -90,13 +90,13 @@
     "percheck_upsert_points_sole_owner": {
       "rule_id": "percheck_upsert_points_sole_owner",
       "scope": "internal/",
-      "canonical_owner": "internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer; the IndexClip / DeletePointsByFilter entry surface)",
+      "canonical_owner": "internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer; the IndexClip / DeletePointsByFilter entry surface)",
       "forbidden_pattern": "\\.\\s*(UpsertPoints|DeletePoints)\\s*\\(",
       "exempt_surface": [
         "cmd/archcheck/scan/**",
-        "internal/infrastructure/qdrant/indexing/",
-        "internal/infrastructure/qdrant/qdrantmm/",
-        "internal/infrastructure/qdrant/transport/client_points.go (the declaration line; naturally exempt because the regex requires a dot-receiver)",
+        "internal/platform/qdrant/indexing/",
+        "internal/platform/qdrant/qdrantmm/",
+        "internal/platform/qdrant/transport/client_points.go (the declaration line; naturally exempt because the regex requires a dot-receiver)",
         "*_test.go"
       ],
       "residue_allowed": [
@@ -111,7 +111,7 @@
           "reason": "godlike/07 e2e-fixture residue: integration test verifies the Qdrant transport via direct UpsertPoints (bypasses the outbox for fixture determinism)"
         },
         {
-          "file": "internal/infrastructure/qdrant/transport/qdrant_bm25_e2e_test.go",
+          "file": "internal/platform/qdrant/transport/qdrant_bm25_e2e_test.go",
           "line": 126,
           "reason": "godlike/07 e2e-fixture residue: BM25 end-to-end integration test for the Qdrant transport"
         }
@@ -132,12 +132,12 @@
     "percheck_frame_concept_projection_writer": {
       "rule_id": "percheck_frame_concept_projection_writer",
       "scope": "internal/",
-      "canonical_owner": "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (media_frames, FrameCollectionName) + internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (media_concepts, ConceptCollectionName) — the respective projection writers, through the generic ProjectionWriter",
+      "canonical_owner": "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go (media_frames, FrameCollectionName) + internal/platform/qdrant/qdrantmm/qdrant_indexer.go (media_concepts, ConceptCollectionName) — the respective projection writers, through the generic ProjectionWriter",
       "forbidden_pattern": "a point-write call (\\.\\s*(UpsertProjection|DeleteProjection|UpsertPoints|DeletePoints)\\s*\\() on the same line as a frame/concept collection identifier (\\b(FrameCollectionName|ConceptCollectionName)\\b)",
       "exempt_surface": [
         "cmd/archcheck/scan/**",
-        "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go (FrameCollectionName only)",
-        "internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go (ConceptCollectionName only)",
+        "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go (FrameCollectionName only)",
+        "internal/platform/qdrant/qdrantmm/qdrant_indexer.go (ConceptCollectionName only)",
         "*_test.go"
       ],
       "residue_allowed": []
@@ -145,7 +145,7 @@
     "percheck_drive_access_ssot": {
       "rule_id": "percheck_drive_access_ssot",
       "scope": "internal/application/**",
-      "canonical_owner": "internal/application/assets/delivery/ (the typed-port surface; delivery.Publisher as the SOLE Drive-write canal)",
+      "canonical_owner": "internal/platform/delivery/ (the typed-port surface; delivery.Publisher as the SOLE Drive-write canal)",
       "forbidden_patterns": ["drive.Uploader", "drive.Admin", "drive.NewUploader"],
       "exempt_surface": [
         "cmd/archcheck/scan/**",

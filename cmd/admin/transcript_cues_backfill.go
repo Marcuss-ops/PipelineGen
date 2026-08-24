@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	coredl "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -43,7 +43,7 @@ type YouTubeCutRequest struct {
 type Pipeline struct {
 	cfg         *config.Config
 	log         *zap.Logger
-	ytdlp       *downloader.YTDLPDownloader
+	ytdlp       *coredl.YTDLPDownloader
 	clipProcess ClipProcessor
 }
 
@@ -60,7 +60,7 @@ type ClipProcessor interface {
 // and the full video metadata captured from yt-dlp.
 type YouTubeCutResult struct {
 	LocalPath string
-	Metadata  *downloader.YouTubeMetadata
+	Metadata  *coredl.YouTubeMetadata
 }
 
 // NewPipeline creates a new video processing pipeline.
@@ -68,7 +68,7 @@ func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess ClipProcessor)
 	return &Pipeline{
 		cfg:         cfg,
 		log:         log,
-		ytdlp:       downloader.NewYTDLP(cfg),
+		ytdlp:       coredl.NewYTDLP(cfg),
 		clipProcess: clipProcess,
 	}
 }
@@ -78,8 +78,8 @@ func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess ClipProcessor)
 // trims that padding and performs the single canonical encode. Setting
 // ForceKeyframes here would make yt-dlp invoke its own ffmpeg re-encode first,
 // creating a hidden double encode before the canonical render.
-func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *downloader.DownloadRequest {
-	return &downloader.DownloadRequest{
+func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *coredl.DownloadRequest {
+	return &coredl.DownloadRequest{
 		URL:              req.URL,
 		OutputPath:       outputPath,
 		MergeFormat:      "mp4",
@@ -142,7 +142,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	// already carries summary/topics/speakers and the canonical asset builder
 	// persists them. Avoid putting a second yt-dlp subprocess on the critical
 	// path when the caller explicitly opted out.
-	var meta *downloader.YouTubeMetadata
+	var meta *coredl.YouTubeMetadata
 	if !req.SkipMetadataFetch {
 		meta, _ = p.ytdlp.GetVideoMetadata(ctx, req.URL)
 	}

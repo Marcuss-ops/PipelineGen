@@ -28,14 +28,14 @@ import (
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters/monitoradapter"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/health"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/youtubediscoveries"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	platformyoutube "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"

@@ -19,7 +19,7 @@ import (
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
 // ── Mock types ─────────────────────────────────────────────────────────

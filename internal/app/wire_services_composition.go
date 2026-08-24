@@ -49,8 +49,8 @@ import (
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
+	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

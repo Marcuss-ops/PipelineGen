@@ -179,7 +179,7 @@ func boolToInt64(v bool) int64 {
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
-// `internal/infrastructure/process`. Both are infra concerns; the app
+// `internal/platform/process`. Both are infra concerns; the app
 // layer only depends on the StockRenderer + VideoCutter ports
 // declared here.
 // ── StockRenderer port (PR6, June 2026) ────────────────────────────────
@@ -295,4 +295,4 @@ var ErrNoOpCutter = errors.New("cutter: noOpCutter (test fixture)")
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
-// `internal/infrastructure/process`. This file respects the invariant.
+// `internal/platform/process`. This file respects the invariant.

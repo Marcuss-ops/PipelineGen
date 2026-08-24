@@ -11,7 +11,7 @@
 // Rationale (godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY):
 // the `player_client=` literal is the canonical yt-dlp
 // --extractor-args argument centralized in
-// internal/infrastructure/ytdlp/cmd_builder.go by commit
+// internal/platform/ytdlp/cmd_builder.go by commit
 // f3f1ee90 (the web,android policy). Pre-PR-PLAYER-CLIENT-DRIFT-
 // FIX (2026-07-06), the literal had drifted to
 // internal/infrastructure/youtube/metadata.go:95 with the
@@ -26,7 +26,7 @@
 // as a silent production symptom.
 //
 // Excluded files (mirrors the shell check semantics):
-//   - internal/infrastructure/ytdlp/cmd_builder.go: the
+//   - internal/platform/ytdlp/cmd_builder.go: the
 //     canonical SOLE owner of the literal (per godlike/06
 //     SSOT). The literal MUST live here; all other production
 //     code routes through ytdlp.BaseArgs().
@@ -64,14 +64,14 @@ const playerClientLiteral = "player_client="
 // to the canonical SOLE owner of the literal. Every other
 // production Go file MUST route through ytdlp.BaseArgs()
 // instead of re-declaring the literal.
-const playerClientCanonicalRelPath = "internal/infrastructure/ytdlp/cmd_builder.go"
+const playerClientCanonicalRelPath = "internal/platform/ytdlp/cmd_builder.go"
 
 // playerClientScanNote is the violation Note string. The
 // message references the canonical SSOT file + the SSOT
 // contract + the PR-PLAYER-CLIENT-DRIFT-FIX precedent so
 // future agents reading the CI failure have the full
 // context inline.
-const playerClientScanNote = "forbidden `player_client=` literal outside canonical SSOT (internal/infrastructure/ytdlp/cmd_builder.go); godlike/06 SSOT requires every consumer to route through ytdlp.BaseArgs() (PR-PLAYER-CLIENT-DRIFT-FIX, 2026-07-06). The canonical command-builder is the SOLE owner of the web,android policy (commit f3f1ee90)."
+const playerClientScanNote = "forbidden `player_client=` literal outside canonical SSOT (internal/platform/ytdlp/cmd_builder.go); godlike/06 SSOT requires every consumer to route through ytdlp.BaseArgs() (PR-PLAYER-CLIENT-DRIFT-FIX, 2026-07-06). The canonical command-builder is the SOLE owner of the web,android policy (commit f3f1ee90)."
 
 // playerClientSkipDirs is the standard skip-list for whole-repo
 // walks (mirrors the skipDirs pattern in percheck_typeredecl.go

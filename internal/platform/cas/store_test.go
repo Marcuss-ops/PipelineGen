@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
 )
 
 // newTestStore builds a CAS store on a temp root and reuses the REAL

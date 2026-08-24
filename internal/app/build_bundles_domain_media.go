@@ -17,15 +17,15 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
-	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
+	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -98,7 +98,7 @@ func buildDomainMediaServices(
 		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
-	hashAdapter := hashutil.NewHashAdapter()
+	hashAdapter := youtube.NewHashAdapter()
 
 	// Use the canonical resolved cookie path for subtitle acquisition; the
 	// shared BaseArgs builder still gates --cookies to YouTube URLs.

@@ -282,11 +282,11 @@
       ]
     },
     {
-      "path": "internal/infrastructure/delivery",
-      "owner": "delivery migration owner",
+      "path": "internal/platform/delivery",
+      "owner": "delivery canonical platform owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Directory deleted. 3 files migrated to internal/platform/delivery (signer.go, signer_test.go, workspace.go). Archcheck digest-sha256-ban exemption updated. Asset-delivery URL signing + WorkspaceContext alias under single canonical owner.",
+      "resolution": "Phase 1: infrastructure/delivery deleted, 3 files migrated. Phase 2: application/assets/delivery dissolved, 7 files merged (mapper, admin_upload, configured_aliases, contracts_aliases, soundeffect_sidecar_test). ~106 consumers retargeted. Duplicate contracts_aliases merged. 19 files total under single canonical owner.",
       "targets": [
         "internal/platform/delivery"
       ]

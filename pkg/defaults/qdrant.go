@@ -12,14 +12,14 @@
 // internal packages (AGENTS.md "pkg is leaf-only" rule).
 //
 // Direction-of-import: pkg/defaults (no internal imports) ←
-// internal/infrastructure/qdrant/schema (re-exports via
+// internal/platform/qdrant/schema (re-exports via
 // `const VisualEmbeddingModelVersion = defaults.VisualEmbeddingModelVersion`)
 // AND ← internal/application/images (consumes directly).
 //
 // The re-export pattern in schema.go is the godlike/07
 // fail-closed-availability contract for backward compat: any
 // existing infra-layer consumer (e.g.
-// internal/infrastructure/qdrant/search/embedders_dim_test.go)
+// internal/platform/qdrant/search/embedders_dim_test.go)
 // that imports the const from `schema` continues to compile
 // unchanged. The canonical declaration lives here; the
 // re-export is a thin alias that makes `schema.VisualEmbeddingModelVersion`

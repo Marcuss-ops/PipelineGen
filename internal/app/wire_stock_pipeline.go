@@ -38,10 +38,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stocksourcecache"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )

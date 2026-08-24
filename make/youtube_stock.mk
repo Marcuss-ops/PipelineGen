@@ -20,7 +20,7 @@ test-stock-download-plan:
 	$(YOUTUBE_STOCK_TEST) -run TestYouTubeAcquisitionContracts
 
 test-stock-partial-download:
-	$(GO) test -count=1 ./internal/infrastructure/downloader -run 'TestDownload'
+	$(GO) test -count=1 ./internal/platform/downloader -run 'TestDownload'
 
 test-stock-drive:
 	$(GO) test -count=1 ./internal/capabilities/assets/providers/stock/stockpipeline -run 'Test.*Upload'
@@ -32,7 +32,7 @@ test-race-youtube-stock:
 	$(GO) test -race -count=1 $(YOUTUBE_STOCK_PACKAGE)
 
 test-stock-cut:
-	$(GO) test -count=1 ./internal/infrastructure/downloader -run TestDownload
+	$(GO) test -count=1 ./internal/platform/downloader -run TestDownload
 
 test-stock-dedupe test-stock-index test-stock-recovery:
 	$(GO) test -count=1 ./internal/capabilities/assets/providers/stock/stockpipeline

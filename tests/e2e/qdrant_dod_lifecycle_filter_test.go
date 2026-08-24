@@ -3,7 +3,7 @@
 //
 // godlike/06 SSOT: the canonical compiler for Qdrant search filters is
 // CompileQdrantFilter in
-// internal/infrastructure/qdrant/search/filter_compiler.go. Per
+// internal/platform/qdrant/search/filter_compiler.go. Per
 // filter_compiler.go §3: "LifecycleState allow-list is ALWAYS present
 // (defaults to {"ACTIVE"} when AssetFilter.LifecycleState is empty)."
 // The lifecycleClauses function emits one min_should condition per state in
@@ -58,7 +58,7 @@ import (
 	"testing"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
 // TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause is the

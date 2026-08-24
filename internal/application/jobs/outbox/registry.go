@@ -31,7 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 )
 
 // Deps bundles the dependencies consumed by the outbox event handlers.

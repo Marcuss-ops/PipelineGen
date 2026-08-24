@@ -17,7 +17,7 @@ import (
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

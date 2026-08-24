@@ -19,12 +19,12 @@ package app
 import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/diagnostics"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/fallback"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

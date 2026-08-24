@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	_ "github.com/mattn/go-sqlite3"
 )

@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

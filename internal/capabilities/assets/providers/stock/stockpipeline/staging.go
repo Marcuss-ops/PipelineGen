@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assetsports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
@@ -15,9 +15,9 @@ import (
 	"sync"
 )
 
-func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref appassets.SourceRef, req *SourceDownloadRequest) (*appassets.StagedAsset, error) {
+func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref assetsports.SourceRef, req *SourceDownloadRequest) (*assetsports.StagedAsset, error) {
 	v, sfErr, _ := s.sf.Do(cacheKey, func() (interface{}, error) {
-		var result *appassets.StagedAsset
+		var result *assetsports.StagedAsset
 		var downloadErr error
 		h := (*kernobs.StageHandle)(nil)
 		if s.svc != nil {
@@ -38,19 +38,19 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 			downloadErr = fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, err)
 			return nil, downloadErr
 		}
-		result = &appassets.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes}
+		result = &assetsports.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes}
 		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return result, nil
 	})
 	if sfErr != nil {
 		return nil, sfErr
 	}
-	return v.(*appassets.StagedAsset), nil
+	return v.(*assetsports.StagedAsset), nil
 }
 
 // Cleanup removes the staged file's parent temp directory AND
 // releases the shared-lease refcount (if any).
-func (s *StockStager) cleanup(_ context.Context, staged *appassets.StagedAsset) error {
+func (s *StockStager) cleanup(_ context.Context, staged *assetsports.StagedAsset) error {
 	if staged == nil || staged.LocalPath == "" {
 		return nil
 	}
@@ -100,7 +100,7 @@ func extractDriveFileID(rawURL string) (string, error) {
 	return urlutil.FileIDFromDriveLink(rawURL)
 }
 
-func (s *StockStager) stageFromDrive(ctx context.Context, ref appassets.SourceRef, outputPath string) (*appassets.StagedAsset, error) {
+func (s *StockStager) stageFromDrive(ctx context.Context, ref assetsports.SourceRef, outputPath string) (*assetsports.StagedAsset, error) {
 	if s.driveReader == nil {
 		return nil, fmt.Errorf("stock stager: drive reader not wired")
 	}
@@ -156,13 +156,13 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref appassets.SourceRe
 		return nil, fmt.Errorf("stock stager: stat downloaded file: %w", statErr)
 	}
 
-	return &appassets.StagedAsset{
+	return &assetsports.StagedAsset{
 		LocalPath: outputPath,
 		Bytes:     fi.Size(),
 	}, nil
 }
 
-func (s *StockStager) checkSourceCache(ctx context.Context, cacheKey string, ref appassets.SourceRef, outputPath string, fs LocalFSPort) (*appassets.StagedAsset, bool) {
+func (s *StockStager) checkSourceCache(ctx context.Context, cacheKey string, ref assetsports.SourceRef, outputPath string, fs LocalFSPort) (*assetsports.StagedAsset, bool) {
 	if s.cacheReader == nil {
 		return nil, false
 	}
@@ -200,13 +200,13 @@ func (s *StockStager) checkSourceCache(ctx context.Context, cacheKey string, ref
 		return nil, false
 	}
 
-	return &appassets.StagedAsset{
+	return &assetsports.StagedAsset{
 		LocalPath: outputPath,
 		Bytes:     fi.Size(),
 	}, true
 }
 
-func (s *StockStager) populateCache(ctx context.Context, cacheKey, provider, externalID string, ref appassets.SourceRef, localPath string, fileSize int64) {
+func (s *StockStager) populateCache(ctx context.Context, cacheKey, provider, externalID string, ref assetsports.SourceRef, localPath string, fileSize int64) {
 	if s.cacheWriter == nil {
 		return
 	}
@@ -359,13 +359,13 @@ func (d serviceSourceDownloader) Download(ctx context.Context, req *SourceDownlo
 		return nil, fmt.Errorf("stock service source downloader: invalid request")
 	}
 
-	var staged *appassets.StagedAsset
+	var staged *assetsports.StagedAsset
 	var err error
 	if len(req.DownloadSections) > 0 {
 		if len(req.DownloadSections) != 1 {
 			return nil, fmt.Errorf("stock service source downloader: expected one section, got %d", len(req.DownloadSections))
 		}
-		staged, err = d.service.stageSection(ctx, appassets.SourceRef{
+		staged, err = d.service.stageSection(ctx, assetsports.SourceRef{
 			URL:             req.URL,
 			DownloadSection: req.DownloadSections[0],
 			ForceKeyframes:  req.ForceKeyframes,
@@ -375,7 +375,7 @@ func (d serviceSourceDownloader) Download(ctx context.Context, req *SourceDownlo
 		var full *StagedSource
 		full, err = d.service.StageSource(ctx, req.URL)
 		if full != nil {
-			staged = &appassets.StagedAsset{LocalPath: full.LocalPath, Bytes: full.Bytes}
+			staged = &assetsports.StagedAsset{LocalPath: full.LocalPath, Bytes: full.Bytes}
 		}
 	}
 	if err != nil {
@@ -468,7 +468,7 @@ func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, e
 // closure — which stock callers wire to the yt-dlp subprocess.
 //
 // The legacy `s.ytdlp.Download` direct call is RETIRED.
-func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*appassets.StagedAsset, error) {
+func (s *Service) stageSection(ctx context.Context, ref assetsports.SourceRef) (*assetsports.StagedAsset, error) {
 	// P6 (July 2026): nil-guard for test-fixture path.
 	if s.sourceStager == nil {
 		return nil, fmt.Errorf("stage section %q: %w", ref.URL, acquisition.ErrAcquisitionNotWired)
@@ -507,7 +507,7 @@ func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*a
 		zap.Int64("bytes", fi.Size()),
 		zap.Time("expires_at", prepared.ExpiresAt),
 	)
-	return &appassets.StagedAsset{
+	return &assetsports.StagedAsset{
 		LocalPath: prepared.LocalPath,
 		Bytes:     fi.Size(),
 	}, nil

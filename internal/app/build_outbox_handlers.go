@@ -34,8 +34,8 @@ import (
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
+	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem/metadataexport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )

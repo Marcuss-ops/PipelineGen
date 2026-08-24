@@ -20,7 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	searchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

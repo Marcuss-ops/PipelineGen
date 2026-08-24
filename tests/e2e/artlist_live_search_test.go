@@ -31,7 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/scraper"
 )
 
 // TestE2E_Artlist_LiveSearch_NodeOn exercises the live search path

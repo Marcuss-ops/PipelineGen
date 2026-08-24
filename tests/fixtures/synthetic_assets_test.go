@@ -34,8 +34,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // ── Test helpers ─────────────────────────────────────────────────────

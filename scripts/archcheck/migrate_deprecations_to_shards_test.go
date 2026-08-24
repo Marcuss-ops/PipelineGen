@@ -88,9 +88,9 @@ const syntheticLegacyYaml = `deprecations:
     status: keep
     notes: synth
   - id: TEST-QDRANT-A
-    owner_capability: internal/infrastructure/qdrant/foo
+    owner_capability: internal/platform/qdrant/foo
     exact_symbol: Qdrant.Foo
-    file: internal/infrastructure/qdrant/foo.go
+    file: internal/platform/qdrant/foo.go
     file_line: "5"
     replacement: Qdrant.FooNew
     introduction_date: '2026-01-01'

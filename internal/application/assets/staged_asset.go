@@ -1,15 +1,10 @@
-// Package assets — staged_asset.go.
-//
-// Deprecated: StagedAsset has moved to internal/kernel/asset.StagedAsset.
-// This file provides a backward-compatibility alias so existing callers
-// reference `assets.StagedAsset` without churn during migration.
-//
-// godlike/06 SSOT: the canonical type lives in kernel/asset; this
-// alias is a transitional forwarder only.
+// Package assets — staged_asset.go. StagedAsset moved to
+// capabilities/assets/ports/ (canonical owner). This file re-exports
+// for backward compatibility.
 package assets
 
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 
 // StagedAsset is a backward-compatibility alias.
-// Deprecated: use asset.StagedAsset directly.
-type StagedAsset = asset.StagedAsset
+// Deprecated: use ports.StagedAsset or kernel/asset.StagedAsset directly.
+type StagedAsset = ports.StagedAsset

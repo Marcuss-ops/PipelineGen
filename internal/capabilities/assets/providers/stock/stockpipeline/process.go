@@ -9,7 +9,7 @@
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
-// `internal/infrastructure/process`. This file respects the invariant.
+// `internal/platform/process`. This file respects the invariant.
 package stockpipeline
 
 import (

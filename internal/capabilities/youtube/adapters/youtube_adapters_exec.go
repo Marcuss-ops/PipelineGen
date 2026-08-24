@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 )
 
 // ── ClipIndexerAdapter ────────────────────────────────────────────────

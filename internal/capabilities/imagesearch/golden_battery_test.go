@@ -42,7 +42,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 // TestMain installs the same repository lexicon the composition root loads,

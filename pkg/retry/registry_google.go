@@ -140,7 +140,7 @@ func retryClassFromGoogleAPIKind(kind error) ErrorCategory {
 
 // truncateAuditMessage bounds a string to maxLen chars for SafeMessage
 // audit-log emission. Mirrors the helper in
-// internal/infrastructure/qdrant/transport/registry_retry_classifier.go
+// internal/platform/qdrant/transport/registry_retry_classifier.go
 // (same shape; pkg/retry cannot import internal/ so the helper is
 // duplicated locally — the 12-char truncation sentinel is preserved
 // canonically across both surfaces for consistent operator grep).

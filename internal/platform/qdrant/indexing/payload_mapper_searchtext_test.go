@@ -38,7 +38,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 

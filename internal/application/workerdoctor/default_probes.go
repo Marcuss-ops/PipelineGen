@@ -32,7 +32,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 )
 
 // LookupFunc is exec.LookPath's signature; replaced in tests by
