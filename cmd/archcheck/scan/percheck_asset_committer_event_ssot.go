@@ -112,7 +112,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	//    chain for the literal value (per godlike/06 SSOT).
 	"internal/application/assets/finalizer/",
 	"internal/application/assets/texttracks/",
-	"internal/application/voiceover/",
+	"internal/capabilities/voiceover/service/",
 	"internal/application/images/",
 	"internal/application/assets/soundeffect/",
 	"internal/application/assets/catalogsync/",

@@ -131,7 +131,7 @@ func TestSpecAliases(t *testing.T) {}
 func TestScanSpecAliases_UnapprovedTerritoryIsFlagged(t *testing.T) {
 	root := t.TempDir()
 
-	relPath := "internal/application/voiceover/spec_aliases.go"
+	relPath := "internal/capabilities/voiceover/service/spec_aliases.go"
 	writeFixtureSpecAliases(t, root, relPath,
 		`package voiceover
 // Drift: spec_aliases.go copy-pasted into the voiceover module.
@@ -224,7 +224,7 @@ func TestX(t *testing.T) {}
 `)
 
 	// (4) Unapproved drift — THE violation.
-	driftRelPath := "internal/application/voiceover/spec_aliases.go"
+	driftRelPath := "internal/capabilities/voiceover/service/spec_aliases.go"
 	writeFixtureSpecAliases(t, root, driftRelPath,
 		`package voiceover
 // Drift: spec_aliases.go copy-pasted into the voiceover module.
@@ -232,7 +232,7 @@ type VoiceSpec struct{}
 `)
 
 	// (5) Regular file — irrelevant.
-	writeFixtureSpecAliases(t, root, "internal/application/voiceover/service.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/voiceover/service/service.go",
 		`package voiceover
 func Do() {}
 `)

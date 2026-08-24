@@ -15464,637 +15464,637 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/voiceover/command.go": {
+    "internal/capabilities/voiceover/service/command.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/dedupe.go": {
+    "internal/capabilities/voiceover/service/dedupe.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/dedupe_test.go": {
+    "internal/capabilities/voiceover/service/dedupe_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/destination_helpers.go": {
+    "internal/capabilities/voiceover/service/destination_helpers.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/destination_resolver.go": {
+    "internal/capabilities/voiceover/service/destination_resolver.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/destination_resolver_test.go": {
+    "internal/capabilities/voiceover/service/destination_resolver_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/edge_tts_stream_test.go": {
+    "internal/capabilities/voiceover/service/edge_tts_stream_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/executor.go": {
+    "internal/capabilities/voiceover/service/executor.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/filename.go": {
+    "internal/capabilities/voiceover/service/filename.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer.go": {
+    "internal/capabilities/voiceover/service/finalizer.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_cleanup_outbox.go": {
+    "internal/capabilities/voiceover/service/finalizer_cleanup_outbox.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_contract_test.go": {
+    "internal/capabilities/voiceover/service/finalizer_contract_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_dedupe_err_test.go": {
+    "internal/capabilities/voiceover/service/finalizer_dedupe_err_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_execute.go": {
+    "internal/capabilities/voiceover/service/finalizer_execute.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_invariants_test.go": {
+    "internal/capabilities/voiceover/service/finalizer_invariants_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/finalizer_stubs_test.go": {
+    "internal/capabilities/voiceover/service/finalizer_stubs_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/golden_timing_e2e_test.go": {
+    "internal/capabilities/voiceover/service/golden_timing_e2e_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/job_handler.go": {
+    "internal/capabilities/voiceover/service/job_handler.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/job_types.go": {
+    "internal/capabilities/voiceover/service/job_types.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/fanout.go": {
+    "internal/capabilities/voiceover/service/jobs/fanout.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/fanout_dedup_test.go": {
+    "internal/capabilities/voiceover/service/jobs/fanout_dedup_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/fanout_propagation_test.go": {
+    "internal/capabilities/voiceover/service/jobs/fanout_propagation_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/finalizer_invariants_test.go": {
+    "internal/capabilities/voiceover/service/jobs/finalizer_invariants_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/generate_handler.go": {
+    "internal/capabilities/voiceover/service/jobs/generate_handler.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/generate_handler_test.go": {
+    "internal/capabilities/voiceover/service/jobs/generate_handler_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/generate_item_handler.go": {
+    "internal/capabilities/voiceover/service/jobs/generate_item_handler.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/generate_item_handler_test.go": {
+    "internal/capabilities/voiceover/service/jobs/generate_item_handler_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_aggregate.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_aggregate.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_aggregate_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_aggregate_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_eligibility_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_eligibility_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_finalize.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_finalize.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_finalize_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_finalize_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_orchestrator_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_orchestrator_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_read_preference_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_read_preference_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_state.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_state.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_state_machine_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_state_machine_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_aggregator_testhelpers_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_aggregator_testhelpers_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_eligibility.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_eligibility.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_state_handler_test.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_state_handler_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/parent_state_machine.go": {
+    "internal/capabilities/voiceover/service/jobs/parent_state_machine.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/registry_contract_test.go": {
+    "internal/capabilities/voiceover/service/jobs/registry_contract_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/result_dto.go": {
+    "internal/capabilities/voiceover/service/jobs/result_dto.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/jobs/timing_negative_e2e_test.go": {
+    "internal/capabilities/voiceover/service/jobs/timing_negative_e2e_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/language.go": {
+    "internal/capabilities/voiceover/service/language.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/metadata.go": {
+    "internal/capabilities/voiceover/service/metadata.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/orphan_sweeper.go": {
+    "internal/capabilities/voiceover/service/orphan_sweeper.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/orphan_sweeper_test.go": {
+    "internal/capabilities/voiceover/service/orphan_sweeper_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/parent_state.go": {
+    "internal/capabilities/voiceover/service/parent_state.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/parent_state_test.go": {
+    "internal/capabilities/voiceover/service/parent_state_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/persistence/doc.go": {
+    "internal/capabilities/voiceover/service/persistence/doc.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/persistence/repository.go": {
+    "internal/capabilities/voiceover/service/persistence/repository.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/pipeline_error.go": {
+    "internal/capabilities/voiceover/service/pipeline_error.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/planner.go": {
+    "internal/capabilities/voiceover/service/planner.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/ports_finalization.go": {
+    "internal/capabilities/voiceover/service/ports_finalization.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/ports_publication.go": {
+    "internal/capabilities/voiceover/service/ports_publication.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/ports_synthesis.go": {
+    "internal/capabilities/voiceover/service/ports_synthesis.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process.go": {
+    "internal/capabilities/voiceover/service/process.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_metadata_test.go": {
+    "internal/capabilities/voiceover/service/process_metadata_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment.go": {
+    "internal/capabilities/voiceover/service/process_segment.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_async.go": {
+    "internal/capabilities/voiceover/service/process_segment_async.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_construction_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_construction_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_e2e_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_e2e_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_execution_ext_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_execution_ext_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_execution_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_execution_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_fingerprint.go": {
+    "internal/capabilities/voiceover/service/process_segment_fingerprint.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_idempotency_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_idempotency_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_observability_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_observability_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_orphan.go": {
+    "internal/capabilities/voiceover/service/process_segment_orphan.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_progress.go": {
+    "internal/capabilities/voiceover/service/process_segment_progress.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_progress_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_progress_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_publish.go": {
+    "internal/capabilities/voiceover/service/process_segment_publish.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_publish_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_publish_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_remote_orphan_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_remote_orphan_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_semantic_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_semantic_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_test_helpers_test.go": {
+    "internal/capabilities/voiceover/service/process_segment_test_helpers_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_segment_types.go": {
+    "internal/capabilities/voiceover/service/process_segment_types.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_voiceover_item.go": {
+    "internal/capabilities/voiceover/service/process_voiceover_item.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/process_voiceover_item_test.go": {
+    "internal/capabilities/voiceover/service/process_voiceover_item_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/promo.go": {
+    "internal/capabilities/voiceover/service/promo.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/promo_test.go": {
+    "internal/capabilities/voiceover/service/promo_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/qdrant_indexing_e2e_test.go": {
+    "internal/capabilities/voiceover/service/qdrant_indexing_e2e_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/registry_adapter.go": {
+    "internal/capabilities/voiceover/service/registry_adapter.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/result.go": {
+    "internal/capabilities/voiceover/service/result.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/service.go": {
+    "internal/capabilities/voiceover/service/service.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/service_p01_state_machine_test.go": {
+    "internal/capabilities/voiceover/service/service_p01_state_machine_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/service_test.go": {
+    "internal/capabilities/voiceover/service/service_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/silence_cleanup_event_test.go": {
+    "internal/capabilities/voiceover/service/silence_cleanup_event_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/silence_cleanup_test.go": {
+    "internal/capabilities/voiceover/service/silence_cleanup_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/stages.go": {
+    "internal/capabilities/voiceover/service/stages.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/stylegroup.go": {
+    "internal/capabilities/voiceover/service/stylegroup.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/task.go": {
+    "internal/capabilities/voiceover/service/task.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/texthash.go": {
+    "internal/capabilities/voiceover/service/texthash.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/timing_fingerprint_test.go": {
+    "internal/capabilities/voiceover/service/timing_fingerprint_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/timing_observability_test.go": {
+    "internal/capabilities/voiceover/service/timing_observability_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/types.go": {
+    "internal/capabilities/voiceover/service/types.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/types_enums.go": {
+    "internal/capabilities/voiceover/service/types_enums.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/types_helpers.go": {
+    "internal/capabilities/voiceover/service/types_helpers.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/types_test.go": {
+    "internal/capabilities/voiceover/service/types_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/types_typed_test.go": {
+    "internal/capabilities/voiceover/service/types_typed_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/upload_intent.go": {
+    "internal/capabilities/voiceover/service/upload_intent.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/upload_intent_test.go": {
+    "internal/capabilities/voiceover/service/upload_intent_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/usecase.go": {
+    "internal/capabilities/voiceover/service/usecase.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/usecase_graceful_degradation_test.go": {
+    "internal/capabilities/voiceover/service/usecase_graceful_degradation_test.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/validation.go": {
+    "internal/capabilities/voiceover/service/validation.go": {
       "owners": [
         "voiceover"
       ],
       "reason": "registry paths"
     },
-    "internal/application/voiceover/voice_override_test.go": {
+    "internal/capabilities/voiceover/service/voice_override_test.go": {
       "owners": [
         "voiceover"
       ],

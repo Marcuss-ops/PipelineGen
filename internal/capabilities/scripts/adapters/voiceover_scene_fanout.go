@@ -46,7 +46,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"

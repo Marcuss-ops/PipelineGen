@@ -35,10 +35,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -141,37 +140,11 @@ func (r *GenerateVoiceoversRequest) Validate() error {
 	if r == nil {
 		return errors.New("nil request")
 	}
-	if len(r.Items) == 0 {
-		return errors.New("items: must contain at least one item")
-	}
-	for i, it := range r.Items {
-		if it.Text == "" {
-			return fmt.Errorf("items[%d].text: must be non-empty", i)
-		}
-		if it.Language == "" {
-			return fmt.Errorf("items[%d].language: must be non-empty (BCP-47 code)", i)
-		}
-	}
-
-	if r.Destination != nil {
-		// PR-VO-C1 invariants (godlike/07 no-fake-availability):
-		//   - kind="group" + empty group     → hard 400 (GroupsResolver would 404)
-		//   - kind="explicit" + empty folder_id → hard 400 (would silently fall back to GroupsResolver)
-		// Both branches raise the same fail-closed contract: a parseable
-		// payload that names "explicit" routing but carries no folder_id
-		// MUST NOT silently auto-resolve.
-		if r.Destination.Kind == "group" && r.Destination.Group == "" {
-			return errors.New("destination: kind=\"group\" requires non-empty group")
-		}
-		if r.Destination.Kind == "explicit" && r.Destination.FolderID == "" {
-			return errors.New("destination: kind=\"explicit\" requires non-empty folder_id")
-		}
-		if err := r.Destination.Validate(); err != nil {
-			return fmt.Errorf("destination: %w", err)
-		}
-	}
-
-	return nil
+	// Delegate to the canonical Command validator — the single source of
+	// truth shared by API, worker, and internal callers. ToCommand() also
+	// normalises Strategy (unknown → "verify"), so the validation runs
+	// against the exact payload the worker will consume.
+	return r.ToCommand().Validate()
 }
 
 // ToCommand converts the wire-shape request to the canonical

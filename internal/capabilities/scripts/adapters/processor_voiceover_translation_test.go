@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

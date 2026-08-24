@@ -11,8 +11,8 @@ through `*sql.DB`, `net/http`, `os`, or `RootFolderOverride`.
 | `internal/application/iobinder` | 5 |
 | `internal/application/qdrant/maintenance` | 3 |
 | `internal/application/qdrant/reconciler` | 1 |
-| `internal/application/voiceover` | 5 |
-| `internal/application/voiceover/persistence` | 1 |
+| `internal/capabilities/voiceover/service` | 5 |
+| `internal/capabilities/voiceover/service/persistence` | 1 |
 | `internal/application/workerdoctor` | 5 |
 | `internal/application/youtube` | 8 |
 | `internal/application/youtube/adapters` | 4 |

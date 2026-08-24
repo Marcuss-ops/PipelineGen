@@ -27,8 +27,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"

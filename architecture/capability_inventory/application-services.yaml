@@ -115,7 +115,7 @@ application_capabilities:
     direct_register_calls: []
     concrete_constructors: []
   - name: voiceover
-    path: internal/application/voiceover
+    path: internal/capabilities/voiceover/service
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
