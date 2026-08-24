@@ -12,7 +12,7 @@ import (
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"

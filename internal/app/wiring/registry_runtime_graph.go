@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"

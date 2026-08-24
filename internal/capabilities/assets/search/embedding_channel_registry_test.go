@@ -1,6 +1,6 @@
 // Package search — TDD contract tests for the canonical
 // EmbeddingChannelRegistry port surface
-// (internal/application/search/ports.go). The contract is the
+// (internal/capabilities/assets/search/ports.go). The contract is the
 // godlike/06 SSOT for the multi-channel embedding vocabulary; the
 // godlike/07 typed-error contract is locked pinning the 3 sentinels.
 //

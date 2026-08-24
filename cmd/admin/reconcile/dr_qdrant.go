@@ -32,7 +32,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"

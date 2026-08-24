@@ -78,7 +78,7 @@ const (
 // API exposes; the canonical Aggregator fan-out never aborts the
 // per-backend search because of a filter mismatch, in line with
 // the "partial preferred" posture documented in
-// internal/application/search/aggregator.go).
+// internal/capabilities/assets/search/aggregator.go).
 type SearchFilters struct {
 	// PublishedAfter excludes results with PublishedAt < PublishedAfter.
 	// Honours providers with a publication date in their metadata.

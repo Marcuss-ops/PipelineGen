@@ -25,7 +25,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

@@ -106,7 +106,7 @@ var ErrPathBuilderIncompleteForParent = errors.New("drive: PathBuilder incomplet
 //
 // godlike/07 typed-error contract (per AGENTS.md §godlike/07 + the
 // canonical googleapi.Error probe pattern documented in
-// internal/application/jobs/outbox/voiceover_cleanup.go::isDriveNotFoundError):
+// internal/capabilities/jobs/outbox/voiceover_cleanup.go::isDriveNotFoundError):
 // (a) errors.As walks the wrap chain so callers need NOT manually
 // unwrap fmt.Errorf %w — the helper handles any wrap depth;
 // (b) non-*googleapi.Error (plain errors.New, custom typed errors,

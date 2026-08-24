@@ -75,17 +75,17 @@ func newEmptyReportSpecAliases() *report.Report {
 func TestScanSpecAliases_ApprovedTerritoryIsNotFlagged(t *testing.T) {
 	root := t.TempDir()
 
-	writeFixtureSpecAliases(t, root, "internal/application/images/generated/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/generated/spec_aliases.go",
 		`package generated
 type Provider = GenerationProvider
 `)
-	writeFixtureSpecAliases(t, root, "internal/application/images/retrieved/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/retrieved/spec_aliases.go",
 		`package retrieved
 type Provider = RetrievalProvider
 `)
 	// Also add a non-spec_aliases.go file in an approved dir to
 	// verify the walker doesn't get confused.
-	writeFixtureSpecAliases(t, root, "internal/application/images/generated/provider.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/generated/provider.go",
 		`package generated
 type GenerationProvider interface { Generate() error }
 `)
@@ -110,7 +110,7 @@ func TestScanSpecAliases_TestFileSuffixIsExcludedByBasenameGate(t *testing.T) {
 	// A test-filename variant in an unapproved directory — the
 	// basename gate (specAliasesFilename = "spec_aliases.go") already
 	// excludes this file. No separate _test.go suffix check is needed.
-	writeFixtureSpecAliases(t, root, "internal/application/images/bar/spec_aliases_test.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/bar/spec_aliases_test.go",
 		`package bar_test
 import "testing"
 func TestSpecAliases(t *testing.T) {}
@@ -157,10 +157,10 @@ type VoiceSpec struct{}
 	if v.MatchedRule != "spec_aliases_territory_gate" {
 		t.Errorf("violation matched_rule = %q, want spec_aliases_territory_gate", v.MatchedRule)
 	}
-	if !strings.Contains(v.Note, "internal/application/images/generated/") {
+	if !strings.Contains(v.Note, "internal/capabilities/images/workflow/generated/") {
 		t.Errorf("violation Note must reference the canonical generated/ directory; got: %s", v.Note)
 	}
-	if !strings.Contains(v.Note, "internal/application/images/retrieved/") {
+	if !strings.Contains(v.Note, "internal/capabilities/images/workflow/retrieved/") {
 		t.Errorf("violation Note must reference the canonical retrieved/ directory; got: %s", v.Note)
 	}
 	if !strings.Contains(v.Note, "PR-AUDIT-8") {
@@ -175,16 +175,16 @@ func TestScanSpecAliases_CleanRunHasNoViolations(t *testing.T) {
 	root := t.TempDir()
 
 	// Only add the two approved files.
-	writeFixtureSpecAliases(t, root, "internal/application/images/generated/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/generated/spec_aliases.go",
 		`package generated
 type Foo = Bar
 `)
-	writeFixtureSpecAliases(t, root, "internal/application/images/retrieved/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/retrieved/spec_aliases.go",
 		`package retrieved
 type Baz = Qux
 `)
 	// Some unrelated production files.
-	writeFixtureSpecAliases(t, root, "internal/application/images/foo/service.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/foo/service.go",
 		`package foo
 func Do() {}
 `)
@@ -205,19 +205,19 @@ func TestScanSpecAliases_MixedRepoLayout(t *testing.T) {
 	root := t.TempDir()
 
 	// (1) Approved generated/ spec_aliases.go — silent.
-	writeFixtureSpecAliases(t, root, "internal/application/images/generated/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/generated/spec_aliases.go",
 		`package generated
 type GenSpec struct{}
 `)
 
 	// (2) Approved retrieved/ spec_aliases.go — silent.
-	writeFixtureSpecAliases(t, root, "internal/application/images/retrieved/spec_aliases.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/retrieved/spec_aliases.go",
 		`package retrieved
 type RetSpec struct{}
 `)
 
 	// (3) Test-file spec_aliases_test.go — silent (suffix exemption).
-	writeFixtureSpecAliases(t, root, "internal/application/images/generated/spec_aliases_test.go",
+	writeFixtureSpecAliases(t, root, "internal/capabilities/images/workflow/generated/spec_aliases_test.go",
 		`package generated_test
 import "testing"
 func TestX(t *testing.T) {}

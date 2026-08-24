@@ -22,7 +22,7 @@ package chrome
 
 import (
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"os"
 	"path/filepath"
 )
@@ -59,7 +59,7 @@ func resolveOutputPath(req appimages.GenerateImageRequest, requestID string) str
 //   - Prompt composition: prompt=<ComposedPrompt.Composed>,
 //     prompt_original=<raw req.Prompt>. The worker fills the DOM
 //     textarea with Composed and emits prompt_original in the JSONL
-//     audit. See internal/application/images/prompt_composer.go
+//     audit. See internal/capabilities/images/workflow/prompt_composer.go
 //     for the appimages.ComposePrompt rulebook (P1.2 retire-the-150-char-truncation).
 //   - Style directives: style_id, optional prompt_suffix (forward-pointer
 //     for callers that want a custom worker-side composition

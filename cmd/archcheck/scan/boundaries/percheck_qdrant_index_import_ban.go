@@ -20,7 +20,7 @@
 //     reconciliation, diagnostics) legitimately read+write to
 //     qdrant for data correction / migration. Per user
 //     directive, these are EXEMPT.
-//  2. internal/application/jobs/outbox/** — the canonical
+//  2. internal/capabilities/jobs/outbox/** — the canonical
 //     IndexingHandler outbox consumer IS the legitimate
 //     receiver of outbox events emitted by CommitAsset. It
 //     routes the outbox payload to the qdrant adapter.
@@ -89,13 +89,13 @@ var qdrantImportBanSkipPathPrefixes = []string{
 //     reconciliation, diagnostics, maintenance). Per the user
 //     directive the EXEMPT set is "admin tools"; the canonical
 //     CLI admin subpackage at cmd/admin/ is the surface form.
-//  2. internal/application/jobs/outbox/** — the canonical
+//  2. internal/capabilities/jobs/outbox/** — the canonical
 //     IndexingHandler outbox consumer. The composition-root
 //     hooks the outbox worker up with the canonical qdrant
 //     infrastructure; the outbox worker is the SOLE wire from
 //     the application surface to the qdrant ANN index for
 //     production index/upsert/delete events.
-//  3. internal/application/qdrant/legacyaudit/** — operator/audit
+//  3. internal/platform/qdrant/legacyaudit/** — operator/audit
 //     tooling (read-only classification walker + canonical-point-ID
 //     helpers + dry-run apply-step shapes). legacyaudit is a
 //     pure-classification walker that never mutates the qdrant
@@ -103,7 +103,7 @@ var qdrantImportBanSkipPathPrefixes = []string{
 //     dispatches through the canonical outbox. Conceptually
 //     identical to "admin tools" — operator tooling that
 //     legitimately reads the schema for audit purposes.
-//  4. internal/application/qdrant/maintenance/** — operator/maintenance
+//  4. internal/platform/qdrant/maintenance/** — operator/maintenance
 //     tooling (audit / repair-locators / delete-invalid modes).
 //     Constructs the qdrant client via the typed QdrantScannerAdapter
 //     + QdrantCleaner ports; the Delete mode dispatches via the
@@ -115,9 +115,9 @@ var qdrantImportBanSkipPathPrefixes = []string{
 // be refactored to CommitAsset → outbox first.
 var qdrantImportBanExemptPathPrefixes = []string{
 	"cmd/admin/",
-	"internal/application/jobs/outbox/",
-	"internal/application/qdrant/legacyaudit/",
-	"internal/application/qdrant/maintenance/",
+	"internal/capabilities/jobs/outbox/",
+	"internal/platform/qdrant/legacyaudit/",
+	"internal/platform/qdrant/maintenance/",
 }
 
 // qdrantImportBanScope is the canonical application-zone prefix
@@ -160,14 +160,14 @@ const qdrantImportBanRule = "percheck_qdrant_index_import_ban"
 //  2. The canonical outbox consumer (i.e. THE legitimate
 //     application-side caller of qdrant.IndexClip +
 //     qdrant.UpsertPoints + qdrant.WriteQdrant): the IndexingHandler
-//     at internal/application/jobs/outbox/indexing_handle.go.
+//     at internal/capabilities/jobs/outbox/indexing_handle.go.
 //     Routes outbox envelopes carrying the asset.index.* /
 //     asset.points.upserted event types to the qdrant adapter in
 //     the same SQLite TX.
 //
 //  3. The exempt zones for this gate: cmd/admin/** (operator
 //     tooling — backfill, reconciliation, diagnostics) +
-//     internal/application/jobs/outbox/** (canonical outbox→qdrant
+//     internal/capabilities/jobs/outbox/** (canonical outbox→qdrant
 //     emitter; exempt because the IndexingHandler IS the
 //     legitimate application-level wire to the qdrant infra).
 //
@@ -180,7 +180,7 @@ const qdrantImportBanRule = "percheck_qdrant_index_import_ban"
 // because the canonical surface is outbox-mediated. godlike/06
 // SSOT forbids direct apply-layer → infra-layer writes except via
 // the canonical outbox consumer.
-const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/application/assets/finalizer/asset_finalizer_outbox.go::(*AssetTxFinalizer).insertOutboxEvent) THEN the canonical consumer at internal/application/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/application/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
+const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/application/assets/finalizer/asset_finalizer_outbox.go::(*AssetTxFinalizer).insertOutboxEvent) THEN the canonical consumer at internal/capabilities/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/capabilities/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
 
 // qdrantImportBanWarnBucket is the centralized residue-emitter.
 // Mirrors assetStateWarn + percheck_binder_scene_field_writes's
@@ -194,7 +194,7 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 // <root>/internal/application/** and emits a violation for any
 // production file (NOT _test.go) that imports the canonical
 // qdrant infrastructure package from a non-exempt path. Files
-// under cmd/admin/** + internal/application/jobs/outbox/** are
+// under cmd/admin/** + internal/capabilities/jobs/outbox/** are
 // exempt per user directive. Comment-only references to the
 // banned import path are residue-accounted as WARN
 // (godlike/07).
@@ -207,7 +207,7 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 //
 // Scope-boundary note: the gate only applies to the canonical
 // qdrant INFRASTRUCTURE package. Imports of
-// `github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr`
+// `github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr`
 // (the application-layer mirror) are out of scope — they're
 // application types and may be imported freely. Only the literal
 // `internal/platform/qdrant` import is banned.

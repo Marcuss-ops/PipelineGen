@@ -13,7 +13,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): StagedArtifactReference
 // is the SINGLE canonical input shape for the wire; the prior shape
-// (internal/application/jobs/domain_commands.go::CompleteWithArtifactsCommand
+// (internal/capabilities/jobs/queue/domain_commands.go::CompleteWithArtifactsCommand
 // .PublishedArtifacts json.RawMessage) is now renamed StagedArtifacts and
 // carries a typed []*StagedArtifactReference slice (replacing the json.
 // RawMessage opaque-bytes convention). This package (internal/domain/remote/)
@@ -189,7 +189,7 @@ func (r *StagedArtifactReference) Validate() error {
 
 // StagedArtifacts is the canonical wire-shape slice type for the HTTP
 // complete-with-artifacts endpoint. Replaces the prior opaque-bytes
-// json.RawMessage convention (internal/application/jobs/domain_commands.go
+// json.RawMessage convention (internal/capabilities/jobs/queue/domain_commands.go
 // .PublishedArtifacts) with a typed slice so the wire layer can enforce
 // input validation BEFORE the conversion layer runs.
 type StagedArtifacts []*StagedArtifactReference

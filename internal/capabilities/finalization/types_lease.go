@@ -8,7 +8,7 @@ import "time"
 // lease is still valid (not expired) and belongs to the calling worker
 // before committing the completion transaction.
 //
-// Mapping note (July 2026): jobs.Lease in internal/application/jobs/
+// Mapping note (July 2026): jobs.Lease in internal/capabilities/jobs/queue/
 // carries a *job.Job pointer; this domain Lease carries a flat JobID
 // string instead, avoiding coupling the domain layer to the infrastructure
 // Job struct. FASE 2's JobFinalizer adapter will map between the two.

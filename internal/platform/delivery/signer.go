@@ -25,7 +25,7 @@
 // Tenant identity: BuildAuthorizedURL consumes `WorkspaceContext`
 // (a Go-level alias of `search.Actor` — see workspace.go). Per
 // godlike/06 SSOT, the canonical tenant envelope lives in
-// `internal/application/search/types.go::Actor`; the type alias
+// `internal/capabilities/assets/search/types.go::Actor`; the type alias
 // keeps this package's preferred name without re-declaring the
 // struct. Cross-package layering (Wave 19): infra → application
 // is the canonical GateDirection; the inverse is intentional NOT
@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // ErrExpired is returned when the URL expiry is in the past.

@@ -59,8 +59,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

@@ -43,17 +43,17 @@ func TestScanPackagesRegisteredHotspotCannotGrow(t *testing.T) {
 	writeHotspotRegistry(t, root, `{
   "version": 1,
   "hotspots": [{
-    "path": "internal/application/jobs",
-    "owner": "internal/application/jobs",
+    "path": "internal/capabilities/jobs/queue",
+    "owner": "internal/capabilities/jobs/queue",
     "deadline": "2026-09-15",
     "baseline_files": 2,
-    "target_packages": ["internal/application/jobs/queue"]
+    "target_packages": ["internal/capabilities/jobs/queue/queue"]
   }],
   "root_migrations": []
 }`)
-	writeTestGoFile(t, root, "internal/application/jobs/a.go", "package jobs\n")
-	writeTestGoFile(t, root, "internal/application/jobs/b.go", "package jobs\n")
-	writeTestGoFile(t, root, "internal/application/jobs/c.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/a.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/b.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/c.go", "package jobs\n")
 
 	r := &report.Report{}
 	ScanPackages(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{})
@@ -90,16 +90,16 @@ func TestScanPackagesProductionRejectsExpiredHotspot(t *testing.T) {
 	writeHotspotRegistry(t, root, `{
   "version": 1,
   "hotspots": [{
-    "path": "internal/application/jobs",
-    "owner": "internal/application/jobs",
+    "path": "internal/capabilities/jobs/queue",
+    "owner": "internal/capabilities/jobs/queue",
     "deadline": "2000-01-01",
     "baseline_files": 2,
-    "target_packages": ["internal/application/jobs/queue"]
+    "target_packages": ["internal/capabilities/jobs/queue/queue"]
   }],
   "root_migrations": []
 }`)
-	writeTestGoFile(t, root, "internal/application/jobs/a.go", "package jobs\n")
-	writeTestGoFile(t, root, "internal/application/jobs/b.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/a.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/b.go", "package jobs\n")
 
 	r := &report.Report{}
 	ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)

@@ -164,7 +164,7 @@ func TestCanonicalApplicationInfrastructureHardGateFailsClosed(t *testing.T) {
 	}
 	policyPath := filepath.Join(root, "policy.yaml")
 	policyText := "canonical_application_areas:\n" +
-		"  - internal/application/images\n" +
+		"  - internal/capabilities/images/workflow\n" +
 		"hard_gates:\n" +
 		"  - percheck_canonical_application_infrastructure_imports\n"
 	if err := os.WriteFile(policyPath, []byte(policyText), 0o644); err != nil {

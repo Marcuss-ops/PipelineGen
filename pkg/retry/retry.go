@@ -79,7 +79,7 @@
 // Canonical pattern: HTTP fetch wrapped in retry.Do, retry.IsTransient as the
 // IsRetryable predicate, transient classification centralized in transient.go.
 //
-//	// internal/application/images/storage_search.go
+//	// internal/capabilities/images/workflow/storage_search.go
 //	err := retry.Do(ctx, func() error {
 //	    req, reqErr := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 //	    if reqErr != nil {

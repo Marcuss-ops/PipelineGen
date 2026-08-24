@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"go.uber.org/zap"

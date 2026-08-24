@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"

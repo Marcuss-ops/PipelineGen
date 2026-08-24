@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"

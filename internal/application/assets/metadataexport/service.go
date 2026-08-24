@@ -3,7 +3,7 @@
 // Step 2 of the post-architettura 2026 plan (June 2026): the export
 // orchestration (exportFilesystem / writeOne / writeJSONL / writeCSV /
 // buildSnapshot / loadSection) WAS previously inline inside the
-// MetadataExportHandler.Handle() method (internal/application/jobs/
+// MetadataExportHandler.Handle() method (internal/capabilities/jobs/queue/
 // outbox/metadata_export.go). After split, this file owns the
 // orchestration so the handler is a thin envelope-dispatch layer.
 //

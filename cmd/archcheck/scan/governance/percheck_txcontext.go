@@ -3,7 +3,7 @@
 // scan/percheck_txcontext.go owns the Go migration of
 // scripts/ci-architectural-checks.sh::Check 53. The canonical
 // Sender-side atomic-complete port surface lives in
-// internal/application/jobs/completion/complete_job_service.go.
+// internal/capabilities/jobs/policy/complete_job_service.go.
 // The TxContext interface (5 methods: GetJob / UpdateJobToSucceededCAS
 // / InsertResultOnConflict / GetPriorArtifactHashes / PersistArtifactMap /
 // InsertOutboxEnvelope) is the ONLY legitimate seam through which
@@ -19,7 +19,7 @@
 // check, which is RETAINED as a transitional baseline.
 //
 // Cross-references:
-//   - internal/application/jobs/completion/complete_job_service.go: the
+//   - internal/capabilities/jobs/policy/complete_job_service.go: the
 //     canonical service (the ONLY allowed caller surface).
 //   - scripts/ci-architectural-checks.sh::Check 53: the shell
 //     check whose semantics this scanner mirrors 1:1.
@@ -41,8 +41,8 @@ import (
 // canonical completion service package. Every .go file under
 // this directory is the ONLY allowed caller surface for the 5
 // wire methods. Matches the shell check's
-// --glob '!**/internal/application/jobs/completion/**' allowlist.
-const txContextCompletionRelPath = "internal/application/jobs/completion"
+// --glob '!**/internal/capabilities/jobs/policy/**' allowlist.
+const txContextCompletionRelPath = "internal/capabilities/jobs/policy"
 
 // txContextWireMethods is the canonical list of 5 wire methods
 // (per P0 C7, July 2026) that MUST only be called from the
@@ -65,7 +65,7 @@ var txContextWireMethods = []string{
 // ScanTxContextBan walks <root>/internal/application/** and
 // <root>/internal/api/** for non-test .go files, scanning each
 // line for any of the 5 TxContext wire-method call patterns.
-// Files under internal/application/jobs/completion/ are
+// Files under internal/capabilities/jobs/policy/ are
 // allowlisted (the canonical service package). Full-line
 // comments (lines starting with `//` after trim) are excluded
 // so descriptive prose doesn't trigger false positives.

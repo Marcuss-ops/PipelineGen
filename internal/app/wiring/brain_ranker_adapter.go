@@ -16,7 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

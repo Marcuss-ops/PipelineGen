@@ -35,7 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"os"
 	"path/filepath"
 	"strings"
@@ -776,7 +776,7 @@ func TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes(t *testing
 // ── P1.2 (July 2026): Direct appimages.ComposePrompt unit test ────────────────────
 //
 // Unit-level pinning of the contract documented in
-// internal/application/images/prompt_composer.go. Asserts:
+// internal/capabilities/images/workflow/prompt_composer.go. Asserts:
 //   - empty style + empty negative → composed == raw (no mutation)
 //   - any null style → omit `[style: ...]`
 //   - any null negative → omit `[negative: ...]`

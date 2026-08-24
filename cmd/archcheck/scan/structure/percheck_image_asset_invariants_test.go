@@ -84,7 +84,7 @@ func imageAssetViolations(r *report.Report, rule string) []report.Violation {
 func TestRuleA_LiteralBanFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		"internal/application/images/random_factory.go": `package factory
+		"internal/capabilities/images/workflow/random_factory.go": `package factory
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // production code: ImageAsset literal in a non-canonical place
 func build() *asset.ImageAsset {
@@ -112,7 +112,7 @@ func build() *asset.ImageAsset {
 func TestRuleA_DomainAliasLiteralFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		"internal/application/images/random_alias_factory.go": `package factory
+		"internal/capabilities/images/workflow/random_alias_factory.go": `package factory
 import domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // domain-alias literal is also banned
 func build() *domainasset.ImageAsset {
@@ -147,7 +147,7 @@ type ImageAsset struct {
 }
 func (a *ImageAsset) ResetCanonical() *ImageAsset { return &ImageAsset{Origin: "x"} }
 `,
-		"internal/application/images/storage_ingest_direct.go": `package images
+		"internal/capabilities/images/workflow/storage_ingest_direct.go": `package images
 import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // canonical builder — literal MAY appear here if the typed route promotes to a literal in the future
 func Build() *asset.ImageAsset { return &asset.ImageAsset{Origin: "x"} }
@@ -167,7 +167,7 @@ func Build() *asset.ImageAsset { return &asset.ImageAsset{Origin: "x"} }
 func TestRuleA_ExemptsTestFiles(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		"internal/application/images/some_factory_test.go": `package factory_test
+		"internal/capabilities/images/workflow/some_factory_test.go": `package factory_test
 import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 func Stub() *asset.ImageAsset { return &asset.ImageAsset{AssetID: "stub-id"} }
 `,
@@ -186,7 +186,7 @@ func Stub() *asset.ImageAsset { return &asset.ImageAsset{AssetID: "stub-id"} }
 func TestRuleA_CommentOnlyEmitsWarn(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		"internal/application/images/notes.go": `package images
+		"internal/capabilities/images/workflow/notes.go": `package images
 // historically ` + "`&asset.ImageAsset{...}`" + ` was the direct literal path; now we route through canonical metadata.
 func Note() {}
 `,
@@ -238,11 +238,11 @@ func Build() Envelope { return Envelope{Ref: "r", AssetID: "x"} }
 func TestRuleB_FieldOutsideGemmaScopeIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		// This file lives in internal/application/images/ —
+		// This file lives in internal/capabilities/images/workflow/ —
 		// outside the gemmma-prompt scope. Rule B is silently
 		// skipped because the compile-time gate is upstream of
 		// any non-model-facing surface.
-		"internal/application/images/dto.go": `package images
+		"internal/capabilities/images/workflow/dto.go": `package images
 type Envelope struct {
 	Ref string ` + "`json:\"ref\"`" + `
 	AssetID string ` + "`json:\"asset_id\"`" + `

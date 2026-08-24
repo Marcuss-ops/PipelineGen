@@ -29,7 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"

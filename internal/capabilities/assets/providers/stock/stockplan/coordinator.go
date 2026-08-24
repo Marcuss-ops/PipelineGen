@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

@@ -4,7 +4,7 @@
 //	POST /internal/v1/media/search
 //	GET  /internal/v1/media/ready          (semantic_search_real readiness)
 //
-// All business logic lives in internal/application/search. This
+// All business logic lives in internal/capabilities/assets/search. This
 // file is responsible for: bind the JSON body, extract the workspace
 // scope from the auth context (never from the request body), call the
 // canonical search.Aggregator, and render the response DTO derived
@@ -91,7 +91,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )

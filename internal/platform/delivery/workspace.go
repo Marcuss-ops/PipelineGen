@@ -2,7 +2,7 @@
 //
 // godlike/06 SSOT (one owner per fact): the canonical tenant identity
 // envelope lives at `search.Actor` in
-// `internal/application/search/types.go`. This file declares a
+// `internal/capabilities/assets/search/types.go`. This file declares a
 // Go-level type alias so the delivery infrastructure consumes the
 // canonical shape by its preferred name without re-declaring the
 // struct.
@@ -23,7 +23,7 @@
 package delivery
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // WorkspaceContext is the canonical tenant-identity envelope

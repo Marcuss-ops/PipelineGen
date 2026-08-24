@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 type Reader struct{ jobs, obs *sql.DB }

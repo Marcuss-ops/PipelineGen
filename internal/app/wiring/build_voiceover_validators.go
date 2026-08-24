@@ -8,7 +8,7 @@ package wiring
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 

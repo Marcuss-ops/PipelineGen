@@ -1,7 +1,7 @@
 // Package mediamemory (api) — handler.go is the thin HTTP transport
 // for the canonical MediaMemory API surface (godlike/06 SSOT: thin
 // transport only, business logic lives in
-// internal/application/mediamemory).
+// internal/capabilities/mediamemory).
 //
 // Routes mounted under /api/media-memory/* (mirrors the architecture
 // doc, "API consigliate"):
@@ -31,7 +31,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )

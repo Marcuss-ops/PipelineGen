@@ -153,7 +153,7 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// PR-P12-IMAGES-WHITELIST (July 2026): images/storage_service.go passes
 	// req.DriveRootOverride from the AssetDestinationRequest into the Publisher.
 	// This is a legitimate operator-supplied folder override for image storage.
-	"internal/application/images/storage_service.go": true,
+	"internal/capabilities/images/workflow/storage_service.go": true,
 }
 
 // rootOverrideForbiddenPrefixes enumerates the production Go

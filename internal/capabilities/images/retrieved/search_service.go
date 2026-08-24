@@ -24,7 +24,7 @@ package retrieved
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

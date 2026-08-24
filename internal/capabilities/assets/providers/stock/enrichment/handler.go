@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"go.uber.org/zap"
 )
 

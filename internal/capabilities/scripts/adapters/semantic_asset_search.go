@@ -43,7 +43,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): the typed ports
 // `search.SearchBackend` and `search.QueryEmbedder` are owned by
-// `internal/application/search`. This adapter is the SOLE owner of the
+// `internal/capabilities/assets/search`. This adapter is the SOLE owner of the
 // `SemanticAssetSearch` request/response DTOs and the 3 typed-error
 // sentinels. No other package may redefine these symbols.
 package adapters
@@ -54,7 +54,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 

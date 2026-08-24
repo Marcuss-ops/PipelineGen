@@ -1,7 +1,7 @@
 // Package clipindexer — state_writer.go declares the canonical
 // IndexerStateUpdater port + the *Service concrete that satisfies
 // it. The port lets out-of-package consumers (notably the
-// IndexingHandler in internal/application/jobs/outbox) record
+// IndexingHandler in internal/capabilities/jobs/outbox) record
 // transient retry-pending side-effects on media_assets.index_state
 // without reaching back into SQLite directly.
 //

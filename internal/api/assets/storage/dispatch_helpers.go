@@ -11,7 +11,7 @@
 package storage
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // errCatalogSyncNotConfigured surfaces the composition-time error when

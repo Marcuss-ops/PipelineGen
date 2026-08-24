@@ -48,7 +48,7 @@ func indexPendingWriterViolations(r *report.Report) []report.Violation {
 func TestIndexPendingWriter_ProductionWriterFails(t *testing.T) {
 	dir := t.TempDir()
 	indexPendingWriterWriteTree(t, dir, map[string]string{
-		"internal/application/images/ingest.go": `package images
+		"internal/capabilities/images/workflow/ingest.go": `package images
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 func initAsset() { a := asset.ImageAsset{IndexState: asset.StateIndexPending} }
 `,
@@ -59,8 +59,8 @@ func initAsset() { a := asset.ImageAsset{IndexState: asset.StateIndexPending} }
 	if len(viol) != 1 {
 		t.Fatalf("want 1 violation, got %d: %+v", len(viol), r.Violations)
 	}
-	if viol[0].File != "internal/application/images/ingest.go" {
-		t.Fatalf("want violation in internal/application/images/ingest.go, got %q", viol[0].File)
+	if viol[0].File != "internal/capabilities/images/workflow/ingest.go" {
+		t.Fatalf("want violation in internal/capabilities/images/workflow/ingest.go, got %q", viol[0].File)
 	}
 }
 
@@ -102,7 +102,7 @@ func health(_ asset.IndexState) bool { return _ == asset.StateIndexPending }
 func TestIndexPendingWriter_TestFilesExempted(t *testing.T) {
 	dir := t.TempDir()
 	indexPendingWriterWriteTree(t, dir, map[string]string{
-		"internal/application/images/ingest_test.go": `package images
+		"internal/capabilities/images/workflow/ingest_test.go": `package images
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 func TestX() { s := asset.StateIndexPending }
 `,

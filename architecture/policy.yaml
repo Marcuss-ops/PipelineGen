@@ -147,7 +147,6 @@ stale_prose_paths:
 # concrete adapter wiring. This is a guarded migration surface, not a second
 # target architecture.
 canonical_application_areas:
-  - internal/application/images
   - internal/application/assets/artifacts
   - internal/application/assets/catalogsync
 
@@ -177,7 +176,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #   renderinggen   — RenderingGen queue client (HTTP → external overlay render)
 #   delivery       — delivery registry, startup validators, transport contracts
 #
-# Deferred migrations (exist in infrastructure/, not yet cut over):
+# Deferred migrations (remaining api-root cutovers; infrastructure/ is deleted as of 2026-08-24):
 #
 #   httpserver     — HTTP server/router lives in internal/api/ (Gin).
 #                     No standalone package yet. Target: platform/httpserver

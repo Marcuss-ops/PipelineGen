@@ -117,7 +117,7 @@ var databaseSQLLegacyBaseline = []string{
 	"internal/capabilities/assets/providers/artlist/service.go",
 	"internal/capabilities/assets/providers/artlist/service_test.go",
 	"internal/application/books/service.go",
-	"internal/application/jobs/outbox/delivery.go",
-	"internal/application/jobs/outbox/registry.go",
-	"internal/application/jobs/service_test.go",
+	"internal/capabilities/jobs/outbox/delivery.go",
+	"internal/capabilities/jobs/outbox/registry.go",
+	"internal/capabilities/jobs/queue/service_test.go",
 }

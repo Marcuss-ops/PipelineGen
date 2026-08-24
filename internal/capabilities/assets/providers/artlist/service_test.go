@@ -17,7 +17,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"

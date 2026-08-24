@@ -28,8 +28,8 @@ import (
 
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/assettransferclient"

@@ -101,7 +101,7 @@ var subsystemPrefixes = []struct {
 	{"pkg/monitor", bucketMonitor},
 	// Search (mediasearch, etc.).
 	{"internal/api/mediasearch", bucketSearch},
-	{"internal/application/search", bucketSearch},
+	{"internal/capabilities/assets/search", bucketSearch},
 	{"pkg/search", bucketSearch},
 }
 

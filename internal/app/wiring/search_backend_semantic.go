@@ -15,7 +15,7 @@
 //
 // PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): the backend now
 // consumes the multi-channel EmbeddingChannelRegistry port
-// (internal/application/search/ports.go) instead of the historical
+// (internal/capabilities/assets/search/ports.go) instead of the historical
 // single-text QueryEmbedder. Today's wiring exercises only the
 // ChannelText path (768d multilingual-e5-base); the registry
 // architecture guarantees the BACKEND doesn't change when new
@@ -39,8 +39,8 @@ import (
 	"go.uber.org/zap"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	searchprofile "github.com/Marcuss-ops/PipelineGen/internal/application/search/profile"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	searchprofile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search/profile"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 

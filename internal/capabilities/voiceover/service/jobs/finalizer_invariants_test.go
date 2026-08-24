@@ -29,7 +29,7 @@
 //
 //  2. TestVoiceoverGenerateItem_RoutesToLegacyComplete
 //     Same as #1 for the per-language child job type. Mirrors the
-//     production canonical registration at internal/application/jobs/
+//     production canonical registration at internal/capabilities/jobs/queue/
 //     registry.go:548.
 //
 //  3. TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn
@@ -70,7 +70,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

@@ -144,12 +144,12 @@ func TestScanBrainSingleImpl_ZeroImplWarns(t *testing.T) {
 
 func TestScanBrainSingleImpl_SearchFanOutOnlyCountsItself(t *testing.T) {
 	root := t.TempDir()
-	makeBrainSingleImplFile(t, root, "internal/application/search/registry.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/assets/search/registry.go",
 		`package search
 
 func NewBackendRegistry() *BackendRegistry { return nil }
 `)
-	makeBrainSingleImplFile(t, root, "internal/application/search/telemetry.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/assets/search/telemetry.go",
 		`package search
 
 func NewSearchFanOut(inner *Aggregator) SearchFanOut { return nil }
@@ -159,7 +159,7 @@ func NewSearchFanOut(inner *Aggregator) SearchFanOut { return nil }
 	ScanBrainSingleImpl(root, &policy.Policy{}, r)
 
 	for _, v := range r.Violations {
-		if v.Rule == brainSingleImplRule && v.Package == "internal/application/search" {
+		if v.Rule == brainSingleImplRule && v.Package == "internal/capabilities/assets/search" {
 			t.Fatalf("other New* constructors in search must not count as SearchFanOut implementations, got %+v", v)
 		}
 	}

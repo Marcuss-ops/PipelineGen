@@ -2,7 +2,7 @@
 // pure-function seams in cmd/admin/zombie_sweep.go.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the DB-write path is
-// covered by internal/application/jobs/service_test.go (which
+// covered by internal/capabilities/jobs/queue/service_test.go (which
 // exercises (*SQLiteStore).MarkRunningJobsOlderThanFailed
 // directly). This test surface pins the 2 pure-function seams
 // that are extractable without a live DB:

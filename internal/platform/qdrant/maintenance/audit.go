@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/audit.go — audit mode handler.
+// internal/platform/qdrant/maintenance/audit.go — audit mode handler.
 //
 // Dry-run: classifies all points in the active Qdrant collection over the
 // 8 legacy categories, then prints the report (JSON or human-readable).
@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/legacyaudit"
 )
 
 // AuditOptions is the typed-input envelope for the Service.Audit method.

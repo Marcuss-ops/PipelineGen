@@ -6,7 +6,7 @@
 //   - sendSynthesizeRequest(ctx, input) — POST /synthesize with JSON body,
 //     parse the JSON response into AudioResult.
 //
-// Mirrors the precedent in internal/application/images/slide_worker_
+// Mirrors the precedent in internal/capabilities/images/workflow/slide_worker_
 // protocol.go (PR-CHROME-PROVIDER-SPLIT, 2026-07-04).
 package audioasset
 

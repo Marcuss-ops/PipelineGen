@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 )
 

@@ -19,7 +19,7 @@ import (
 	"context"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

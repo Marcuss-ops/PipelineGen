@@ -138,7 +138,7 @@ func (s *stubMetrics) SetAliasCurrent(alias, collection string) {
 // port surface. Aligning the stub to match the canonical interface signature
 // (structurally *qdrantdr.RetentionResult via the
 // `type RetentionResult = qdrantdr.RetentionResult` alias declared in
-// internal/application/qdrant/dr/types.go) unblocks the vet failure without
+// internal/platform/qdrant/dr/types.go) unblocks the vet failure without
 // changing test semantics:
 //   - test caller at line 425 supplies &stubExecutor{resp: &RetentionResult{...}},
 //     so the success branch returns s.resp (a non-nil *RetentionResult);

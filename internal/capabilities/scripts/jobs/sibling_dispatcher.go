@@ -65,7 +65,7 @@ import (
 
 // DefaultSiblingConcurrency is the canonical per-worker sibling
 // fan-out budget (matches Step 11B user spec; mirrors the registry
-// entries registered in internal/application/jobs/registry.go).
+// entries registered in internal/capabilities/jobs/queue/registry.go).
 const DefaultSiblingConcurrency = 4
 
 // ── AssetRequirements (Step 11B fail-closed surface) ─────────────────

@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
@@ -68,7 +68,7 @@ func (stubAssetClient) UploadFile(_ context.Context, _, _ string) error {
 // result, as seen by the runner, is always an empty map. This is
 // the test-side trick that lets the runner enter the silent-skip
 // branch of uploadManifest (P0 #4 fail-closed split, see
-// internal/application/jobs/worker/runner_upload.go: silent-skip
+// internal/capabilities/jobs/worker/runner_upload.go: silent-skip
 // takes the empty-result path BEFORE the assetClient-nil check).
 //
 // Why empty-result: the e2e tests exercise the worker pipeline

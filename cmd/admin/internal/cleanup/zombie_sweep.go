@@ -43,7 +43,7 @@
 // godlike/07 minimum-blast-radius:
 //   * Zero new tests for the DB-write path (the underlying
 //     MarkRunningJobsOlderThanFailed is exercised by
-//     internal/application/jobs/service_test.go)
+//     internal/capabilities/jobs/queue/service_test.go)
 //   * TDD coverage for the cutoff computation + dry-run output via
 //     zombie_sweep_test.go (pure-function split: computeCutoff +
 //     formatDryRunReport + resolveDBPath)

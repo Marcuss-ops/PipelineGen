@@ -62,7 +62,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -387,7 +387,7 @@ func payloadFor(t *testing.T, db *sql.DB, assetID string) string {
 // with the canonical v1 envelope required by the IndexingHandler.
 //
 // Canonical v1 envelope assertion set (per internal/platform/sqlite/outboxevents/envelope.go
-// + internal/application/jobs/outbox/indexing.go::indexRequestV1):
+// + internal/capabilities/jobs/outbox/indexing.go::indexRequestV1):
 //
 //  1. schema_version   — MUST equal outboxevents.ReindexEnvelopeV1Schema ("asset.index.requested.v1")
 //  2. asset_id         — MUST equal chunks[i].ArtifactID
@@ -401,7 +401,7 @@ func payloadFor(t *testing.T, db *sql.DB, assetID string) string {
 //   - target_index_version — OPTIONAL in indexing.go::indexRequestV1. The canonical
 //     asset_finalizer_tx.go::FinalizeAsset does NOT emit it for ANY producer
 //     (YouTube / Artlist / Voiceover / Stock). The IndexingHandler's
-//     parseAndValidateRequest (internal/application/jobs/outbox/indexing_handle.go)
+//     parseAndValidateRequest (internal/capabilities/jobs/outbox/indexing_handle.go)
 //     defaults it downstream via the canonical "outbox applies defaults" pattern.
 //     Per godlike/07 the omission is documented in-line below; a future agent
 //     who re-adds a strict assertion here MUST first unify the canonical
@@ -465,8 +465,8 @@ func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T)
 		t.Errorf("envelope operation = %v, want UPSERT", got)
 	}
 	// OMITTED BY DESIGN — canonical asset_finalizer_tx.go::FinalizeAsset does NOT emit
-	// target_index_version (intentional; OPTIONAL per internal/application/jobs/outbox/indexing.go::indexRequestV1).
-	// The IndexingHandler's parseAndValidateRequest (internal/application/jobs/outbox/indexing_handle.go)
+	// target_index_version (intentional; OPTIONAL per internal/capabilities/jobs/outbox/indexing.go::indexRequestV1).
+	// The IndexingHandler's parseAndValidateRequest (internal/capabilities/jobs/outbox/indexing_handle.go)
 	// defaults it downstream. Per godlike/07 NO-FAKE-AVAILABILITY this asymmetry is documented
 	// in-line so a future agent does NOT silently re-add a strict assertion. The forward-pointer
 	// PR-FINALIZER-EMBED-OPTIONAL-V1-FIELDS would unify the canonical-finalizer surface.

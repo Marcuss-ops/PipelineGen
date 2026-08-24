@@ -54,7 +54,7 @@ import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 
 func TestScanBrainInfraBan_FFmpegLiteralViolates(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/mediamemory/scene_visual_plan_generator.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/mediamemory/scene_visual_plan_generator.go",
 		`package mediamemory
 
 import "os/exec"
@@ -163,7 +163,7 @@ func TestScanBrainInfraBan_AdaptersSubdirExempt(t *testing.T) {
 	// The adapters/ subdir is the canonical deliberate infrastructure
 	// bridge zone; a file there must remain exempt even if the real
 	// qdrant adapter now lives in platform/qdrant/qdrantmm.
-	makeBrainInfraFile(t, root, "internal/application/mediamemory/adapters/generic_bridge.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/mediamemory/adapters/generic_bridge.go",
 		`package adapters
 
 import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -173,7 +173,7 @@ import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	ScanBrainInfraBan(root, &policy.Policy{}, r)
 
 	for _, v := range r.Violations {
-		if strings.Contains(v.File, "internal/application/mediamemory/adapters/") {
+		if strings.Contains(v.File, "internal/capabilities/mediamemory/adapters/") {
 			t.Errorf("adapters/ subdir must be exempt, got %+v", v)
 		}
 	}

@@ -5,7 +5,7 @@
 // inside t.TempDir() and verifies that the scanner:
 //
 //   - PASSES when only the canonical exempt zones
-//     (cmd/admin/** + internal/application/jobs/outbox/**)
+//     (cmd/admin/** + internal/capabilities/jobs/outbox/**)
 //     carry the qdrant infrastructure import.
 //   - FAILS when a non-canonical internal/application/**
 //     package (NOT exempt) imports the qdrant infrastructure.
@@ -57,7 +57,7 @@ func writeFakeAdminCanonical(t *testing.T, tempDir string) string {
 }
 
 // writeFakeOutboxCanonical writes a synthetic file in
-// internal/application/jobs/outbox/** that legitimately
+// internal/capabilities/jobs/outbox/** that legitimately
 // imports the qdrant infrastructure (canonical outbox
 // worker — must NOT trip).
 func writeFakeOutboxCanonical(t *testing.T, tempDir string) string {
@@ -79,7 +79,7 @@ func writeFakeOutboxCanonical(t *testing.T, tempDir string) string {
 }
 
 // writeFakeLegacyAuditExempt writes a synthetic file in
-// internal/application/qdrant/legacyaudit/** that imports
+// internal/platform/qdrant/legacyaudit/** that imports
 // the qdrant infrastructure (operator/audit tooling —
 // read-only classification walker; must NOT trip).
 func writeFakeLegacyAuditExempt(t *testing.T, tempDir string) string {
@@ -102,7 +102,7 @@ func writeFakeLegacyAuditExempt(t *testing.T, tempDir string) string {
 }
 
 // writeFakeMaintenanceExempt writes a synthetic file in
-// internal/application/qdrant/maintenance/** that imports
+// internal/platform/qdrant/maintenance/** that imports
 // the qdrant infrastructure (operator/maintenance tooling
 // — 3-mode orchestrator; must NOT trip).
 func writeFakeMaintenanceExempt(t *testing.T, tempDir string) string {
@@ -175,7 +175,7 @@ func writeFakeApplicationTestExempt(t *testing.T, tempDir string) string {
 }
 
 // writeFakeApplicationCommentOnly writes a synthetic file
-// inside internal/application/images/ that ONLY references
+// inside internal/capabilities/images/workflow/ that ONLY references
 // the banned import path in comments. Residue accounting
 // (godlike/07) must warn, not violate.
 func writeFakeApplicationCommentOnly(t *testing.T, tempDir string) string {
@@ -225,7 +225,7 @@ func writeFakeCompositionRootIgnores(t *testing.T, tempDir string) string {
 
 // TestScanQdrantIndexImportBan_OnlyExemptPasses verifies the
 // happy path: only the canonical exempt surfaces (cmd/admin/**
-// + internal/application/jobs/outbox/**) import the qdrant
+// + internal/capabilities/jobs/outbox/**) import the qdrant
 // infrastructure, so zero violations are emitted.
 func TestScanQdrantIndexImportBan_OnlyExemptPasses(t *testing.T) {
 	tempDir := t.TempDir()
@@ -300,14 +300,14 @@ func TestScanQdrantIndexImportBan_DirtyApplicationFails(t *testing.T) {
 
 // TestScanQdrantIndexImportBan_DirtyImageIngestFails is the
 // second load-bearing assertion: a non-canonical file inside
-// internal/application/images/ that imports the qdrant
+// internal/capabilities/images/workflow/ that imports the qdrant
 // infrastructure directly MUST trip the gate. The fixture
 // filename `dirty_image_ingest.go` mirrors the user's literal
 // scenario (image ingest regression).
 func TestScanQdrantIndexImportBan_DirtyImageIngestFails(t *testing.T) {
 	tempDir := t.TempDir()
 	violatingPath := writeFakeApplicationViolation(t, tempDir,
-		"internal/application/images/dirty_image_ingest.go")
+		"internal/capabilities/images/workflow/dirty_image_ingest.go")
 
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
@@ -402,7 +402,7 @@ func TestScanQdrantIndexImportBan_CompositionRootIgnored(t *testing.T) {
 
 // TestScanQdrantIndexImportBan_AdminAndOutboxExempted is the
 // load-bearing exempt-surface assertion: a file at
-// cmd/admin/** OR internal/application/jobs/outbox/** that
+// cmd/admin/** OR internal/capabilities/jobs/outbox/** that
 // imports the qdrant infrastructure directly MUST NOT trip the
 // gate (the canonical exempt set per user directive).
 func TestScanQdrantIndexImportBan_AdminAndOutboxExempted(t *testing.T) {
@@ -426,7 +426,7 @@ func TestScanQdrantIndexImportBan_AdminAndOutboxExempted(t *testing.T) {
 
 // TestScanQdrantIndexImportBan_LegacyAuditExempted verifies
 // that operator/audit tooling under
-// internal/application/qdrant/legacyaudit/** is exempt from
+// internal/platform/qdrant/legacyaudit/** is exempt from
 // the percheck gate. The fixture file
 // `audit_walker.go` imports the qdrant infrastructure for
 // read-only classification (schema.DefaultV3Schema) — the
@@ -451,7 +451,7 @@ func TestScanQdrantIndexImportBan_LegacyAuditExempted(t *testing.T) {
 
 // TestScanQdrantIndexImportBan_MaintenanceExempted verifies
 // that operator/maintenance tooling under
-// internal/application/qdrant/maintenance/** is exempt from
+// internal/platform/qdrant/maintenance/** is exempt from
 // the percheck gate. The fixture file `service.go` imports
 // the qdrant infrastructure for the 3-mode orchestrator
 // (audit / repair-locators / delete-invalid). Exempt per the

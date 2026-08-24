@@ -3,7 +3,7 @@ package mediasearch
 import (
 	"strings"
 
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // resultToResponse converts the canonical search.Result into the

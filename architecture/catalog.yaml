@@ -35,9 +35,9 @@ current:
     - id: P1-SCRIPTS-CUTOVER
       note: "DONE 2026-08-24: application/scripts fully migrated to capabilities/scripts; legacy path no longer exists on disk. Semantic contracts in kernel/script, provider mechanics in platform."
     - id: P1-JOBS-CUTOVER
-      note: "Migrate application/jobs, starting with outbox; policy/orchestration belongs in capabilities/jobs and persistence mechanics in platform/sqlite."
+      note: "DONE 2026-08-24: application/jobs fully migrated to capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite."
     - id: P1-IMAGES-CUTOVER
-      note: "Migrate application/images to capabilities/images; legacy production files must reach zero and never increase during cutover."
+      note: "DONE 2026-08-24: application/images fully migrated to capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0)."
     - id: P1-VOICEOVER-CUTOVER
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: P1-PLATFORM-ADAPTERS

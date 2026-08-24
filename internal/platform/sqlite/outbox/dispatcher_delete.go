@@ -203,7 +203,7 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 // trade-off — the 30-min rate-limit applies uniformly and partial
 // failures are caught by the IndexDeleteHandler's idempotent clip_id
 // ledger on the next genuine re-emission. See
-// internal/application/jobs/outbox/index_delete.go::Handle for the
+// internal/capabilities/jobs/outbox/index_delete.go::Handle for the
 // pre-flight idempotency contract.
 //
 // v1 conflation invariant: payload.IdempotencyKey MUST equal the

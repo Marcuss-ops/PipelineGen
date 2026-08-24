@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"

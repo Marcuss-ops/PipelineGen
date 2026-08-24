@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -183,7 +183,7 @@ func newTextTrackPipelineFixture(t *testing.T, collection string) *textTrackPipe
 	//
 	// appjobs.HandlerFunc(handler.HandleJob) is the canonical wrap
 	// pattern: appjobs.HandlerFunc is a type alias for appjobs.Handler
-	// (see internal/application/jobs/types.go), so the method value
+	// (see internal/capabilities/jobs/queue/types.go), so the method value
 	// handler.HandleJob is converted to the canonical Handler shape
 	// the Dispatcher.Register signature requires. The production
 	// registration in internal/app/build_bundles_texttracks.go uses

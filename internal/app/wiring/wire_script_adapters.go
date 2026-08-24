@@ -32,7 +32,7 @@
 //     validateScriptGenerateWiring after job registration).
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     populates the ppReg that validateRequiredProcessors scans.
-//   - internal/application/jobs: appjobs.Compose() (the typed
+//   - internal/capabilities/jobs/queue: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
 //   - internal/domain/job: job.TypeScriptGenerate (the canonical
 //     job-type ID validated in step (a) of the 3-invariant check).
@@ -53,8 +53,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

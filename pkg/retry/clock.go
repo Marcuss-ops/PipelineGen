@@ -12,7 +12,7 @@
 //     outside test files (CI gate: scripts/ci-architectural-checks.sh
 //     Check N — added in Commit 4 of this bundle).
 //  2. The migration targets (internal/app/shutdown.go,
-//     internal/application/jobs/worker/runner.go) need a ctx-aware
+//     internal/capabilities/jobs/worker/runner.go) need a ctx-aware
 //     sleep that ALSO accepts a fake clock for deterministic test
 //     coverage (no 100ms flake on slow CI).
 //  3. Rewriting time.Sleep inline at the call site is error-prone:

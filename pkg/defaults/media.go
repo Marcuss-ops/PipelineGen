@@ -6,7 +6,7 @@ package defaults
 // PR3 — DRIFT-DEFAULTS-MEDIA):
 //
 //   - search.DefaultLimit = 20, MaxLimit = 100
-//     (internal/application/search/types.go).
+//     (internal/capabilities/assets/search/types.go).
 //   - mediasearch.DefaultLimit = 10, MaxLimit = 50
 //     (internal/application/mediasearch/types.go).
 //   - mediasearch.DefaultScore = 0.50

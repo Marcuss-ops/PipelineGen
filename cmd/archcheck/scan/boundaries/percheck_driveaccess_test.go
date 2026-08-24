@@ -108,7 +108,7 @@ func countViolationsOnFile(r *report.Report, relPath string) int {
 func TestScanDriveAccessSSOT_CleanTreePasses(t *testing.T) {
 	tempDir := t.TempDir()
 	makeFixture(t, tempDir,
-		"internal/application/images/upload_helper.go",
+		"internal/capabilities/images/workflow/upload_helper.go",
 		"package images\n\n"+
 			"// Imported only via the canonical delivery.Publisher port.\n"+
 			"// No direct drive.Uploader / drive.Admin references.\n"+
@@ -127,7 +127,7 @@ func TestScanDriveAccessSSOT_CleanTreePasses(t *testing.T) {
 // scanner counts each separately.
 func TestScanDriveAccessSSOT_UploaderTypeInApplicationForbids(t *testing.T) {
 	tempDir := t.TempDir()
-	rel := "internal/application/images/legacy_bypass.go"
+	rel := "internal/capabilities/images/workflow/legacy_bypass.go"
 	makeFixture(t, tempDir, rel,
 		"package images\n\n"+
 			"import \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+

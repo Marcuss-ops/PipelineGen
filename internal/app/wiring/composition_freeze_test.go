@@ -281,15 +281,15 @@ func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
 
 // TestComposition_FrozenVectorPointDeleterPort: PR 4 acceptance #1 —
 // exactly ONE VectorPointDeleter port in internal/, declared in
-// internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.
+// internal/capabilities/jobs/outbox/ports.go per AGENTS.md Pattern 0.
 // Pre-PR4 had two duplicate QdrantDeleter interfaces (both deleted).
 func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
 	chdirToProjectRoot(t)
-	src, err := os.ReadFile("internal/application/jobs/outbox/ports.go")
+	src, err := os.ReadFile("internal/capabilities/jobs/outbox/ports.go")
 	require.NoError(t, err, "read canonical VectorPointDeleter port file")
 	matches := strings.Count(string(src), "type VectorPointDeleter interface")
 	require.Equalf(t, 1, matches,
-		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/application/jobs/outbox/ports.go; found %d. The canonical port lives in the application layer per AGENTS.md Pattern 0.",
+		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/capabilities/jobs/outbox/ports.go; found %d. The canonical port lives in the application layer per AGENTS.md Pattern 0.",
 		matches)
 }
 
@@ -297,14 +297,14 @@ func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
 // internal/platform/qdrant/reconciler.go (and absent test) were
 // deleted. This test pins both the file-existence AND zero-stale-caller
 // invariant. The canonical reconciler lives at
-// internal/application/qdrant/reconciler/.
+// internal/capabilities/reconciliation/.
 func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
 	chdirToProjectRoot(t)
 
 	// (1) The deleted file path must NOT exist.
 	const reconcilerPath = "internal/platform/qdrant/reconciler.go"
 	if _, err := os.Stat(reconcilerPath); err == nil {
-		t.Fatalf("PR 7 #7.1: %s must NOT exist (deleted in chore/remove-qdrant-legacy; canonical path is internal/application/qdrant/reconciler/)", reconcilerPath)
+		t.Fatalf("PR 7 #7.1: %s must NOT exist (deleted in chore/remove-qdrant-legacy; canonical path is internal/capabilities/reconciliation/)", reconcilerPath)
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("PR 7 #7.1: unexpected stat error for %s: %v", reconcilerPath, err)
 	}
@@ -317,7 +317,7 @@ func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
 		newReconcilerCalls += strings.Count(string(src), "qdrant.NewReconciler(")
 	}
 	require.Equalf(t, 0, newReconcilerCalls,
-		"PR 7 #7.1: `qdrant.NewReconciler` call sites in internal/app/*.go must equal 0; found %d. The OLD reconciler was deleted; callers must migrate to internal/application/qdrant/reconciler/.",
+		"PR 7 #7.1: `qdrant.NewReconciler` call sites in internal/app/*.go must equal 0; found %d. The OLD reconciler was deleted; callers must migrate to internal/capabilities/reconciliation/.",
 		newReconcilerCalls)
 }
 

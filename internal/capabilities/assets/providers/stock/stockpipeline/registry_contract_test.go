@@ -13,7 +13,7 @@
 // (NOT false), ProducesArtifactsMap INCLUDES (NOT excludes).
 //
 // godlike/06 SSOT (one canonical owner per fact): the registry contract
-// lives in `internal/application/jobs/registry.go`; the spine surface
+// lives in `internal/capabilities/jobs/queue/registry.go`; the spine surface
 // (finalizer.CompleteWithArtifacts + 6-step orchestrator + *RunSummary
 // envelope + 4 typed sentinels) lives in `upload_orchestration.go` +
 // `orchestrator_steps.go`; the per-orchestrator wiring is in
@@ -46,7 +46,7 @@ import (
 	"testing"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // SAFE compile-time pins (no nil-deref panic at package init).

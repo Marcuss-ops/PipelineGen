@@ -14,7 +14,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

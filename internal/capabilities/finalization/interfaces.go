@@ -21,7 +21,7 @@
 //
 // Production concretes live in:
 //
-//	internal/application/jobs/finalizer/   (JobFinalizer)
+//	internal/capabilities/jobs/policy/   (JobFinalizer)
 //	internal/application/assets/finalizer/ (ArtifactPreparationService, AssetFinalizerTx)
 //
 // Canonical reference: Piano d'Azione Completo § 4.2–5.2.

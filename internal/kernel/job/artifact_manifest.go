@@ -11,7 +11,7 @@
 //  2. Handler builds an ArtifactManifest (one Artifact per file).
 //  3. Handler embeds the manifest in the result map
 //     (key "__artifact_manifest", value serialised JSON).
-//  4. The worker runner (internal/application/jobs/worker/runner.go)
+//  4. The worker runner (internal/capabilities/jobs/worker/runner.go)
 //     calls Decode() to extract the manifest, Validate() to check
 //     required-artefact invariants, then uploads each artefact.
 //  5. After upload, WithRemoteLocations() replaces local paths with
@@ -55,7 +55,7 @@ const (
 	// ArtifactKindPDF = "pdf" (P0 Commit 10, July 2026) extends the
 	// canonical kind set for the document.generate handler. The kind
 	// string is the contract that the Sender-side upload cycle
-	// (internal/application/jobs/worker/runner.go::uploadManifest)
+	// (internal/capabilities/jobs/worker/runner.go::uploadManifest)
 	// switches on; adding a new kind is a wire-format extension and
 	// is documented here so the next reader can find the originating
 	// handler at internal/api/assets/document/document_handler.go.
@@ -77,7 +77,7 @@ const (
 	// decides what should appear and when, RenderingGen materializes
 	// that decision. The kind string is the wire-format contract that
 	// the Sender-side routing (destinationForArtifactKind in
-	// internal/application/jobs/worker_artifact_manifest.go) switches
+	// internal/capabilities/jobs/worker_artifact_manifest.go) switches
 	// on; the constant is added so the handler can name the slot at
 	// compile time without a string literal, matching how
 	// ArtifactKindPDF and ArtifactKindMarkdown were introduced.
@@ -305,7 +305,7 @@ type RemoteAsset struct {
 // RemoteAssetIDAdapter is the typed adapter the ToRemote canonical
 // conversion accepts. The C5 spec keeps RemoteAsset as the SSOT
 // (the existing `map[string]RemoteAsset` pattern in
-// internal/application/jobs/worker/runner.go::uploadManifest) and
+// internal/capabilities/jobs/worker/runner.go::uploadManifest) and
 // surfaces it through RemoteAssetIDAdapter as a type alias — same
 // identity, but the alias gives the Sender-side call sites a
 // canonical vocabulary that documents the adapter contract ("any

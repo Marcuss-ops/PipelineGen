@@ -154,7 +154,7 @@ func (s StyleDefinition) Valid() error {
 // July 2026): the legacy 14-field struct was retired. This is now a
 // Go type alias to StyleDefinition. The alias preserves the existing
 // call sites in
-// internal/application/images/styles/{registry,resolver}.go and
+// internal/capabilities/images/workflow/styles/{registry,resolver}.go and
 // the application-layer re-export chain
 // (image/styles.StyleDefinition = asset.GenerationStyle =
 // asset.StyleDefinition) compiling unchanged while the underlying
@@ -166,7 +166,7 @@ func (s StyleDefinition) Valid() error {
 // either (a) caller-supplied parameters (ResolverShape Width/Height
 // routes through the generation request) or (b) a future replacement
 // port. ResolvedStyle.Width/Height was dropped in lockstep — see
-// internal/application/images/styles/types.go for the surface-1
+// internal/capabilities/images/workflow/styles/types.go for the surface-1
 // cut rationale.
 //
 // Future wave-tracker entry: the alias will be physically removed in

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/fullimages"
 )
 
 // UploadRequest is the JSON body for POST /api/images/upload (legacy
@@ -31,7 +31,7 @@ type UploadRequest struct {
 //
 // godlike/06 SSOT: ImageGenerationRequest is the sole request DTO for
 // AI image generation on the /api/images prefix. The distinct
-// service-port type in internal/application/images/ports.go is an
+// service-port type in internal/capabilities/images/workflow/ports.go is an
 // application-layer contract, not an alias to this transport DTO.
 type ImageGenerationRequest struct {
 	Prompt string   `json:"prompt" binding:"required"`

@@ -5,7 +5,7 @@
 // (Test 8 — supersede gate) + section 11 (canonical source_version invariant
 // via typed SupersedeError), this file locks the OUTBOX-LEVEL supersede
 // contract hermetically. The full IndexingHandler.Handle source_version check
-// is exercised in internal/application/jobs/outbox/indexing_v1_test.go
+// is exercised in internal/capabilities/jobs/outbox/indexing_v1_test.go
 // (in-package, mock sourceQuerier + indexer ports); this file pins the
 // downstream typed-error envelope that the handler produces, so the e2e
 // observer can detect a stale-version event via errors.As(*SupersedeError)

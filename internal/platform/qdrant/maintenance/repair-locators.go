@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/repair-locators.go — repair-locators mode handler.
+// internal/platform/qdrant/maintenance/repair-locators.go — repair-locators mode handler.
 //
 // Strips legacy drive_link / local_path payload keys from all points in the
 // active Qdrant collection via the canonical LocatorCleaner. Fast path:

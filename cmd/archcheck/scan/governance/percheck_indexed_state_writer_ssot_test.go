@@ -38,7 +38,7 @@ func writeFakeIndexedStateWriterViolation(t *testing.T, tempDir, fixturePath str
 	body := "package images\n\n" +
 		"// dirty_indexed_state_writer.go: violation fixture —\n" +
 		"// writing media_assets.index_state='INDEXED' from a workflow\n" +
-		"// (internal/application/images/) is FORBIDDEN. The canonical\n" +
+		"// (internal/capabilities/images/workflow/) is FORBIDDEN. The canonical\n" +
 		"// INDEXED state transition is via the outbox consumer\n" +
 		"// (IndexingHandler → IndexClip → setIndexedAt).\n" +
 		"func dirty() error {\n" +
@@ -194,7 +194,7 @@ func TestScanIndexedStateWriterSSOT_RuleIdStable(t *testing.T) {
 func TestScanIndexedStateWriterSSOT_DirtyApplicationFails(t *testing.T) {
 	tempDir := t.TempDir()
 	violatingPath := writeFakeIndexedStateWriterViolation(t, tempDir,
-		"internal/application/images/dirty_indexed_state_writer.go")
+		"internal/capabilities/images/workflow/dirty_indexed_state_writer.go")
 
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},

@@ -2,7 +2,7 @@
 // infrastructure adapters satisfying the application-layer
 // projectionreconciler ports (Pattern 0 — AGENTS.md).
 //
-// The periodic projection reconciler (internal/application/qdrant/
+// The periodic projection reconciler (internal/platform/qdrant/
 // projectionreconciler) measures eligible-vs-active parity every tick.
 // Its two ports are wired to these adapters:
 //
@@ -21,7 +21,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/projectionreconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 

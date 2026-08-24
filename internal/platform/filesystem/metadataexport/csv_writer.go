@@ -5,7 +5,7 @@
 // +rows + flush + error-check + atomic rename. After split, the CSV
 // emission lives here as a single method on the file-writer struct.
 //
-// The application's service.go (internal/application/jobs/outbox/
+// The application's service.go (internal/capabilities/jobs/outbox/
 // metadataexport/service.go::writeCSVRows) does the row assembly:
 //   - decodes each per-asset snapshot body,
 //   - builds the 4-column row (asset_id, exported_at, includes,

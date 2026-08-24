@@ -113,15 +113,16 @@
         "max_loc": 6760
       },
       "current": {
-        "files": 54,
-        "max_loc": 6760
+        "files": 0,
+        "max_loc": 0
       },
       "target_packages": [
         "internal/capabilities/images/workflow",
         "internal/capabilities/images/generation",
         "internal/capabilities/images/delivery",
         "internal/capabilities/images/persistence"
-      ]
+      ],
+      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 → 0); zero production imports remain."
     },
     {
       "path": "internal/application/jobs",
@@ -133,15 +134,16 @@
         "max_loc": 5218
       },
       "current": {
-        "files": 44,
-        "max_loc": 5218
+        "files": 0,
+        "max_loc": 0
       },
       "target_packages": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/worker",
         "internal/capabilities/jobs/policy",
         "internal/capabilities/jobs/outbox"
-      ]
+      ],
+      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 → 0); outbox/policy in capabilities, persistence in platform/sqlite."
     },
     {
       "path": "internal/platform/delivery",
@@ -303,6 +305,63 @@
       "resolution": "SQLite fully migrated from internal/infrastructure/database/sqlite to canonical internal/platform/sqlite. 7 import statements updated across 7 files. Archcheck gates updated (percheck_brain_infra_ban, percheck_asset_committer_event_ssot, percheck_control_plane_sql_writes, percheck_finalizer_no_direct_sql, percheck_sqlite_assets_clips_duplicate, percheck_legacy_root_ban). config/verify-components.json test paths corrected. docs/operations runbooks updated.",
       "targets": [
         "internal/platform/sqlite"
+      ]
+    },
+    {
+      "path": "internal/application/jobs",
+      "owner": "jobs migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
+      "targets": [
+        "internal/capabilities/jobs/queue",
+        "internal/capabilities/jobs/worker",
+        "internal/capabilities/jobs/policy",
+        "internal/capabilities/jobs/outbox"
+      ]
+    },
+    {
+      "path": "internal/application/images",
+      "owner": "images migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0). Zero production imports remain.",
+      "targets": [
+        "internal/capabilities/images/workflow",
+        "internal/capabilities/images/generation",
+        "internal/capabilities/images/delivery",
+        "internal/capabilities/images/persistence"
+      ]
+    },
+    {
+      "path": "internal/application/mediamemory",
+      "owner": "mediamemory migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Merged into existing internal/capabilities/mediamemory (ports/types already canonical); 48 implementation files moved, 9 duplicate contract files eliminated. Zero production imports remain.",
+      "targets": [
+        "internal/capabilities/mediamemory"
+      ]
+    },
+    {
+      "path": "internal/application/search",
+      "owner": "search migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Migrated generic aggregator to internal/capabilities/assets/search (not imagesearch); 24 files moved, preserving generic MediaType fan-out. Zero production imports remain.",
+      "targets": [
+        "internal/capabilities/assets/search"
+      ]
+    },
+    {
+      "path": "internal/application/qdrant",
+      "owner": "qdrant migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Split: reconciler orchestrator to internal/capabilities/reconciliation, Qdrant mechanics (dr, legacyaudit, maintenance, projectionreconciler) to internal/platform/qdrant. Zero production imports remain.",
+      "targets": [
+        "internal/capabilities/reconciliation",
+        "internal/platform/qdrant"
       ]
     }
   ]

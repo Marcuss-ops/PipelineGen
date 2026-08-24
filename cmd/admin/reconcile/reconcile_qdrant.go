@@ -6,7 +6,7 @@
 //   - Compare real ID sets (SQLite media_assets vs. Qdrant points via
 //     payload.asset_id). NOT counts.
 //   - 9 classification categories (see
-//     internal/application/qdrant/reconciler/types.go).
+//     internal/capabilities/reconciliation/types.go).
 //   - Repair routes are canonical:
 //   - missing / version_stale / payload_incomplete /
 //     lifecycle_mismatch / workspace_mismatch /
@@ -41,7 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 

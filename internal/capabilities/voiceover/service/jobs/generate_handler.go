@@ -31,7 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

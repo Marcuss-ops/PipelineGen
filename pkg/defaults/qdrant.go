@@ -14,7 +14,7 @@
 // Direction-of-import: pkg/defaults (no internal imports) ←
 // internal/platform/qdrant/schema (re-exports via
 // `const VisualEmbeddingModelVersion = defaults.VisualEmbeddingModelVersion`)
-// AND ← internal/application/images (consumes directly).
+// AND ← internal/capabilities/images/workflow (consumes directly).
 //
 // The re-export pattern in schema.go is the godlike/07
 // fail-closed-availability contract for backward compat: any

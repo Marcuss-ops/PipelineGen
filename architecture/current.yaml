@@ -31,13 +31,13 @@
     - id: "P1-SCRIPTS-CUTOVER"
       note: "DONE 2026-08-24: application/scripts fully migrated to capabilities/scripts; legacy path no longer exists on disk. Semantic contracts in kernel/script, provider mechanics in platform."
     - id: "P1-JOBS-CUTOVER"
-      note: "Migrate application/jobs, starting with outbox; policy/orchestration belongs in capabilities/jobs and persistence mechanics in platform/sqlite."
+      note: "DONE 2026-08-24: application/jobs fully migrated to capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite."
     - id: "P1-IMAGES-CUTOVER"
-      note: "Migrate application/images to capabilities/images; legacy production files must reach zero and never increase during cutover."
+      note: "DONE 2026-08-24: application/images fully migrated to capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0)."
     - id: "P1-VOICEOVER-CUTOVER"
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: "P1-PLATFORM-ADAPTERS"
-      note: "COMPLETED 2026-08-24: internal/infrastructure fully deleted (commit 1dcc5e4). ~39 leaf packages, ~196 files migrated to platform/ and capabilities/. ~390 consumer imports retargeted. Deferred follow-ups: Qdrant application→capability/platform split, observability canonical owner consolidation."
+      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery, embeddings, SQLite. REMAINING: filesystem/files, checksum/hash, Qdrant, AI transport, observability."
     - id: "P1-API-CUTOVER"
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: "P2-DOMAIN-DISSOLUTION"
@@ -50,53 +50,18 @@
     registry: "architecture/package_hotspots.json"
     verification: "make verify-architecture"
 - id: "WAVE-21-PR-G-SCRIPTS-SUBPKG"
-  status: "completed"
+  status: "in_progress"
   owner: "scripts-capability"
-  completed_at: "2026-08-24"
-  rationale: "Scripts capability split completed. All files migrated from application/scripts to capabilities/scripts. Legacy path deleted. Public contracts preserved and registry-driven composition intact."
+  deadline: "2026-09-30T00:00:00Z"
+  rationale: "Reschedule the scripts capability split to 2026-09-30 because 56 files remain in CUTOVER after the 2026-08-01 deadline; preserve the existing public contracts and registry-driven composition while completing the redistribution."
   count:
     baseline_initial: 64
-    current: 0
+    current: 56
     target_zero: 0
   cross_refs:
+    backfill_increment: "generation/plan_builder.go mirrors the legacy plan contract and is covered by package-local tests; CUTOVER is deferred until full parity and consumer migration."
     package: "internal/application/scripts"
-    resolution: "Fully migrated to capabilities/scripts; kernel/script owns semantic contracts; platform adapters own provider mechanics."
-- id: "WAVE-25-DELIVERY-UNIFICATION"
-  status: "completed"
-  owner: "platform-delivery"
-  completed_at: "2026-08-24"
-  rationale: "Delivery boundary fully consolidated. Phase 1: 3 files migrated from internal/infrastructure/delivery → platform/delivery. Phase 2 (2026-08-24): application/assets/delivery dissolved; 7 production+test files merged into platform/delivery (mapper, admin_upload, configured_aliases, contracts_aliases, soundeffect_sidecar_test). ~106 consumers retargeted. Duplicate contracts_aliases merged, configured_aliases minimized to value-add constructors only. Zero application/assets/delivery references remain."
-  count:
-    baseline_initial: 16
-    current: 0
-    target_zero: 0
-  cross_refs:
-    package: "internal/platform/delivery"
-    resolution: "All delivery adapters unified under single canonical owner. 19 files total in platform/delivery (was 13 before Phase 2)."
-- id: "WAVE-25-EMBEDDINGS-MIGRATION"
-  status: "completed"
-  owner: "platform-embeddings"
-  completed_at: "2026-08-24"
-  rationale: "Embeddings canonical owner established. All 5 implementation files migrated from internal/infrastructure/embeddings to internal/platform/embeddings. infrastructure/embeddings deleted."
-  count:
-    baseline_initial: 5
-    current: 0
-    target_zero: 0
-  cross_refs:
-    package: "internal/infrastructure/embeddings"
-    resolution: "Fully migrated to internal/platform/embeddings; 7 production files now under single canonical owner."
-- id: "WAVE-25-SQLITE-IMPORT-CLEANUP"
-  status: "completed"
-  owner: "platform-sqlite"
-  completed_at: "2026-08-24"
-  rationale: "All Go imports referencing internal/infrastructure/database/sqlite updated to internal/platform/sqlite. 7 import statements corrected, 8 architecture YAML files synced."
-  count:
-    baseline_initial: 7
-    current: 0
-    target_zero: 0
-  cross_refs:
-    package: "internal/infrastructure/database/sqlite"
-    resolution: "Zero production Go imports remain; docs/operations runbooks and gold test data synced."
+    pr_g_phase: "BACKFILL (August 2026) — generation now owns a parity-covered plan builder while the legacy usecase implementation remains active as a compatibility path; root facade and remaining callers are unchanged pending CUTOVER."
 - id: "WAVE-22-PR-D-SERVICE-DEPS-CAP"
   status: "in_progress"
   owner: "api-composition"

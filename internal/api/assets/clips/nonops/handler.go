@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

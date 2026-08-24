@@ -34,7 +34,7 @@ import (
 // — producers bump this on schema changes and the handler rejects with
 // ErrMetadataTerminal so the outbox pool dead-letters events that
 // retry won't fix. Mirrors the IndexRequestSchemaVersion pattern in
-// internal/application/jobs/outbox/indexing.go.
+// internal/capabilities/jobs/outbox/indexing.go.
 const metadataExportSchemaVersion = "asset.metadata_export.requested.v1"
 
 // MetadataExportRequestSchemaVersion is the public contract marker shared by

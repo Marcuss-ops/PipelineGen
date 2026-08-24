@@ -2,7 +2,7 @@
 //
 // These tests pin the contract between the VELOX_WORKER_CAPABILITIES env var
 // and the registered RemoteWorker handler set. Together with
-// internal/application/jobs/worker/registry_test.go they cover the W1 exit gate:
+// internal/capabilities/jobs/worker/registry_test.go they cover the W1 exit gate:
 // the parse must REFUSE rather than silently emit empty/unknown capabilities.
 //
 // We use `package main` so the tests can touch workerruntime.ParseAndValidateCaps directly

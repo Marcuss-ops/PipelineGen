@@ -35,7 +35,7 @@ var controlPlaneSQLCanonicalPrefixes = []string{
 	"internal/application/assets/lifecycle/service_voiceover.go",
 	"internal/application/assets/finalizer/asset_finalizer_renditions.go",
 	"internal/application/assets/finalizer/asset_finalizer_versions.go",
-	"internal/application/jobs/finalizer/job_completion_writer.go",
+	"internal/capabilities/jobs/policy/job_completion_writer.go",
 }
 
 var controlPlaneSQLTables = map[string]bool{

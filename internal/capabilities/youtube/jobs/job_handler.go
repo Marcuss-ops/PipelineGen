@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

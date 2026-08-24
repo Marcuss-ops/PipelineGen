@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
