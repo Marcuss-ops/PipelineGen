@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 )
 
 const voiceoverChunkMaxWords = 400

@@ -51,7 +51,7 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	images "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/jobs"
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 

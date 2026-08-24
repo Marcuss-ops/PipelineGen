@@ -1,5 +1,5 @@
 // Package types holds shared YouTube domain types extracted from the
-// internal/application/youtube mega-package during PR3 Phase 2 (June 2026).
+// the legacy internal/application/youtube mega-package during PR3 Phase 2 (June 2026).
 //
 // These types are used across multiple files in the parent youtube package
 // (metadata_enrich.go, manifest.go, intelligence_sync.go, enrichment.go,

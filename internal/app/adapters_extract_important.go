@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 )
 

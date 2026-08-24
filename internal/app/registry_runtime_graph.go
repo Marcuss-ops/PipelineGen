@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
@@ -87,7 +86,7 @@ func c3ValidateRuntimeGraph() error {
 	}
 	for _, registerOwner := range []func(job.MutableJobRegistry) error{
 		images.MustRegister,
-		youtube.MustRegister,
+		domainyoutube.MustRegister,
 		scripts.MustRegister,
 		documents.MustRegister,
 		voiceover.MustRegister,

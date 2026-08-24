@@ -74,7 +74,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	capvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -273,7 +273,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	placeholderVO := func(ctx context.Context, j *job.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
 		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
 	}
-	if err := dispatcher.Register(voiceover.TypeGenerateItem, placeholderVO); err != nil {
+	if err := dispatcher.Register(capvoiceover.TypeGenerateItem, placeholderVO); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
 	}

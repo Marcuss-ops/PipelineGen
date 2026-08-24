@@ -25,7 +25,6 @@ import (
 	"context"
 	"fmt"
 
-	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -51,14 +50,20 @@ var ErrTranscriberNotWired = fmt.Errorf("transcription: transcriber not wired (g
 // godlike/07 NO-FAKE-AVAILABILITY: never a silent empty result.
 var ErrTranscriberNotImplemented = fmt.Errorf("transcription: canonical TranscribeAudioWithDetection delegation deferred to phase 2 (godlike/07 typed sentinel)")
 
+// WhisperTranscriber is the narrow platform port required by WhisperAdapter.
+// Concrete process/Whisper implementations live outside the capability.
+type WhisperTranscriber interface {
+	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
+}
+
 // WhisperAdapter is the canonical Transcriber impl.
 type WhisperAdapter struct {
-	inner *youtubeinfra.WhisperTranscriberAdapter
+	inner WhisperTranscriber
 }
 
 // NewWhisperAdapter constructs the canonical Transcriber.
 // nil inner → ErrTranscriberNotWired (godlike/07 fail-closed).
-func NewWhisperAdapter(inner *youtubeinfra.WhisperTranscriberAdapter) (*WhisperAdapter, error) {
+func NewWhisperAdapter(inner WhisperTranscriber) (*WhisperAdapter, error) {
 	if inner == nil {
 		return nil, ErrTranscriberNotWired
 	}

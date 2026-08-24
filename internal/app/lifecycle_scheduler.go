@@ -26,7 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/health"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
