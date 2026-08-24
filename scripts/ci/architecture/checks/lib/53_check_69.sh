@@ -37,7 +37,7 @@ if [ -d "${gh_workflow_dir}" ]; then
     gh_off=$(rg -l 'stock_pipeline_live_test\.sh' "${gh_workflow_dir}" 2>/dev/null || true)
 fi
 dsl_off=""
-dsl_workflow_dir="${REPO_ROOT}/workflows"
+dsl_workflow_dir="${REPO_ROOT}/testdata/workflows"
 internal_workflow="${dsl_workflow_dir}/test_stock_pipeline_live.yaml"
 canon_bad=""
 canon_missing=""
@@ -72,7 +72,7 @@ if [ -n "${gh_off}${dsl_off}${canon_bad}${canon_missing}" ]; then
         echo "${gh_off}" | sed 's/^/    /'
     }
     [ -n "${dsl_off}" ] && {
-        echo "  workflows/ non-canonical hits:"
+        echo "  testdata/workflows/ non-canonical hits:"
         echo "${dsl_off}" | sed 's/^/    /'
     }
     [ -n "${canon_missing}" ] && {
@@ -87,7 +87,7 @@ if [ -n "${gh_off}${dsl_off}${canon_bad}${canon_missing}" ]; then
     echo "Fix: the live battery hits yt-dlp + Drive writes + Qdrant mutations;"
     echo "      PR/push auto-trigger is forbidden per docs/operations/stock-e2e-runbook.md §10.6."
     echo "      The canonical surfaces are:"
-    echo "        - Internal DSL workflow: workflows/test_stock_pipeline_live.yaml (manual-only: workflow_dispatch)"
+    echo "        - Internal DSL workflow: testdata/workflows/test_stock_pipeline_live.yaml (manual-only: workflow_dispatch)"
     echo "        - Operator CLI invocation: bash scripts/stock_pipeline_live_test.sh"
     exit 1
 fi
