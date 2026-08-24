@@ -30,7 +30,7 @@
 // `lastReq` matches the expected wire-shape exactly; a future
 // refactor that silently drops the resolved folder override (or
 // silently drops ConflictSkip) surfaces as a test failure.
-package app
+package adapters
 
 import (
 	"context"

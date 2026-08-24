@@ -19,8 +19,8 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
 // stubProviderRegistrar captures Register calls without leaking

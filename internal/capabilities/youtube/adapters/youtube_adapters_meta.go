@@ -1,8 +1,8 @@
 // Package app — sourcing metadata + logger + enrichment adapters
 // split from youtube_metadata_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 3 adapters: sourcingMetadataAdapter, zapSourcingLogger, sourcingEnrichmentAdapter.
-package app
+// 3 adapters: SourcingMetadataAdapter, zapSourcingLogger, SourcingEnrichmentAdapter.
+package adapters
 
 import (
 	"context"
@@ -16,9 +16,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// ── sourcingMetadataAdapter ───────────────────────────────────────────
+// ── SourcingMetadataAdapter ───────────────────────────────────────────
 
-type sourcingMetadataAdapter struct {
+type SourcingMetadataAdapter struct {
 	cfg       *config.Config
 	admin     driveutil.Admin
 	reader    driveutil.Reader
@@ -53,7 +53,7 @@ type sourcingMetadataAdapter struct {
 // of the fail-closed return at the adapter boundary; upstream callers MUST
 // probe via errors.Is(err, sourcing.ErrSourcingUpdateCumulativeDisabled)
 // — NEVER assume a nil return means "no-op succeeded".
-func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
+func (a *SourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
 	if a.admin == nil || a.cfg == nil {
 		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
 		// pre-return — replaces the pre-fix silent-success nil.
@@ -87,7 +87,7 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	// (DRIVE-008 CUTOVER) — the root cause of the data-loss bug.
 	err := appclips.UpdateCumulativeMetadataJSON(
 		ctx,
-		newClipsDriveAdapter(a.admin, a.reader, a.lifecycle),
+		NewClipsDriveAdapter(a.admin, a.reader, a.lifecycle),
 		a.publisher, // P0-#1: previously missing — the new function takes a publisher param
 		a.cfg.Storage.TempPath(),
 		folderID,
@@ -101,11 +101,11 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 		// value. Use Info level for the soft-skip (Drive not
 		// configured) and Error for everything else.
 		if err == appclips.ErrMetadataDriveNotConfigured {
-			a.log.Debug("sourcingMetadataAdapter: metadata.json sidecar update skipped (Drive not configured)",
+			a.log.Debug("SourcingMetadataAdapter: metadata.json sidecar update skipped (Drive not configured)",
 				zap.String("folder_id", folderID),
 				zap.String("clip_id", clipID))
 		} else {
-			a.log.Error("sourcingMetadataAdapter: metadata.json sidecar update failed",
+			a.log.Error("SourcingMetadataAdapter: metadata.json sidecar update failed",
 				zap.String("folder_id", folderID),
 				zap.String("clip_id", clipID),
 				zap.Error(err))
@@ -133,7 +133,7 @@ func (a *zapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 	a.log.Sugar().Debugw(msg, keysAndValues...)
 }
 
-// ── sourcingEnrichmentAdapter ─────────────────────────────────────────
+// ── SourcingEnrichmentAdapter ─────────────────────────────────────────
 //
 // Card 10 (July 2026): the adapter no longer holds a raw *clips.Handler —
 // the only non-HTTP consumer of internal/api/assets/clips/. Instead it
@@ -142,11 +142,11 @@ func (a *zapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 // descriptor expose ONLY routes + job handlers (no Handler field), and
 // it future-proofs the consumer against implementation swaps
 // (async worker-backed enrichment, Qdrant-direct bulk paths).
-type sourcingEnrichmentAdapter struct {
+type SourcingEnrichmentAdapter struct {
 	enricher appclips.ClipEnricher
 }
 
-func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
+func (a *SourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
 	if a.enricher == nil {
 		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
 		// pre-return — replaces the pre-fix silent-success nil.

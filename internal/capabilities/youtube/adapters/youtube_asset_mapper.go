@@ -1,11 +1,24 @@
 // Package app — asset mapping helpers extracted from
 // assets_register_adapters.go (PR-GODOBJ-8, July 2026).
-package app
+package adapters
 
 import (
+	"strings"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
+
+// firstNonEmpty returns the first non-blank value, mirroring the composition
+// root helper of the same name (which this package can no longer see).
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
 
 func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	if c == nil {

@@ -1,8 +1,8 @@
 // Package app — YouTube indexer + Ollama adapters
 // split from youtube_adapters.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 3 adapters: clipIndexerAdapter, ollamaClientAdapter, youtubeIndexDispatcherAdapter.
-package app
+// 3 adapters: ClipIndexerAdapter, ollamaClientAdapter, YoutubeIndexDispatcherAdapter.
+package adapters
 
 import (
 	"context"
@@ -16,31 +16,31 @@ import (
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// ── clipIndexerAdapter ────────────────────────────────────────────────
+// ── ClipIndexerAdapter ────────────────────────────────────────────────
 
-type clipIndexerAdapter struct {
+type ClipIndexerAdapter struct {
 	inner *clipindexer.Service
 }
 
-func (a *clipIndexerAdapter) IsEnabled() bool { return a.inner.IsEnabled() }
-func (a *clipIndexerAdapter) IndexClip(ctx context.Context, id string) error {
+func (a *ClipIndexerAdapter) IsEnabled() bool { return a.inner.IsEnabled() }
+func (a *ClipIndexerAdapter) IndexClip(ctx context.Context, id string) error {
 	return a.inner.IndexClip(ctx, id)
 }
 
-// ── youtubeIndexDispatcherAdapter ────────────────────────────────────
+// ── YoutubeIndexDispatcherAdapter ────────────────────────────────────
 // Merged from youtube_dispatcher_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 
-type youtubeIndexDispatcherAdapter struct {
+type YoutubeIndexDispatcherAdapter struct {
 	disp *outbox.Dispatcher
 	tree *assettree.Service
 }
 
-func (a *youtubeIndexDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {
+func (a *YoutubeIndexDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {
 	if a.disp == nil {
-		return fmt.Errorf("youtubeIndexDispatcherAdapter: dispatcher is nil")
+		return fmt.Errorf("YoutubeIndexDispatcherAdapter: dispatcher is nil")
 	}
 	if clip == nil {
-		return fmt.Errorf("youtubeIndexDispatcherAdapter: clip is nil")
+		return fmt.Errorf("YoutubeIndexDispatcherAdapter: clip is nil")
 	}
 	domainAsset := fromExistingClip(clip)
 	if err := a.disp.EnqueueAndIndex(ctx, domainAsset, contentHash); err != nil {

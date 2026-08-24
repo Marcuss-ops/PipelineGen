@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 )
 
 // researchCoordinatorAdapter is composition glue. The research capability

@@ -64,10 +64,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

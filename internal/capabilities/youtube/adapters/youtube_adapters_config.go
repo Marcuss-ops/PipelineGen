@@ -1,8 +1,8 @@
 // Package app — sourcing config + transcriber + search adapters
 // split from youtube_metadata_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 3 adapters: sourcingConfigAdapter, sourcingTranscriberAdapter, sourcingSearchAdapter.
-package app
+// 3 adapters: SourcingConfigAdapter, SourcingTranscriberAdapter, SourcingSearchAdapter.
+package adapters
 
 import (
 	"context"
@@ -14,40 +14,40 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// ── sourcingConfigAdapter ─────────────────────────────────────────────
+// ── SourcingConfigAdapter ─────────────────────────────────────────────
 
-type sourcingConfigAdapter struct {
+type SourcingConfigAdapter struct {
 	cfg *config.Config
 }
 
-func (a *sourcingConfigAdapter) ClipsFolder() string {
+func (a *SourcingConfigAdapter) ClipsFolder() string {
 	if a.cfg == nil {
 		return ""
 	}
 	return a.cfg.Drive.ClipsFolder()
 }
 
-func (a *sourcingConfigAdapter) RootFolder() string {
+func (a *SourcingConfigAdapter) RootFolder() string {
 	if a.cfg == nil {
 		return ""
 	}
 	return a.cfg.Drive.RootFolder()
 }
 
-// ── sourcingTranscriberAdapter ────────────────────────────────────────
+// ── SourcingTranscriberAdapter ────────────────────────────────────────
 
-type sourcingTranscriberAdapter struct {
+type SourcingTranscriberAdapter struct {
 	cfg *config.Config
 	log *zap.Logger
 }
 
-func (a *sourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath string) (string, string, error) {
+func (a *SourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath string) (string, string, error) {
 	if a.cfg == nil {
 		return "", "", fmt.Errorf("register transcriber config not configured")
 	}
@@ -80,13 +80,13 @@ func (a *sourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath s
 	return strings.TrimSpace(parsed.TranscriptFull), strings.TrimSpace(parsed.Language), nil
 }
 
-// ── sourcingSearchAdapter ─────────────────────────────────────────────
+// ── SourcingSearchAdapter ─────────────────────────────────────────────
 
-type sourcingSearchAdapter struct {
+type SourcingSearchAdapter struct {
 	registry *providers.Registry
 }
 
-func (a *sourcingSearchAdapter) Search(ctx context.Context, query string, limit int) ([]sourcing.SearchCandidate, error) {
+func (a *SourcingSearchAdapter) Search(ctx context.Context, query string, limit int) ([]sourcing.SearchCandidate, error) {
 	if a.registry == nil {
 		return nil, nil
 	}

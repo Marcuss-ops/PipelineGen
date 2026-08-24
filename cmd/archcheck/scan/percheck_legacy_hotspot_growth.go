@@ -114,4 +114,3 @@ func isUnderLegacyRoot(pkg string, legacySet map[string]bool) bool {
 	}
 	return false
 }
-

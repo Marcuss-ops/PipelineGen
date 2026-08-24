@@ -276,7 +276,7 @@ const (
 	// They live in their owning capability domain packages and are
 	// re-exported here so sibling registry_*.go files can reference
 	// them as bare identifiers.
-	TypeVoiceoverGenerate = job.TypeVoiceoverGenerate
+	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
 	TypeYouTubeClipExtract     = youtube.TypeClipExtract
 	TypeScriptGenerate         = script.TypeGenerate
 	TypeImagesGenerate         = image.TypeImagesGenerate

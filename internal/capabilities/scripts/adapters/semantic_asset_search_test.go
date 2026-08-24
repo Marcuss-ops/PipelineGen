@@ -24,8 +24,8 @@ import (
 	"errors"
 	"testing"
 
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 )
 
 // ── Fakes (canonical hermetic stubs) ──────────────────────────────────

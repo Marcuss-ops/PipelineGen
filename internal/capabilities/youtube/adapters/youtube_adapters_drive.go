@@ -29,7 +29,7 @@
 // DestinationPolicy.RootFolderID (single source of truth for root
 // folders per the architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY
 // wave).
-package app
+package adapters
 
 import (
 	"context"
@@ -162,31 +162,31 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 	}, skipped, nil
 }
 
-// ── folderMemoryAdapter ───────────────────────────────────────────────
+// ── FolderMemoryAdapter ───────────────────────────────────────────────
 
-type folderMemoryAdapter struct {
+type FolderMemoryAdapter struct {
 	inner *foldermemory.Service
 }
 
-func newFolderMemoryAdapter(svc *foldermemory.Service) youtubeports.FolderMemoryPort {
+func NewFolderMemoryAdapter(svc *foldermemory.Service) youtubeports.FolderMemoryPort {
 	if svc == nil {
 		return nil
 	}
-	return &folderMemoryAdapter{inner: svc}
+	return &FolderMemoryAdapter{inner: svc}
 }
 
-func (a *folderMemoryAdapter) LoadManifest(manifestPath string) (*asset.ClipManifest, error) {
+func (a *FolderMemoryAdapter) LoadManifest(manifestPath string) (*asset.ClipManifest, error) {
 	return a.inner.LoadManifest(manifestPath)
 }
-func (a *folderMemoryAdapter) SaveManifest(manifestPath string, manifest *asset.ClipManifest) error {
+func (a *FolderMemoryAdapter) SaveManifest(manifestPath string, manifest *asset.ClipManifest) error {
 	return a.inner.SaveManifest(manifestPath, manifest)
 }
-func (a *folderMemoryAdapter) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error {
+func (a *FolderMemoryAdapter) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error {
 	return a.inner.UpdateManifestTXT(folder, manifest)
 }
-func (a *folderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats {
+func (a *FolderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats {
 	return a.inner.ComputeManifestStats(manifest)
 }
 
 // Compile-time assertion: adapter satisfies FolderMemoryPort.
-var _ youtubeports.FolderMemoryPort = (*folderMemoryAdapter)(nil)
+var _ youtubeports.FolderMemoryPort = (*FolderMemoryAdapter)(nil)

@@ -58,7 +58,7 @@ import (
 //     (`pkg/defaults/voiceover.go::DefaultLanguage: "en"`); out of
 //     scope for the text-track pipeline.
 var hardcodedENScopeFiles = []string{
-	"internal/application/youtube/usecase/text_track_resolver.go",
+	"internal/capabilities/youtube/usecase/text_track_resolver.go",
 	"internal/capabilities/youtube/usecase/segment_selection.go",
 	"internal/capabilities/youtube/ports/ports.go",
 	"internal/infrastructure/youtube/subtitles.go",

@@ -22,7 +22,7 @@ func stockOnlyItem() GenerationItemV2 {
 
 func clipOnlyItem() GenerationItemV2 {
 	return GenerationItemV2{ID: "clip", MediaMode: MediaModeClipOnly,
-		Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-1"}},
+		Source:       SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-1"}},
 		ScriptParams: ScriptSpec{TargetWords: 100}}
 }
 

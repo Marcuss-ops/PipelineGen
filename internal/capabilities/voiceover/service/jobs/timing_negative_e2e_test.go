@@ -32,9 +32,9 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // noBoundaryTTS synthesizes audio with ZERO word boundaries in one pass.
