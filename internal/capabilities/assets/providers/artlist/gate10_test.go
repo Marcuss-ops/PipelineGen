@@ -34,7 +34,7 @@
 //     test double added for gate10 (necessary because no existing stub
 //     can simulate a Qdrant failure).
 //   - stubRunRepoForArtlist (dispatcher_stub_test.go) — no-op.
-package artlist
+package assets
 
 import (
 	"context"

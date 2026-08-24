@@ -22,7 +22,7 @@
 // the real files on disk. Cleanup lives at the orchestrator level
 // (orchestrator.go::RunResilient), fired after ALL steps complete
 // via context.WithoutCancel so cleanup survives ctx cancellation.
-package ingest
+package assets
 
 import (
 	"context"

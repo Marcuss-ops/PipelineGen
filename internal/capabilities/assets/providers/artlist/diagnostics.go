@@ -9,7 +9,7 @@
 // (Indexer port). Both ports declare exactly the methods this bridge
 // uses (UpsertClip + IndexClip + IsEnabled) so the swap is mechanical
 // with no behavior change.
-package artlist
+package assets
 
 import (
 	"context"

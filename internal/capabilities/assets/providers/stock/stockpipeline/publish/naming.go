@@ -1,7 +1,7 @@
 // Package publish owns pure Drive naming rules for stock artifacts.
 // It deliberately depends only on stock input DTOs and domain naming helpers;
 // it does not depend on StepRunner, orchestration state, or infrastructure.
-package publish
+package assets
 
 import (
 	"fmt"

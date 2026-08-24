@@ -19,7 +19,7 @@
 //   - The stepStore row count == len(dispatchSteps) at the end of
 //     ResumeAll so operators can SELECT COUNT(*) and confirm
 //     "no duplicate stage rows" per the user-spec acceptance.
-package reconcile
+package assets
 
 import (
 	"context"

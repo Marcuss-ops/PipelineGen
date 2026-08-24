@@ -6,7 +6,7 @@
 //
 // Wiring happens at the composition root (internal/app/wire_*.go); the
 // infrastructure adapter lives in internal/platform/downloader/stock_adapter.go.
-package types
+package assets
 
 import "context"
 

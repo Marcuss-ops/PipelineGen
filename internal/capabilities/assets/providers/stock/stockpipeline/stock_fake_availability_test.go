@@ -28,7 +28,7 @@
 // to remove the old t.Skip()-gated tests and replace with the
 // contracts in this file — see the PR-STOCK-SOURCESTAGER-WIRE
 // forward-pointer in architecture/current.yaml).
-package stockpipeline
+package assets
 
 import (
 	"context"

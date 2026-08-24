@@ -16,7 +16,7 @@
 //
 // Like search_service.go, this file uses the structural-port
 // pattern to avoid a parent-import cycle.
-package retrieved
+package images
 
 import (
 	"context"

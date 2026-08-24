@@ -11,7 +11,7 @@
 //   - RegisterProviders propagates registry errors (ErrAlreadyRegistered
 //     is the critical one a real composition root will hit if the
 //     "script_assets" name is duplicated by another capability)
-package scriptassets
+package assets
 
 import (
 	"context"

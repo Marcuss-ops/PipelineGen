@@ -1,55 +1,35 @@
 package images
 
 import (
-	"context"
+	"net/http"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
-type capabilityImageGeneratorFake struct{}
+func TestRegisterRoutes_ExposesOnlyCanonicalImageGenerationPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 
-func (capabilityImageGeneratorFake) Generate(context.Context, GenerateImageRequest) (*GeneratedImage, error) {
-	return nil, ErrImageGenProviderNotAvailable
-}
+	engine := gin.New()
+	(&ImagesHandler{}).RegisterRoutes(engine.Group("/api/images"))
 
-func (capabilityImageGeneratorFake) TriggerPrewarm(context.Context, string, int) {}
+	canonicalPath := "/api/images/generated/generate"
+	removedPath := "/api/images" + "/generate"
+	var canonicalFound bool
+	for _, route := range engine.Routes() {
+		if route.Method != http.MethodPost {
+			continue
+		}
 
-func TestCapabilityResolution_NilSafe(t *testing.T) {
-	var s *Service
-	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusNotImplemented {
-		t.Errorf("nil receiver: got %s, want %s", got, StatusNotImplemented)
+		switch route.Path {
+		case canonicalPath:
+			canonicalFound = true
+		case removedPath:
+			t.Fatal("removed image generation route must not be registered")
+		}
 	}
-}
 
-func TestCapabilityResolution_MissingGoogleSlidesDependency(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{}}
-	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusMissingDependency {
-		t.Errorf("Google Slides capability: got %s, want %s", got, StatusMissingDependency)
-	}
-}
-
-func TestCapabilityResolution_GoogleSlidesAvailable(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{imageGen: capabilityImageGeneratorFake{}}}
-	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
-		t.Errorf("Google Slides capability: got %s, want %s", got, StatusAvailable)
-	}
-}
-
-func TestCapabilityResolution_UnknownCapabilityNotImplemented(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{imageGen: capabilityImageGeneratorFake{}}}
-	if got := s.CapabilityResolution(Capability("removed-provider")); got != StatusNotImplemented {
-		t.Errorf("unknown capability: got %s, want %s", got, StatusNotImplemented)
-	}
-}
-
-func TestAllCapabilities_AdvertisesOnlyGoogleSlides(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{}}
-	all := s.AllCapabilities()
-	if len(all) != 1 {
-		t.Fatalf("AllCapabilities length = %d, want 1", len(all))
-	}
-	if got, ok := all[CapImageGenChrome]; !ok {
-		t.Fatal("Google Slides capability missing")
-	} else if got != StatusMissingDependency {
-		t.Fatalf("Google Slides status = %s, want %s", got, StatusMissingDependency)
+	if !canonicalFound {
+		t.Fatalf("canonical POST %s is not registered", canonicalPath)
 	}
 }

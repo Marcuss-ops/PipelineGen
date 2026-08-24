@@ -39,7 +39,7 @@
 // spine behavior at runtime; this contract test is COMPLEMENTARY
 // (locks the registry contract + the struct field + the method
 // existence, while the existing tests lock the orchestrator behavior).
-package stockpipeline
+package assets
 
 import (
 	"strings"

@@ -5,7 +5,7 @@
 // orchestrator's overall store. The stress test below exercises
 // parallel Begin/Complete on overlapping names and confirms the
 // store never panics or returns a partial write.
-package stockpipeline
+package assets
 
 import (
 	"context"

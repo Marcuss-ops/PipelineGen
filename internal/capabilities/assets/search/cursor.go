@@ -1,4 +1,4 @@
-package search
+package assets
 
 import (
 	"encoding/base64"

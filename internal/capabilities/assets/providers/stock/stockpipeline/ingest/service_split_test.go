@@ -14,7 +14,7 @@
 // code those files would have housed lives in
 // upload_orchestration.go, job_handler.go, orchestrator_steps.go
 // (see service.go preamble for the full honest scope disclosure).
-package ingest
+package assets
 
 import (
 	"errors"

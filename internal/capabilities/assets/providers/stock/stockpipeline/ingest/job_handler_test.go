@@ -4,7 +4,7 @@
 // all fields populated, omitempty semantics for FinalizationStatus
 // (empty vs non-empty) and FinalizationCompletedAt (zero vs non-zero),
 // nil Manifest, empty Chunks, and ManifestKey wire-constant assertion.
-package ingest
+package assets
 
 import (
 	"bytes"

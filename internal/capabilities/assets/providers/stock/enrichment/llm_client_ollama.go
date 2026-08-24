@@ -6,7 +6,7 @@
 // Future adapter swaps (vllm / nvidia / mock) MUST declare a NEW
 // file (e.g. llm_client_vllm.go) + implement the EnrichmentLLMClient
 // port (NOT mutate the consts in place).
-package enrichment
+package assets
 
 import (
 	"context"

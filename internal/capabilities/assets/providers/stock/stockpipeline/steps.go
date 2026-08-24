@@ -13,7 +13,7 @@
 // InMemoryStepStore is the default implementation for Commit 1.
 // A SQLite-backed implementation lands in a follow-up commit so
 // the orchestrator's state survives a worker restart.
-package stockpipeline
+package assets
 
 import (
 	"context"

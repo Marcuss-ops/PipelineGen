@@ -14,7 +14,7 @@
 // providers/stock/adapter.go, parallel to artlist/adapter.go and
 // youtube/adapter.go. The historical nesting under
 // providers/adapters/<src>/ is removed.
-package stock
+package assets
 
 import (
 	"context"

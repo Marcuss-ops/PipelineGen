@@ -32,7 +32,7 @@
 //   - ComputeAndFillSHA256 returns error → abort (ChunkState
 //     sentinel propagates verbatim — VerifyChunks surfaces
 //     ErrStockChunkHashMissing / ErrStockChunkLocalMissing).
-package publish
+package assets
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package retrieved
+package images
 
 import (
 	"errors"

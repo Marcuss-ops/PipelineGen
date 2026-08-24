@@ -7,7 +7,7 @@
 //   - parseDownloadSection: parses a yt-dlp-style "HH:MM:SS-HH:MM:SS"
 //     DownloadSection string into SegmentStart/SegmentEnd time.Duration
 //     values that the YouTube adapter's FetchRequest consumes.
-package youtube
+package assets
 
 import (
 	"fmt"

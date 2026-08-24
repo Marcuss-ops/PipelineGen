@@ -10,7 +10,7 @@
 // encoders (SigLIP-text for cross-modal visual, CLAP-text for audio,
 // per PR-CROSS-MODAL-TEXT-TO-VISUAL) plug in at composition root
 // without backend changes.
-package search
+package assets
 
 import (
 	"errors"

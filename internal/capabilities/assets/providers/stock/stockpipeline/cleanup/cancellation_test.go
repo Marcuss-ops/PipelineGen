@@ -22,7 +22,7 @@
 // the same pipeline state machine. Listing them under separate test
 // files keeps the godlike/06 SSOT (one canonical owner per concern)
 // intact.
-package cleanup
+package assets
 
 import (
 	"context"

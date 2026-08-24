@@ -1,4 +1,4 @@
-package types
+package assets
 
 // StockRunPayload is the job payload for media.stock jobs.
 // It was previously in the now-deleted internal/core/jobs/payloads.go (PR4).

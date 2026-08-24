@@ -7,7 +7,7 @@
 // FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
 // RetrievalSearchResult) moved to internal/capabilities/images/workflow/routing
 // to break the routing↔retrieved import cycle.
-package retrieved
+package images
 
 import (
 	"context"

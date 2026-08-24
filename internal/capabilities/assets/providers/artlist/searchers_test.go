@@ -25,7 +25,7 @@
 // is not already covered by sibling tests. Uses the same createTestDB
 // helper as service_test.go for the SQLite handle the liveCache
 // constructor requires.
-package artlist
+package assets
 
 import (
 	"context"

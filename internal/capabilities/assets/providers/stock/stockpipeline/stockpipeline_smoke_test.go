@@ -17,7 +17,7 @@
 // pins a single behavior (StageURL recording / Deps 8-cap /
 // JobSubmission context-detach). The merge does NOT change
 // any test's runtime contract.
-package stockpipeline
+package assets
 
 import (
 	"context"

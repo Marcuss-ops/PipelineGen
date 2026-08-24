@@ -8,7 +8,7 @@
 // godlike/06 SSOT: StepRunner is the single seam between per-step
 // bodies and the Orchestrator. Steps MUST NOT access Orchestrator
 // fields directly — they go through the StepRunner accessors.
-package ingest
+package assets
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"

@@ -27,7 +27,7 @@
 //     transition via a SQL UPDATE (same pattern as gate06). Test 2
 //     inserts clips with mixed index_states directly (no RunTag needed)
 //     to assert the DBSearcher contract.
-package artlist
+package assets
 
 import (
 	"context"

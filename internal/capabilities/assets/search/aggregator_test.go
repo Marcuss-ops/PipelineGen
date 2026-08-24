@@ -24,7 +24,7 @@
 // ctxCheck hook. Adapters translate backend shapes in
 // internal/app/search_backends.go and are NOT exercised here —
 // this file tests the Aggregator pipeline with controlled inputs.
-package search
+package assets
 
 import (
 	"context"

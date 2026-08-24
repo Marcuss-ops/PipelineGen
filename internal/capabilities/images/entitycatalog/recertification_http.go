@@ -1,4 +1,4 @@
-package entitycatalog
+package images
 
 import (
 	"image"

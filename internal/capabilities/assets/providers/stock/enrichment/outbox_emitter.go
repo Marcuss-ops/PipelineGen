@@ -53,7 +53,7 @@
 // No silent-success path exists — a successful emit
 // ALWAYS corresponds to a row in outbox_events (new or
 // pre-existing with the same event_key).
-package enrichment
+package assets
 
 import (
 	"context"

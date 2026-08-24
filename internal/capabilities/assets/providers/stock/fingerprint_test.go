@@ -9,7 +9,7 @@
 // godlike/07 typed-error contract: ErrInvalidSeedInput is reachable via
 // errors.Is from any caller seam (test asserts this so future wrapping
 // does not break the audit-pin surface).
-package stock_test
+package assets
 
 import (
 	"errors"

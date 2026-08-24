@@ -9,7 +9,7 @@
 // providers in this subpackage call them, the parent package constructs
 // each provider with an opaque StorageBridge. This interface declares
 // only the methods providers need.
-package retrieved
+package images
 
 import (
 	"context"

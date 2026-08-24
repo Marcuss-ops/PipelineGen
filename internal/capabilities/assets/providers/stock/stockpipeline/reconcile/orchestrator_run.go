@@ -7,7 +7,7 @@
 // godlike/06 SSOT: RunResilient is the single canonical production
 // orchestration entry point. Run is a thin manifest-only wrapper
 // for legacy callers.
-package reconcile
+package assets
 
 import (
 	"context"

@@ -17,7 +17,7 @@
 // Phase 2 (next commit) will relocate the PublishClipToDrive +
 // DrivePublisher + Publish{Request,Result} types into this
 // package's godlike/06 SSOT owner files.
-package publication
+package assets
 
 import (
 	"context"

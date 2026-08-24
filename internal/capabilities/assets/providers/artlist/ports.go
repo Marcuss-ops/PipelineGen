@@ -14,7 +14,7 @@
 //   - Errors are application-shaped: ErrEmpty, ErrUnavailable, ErrTimeout,
 //     ErrInvalidResponse, ErrEmptyResult let callers branch on intent, not on
 //     on the underlying transport.
-package artlist
+package assets
 
 import (
 	"context"

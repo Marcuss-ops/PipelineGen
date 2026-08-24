@@ -1,4 +1,4 @@
-package reconcile
+package assets
 
 import (
 	"encoding/json"

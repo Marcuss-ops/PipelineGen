@@ -27,7 +27,7 @@
 //     transition is a downstream concern (worker-side, not dispatcher-side).
 //     The test simulates the worker's setIndexedAt by directly writing
 //     index_state=INDEXED to the same row the stub produced.
-package artlist
+package assets
 
 import (
 	"context"

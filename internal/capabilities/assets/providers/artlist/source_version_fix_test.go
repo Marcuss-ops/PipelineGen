@@ -10,7 +10,7 @@
 // Fix: stagePersistResults is now fail-closed — it rejects assets with an
 // empty SHA-256 and never emits an outbox event. The fallback hash path has
 // been retired; every persisted asset must carry a real content hash.
-package artlist
+package assets
 
 import (
 	"context"

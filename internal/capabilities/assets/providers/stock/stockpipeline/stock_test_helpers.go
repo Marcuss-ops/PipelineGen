@@ -21,7 +21,7 @@
 // helpers serve different purposes: noopRenderer is a type-level
 // trivial impl; successNoopRenderer is a per-call configurable
 // handler. Both are valid per the composition-time gate.
-package stockpipeline
+package assets
 
 import (
 	"context"

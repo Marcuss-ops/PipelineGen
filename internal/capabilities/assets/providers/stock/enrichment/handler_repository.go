@@ -29,7 +29,7 @@
 // + file_hash) required for the v1 envelope; COALESCE-wrapped to
 // NULL → "" mappings so legacy rows return empty strings (no
 // nil-pointer panics).
-package enrichment
+package assets
 
 import (
 	"context"

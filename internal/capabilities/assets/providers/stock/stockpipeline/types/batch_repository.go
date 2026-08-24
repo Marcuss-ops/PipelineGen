@@ -7,7 +7,7 @@
 //
 // godlike/06 SSOT: every table row has a typed equivalent in this file;
 // the infrastructure adapter may not invent its own entity shapes.
-package types
+package assets
 
 import (
 	"context"

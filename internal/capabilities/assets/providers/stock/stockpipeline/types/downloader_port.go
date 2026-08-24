@@ -15,7 +15,7 @@
 // godlike/07 fail-closed:
 //   - When StockStager.s.downloader is nil and a download path is
 //     required, StageSource surfaces a typed error.
-package types
+package assets
 
 import "context"
 

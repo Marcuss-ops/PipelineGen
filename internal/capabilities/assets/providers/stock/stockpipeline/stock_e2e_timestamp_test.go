@@ -34,7 +34,7 @@
 // NewInMemoryStepStore) without a parallel mirror. External callers
 // that want to mirror this assertion surface should use the same
 // Orchestrator API + the same fixture interface shapes.
-package stockpipeline
+package assets
 
 import (
 	"context"

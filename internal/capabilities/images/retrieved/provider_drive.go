@@ -10,7 +10,7 @@
 // The provider also serves as the canonical migration target for
 // Step 9 (Style-aware assets) and beyond, when the on-disk index
 // must be queried before any network round-trip.
-package retrieved
+package images
 
 import (
 	"context"

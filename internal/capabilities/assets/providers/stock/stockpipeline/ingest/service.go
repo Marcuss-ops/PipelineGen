@@ -48,7 +48,7 @@
 // job_handler.go, orchestrator_steps.go and are NOT in service.go
 // post-Commit-4-expanded; see service_errors.go preamble + commit
 // body for the full honest scope disclosure).
-package ingest
+package assets
 
 import (
 	"go.uber.org/zap"

@@ -21,7 +21,7 @@
 // for the canonical Orchestrator-construction + projection helpers.
 //
 //nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-package ingest
+package assets
 
 import (
 	"context"

@@ -27,7 +27,7 @@
 //     file_hash key carry the same SHA-256)
 //   - SearchText contains the canonical segments: title, description,
 //     round, category, tags, start_sec, end_sec.
-package ingest
+package assets
 
 import (
 	"context"

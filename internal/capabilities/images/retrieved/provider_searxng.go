@@ -5,7 +5,7 @@
 // SearXNGProvider searches the configured SearXNG instance for images.
 // Healthy() probes /healthz; Search returns 0 results when the
 // instance is unreachable or unconfigured.
-package retrieved
+package images
 
 import (
 	"context"

@@ -7,7 +7,7 @@
 // DEPRECATO: projectManifestToPipelineResult proietta il manifesto
 // nel legacy *PipelineResult per il ServiceRunner interface
 // (vedi manifest_projection.go).
-package reconcile
+package assets
 
 import (
 	"context"

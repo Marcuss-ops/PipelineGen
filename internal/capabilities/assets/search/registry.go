@@ -12,7 +12,7 @@
 // to Register returns ErrFrozen. Mirrors providers.Registry's
 // RWMutex + typed-nil-pointer + Empty-Name contract — same patterns
 // mean the same operational guarantees.
-package search
+package assets
 
 import (
 	"fmt"

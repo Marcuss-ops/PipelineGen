@@ -45,7 +45,7 @@
 // ErrConcurrentLeaseRefutation, ErrRemoteArtifactHashMismatch,
 // ErrCompleteJobRequestMissingFields, etc. via errors.Is /
 // errors.As traversal).
-package finalize
+package assets
 
 import (
 	"context"

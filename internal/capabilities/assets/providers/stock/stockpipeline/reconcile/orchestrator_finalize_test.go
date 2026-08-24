@@ -46,7 +46,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: counts IndexClip per asset_id (not
 // globally); a no-op silent-success (0×) is caught independently from a
 // double-firing (2× for the same asset_id).
-package reconcile
+package assets
 
 import (
 	"context"

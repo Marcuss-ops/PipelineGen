@@ -28,7 +28,7 @@
 // orchestrator's HandleJob calls it byte-equivalent pre/post split.
 // The 3 stage labels are the canonical SSOT — no implicit "v1 emitted"
 // claim when the emit was skipped or failed.
-package enrichment
+package assets
 
 import (
 	"context"

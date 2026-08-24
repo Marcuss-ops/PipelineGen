@@ -1,4 +1,4 @@
-package finalize
+package assets
 
 import (
 	"encoding/json"

@@ -1,4 +1,4 @@
-package foldermemory
+package assets
 
 import (
 	"context"

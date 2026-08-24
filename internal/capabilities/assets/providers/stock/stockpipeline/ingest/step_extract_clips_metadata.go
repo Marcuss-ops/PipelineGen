@@ -4,7 +4,7 @@
 // Extracted from step_extract_clips.go per godlike/06 SSOT
 // one-canonical-owner-per-fact. Owns the timestamp-group metadata
 // write + upload logic called by StockExtractClipsStep.Run.
-package ingest
+package assets
 
 import (
 	"context"

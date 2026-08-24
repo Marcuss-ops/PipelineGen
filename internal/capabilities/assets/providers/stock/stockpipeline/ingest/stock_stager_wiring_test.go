@@ -65,7 +65,7 @@
 //	    NOT invoked; the orchestrator's plan_clips step returns the
 //	    typed sentinel "no sources to plan" before stage_sources is
 //	    reached. This pins the order: plan first, stage second.
-package ingest
+package assets
 
 import (
 	"context"

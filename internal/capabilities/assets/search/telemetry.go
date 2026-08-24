@@ -16,7 +16,7 @@
 //
 // Wave 19 invariant: search package is stdlib-only. The decorator
 // uses sync + time, both stdlib. No new imports are added.
-package search
+package assets
 
 import (
 	"context"

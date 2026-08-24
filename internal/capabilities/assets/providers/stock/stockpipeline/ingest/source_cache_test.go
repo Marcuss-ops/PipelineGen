@@ -3,7 +3,7 @@
 // Tests the source cache key derivation, URL normalization, cache hit/miss
 // logic, and invalidation paths. These are pure unit tests that do NOT
 // require SQLite or a running server.
-package ingest
+package assets
 
 import (
 	"context"

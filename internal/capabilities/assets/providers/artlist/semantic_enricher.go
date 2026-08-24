@@ -9,7 +9,7 @@
 //
 // All cross-file symbol resolution works via same-package scope visibility.
 // Pure code-motion split — zero behavior change, zero new exported symbols.
-package artlist
+package assets
 
 import (
 	"context"

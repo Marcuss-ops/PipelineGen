@@ -23,7 +23,7 @@
 // StockRunMetadata wire shape; this is the godlike/06 SSOT
 // surface for the metadata.json envelope. The test pins the
 // contract that RunResilient's downstream steps inherit.
-package reconcile
+package assets
 
 import (
 	"encoding/json"

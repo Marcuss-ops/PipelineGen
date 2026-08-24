@@ -21,7 +21,7 @@
 // never on internal slice structure (godlike/06: do not leak
 // resolver internals through the assertion surface).
 
-package artlist
+package assets
 
 import (
 	"context"

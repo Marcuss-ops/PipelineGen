@@ -12,7 +12,7 @@
 // godlike/07 fail-closed: NewEnrichmentHandler errors on nil LLMClient
 // or AssetRepo; HandleJob returns typed sentinels on every failure;
 // the handler respects ctx cancellation.
-package enrichment
+package assets
 
 import (
 	"context"

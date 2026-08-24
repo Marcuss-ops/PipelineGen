@@ -19,7 +19,7 @@
 // referenced a 914-LoC pre-Commit-4-expanded view of service.go
 // that no longer exists; see service_errors.go preamble for the
 // full honest scope disclosure).
-package ingest
+package assets
 
 import (
 	"context"

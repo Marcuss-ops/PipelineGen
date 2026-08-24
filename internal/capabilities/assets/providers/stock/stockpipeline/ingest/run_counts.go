@@ -1,4 +1,4 @@
-package ingest
+package assets
 
 import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

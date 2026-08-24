@@ -18,7 +18,7 @@
 // assertions using either name land on the SAME concrete type. Existing
 // callers that reference the canonical names keep working unchanged;
 // new callers (FASE 6 ImageSearchResolver) read via the spec shape.
-package retrieved
+package images
 
 import (
 	"errors"

@@ -2,7 +2,7 @@
 // when wired with an asset.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (assets.ClipsRepository) observe the
 // same row data.
-package artlist
+package assets
 
 import (
 	"context"

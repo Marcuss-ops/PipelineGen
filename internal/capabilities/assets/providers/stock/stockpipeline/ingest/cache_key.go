@@ -1,6 +1,6 @@
 // Package ingest owns pure source-cache identity rules for stock ingestion.
 // It has no filesystem, database, downloader, or orchestration dependency.
-package ingest
+package assets
 
 import (
 	"fmt"

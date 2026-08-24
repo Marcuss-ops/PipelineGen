@@ -18,7 +18,7 @@
 //   - registry.go         one-shot Registry (deterministic All/ByCapability)
 //   - registry_test.go    unit tests covering nil/empty/duplicate/concurrent/freeze
 //   - adapters/<source>/  Provider implementations per source
-package providers
+package assets
 
 import (
 	"time"

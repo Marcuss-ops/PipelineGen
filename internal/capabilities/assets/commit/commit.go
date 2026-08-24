@@ -11,7 +11,7 @@
 // FirePostCommitHooks delegation is DEFERRED to phase 2 until
 // the finalization.RenditionOutput field type + artifact
 // projection are fully verified.
-package commit
+package assets
 
 import (
 	"context"

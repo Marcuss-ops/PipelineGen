@@ -23,7 +23,7 @@
 // Do NOT revert the per-chunk `continue` to `return fmt.Errorf`
 // — that would reintroduce the godlike/07 no-fake-availability
 // regression where a single bad chunk tanked the whole compose.
-package finalize
+package assets
 
 import (
 	"context"

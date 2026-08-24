@@ -1,4 +1,4 @@
-package ingest
+package assets
 
 import "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 

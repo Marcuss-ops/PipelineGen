@@ -13,7 +13,7 @@
 // exits early with a Warn log when item.DriveFileID or item.DriveLink
 // is empty. This prevents the fake-success anti-pattern where a clip
 // appears "processed" but was never uploaded.
-package artlist
+package assets
 
 import (
 	"context"

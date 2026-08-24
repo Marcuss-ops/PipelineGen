@@ -1,4 +1,4 @@
-package stock_test
+package assets
 
 import (
 	"context"

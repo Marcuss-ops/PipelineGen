@@ -6,7 +6,7 @@
 // unlocks the plan-persistence pattern: once the plan is written
 // to the typed envelope, retries + cuts consume the SAME plan
 // rather than re-computing random offsets.
-package ingest
+package assets
 
 import (
 	"context"
