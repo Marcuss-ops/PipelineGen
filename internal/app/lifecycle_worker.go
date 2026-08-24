@@ -25,8 +25,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

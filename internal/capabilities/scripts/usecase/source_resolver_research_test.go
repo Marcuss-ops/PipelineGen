@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

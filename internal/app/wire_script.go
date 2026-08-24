@@ -75,8 +75,8 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"

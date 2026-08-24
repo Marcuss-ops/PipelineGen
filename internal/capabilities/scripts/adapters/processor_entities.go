@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

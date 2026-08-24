@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"

@@ -18,8 +18,8 @@ import (
 	"time"
 	"unicode"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 func suspiciousResearchText(s string) bool {

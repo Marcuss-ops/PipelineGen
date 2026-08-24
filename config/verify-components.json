@@ -2,7 +2,7 @@
   "script": {
     "paths": [
       "internal/kernel/script/",
-      "internal/application/scripts/",
+      "internal/capabilities/scripts/",
       "internal/api/script/",
       "internal/infrastructure/nlp/",
       "scripts/bridges/local_nlp_gpu.py",
@@ -19,7 +19,7 @@
     ],
     "go_packages": [
       "./internal/kernel/script/...",
-      "./internal/application/scripts/...",
+      "./internal/capabilities/scripts/...",
       "./internal/api/script/..."
     ],
     "node_tests": [],

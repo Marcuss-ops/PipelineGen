@@ -32,8 +32,8 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

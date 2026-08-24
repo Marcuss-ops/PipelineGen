@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
