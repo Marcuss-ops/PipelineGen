@@ -37,7 +37,7 @@
     - id: "P1-VOICEOVER-CUTOVER"
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: "P1-PLATFORM-ADAPTERS"
-      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery (app+infra merged), embeddings, SQLite, filesystem/files (partial). REMAINING: checksum/hash, Qdrant, AI transport, observability."
+      note: "COMPLETED 2026-08-24: internal/infrastructure fully deleted (commit 1dcc5e4). ~39 leaf packages, ~196 files migrated to platform/ and capabilities/. ~390 consumer imports retargeted. Deferred follow-ups: Qdrant application→capability/platform split, observability canonical owner consolidation."
     - id: "P1-API-CUTOVER"
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: "P2-DOMAIN-DISSOLUTION"

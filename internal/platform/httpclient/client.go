@@ -1,17 +1,17 @@
-// Package httpclient — default adapter for the httpport.Client port
-// (PR-REFACTOR-P0-IO-BINDER-HTTP, July 2026).
+// Package httpclient — canonical HTTP client port + default adapter
+// (PR-REFACTOR-P0-IO-BINDER-HTTP, July 2026; migrated from application/ports 2026-08-24).
 //
-// godlike/04 architectural-binder: this package is the SOLE canonical
-// owner of *http.Client construction for the application-facing port
-// surface. Per AGENTS.md "internal/infrastructure owns concrete
-// adapters", every adapter that wraps an *http.Client to satisfy
-// ports.Client lives here.
+// godlike/06 SSOT: this package is the canonical owner of both the
+// Client interface (the narrow HTTP port consumed by application-layer
+// use cases) and the DefaultClient concrete adapter (the sole *http.Client
+// constructor). Application callers import this package for the port type
+// and receive a concrete Client from the composition root.
 //
 // godlike/07 fail-closed: DefaultClient is the ONLY type in this
 // package that constructs a *http.Client directly. Application-layer
 // callers MUST NOT construct *http.Client inline; they receive a
-// ports.Client from the composition root (internal/app/) and pass it
-// to use cases via constructor injection.
+// Client from the composition root and pass it to use cases via
+// constructor injection.
 //
 // Concurrency: the underlying *http.Client is documented safe for
 // concurrent use; this contract is preserved across the adapter.
@@ -22,9 +22,37 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 )
+
+// Client is the canonical narrow port for outbound HTTP requests.
+//
+// Errors: callers follow the standard Go http.Client error contract —
+// non-nil on network failure, on build request failure, or on context
+// cancellation. Do returns the raw *http.Response; callers MUST close
+// resp.Body when done (this is the http.Client contract; the port does
+// not hide it).
+//
+// Concurrency: the underlying *http.Client is documented safe for
+// concurrent use; this contract is preserved across the port. Callers
+// may share a single Client across goroutines freely.
+type Client interface {
+	// Do executes an HTTP request and returns its response.
+	// Mirrors http.Client.Do. Callers must close resp.Body when done.
+	Do(req *http.Request) (*http.Response, error)
+
+	// Post issues an HTTP POST with the given content-type and body.
+	// The ctx is propagated to the underlying request via
+	// http.NewRequestWithContext. An empty contentType is allowed
+	// (the Content-Type header is omitted in that case — useful for
+	// receivers that sniff the body). Mirrors http.Client.Post
+	// semantics with explicit context.
+	Post(ctx context.Context, url, contentType string, body io.Reader) (*http.Response, error)
+
+	// Get issues an HTTP GET. The ctx is propagated to the underlying
+	// request via http.NewRequestWithContext. Mirrors http.Client.Get
+	// semantics with explicit context.
+	Get(ctx context.Context, url string) (*http.Response, error)
+}
 
 // DefaultClient is the canonical implementation of ports.Client that
 // wraps a real *http.Client. The timeout is set once at construction;
@@ -92,4 +120,4 @@ func (d *DefaultClient) Get(ctx context.Context, url string) (*http.Response, er
 }
 
 // Compile-time identity lock (godlike/06 SSOT — drift-detection).
-var _ ports.Client = (*DefaultClient)(nil)
+var _ Client = (*DefaultClient)(nil)

@@ -36,7 +36,6 @@ package wiring
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -44,14 +43,15 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	gdrive "google.golang.org/api/drive/v3"
 )
 

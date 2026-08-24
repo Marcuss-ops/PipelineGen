@@ -185,7 +185,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #
 #   ffmpeg         — FFmpeg execution lives in platform/media/rustexec/.
 #                     No standalone ffmpeg package needed; subsumed by
-#                     rustexec.VideoProcessor. Remove from target list.
+#                     rustexec.VideoProcessor.
 #
 #   nvidia         — GPU/NVIDIA capability probing lives in
 #                     platform/overlays/gpu_gate.go and app/workerruntime.
@@ -205,7 +205,7 @@ target_internal_roots: app, kernel, capabilities, platform
 # exception must be an existing owner/deadline/target entry in
 # architecture/package_hotspots.json::root_migrations. The migration registry
 # is governance metadata, not permission to extend a legacy root.
-legacy_internal_roots: application, api, infrastructure
+legacy_internal_roots: application, api
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
 # entry is a free-form comment consumed by the human reviewer; the binary

@@ -29,7 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 )
@@ -47,7 +47,7 @@ import (
 // metadataexport), then passes the pre-built handler to
 // RegisterOptionalHandlers via the metadataExportHandler arg.
 //
-// HTTPClient: ports.Client used by DeliveryHandler for outbound POSTs.
+// HTTPClient: httpclient.Client used by DeliveryHandler for outbound POSTs.
 // PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): the field is now the
 // canonical narrow port (Do/Post/Get) rather than a direct *http.Client
 // so the application layer no longer depends on net/http directly.
@@ -106,7 +106,7 @@ import (
 // stays under the archcheck 8-field cap.
 type InfraDeps struct {
 	DB                 *sql.DB
-	HTTPClient         ports.Client
+	HTTPClient         httpclient.Client
 	HMACSecrets        [][]byte
 	InsecureDev        bool
 	DeliveryOperations DeliveryOperation
@@ -274,7 +274,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	}
 	if deps != nil {
 		// The delivery handler is only registered when the composition
-		// root injects a concrete ports.Client. There is no application-
+		// root injects a concrete httpclient.Client. There is no application-
 		// layer fallback that builds an HTTP client; a missing client
 		// means the webhook delivery path is intentionally skipped
 		// rather than silently depending on an infrastructure driver.

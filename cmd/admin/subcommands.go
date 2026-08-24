@@ -1,38 +1,4 @@
 // cmd/admin/subcommands.go — subcommand registry and dispatcher
-//
-// CLI dispatcher for one-shot admin operations. The admin binary is
-// invoked as `./admin <subcommand>` (or `pipelinegen admin <subcommand>`).
-//
-// The post-recovery dispatcher honours all subcommands plus the pre-existing fleet:
-//
-//   - benchmark                   (cmd/admin/benchmark.go)
-//   - cleanup-orphans             (cmd/admin/cleanup.go)
-//   - cleanup-all-orphans         (cmd/admin/cleanup.go)
-//   - cleanup-artlist-empty-folders (cmd/admin/cleanup.go)
-//   - qdrant-maintenance          (cmd/admin/qdrant_maintenance.go) — Issue 12:
-//     unified qdrant maintenance with 3 modes: audit (classify all 8 categories),
-//     repair-locators (strip drive_link/local_path keys), delete-invalid
-//     (outbox-delete non-locator assets). Replaces clean-qdrant-locators (QDRANT-005)
-//     and cleanup-qdrant-legacy (PR 14).
-//   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
-//   - delete-specific-folders     (cmd/admin/cleanup.go)
-//   - zombie-sweep                (cmd/admin/zombie_sweep.go)
-//   - dr-qdrant                   (cmd/admin/dr_qdrant.go)
-//   - list-drive-folder           (cmd/admin/list_drive_folder.go)
-//   - reset-video-ai              (cmd/admin/reset_video_ai.go)
-//   - sync-all-drive              (cmd/admin/cleanup.go)
-//   - test-youtube                (cmd/admin/cleanup.go)
-//   - verify-artlist-pipeline     (cmd/admin/verify.go)
-//   - stock-reset, stock-subfolders-reset,
-//     summarize-book, sync-outros, unify-catalogs,
-//     list-styles, backfill-missing, db, gen-api-docs
-//     (pre-existing fleet).
-//
-// The contract enforced by `cmd/admin/admin_test.go::TestAdminCommands_AreRegistered`
-// is that every command listed in `availableCommands` has a matching
-// switch arm in `dispatchSubcommand`. New subcommands MUST appear in
-// BOTH the `availableCommands` list AND the switch.
-
 package main
 
 import (
@@ -40,113 +6,115 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/audit"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/backfill"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cleanup"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/database"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/drive"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/rendering"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/soundeffects"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/reconcile"
 )
 
-// errUnknownCommand is the canonical sentinel returned by
-// dispatchSubcommand when the subcommand name is not registered.
-// Callers (specifically func main) check errors.Is(err, errUnknownCommand)
-// to decide whether to print the usage block + exit 1 vs. the standard
-// error path.
 var errUnknownCommand = errors.New("unknown command")
 
-// availableCommands is derived from commandRegistry and sorted for stable
-// help output. The registry is the only dispatch source of truth.
 type commandHandler func([]string) error
 
 var commandRegistry = map[string]commandHandler{
-	"delete-clip-by-drive-file":      runDeleteClipByDriveFile,
-	"apply-asset-metadata":           runApplyAssetMetadata,
-	"audit-google-doc-links":         runAuditGoogleDocLinks,
-	"audit-google-doc-render":        runAuditGoogleDocRender,
-	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,
-	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
-	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
-	"backfill-embedding-contract":    runBackfillEmbeddingContract,
-	"backfill-clip-folder-path":      runBackfillClipFolderPath,
-	"backfill-media-asset-sources":   runBackfillMediaAssetSources,
-	"backfill-media-durations":       runBackfillMediaDurations,
-	"backfill-missing":               runBackfillMissing,
-	"backfill-payload-hash":          runBackfillPayloadHash,
-	"backfill-provider-timestamps":   runBackfillProviderTimestamps,
-	"backfill-source-url-metadata":   runBackfillSourceURLMetadata,
-	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
-	"benchmark":                      runBenchmark,
-	"broken-references":              runBrokenReferences,
-	"check-drive-names":              runCheckDriveNames,
-	"clip-drive-audit":               runClipDriveAudit,
-	"clip-drive-orphan-cleanup":      runClipDriveOrphanCleanup,
-	"check-indexed-ids":              runCheckIndexedIds,
-	"classify-sound-effects":         runClassifySoundEffects,
-	"cleanup-all-orphans":            runCleanupAllOrphans,
-	"cleanup-artlist-empty-folders":  runCleanupArtlistEmptyFolders,
-	"cleanup-orphans":                runCleanupOrphans,
-	"cleanup-stock-orphans":          runCleanupStockOrphans,
-	"control-plane":                  runControlPlane,
-	"db":                             runDB,
-	"delete-specific-folders":        runDeleteSpecificFolders,
-	"delete-drive-images":            runDeleteDriveImages,
-	"download-sound-effects":         runDownloadSoundEffects,
-	"drive-bootstrap":                runDriveBootstrap,
-	"drive-create-folder":            runDriveCreateFolder,
-	"drive-doctor":                   runDriveDoctor,
-	"drive-reconcile":                runDriveReconcile,
+	"delete-clip-by-drive-file":      cleanup.RunDeleteClipByDriveFile,
+	"apply-asset-metadata":           maintenance.RunApplyAssetMetadata,
+	"audit-google-doc-links":         audit.RunAuditGoogleDocLinks,
+	"audit-google-doc-render":        audit.RunAuditGoogleDocRender,
+	"apply-asset-metadata-batch":     maintenance.RunApplyAssetMetadataBatch,
+	"apply-additional-sound-effects": soundeffects.RunApplyAdditionalSoundEffects,
+	"backfill-asset-embeddings":      backfill.RunBackfillAssetEmbeddings,
+	"backfill-embedding-contract":    backfill.RunBackfillEmbeddingContract,
+	"backfill-clip-folder-path":      backfill.RunBackfillClipFolderPath,
+	"backfill-media-asset-sources":   backfill.RunBackfillMediaAssetSources,
+	"backfill-media-durations":       backfill.RunBackfillMediaDurations,
+	"backfill-missing":               backfill.RunBackfillMissing,
+	"backfill-payload-hash":          backfill.RunBackfillPayloadHash,
+	"backfill-provider-timestamps":   backfill.RunBackfillProviderTimestamps,
+	"backfill-source-url-metadata":   backfill.RunBackfillSourceURLMetadata,
+	"backfill-visual-embeddings":     qdrant.RunBackfillVisualEmbeddings,
+	"benchmark":                      rendering.RunBenchmark,
+	"broken-references":              audit.RunBrokenReferences,
+	"check-drive-names":              drive.RunCheckDriveNames,
+	"clip-drive-audit":               audit.RunClipDriveAudit,
+	"clip-drive-orphan-cleanup":      cleanup.RunClipDriveOrphanCleanup,
+	"check-indexed-ids":              audit.RunCheckIndexedIds,
+	"classify-sound-effects":         soundeffects.RunClassifySoundEffects,
+	"cleanup-all-orphans":            cleanup.RunCleanupAllOrphans,
+	"cleanup-artlist-empty-folders":  cleanup.RunCleanupArtlistEmptyFolders,
+	"cleanup-orphans":                cleanup.RunCleanupOrphans,
+	"cleanup-stock-orphans":          cleanup.RunCleanupStockOrphans,
+	"control-plane":                  maintenance.RunControlPlane,
+	"db":                             database.RunDB,
+	"delete-specific-folders":        cleanup.RunDeleteSpecificFolders,
+	"delete-drive-images":            cleanup.RunDeleteDriveImages,
+	"download-sound-effects":         soundeffects.RunDownloadSoundEffects,
+	"drive-bootstrap":                drive.RunDriveBootstrap,
+	"drive-create-folder":            drive.RunDriveCreateFolder,
+	"drive-doctor":                   drive.RunDriveDoctor,
+	"drive-reconcile":                drive.RunDriveReconcile,
 	"dr-qdrant":                      reconcile.RunDrQdrant,
-	"export-sound-effects-metadata":  runExportSoundEffectsMetadata,
-	"folder-path-backfill":           runFolderPathBackfill,
-	"gen-api-docs":                   runGenAPIDocs,
-	"identity-audit":                 runIdentityAudit,
-	"index-drive-clip":               runIndexDriveClip,
-	"index-provided-sound-effects":   runIndexProvidedSoundEffects,
-	"keep-drive-folder-files":        runKeepDriveFolderFiles,
-	"list-drive-folder":              runListDriveFolder,
-	"list-styles":                    runListStyles,
-	"migrate-legacy-cache":           runMigrateLegacyCache,
-	"multilingual-benchmark":         runMultilingualBenchmark,
-	"multilingual-render":            runMultilingualRender,
-	"normalize-sound-effects-drive":  runNormalizeSoundEffectsDrive,
-	"organize-drive-folder":          runOrganizeDriveFolder,
-	"organize-foley-drive":           runOrganizeFoleyDrive,
-	"organize-sound-effects-drive":   runOrganizeSoundEffectsDrive,
-	"performance-backfill":           runPerformanceBackfill,
-	"performance-report":             runPerformanceReport,
-	"qdrant-maintenance":             runQdrantMaintenance,
-	"qdrant-bucket-report":           runQdrantBucketReport,
-	"qdrant-enrichment-recover":      runQdrantEnrichmentRecover,
-	"qdrant-preflight":               runQdrantPreflight,
-	"qdrant-readiness":               runQdrantReadiness,
-	"reachability-graph":             runReachabilityGraph,
-	"reconcile-orphaned-runs":        runReconcileOrphanedRuns,
+	"export-sound-effects-metadata":  soundeffects.RunExportSoundEffectsMetadata,
+	"folder-path-backfill":           backfill.RunFolderPathBackfill,
+	"gen-api-docs":                   rendering.RunGenAPIDocs,
+	"identity-audit":                 audit.RunIdentityAudit,
+	"index-drive-clip":               drive.RunIndexDriveClip,
+	"index-provided-sound-effects":   soundeffects.RunIndexProvidedSoundEffects,
+	"keep-drive-folder-files":        drive.RunKeepDriveFolderFiles,
+	"list-drive-folder":              drive.RunListDriveFolder,
+	"list-styles":                    maintenance.RunListStyles,
+	"migrate-legacy-cache":           database.RunMigrateLegacyCache,
+	"multilingual-benchmark":         rendering.RunMultilingualBenchmark,
+	"multilingual-render":            rendering.RunMultilingualRender,
+	"normalize-sound-effects-drive":  soundeffects.RunNormalizeSoundEffectsDrive,
+	"organize-drive-folder":          cleanup.RunOrganizeDriveFolder,
+	"organize-foley-drive":           soundeffects.RunOrganizeFoleyDrive,
+	"organize-sound-effects-drive":   soundeffects.RunOrganizeSoundEffectsDrive,
+	"performance-backfill":           maintenance.RunPerformanceBackfill,
+	"performance-report":             maintenance.RunPerformanceReport,
+	"qdrant-maintenance":             qdrant.RunQdrantMaintenance,
+	"qdrant-bucket-report":           qdrant.RunQdrantBucketReport,
+	"qdrant-enrichment-recover":      qdrant.RunQdrantEnrichmentRecover,
+	"qdrant-preflight":               qdrant.RunQdrantPreflight,
+	"qdrant-readiness":               qdrant.RunQdrantReadiness,
+	"reachability-graph":             audit.RunReachabilityGraph,
+	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
-	"remove-drive-folder-recursive":  runRemoveDriveFolderRecursive,
-	"repair-drive-links":             runRepairDriveLinks,
-	"repair-stock-metadata":          runRepairStockMetadata,
+	"remove-drive-folder-recursive":  drive.RunRemoveDriveFolderRecursive,
+	"repair-drive-links":             audit.RunRepairDriveLinks,
+	"repair-stock-metadata":          audit.RunRepairStockMetadata,
 	"reindex-qdrant":                 reconcile.RunReindexQdrant,
-	"rename-indexed-sound-effects":   runRenameIndexedSoundEffects,
-	"rename-sound-effects":           runRenameSoundEffects,
-	"render-short":                   runRenderShort,
-	"reorganize-and-index-sfx":       runReorganizeAndIndexSFX,
-	"reset-video-ai":                 runResetVideoAI,
-	"search-drive":                   runSearchDrive,
-	"sqlite-audit":                   runSQLiteAudit,
-	"stock-reset":                    runResetStockDrive,
-	"storage-snapshot":               runStorageSnapshot,
-	"stock-subfolders-reset":         runResetStockSubfolders,
-	"summarize-book":                 runSummarizeBook,
-	"sync-all-drive":                 runSyncAllDrive,
-	"sync-drive-folder":              runSyncDriveFolder,
-	"sync-outros":                    runSyncOutros,
-	"test-youtube":                   runTestYouTube,
-	"text-tracks-align-cues":         runTextTracksAlignCues,
-	"text-tracks-backfill":           runTextTracksBackfill,
-	"transcript-cues-backfill":       runTranscriptCuesBackfill,
-	"trash-drive-files":              runTrashDriveFiles,
-	"trim-sound-effects":             runTrimSoundEffects,
-	"unify-catalogs":                 runUnifyCatalogs,
-	"update-sound-effect-metadata":   runUpdateSoundEffectMetadata,
-	"upload-drive-file":              runUploadDriveFile,
-	"verify-projection":              runVerifyProjection,
-	"zombie-sweep":                   runZombieSweep,
+	"rename-indexed-sound-effects":   soundeffects.RunRenameIndexedSoundEffects,
+	"rename-sound-effects":           soundeffects.RunRenameSoundEffects,
+	"render-short":                   rendering.RunRenderShort,
+	"reorganize-and-index-sfx":       soundeffects.RunReorganizeAndIndexSFX,
+	"reset-video-ai":                 maintenance.RunResetVideoAI,
+	"search-drive":                   drive.RunSearchDrive,
+	"sqlite-audit":                   audit.RunSQLiteAudit,
+	"stock-reset":                    maintenance.RunResetStockDrive,
+	"storage-snapshot":               audit.RunStorageSnapshot,
+	"stock-subfolders-reset":         maintenance.RunResetStockSubfolders,
+	"summarize-book":                 rendering.RunSummarizeBook,
+	"sync-all-drive":                 cleanup.RunSyncAllDrive,
+	"sync-drive-folder":              drive.RunSyncDriveFolder,
+	"sync-outros":                    maintenance.RunSyncOutros,
+	"test-youtube":                   cleanup.RunTestYouTube,
+	"text-tracks-align-cues":         backfill.RunTextTracksAlignCues,
+	"text-tracks-backfill":           backfill.RunTextTracksBackfill,
+	"transcript-cues-backfill":       backfill.RunTranscriptCuesBackfill,
+	"trash-drive-files":              drive.RunTrashDriveFiles,
+	"trim-sound-effects":             soundeffects.RunTrimSoundEffects,
+	"unify-catalogs":                 maintenance.RunUnifyCatalogs,
+	"update-sound-effect-metadata":   soundeffects.RunUpdateSoundEffectMetadata,
+	"upload-drive-file":              drive.RunUploadDriveFile,
+	"verify-projection":              audit.RunVerifyProjection,
+	"zombie-sweep":                   cleanup.RunZombieSweep,
 }
 
 var availableCommands = commandNames()
@@ -160,13 +128,6 @@ func commandNames() []string {
 	return names
 }
 
-// dispatchSubcommand routes `name` (the first argv after the binary
-// name) + `args` to the matching subcommand implementation. Each arm
-// is a one-line delegation to a run<Name> function defined in the
-// per-subcommand file (e.g. runBackfillAssetEmbeddings in
-// cmd/admin/backfill_asset_embeddings.go). Returns nil on success;
-// returns errUnknownCommand (wrapped) for unmatched names so callers
-// can branch on errors.Is for the usage-block exit path.
 func dispatchSubcommand(name string, args []string) error {
 	handler, ok := commandRegistry[name]
 	if !ok {
@@ -175,8 +136,6 @@ func dispatchSubcommand(name string, args []string) error {
 	return handler(args)
 }
 
-// printUsage prints the canonical help block listing every documented
-// subcommand. Tested by `TestAdminCommands_AreRegistered`.
 func printUsage() {
 	fmt.Println("Usage: admin <command> [args]")
 	fmt.Println("Commands:")

@@ -18,16 +18,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 
 	"go.uber.org/zap"
 )

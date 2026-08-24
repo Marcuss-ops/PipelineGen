@@ -57,7 +57,7 @@ import (
 	"go.uber.org/zap"
 
 	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hmacsign"
 )
@@ -184,14 +184,14 @@ type deliveryRequest struct {
 // per-call) so the per-event latency is just signing + POST.
 //
 // PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): the client field is now
-// ports.Client (the canonical narrow port for outbound HTTP) rather
+// httpclient.Client (the canonical narrow port for outbound HTTP) rather
 // than a direct *http.Client. The default constructor routes through
 // internal/infrastructure/httpclient.NewDefaultClient so the
 // application layer no longer touches *http.Client directly. Tests
-// inject a roundtripper-backed fake that satisfies ports.Client.
+// inject a roundtripper-backed fake that satisfies httpclient.Client.
 type DeliveryHandler struct {
 	log             *zap.Logger
-	client          ports.Client
+	client          httpclient.Client
 	db              *sql.DB
 	hmacSecrets     [][]byte
 	insecureDev     bool
@@ -202,7 +202,7 @@ type DeliveryHandler struct {
 // NewDeliveryHandler builds a DeliveryHandler.
 //
 //   - log         nil → nop.
-//   - client      the canonical ports.Client for outbound HTTP. The
+//   - client      the canonical httpclient.Client for outbound HTTP. The
 //     composition root owns concrete-client construction (production
 //     concrete is *httpclient.DefaultClient); the application layer no
 //     longer builds a fallback default. A nil client keeps the handler
@@ -219,7 +219,7 @@ type DeliveryHandler struct {
 //     handler logs a structured warn on every signed-or-not
 //     POST so the dev escape hatch is impossible to mistake
 //     for production behaviour.
-func NewDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
+func NewDeliveryHandler(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
 	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, DeliveryOperation{})
 }
 
@@ -227,11 +227,11 @@ func NewDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSe
 // explicit asset-operation ports. It is separate from NewDeliveryHandler so
 // the legacy constructor remains source-compatible without ambiguous variadic
 // dependency precedence.
-func NewDeliveryHandlerWithOperations(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, operations)
 }
 
-func newDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+func newDeliveryHandler(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
