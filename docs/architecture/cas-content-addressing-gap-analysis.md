@@ -67,7 +67,7 @@ Stato del repo alla data del documento: `main` @ `9db47ad97`.
   per content hash nel risultato di ricerca.
 - **Publisher content-dedupe**: `drive.Publisher` con ConflictPolicy hash-based.
 - **Voiceover dedup**: `ErrDeduplication` + dedup key
-  (`internal/application/voiceover`).
+  (`internal/capabilities/voiceover/service`).
 - **Cache deterministiche esistenti**: translation cache
   (migration `023`, `SHA256(source_text + target_language)`), mediamemory
   query cache (migration `165`), research cache (migration `174`),

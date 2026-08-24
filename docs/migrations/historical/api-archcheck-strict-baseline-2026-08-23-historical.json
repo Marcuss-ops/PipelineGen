@@ -34,7 +34,7 @@
         "internal/application/assets/mutations/",
         "internal/application/assets/finalizer/",
         "internal/application/assets/texttracks/",
-        "internal/application/voiceover/",
+        "internal/capabilities/voiceover/service/",
         "internal/application/images/",
         "internal/application/assets/soundeffect/",
         "internal/application/assets/catalogsync/",

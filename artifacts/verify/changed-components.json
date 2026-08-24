@@ -44,11 +44,11 @@
     "internal/application/scripts/usecase/clip_source_builder_transcript.go",
     "internal/application/scripts/usecase/engine_prompt.go",
     "internal/application/scripts/usecase/segment_validation.go",
-    "internal/application/voiceover/finalizer.go",
-    "internal/application/voiceover/finalizer_execute.go",
-    "internal/application/voiceover/persistence/repository.go",
-    "internal/application/voiceover/process_segment.go",
-    "internal/application/voiceover/process_voiceover_item.go",
+    "internal/capabilities/voiceover/service/finalizer.go",
+    "internal/capabilities/voiceover/service/finalizer_execute.go",
+    "internal/capabilities/voiceover/service/persistence/repository.go",
+    "internal/capabilities/voiceover/service/process_segment.go",
+    "internal/capabilities/voiceover/service/process_voiceover_item.go",
     "internal/capabilities/youtube/ports/hash.go",
     "internal/capabilities/youtube/ports/ports.go",
     "internal/application/youtube/usecase/cache_prewarm.go",
@@ -922,19 +922,19 @@
       "research",
       "translation"
     ],
-    "internal/application/voiceover/finalizer.go": [
+    "internal/capabilities/voiceover/service/finalizer.go": [
       "voiceover"
     ],
-    "internal/application/voiceover/finalizer_execute.go": [
+    "internal/capabilities/voiceover/service/finalizer_execute.go": [
       "voiceover"
     ],
-    "internal/application/voiceover/persistence/repository.go": [
+    "internal/capabilities/voiceover/service/persistence/repository.go": [
       "voiceover"
     ],
-    "internal/application/voiceover/process_segment.go": [
+    "internal/capabilities/voiceover/service/process_segment.go": [
       "voiceover"
     ],
-    "internal/application/voiceover/process_voiceover_item.go": [
+    "internal/capabilities/voiceover/service/process_voiceover_item.go": [
       "voiceover"
     ],
     "internal/capabilities/youtube/ports/hash.go": [
@@ -2068,7 +2068,7 @@
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/capabilities/voiceover/...",
-        "go test ./internal/application/voiceover/...",
+        "go test ./internal/capabilities/voiceover/service/...",
         "go test ./internal/api/assets/voiceover/..."
       ],
       "packages": 3,
@@ -2848,7 +2848,7 @@
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/capabilities/voiceover/...",
-          "go test ./internal/application/voiceover/...",
+          "go test ./internal/capabilities/voiceover/service/...",
           "go test ./internal/api/assets/voiceover/..."
         ],
         "packages": 3,

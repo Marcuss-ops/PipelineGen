@@ -208,7 +208,7 @@
     "paths": [
       "cleaned_jackie-chan-is-seen-on-graham_en-US.mp3",
       "internal/api/assets/voiceover/",
-      "internal/application/voiceover/",
+      "internal/capabilities/voiceover/service/",
       "internal/capabilities/voiceover/",
       "jackie-chan-is-seen-on-graham_en-US.mp3",
       "scripts/bridges/edge_tts_bridge/",
@@ -217,7 +217,7 @@
     ],
     "go_packages": [
       "./internal/capabilities/voiceover/...",
-      "./internal/application/voiceover/...",
+      "./internal/capabilities/voiceover/service/...",
       "./internal/api/assets/voiceover/..."
     ],
     "node_tests": [],

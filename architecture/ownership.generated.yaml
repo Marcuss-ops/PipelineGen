@@ -532,7 +532,7 @@ application_images:
   target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
 
 application_voiceover:
-  owner: internal/application/voiceover
+  owner: internal/capabilities/voiceover/service
   target_subdirs: [voiceover/service, voiceover/sync]
 
 application_books:

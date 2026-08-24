@@ -157,11 +157,11 @@ var KnownLimitResidueInventory = []KnownLimitResidueEntry{
 	{File: "internal/application/assets/maintenance/service.go", Line: 96, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — json.Unmarshal(job.Payload, ...)"},
 	{File: "internal/capabilities/assets/providers/stock/enrichment/handler.go", Line: 247, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — if len(job.Payload) > 0"},
 	{File: "internal/capabilities/assets/providers/stock/enrichment/handler.go", Line: 248, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — json.Unmarshal(job.Payload, ...)"},
-	{File: "internal/application/voiceover/job_handler.go", Line: 19, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — zap.String(\"job_id\", job.ID)"},
-	{File: "internal/application/voiceover/job_handler.go", Line: 20, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — zap.String(\"type\", job.Type)"},
-	{File: "internal/application/voiceover/job_handler.go", Line: 22, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — switch job.Type"},
-	{File: "internal/application/voiceover/job_handler.go", Line: 32, Archetype: KnownLimitArchetypeParamVar, Reason: "handleBatchJob(ctx, job *appjobs.Job) — json.Unmarshal(job.Payload, &req)"},
-	{File: "internal/application/voiceover/job_handler.go", Line: 59, Archetype: KnownLimitArchetypeParamVar, Reason: "handlePromoJob(ctx, job *appjobs.Job) — json.Unmarshal(job.Payload, &req)"},
+	{File: "internal/capabilities/voiceover/service/job_handler.go", Line: 19, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — zap.String(\"job_id\", job.ID)"},
+	{File: "internal/capabilities/voiceover/service/job_handler.go", Line: 20, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — zap.String(\"type\", job.Type)"},
+	{File: "internal/capabilities/voiceover/service/job_handler.go", Line: 22, Archetype: KnownLimitArchetypeParamVar, Reason: "HandleJob(ctx, job *appjobs.Job, ...) — switch job.Type"},
+	{File: "internal/capabilities/voiceover/service/job_handler.go", Line: 32, Archetype: KnownLimitArchetypeParamVar, Reason: "handleBatchJob(ctx, job *appjobs.Job) — json.Unmarshal(job.Payload, &req)"},
+	{File: "internal/capabilities/voiceover/service/job_handler.go", Line: 59, Archetype: KnownLimitArchetypeParamVar, Reason: "handlePromoJob(ctx, job *appjobs.Job) — json.Unmarshal(job.Payload, &req)"},
 
 	// ── LOCAL_VAR (14): `job := *Job` from svc.Enqueue/Claim ──
 	{File: "internal/api/assets/clips/nonops/handler_download.go", Line: 97, Archetype: KnownLimitArchetypeLocalVar, Reason: "job.X where job is local *Job return of jobsSvc.Enqueue(...)"},
@@ -199,7 +199,7 @@ var KnownLimitResidueInventory = []KnownLimitResidueEntry{
 // internal/kernel/job/state_machine.go (canonical) and
 // re-exported by internal/domain/job/codec.go (godlike/06
 // umbrella-restoration contract).
-const KnownLimitTruePkgRefFile = "internal/application/voiceover/jobs/parent_state_machine.go"
+const KnownLimitTruePkgRefFile = "internal/capabilities/voiceover/service/jobs/parent_state_machine.go"
 
 // KnownLimitExpectedResidueTotal is the canonical expected
 // TOTAL residue count post-P1-7 (33; was 34 at disable-time

@@ -30,7 +30,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -192,7 +191,7 @@ type JobPolicy = RegistryEntry
 const (
 	TypeMediaExtract        = media.TypeExtract
 	TypeMediaStock          = media.TypeStock
-	TypeVoiceoverBatch      = voiceover.TypeBatch
+	TypeVoiceoverBatch      = job.TypeVoiceoverBatch
 	TypeSubtitleGenerate    = job.TypeSubtitleGenerate
 	TypeYouTubeUpload       = youtube.TypeUpload
 	TypeYouTubeStock        = youtube.TypeStock
@@ -208,13 +207,13 @@ const (
 	TypeYouTubeRebuildST    = youtube.TypeRebuildSearchText
 	TypeDriveFolderSync     = job.TypeDriveFolderSync
 	TypeMediaCurate         = media.TypeCurate
-	TypeVoiceoverPromo      = voiceover.TypePromo
+	TypeVoiceoverPromo      = job.TypeVoiceoverPromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
-	TypeVoiceoverGenerateItem = voiceover.TypeGenerateItem
+	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
 	TypeImageGenerateGoogle   = image.TypeGenerateGoogle
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
@@ -277,7 +276,7 @@ const (
 	// They live in their owning capability domain packages and are
 	// re-exported here so sibling registry_*.go files can reference
 	// them as bare identifiers.
-	TypeVoiceoverGenerate      = voiceover.TypeGenerate
+	TypeVoiceoverGenerate = job.TypeVoiceoverGenerate
 	TypeYouTubeClipExtract     = youtube.TypeClipExtract
 	TypeScriptGenerate         = script.TypeGenerate
 	TypeImagesGenerate         = image.TypeImagesGenerate

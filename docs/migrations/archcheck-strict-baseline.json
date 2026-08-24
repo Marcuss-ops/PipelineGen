@@ -62,7 +62,7 @@
       "rule": "max_constructor_deps",
       "failing_entries": [
         {"function": "images.NewService", "path": "internal/application/images/service.go", "params": 17},
-        {"function": "voiceover.NewService", "path": "internal/application/voiceover/service.go", "params": 12},
+        {"function": "voiceover.NewService", "path": "internal/capabilities/voiceover/service/service.go", "params": 12},
         {"function": "deletion.NewService", "path": "internal/application/assets/deletion/deletion.go", "params": 11},
         {"function": "soundeffect.NewHandler", "path": "internal/api/assets/soundeffect/handler.go", "params": 10},
         {"function": "NewServerWithHealth", "path": "internal/api/server.go", "params": 10},

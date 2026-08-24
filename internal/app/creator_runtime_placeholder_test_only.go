@@ -36,7 +36,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

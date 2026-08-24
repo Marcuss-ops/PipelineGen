@@ -19,9 +19,9 @@
 // The 6 RETIRED aliases whose canonical-homes live elsewhere:
 //
 //  1. voiceover.VoiceoverRecord → canonical at
-//     internal/application/voiceover/persistence/repository.go::VoiceoverRecord
+//     internal/capabilities/voiceover/service/persistence/repository.go::VoiceoverRecord
 //  2. voiceover.VoiceoverRepository → canonical at
-//     internal/application/voiceover/ports.go::VoiceoverRepository
+//     internal/capabilities/voiceover/service/ports.go::VoiceoverRepository
 //  3. voiceover.PromoRequest → canonical at
 //     internal/application/workflow/promo/generate.go::Request
 //  4. voiceover.PromoResult → canonical at
@@ -120,11 +120,11 @@ var retiredVoiceoverAliases = []struct {
 }{
 	{
 		Literal: "voiceover.VoiceoverRecord",
-		Note:    "canonical: persistence.VoiceoverRecord (internal/application/voiceover/persistence/repository.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
+		Note:    "canonical: persistence.VoiceoverRecord (internal/capabilities/voiceover/service/persistence/repository.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
 	},
 	{
 		Literal: "voiceover.VoiceoverRepository",
-		Note:    "canonical: ports.VoiceoverRepository (internal/application/voiceover/ports.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
+		Note:    "canonical: ports.VoiceoverRepository (internal/capabilities/voiceover/service/ports.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
 	},
 	{
 		Literal: "voiceover.PromoRequest",

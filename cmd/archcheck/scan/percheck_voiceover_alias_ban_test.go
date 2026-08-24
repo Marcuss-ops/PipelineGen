@@ -132,7 +132,7 @@ func TestScanVoiceoverAliasBan_CanonicalFileExempt(t *testing.T) {
 	// order. Non-package-prefixed mentions ("VoiceoverRecord"
 	// without the "voiceover." prefix) do NOT match the literals
 	// and are excluded from the count.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover/types.go", `package voiceover
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service/types.go", `package voiceover
 
 // Canonical narrative README for the 6 retired aliases (Sub-PR A
 // + Sub-PR B retirement contracts).
@@ -252,7 +252,7 @@ func TestScanVoiceoverAliasBan_DetectsProductionCodeHit(t *testing.T) {
 	// Lines 7..n: canonical-replacement declarations that MUST NOT
 	// match (e.g. persistence.VoiceoverRecord), to verify the scanner
 	// differentiates "retired" from "non-retired".
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/types.go", `package voiceover_smuggle
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_smuggle/types.go", `package voiceover_smuggle
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
@@ -305,7 +305,7 @@ var _ persistence.VoiceoverRecord // canonical (NOT a violation) — proves part
 func TestScanVoiceoverAliasBan_CommentOnlyWarned(t *testing.T) {
 	root := t.TempDir()
 
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_doc/types.go", `package voiceover_doc
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_doc/types.go", `package voiceover_doc
 
 // Legacy reference for migration commentary:
 //   voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord)
@@ -351,7 +351,7 @@ type Spec struct{ Name string }
 func TestScanVoiceoverAliasBan_CommentOnlySilencedInProductionOnly(t *testing.T) {
 	root := t.TempDir()
 
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_doc/types.go", `package voiceover_doc
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_doc/types.go", `package voiceover_doc
 
 // Legacy reference: voiceover.VoiceoverRecord
 // (canonical: persistence.VoiceoverRecord)
@@ -473,7 +473,7 @@ func TestScanVoiceoverAliasBan_NoCoverageHoleInCanonicalFile(t *testing.T) {
 	// circuit the test's purpose (the canonical home is exempt
 	// per godlike/06 SSOT, but a future production-code line in
 	// voiceover/types.go would still be a real violation).
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/types.go", `package voiceover_smuggle
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_smuggle/types.go", `package voiceover_smuggle
 
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
@@ -521,7 +521,7 @@ var _ []voiceover.VoiceoverRecord
 	}
 	for i, v := range r.Violations {
 		if filepath.Base(v.File) != "types.go" || !strings.Contains(v.File, "voiceover") {
-			t.Fatalf("expected violation #%d for internal/application/voiceover/types.go, got %q", i, v.File)
+			t.Fatalf("expected violation #%d for internal/capabilities/voiceover/service/types.go, got %q", i, v.File)
 		}
 		if !strings.Contains(v.Note, "VoiceoverRecord") {
 			t.Fatalf("expected Violation #%d.Note to mention the alias type, got %q", i, v.Note)
@@ -565,7 +565,7 @@ func TestScanVoiceoverAliasBan_CleanFixtureZeroHits(t *testing.T) {
 	// reference NON-retired voiceover symbols (BatchRequest,
 	// VoiceoverResult, etc.) to ensure the substring matcher does
 	// NOT false-positive on near-miss patterns.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover/job_handler.go", `package voiceover
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service/job_handler.go", `package voiceover
 
 // JobHandler consumes canonical voiceover types ALL of which
 // survived the Sub-PR A/B retirement (the 6 retired aliases are
@@ -576,7 +576,7 @@ type JobHandler struct {
 }
 `)
 
-	writeFixtureAliasBan(t, root, "internal/application/voiceover/persistence/repository.go", `package persistence
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service/persistence/repository.go", `package persistence
 
 // Canonical VOICEOVER-RECORD home — production code may import
 // this freely. The gate MUST NOT flag persistence.VoiceoverRecord
@@ -653,7 +653,7 @@ func TestScanVoiceoverAliasBan_MidLineCommentEdgeCase(t *testing.T) {
 	// ALSO references the alias (right-of-`//`). The line-start
 	// is `var` (NOT `//`), so the comment-classifier MUST classify
 	// the entire line as production-code.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/midline.go", `package voiceover_smuggle
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_smuggle/midline.go", `package voiceover_smuggle
 
 // Trailing comment on the same line as production code:
 // The scanner MUST classify this as a single production-code
@@ -726,7 +726,7 @@ func TestScanVoiceoverAliasBan_PureLeadingBlockComment(t *testing.T) {
 	// Fixture: a single line that IS a block comment containing
 	// the retired alias reference. The line starts with `/*` so
 	// the comment-classifier MUST classify it as comment-only.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_doc/blockcomment.go", `package voiceover_doc
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_doc/blockcomment.go", `package voiceover_doc
 
 /* Legacy reference: voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord) */
 type Spec struct{ Name string }
@@ -787,7 +787,7 @@ func TestScanVoiceoverAliasBan_MultiLineBlockCommentContinuation(t *testing.T) {
 	// on a previous line and CLOSED on a later line (per Go
 	// syntax). The continuation line is the canonical `*`
 	// prefix form.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_doc/multiline.go", `package voiceover_doc
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_doc/multiline.go", `package voiceover_doc
 
 /*
  * Legacy reference for migration commentary:
@@ -864,7 +864,7 @@ func TestScanVoiceoverAliasBan_ProductionOnlyPreservesViolations(t *testing.T) {
 	// assertion would pass trivially (0 alerts because 0 comment
 	// matches). With the reference, the assertion verifies
 	// productionOnly ACTUALLY silences the comment-only detection.
-	writeFixtureAliasBan(t, root, "internal/application/voiceover_smuggle/prodcodeprod.go", `package voiceover_smuggle
+	writeFixtureAliasBan(t, root, "internal/capabilities/voiceover/service_smuggle/prodcodeprod.go", `package voiceover_smuggle
 
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 

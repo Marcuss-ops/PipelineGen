@@ -50,7 +50,7 @@ capability_ownership_map:
       - imagesearch     # deterministic image search intent resolver
   - macro_owner: voiceover
     packages: []
-    note: "voiceover capability code is still migrating from internal/application/voiceover/ and internal/app/adapters_voiceover_*.go; dedicated capability package not yet on disk"
+    note: "voiceover capability code is still migrating from internal/capabilities/voiceover/service/ and internal/app/adapters_voiceover_*.go; dedicated capability package not yet on disk"
   - macro_owner: content
     packages:
       - localization    # subtitle localization, drive upload, doc publish

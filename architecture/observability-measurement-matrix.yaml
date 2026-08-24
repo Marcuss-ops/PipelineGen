@@ -241,7 +241,7 @@ measurements:
     removal_condition: "All phase observations originate from canonical Stage close and topic/cardinality review passes"
 
   - current_symbol: "VoiceoverStageDuration"
-    current_owner: "internal/application/voiceover/process_segment.go"
+    current_owner: "internal/capabilities/voiceover/service/process_segment.go"
     current_writer: "kernobs.MeasureStage around the 4 ProcessSegmentUseCase stages (tts/audio_post/publish/finalize); stageLog is structured-log only"
     current_storage: "run_stage_observations via SQLiteRecorder; structured stage logs"
     current_metric: "job_stage_duration_seconds{stage,status} (RunReportsCollector live projection)"
@@ -757,7 +757,7 @@ measurements:
     removal_condition: "ARTIFACTS_LINKED=PASS and COUNTERS_PERSISTED=PASS; no capability-only aggregate is authoritative for run reports"
 
   - current_symbol: "child voiceover/translation job timings"
-    current_owner: "internal/application/voiceover and script translation job handlers/aggregators"
+    current_owner: "internal/capabilities/voiceover/service and script translation job handlers/aggregators"
     current_writer: "child job handlers and parent aggregators"
     current_storage: "jobs/job_events/result records and parent aggregation state"
     current_metric: "child completion/failure counts and local phase timing where available"
@@ -913,7 +913,7 @@ measurements:
     removal_condition: "Every document create/update is observed once and document consumers read canonical operation/artifact projections"
 
   - current_symbol: "TTSProvider.Synthesize timing"
-    current_owner: "internal/application/voiceover/ports_synthesis.go and voiceover use cases"
+    current_owner: "internal/capabilities/voiceover/service/ports_synthesis.go and voiceover use cases"
     current_writer: "ProcessSegmentUseCase/process_voiceover_item.go calls TTSProvider.Synthesize; VoiceoverStageDuration is stage-level only"
     current_storage: "Stage log/Prometheus histogram; no durable provider operation row"
     current_metric: "voiceover_stage_duration_seconds{stage=tts}; no dedicated provider timer"

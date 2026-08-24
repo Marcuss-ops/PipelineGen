@@ -60,7 +60,9 @@ const (
 	canonicalTypeClipRegister     = "media.clip"
 
 	TypeVoiceoverGenerate     = "voiceover.generate"
-	TypeVoiceoverGenerateItem = "voiceover.generate.item"
+	TypeVoiceoverBatch        = "voiceover.batch"
+	TypeVoiceoverGenerateItem = "voiceover.generate_item"
+	TypeVoiceoverPromo        = "voiceover.promo"
 
 	// Re-exported canonical job type constants previously in
 	// internal/domain/job (deleted July 2026). Callers that

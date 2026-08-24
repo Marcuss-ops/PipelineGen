@@ -136,7 +136,7 @@ var inputMutationAllowlist = map[string]bool{
 	"internal/capabilities/assets/providers/stock/stockpipeline/query_resolution.go": true,
 	"internal/application/jobs/enqueue_service.go":                                  true,
 	"internal/application/lessons/service.go":                                       true,
-	"internal/application/voiceover/stages.go":                                      true,
+	"internal/capabilities/voiceover/service/stages.go":                                      true,
 }
 
 func isHTTPReq(e ast.Expr) bool {
