@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 )
 
 type StockStager struct {

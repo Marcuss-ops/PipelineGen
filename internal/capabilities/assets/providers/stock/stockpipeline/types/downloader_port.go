@@ -4,7 +4,7 @@
 // downloading. StockStager routes source downloads through this
 // port so the application layer never imports infrastructure types
 // (godlike/07). The concrete implementation lives in
-// internal/infrastructure/downloader/stock_adapter.go and is
+// internal/platform/downloader/stock_adapter.go and is
 // injected via WithDownloader at composition time.
 //
 // godlike/06 SSOT:

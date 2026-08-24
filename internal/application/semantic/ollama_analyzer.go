@@ -44,7 +44,7 @@ import (
 	"go.uber.org/zap"
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/classifier"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 

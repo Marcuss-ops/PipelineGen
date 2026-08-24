@@ -9,7 +9,7 @@ import (
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"

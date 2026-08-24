@@ -34,7 +34,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

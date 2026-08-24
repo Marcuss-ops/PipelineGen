@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +55,7 @@ func TestE2E_Qdrant_HappyPath_YouTubeClip(t *testing.T) {
 	// (drives the mock's /points/scroll handler which mirrors
 	// transport.Client.ScrollPoints' canonical wire shape).
 	// Signature: (ctx, collection, offset, limit, filter) per
-	// internal/infrastructure/qdrant/transport/client_scroll.go.
+	// internal/platform/qdrant/transport/client_scroll.go.
 	scrollRes, err := fx.Transport.ScrollPoints(
 		context.Background(), fx.Schema.RuntimeAlias, "", 100, nil,
 	)

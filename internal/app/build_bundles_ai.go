@@ -25,9 +25,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
-	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 )

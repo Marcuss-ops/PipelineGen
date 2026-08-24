@@ -184,7 +184,7 @@ func TestScanPlayerClientCentralization_CommentOnlyIsWarned(t *testing.T) {
 	commentOnlyContent := `package somepackage
 
 // Note: the canonical player_client= policy is centralized
-// in internal/infrastructure/ytdlp/cmd_builder.go per
+// in internal/platform/ytdlp/cmd_builder.go per
 // godlike/06 SSOT. See PR-PLAYER-CLIENT-DRIFT-FIX.
 //
 // This file MUST NOT re-declare the literal.

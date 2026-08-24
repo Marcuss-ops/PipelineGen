@@ -11,7 +11,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"

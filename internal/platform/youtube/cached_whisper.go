@@ -12,7 +12,6 @@ import (
 	"time"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	infrayoutube "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -21,13 +20,13 @@ import (
 // transcript result is itself a derived artifact serialized into CAS; the
 // local source path is never used as cache identity.
 type CachedWhisperTranscriber struct {
-	inner   infrayoutube.WhisperTranscriber
+	inner   WhisperTranscriber
 	cache   capcache.Cache
 	version string
 	log     *zap.Logger
 }
 
-func NewCachedWhisperTranscriber(inner infrayoutube.WhisperTranscriber, cache capcache.Cache, processorVersion string, log *zap.Logger) (*CachedWhisperTranscriber, error) {
+func NewCachedWhisperTranscriber(inner WhisperTranscriber, cache capcache.Cache, processorVersion string, log *zap.Logger) (*CachedWhisperTranscriber, error) {
 	if inner == nil {
 		return nil, fmt.Errorf("cached whisper: inner transcriber is required")
 	}
@@ -43,7 +42,7 @@ func NewCachedWhisperTranscriber(inner infrayoutube.WhisperTranscriber, cache ca
 	return &CachedWhisperTranscriber{inner: inner, cache: cache, version: processorVersion, log: log}, nil
 }
 
-var _ infrayoutube.WhisperTranscriber = (*CachedWhisperTranscriber)(nil)
+var _ WhisperTranscriber = (*CachedWhisperTranscriber)(nil)
 
 func (w *CachedWhisperTranscriber) TranscribeAudio(ctx context.Context, localPath string) (string, error) {
 	result, err := w.TranscribeAudioWithDetection(ctx, localPath)

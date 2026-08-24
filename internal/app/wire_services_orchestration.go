@@ -54,9 +54,9 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/logsink"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
-	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
+	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"go.uber.org/zap"
 

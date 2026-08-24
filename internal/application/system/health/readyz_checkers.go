@@ -12,7 +12,7 @@
 //
 //   - (B) readyz_checkers_tools.go: ToolsChecker application port. The
 //     concrete CLI-toolpath readiness probe lives in
-//     internal/infrastructure/process.
+//     internal/platform/process.
 //
 //   - (C) readyz_checkers_canary.go: DriveCanaryPort +
 //     HandlerRegChecker interfaces + publisherCanary concrete +

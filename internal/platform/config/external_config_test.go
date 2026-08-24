@@ -225,7 +225,7 @@ func TestConfigLoaderReadsVeloxArtlistScraperServerURLFromEnv(t *testing.T) {
 //  2. When yaml sets the field, the value is bound verbatim to
 //     cfg.External.ArtlistCookiesPath.
 //
-// The downloader (internal/infrastructure/downloader/downloader.go) reads
+// The downloader (internal/platform/downloader/downloader.go) reads
 // the field via NewYTDLP; when empty it SKIPS the --cookies flag entirely
 // so operators see a visible 403 from Artlist instead of a silent failure
 // on a non-existent cookies file.

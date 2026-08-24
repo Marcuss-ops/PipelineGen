@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

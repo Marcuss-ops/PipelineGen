@@ -36,13 +36,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )

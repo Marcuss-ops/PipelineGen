@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 

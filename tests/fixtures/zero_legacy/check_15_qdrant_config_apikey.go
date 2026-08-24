@@ -32,7 +32,8 @@ package fixture
 import (
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // newClientWithoutAPIKey constructs a qdrant.Client WITHOUT propagating
@@ -40,8 +41,8 @@ import (
 // In production this would cause an API-key-protected Qdrant server
 // to return HTTP 401 on every request, making the deployment appear
 // unhealthy even though Qdrant is actually reachable.
-func newClientWithoutAPIKey() *qdrant.Client {
-	client := qdrant.NewClient(&qdrant.Config{
+func newClientWithoutAPIKey() *transport.Client {
+	client := transport.NewClient(&schema.Config{
 		BaseURL: "http://127.0.0.1:6333",
 		Timeout: 10,
 		// MISSING: APIKey: cfg.Qdrant.APIKey

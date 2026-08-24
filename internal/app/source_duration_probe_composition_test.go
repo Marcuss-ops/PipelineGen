@@ -17,7 +17,7 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

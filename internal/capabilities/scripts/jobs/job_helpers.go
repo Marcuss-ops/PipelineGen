@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -169,8 +170,10 @@ func GenerateSceneVoiceovers(
 	}
 	// AGENTS.md §7 post-write save ctx — voiceover job helper writes
 	// must survive the request ctx cancel; the save-context is bounded
-	// by the script-job lifetime, not the request that triggered it.
-	voCtx := context.WithoutCancel(ctx)
+	// by the script-job lifetime (30m timeout), not the request that
+	// triggered it.
+	voCtx, voCancel := background.DetachWithTimeout(ctx, "voiceover-generation", 30*time.Minute)
+	defer voCancel()
 	inputs := make([]adapterspkg.VoiceoverSceneInput, 0, len(scenes))
 	for _, sc := range scenes {
 		sceneText := strings.TrimSpace(sc.Text)

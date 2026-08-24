@@ -46,7 +46,7 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 

@@ -6435,49 +6435,49 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/admin_upload.go": {
+    "internal/platform/delivery/admin_upload.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/admin_upload_test.go": {
+    "internal/platform/delivery/admin_upload_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/configured_aliases.go": {
+    "internal/platform/delivery/configured_aliases.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/configured_test_factories.go": {
+    "internal/platform/delivery/configured_test_factories.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/contracts_aliases.go": {
+    "internal/platform/delivery/contracts_aliases.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/mapper.go": {
+    "internal/platform/delivery/mapper.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/mapper_test.go": {
+    "internal/platform/delivery/mapper_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/delivery/soundeffect_sidecar_test.go": {
+    "internal/platform/delivery/soundeffect_sidecar_test.go": {
       "owners": [
         "core-internal"
       ],

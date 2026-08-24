@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 func TestCleanFolderName(t *testing.T) {
@@ -25,7 +25,7 @@ func TestCleanFolderName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := fileutil.CleanFolderName(tt.input)
+			got := filesystem.CleanFolderName(tt.input)
 			if got != tt.expected {
 				t.Errorf("CleanFolderName(%q) = %q, want %q", tt.input, got, tt.expected)
 			}

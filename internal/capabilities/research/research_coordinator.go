@@ -32,7 +32,6 @@ import (
 	"unicode"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 	"golang.org/x/text/unicode/norm"
@@ -291,7 +290,7 @@ func stripFilterMarks(s string) string {
 }
 
 // deduplicatePool removes duplicate search results by normalized URL
-// (via webresearch.NormalizeWebURL: lowercase host, strip www, drop
+// (via NormalizeWebURL: lowercase host, strip www, drop
 // tracking params, strip fragment), then by same host + exactly equal
 // normalized title. The first occurrence wins, preserving its provider
 // and query-level metadata.
@@ -300,7 +299,7 @@ func deduplicatePool(pool []SearchResult) []SearchResult {
 	seenTitle := make(map[string]struct{}, len(pool))
 	var result []SearchResult
 	for _, res := range pool {
-		norm, err := webresearch.NormalizeWebURL(res.Hit.URL)
+		norm, err := NormalizeWebURL(res.Hit.URL)
 		if err != nil {
 			continue
 		}

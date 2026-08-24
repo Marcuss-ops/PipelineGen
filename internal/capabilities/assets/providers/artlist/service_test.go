@@ -20,7 +20,7 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

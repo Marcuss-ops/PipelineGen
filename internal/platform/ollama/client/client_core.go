@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"

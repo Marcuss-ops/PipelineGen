@@ -48,11 +48,11 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"

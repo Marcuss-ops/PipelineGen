@@ -34,7 +34,7 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 		// the prior `{"internal/domain/job/legacy", bucketJobs}`
 		// row at the P1-7 cutover.
 		// Qdrant.
-		{"internal/infrastructure/qdrant/schema", bucketQdrant},
+		{"internal/platform/qdrant/schema", bucketQdrant},
 		// Assets.
 		{"internal/application/assets/sourcing", bucketAssets},
 		// Scripts.

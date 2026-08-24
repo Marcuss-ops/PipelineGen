@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // AudioPrefetchResult carries pre-resolved audio assets ready for
@@ -129,9 +130,7 @@ func PrefetchAudioAssets(
 	}
 
 	cache := newAudioPrefetchCache()
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
+	g, gCtx := concurrent.WithContext(ctx)
 
 	// ── BGM/SFX asset resolution ──────────────────────────────
 	if needsAudio {
@@ -143,20 +142,16 @@ func PrefetchAudioAssets(
 		allIDs = append(allIDs, sfxIDs...)
 		for _, id := range allIDs {
 			id := id
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				resolved, err := audioSource.ResolveAudioAsset(ctx, id)
-				mu.Lock()
-				defer mu.Unlock()
+			g.Go("prefetch-bgm-sfx-"+id, func() error {
+				resolved, err := audioSource.ResolveAudioAsset(gCtx, id)
 				if err != nil {
-					if firstErr == nil {
-						firstErr = fmt.Errorf("resolve BGM/SFX %q: %w", id, err)
-					}
-					return
+					return fmt.Errorf("resolve BGM/SFX %q: %w", id, err)
 				}
+				cache.mu.Lock()
 				cache.audio[id] = resolved
-			}()
+				cache.mu.Unlock()
+				return nil
+			})
 		}
 	}
 
@@ -167,26 +162,21 @@ func PrefetchAudioAssets(
 		}
 		for _, id := range clipIDs {
 			id := id
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				resolved, err := clipAudioSource.ResolveClipAudioAsset(ctx, id)
-				mu.Lock()
-				defer mu.Unlock()
+			g.Go("prefetch-clip-audio-"+id, func() error {
+				resolved, err := clipAudioSource.ResolveClipAudioAsset(gCtx, id)
 				if err != nil {
-					if firstErr == nil {
-						firstErr = fmt.Errorf("materialize clip audio %q: %w", id, err)
-					}
-					return
+					return fmt.Errorf("materialize clip audio %q: %w", id, err)
 				}
+				cache.mu.Lock()
 				cache.clipAudio[id] = resolved.Path
-			}()
+				cache.mu.Unlock()
+				return nil
+			})
 		}
 	}
 
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	var cachedAudio AudioAssetSource

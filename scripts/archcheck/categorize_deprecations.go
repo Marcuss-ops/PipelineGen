@@ -77,7 +77,7 @@ var subsystemPrefixes = []struct {
 	// new record pointing at `internal/domain/job/<x>` will fall
 	// through to `bucketMisc` so the regression is auditable.
 	// Qdrant projection.
-	{"internal/infrastructure/qdrant", bucketQdrant},
+	{"internal/platform/qdrant", bucketQdrant},
 	{"pkg/architecturecatalog", bucketQdrant},
 	// Assets.
 	{"internal/application/assets", bucketAssets},

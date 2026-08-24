@@ -37,7 +37,7 @@
     - id: "P1-VOICEOVER-CUTOVER"
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: "P1-PLATFORM-ADAPTERS"
-      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery, embeddings, SQLite. REMAINING: filesystem/files, checksum/hash, Qdrant, AI transport, observability."
+      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery (app+infra merged), embeddings, SQLite, filesystem/files (partial). REMAINING: checksum/hash, Qdrant, AI transport, observability."
     - id: "P1-API-CUTOVER"
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: "P2-DOMAIN-DISSOLUTION"
@@ -65,14 +65,14 @@
   status: "completed"
   owner: "platform-delivery"
   completed_at: "2026-08-24"
-  rationale: "Delivery boundary double ownership resolved. All 3 files migrated from internal/infrastructure/delivery to internal/platform/delivery. infrastructure/delivery deleted. Archcheck digest-sha256-ban exemption updated."
+  rationale: "Delivery boundary fully consolidated. Phase 1: 3 files migrated from internal/infrastructure/delivery → platform/delivery. Phase 2 (2026-08-24): application/assets/delivery dissolved; 7 production+test files merged into platform/delivery (mapper, admin_upload, configured_aliases, contracts_aliases, soundeffect_sidecar_test). ~106 consumers retargeted. Duplicate contracts_aliases merged, configured_aliases minimized to value-add constructors only. Zero application/assets/delivery references remain."
   count:
-    baseline_initial: 3
+    baseline_initial: 16
     current: 0
     target_zero: 0
   cross_refs:
-    package: "internal/infrastructure/delivery"
-    resolution: "Fully migrated to internal/platform/delivery; 13 files now under single canonical owner."
+    package: "internal/platform/delivery"
+    resolution: "All delivery adapters unified under single canonical owner. 19 files total in platform/delivery (was 13 before Phase 2)."
 - id: "WAVE-25-EMBEDDINGS-MIGRATION"
   status: "completed"
   owner: "platform-embeddings"

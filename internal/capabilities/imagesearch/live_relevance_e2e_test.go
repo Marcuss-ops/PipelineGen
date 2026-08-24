@@ -53,9 +53,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	assetproviders "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/imagery/pexels"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/fallback"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/images/pexels"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 const (

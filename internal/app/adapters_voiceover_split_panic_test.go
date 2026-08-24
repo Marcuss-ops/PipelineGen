@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/stretchr/testify/require"
 )

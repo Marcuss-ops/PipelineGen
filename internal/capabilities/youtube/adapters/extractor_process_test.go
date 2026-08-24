@@ -12,7 +12,7 @@ import (
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
-	youtubesubtitles "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	youtubesubtitles "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

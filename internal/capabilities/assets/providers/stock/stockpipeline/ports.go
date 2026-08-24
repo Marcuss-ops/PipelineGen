@@ -11,7 +11,7 @@
 //	go vet ./internal/capabilities/assets/providers/stock/...
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
-// `internal/infrastructure/process`. Both are infra concerns; the app layer
+// `internal/platform/process`. Both are infra concerns; the app layer
 // only depends on the typed ports declared in the companion files below.
 //
 // Port surface split (per godlike/06 SSOT one-canonical-owner-per-fact):

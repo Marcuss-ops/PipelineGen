@@ -34,7 +34,7 @@ import (
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	capmediaregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"

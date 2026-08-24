@@ -41,7 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
@@ -137,7 +137,7 @@ func eventToDTO(e outboxevents.Event) outbox.EventDTO {
 // import from `internal/application/assets/monitor/ports_downloader.go`.
 // The composition root is the canonical bridge between the two
 // request shapes — no monitor-side caller now needs to import
-// `internal/infrastructure/downloader`.
+// `internal/platform/downloader`.
 type monitorYtdlpAdapter struct {
 	inner *downloader.YTDLPDownloader
 }

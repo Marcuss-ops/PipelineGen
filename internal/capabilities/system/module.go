@@ -6,16 +6,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assetsports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	"go.uber.org/zap"
 )
 
 type Dependencies struct {
 	Config        systemapi.DoctorConfig
 	Logger        *zap.Logger
-	ToolChecker   appassets.ToolChecker
-	ProcessRunner appassets.ProcessRunner
-	DBHealth      appassets.DBHealthChecker
+	ToolChecker   assetsports.ToolChecker
+	ProcessRunner assetsports.ProcessRunner
+	DBHealth      assetsports.DBHealthChecker
 	DriveOps      systemapi.DriveAdminOps
 	Reconciler    systemapi.Reconciler
 }

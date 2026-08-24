@@ -1,418 +1,60 @@
-// Package mediamemory — ports.go is the slim port surface (godlike/06
-// SSOT: every collaborator behind the capability flows through one
-// of these interfaces; composition root wires concrete adapters).
+// Package mediamemory — port surface re-exports from
+// capabilities/mediamemory (godlike/06 SSOT: one canonical owner).
 //
-// godlike/06 SSOT (composition pattern): the repositories defined here
-// are the SOLE seams between the mediamemory capability and any
-// durable store (SQLite for Phase 1.x, Qdrant for the semantic
-// channel in Phase 2). A future agent that swaps in a different store
-// implements THESE ports, NOT a parallel seam.
-//
-// godlike/06 SSOT (narrow port doctrine): every interface carries only
-// the methods actually consumed by the mediamemory capability. No
-// god-ports. The Logger / Clock / MetricsSink are tiny telemetry
-// seams so unit tests can use noop implementations.
-//
-// godlike/07 NO-FAKE-AVAILABILITY (fail-closed returns): all
-// repository ports MUST surface typed sentinels (declared in
-// types.go) via errors.Is. No silent zero-value returns on a
-// miss, no swallowed IO errors. The pair (errors.Is pattern +
-// typed sentinels) is the lingua franca of the whole package.
-//
-// File layout (split by kind, July 2026):
-//
-//	ports.go             interfaces only (the port surface)
-//	ports_telemetry.go   telemetry implementations (noopLogger, realClock, noopMetrics)
-//	ports_types.go       port-level data shapes (envelopes, options, verdicts)
+// All interfaces are declared in capabilities/mediamemory/ports.go.
+// This file re-exports them so existing consumers keep compiling.
+// Implementation files (resolver, ranker, linker, batch_service, ...)
+// remain in application/mediamemory/ for now.
 package mediamemory
 
-import (
-	"context"
-	"time"
-)
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 
-// ── Logger port ────────────────────────────────────────────────────
-//
-// Mirror of search.Logger — slim logging surface. Production wiring
-// usually routes through a zap adapter (see internal/app/*).
-type Logger interface {
-	Info(msg string, keysAndValues ...any)
-	Warn(msg string, keysAndValues ...any)
-	Debug(msg string, keysAndValues ...any)
-	Error(msg string, keysAndValues ...any)
-}
+// ── Re-exported ports ─────────────────────────────────────────────
 
-// Clock port — defined narrowly so tests can pin time deterministically.
-type Clock interface {
-	Now() time.Time
-}
+type Logger = mediamemory.Logger
 
-// MetricsSink is the narrow observability port. Implementations
-// should match the existing assets/middleware.MetricsSink contract
-// in shape; tests inject noop.
-type MetricsSink interface {
-	IncCounter(name string, labels ...string)
-	ObserveHistogram(name string, value float64, labels ...string)
-}
+type Clock = mediamemory.Clock
 
-// ── ConceptRepository ──────────────────────────────────────────────
+type MetricsSink = mediamemory.MetricsSink
 
-// ConceptRepository owns the canonical read/write surface for
-// media_concepts. UNIQUE(language, phrase_fingerprint) is enforced at
-// the SQL layer (forward-pointer to Phase 1.2). Concrete impl in
-// internal/platform/sqlite/mediamemory/concepts_repository.go.
-type ConceptRepository interface {
-	// Upsert inserts or updates a concept keyed by
-	// (language, phrase_fingerprint). On conflict the existing row is
-	// updated and the same ID is returned.
-	Upsert(ctx context.Context, c MediaConcept) (MediaConcept, error)
+type ConceptRepository = mediamemory.ConceptRepository
 
-	// FindByID wraps ErrConceptNotFound when the row is missing.
-	FindByID(ctx context.Context, id string) (MediaConcept, error)
+type BindingRepository = mediamemory.BindingRepository
 
-	// FindByFingerprint is the Level 0 (exact-match) lookup used by
-	// VisualResolver before any fan-out to external providers.
-	FindByFingerprint(ctx context.Context, language, fingerprint string) (MediaConcept, error)
+type BindingMutationDispatcher = mediamemory.BindingMutationDispatcher
 
-	// FindManyByFingerprints is the bulk variant for batch resolvers.
-	FindManyByFingerprints(ctx context.Context, language string, fingerprints []string) ([]MediaConcept, error)
-}
+type QueryCacheRepository = mediamemory.QueryCacheRepository
 
-// ── BindingRepository ──────────────────────────────────────────────
+type CandidateRepository = mediamemory.CandidateRepository
 
-// BindingRepository owns the canonical read/write surface for
-// media_bindings. UNIQUE(concept_id, asset_id, slot_kind) is the
-// SQL SSOT (forward-pointer to Phase 1.2); violations surface as
-// wrapped ErrDuplicateBinding.
-type BindingRepository interface {
-	// Upsert inserts or updates a binding. SlotsKind MUST be in the
-	// canonical closed set (callers MUST pre-validate via
-	// media.IsKnownSlotKind); otherwise ErrInvalidSlotKind is returned.
-	Upsert(ctx context.Context, b MediaBinding) (MediaBinding, error)
+type UsageRepository = mediamemory.UsageRepository
 
-	FindByID(ctx context.Context, id string) (MediaBinding, error)
+type SearchFanOut = mediamemory.SearchFanOut
 
-	// ListApprovedByConcept is the resolver's Level-0 hot path:
-	// approved bindings only, ordered by SuccessScore desc.
-	ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error)
+type SemanticLookup = mediamemory.SemanticLookup
 
-	// ListApprovedByConcepts is the batched variant used by
-	// the Level 3-7 semantic adapter (qdrant_semantic.go) when
-	// it joins N Qdrant concept hits to their canonical
-	// bindings in ONE round-trip. The result map is keyed by
-	// concept_id; missing entries mean "no approved bindings
-	// for this concept + slot kind". The same ordering,
-	// slot-filter, and limit-per-concept semantics as
-	// ListApprovedByConcept apply.
-	ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []SlotKind, limit int) (map[string][]MediaBinding, error)
+type KeyframeVisualIndexer = mediamemory.KeyframeVisualIndexer
 
-	// ListByConcept returns every binding (any status) for the
-	// concept, ordered by updated_at desc. Used by the dashboard
-	// "Visual Memory" page / admin diff / audit trail. NOT used
-	// by the resolver hot path (use ListApprovedByConcept there).
-	ListByConcept(ctx context.Context, conceptID string) ([]MediaBinding, error)
+type EmbeddingIndexer = mediamemory.EmbeddingIndexer
 
-	// ListByAsset returns every binding that references an asset_id
-	// (used by anti-repetition on the same-source-clip check).
-	ListByAsset(ctx context.Context, assetID string) ([]MediaBinding, error)
+type StockPipelineAcquirer = mediamemory.StockPipelineAcquirer
 
-	// Delete is provided for admin reindex flows; it is not used by
-	// the resolver hot path.
-	Delete(ctx context.Context, id string) error
-}
+type RightsValidator = mediamemory.RightsValidator
 
-// BindingMutationDispatcher is the canonical single surface for all
-// media_bindings mutations. The concrete implementation writes the
-// binding row in SQLite and emits a durable outbox event inside the
-// same transaction; a background worker consumes the event and updates
-// the Qdrant projection asynchronously.
-type BindingMutationDispatcher interface {
-	// UpsertBinding atomically persists the binding row in
-	// media_bindings AND emits a binding.index.requested outbox event
-	// in a SINGLE transaction. Create and Update both route here.
-	UpsertBinding(ctx context.Context, b MediaBinding) (MediaBinding, error)
+type TranscriptExtractor = mediamemory.TranscriptExtractor
 
-	// DeleteBinding atomically removes the binding row from
-	// media_bindings AND emits a binding.index.requested outbox event
-	// in a SINGLE transaction. conceptID is the canonical
-	// media_concepts.id that owns the binding; it is carried in the
-	// event so the async worker can reindex the concept even after
-	// the binding row is gone.
-	DeleteBinding(ctx context.Context, id, conceptID string) error
-}
+type KeyframeExtractor = mediamemory.KeyframeExtractor
 
-// ── QueryCacheRepository ───────────────────────────────────────────
+type VisualDescriptionGenerator = mediamemory.VisualDescriptionGenerator
 
-// QueryCacheRepository owns media_query_cache. The cache key is
-// SHA256(language + normalized_phrase + visual_intent_version). It is
-// distinct from the script-generation cache (different SSOT per
-// godlike/06).
-type QueryCacheRepository interface {
-	Get(ctx context.Context, fingerprint string) (QueryCacheEntry, bool, error)
-	Put(ctx context.Context, entry QueryCacheEntry) error
-	Invalidate(ctx context.Context, fingerprint string) error
-}
+type EntityDetector = mediamemory.EntityDetector
 
-// ── CandidateRepository ────────────────────────────────────────────
+type EmbeddingEncoder = mediamemory.EmbeddingEncoder
 
-// CandidateRepository owns media_candidates. Used by the discovery
-// and linker workers. Reads from here surface Cold/Warm/Hot tiers.
-type CandidateRepository interface {
-	// UpsertInsert inserts a NEW candidate row keyed by
-	// (provider, provider_asset_id). Conflicts on the unique key
-	// MUST surface ErrDuplicateBinding (re-using the typed envelope
-	// because the semantic intent — duplicate of media_candidates —
-	// is fail-closed).
-	UpsertInsert(ctx context.Context, c MediaCandidate) (MediaCandidate, error)
+type LinkerWorker = mediamemory.LinkerWorker
 
-	FindByID(ctx context.Context, id string) (MediaCandidate, error)
+// ── Re-exported telemetry ─────────────────────────────────────────
 
-	// ListByProvider returns cold candidates for a provider. Workers
-	// iterate to pick top-K for materialization.
-	ListByProvider(ctx context.Context, provider string, limit int) ([]MediaCandidate, error)
-
-	// ListPendingMaterialization is the Warm→Hot promotion read
-	// (rights-verified only).
-	ListPendingMaterialization(ctx context.Context, limit int) ([]MediaCandidate, error)
-
-	UpdateStatus(ctx context.Context, id string, discovery DiscoveryStatus, mat MaterializationStatus) error
-}
-
-// ── UsageRepository ────────────────────────────────────────────────
-
-// UsageRepository owns media_usage_events. Used by FeedbackService
-// and the ranker success-score promotion loop.
-//
-// godlike/06 SSOT (Fase 2.3 anti-repetition contract): the
-// repository exposes ListProjectUsages so the resolver can read
-// the canonical same-project same-asset / channel-saturation /
-// consecutive-source identity for every event without a runtime
-// join against media_assets. ChannelID and VideoID are denormalized
-// into the row by Fase 2.3 wiring (forward-pointer to
-// migrations/sqlite/169_mediamemory_anti_repetition_columns.sql).
-type UsageRepository interface {
-	Append(ctx context.Context, ev UsageEvent) error
-	ListByConcept(ctx context.Context, conceptID string, limit int) ([]UsageEvent, error)
-	ListByAsset(ctx context.Context, assetID string, limit int) ([]UsageEvent, error)
-	// ListProjectUsages returns every event for a project (newest
-	// first) so the resolver can apply the Fase 2.3
-	// repetition_penalty formula (same-asset penalty +
-	// channel-saturation penalty + consecutive-video penalty)
-	// using the canonical append-only audit trail. ChannelID and
-	// VideoID flow through verbatim from the columns added in
-	// migration 169.
-	ListProjectUsages(ctx context.Context, projectID string, limit int) ([]UsageEvent, error)
-	// ListSince returns every event whose CreatedAt is >= since
-	// (newest first), bounded by limit. Used by FeedbackService
-	// .AggregateSince for the ranker warm-up read after re-deploys:
-	// the canonical (concept, slot) aggregate is computed in Go
-	// from the bounded event slice so the ranker can seed its
-	// initial score estimate without a runtime JOIN against
-	// media_bindings. godlike/06 SSOT: a zero `since` is
-	// treated as "no lower bound" (returns the most recent
-	// `limit` events across all projects), matching the
-	// forward-pointer for post-deploy full warm-up.
-	ListSince(ctx context.Context, since time.Time, limit int) ([]UsageEvent, error)
-}
-
-// ── External ports (consumed by composition-root adapters) ────────
-
-// SearchFanOut is the canonical port through which MediaMemory
-// delegates Level 3 (internet/provider) search. The production
-// adapter is search.Aggregator (composition root narrows it).
-//
-// godlike/06 SSOT: this port IS NOT a parallel search engine — it is
-// a thin facade over the existing Canonical SearchFanOut already
-// present in search/. Level-3 queries route THROUGH this port and
-// back into the chosen provider fan-out.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: SearchFanOut MUST surface typed
-// sentinels from the search package (errors.Is chain) so the
-// resolver can branch on partial / no-backend / all-failed.
-type SearchFanOut interface {
-	Search(ctx context.Context, q SearchFanOutQuery) (SearchFanOutResult, error)
-}
-
-// SemanticLookup is the Level 1 (semantic) port. The production
-// adapter proxies to the existing search.Aggregator in semantic
-// mode and projects to MediaCandidate.
-//
-// Phase 2 forwards: SearchFanOut/SemanticLookup may collapse once
-// the semantic backend is fully wired.
-type SemanticLookup interface {
-	LookupByConcept(ctx context.Context, conceptType ConceptType, text string, language string, limit int) ([]MediaCandidate, error)
-}
-
-// KeyframeVisualIndexer is the Fase 4.1 visual-channel port for
-// keyframe vectors. godlike/06 SSOT (dedicated seam): keyframe
-// vectors live in a DIFFERENT collection from concept vectors
-// (pipelinegen_media_frames vs pipelinegen_media_concepts) —
-// this port owns the frame-collection write path so the canonical
-// QdrantIndexer (which writes concepts) is not mutated.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: an absent transport / wrong
-// dimensionality surfaces as wrapped ErrSemanticNotConfigured
-// (fail-closed; never a silent zero-vector write).
-type KeyframeVisualIndexer interface {
-	// IndexKeyframe writes one (video_id, ts_ms) point into
-	// pipelinegen_media_frames with a 768d SigLIP vector. The
-	// point ID is canonical `frame-{videoID}-{tsMs}` so a
-	// re-extract of the same timestamp is idempotent (Upsert
-	// semantics at the Qdrant layer).
-	//
-	// vector is the canonical visual-channel embedding (must be
-	// 768d; ErrSemanticNotConfigured on dim mismatch). A nil
-	// vector rejects with ErrLinkerEmbeddingFailed so the
-	// linker worker's resume contract kicks in (caller
-	// branches on errors.Is).
-	IndexKeyframe(ctx context.Context, videoID string, tsMs int64, assetID string, language string, vec []float32, model string) error
-}
-
-// EmbeddingIndexer is the Level 1 ingest port. The production adapter
-// proxies to the canonical EmbeddingChannelRegistry
-// (internal/application/search).
-//
-// godlike/06 (narrow port doctrine): the port owns single-
-// concept mutation ONLY. Batch reindex is an admin/orchestrator
-// concern, not an indexer concern — composition root callers
-// iterate the canonical ConceptRepository for a language and
-// invoke IndexConcept per row. Keeping the port single-entity
-// avoids leaking the ordering / batching / ownership of
-// per-language iteration into the indexer seam.
-type EmbeddingIndexer interface {
-	IndexConcept(ctx context.Context, c MediaConcept) error
-	DeindexConcept(ctx context.Context, conceptID string) error
-	// ReindexConcept bumps the concept's embedding_version to
-	// targetVersion (or — when targetVersion is empty — to the
-	// canonical next version computed via
-	// qdrantschema.BumpEmbeddingVersion) and rewrites the
-	// canonical Qdrant point at the SAME point ID. The Qdrant
-	// point's payload field `embedding_version` updates to the
-	// new value; vectors are re-computed using the same
-	// EmbeddingChannelRegistry.
-	//
-	// godlike/06 SSOT (Level 0 cache independence under
-	// versioning): rebumping the version does NOT mutate
-	// PhraseFingerprint. The Normalizer hashes (language +
-	// normalized_phrase + visual_intent_version) deterministically
-	// from the original canonical text so the (language,
-	// fingerprint) tuple is invariant under reindex. Callers
-	// relying only on ConceptRepository.FindByFingerprint see the
-	// same concept_id resolve to the same canonical row before
-	// and after the bump — that's the contract this port method
-	// preserves.
-	ReindexConcept(ctx context.Context, c MediaConcept, targetVersion string) error
-}
-
-// StockPipelineAcquirer is the materialization port. The production
-// adapter wraps the canonical stockpipeline surface (download +
-// segment + validate + index). godlike/06 SSOT: mediamemory does NOT
-// re-implement the pipeline — it ONLY invokes this port.
-type StockPipelineAcquirer interface {
-	// Materialize downloads/segments the candidate and produces a
-	// canonical media_assets row. AssetID on the returned candidate
-	// is set on success. Errors wrap ErrCandidateMaterializationFailed.
-	Materialize(ctx context.Context, candidate MediaCandidate, opts MaterializeOptions) (MediaCandidate, error)
-}
-
-// RightsValidator is the rights brand-check port. The production
-// adapter reads the metadata registry for license_basis /
-// allowed_channels / allowed_regions / expiration.
-type RightsValidator interface {
-	Validate(ctx context.Context, c MediaCandidate, projectID string) (RightsDecision, error)
-}
-
-// AcquisitionPlanner is the canonical port defined in
-// acquisition_planner.go (godlike/06 SSOT — single canonical home).
-// It owns the Cold→Warm→Hot tiering decision; concrete impl is
-// defaultAcquisitionPlanner in that file.
-
-// ── Fase 3.2 linker ports (godlike/06 SSOT: narrow doctrine) ────
-
-// TranscriptExtractor is the canonical extraction port for the
-// linker worker's transcript step. godlike/06 SSOT (forward-pin
-// to Fase 3.5): the production adapter wraps the canonical
-// stockpipeline stock-transcribe command over the candidate's
-// SourceURL. The linker owns only the seam; transcription policy
-// lives in stockpipeline.
-type TranscriptExtractor interface {
-	Extract(ctx context.Context, sourceURL string, mediaType string) ([]TranscriptSegment, error)
-}
-
-// KeyframeExtractor is the canonical keyframe port for the
-// linker worker. godlike/06 SSOT (forward-pin to Fase 4.1): the
-// production adapter wraps ffprobe scene detection + stockpipeline
-// keyframe generation. For Fase 3.2 a noop stub returns zero
-// keyframes; the linker fans out fine because the visual channel
-// degrades gracefully.
-type KeyframeExtractor interface {
-	Extract(ctx context.Context, sourceURL string, mediaType string) ([]Keyframe, error)
-}
-
-// VisualDescriptionGenerator is the canonical per-keyframe
-// description port. godlike/06 SSOT (encoder split): the model
-// side (Encoder) produces a vector; the description port
-// returns a textual description string for the canonical
-// (text + transcript + visual_desc) EncodingChannels envelope.
-// Production adapter wraps SigLIP-style visual captioning.
-type VisualDescriptionGenerator interface {
-	Generate(ctx context.Context, k Keyframe) (string, error)
-}
-
-// EntityDetector is the canonical entity-detection port. The
-// detector returns free-text entity labels; the canonical
-// concept-assignment step normalises each label into a
-// MediaConcept (via Normalizer.Normalize then ConceptRepository.
-// Upsert). godlike/06 SSOT: this port is owned distinctly from
-// the EmbeddingEncoder because entity detection is a CLASSIFIER
-// (text → labels) not an EMBEDDER (text → vector).
-type EntityDetector interface {
-	DetectEntities(ctx context.Context, transcript string, visualDesc string) ([]string, error)
-}
-
-// EmbeddingEncoder is the canonical model-side encoder port
-// (godlike/06 SSOT: split from EmbeddingIndexer). The encoder
-// produces MediaEmbedding vectors; the indexer writes them into
-// Qdrant. The linker's Encode call site threads the resulting
-// vector through the Indexer.IndexConcept path so Phase 2's
-// Qdrant point stays authoritative. Production adapter routes
-// through the canonical EmbeddingChannelRegistry
-// (internal/application/search).
-type EmbeddingEncoder interface {
-	Encode(ctx context.Context, channels EncodingChannels) (MediaEmbedding, error)
-}
-
-// LinkerWorker is the canonical Fase 3.2 worker port. godlike/06
-// SSOT (narrow doctrine): single method, focused on per-
-// candidate enrichment. Concurrency / batching / orchestration
-// / Resume are BatchService concerns (see EnrichLinker).
-//
-// godlike/06 SSOT (idempotence + resumability contract, enforced
-// at this port's boundary):
-//
-//  1. Idempotency: a second EnrichCandidate call with a
-//     candidate whose DiscoveryStatus ∈ {DiscoveryIndexed,
-//     DiscoveryMaterialized} returns LinkerResult.Empty=true
-//     and produces ZERO new writes (godlike/07 NO-FAKE-AVAILABILITY:
-//     the early-return MUST be detectable via Empty so callers
-//     don't re-invoke downstream steps).
-//
-//  2. Resumability: a candidate whose DiscoveryStatus ==
-//     DiscoverySearched is processed in full again. The
-//     canonical binding semantic (BindingsRepository.Upsert
-//     uses ON CONFLICT DO UPDATE) makes a re-run safe — the
-//     rows are rewritten with identical values, the candidate's
-//     timestamp stamps update.
-//
-//  3. Hard-fail semantic: a candidate whose enrichment cannot
-//     produce any (concept, slot_kind) tuple transitions to
-//     DiscoveryFailed and the batch continues. ErrLinkerUnmappableConcept
-//     is the canonical sentinel.
-//
-//  4. Transient semantic: extract / encode failures leave the
-//     candidate at DiscoverySearched. Subsequent Resume retries
-//     until success or until an operator-driven kill flips the
-//     batch to Failed.
-type LinkerWorker interface {
-	EnrichCandidate(ctx context.Context, req LinkerRequest) (LinkerResult, error)
-}
+var NoopLogger = mediamemory.NoopLogger
+var RealClock = mediamemory.RealClock
+var NoopMetrics = mediamemory.NoopMetrics

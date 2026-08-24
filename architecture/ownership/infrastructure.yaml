@@ -27,7 +27,7 @@ infrastructure_embeddings:
   migrated_from: internal/infrastructure/embeddings
 
 infrastructure_files:
-  owner: internal/infrastructure/files
+  owner: internal/platform/filesystem
   rationale: Filesystem utilities remaining after the 2026-08-24 split (JSON I/O, folder-name normalization, foldermemory, metadataexport).
   note: copy/cache/pathutil/scanner/hashutil moved to internal/platform/filesystem.
 
@@ -36,7 +36,7 @@ platform_filesystem:
   rationale: Filesystem path/hash/copy/cache/scanner primitives plus the kernel workspace I/O adapters (OS, HTTPFetcher, NewManager).
 
 infrastructure_process:
-  owner: internal/infrastructure/process
+  owner: internal/platform/process
   rationale: External command execution (yt-dlp, ffmpeg wrappers).
   rule: ONLY place where os/exec is allowed.
 

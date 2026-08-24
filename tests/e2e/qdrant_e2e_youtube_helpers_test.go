@@ -17,10 +17,10 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
-	qsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
+	qsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -233,7 +233,7 @@ func (m *mockQdrantServer) keysLocked() []string {
 // chain sees consistent state. The store constructs AssetData rows by
 // replaying the media_assets columns. No production code is mocked —
 // AssetData reflects the canonical qsearch.AssetData shape (per
-// internal/infrastructure/qdrant/indexing/payload_mapper.go).
+// internal/platform/qdrant/indexing/payload_mapper.go).
 
 type stubAssetStore struct {
 	db *sql.DB

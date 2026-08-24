@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // newStockPerformanceBenchStager wires the production StockStager with the

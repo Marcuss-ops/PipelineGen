@@ -127,7 +127,7 @@
     "Check N (player_client=): 1 comment-only reference(s) in internal/infrastructure/youtube/subtitles_fetch.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/api/assets/soundeffect/handler.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/api/script/handler_facade.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/delivery/destination_spec.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/platform/delivery/destination_spec.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/assets/lifecycle/service.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/lifecycle/service_voiceover.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/processing/orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",

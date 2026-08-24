@@ -253,7 +253,7 @@ measurements:
     removal_condition: "MET — stage parity passes and ProcessSegmentUseCase has no duplicate local timer"
 
   - current_symbol: "process.Result.Duration"
-    current_owner: "internal/infrastructure/process"
+    current_owner: "internal/platform/process"
     current_writer: "process.Run in process.go:126-266"
     current_storage: "In-memory subprocess result; callers/logs"
     current_metric: "none directly; Result.Duration"
@@ -661,7 +661,7 @@ measurements:
     removal_condition: "Dashboards and reports distinguish worker resource bytes from artifact/operation bytes"
 
   - current_symbol: "health and readiness duration_ms fields"
-    current_owner: "internal/application/system/health and internal/infrastructure/health"
+    current_owner: "internal/application/system/health and internal/platform/health"
     current_writer: "readyz checkers, drive_checker.go, jobs_checker.go, sqlite_checker.go"
     current_storage: "HTTP response maps/logs; no business-job persistence"
     current_metric: "duration_ms in health/readiness responses"
@@ -889,7 +889,7 @@ measurements:
     removal_condition: "Static metric-family audit proves one authoritative outbox duration family and dashboards no longer depend on this duplicate"
 
   - current_symbol: "Drive delivery.Publisher.Publish timing"
-    current_owner: "application/assets/delivery.Publisher implementations and callers"
+    current_owner: "platform/delivery.Publisher implementations and callers"
     current_writer: "Publisher.Publish call sites in voiceover, document, video, stock, publish_drive and related flows; no direct timing writer found in the current search"
     current_storage: "No canonical durable timing; result structs/logs and capability metrics where available"
     current_metric: "none consistently"
@@ -901,7 +901,7 @@ measurements:
     removal_condition: "DRIVE_OBSERVED=PASS across every Publisher.Publish caller and static scan finds no local Drive timer outside the wrapper"
 
   - current_symbol: "Google Docs DocClient.CreateDoc/UpdateDoc timing"
-    current_owner: "internal/platform/drive/doc_client.go and application/assets/delivery/doc_publisher.go"
+    current_owner: "internal/platform/drive/doc_client.go and platform/delivery/doc_publisher.go"
     current_writer: "DocClient and DocPublisher call sites; no direct timing writer found in the current search"
     current_storage: "No canonical durable timing; document result structs/logs"
     current_metric: "none consistently"
@@ -937,7 +937,7 @@ measurements:
     removal_condition: "SEMAPHORE_WAIT_PERSISTED=PASS and RATE_LIMIT_WAIT_PERSISTED=PASS for TTS, Ollama, downloads, FFmpeg, and image search"
 
   - current_symbol: "process.Result.Duration and FFmpeg RenderResult.DurationMS relationship"
-    current_owner: "internal/infrastructure/process and internal/infrastructure/media/render"
+    current_owner: "internal/platform/process and internal/platform/media/render"
     current_writer: "process.Run plus FFmpegRenderer render methods"
     current_storage: "Subprocess result and render result structs"
     current_metric: "none; two nested result durations"

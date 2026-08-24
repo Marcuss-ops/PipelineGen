@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	platformcache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifactcache"

@@ -6,7 +6,7 @@ through `*sql.DB`, `net/http`, `os`, or `RootFolderOverride`.
 | Package | Weighted severity |
 |---|---:|
 | `internal/application/assets/artifacts` | 3 |
-| `internal/application/assets/delivery` | 5 |
+| `internal/platform/delivery` | 5 |
 | `internal/application/assets/ingest` | 9 |
 | `internal/application/assets/lifecycle` | 2 |
 | `internal/capabilities/assets/providers/artlist` | 10 |

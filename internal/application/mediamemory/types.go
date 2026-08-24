@@ -1,9 +1,8 @@
+// Package mediamemory — types re-exported from capabilities/mediamemory/.
+// The canonical types live in capabilities/mediamemory/types*.go.
+// Implementation files remain in application/mediamemory/.
 package mediamemory
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
-)
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 
-// SlotKind is an alias for the canonical media.SlotKind kept for backward
-// compatibility until all callers are migrated to media.SlotKind directly.
-type SlotKind = media.SlotKind
+type SlotKind = mediamemory.SlotKind
