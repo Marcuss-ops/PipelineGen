@@ -1,7 +1,7 @@
 // Package app — sourcing metadata + logger + enrichment adapters
 // split from youtube_metadata_adapter.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 3 adapters: SourcingMetadataAdapter, zapSourcingLogger, SourcingEnrichmentAdapter.
+// 3 adapters: SourcingMetadataAdapter, ZapSourcingLogger, SourcingEnrichmentAdapter.
 package adapters
 
 import (
@@ -114,22 +114,22 @@ func (a *SourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	return err
 }
 
-// ── zapSourcingLogger ─────────────────────────────────────────────────
+// ── ZapSourcingLogger ─────────────────────────────────────────────────
 
-type zapSourcingLogger struct {
+type ZapSourcingLogger struct {
 	log *zap.Logger
 }
 
-func (a *zapSourcingLogger) Info(msg string, keysAndValues ...any) {
+func (a *ZapSourcingLogger) Info(msg string, keysAndValues ...any) {
 	a.log.Sugar().Infow(msg, keysAndValues...)
 }
-func (a *zapSourcingLogger) Warn(msg string, keysAndValues ...any) {
+func (a *ZapSourcingLogger) Warn(msg string, keysAndValues ...any) {
 	a.log.Sugar().Warnw(msg, keysAndValues...)
 }
-func (a *zapSourcingLogger) Error(msg string, keysAndValues ...any) {
+func (a *ZapSourcingLogger) Error(msg string, keysAndValues ...any) {
 	a.log.Sugar().Errorw(msg, keysAndValues...)
 }
-func (a *zapSourcingLogger) Debug(msg string, keysAndValues ...any) {
+func (a *ZapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 	a.log.Sugar().Debugw(msg, keysAndValues...)
 }
 

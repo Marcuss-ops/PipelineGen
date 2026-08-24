@@ -2,11 +2,10 @@ package app
 
 import (
 	"context"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
@@ -196,7 +195,7 @@ func buildClipOpsPorts(clipRepo clips.ClipRepositoryPort, jobs *wiring.JobsBundl
 		clipRepo:      clipRepo,
 		voiceoverRepo: newVoiceoverRepoAdapter(jobs.VoiceoverRepo),
 		imageRepo:     newImageRepoAdapter(jobs.ImagesRepo),
-		driveUploader: newClipsDriveAdapter(jobs.DriveUploader, jobs.DriveUploader, jobs.DriveLifecycle),
+		driveUploader: ytadapters.NewClipsDriveAdapter(jobs.DriveUploader, jobs.DriveUploader, jobs.DriveLifecycle),
 		jobsPort:      newClipsJobsPortAdapter(jobs.Facade),
 	}
 }

@@ -11,13 +11,8 @@ package app
 
 import (
 	"context"
-
 	"encoding/json"
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
@@ -28,14 +23,17 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive/resolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	"go.uber.org/zap"
 )
 
 // newAssetRegisterService builds the SourcingService façade. After P0-1 /
@@ -69,20 +67,21 @@ func newAssetRegisterService(
 	// The 2 v2 adapters absorb 6 legacy ports (IndexDispatcher + AssetTree +
 	// Jobs + Search + Config + legacy Enrichment) into the YouTubeService's
 	// 8-port budget per architecture/policy.yaml::max_constructor_deps.
-	ytIndex := &youtubeIndexDispatcherAdapter{disp: dispatcher, tree: assetTreeSvc}
-	ytEnrich := &youtubeEnrichmentAdapter{
-		// Card 10 (July 2026): wire the canonical ClipEnricher typed
-		// port instead of the raw *clips.Handler. The descriptor's
-		// exposed surface is now strictly routes + job handlers.
-		enrichment: &sourcingEnrichmentAdapter{enricher: clipEnricher},
-		config:     &sourcingConfigAdapter{cfg: cfg},
-		search:     &sourcingSearchAdapter{registry: providerRegistry},
+	ytIndex := ytadapters.NewYoutubeIndexDispatcherAdapter(dispatcher, assetTreeSvc)
+	ytEnrich := ytadapters.NewYoutubeEnrichmentAdapter(
 		// jobs port intentionally nil today (composition root signature does
 		// not yet expose JobsPort; this preserves historical behaviour where
 		// SyncDriveFolder + LocalToDrive were also non-functional in this
 		// composition site, and matches what the thinker audit suggested as
 		// the conservative interpretation).
-	}
+		nil,
+		// Card 10 (July 2026): wire the canonical ClipEnricher typed
+		// port instead of the raw *clips.Handler. The descriptor's
+		// exposed surface is now strictly routes + job handlers.
+		ytadapters.NewSourcingEnrichmentAdapter(clipEnricher),
+		ytadapters.NewSourcingSearchAdapter(providerRegistry),
+		ytadapters.NewSourcingConfigAdapter(cfg),
+	)
 	// PR-YT-DRIVE-SERVICE-COMMENT-CLEANUP (July 2026): the legacy
 	// `&sourcingDriveAdapter{drive: driveUploader}` 3rd positional arg
 	// is dropped — the corresponding field on youtube.Service was
@@ -95,16 +94,16 @@ func newAssetRegisterService(
 	// See architecture/deprecations.yaml#PR-YT-DRIVE-LEGACY-RETIRE
 	// + internal/app/youtube_adapters_drive.go for the comment audit-pin.
 	ytSvc := youtube.NewService(youtube.ServiceDeps{
-		Fetcher:     &sourcingFetchAdapter{registry: providerRegistry},
-		Clips:       &sourcingClipStoreAdapter{repo: clipsRepo},
-		Publisher:   &sourcingPublisherAdapter{publisher: publisher},
-		Transcriber: &sourcingTranscriberAdapter{cfg: cfg, log: log},
+		Fetcher:     ytadapters.NewSourcingFetchAdapter(providerRegistry),
+		Clips:       ytadapters.NewSourcingClipStoreAdapter(clipsRepo),
+		Publisher:   ytadapters.NewSourcingPublisherAdapter(publisher),
+		Transcriber: ytadapters.NewSourcingTranscriberAdapter(cfg, log),
 		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
 		// TrashFile now routes via FileLifecycle.Trash (no Admin fallback).
-		Metadata:      &sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
+		Metadata:      ytadapters.NewSourcingMetadataAdapter(cfg, driveUploader, driveUploader, lifecycle, publisher, log),
 		IndexDisp:     ytIndex,
 		Enrichment:    ytEnrich,
-		Log:           &zapSourcingLogger{log: log},
+		Log:           ytadapters.NewZapSourcingLogger(log),
 		TextTrackRepo: textTrackRepo,
 	}).WithRequireDrive(cfg.Features.MediaDriveRequired)
 
@@ -118,7 +117,7 @@ func newAssetRegisterService(
 	// PR-BATCH-REGISTER-ASYNC-CONSTANT (closed July 2026): clipRegisterJobType
 	// is now appjobs.TypeClipRegister (canonical SSOT per godlike/06).
 	batchEnqueuer := &clipJobEnqueuerAdapter{svc: jobsSvc}
-	batchSvc := batch.NewService(batchEnqueuer, &zapSourcingLogger{log: log})
+	batchSvc := batch.NewService(batchEnqueuer, ytadapters.NewZapSourcingLogger(log))
 
 	// PR-BATCH-REGISTER-ASYNC: register the media.clip handler so the
 	// worker can process enqueued clip registration jobs. The handler
@@ -159,13 +158,13 @@ func newAssetRegisterService(
 	// 2-dep ctor: jobs (currently nil at this composition site; preserves
 	// the historical fail-closed `jobs port not configured` error path)
 	// + log. Future composition sites will inject a real JobsPort adapter.
-	drvSvc := drivesync.NewService(nil, &zapSourcingLogger{log: log})
+	drvSvc := drivesync.NewService(nil, ytadapters.NewZapSourcingLogger(log))
 
 	// PR-CLIPS-ENQUEUE-ONLY (July 2026): LocalImporter sub-service.
 	// 2-dep ctor: jobs + log (nil at this composition site; the
 	// enqueue path no longer pre-scans the directory — the worker
 	// is the sole owner of filesystem scanning).
-	localSvc := localimport.NewService(nil, &zapSourcingLogger{log: log})
+	localSvc := localimport.NewService(nil, ytadapters.NewZapSourcingLogger(log))
 
 	// P0-1 / commit 5 (this commit): façade di pulizia. 5-arg call:
 	// 4 sub-services + log. The historic 14-dep ctor collapses to 5
@@ -189,10 +188,10 @@ func newAssetRegisterService(
 	// call. The error is logged + the fluent setter is skipped so the
 	// process boots; future PR may flip this to a hard-fail
 	// (forward-pointer: validate-drive-bundle-gate at boot).
-	resolverAdapter, resolverErr := resolver.NewAdapter(cfg.Drive, &zapSourcingLogger{log: log})
+	resolverAdapter, resolverErr := resolver.NewAdapter(cfg.Drive, ytadapters.NewZapSourcingLogger(log))
 	if resolverErr != nil {
 		log.Warn("PR-RESOLVER-PORT-EXTRACT: failed to construct resolver adapter; fluent setter will be skipped and a non-empty Location will fail-closed via ErrLocationResolverEmpty at runtime", zap.Error(resolverErr))
-		return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
+		return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, ytadapters.NewZapSourcingLogger(log))
 	}
 	// Wire real Drive FolderEnsurer so semantic location fields produce
 	// real Drive folder IDs (not stub-shift: prefix-mode paths).
@@ -209,7 +208,7 @@ func newAssetRegisterService(
 		log.Warn("PR-RESOLVER-PORT-EXTRACT: driveUploader is nil — FolderEnsurer NOT wired; non-empty Location will fail-closed via ErrFolderEnsurerNotWired at runtime")
 	}
 	log.Info("PR-RESOLVER-PORT-EXTRACT: canonical LocationResolverPort wired into sourcing façade (Wave 7 SEMANTIC-LOCATION-API deliverable)")
-	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log}).WithLocationResolver(resolverAdapter)
+	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, ytadapters.NewZapSourcingLogger(log)).WithLocationResolver(resolverAdapter)
 }
 
 // resolverFolderEnsurerAdapter wraps drive.EnsureFolderPath into the
@@ -312,7 +311,7 @@ var _ batch.ClipJobEnqueuer = (*clipJobEnqueuerAdapter)(nil)
 // SourcingAtomicPort wiring decision. It enforces the godlike/07 contract
 // that a misconfiguration must surface at BOOT, NOT at first
 // /api/media/register call (which would manifest as the pre-fix silent-success
-// class — sourcingMetadataAdapter.UpdateCumulativeJSON / sourcingEnrichmentAdapter.EnrichAndIndex
+// class — ytadapters.SourcingMetadataAdapter.UpdateCumulativeJSON / ytadapters.SourcingEnrichmentAdapter.EnrichAndIndex
 // returned nil even when the handler was unwired, masking the composition
 // bug from upstream callers).
 //

@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
@@ -15,12 +12,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
@@ -30,11 +26,12 @@ import (
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
-
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+	"go.uber.org/zap"
 )
 
 // buildDomainMediaServices constructs the YouTube clip pipeline service
@@ -85,12 +82,12 @@ func buildDomainMediaServices(
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	_ = voMetaWriter // P0-#2: voMetaWriter is nil in production (no real semantic tagger); retained on the return tuple for forward-compat with future real-implementation wiring
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
-	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
+	youtubePubAdapter := ytadapters.NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
 	if process.ClipIndexerService != nil {
-		clipIndexerAdapterValue = &clipIndexerAdapter{inner: process.ClipIndexerService}
+		clipIndexerAdapterValue = ytadapters.NewClipIndexerAdapter(process.ClipIndexerService)
 	}
 
 	searchRunnerAdapter := ytinfra.NewSearchRunnerAdapter(cfg, log)
@@ -296,12 +293,12 @@ func buildDomainMediaServices(
 		ProcessSeg:    processSeg,
 	}
 	youtubeStorage := youtube.ServiceStorageDeps{
-		Clips:            newClipStoreAdapter(repos.ClipsRepo),
+		Clips:            ytadapters.NewClipStoreAdapter(repos.ClipsRepo),
 		Cache:            youtubeCache,
-		Monitors:         newMonitorsStoreAdapter(repos.MonitorsRepo),
+		Monitors:         ytadapters.NewMonitorsStoreAdapter(repos.MonitorsRepo),
 		Indexer:          clipIndexerAdapterValue,
 		Ollama:           ai.OllamaClient,
-		FolderMemory:     newFolderMemoryAdapter(folderMemSvc),
+		FolderMemory:     ytadapters.NewFolderMemoryAdapter(folderMemSvc),
 		TranscriptReader: &youtube.OSTranscriptReader{},
 	}
 	youtubeAdapter := youtube.ServiceAdapterDeps{

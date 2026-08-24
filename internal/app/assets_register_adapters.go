@@ -1,14 +1,14 @@
 // Package app — compile-time drift assertions for the sourcing adapter
 // stack. Individual adapter types were split into per-capability files:
 //
-//   - youtube_dispatcher_adapter.go (youtubeIndexDispatcherAdapter)
-//   - youtube_enrichment_adapter.go (youtubeEnrichmentAdapter)
-//   - youtube_fetch_adapter.go (sourcingFetchAdapter)
-//   - youtube_drive_legacy_adapter.go (sourcingDriveAdapter + sourcingClipStoreAdapter)
-//   - youtube_metadata_adapter.go (sourcingMetadataAdapter + sourcingEnrichmentAdapter +
-//     sourcingConfigAdapter + sourcingTranscriberAdapter + sourcingSearchAdapter +
-//     sourcingHashAdapter + zapSourcingLogger)
-//   - youtube_publisher_adapter.go (sourcingPublisherAdapter + sourcingDispatcherAdapter)
+//   - youtube_dispatcher_adapter.go (ytadapters.YoutubeIndexDispatcherAdapter)
+//   - youtube_enrichment_adapter.go (ytadapters.YoutubeEnrichmentAdapter)
+//   - youtube_fetch_adapter.go (ytadapters.SourcingFetchAdapter)
+//   - youtube_drive_legacy_adapter.go (sourcingDriveAdapter + ytadapters.SourcingClipStoreAdapter)
+//   - youtube_metadata_adapter.go (ytadapters.SourcingMetadataAdapter + ytadapters.SourcingEnrichmentAdapter +
+//     ytadapters.SourcingConfigAdapter + ytadapters.SourcingTranscriberAdapter + ytadapters.SourcingSearchAdapter +
+//     sourcingHashAdapter + ytadapters.ZapSourcingLogger)
+//   - youtube_publisher_adapter.go (ytadapters.SourcingPublisherAdapter + ytadapters.SourcingDispatcherAdapter)
 //   - youtube_asset_mapper.go (fromExistingClip + toExistingClip)
 //
 // Split extracted in PR-GODOBJ-8 (July 2026) per the god-object
@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/drivesync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/localimport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 )
 
 // newAssetRegisterService builds the SourcingService façade. After P0-1 /
@@ -31,8 +32,8 @@ import (
 // sourcing.NewService ctor (now 4 args, was 14 historically).
 
 var (
-	_ youtube.IndexDispatcherPort = (*youtubeIndexDispatcherAdapter)(nil)
-	_ youtube.EnrichmentPort      = (*youtubeEnrichmentAdapter)(nil)
+	_ youtube.IndexDispatcherPort = (*ytadapters.YoutubeIndexDispatcherAdapter)(nil)
+	_ youtube.EnrichmentPort      = (*ytadapters.YoutubeEnrichmentAdapter)(nil)
 	// Drift guard: youtube.Service implements sourcing.YouTubeRegistrar.
 	// This assertion lives at the composition root (rather than in
 	// sourcing/service.go) because the latter would re-introduce the
@@ -57,6 +58,6 @@ var (
 	// the former; sourcing itself never imports localimport, so no
 	// cycle).
 	_ sourcing.LocalImporter = (*localimport.Service)(nil)
-	// FASE 5: sourcingPublisherAdapter satisfies sourcing.PublisherPort.
-	_ sourcing.PublisherPort = (*sourcingPublisherAdapter)(nil)
+	// FASE 5: ytadapters.SourcingPublisherAdapter satisfies sourcing.PublisherPort.
+	_ sourcing.PublisherPort = (*ytadapters.SourcingPublisherAdapter)(nil)
 )
