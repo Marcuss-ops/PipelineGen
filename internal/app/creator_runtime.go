@@ -71,7 +71,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	capvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"

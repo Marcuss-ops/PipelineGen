@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

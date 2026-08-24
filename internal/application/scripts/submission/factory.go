@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

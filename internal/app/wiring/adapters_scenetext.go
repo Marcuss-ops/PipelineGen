@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

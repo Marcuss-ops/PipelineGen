@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"

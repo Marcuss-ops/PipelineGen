@@ -14,7 +14,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

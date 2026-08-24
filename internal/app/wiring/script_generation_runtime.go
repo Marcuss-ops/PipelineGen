@@ -8,7 +8,7 @@ import (
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"

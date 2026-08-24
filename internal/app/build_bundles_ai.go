@@ -19,7 +19,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"go.uber.org/zap"
 )

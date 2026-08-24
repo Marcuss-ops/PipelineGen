@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"go.uber.org/zap"
 )

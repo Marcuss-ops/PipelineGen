@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"

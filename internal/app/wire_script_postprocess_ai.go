@@ -30,7 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"

@@ -37,7 +37,7 @@ var canonicalIdentSuffixes = map[string]bool{
 
 var allowlist = map[string]bool{
 	"internal/application/assets/artifacts/source_resolver.go": true,
-	"internal/application/scripts/adapters/source_registry.go": true,
+	"internal/capabilities/scripts/adapters/source_registry.go": true,
 }
 
 type violationRow struct {

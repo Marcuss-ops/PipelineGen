@@ -36,7 +36,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"

@@ -30,7 +30,7 @@ package adapters_test
 import (
 	"testing"
 
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 )
 
 func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {

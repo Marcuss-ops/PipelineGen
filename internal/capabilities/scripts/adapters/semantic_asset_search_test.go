@@ -24,7 +24,7 @@ import (
 	"errors"
 	"testing"
 
-	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 )
 

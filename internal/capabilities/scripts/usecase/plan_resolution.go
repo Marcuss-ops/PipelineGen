@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 ) // GenerateOneUseCase orchestrates the unified pipeline for a single
