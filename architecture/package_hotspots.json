@@ -257,6 +257,17 @@
       "targets": [
         "internal/capabilities/scripts"
       ]
+    },
+    {
+      "path": "internal/domain",
+      "owner": "domain migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem. Code migrated to internal/kernel and internal/capabilities. Legacy import path banned via percheck_legacy_root_ban.go.",
+      "targets": [
+        "internal/kernel",
+        "internal/capabilities"
+      ]
     }
   ]
 }
