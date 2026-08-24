@@ -193,11 +193,11 @@ func IsKnownFeedbackAction(a FeedbackAction) bool {
 // ── Provider tag constants ───────────────────────────────────────
 
 const (
-	ProviderLocal          = "local"
-	ProviderSemanticIndex  = "mediamemory.semantic"
-	ProviderArtlist        = "artlist"
-	ProviderYouTube        = "youtube"
-	ProviderPexels         = "pexels"
+	ProviderLocal         = "local"
+	ProviderSemanticIndex = "mediamemory.semantic"
+	ProviderArtlist       = "artlist"
+	ProviderYouTube       = "youtube"
+	ProviderPexels        = "pexels"
 )
 
 func IsKnownProvider(p string) bool {
