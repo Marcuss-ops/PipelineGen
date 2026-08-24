@@ -103,9 +103,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )

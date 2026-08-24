@@ -5,7 +5,7 @@
 // godlike/07 invariant (nil receiver → sentinel, nil canonical →
 // fail-closed, YouTube fan-out, empty-input short-circuit,
 // MinScore filter, sort order) is locked by at least one test.
-package app
+package wiring
 
 import (
 	"context"

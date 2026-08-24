@@ -9,8 +9,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )

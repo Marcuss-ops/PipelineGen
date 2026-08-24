@@ -24,7 +24,7 @@
 // from the runbook is dropped because the test uses explicit timestamps
 // via seedStockRow (the in-memory SQLite clock is not anchored to the
 // host clock at the test layer).
-package assets
+package core
 
 import (
 	"context"

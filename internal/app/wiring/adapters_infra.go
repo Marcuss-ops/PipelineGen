@@ -17,9 +17,9 @@ import (
 
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
-	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"

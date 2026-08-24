@@ -1,4 +1,4 @@
-package app
+package wiring
 
 import (
 	"context"
@@ -12,14 +12,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // compositionSourceStager is deliberately small because this composition

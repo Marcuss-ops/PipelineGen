@@ -7,7 +7,7 @@
 // VerifiedArtifact as ResolvedFolderID + RootFolderResolved, so the canonical
 // ArtifactPublisherAdapter publishes the overlay below the video folder (via
 // the drive_subpath=["overlay"] child) instead of a synthetic run folder.
-package app
+package wiring
 
 import (
 	"context"

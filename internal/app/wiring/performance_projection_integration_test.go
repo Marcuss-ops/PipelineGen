@@ -22,7 +22,7 @@
 // godlike/07 no-fake-availability: every stage is a real SQL round-trip; no
 // mocks, no t.Skip, no white-box stubs. A broken hop fails the test instead
 // of silently degrading.
-package app
+package wiring
 
 import (
 	"context"
@@ -35,9 +35,9 @@ import (
 	"go.uber.org/zap"
 
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
 

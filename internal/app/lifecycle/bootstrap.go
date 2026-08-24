@@ -4,14 +4,14 @@
 // wiring lives in wire_services.go + composition.go + per-bundle files.
 // bootstrap.go makes zero `internal/infrastructure/*` imports so callers
 // compose via the AppDeps return value only.
-package app
+package lifecycle
 
 import (
 	"context"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 
 	"github.com/gin-gonic/gin"
 )

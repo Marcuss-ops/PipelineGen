@@ -18,8 +18,8 @@ import (
 
 	"go.uber.org/zap"
 
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

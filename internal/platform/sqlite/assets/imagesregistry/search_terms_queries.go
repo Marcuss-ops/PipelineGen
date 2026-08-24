@@ -5,7 +5,7 @@
 // deriveStripper/mergeSearchTerms) STAY in the domain package — they
 // have no SQL dependencies. The 4 SQL receivers (SearchByTerms/
 // fetchClipsByIDs/UpdateSearchTerms/RebuildSearchTerms) migrate here.
-package assets
+package imagesregistry
 
 import (
 	"context"

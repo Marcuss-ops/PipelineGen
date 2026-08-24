@@ -10,8 +10,8 @@ import (
 	"context"
 	"testing"
 
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // canonicalIdentityStub maps "source|ref" → canonical asset id.
