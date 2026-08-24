@@ -11,7 +11,7 @@
         "max_loc": 17092
       },
       "current": {
-        "files": 125,
+        "files": 4,
         "max_loc": 14618
       },
       "target_packages": [
@@ -31,7 +31,7 @@
         "max_loc": 13718
       },
       "current": {
-        "files": 73,
+        "files": 0,
         "max_loc": 13718
       },
       "target_packages": [
@@ -51,7 +51,7 @@
         "max_loc": 26637
       },
       "current": {
-        "files": 140,
+        "files": 9,
         "max_loc": 23098
       },
       "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
@@ -72,7 +72,7 @@
         "max_loc": 11473
       },
       "current": {
-        "files": 51,
+        "files": 7,
         "max_loc": 9396
       },
       "target_packages": [
@@ -93,7 +93,7 @@
         "max_loc": 0
       },
       "current": {
-        "files": 70,
+        "files": 15,
         "max_loc": 0
       },
       "note": "Measured production-file baseline corrected to the scanner result (70); decomposition remains tracked as a governed hotspot with no unrecorded growth.",
@@ -122,7 +122,7 @@
         "internal/capabilities/images/delivery",
         "internal/capabilities/images/persistence"
       ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 → 0); zero production imports remain."
+      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 \u2192 0); zero production imports remain."
     },
     {
       "path": "internal/application/jobs",
@@ -143,7 +143,7 @@
         "internal/capabilities/jobs/policy",
         "internal/capabilities/jobs/outbox"
       ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 → 0); outbox/policy in capabilities, persistence in platform/sqlite."
+      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 \u2192 0); outbox/policy in capabilities, persistence in platform/sqlite."
     },
     {
       "path": "internal/platform/delivery",
@@ -155,10 +155,10 @@
         "max_loc": 0
       },
       "current": {
-        "files": 9,
+        "files": 12,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure→platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry."
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure\u2192platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry."
     },
     {
       "path": "internal/platform/embeddings",
@@ -173,7 +173,7 @@
         "files": 5,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure→platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe)."
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure\u2192platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe)."
     },
     {
       "path": "internal/platform/sqlite/assets",
@@ -185,7 +185,7 @@
         "max_loc": 9659
       },
       "current": {
-        "files": 51,
+        "files": 2,
         "max_loc": 9659
       },
       "target_packages": [
@@ -195,7 +195,7 @@
         "internal/platform/sqlite/assets/imagesregistry",
         "internal/platform/sqlite/assets/txmutation"
       ],
-      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure→platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
+      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure\u2192platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
     }
   ],
   "root_migrations": [
@@ -219,7 +219,7 @@
       "targets": [
         "internal/capabilities"
       ],
-      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. All previously approved webresearch additions migrated with the infrastructure→platform consolidation (commit 1dcc5e4).",
+      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. All previously approved webresearch additions migrated with the infrastructure\u2192platform consolidation (commit 1dcc5e4).",
       "new_files_approved": []
     }
   ],
@@ -312,7 +312,7 @@
       "owner": "jobs migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files \u2192 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
       "targets": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/worker",
@@ -325,7 +325,7 @@
       "owner": "images migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0). Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files \u2192 0). Zero production imports remain.",
       "targets": [
         "internal/capabilities/images/workflow",
         "internal/capabilities/images/generation",
