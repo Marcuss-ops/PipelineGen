@@ -165,8 +165,11 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 			Publisher:           deps.Publisher,
 			VoiceoverRepository: deps.VoiceoverRepository,
 			Finalizer:           deps.Finalizer,
-			VoiceoverCache:      deps.VoiceoverCache,
-			Logger:              deps.Logger,
+			Cache: ProcessSegmentCacheDeps{
+				Cache: ProcessSegmentCacheDeps{VoiceoverCache: deps.VoiceoverCache,
+		},
+			},
+			Logger: deps.Logger,
 		}),
 	}
 }
