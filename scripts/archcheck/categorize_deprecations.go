@@ -84,6 +84,7 @@ var subsystemPrefixes = []struct {
 	{"pkg/assets", bucketAssets},
 	// Scripts.
 	{"internal/application/scripts", bucketScripts},
+	{"internal/capabilities/scripts", bucketScripts},
 	{"internal/kernel/script", bucketScripts},
 	{"pkg/immutability", bucketScripts},
 	// Media + YouTube (modalities that touch the assets surface).

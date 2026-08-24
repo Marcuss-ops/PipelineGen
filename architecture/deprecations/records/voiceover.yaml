@@ -1,0 +1,15 @@
+deprecations:
+    - id: VOICEOVER-RESULT-FLAT-SYNTHESIS
+      owner_capability: internal/capabilities/voiceover
+      exact_symbol: Result struct flat synthesis fields (Locale, Text, Voice, Filename, LocalPath, FileHash, FileSize, Duration) moved to VoiceoverSynthesisResult embedded sub-field
+      file: internal/capabilities/voiceover/result.go
+      file_line: "1"
+      replacement: 'Result{OK: true, VoiceoverSynthesisResult: VoiceoverSynthesisResult{Locale: "en-US", Text: "hello", ...}}'
+      introduction_date: "2026-07-01"
+      removal_date: never
+      tracking_issue: Spina Dorsale Fase 4 — Piano d'Azione § Fase 4
+      compatibility_test: 'Read-access: result.Locale, result.Voice, result.LocalPath continue to work via Go struct embedding. Write-access (struct literal construction) was updated at 3 call sites: promo.go, promo/generate_test.go, voiceover/promo.go.'
+      usage_metric: 'Pre-extraction: flat fields on Result, accessed by 3 constructor sites + 2 reader sites. Post-extraction: embedded VoiceoverSynthesisResult, read-access unchanged.'
+      migration_phase: EXPAND
+      status: in_progress
+      notes: VoiceoverSynthesisResult carries ZERO database/sql, drive, or qdrant imports. Territory markers in ports.go clarify Synthesis/Publication/Finalization boundaries.

@@ -7,7 +7,7 @@ records:
       count: 3
     - bucket: misc
       file: records/misc.yaml
-      count: 6
+      count: 5
     - bucket: qdrant
       file: records/qdrant.yaml
       count: 1
@@ -17,4 +17,7 @@ records:
     - bucket: translation
       file: records/translation.yaml
       count: 0
+    - bucket: voiceover
+      file: records/voiceover.yaml
+      count: 1
 audit_file: audit.yaml
