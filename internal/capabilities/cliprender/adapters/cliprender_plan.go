@@ -1,11 +1,11 @@
-package app
+package adapters
 
 // cliprender_plan.go wires the plan-facing adapters for the clip.render
 // preparation phase:
 //
-//   - clipRenderSubtitleCompiler — deterministic ASS artifact (burn|sidecar)
+//   - ClipRenderSubtitleCompiler — deterministic ASS artifact (burn|sidecar)
 //     via texttracks.CompileASSContent (the single owner of ASS content).
-//   - clipRenderExecutorAdapter — maps the rustexec.ClipRenderer result onto
+//   - ClipRenderExecutorAdapter — maps the rustexec.ClipRenderer result onto
 //     the capability's RenderOutcome verbatim (media facts come from the Rust
 //     metadata, never re-derived).
 //
@@ -28,7 +28,7 @@ import (
 
 // ── SubtitleCompiler (deterministic ASS) ─────────────────────────────
 
-// clipRenderSubtitleCompiler implements the capability's SubtitleCompiler
+// ClipRenderSubtitleCompiler implements the capability's SubtitleCompiler
 // port with the canonical ASS generator (texttracks.CompileASSContent — the
 // single owner of ASS content generation). The artifact is written into the
 // run's scratch dir (subtitles.ass) and validated before the plan is sealed.
@@ -41,7 +41,7 @@ import (
 // Fail-closed: empty cues, an invalid mode, or an invalid generated ASS is a
 // typed error — speech recognition is NEVER regenerated just to build
 // subtitles (feature spec §5).
-type clipRenderSubtitleCompiler struct{}
+type ClipRenderSubtitleCompiler struct{}
 
 // assContentCache reuses deterministic ASS generation across repeated renders
 // of the same transcript/style. It is intentionally a content cache, not a
@@ -50,7 +50,7 @@ type clipRenderSubtitleCompiler struct{}
 // never enter the key.
 var assContentCache sync.Map // map[string]string
 
-func (c *clipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.SubtitleCompileInput) (*cliprender.SubtitleArtifact, error) {
+func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.SubtitleCompileInput) (*cliprender.SubtitleArtifact, error) {
 	switch in.Mode {
 	case cliprender.SubtitlesModeBurn, cliprender.SubtitlesModeSidecar:
 	default:
@@ -150,29 +150,29 @@ func trimClipRenderCues(in []cliprender.Cue, durationMS int64) []cliprender.Cue 
 
 // ── RenderExecutor (Rust render_clip boundary) ───────────────────────
 
-// clipRenderExecutor is the narrow seam over the rustexec.ClipRenderer so
+// ClipRenderExecutor is the narrow seam over the rustexec.ClipRenderer so
 // the composition-root adapter stays testable without the Rust process.
 // The concrete implementation re-validates the sealed plan, verifies every
 // referenced artifact, resolves the encoder policy from the composition-root
 // media config, and refuses success without a non-empty output.
-type clipRenderExecutor interface {
+type ClipRenderExecutor interface {
 	RenderClip(ctx context.Context, plan cliprender.ClipRenderPlanV1, backend cliprender.RenderBackend) (rustexec.ClipRenderResult, error)
 }
 
-// clipRenderExecutorAdapter bridges the rustexec.ClipRenderer to the
+// ClipRenderExecutorAdapter bridges the rustexec.ClipRenderer to the
 // capability's RenderExecutor port. It resolves the render backend through
 // the capability's RenderBackendResolver (probed host capabilities, never a
 // hardcoded CUDA path) and reports the resolved backend in the outcome.
 // Fail-closed: an unwired renderer is a typed error (never a silent no-op
 // that reports a rendered clip).
-type clipRenderExecutorAdapter struct {
-	renderer clipRenderExecutor
-	chronon  clipRenderExecutor
+type ClipRenderExecutorAdapter struct {
+	renderer ClipRenderExecutor
+	chronon  ClipRenderExecutor
 	resolver *cliprender.RenderBackendResolver
 	probe    cliprender.BackendCapabilityProbe
 }
 
-func (a *clipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+func (a *ClipRenderExecutorAdapter) Render(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
 	if a == nil || (a.renderer == nil && a.chronon == nil) {
 		return nil, fmt.Errorf("%w: Rust clip renderer not wired", cliprender.ErrRenderPhaseNotImplemented)
 	}

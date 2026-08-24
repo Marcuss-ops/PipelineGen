@@ -1,4 +1,4 @@
-package app
+package adapters
 
 // cliprender_executor_adapter_test.go — composition-root adapter test for
 // the RenderExecutor port: maps the rustexec.ClipRenderResult into the
@@ -44,7 +44,7 @@ func TestClipRenderExecutorAdapter_MapsOutcomeVerbatim(t *testing.T) {
 		AudioEncodePasses: &passes,
 		SubtitleRasterCPU: &cpuSubs,
 	}}
-	adapter := &clipRenderExecutorAdapter{
+	adapter := &ClipRenderExecutorAdapter{
 		renderer: fake,
 		resolver: cliprender.NewRenderBackendResolver(nil),
 		probe:    emptyCapabilityProbe{},
@@ -84,7 +84,7 @@ func (fullCudaProbe) ProbeCapabilities(context.Context) (cliprender.RendererCapa
 
 func TestClipRenderExecutorAdapter_ResolvesCudaBackend(t *testing.T) {
 	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{OutputPath: "/out.mp4", SizeBytes: 1, DurationSec: 1}}
-	adapter := &clipRenderExecutorAdapter{
+	adapter := &ClipRenderExecutorAdapter{
 		renderer: fake,
 		resolver: cliprender.NewRenderBackendResolver(nil),
 		probe:    fullCudaProbe{},
@@ -104,7 +104,7 @@ func TestClipRenderExecutorAdapter_ResolvesCudaBackend(t *testing.T) {
 
 func TestClipRenderExecutorAdapter_PropagatesFailure(t *testing.T) {
 	fake := &fakeClipRenderExecutor{err: errors.New("rust render_clip: boom")}
-	adapter := &clipRenderExecutorAdapter{
+	adapter := &ClipRenderExecutorAdapter{
 		renderer: fake,
 		resolver: cliprender.NewRenderBackendResolver(nil),
 		probe:    emptyCapabilityProbe{},
@@ -129,7 +129,7 @@ func TestClipRenderExecutorAdapter_FailsClosedWhenBackendProbeIsUnwired(t *testi
 	fake := &fakeClipRenderExecutor{result: rustexec.ClipRenderResult{OutputPath: "/out", SizeBytes: 1, DurationSec: 1}}
 	// No resolver, no probe → ResolveBackend fails with ErrBackendUnavailable
 	// instead of silently degrading to FFmpeg.
-	adapter := &clipRenderExecutorAdapter{renderer: fake}
+	adapter := &ClipRenderExecutorAdapter{renderer: fake}
 
 	_, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
 	if err == nil {
@@ -141,7 +141,7 @@ func TestClipRenderExecutorAdapter_FailsClosedWhenBackendProbeIsUnwired(t *testi
 }
 
 func TestClipRenderExecutorAdapter_FailsClosedWhenUnwired(t *testing.T) {
-	adapter := &clipRenderExecutorAdapter{} // nil renderer
+	adapter := &ClipRenderExecutorAdapter{} // nil renderer
 
 	_, err := adapter.Render(context.Background(), cliprender.ClipRenderPlanV1{})
 	if err == nil {

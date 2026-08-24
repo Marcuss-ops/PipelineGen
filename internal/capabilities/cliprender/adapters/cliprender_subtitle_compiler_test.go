@@ -1,4 +1,4 @@
-package app
+package adapters
 
 // cliprender_subtitle_compiler_test.go — deterministic ASS compiler tests
 // (spec §5): burn and sidecar modes, deterministic bytes, fail-closed on
@@ -38,7 +38,7 @@ func subtitleTestInput(t *testing.T, mode string) cliprender.SubtitleCompileInpu
 }
 
 func TestSubtitleCompiler_BurnMode(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	out, err := compiler.Compile(context.Background(), subtitleTestInput(t, cliprender.SubtitlesModeBurn))
 	if err != nil {
 		t.Fatalf("Compile(burn): %v", err)
@@ -68,7 +68,7 @@ func TestSubtitleCompiler_BurnMode(t *testing.T) {
 }
 
 func TestSubtitleCompiler_SidecarSameBytesDifferentMode(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	burn, err := compiler.Compile(context.Background(), subtitleTestInput(t, cliprender.SubtitlesModeBurn))
 	if err != nil {
 		t.Fatalf("Compile(burn): %v", err)
@@ -86,7 +86,7 @@ func TestSubtitleCompiler_SidecarSameBytesDifferentMode(t *testing.T) {
 }
 
 func TestSubtitleCompiler_Deterministic(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	first, err := compiler.Compile(context.Background(), subtitleTestInput(t, cliprender.SubtitlesModeBurn))
 	if err != nil {
 		t.Fatalf("Compile (1st): %v", err)
@@ -101,7 +101,7 @@ func TestSubtitleCompiler_Deterministic(t *testing.T) {
 }
 
 func TestSubtitleCompiler_EmptyCuesFailsClosed(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	in := subtitleTestInput(t, cliprender.SubtitlesModeBurn)
 	in.Cues = nil
 	_, err := compiler.Compile(context.Background(), in)
@@ -117,7 +117,7 @@ func TestSubtitleCompiler_EmptyCuesFailsClosed(t *testing.T) {
 }
 
 func TestSubtitleCompiler_InvalidModeFailsClosed(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	_, err := compiler.Compile(context.Background(), subtitleTestInput(t, "fancy"))
 	if err == nil {
 		t.Fatalf("expected fail-closed error for invalid mode, got nil")
@@ -128,7 +128,7 @@ func TestSubtitleCompiler_InvalidModeFailsClosed(t *testing.T) {
 }
 
 func TestSubtitleCompiler_TrimsCuesToClipDuration(t *testing.T) {
-	compiler := &clipRenderSubtitleCompiler{}
+	compiler := &ClipRenderSubtitleCompiler{}
 	in := subtitleTestInput(t, cliprender.SubtitlesModeBurn)
 	in.ClipDurationMS = 4000 // the second cue is clipped to the media boundary
 	out, err := compiler.Compile(context.Background(), in)

@@ -1,11 +1,11 @@
-package app
+package adapters
 
 // cliprender_overlay.go wires the compositing hop of the clip.render worker:
 //
 //	OverlayRefSpec (render_job_id + render_key)
-//	    → overlaySegmentResolver   (overlays cache lookup by render_key)
+//	    → OverlaySegmentResolver   (overlays cache lookup by render_key)
 //	    → OverlaySegment           (the rendered overlay artifact)
-//	    → ffmpegOverlayCompositor  (blend onto the source at [start_us, end_us))
+//	    → FFmpegOverlayCompositor  (blend onto the source at [start_us, end_us))
 //	    → final video that contains the overlay in its pixels
 //
 // The compositor derives ALL encoder parameters from the assembly-ready
@@ -34,14 +34,14 @@ import (
 
 // ── OverlaySegmentResolver (render_job_id → artifact) ─────────────────
 
-// overlaySegmentResolver resolves the rendered overlay segment from the
+// OverlaySegmentResolver resolves the rendered overlay segment from the
 // overlays content cache by the declared render_key — the content-addressed
 // key the overlay.render handler writes the certified artifact under. The
 // render_job_id is the lineage identity; the render_key is the cache key, so
 // the resolved segment is provably the artifact that job produced (the plan
 // fingerprint and render key travel on the request's lineage). Fail-closed:
 // an unknown key or a missing/unreadable artifact is a typed error.
-type overlaySegmentResolver struct {
+type OverlaySegmentResolver struct {
 	cache *infraoverlays.Cache
 }
 
@@ -68,7 +68,7 @@ func resolveOverlaySegmentInCache(cache *infraoverlays.Cache, renderKey string) 
 	return "", fmt.Errorf("overlay segment resolver: no cached artifact for render_key %q", renderKey)
 }
 
-func (r *overlaySegmentResolver) Resolve(_ context.Context, in cliprender.OverlayResolveInput) (*cliprender.OverlaySegment, error) {
+func (r *OverlaySegmentResolver) Resolve(_ context.Context, in cliprender.OverlayResolveInput) (*cliprender.OverlaySegment, error) {
 	if r == nil || r.cache == nil {
 		return nil, fmt.Errorf("overlay segment resolver: cache is required")
 	}
@@ -94,7 +94,7 @@ func (r *overlaySegmentResolver) Resolve(_ context.Context, in cliprender.Overla
 
 // ── OverlayCompositor (ffmpeg blend at [start_us, end_us)) ───────────
 
-// ffmpegOverlayCompositor blends the rendered overlay segment onto the
+// FFmpegOverlayCompositor blends the rendered overlay segment onto the
 // source clip at the declared [start_us, end_us) window with a single ffmpeg
 // pass. Every encoder parameter (codec, preset, CRF, pixel_format, GOP,
 // profile, audio) is derived from the assembly-ready contract
@@ -104,14 +104,14 @@ func (r *overlaySegmentResolver) Resolve(_ context.Context, in cliprender.Overla
 //
 //	scale → pad (letterbox) → setsar=1 → setpts=PTS+start/TB → overlay
 //	with enable=between(start, end). Source audio is copied bit-exact.
-type ffmpegOverlayCompositor struct {
+type FFmpegOverlayCompositor struct {
 	ffmpegPath string
 	codec      string // from mediaConfig.Policy.Codec (composition root)
 	preset     string // from mediaConfig.Policy.Preset
 	crf        int    // from mediaConfig.Policy.CRF
 }
 
-func (c *ffmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.OverlayCompositeInput) (*cliprender.OverlayCompositeResult, error) {
+func (c *FFmpegOverlayCompositor) Composite(ctx context.Context, in cliprender.OverlayCompositeInput) (*cliprender.OverlayCompositeResult, error) {
 	if c == nil || strings.TrimSpace(c.ffmpegPath) == "" {
 		return nil, fmt.Errorf("overlay compositor: ffmpeg path is required")
 	}

@@ -1,4 +1,4 @@
-package app
+package adapters
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func TestOverlaySegmentResolver_ResolvesFromCache(t *testing.T) {
 		t.Fatalf("cache put: %v", err)
 	}
 
-	resolver := &overlaySegmentResolver{cache: cache}
+	resolver := &OverlaySegmentResolver{cache: cache}
 	seg, err := resolver.Resolve(context.Background(), cliprender.OverlayResolveInput{
 		RenderJobID: "render-michael-jordan-overlay-001",
 		RenderKey:   renderKey,
@@ -56,7 +56,7 @@ func TestOverlaySegmentResolver_FailClosedWithoutArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
-	resolver := &overlaySegmentResolver{cache: cache}
+	resolver := &OverlaySegmentResolver{cache: cache}
 	_, err = resolver.Resolve(context.Background(), cliprender.OverlayResolveInput{
 		RenderJobID: "render-job-001",
 		RenderKey:   "unknown-render-key-0000000000000000000000000000000000000000000000000000000000000000",
@@ -93,7 +93,7 @@ func TestFFmpegOverlayCompositor_BlendsSegmentOntoSource(t *testing.T) {
 	generateSmallVideoMP4(t, ffmpeg, srcPath, 1.0)
 	generateSmallVideoMP4(t, ffmpeg, segPath, 1.0)
 
-	compositor := &ffmpegOverlayCompositor{ffmpegPath: ffmpeg, codec: "libx264", preset: "veryfast", crf: 28}
+	compositor := &FFmpegOverlayCompositor{ffmpegPath: ffmpeg, codec: "libx264", preset: "veryfast", crf: 28}
 	composite, err := compositor.Composite(context.Background(), cliprender.OverlayCompositeInput{
 		RunID:      "run-overlay-e2e",
 		SourcePath: srcPath,

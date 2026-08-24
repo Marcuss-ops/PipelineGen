@@ -29,6 +29,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -259,7 +260,7 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	// Source resolution: reuse the SAME asset registry + materializer + probe
 	// adapters the clip.render preparation phase uses (no second path).
 	scratchDir := filepath.Join(cfg.Storage.TempPath(), "localization")
-	resolver, resolverErr := newClipRenderAssetResolver(root.Repos.Assets, log)
+	resolver, resolverErr := clipadapters.NewClipRenderAssetResolver(root.Repos.Assets, log)
 	if resolverErr != nil {
 		return nil, fmt.Errorf("localization service: build asset resolver: %w", resolverErr)
 	}
@@ -267,7 +268,7 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer, materializerErr := newClipRenderMaterializer(driveReader, scratchDir, log)
+	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(driveReader, scratchDir, log)
 	if materializerErr != nil {
 		return nil, fmt.Errorf("localization service: build asset materializer: %w", materializerErr)
 	}
@@ -285,7 +286,7 @@ func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log 
 	clipRenderer := rustexec.NewClipRendererWithExecutor(rustExecutor, root.MediaExec.Policy, root.MediaExec.Profile, log)
 	backendProbe := rustexec.NewFFmpegBackendCapabilityProbe(cfg.External.FfmpegPath)
 	backendResolver := cliprender.NewRenderBackendResolver(cliprender.NewRenderBackendRegistry())
-	executor := newLocalizationRenderPlanExecutor(&clipRenderExecutorAdapter{renderer: clipRenderer, resolver: backendResolver, probe: backendProbe}, root.MediaExec.Profile, log)
+	executor := newLocalizationRenderPlanExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, nil, backendResolver, backendProbe), root.MediaExec.Profile, log)
 
 	uploader := &localizationDriveUploader{publisher: root.Drive.Publisher}
 	docPublisher := &localizationDocPublisher{doc: root.Drive.DocClient}
