@@ -71,7 +71,7 @@ import (
 	"testing"
 
 	deliverypkg "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
