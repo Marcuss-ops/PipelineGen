@@ -198,17 +198,6 @@
       ]
     },
     {
-      "path": "internal/domain",
-      "owner": "domain contract migration owner",
-      "deadline": "2026-12-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/kernel",
-        "internal/capabilities"
-      ]
-    },
-    {
       "path": "internal/infrastructure",
       "owner": "infrastructure adapter migration owner",
       "deadline": "2026-12-31",

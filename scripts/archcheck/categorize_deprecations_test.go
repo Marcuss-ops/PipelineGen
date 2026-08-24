@@ -23,6 +23,7 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 		{"pkg/translation", bucketTranslation},
 		// Voiceover.
 		{"internal/application/voiceover/service", bucketVoiceover},
+		{"internal/capabilities/voiceover/service", bucketVoiceover},
 		{"pkg/voiceover", bucketVoiceover},
 		// Jobs.
 		{"internal/kernel/job/startup_validator", bucketJobs},
@@ -84,7 +85,7 @@ func TestGroupDeprecationsByBucket_PartitionsCorrectly(t *testing.T) {
 	records := []deprecationRecord{
 		{ID: "R-DRIVE", OwnerCapability: "internal/infrastructure/drive/x"},
 		{ID: "R-TRANSLATION", OwnerCapability: "internal/application/translation/x"},
-		{ID: "R-VOICEOVER", OwnerCapability: "internal/application/voiceover/x"},
+		{ID: "R-VOICEOVER", OwnerCapability: "internal/capabilities/voiceover/x"},
 		{ID: "R-MISC", OwnerCapability: "some/unknown/path"},
 		{ID: "R-EMPTY", OwnerCapability: ""},
 	}
