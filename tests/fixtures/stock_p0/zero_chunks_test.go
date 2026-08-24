@@ -25,7 +25,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 func TestP0_ZeroChunks_NilSliceRaisesErrStockNoChunksFinalized(t *testing.T) {

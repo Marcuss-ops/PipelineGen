@@ -48,6 +48,13 @@ max_constructor_deps: 8
 
 max_struct_deps: 8
 
+# PR-CLIPINGEST-PIPELINE step 8 (July 2026): per-struct allowance for the canonical
+# 9-component ClipIngestPipeline wiring. The 9-component shape is the SOLE canonical
+# owner; the percheck_clip_ingest_pipeline_canonical_1 forward-prevention gate enforces
+# this at the type level. Without this per-struct allowance the 9-component shape
+# would be a max_struct_deps violation.
+max_clip_ingest_pipeline_fields: 9
+
 # Target-tree warning residue budget. This is a monotone ratchet: warnings
 # may decrease, but a run may not exceed the committed ceiling without a
 # hard-gated cleanup. The budget applies only to warnings collected in

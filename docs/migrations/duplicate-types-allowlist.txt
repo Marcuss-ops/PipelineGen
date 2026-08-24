@@ -65,14 +65,14 @@
 #   @qdrant-hygiene           — legacy QDRANT-projection mirrors
 #   @jobs-core                — application/jobs + scripts/jobs + voiceover/jobs job-system handlers
 #   @system-health-team       — application/system/health (port) + infrastructure/health (impl)
-#   @voiceover-team           — application/voiceover canonical sync/types surface
+#   @voiceover-team           — capabilities/voiceover canonical sync/types surface (migrated from application/voiceover Aug 2026)
 #   @voiceover-reconciliation — reconstruction deprecation shims (PR 6 + reconciliation/voiceover)
 #   @scripts-adapters         — application/scripts/adapters module-local service structs
 #   @images-team              — application/images (canonical DTO) + api/images (HTTP transport DTO)
 #   @youtube-team             — application/youtube (canonical) + assets/providers/youtube (provider-adapter mirror)
 #   @completion-team          — assets/completion (projector) + jobs/completion (broker spine)
 #   @qdrant-team              — qdrant-side canonical (reconciler/maintenance) vs assets-side cross-package-NAME mirrors
-#   @translation-team         — application/translation (ports) + domain/translation (canonical)
+#   @translation-team         — application/translation (ports, canonical; domain/translation retired Aug 2026)
 #
 # ◷ CHECK 5 LOG SECTION (PR-check-5 baseline closure, June 2026, post-LENS migration) ◷
 # Entries below were originally documented as cross-package-NAME false positives
@@ -88,10 +88,9 @@ internal/application/jobs/jobs:Broker                               # applicatio
 internal/application/assets/search/search:Logger                    # cross-module search.Logger mirror — assets side — owner: @qdrant-hygiene, deadline: 2026-09-01
 internal/application/search/search:Logger                            # cross-module search.Logger mirror — canonical side — owner: @qdrant-hygiene, deadline: 2026-09-01
 internal/application/scripts/scripts:ScriptStockMatchRecord         # legacy sqlite-vs-application mirror — application side only — owner: @qdrant-hygiene, deadline: 2026-09-01
-internal/capabilities/voiceover/voiceover:VoiceoverResult                 # scanner-flagged alias — capabilities/voiceover/result.go:86 type alias `VoiceoverResult = Result` — owner: @voiceover-team, deadline: 2026-09-01
-internal/application/voiceover/voiceover:VoiceoverResult            # scanner-flagged alias — types.go:195 struct — owner: @voiceover-team, deadline: 2026-09-01
-internal/application/scripts/jobs/jobs:GenerateJobHandler           # port-pattern canonical — scripts/jobs/generation_job.go (canonical script.generate handler) — owner: @jobs-core, deadline: 2026-09-01
-internal/application/voiceover/jobs/jobs:GenerateJobHandler          # port-pattern canonical — voiceover/jobs/generate_handler.go (typed-port voiceover.generate sub-handler) — owner: @jobs-core, deadline: 2026-09-01
+internal/capabilities/voiceover/voiceover:VoiceoverResult                 # same-package alias+struct duplicate — result.go:128 type alias `VoiceoverResult = Result` + service/types.go:278 struct `VoiceoverResult` (the application/voiceover mirror was retired Aug 2026) — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/scripts/jobs/jobs:GenerateJobHandler           # port-pattern canonical — scripts/jobs/generation_handler.go:46 (canonical script.generate handler) — owner: @jobs-core, deadline: 2026-09-01
+internal/capabilities/voiceover/service/jobs/jobs:GenerateJobHandler # port-pattern canonical — capabilities/voiceover/service/jobs/generate_handler.go:54 (typed-port voiceover.generate sub-handler, migrated from application/voiceover Aug 2026) — owner: @jobs-core, deadline: 2026-09-01
 internal/application/system/health/health:JobsChecker                # port-pattern intentional dual-decl — application/system/health/ports.go (interface DBChecker/DriveChecker/QdrantChecker/JobsChecker) — owner: @system-health-team, deadline: 2026-09-01
 internal/infrastructure/health/health:JobsChecker                   # port-pattern intentional dual-decl — infrastructure/health/jobs_checker.go (struct impl JobsChecker) — owner: @system-health-team, deadline: 2026-09-01
 internal/application/scripts/adapters/adapters:Service              # cross-directory `package adapters` collision — scripts/adapters/gemmamemory.go (module-local mem-cache Service) — owner: @scripts-adapters, deadline: 2026-09-01
@@ -117,17 +116,13 @@ internal/application/jobs/completion/completion:Service               # cross-pa
 internal/application/assets/deletion/reconciler/reconciler:Service    # cross-package-NAME false positive — application/assets/deletion/reconciler/service.go:34 (assets-side deletion reconciler, Drive-deletion concern) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/qdrant/reconciler/reconciler:Service             # cross-package-NAME false positive — application/qdrant/reconciler/service.go:71 (qdrant-side drift reconciler, distinct concern per godlike/06 SSOT) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/translation/translation:TranslationCommand    # cross-package-NAME false positive — application/translation/ports.go:120 (application port) — owner: @translation-team, deadline: 2026-09-01
-internal/domain/translation/translation:TranslationCommand           # cross-package-NAME false positive — domain/translation/translation.go:88 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
-internal/api/assets/voiceover/voiceover:VoiceoverItem                 # cross-package-NAME false positive — api/assets/voiceover/types.go:97 (HTTP transport DTO) — owner: @voiceover-team, deadline: 2026-09-01
-internal/application/voiceover/voiceover:VoiceoverItem                # cross-package-NAME false positive — application/voiceover/command.go:63 (domain command) — owner: @voiceover-team, deadline: 2026-09-01
-internal/application/translation/translation:ModelPolicy             # cross-package-NAME false positive — application/translation/ports.go:281 (application port) — owner: @translation-team, deadline: 2026-09-01
-internal/domain/translation/translation:ModelPolicy                   # cross-package-NAME false positive — domain/translation/translation.go:67 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
+internal/api/assets/voiceover/voiceover:VoiceoverItem                 # cross-package-NAME false positive — api/assets/voiceover/types.go:97 (HTTP type alias → capabilities/voiceover/service/command.go:64) — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/translation/translation:ModelPolicy             # same-package duplicate exemption — application/translation/ports.go:288 (the domain/translation mirror was retired Aug 2026) — owner: @translation-team, deadline: 2026-09-01
 internal/application/assets/maintenance/maintenance:Service          # cross-package-NAME false positive — application/assets/maintenance/service.go:34 (assets-side maintenance, Drive-folder concern) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/qdrant/maintenance/maintenance:Service           # cross-package-NAME false positive — application/qdrant/maintenance/service.go:90 (qdrant-side maintenance, Qdrant-collection concern) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/assets/deletion/reconciler/reconciler:Metrics    # cross-package-NAME false positive — application/assets/deletion/reconciler/ports.go:105 (assets-side metrics interface) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/qdrant/reconciler/reconciler:Metrics             # cross-package-NAME false positive — application/qdrant/reconciler/ports.go:139 (qdrant-side metrics interface) — owner: @qdrant-team, deadline: 2026-09-01
-internal/application/translation/translation:TranslationResult      # cross-package-NAME false positive — application/translation/ports.go:224 (application port) — owner: @translation-team, deadline: 2026-09-01
-internal/domain/translation/translation:TranslationResult             # cross-package-NAME false positive — domain/translation/translation.go:115 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
+internal/application/translation/translation:TranslationResult      # same-package duplicate exemption — application/translation/ports.go:231 (the domain/translation mirror was retired Aug 2026) — owner: @translation-team, deadline: 2026-09-01
 internal/application/assets/deletion/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/assets/deletion/reconciler/service.go:53 (assets-side deps) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/qdrant/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/qdrant/reconciler/service.go:94 (qdrant-side deps, distinct dep-bag per godlike/06 SSOT) — owner: @qdrant-team, deadline: 2026-09-01
 #

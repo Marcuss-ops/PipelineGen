@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "jackie-chan-short-bilingual-two-clips",
+  "items": [
+    {
+      "id": "jackie-chan-short-bilingual",
+      "title": "Jackie Chan: talento e ritmo",
+    "language": "en",
+      "tone": "breve documentario, chiaro ed energico",
+      "style": "Scrivi una narrazione molto breve in due scene. Mantieni un tono concreto, caldo e conciso; usa solo le clip fornite.",
+      "source": {
+        "type": "clips",
+      "source_text": "Jackie Chan is an artist who combines martial arts, rhythm, and physical comedy. In the first clip, he shows how a simple gesture can become a precise, elegant, and memorable gag. His body follows rigorous discipline, but every movement still carries spontaneity and surprise. In the second clip, the musical and playful side of his performance becomes clear: voice, silence, and exaggerated sounds turn into comic instruments. His style is built from the meeting of control and improvisation. Every scene must remain clear, energetic, and entertaining, allowing the audience to move from action to laughter without losing the thread of the story. This combination made his cinema recognizable around the world.",
+        "clip_ids": [
+          "1cQVbWKK4Tlmf2b9XIoMpLq3DnIblb53t",
+          "17XMsyHBx4ufQR5tnMNAec7wbIsK6ZzpI"
+        ],
+        "ordering_strategy": "input_order",
+        "num_clips": 2
+      },
+      "script_params": {
+      "target_words": 100,
+      "segment_words": 50,
+        "force_refresh": true,
+        "use_memory": false,
+        "skip_quality_gate": true
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": false,
+    "translate_to": "es"
+      }
+    }
+  ]
+}

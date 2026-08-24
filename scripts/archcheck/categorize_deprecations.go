@@ -64,6 +64,7 @@ var subsystemPrefixes = []struct {
 	{"pkg/translation", bucketTranslation},
 	// Voiceover.
 	{"internal/application/voiceover", bucketVoiceover},
+	{"internal/capabilities/voiceover", bucketVoiceover},
 	{"pkg/voiceover", bucketVoiceover},
 	// Jobs / kernel.
 	{"internal/kernel/job", bucketJobs},
@@ -87,6 +88,7 @@ var subsystemPrefixes = []struct {
 	{"pkg/immutability", bucketScripts},
 	// Media + YouTube (modalities that touch the assets surface).
 	{"internal/application/youtube", bucketMedia},
+	{"internal/capabilities/youtube", bucketMedia},
 	{"internal/application/media", bucketMedia},
 	{"pkg/youtube", bucketMedia},
 	// Clip / pre-planner.
