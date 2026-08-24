@@ -26,7 +26,7 @@
 //   - internal/application/scripts/usecase: the typed-port
 //     shapes each adapter implements (SemanticSearchPort,
 //     ClipSearchPort).
-//   - internal/application/scripts/ports: ClipSearchQuery
+//   - internal/capabilities/scripts/ports: ClipSearchQuery
 //     (curate-resolver search input shape).
 //   - internal/kernel/script: SearchResultItem
 //     (typed curatior-resolver search output shape).

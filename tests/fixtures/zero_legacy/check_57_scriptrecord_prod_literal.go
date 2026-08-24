@@ -17,7 +17,7 @@
 package fixture
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // BadLiteral is the synthetic production-shape pattern the gate MUST

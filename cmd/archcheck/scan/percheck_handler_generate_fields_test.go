@@ -55,7 +55,7 @@ func TestScanHandlerGenerateFields_HappyPath_NoViolations(t *testing.T) {
 import (
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"

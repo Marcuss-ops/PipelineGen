@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // ErrInvalidURL is the typed sentinel for URLs that cannot be normalized

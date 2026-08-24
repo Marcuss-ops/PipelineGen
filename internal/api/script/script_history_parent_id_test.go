@@ -51,7 +51,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 )
 

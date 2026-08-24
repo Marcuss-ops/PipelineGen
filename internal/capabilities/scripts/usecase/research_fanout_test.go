@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

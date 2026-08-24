@@ -22,7 +22,7 @@
 // but folder missing → processor warns and falls back" bug.
 //
 // Layering note: per AGENTS.md Pattern 0 the port is declared
-// structurally here (in internal/application/scripts/ports) and
+// structurally here (in internal/capabilities/scripts/ports) and
 // the adapter wraps the concrete *destination.Resolver from the
 // destination application. The script pipeline use case depends
 // solely on the port interface, never on the concrete type —

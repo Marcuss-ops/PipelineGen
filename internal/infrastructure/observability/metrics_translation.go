@@ -25,7 +25,7 @@
 // other high-cardinality token is preserved as-is for operator
 // visibility); the reason parameter is the BOUNDED typed
 // metrics.TranslationWarningReason enum (defined in the leaf
-// sub-package internal/application/scripts/ports/metrics). The
+// sub-package internal/capabilities/scripts/ports/metrics). The
 // bounded enum prevents label-cardinality explosion in Prometheus
 // (gofake-style N×M combinations would otherwise blow up the
 // Prometheus storage). A free-form reason string is no longer
@@ -34,7 +34,7 @@
 //
 // CYCLE-BREAKER (PR-TRANSLATE-SCRIPT-SPEC FP3 closure, 2026-08-08):
 // the typed enum + port + helper live in the leaf sub-package
-// `internal/application/scripts/ports/metrics` (ZERO upward
+// `internal/capabilities/scripts/ports/metrics` (ZERO upward
 // imports). observability imports this leaf directly (not the
 // parent `ports` package) so the cycle
 // `observability → ports → jobs → sqlite/jobs → observability` is
@@ -49,7 +49,7 @@ import (
 	"errors"
 	"fmt"
 
-	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -59,7 +59,7 @@ import (
 // the cardinality guard is the bounded reason enum (10 values)
 // NOT the language set. The canonical NormalizeTargetLang
 // implementation lives in the leaf sub-package
-// `internal/application/scripts/ports/metrics`
+// `internal/capabilities/scripts/ports/metrics`
 // (PR-TRANSLATE-SCRIPT-SPEC FP3 cycle-breaker); the metrics
 // adapter calls `scriptmetrics.NormalizeTargetLang(lang)` at the
 // metric-write boundary so the target_lang label normalization is
@@ -179,7 +179,7 @@ func (e *translationMetricsError) Error() string { return e.msg }
 //
 // PR-TRANSLATE-SCRIPT-SPEC FP3 (2026-08-08): the typed reason
 // parameter is `scriptmetrics.TranslationWarningReason` (from the
-// leaf sub-package `internal/application/scripts/ports/metrics`),
+// leaf sub-package `internal/capabilities/scripts/ports/metrics`),
 // NOT `ports.TranslationWarningReason` (the re-export alias). Both
 // types are byte-equivalent at compile time (Go type aliases are
 // pure rename), but the import path here is the leaf sub-package

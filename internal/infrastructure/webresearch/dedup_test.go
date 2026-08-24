@@ -3,7 +3,7 @@ package webresearch
 import (
 	"testing"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 func TestNormalizeWebURL(t *testing.T) {

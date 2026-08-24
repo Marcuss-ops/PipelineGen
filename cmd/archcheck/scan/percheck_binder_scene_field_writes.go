@@ -22,7 +22,7 @@
 // The SceneAssetBinder source file MUST NEVER carry a literal
 // assignment to a banned field on a SpecScene value. The
 // Wave 1.1 extraction (ScenePlanner introduced in
-// internal/application/scripts/scene/scene_planner.go) routed
+// internal/capabilities/scripts/scene/scene_planner.go) routed
 // every scene-shape decision through the planner; this gate
 // freezes that contract so a future agent who drifts back into
 // inline kind/title/text writes inside the binder surfaces as
@@ -41,7 +41,7 @@
 //
 // Exemptions (forward-prevention policy mirrors
 // percheck_asset_state_no_shadow_enum.go precedent):
-//   - canonical ScenePlanner (internal/application/scripts/scene/
+//   - canonical ScenePlanner (internal/capabilities/scripts/scene/
 //     scene_planner.go) — the SOLE owner of scene field writes.
 //   - test files (`_test.go` suffix) — regression-guard surface
 //     legitimately needs fixture assignments.
@@ -83,7 +83,7 @@ var sceneFieldWriteSkipDirs = map[string]bool{
 // owner (Wave 1.1 extraction). It is the ONLY file allowed to
 // write scene.Text / .Title / .Kind / .Index / .ID outside the
 // test-file exempt surface.
-const binderScenePlannerCanonical = "internal/application/scripts/scene/scene_planner.go"
+const binderScenePlannerCanonical = "internal/capabilities/scripts/scene/scene_planner.go"
 
 // binderScenePlannerFamilyPrefix matches every file in the
 // canonical ScenePlanner family (scene_planner*.go). The planner
@@ -94,13 +94,13 @@ const binderScenePlannerCanonical = "internal/application/scripts/scene/scene_pl
 // scene.Kind. godlike/06 SSOT: the canonical owner is the
 // ScenePlanner TYPE, not a single file, so the whole family is
 // exempt.
-const binderScenePlannerFamilyPrefix = "internal/application/scripts/scene/scene_planner"
+const binderScenePlannerFamilyPrefix = "internal/capabilities/scripts/scene/scene_planner"
 
 // binderSceneFilerScopedDir is the package directory that this
 // gate scopes to: anything inside internal/application/scripts/
 // scene/. Other packages MAY have their own SpecScene writes
 // (e.g. tests, composition helpers) and are NOT in scope.
-const binderSceneFilerScopedDir = "internal/application/scripts/scene/"
+const binderSceneFilerScopedDir = "internal/capabilities/scripts/scene/"
 
 // sceneFieldWriteRe is the canonical line-shape detector. It
 // matches: `<scene-or-scenes>(<indexing>)<dotnet><field> =`.
@@ -125,7 +125,7 @@ const sceneFieldWriteRule = "percheck_binder_scene_field_writes"
 // message references Wave 1.1 + godlike/06 SSOT so the operator
 // sees the migration path inline (route through planner, NOT
 // through the binder).
-const sceneFieldWriteNote = "forbidden write to SpecScene.Text / .Title / .Kind / .Index outside the canonical ScenePlanner (Wave 1.3, July 2026); godlike/06 SSOT requires scene-shape writes to flow through internal/application/scripts/scene/scene_planner.go (the SOLE owner); the SceneAssetBinder may mutate ONLY scene.Bindings.Clip / scene.Bindings.Stock"
+const sceneFieldWriteNote = "forbidden write to SpecScene.Text / .Title / .Kind / .Index outside the canonical ScenePlanner (Wave 1.3, July 2026); godlike/06 SSOT requires scene-shape writes to flow through internal/capabilities/scripts/scene/scene_planner.go (the SOLE owner); the SceneAssetBinder may mutate ONLY scene.Bindings.Clip / scene.Bindings.Stock"
 
 // sceneFieldWriteWarnBucket is the centralized residue-emitter.
 // Mirrors assetStateWarn + percheck_image_asset_invariants's
@@ -136,14 +136,14 @@ func sceneFieldWriteWarnBucket(r *report.Report, label, msg string) {
 }
 
 // ScanBinderSceneFieldWrites walks every .go file under
-// <root>/internal/application/scripts/scene/ and emits a
+// <root>/internal/capabilities/scripts/scene/ and emits a
 // violation for any code line that assigns to SpecScene.Text /
 // .Title / .Kind / .Index / .ID outside the canonical
 // ScenePlanner file (scene_planner.go) AND outside the test-file
 // exempt surface (`_test.go`). Comment-only references are
 // residue-accounted as WARN.
 //
-// The scanner is scoped to internal/application/scripts/scene/
+// The scanner is scoped to internal/capabilities/scripts/scene/
 // only — the gate's purpose is the Wave 1.1 script-ownership
 // refactor, which concerns ONE specific package. Other packages
 // that legitimately allocate SpecScene literals (composition

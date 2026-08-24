@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"

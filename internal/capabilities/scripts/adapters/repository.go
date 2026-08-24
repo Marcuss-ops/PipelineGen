@@ -2,7 +2,7 @@
 // compatibility with existing application and API consumers.
 package adapters
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 
 type ScriptRepository = ports.ScriptRepository
 type ScriptListFilter = ports.ScriptListFilter

@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/apiutil"
 )
 
 // processBookFromDriveTimeout caps the synchronous

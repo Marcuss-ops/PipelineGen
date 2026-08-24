@@ -1,4 +1,4 @@
-// internal/application/scripts/scene/scene_planner_kinds.go —
+// internal/capabilities/scripts/scene/scene_planner_kinds.go —
 // canonical intro/clip/outro position policy (assignKindsByPosition).
 // Extracted from scene_planner.go; no behavior change.
 package scene

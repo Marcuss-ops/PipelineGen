@@ -14,7 +14,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 

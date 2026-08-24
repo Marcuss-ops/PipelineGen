@@ -21,7 +21,7 @@
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/infrastructure/embeddings: NewOllamaEmbedderAdapter
 //   - internal/infrastructure/observability: NewTranslationMetricsAdapter
-//   - internal/application/scripts/ports: NewScriptTranslatorFromFunc
+//   - internal/capabilities/scripts/ports: NewScriptTranslatorFromFunc
 package app
 
 import (
@@ -30,7 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"

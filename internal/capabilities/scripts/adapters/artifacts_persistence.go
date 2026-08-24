@@ -6,7 +6,7 @@
 // KILL-K1 moves ALL of those ops to this adapter.
 //
 // KILL-K1 contract (per user spec, July 2026):
-//   - handler (`internal/application/scripts/jobs/generation_handler.go`)
+//   - handler (`internal/capabilities/scripts/jobs/generation_handler.go`)
 //     does NOT touch filesystem. It calls
 //     PersistGeneratedArtifacts(ctx, jobID, *GenerationResult)
 //     and uses the returned []job.Artifact to build the

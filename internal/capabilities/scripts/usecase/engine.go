@@ -28,7 +28,7 @@
 // single-writer contract).
 //
 // P0.8 (June 2026) + DL-MODECOMPAT-REMOVAL (August 2026): payload decoding
-// unified into internal/application/scripts/jsonextract/. Engine uses
+// unified into internal/capabilities/scripts/jsonextract/. Engine uses
 // ModeFreshPlainText (sole canonical mode) — V1 JSON fast lane then
 // ParsePlainTextFresh (canonical primary path in fresh_parser.go)
 // for plain prose per the LLM-PLAIN-TEXT-CONTRACT wave.
@@ -52,7 +52,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

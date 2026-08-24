@@ -52,7 +52,7 @@
 // says "do not use right now" — namely rights_status IN (blocked,
 // review_required). The override flag (SlotsSearchOptions.
 // IncludeRightRestricted, declared in
-// internal/application/scripts/ports/clip_search_port.go) lets
+// internal/capabilities/scripts/ports/clip_search_port.go) lets
 // operators explicitly opt into the restricted set; the default
 // is the safe side (skip).
 package asset

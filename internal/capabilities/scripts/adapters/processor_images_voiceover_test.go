@@ -17,7 +17,7 @@
 // PR-LEGACY-CLEANUP-2026-07-10 Item 2: the obsolete `PostProcessArtifact`
 // type alias (the historical accumulator name, never used in
 // production code, with a single test-reference at this line) was
-// retired alongside `internal/application/scripts/dto/compat_types.go`.
+// retired alongside `internal/capabilities/scripts/dto/compat_types.go`.
 // The canonical surface is now `adapterspkg.PostProcessResult`
 // (still imported above).
 package adapters_test

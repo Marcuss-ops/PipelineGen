@@ -43,7 +43,7 @@ func makeBinderFileForSynthesizerTest(t *testing.T, root, relPath, content strin
 // emits zero violations.
 func TestScanAssetBinderNoSynthesizer_CleanBinder(t *testing.T) {
 	root := t.TempDir()
-	makeBinderFileForSynthesizerTest(t, root, "internal/application/scripts/scene/binder.go",
+	makeBinderFileForSynthesizerTest(t, root, "internal/capabilities/scripts/scene/binder.go",
 		`package scene
 func BindClips() {}
 `)
@@ -59,7 +59,7 @@ func BindClips() {}
 // emits a violation.
 func TestScanAssetBinderNoSynthesizer_SynthesizerCall(t *testing.T) {
 	root := t.TempDir()
-	makeBinderFileForSynthesizerTest(t, root, "internal/application/scripts/scene/binder.go",
+	makeBinderFileForSynthesizerTest(t, root, "internal/capabilities/scripts/scene/binder.go",
 		`package scene
 import "fmt"
 func BindClips() {
@@ -84,9 +84,9 @@ func BindClips() {
 // inside the binder emits a violation.
 func TestScanAssetBinderNoSynthesizer_SynthesizerPackageImport(t *testing.T) {
 	root := t.TempDir()
-	makeBinderFileForSynthesizerTest(t, root, "internal/application/scripts/scene/binder.go",
+	makeBinderFileForSynthesizerTest(t, root, "internal/capabilities/scripts/scene/binder.go",
 		`package scene
-import _ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene/synthesizer"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene/synthesizer"
 func BindClips() {}
 `)
 	rep := &report.Report{}
@@ -101,7 +101,7 @@ func BindClips() {}
 // in non-productionOnly mode.
 func TestScanAssetBinderNoSynthesizer_CommentOnlyResidue(t *testing.T) {
 	root := t.TempDir()
-	makeBinderFileForSynthesizerTest(t, root, "internal/application/scripts/scene/binder.go",
+	makeBinderFileForSynthesizerTest(t, root, "internal/capabilities/scripts/scene/binder.go",
 		`package scene
 // SceneSynthesizer is documented here.
 func BindClips() {}
@@ -121,7 +121,7 @@ func BindClips() {}
 // WARN bucket.
 func TestScanAssetBinderNoSynthesizer_CommentOnlyResidueProductionOnly(t *testing.T) {
 	root := t.TempDir()
-	makeBinderFileForSynthesizerTest(t, root, "internal/application/scripts/scene/binder.go",
+	makeBinderFileForSynthesizerTest(t, root, "internal/capabilities/scripts/scene/binder.go",
 		`package scene
 // SceneSynthesizer is documented here.
 func BindClips() {}

@@ -6,7 +6,7 @@
 // the scanner:
 //
 //   - PASSES when only the canonical ScenePlanner
-//     (internal/application/scripts/scene/scene_planner.go)
+//     (internal/capabilities/scripts/scene/scene_planner.go)
 //     carries scene.Text / .Title / .Kind / .Index writes.
 //   - FAILS when any other file inside the scene/ package
 //     (NOT the canonical owner, NOT _test.go) assigns to a
@@ -44,7 +44,7 @@ import (
 // implementation contract).
 func writeFakeScenePlannerCanonical(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+	dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir canonical scene dir: %v", err)
 	}
@@ -77,7 +77,7 @@ func writeFakeScenePlannerCanonical(t *testing.T, tempDir string) string {
 // scene/binder.go failisce il check".
 func writeFakeBinderViolation(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+	dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir scene dir: %v", err)
 	}
@@ -106,7 +106,7 @@ func writeFakeBinderViolation(t *testing.T, tempDir string) string {
 // scenes[i].Text — test files MUST be exempt.
 func writeFakeBinderTestExempt(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+	dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir scene dir: %v", err)
 	}
@@ -132,7 +132,7 @@ func writeFakeBinderTestExempt(t *testing.T, tempDir string) string {
 // residue accounting must warn, not violate.
 func writeFakeBinderCommentOnly(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+	dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir scene dir: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestScanBinderSceneFieldWrites_AllBannedFieldsTrip(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			tempDir := t.TempDir()
-			dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+			dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatalf("mkdir scene dir: %v", err)
 			}
@@ -423,7 +423,7 @@ func TestScanBinderSceneFieldWrites_OutOfScopeIgnored(t *testing.T) {
 // distinguishes Bindings writes from spec-shape writes.
 func TestScanBinderSceneFieldWrites_PermittedBindingWritesIgnored(t *testing.T) {
 	tempDir := t.TempDir()
-	dir := filepath.Join(tempDir, "internal", "application", "scripts", "scene")
+	dir := filepath.Join(tempDir, "internal", "capabilities", "scripts", "scene")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir scene dir: %v", err)
 	}

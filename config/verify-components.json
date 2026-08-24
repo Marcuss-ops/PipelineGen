@@ -14,7 +14,8 @@
       "start_server.sh",
       "tests/fixtures/script/",
       "tests/operational/worker-integration/",
-      "tests/fixtures/script-generation/"
+      "tests/fixtures/script-generation/",
+      "examples/"
     ],
     "go_packages": [
       "./internal/kernel/script/...",
@@ -33,14 +34,14 @@
   },
   "research": {
     "paths": [
-      "internal/application/scripts/usecase/",
+      "internal/capabilities/scripts/usecase/",
       "internal/infrastructure/webresearch/",
       "internal/infrastructure/database/sqlite/scripts/",
       "config/lexicons/",
       "tools/researchlive/"
     ],
     "go_packages": [
-      "./internal/application/scripts/usecase/...",
+      "./internal/capabilities/scripts/usecase/...",
       "./internal/infrastructure/webresearch/...",
       "./internal/infrastructure/database/sqlite/scripts/..."
     ],
@@ -186,7 +187,9 @@
       "README.md",
       "AGENTS.md",
       "scripts/README.md",
-      "internal/application/documents/"
+      "internal/application/documents/",
+      "tools/",
+      "PERSON_IMAGE_BENCHMARK_REPORT.md"
     ],
     "go_packages": [
       "./internal/application/documents/..."
@@ -237,7 +240,8 @@
     "paths": [
       "internal/application/images/",
       "internal/api/images/",
-      "scripts/verify_nlp_online_images_docs_certification.sh"
+      "scripts/verify_nlp_online_images_docs_certification.sh",
+      "image-endpoint-tests/"
     ],
     "go_packages": [
       "./internal/application/images/...",
@@ -259,13 +263,13 @@
   "translation": {
     "paths": [
       "internal/application/translation/",
-      "internal/application/scripts/adapters/",
-      "internal/application/scripts/usecase/"
+      "internal/capabilities/scripts/adapters/",
+      "internal/capabilities/scripts/usecase/"
     ],
     "go_packages": [
       "./internal/application/translation/...",
-      "./internal/application/scripts/adapters/...",
-      "./internal/application/scripts/usecase/..."
+      "./internal/capabilities/scripts/adapters/...",
+      "./internal/capabilities/scripts/usecase/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -412,7 +416,7 @@
   },
   "youtube": {
     "paths": [
-      "internal/application/youtube/",
+      "internal/capabilities/youtube/",
       "internal/capabilities/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
       "internal/infrastructure/youtube/",
@@ -428,10 +432,11 @@
       "scripts/systemd/pipelinegen.service.d/whisper.conf",
       "scripts/systemd/pipelinegen.service.d/youtube-dlp.conf",
       "scripts/yt-dlp-pipeline",
-      "docker-compose.yml"
+      "docker-compose.yml",
+      "yt-clip-tests/"
     ],
     "go_packages": [
-      "./internal/application/youtube/...",
+      "./internal/capabilities/youtube/...",
       "./internal/capabilities/assets/providers/youtube/...",
       "./internal/application/assets/sourcing/youtube/...",
       "./internal/infrastructure/youtube/...",

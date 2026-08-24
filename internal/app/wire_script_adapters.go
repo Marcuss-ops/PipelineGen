@@ -101,7 +101,7 @@ import (
 // error so the composition root can wrap it consistently with the
 // other composition validators (validateRequiredProcessors,
 // etc.). Tests pin the fail-fast contract in
-// internal/application/scripts/jobs/generation_job_test.go.
+// internal/capabilities/scripts/jobs/generation_job_test.go.
 func validateScriptGenerateWiring(root *wiring.ComposeRoot, log *zap.Logger) error {
 	// (a) Registry has the type. Direct query against the canonical
 	//     composition-time registry. The registry is frozen after

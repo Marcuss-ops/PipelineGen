@@ -187,7 +187,7 @@
     "percheck_157_asset_state_migration_default_wire migration-157-default: 26 comment-only line(s) in migrations/sqlite/157_asset_state.sql (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_rights_status_canonical_6 canonical-6-count: 36 comment-only reference(s) in internal/domain/asset/rights_state.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_review_status_canonical_4 canonical-4-count: 22 comment-only reference(s) in internal/domain/asset/rights_state.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/application/scripts/scene/synthesizer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/capabilities/scripts/scene/synthesizer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/application/scripts/scene_orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "domain_job_compatibility_aliases_census current_legacy_imports=172 (informational census; grandfathered under PRE-EXISTING-19; new imports are errors in production-only mode)",
     "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",

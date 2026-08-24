@@ -62,7 +62,7 @@ const handlerGenerateFieldNote = "forbidden field in HandlerGenerate (godlike/07
 // (the gate is otherwise the mechanism that locks the
 // transport boundary).
 var applicationPortPrefixes = []string{
-	"submission.", // internal/application/scripts/submission (PR-SUBMISSION-FACTORY)
+	"submission.", // internal/capabilities/scripts/submission (PR-SUBMISSION-FACTORY)
 	"scriptgen.",  // internal/scriptgeneration (GenerationRunStarter, RunRepository)
 	"usecase.",    // internal/application/scripts/usecase (PayloadValidator, GenerateOneUseCase)
 	"adapters.",   // internal/application/scripts/adapters (registry surfaces)

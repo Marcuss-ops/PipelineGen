@@ -34,7 +34,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"

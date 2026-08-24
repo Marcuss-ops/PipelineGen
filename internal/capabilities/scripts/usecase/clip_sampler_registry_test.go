@@ -7,7 +7,7 @@ package usecase
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 func TestSamplerRegistry_SingleImplInvariantPerCallerTag(t *testing.T) {

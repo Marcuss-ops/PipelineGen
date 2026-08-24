@@ -21,7 +21,7 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 

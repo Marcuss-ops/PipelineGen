@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

@@ -77,7 +77,7 @@ type Asset struct {
 	// row does NOT panic; the canonical surface
 	// (IsPublishable) returns false on the zero value so the
 	// SlotSearchPort filter applies uniformly. See
-	// internal/application/scripts/ports/clip_search_port.go for
+	// internal/capabilities/scripts/ports/clip_search_port.go for
 	// the IncludeRightRestricted override flag.
 	//
 	// LicenseBasis bridges to AssetLicense.id (asset/license_release.go)

@@ -22,7 +22,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"

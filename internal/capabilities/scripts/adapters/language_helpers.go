@@ -3,7 +3,7 @@
 //
 // Phase 1c Commit 2/4 (June 2026): NormalizeLanguages removed from this
 // package. The helper was relocated DOWN into
-// internal/application/scripts/dto/language_helpers.go so the canonical
+// internal/capabilities/scripts/dto/language_helpers.go so the canonical
 // BuildMetadataLanguages (in dto/metadata.go) could reach it without a
 // dto→adapters import cycle (the canonical dto imports `kernel/script`
 // + `pkg/concurrent` only — adding adapters would have created a future
