@@ -25,7 +25,7 @@ import (
 	"context"
 	"strings"
 
-	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

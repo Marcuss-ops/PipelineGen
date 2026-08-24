@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

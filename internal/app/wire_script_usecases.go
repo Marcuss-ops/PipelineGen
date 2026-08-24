@@ -64,7 +64,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"

@@ -32,7 +32,7 @@ import (
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
 	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"

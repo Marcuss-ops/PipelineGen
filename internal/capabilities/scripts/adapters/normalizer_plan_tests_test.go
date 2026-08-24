@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

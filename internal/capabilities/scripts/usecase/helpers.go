@@ -1,7 +1,7 @@
 package usecase
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 )
 
 // ScriptListFilter is the canonical filter for listing scripts.

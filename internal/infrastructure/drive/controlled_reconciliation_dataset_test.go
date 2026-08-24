@@ -13,7 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/api/googleapi"
 
-	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
