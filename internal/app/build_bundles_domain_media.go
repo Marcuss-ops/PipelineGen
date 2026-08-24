@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
-	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters"
+	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
