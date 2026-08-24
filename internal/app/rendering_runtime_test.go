@@ -55,7 +55,7 @@ const frozenRenderingForbiddenImportSubstringsLen = 7
 // rendering_runtime.go package doc contract in lockstep.
 var frozenRenderingForbiddenImportSubstrings = []string{
 	// Script generation — Creator-side capability, not RenderingGen.
-	"internal/application/scripts",
+	"internal/capabilities/scripts",
 
 	// Script domain model — same rationale.
 	"internal/kernel/script",
