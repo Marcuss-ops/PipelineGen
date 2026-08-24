@@ -2,7 +2,7 @@
 // used only by tests, isolated here so production code does not
 // accidentally depend on the aid:* namespace below.
 
-package legacyaudit
+package audit
 
 import "github.com/google/uuid"
 

@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 )
 
 // PrewarmHotVideoMetadataCache forwards to the search capability service.

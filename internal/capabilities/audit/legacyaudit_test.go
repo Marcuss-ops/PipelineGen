@@ -15,7 +15,7 @@
 //   - non-canonical ID    (category 8)
 //   - report aggregation  (multi-category points)
 //   - scanner pagination  (multi-page walk)
-package legacyaudit
+package audit
 
 import (
 	"context"

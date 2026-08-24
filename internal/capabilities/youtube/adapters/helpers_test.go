@@ -5,7 +5,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 
-	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )

@@ -109,7 +109,7 @@
 // Wave-tracker origin: architecture/current.yaml#LONG-FILES-DECOMPOSITION-V2-2026-07-06
 // (PR-SPLIT-LEGACYAUDIT-V2, deadline 2026-07-15; pure code-motion,
 // no new symbols, no signature changes, no dependency changes).
-package legacyaudit
+package audit
 
 import (
 	"fmt"

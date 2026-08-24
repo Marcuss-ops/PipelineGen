@@ -9,7 +9,7 @@ import (
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
 
 	"go.uber.org/zap"
 )

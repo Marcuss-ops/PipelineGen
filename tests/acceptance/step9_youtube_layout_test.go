@@ -72,7 +72,7 @@ import (
 
 	deliverypkg "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 )
 
 // ── (a) layout — canonical filename shape ─────────────────────────────────

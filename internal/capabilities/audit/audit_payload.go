@@ -19,7 +19,7 @@
 // split is governed by
 // architecture/current.yaml#LONG-FILES-DECOMPOSITION-V2-2026-07-06
 // (PR-SPLIT-LEGACYAUDIT-V2, deadline 2026-07-15).
-package legacyaudit
+package audit
 
 import (
 	"math"

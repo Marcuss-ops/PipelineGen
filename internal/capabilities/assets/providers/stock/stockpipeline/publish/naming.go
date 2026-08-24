@@ -12,7 +12,7 @@ import (
 
 	stocktypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/types"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 )
 

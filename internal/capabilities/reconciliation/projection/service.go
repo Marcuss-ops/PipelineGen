@@ -25,7 +25,7 @@
 // (and the outbox worker). Mirrors the deletion-reconciler shape
 // (application owns orchestration + typed ports; infrastructure owns
 // concrete adapters).
-package projectionreconciler
+package projection
 
 import (
 	"context"

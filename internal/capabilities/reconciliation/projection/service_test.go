@@ -1,4 +1,4 @@
-package projectionreconciler
+package projection
 
 import (
 	"context"
