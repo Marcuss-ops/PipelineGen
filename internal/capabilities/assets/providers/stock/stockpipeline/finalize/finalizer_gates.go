@@ -32,7 +32,7 @@
 //   - finalizer_gates.go        — types + sentinels + const (this file)
 //   - finalizer_gates_verify.go — VerifyChunks + VerifyMetadata
 //   - finalizer_gates_build.go  — BuildFinalizationRequest + OrchestrationResult
-package finalize
+package assets
 
 import (
 	"errors"

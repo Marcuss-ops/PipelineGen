@@ -1,5 +1,5 @@
 // Package stockpipeline owns the stock broker handler and result projection.
-package ingest
+package assets
 
 import (
 	"context"

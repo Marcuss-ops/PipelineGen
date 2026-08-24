@@ -6,7 +6,7 @@
 //
 // The test uses a limitCapturingBackend that records the Query.Limit
 // it received, plus returns enough distinct items to fill pages.
-package search
+package assets
 
 import (
 	"context"

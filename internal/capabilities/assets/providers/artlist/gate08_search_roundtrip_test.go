@@ -22,7 +22,7 @@
 // hermeticly at the artlist package level. Forward-pointer:
 // PR-ARTLIST-DOD-GATE-08-SCORE-E2E (deadline 2026-08-01) covers
 // hybrid RRF fusion scoring against a real Qdrant server.
-package artlist
+package assets
 
 import (
 	"context"

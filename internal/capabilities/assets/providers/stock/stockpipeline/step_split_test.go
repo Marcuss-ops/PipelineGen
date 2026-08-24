@@ -24,7 +24,7 @@
 // into 3+ sub-step files. The minimum-ripple 1-file-per-Step
 // interpretation is the canonical shape; the spec drift is
 // documented in the commit body.
-package stockpipeline
+package assets
 
 import (
 	"errors"

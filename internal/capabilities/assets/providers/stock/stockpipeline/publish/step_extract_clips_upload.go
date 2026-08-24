@@ -4,7 +4,7 @@
 // Extracted from step_extract_clips.go per godlike/06 SSOT
 // one-canonical-owner-per-fact. Owns the concurrent upload worker
 // pool and the per-task local types (clipUploadTask, clipUploadResult).
-package publish
+package assets
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"

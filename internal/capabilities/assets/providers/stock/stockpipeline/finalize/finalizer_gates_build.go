@@ -2,7 +2,7 @@
 //
 // Composes both verification gates + Lease + ResultManifest + chunk/metadata
 // projections into the canonical FinalizationRequest the JobFinalizer accepts.
-package finalize
+package assets
 
 import (
 	"encoding/json"

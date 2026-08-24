@@ -13,7 +13,7 @@
 // and stock_fake_availability_test.go. The legacy runOrchestrator
 // method has been retired; Service.Run now delegates to runSyncPersist
 // → runOrchestratorResilient.
-package reconcile
+package assets
 
 import (
 	"context"

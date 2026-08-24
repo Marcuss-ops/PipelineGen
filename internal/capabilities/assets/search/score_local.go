@@ -35,7 +35,7 @@
 // per-row function, and additional signals can be plugged in by
 // adding fields to LocalSignal without changing the Aggregator
 // pipeline.
-package search
+package assets
 
 import "strings"
 

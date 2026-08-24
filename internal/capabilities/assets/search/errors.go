@@ -16,7 +16,7 @@
 //   - PR-SEARCH-PORTS-SPLIT (2026-07-04, pre-deadline 49 days early):
 //     consolidated every sentinel from ports.go + types.go + errors.go
 //     into this single canonical file. No new symbols; pure reorg.
-package search
+package assets
 
 import "errors"
 

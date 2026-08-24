@@ -8,7 +8,7 @@
 // internal/platform/sqlite/stocksourcecache.
 // Composition root (wire_stock_pipeline.go) injects the concrete
 // repository into the StockStager via WithSourceCache.
-package ingest
+package assets
 
 import (
 	"context"

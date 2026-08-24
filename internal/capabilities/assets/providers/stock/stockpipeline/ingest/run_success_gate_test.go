@@ -35,7 +35,7 @@
 //	  (canary) buildStockManifest today (all
 //
 //		Required:false entries)            → ErrMetadataMissing
-package ingest
+package assets
 
 import (
 	"errors"

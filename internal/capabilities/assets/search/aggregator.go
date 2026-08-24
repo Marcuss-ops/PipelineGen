@@ -28,7 +28,7 @@
 //     items via EncodeCursorFromItems + EncodeCursor (wire
 //     base64 form).
 //  8. Return Result{Items, NextCursor, ProviderErrors, Partial}.
-package search
+package assets
 
 import (
 	"context"

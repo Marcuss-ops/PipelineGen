@@ -30,7 +30,7 @@
 // Cursor stability: the Aggregator computes a SkipSet from the
 // incoming cursor's fingerprint so candidates emitted on a
 // previous page do not appear on the next page.
-package search
+package assets
 
 import (
 	"encoding/json"

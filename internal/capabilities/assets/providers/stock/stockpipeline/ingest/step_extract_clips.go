@@ -12,7 +12,7 @@
 //	writeTimestampGroups → step_extract_clips_metadata.go
 //	validateAndProbeSourceDuration → step_extract_clips_validation.go
 //	buildRichStockAsset → step_extract_clips_assets.go
-package ingest
+package assets
 
 import (
 	"context"

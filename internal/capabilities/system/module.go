@@ -1,72 +1,102 @@
-// Package system owns construction of the system HTTP capability.
+// Package system — module.go is the composition root for the
+// system module's /system + /drive routes.
+//
+// Wave 14 close (June 2026): the system Module absorbed the
+// standalone internal/api/drive/handler.go as a second receiver
+// (DriveHandler). The system Module now mounts two sub-groups
+// sharing the same protected router group:
+//
+//	/system/doctor     — admin/doctor diagnostics
+//	/drive/{reconcile,
+//	        cleanup,
+//	        folders,
+//	        move,
+//	        resolve-by-id}
+//
+// Both sub-groups inherit Auth + RateLimit + WorkspaceScope from
+// the protected group mounted in routes.go.
+//
+// PR4-cleanup delta (June 24, 2026): NewModule signature dropped
+// the three concrete infrastructure deps (`*config.Config`,
+// `*drive.Uploader`, `Reconciler`) and now relies on
+// the typed port surface (DoctorConfig + Reconciler + DriveAdminOps)
+// wired at the composition root. No more `internal/infrastructure/*`
+// imports in the api/system subtree (AGENTS.md Pattern 8).
 package system
 
 import (
-	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
-	assetsports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
-type Dependencies struct {
-	Config        systemapi.DoctorConfig
-	Logger        *zap.Logger
-	ToolChecker   assetsports.ToolChecker
-	ProcessRunner assetsports.ProcessRunner
-	DBHealth      assetsports.DBHealthChecker
-	DriveOps      systemapi.DriveAdminOps
-	Reconciler    systemapi.Reconciler
+// Module handles system diagnostic routes plus Drive admin ops.
+type Module struct {
+	name         string
+	log          *zap.Logger
+	handler      *SystemHandler
+	driveHandler *DriveHandler
 }
 
-// Module is a native runtime capability builder. Its dependencies are fixed
-// at composition time and it returns an executable runtime descriptor.
-type Module struct{ deps Dependencies }
-
-func NewModule(deps Dependencies) Module { return Module{deps: deps} }
-func (m Module) Name() string            { return "system" }
-
-func (m Module) Build(_ api.BuildContext) (api.RuntimeModule, error) {
-	if m.deps.ToolChecker == nil {
-		return api.RuntimeModule{}, fmt.Errorf("system.Build: ToolChecker is required")
+// NewModule creates a new system module.
+//
+// driveOps is optional; when nil, drive routes return 503 with
+// "drive uploader not configured". reconciler is also optional; the
+// reconcile/cleanup routes return 503 when it is nil. toolChecker /
+// processRunner / dbHealthChecker feed only SystemHandler (the /doctor
+// route) and are themselves application-layer ports.
+func NewModule(
+	cfg DoctorConfig,
+	log *zap.Logger,
+	toolChecker appassets.ToolChecker,
+	processRunner appassets.ProcessRunner,
+	dbHealthChecker appassets.DBHealthChecker,
+	driveOps DriveAdminOps,
+	reconciler Reconciler,
+) *Module {
+	return &Module{
+		name: "system",
+		log:  log,
+		handler: NewSystemHandler(
+			cfg, log,
+			toolChecker, processRunner, dbHealthChecker,
+		),
+		driveHandler: NewDriveHandler(
+			reconciler,
+			driveOps,
+		),
 	}
-	if m.deps.ProcessRunner == nil {
-		return api.RuntimeModule{}, fmt.Errorf("system.Build: ProcessRunner is required")
-	}
-	if m.deps.DBHealth == nil {
-		return api.RuntimeModule{}, fmt.Errorf("system.Build: DBHealth is required")
-	}
-	log := m.deps.Logger
-	if log == nil {
-		log = zap.NewNop()
-	}
-	transport, err := Build(Dependencies{
-		Config: m.deps.Config, Logger: log, ToolChecker: m.deps.ToolChecker,
-		ProcessRunner: m.deps.ProcessRunner, DBHealth: m.deps.DBHealth,
-		DriveOps: m.deps.DriveOps, Reconciler: m.deps.Reconciler,
-	})
-	if err != nil {
-		return api.RuntimeModule{}, err
-	}
-	return api.RuntimeModuleFor(m.Name(), "register.System", transport)
 }
 
-func Build(deps Dependencies) (api.Descriptor, error) {
-	if deps.ToolChecker == nil {
-		return nil, fmt.Errorf("system.Build: ToolChecker is required")
-	}
-	if deps.ProcessRunner == nil {
-		return nil, fmt.Errorf("system.Build: ProcessRunner is required")
-	}
-	if deps.DBHealth == nil {
-		return nil, fmt.Errorf("system.Build: DBHealth is required")
-	}
-	log := deps.Logger
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return systemapi.NewModule(deps.Config, log, deps.ToolChecker, deps.ProcessRunner, deps.DBHealth, deps.DriveOps, deps.Reconciler), nil
-}
+// Name returns the module name.
+func (m *Module) Name() string { return m.name }
 
-var _ api.CapabilityModule = Module{}
+// Enabled always returns true for the system module.
+func (m *Module) Enabled() bool { return true }
+
+// RegisterRoutes registers /system/* and /drive/* routes.
+//
+// Both sub-groups live under the same protected router group, so
+// they share Auth + RateLimit + WorkspaceScope. Public callers
+// only see /api/system/doctor if explicitly granted admin via
+// the workspace scope middleware.
+func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
+	systemGroup := rg.Group("/system")
+	{
+		systemGroup.GET("/doctor", m.handler.Doctor)
+	}
+
+	// /internal/slug — absorbed from the retired UtilityModule
+	// (2026-08-23 Cleanup Day). The canonical slug endpoint lives
+	// under System, not as a standalone module.
+	internalGroup := rg.Group("/internal")
+	{
+		internalGroup.GET("/slug", m.handler.Slugify)
+	}
+
+	driveGroup := rg.Group("/drive")
+	{
+		m.driveHandler.RegisterRoutes(driveGroup)
+	}
+}

@@ -7,7 +7,7 @@
 //
 // godlike/06 SSOT: types/ owns the canonical definitions; this file is
 // the bridge layer.
-package ingest
+package assets
 
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/types"
 

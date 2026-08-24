@@ -2,7 +2,7 @@
 // PERSON image catalog. It deliberately separates entity identity, remote
 // image candidates, and materialization state so the 48-hour provider cache
 // is not mistaken for durable catalog data.
-package entitycatalog
+package images
 
 import (
 	"context"

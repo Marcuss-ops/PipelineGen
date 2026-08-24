@@ -1,5 +1,5 @@
 // Single canonical owner of ProbeStage/ProbeResult/DiagnosticsResponse + artlist RunStatus enum/state-machine + response shape (godlike/06 SSOT Commit A).
-package artlist
+package assets
 
 import (
 	"fmt"

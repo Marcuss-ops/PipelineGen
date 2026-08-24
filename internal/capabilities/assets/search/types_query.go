@@ -19,7 +19,7 @@
 //
 // What moved to errors.go: ErrInvalidCursor + ErrEmptyCandidate
 // (godlike/06 SSOT — every sentinel in one place).
-package search
+package assets
 
 import (
 	"context"

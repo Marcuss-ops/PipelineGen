@@ -39,7 +39,7 @@
 // smoke test for full migration is the existing count of media_assets
 // rows with source='voiceover', which should equal the count of
 // voiceovers.id rows post-cutover.
-package verification
+package assets
 
 import "context"
 

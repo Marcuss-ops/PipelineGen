@@ -10,7 +10,7 @@
 // godlike/07 typed-error contract: each test exercises a
 // single normalisation edge case and asserts the output
 // plan contains the expected StartSec/EndSec values.
-package finalize
+package assets
 
 import (
 	"context"

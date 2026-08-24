@@ -2,7 +2,7 @@
 // identity contract: a noop resolver never fabricates an identity, and
 // ExternalCandidate carries only the identity + display surface a provider
 // hit legitimately owns.
-package search
+package assets
 
 import (
 	"context"

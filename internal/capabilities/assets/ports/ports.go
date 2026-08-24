@@ -2,7 +2,7 @@
 // application/assets/ and capabilities/assets/ without creating circular
 // imports. Per godlike/06 SSOT: one canonical owner per fact — these types
 // live here so capabilities never imports application.
-package ports
+package assets
 
 import (
 	"context"

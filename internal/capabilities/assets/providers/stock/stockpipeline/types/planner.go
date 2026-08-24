@@ -19,7 +19,7 @@
 // orchestrator and downstream consumers (cut, retry, render) lock
 // against: the plan is persisted as data and consumed verbatim
 // rather than re-computed.
-package types
+package assets
 
 import (
 	"context"

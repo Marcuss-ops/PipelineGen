@@ -35,7 +35,7 @@
 // (no real ollama, no real GPU, no real network). The test
 // surface is hermetic and idempotent — `go test -short -count=1`
 // passes deterministically on any Go toolchain.
-package enrichment
+package assets
 
 import (
 	"context"

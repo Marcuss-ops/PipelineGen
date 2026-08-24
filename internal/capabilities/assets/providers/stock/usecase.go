@@ -11,7 +11,7 @@
 // handler delegates to; pre-S2a the api handler drove dispatch
 // inline (with a stray ListClipsPaged(10000) sync fallback that
 // was removed in S2b).
-package stock
+package assets
 
 import (
 	"context"

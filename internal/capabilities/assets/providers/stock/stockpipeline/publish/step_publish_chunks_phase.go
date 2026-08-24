@@ -35,7 +35,7 @@
 // godlike/06 SSOT: this file is the SOLE owner of Phase 1
 // (per-chunk ArtifactPreparation ladder). Lookup path
 // publishChunkPhase is package-private; no new exported symbol.
-package publish
+package assets
 
 import (
 	"context"

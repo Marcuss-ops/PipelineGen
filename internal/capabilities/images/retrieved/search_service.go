@@ -19,7 +19,7 @@
 // if this subpackage imported the parent directly: retrieved/
 // declares the interface, parent images/ already satisfies it
 // at compile time (existing methods on ImageStorageService).
-package retrieved
+package images
 
 import (
 	"context"

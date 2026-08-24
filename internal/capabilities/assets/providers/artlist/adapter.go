@@ -1,5 +1,5 @@
 // Package artlist adapts the Artlist service to the canonical provider search contract.
-package artlist
+package assets
 
 import (
 	"context"

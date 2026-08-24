@@ -1,4 +1,4 @@
-package stockpipeline
+package assets
 
 import (
 	"context"

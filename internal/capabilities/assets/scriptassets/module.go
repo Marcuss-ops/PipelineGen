@@ -20,7 +20,7 @@
 // is owned by GET /api/capabilities, while this descriptor's only
 // composition-time effect is publishing the ScriptAssetsProvider into
 // the canonical providers.Registry.
-package scriptassets
+package assets
 
 import (
 	"fmt"

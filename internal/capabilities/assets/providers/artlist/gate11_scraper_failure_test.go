@@ -21,7 +21,7 @@
 // godlike/06 SSOT: the Searcher port is the canonical abstraction for
 // scraper/pixabay/pexels fallback providers. failingSearcher satisfies
 // the port with a deterministic error.
-package artlist
+package assets
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package sourcedl
+package assets
 
 import (
 	"bytes"

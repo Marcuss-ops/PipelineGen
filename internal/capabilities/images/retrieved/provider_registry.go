@@ -13,7 +13,7 @@
 //
 // FASE 8 (July 2026): the per-call DTOs moved to routing to break
 // the routing↔retrieved import cycle.
-package retrieved
+package images
 
 import (
 	"context"

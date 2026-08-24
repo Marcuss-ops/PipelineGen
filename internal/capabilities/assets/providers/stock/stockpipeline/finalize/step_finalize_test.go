@@ -17,7 +17,7 @@
 // step so it can use the typed sentinels + the canonical fakeStepRunner
 // extension override (jobFinalizer field) rather than constructing the
 // orchestratorRunner production type.
-package finalize
+package assets
 
 import (
 	"context"

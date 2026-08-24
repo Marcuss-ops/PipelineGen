@@ -13,7 +13,7 @@
 // DiscoverClips → ResolveDestination → BuildProcessInputs →
 // ProcessBatch → PersistResults → IndexAsync. This test exercises
 // all 6 stages in sequence.
-package artlist
+package assets
 
 import (
 	"context"

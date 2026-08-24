@@ -9,7 +9,7 @@
 //
 // Tests that need real filesystem I/O should use filesystem.NewLocal()
 // directly (source_cache_test.go already does this with testFS).
-package stockpipeline
+package assets
 
 import (
 	"fmt"

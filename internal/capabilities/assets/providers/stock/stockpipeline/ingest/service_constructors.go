@@ -1,4 +1,4 @@
-package ingest
+package assets
 
 // stockPipelineRuntimeMode records which constructor owns a Service. Keeping
 // this distinction on the service makes it impossible for a fixture service

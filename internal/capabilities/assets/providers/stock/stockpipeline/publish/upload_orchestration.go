@@ -31,7 +31,7 @@
 // godlike/06 SSOT: each port declares exactly one owning capability.
 // godlike/07 typed-error contract: the 4 sentinel errors below are
 // exported + reachable via errors.Is from any test seam.
-package publish
+package assets
 
 import (
 	"context"

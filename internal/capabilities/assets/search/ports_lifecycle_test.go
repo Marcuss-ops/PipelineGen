@@ -53,7 +53,7 @@
 // Related contracts locked by sibling tests:
 //   - LifecycleState.IsValidTransition — internal/kernel/asset/lifecycle_state_test.go
 //   - LifecycleState.Valid — internal/kernel/asset/lifecycle_test.go
-package search
+package assets
 
 import (
 	"reflect"

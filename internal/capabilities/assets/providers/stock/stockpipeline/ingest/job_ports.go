@@ -14,7 +14,7 @@
 // Moved from service.go so infrastructure imports are confined to
 // job_ports.go — service.go stays clean of internal/infrastructure/...
 // imports (godlike/06 import-boundary discipline).
-package ingest
+package assets
 
 import (
 	"context"

@@ -51,7 +51,7 @@
 // pins the classifier + orchestrator invariants so any Qdrant
 // regression in those two layers is observable without the pool
 // infra being wired.
-package stockpipeline
+package assets
 
 import (
 	"context"

@@ -38,7 +38,7 @@
 // intent is clear in the test name. Both files share the
 // `openOrchestratorResumeTestDB` helper declared in
 // orchestrator_resume_test.go (same package).
-package reconcile
+package assets
 
 import (
 	"context"

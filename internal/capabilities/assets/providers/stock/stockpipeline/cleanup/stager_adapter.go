@@ -3,7 +3,7 @@
 // StockStager orchestrates source staging. Sub-files:
 // stager_lease.go, stager_cache.go, stager_download.go,
 // stager_drive.go, stager_cleanup.go.
-package cleanup
+package assets
 
 import (
 	"context"

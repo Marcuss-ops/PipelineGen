@@ -4,7 +4,7 @@
 //
 // DuckDuckGoProvider scrapes DuckDuckGo image search via the public
 // /i.js endpoint. Healthy() returns nil (DDG has no health endpoint).
-package retrieved
+package images
 
 import (
 	"context"

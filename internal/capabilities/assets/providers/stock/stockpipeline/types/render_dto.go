@@ -30,7 +30,7 @@
 // render_ports.go references these types by name, and the
 // composition root's *RealRenderer / *RealCutter concretes consume
 // them by name. No surface-contract changes.
-package types
+package assets
 
 import (
 	"context"

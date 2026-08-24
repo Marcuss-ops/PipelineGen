@@ -5,7 +5,7 @@
 //
 // godlike/06 SSOT: OrchestratorConfig is the single canonical config shape;
 // Orchestrator is the single canonical pipeline entrypoint struct.
-package ingest
+package assets
 
 import (
 	"errors"

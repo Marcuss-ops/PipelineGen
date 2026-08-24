@@ -21,7 +21,7 @@
 // monolith. Post-split: this file is the canonical home of
 // StockPlanStep; orchestrator_steps.go retains only the package
 // doc + Step interface + 6 step key constants.
-package finalize
+package assets
 
 import (
 	"context"

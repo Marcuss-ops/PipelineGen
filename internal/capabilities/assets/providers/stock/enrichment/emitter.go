@@ -36,7 +36,7 @@
 // The composition root wires the emitter ONLY when
 // cfg.External.StockEnrichmentEnabled=true (mirroring the existing
 // EnrichmentLLMClient gate at build_bundles_stock.go).
-package enrichment
+package assets
 
 import (
 	"context"

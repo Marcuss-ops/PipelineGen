@@ -13,7 +13,7 @@
 // — mockCutter now returns the structured per-job surface, and the
 // partial-success test asserts on CutItemStatus/Err rather than on
 // the legacy ProducedPaths slice.
-package ingest
+package assets
 
 import (
 	"context"

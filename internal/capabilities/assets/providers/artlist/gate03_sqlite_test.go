@@ -16,7 +16,7 @@
 //
 // godlike/06 SSOT: RunRecord fields live in ports.go; the artlist_runs
 // schema lives in migrations/sqlite/001_velox_core.sql.
-package artlist
+package assets
 
 import (
 	"context"

@@ -28,4 +28,4 @@
 //     interfaces scoped to the methods the stock
 //     pipeline actually invokes: stockAssetIndexUpserter
 //   - stockClipsSearchTermUpdater + stockChunkDispatcher).
-package ingest
+package assets

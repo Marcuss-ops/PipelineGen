@@ -28,7 +28,7 @@
 // godlike/06 SSOT: the canonical event_type constant lives at
 // internal/platform/sqlite/outboxevents/registry.go
 // as EventAssetIndexRequested = "asset.index.requested".
-package artlist
+package assets
 
 import (
 	"context"

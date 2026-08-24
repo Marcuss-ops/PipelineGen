@@ -30,7 +30,7 @@
 // metadata.json ArtifactPreparation + TimestampFolderLink
 // backfill). Lookup path publishMetadataPhase is package-private;
 // no new exported symbol.
-package publish
+package assets
 
 import (
 	"context"

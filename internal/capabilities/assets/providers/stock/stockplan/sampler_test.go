@@ -1,4 +1,4 @@
-package stockplan
+package assets
 
 import (
 	"testing"

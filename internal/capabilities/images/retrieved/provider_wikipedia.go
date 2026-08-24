@@ -6,7 +6,7 @@
 // match and returns the page-image URL (original preferred, thumbnail
 // fallback). License defaults to CC-BY-SA-4.0 with "Wikipedia
 // Contributors" as author.
-package retrieved
+package images
 
 import (
 	"context"

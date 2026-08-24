@@ -21,7 +21,7 @@
 // AssetMutationDispatcher interface lands, retire this stub in favour of
 // a typed Dispatcher port test double that lives in
 // internal/application/assets/mutations/testdouble.
-package artlist
+package assets
 
 import (
 	"context"

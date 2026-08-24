@@ -9,7 +9,7 @@
 // constructor and NewTestStockOrchestrator is the explicit fixture constructor.
 // Production orchestration is constructed by the strict constructor in
 // orchestrator_production.go; fixture orchestration remains explicit here.
-package ingest
+package assets
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"

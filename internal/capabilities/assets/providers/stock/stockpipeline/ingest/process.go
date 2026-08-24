@@ -10,7 +10,7 @@
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
 // `internal/platform/process`. This file respects the invariant.
-package ingest
+package assets
 
 import (
 	"hash/fnv"

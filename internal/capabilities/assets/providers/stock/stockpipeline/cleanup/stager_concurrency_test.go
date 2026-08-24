@@ -1,4 +1,4 @@
-package cleanup
+package assets
 
 import (
 	"context"
