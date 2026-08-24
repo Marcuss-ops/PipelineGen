@@ -40,7 +40,7 @@ import (
 	"sync"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	core_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"

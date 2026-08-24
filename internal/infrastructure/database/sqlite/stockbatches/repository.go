@@ -1,7 +1,7 @@
 // Package stockbatches — SQLite-backed stock batch / group / artifact store.
 //
 // Implements the stockpipeline.StockBatchRepository port defined in
-// internal/application/assets/providers/stock/stockpipeline/batch_repository.go.
+// internal/capabilities/assets/providers/stock/stockpipeline/batch_repository.go.
 // The adapter is thin: it owns SQL and row mapping, no business logic.
 //
 // Table DDL: migrations/sqlite/162_stock_batches.sql
@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 // Repository is the SQLite-backed stock batch state store.

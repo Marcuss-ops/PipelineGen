@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/stretchr/testify/require"
 )

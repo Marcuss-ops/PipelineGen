@@ -27,7 +27,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

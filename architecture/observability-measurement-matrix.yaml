@@ -169,7 +169,7 @@ measurements:
     removal_condition: "No consumer interprets details_json as a custom timing report and all retained keys have typed canonical destinations"
 
   - current_symbol: "stockpipeline phase metrics"
-    current_owner: "internal/application/assets/providers/stock/stockpipeline"
+    current_owner: "internal/capabilities/assets/providers/stock/stockpipeline"
     current_writer: "startStockPhase/startServiceStockPhase in phase_metrics.go; calls across run_orchestrator.go and stager_adapter.go"
     current_storage: "process_phase_metrics through injected appmetrics.Recorder"
     current_metric: "none directly; phases include stock.search, stock.youtube_download, stock.drive_upload"
@@ -793,7 +793,7 @@ measurements:
     removal_condition: "Recorder failures are counted, structured, non-blocking, and persisted reports expose degraded status"
 
   - current_symbol: "stockpipeline.PipelineResult"
-    current_owner: "internal/application/assets/providers/stock/stockpipeline/types/types_run.go"
+    current_owner: "internal/capabilities/assets/providers/stock/stockpipeline/types/types_run.go"
     current_writer: "projectManifestToPipelineResult in stockpipeline/run_orchestrator.go; legacy ServiceRunner.Run callers"
     current_storage: "In-memory legacy projection of job.ArtifactManifest; returned through sync/API result paths"
     current_metric: "none for execution timing; content/artifact fields are projection data"

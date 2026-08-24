@@ -20,7 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/drivesync"

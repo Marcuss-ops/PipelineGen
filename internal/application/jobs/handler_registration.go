@@ -33,7 +33,7 @@
 // What changed for production callers: the canonical handler-registration
 // idiom at every call site MUST now wrap the method value in
 // `appjobs.HandlerFunc(h.HandleJob)` (cf. artlist precedent at
-// internal/application/assets/providers/artlist/job_core.go:247). The
+// internal/capabilities/assets/providers/artlist/job_core.go:247). The
 // type-switch accepts method values whose signature structurally matches
 // HandlerFunc (Go's structural subtyping auto-converts at the case
 // branch), but explicit casts are canonical for human-readability

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
 	"go.uber.org/zap"

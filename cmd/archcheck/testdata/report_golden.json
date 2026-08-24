@@ -77,7 +77,7 @@
       "internal/application/images (25 files) — in_progress to capability/images split",
       "internal/application/youtube (43 files) — in_progress to capability/youtube split",
       "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)",
-      "internal/application/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)",
+      "internal/capabilities/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)",
       "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
     ],
     "StaleProseStems": [
@@ -131,7 +131,7 @@
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/assets/lifecycle/service.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/lifecycle/service_voiceover.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/processing/orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/providers/stock/stockpipeline/util.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/capabilities/assets/providers/stock/stockpipeline/util.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/adapters.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/usecase/publish_drive.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/books/job_handler.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
@@ -160,8 +160,8 @@
     "percheck_metadata_registry bare-key-residue: 2 non-namespaced (bare) metadata-key reference(s) in internal/api/assets/clips/ingest_update.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 7 non-namespaced (bare) metadata-key reference(s) in internal/app/youtube_asset_mapper.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 1 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/catalogsync/sync_recursive.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
-    "percheck_metadata_registry bare-key-residue: 16 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/providers/artlist/semantic_enricher_enrich.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
-    "percheck_metadata_registry bare-key-residue: 5 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/providers/youtube/adapter.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
+    "percheck_metadata_registry bare-key-residue: 16 non-namespaced (bare) metadata-key reference(s) in internal/capabilities/assets/providers/artlist/semantic_enricher_enrich.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
+    "percheck_metadata_registry bare-key-residue: 5 non-namespaced (bare) metadata-key reference(s) in internal/capabilities/assets/providers/youtube/adapter.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 3 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/sourcing/youtube/register_helpers.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 1 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/sourcing/youtube/service.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 3 non-namespaced (bare) metadata-key reference(s) in internal/application/assets/texttracks/backfill_acquire.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",

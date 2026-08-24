@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"go.uber.org/zap"
 )
 

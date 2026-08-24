@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

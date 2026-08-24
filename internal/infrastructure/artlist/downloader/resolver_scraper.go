@@ -37,7 +37,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	core_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )

@@ -18,7 +18,7 @@ func TestDefaultVideoConfig_RoundTrip(t *testing.T) {
 	}
 
 	// EffectsDir was a magic string in the stock pipeline
-	// (internal/application/assets/providers/stock/...) — same drift
+	// (internal/capabilities/assets/providers/stock/...) — same drift
 	// class as ChunkDuration: silently break the path lookup.
 	if cfg.EffectsDir != "effects/" {
 		t.Fatalf("EffectsDir: got %q, want %q", cfg.EffectsDir, "effects/")

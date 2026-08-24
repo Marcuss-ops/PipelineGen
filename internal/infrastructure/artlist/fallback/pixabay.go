@@ -8,7 +8,7 @@
 //   - pexels.go: Pexels /v1/videos/search endpoint.
 //
 // The application layer's fallback chain in
-// internal/application/assets/providers/artlist/search_fallback.go composes these
+// internal/capabilities/assets/providers/artlist/search_fallback.go composes these
 // along with the DB + cached-scraper providers. As of PR2.4 these
 // are exposed as orphans (no direct consumer in this package); the
 // chain still uses the legacy SourceProvider shape, and the legacy
@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

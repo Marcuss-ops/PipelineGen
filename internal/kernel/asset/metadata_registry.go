@@ -91,7 +91,7 @@ type MetadataKeySpec struct {
 var allowedMetadataKeys = []MetadataKeySpec{
 	{
 		Key:   "artlist.clip_page_url",
-		Owner: "internal/application/assets/providers/artlist/",
+		Owner: "internal/capabilities/assets/providers/artlist/",
 		Type:  "string",
 		Doc:   "Artlist provider's source-of-truth clip page URL (the page that originated the canonical clip_id); distinct from Asset.ClipPageURL struct field (legacy single-output artifact URL \u2014 different lifecycle).",
 	},

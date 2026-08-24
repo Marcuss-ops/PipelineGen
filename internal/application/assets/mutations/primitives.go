@@ -13,7 +13,7 @@
 //	    dispatcher.go), NOT AssetMutationPrimitives. So the dispatcher's
 //	    public surface is unaffected by the Primitives shrink below.
 //	(2) Test fakes and dispatcher stubs that emulate the narrowed surface
-//	    (see internal/application/assets/providers/artlist/dispatcher_stub_test.go)
+//	    (see internal/capabilities/assets/providers/artlist/dispatcher_stub_test.go)
 //	    consume the Primitives port.
 //	(3) Restore and HardDelete are GONE from this interface and from
 //	    the canonical repository concrete — they moved to the restricted
@@ -22,7 +22,7 @@
 //	    under PR-CLIP-RAW-MUTATIONS for the deprecation record.
 //
 // Why UpsertClip stays on the repository concrete:
-//   - Test fixtures in `internal/application/assets/providers/artlist/*_test.go`
+//   - Test fixtures in `internal/capabilities/assets/providers/artlist/*_test.go`
 //     and the dispatcher stub call `repo.UpsertClip` to seed clip rows.
 //     Keeping the method on the concrete (with the CI lint banning
 //     production layer callers) avoids rewriting every test fixture.
@@ -73,7 +73,7 @@ var ErrUnavailable = errors.New("mutations: asset mutation primitives unavailabl
 
 // AssetMutationPrimitives is the strictly-scoped 1-method surface for
 // direct writes to media_assets. ONLY the dispatcher stub
-// (internal/application/assets/providers/artlist/dispatcher_stub_test.go)
+// (internal/capabilities/assets/providers/artlist/dispatcher_stub_test.go)
 // and any future composition-root port that needs UpsertClip specifically
 // consume this interface. The outbox.Dispatcher itself is asserted
 // against the ActionMutationDispatcher (3-method) interface, NOT Primitives.
@@ -84,11 +84,11 @@ var ErrUnavailable = errors.New("mutations: asset mutation primitives unavailabl
 // marker annotation that flags it as dispatcher-only production layer
 // entry point). Test fixtures are allowlisted explicitly:
 //
-//   - internal/application/assets/providers/artlist/service_test.go:
+//   - internal/capabilities/assets/providers/artlist/service_test.go:
 //     `repo.UpsertClip(context.Background(), clip)` — explicit allowlist
 //     note in the test fixture.
 //
-//   - internal/application/assets/providers/artlist/dispatcher_stub_test.go:
+//   - internal/capabilities/assets/providers/artlist/dispatcher_stub_test.go:
 //     the stub's `EnqueueAndIndex` delegates to `s.repo.UpsertClip` to
 //     mirror production semantics.
 //

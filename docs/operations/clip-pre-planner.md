@@ -74,7 +74,7 @@ implementation derives stable permutation from a SHA-256 hash of
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/assets/providers/stock/stockpipeline/planner.go` (`ClipPlanner` interface, `ClipPlan`, `ClipSpec`, `deterministicPlanner`) |
+| **Primary code paths** | `internal/capabilities/assets/providers/stock/stockpipeline/planner.go` (`ClipPlanner` interface, `ClipPlan`, `ClipSpec`, `deterministicPlanner`) |
 | **Godlike contract** | godlike/06 SSOT: there is exactly one canonical planner. Any new planner MUST re-route via the `ClipPlanner` interface — no inlined plan-builders. godlike/07: deterministic hashing replaces any RNG-based permutation; retries MUST be byte-identical. |
 | **Inputs** | stage 1 typed request |
 | **Outputs** | `ClipPlan` (slot list, ordered indices, source-anchor data) |
@@ -107,7 +107,7 @@ seed-hash so reproducible sample sets can be re-derived.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/application/scripts/usecase/clip_sampler_impl.go` (orchestration), `internal/application/assets/providers/stock/fingerprint.go` (`Sampler` struct + `NewSampler(seedHex string)`) |
+| **Primary code paths** | `internal/application/scripts/usecase/clip_sampler_impl.go` (orchestration), `internal/capabilities/assets/providers/stock/fingerprint.go` (`Sampler` struct + `NewSampler(seedHex string)`) |
 | **Godlike contract** | godlike/06 SSOT: the canonical Sampler lives in the provider package (not in any application script). Seeding MUST be deterministic and content-addressed (SHA-256 over `(plan, slot, source_text)`). godlike/07: under-sampling (candidates < limit) is a typed failure, not a downgrade to a smaller set. |
 | **Inputs** | `SearchResult` per slot |
 | **Outputs** | `[]Sample` per slot with provenance back to the candidates |

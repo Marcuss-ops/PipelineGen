@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 )
 

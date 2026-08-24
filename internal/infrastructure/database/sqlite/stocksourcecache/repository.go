@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 // Repository is the SQLite-backed source cache store.

@@ -104,7 +104,7 @@ func TestScanVideoEncoderPolicy_PolicyInputOwnersPass(t *testing.T) {
 	writeEncoderPolicyFixture(t, root, "internal/platform/config/video.go", `package config
 const defaultCodec = "libx264"
 `)
-	writeEncoderPolicyFixture(t, root, "internal/application/assets/providers/stock/stockpipeline/service_types.go", `package stockpipeline
+	writeEncoderPolicyFixture(t, root, "internal/capabilities/assets/providers/stock/stockpipeline/service_types.go", `package stockpipeline
 const defaultCodec = "libx264"
 `)
 

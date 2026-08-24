@@ -54,8 +54,8 @@ var (
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube",
 	}
 )
 

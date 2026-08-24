@@ -45,7 +45,7 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
     - `go test ./internal/capabilities/scripts/... -count=1` — il solo package modificato.
     - `go test ./internal/capabilities/audio/... -run TestCompileRejectsInvalidAudioInputs -count=1` — un singolo test.
     - `go test ./internal/infrastructure/media/rustexec/... -count=1`
-    - `go test ./internal/application/assets/providers/stock/... -count=1`
+    - `go test ./internal/capabilities/assets/providers/stock/... -count=1`
     - quindi `make verify-agent` — foundation + static + verifica dei soli componenti impattati (~1-3 min).
 
 ## Authentication SSOT (Velox admin token)

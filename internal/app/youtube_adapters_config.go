@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

@@ -61,7 +61,7 @@ var videoEncoderPolicyAllowPrefixes = []string{
 	// the production package was removed after migration to rustexec.
 	"internal/infrastructure/media/ffmpeg/encoder_resolver.go",
 	"internal/platform/config/video.go",
-	"internal/application/assets/providers/stock/stockpipeline/service_types.go",
+	"internal/capabilities/assets/providers/stock/stockpipeline/service_types.go",
 	"cmd/archcheck/scan",
 }
 

@@ -231,7 +231,7 @@ type ExternalConfig struct {
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
 	// StockEnrichmentEnabled gates the canonical enrichment pipeline
-	// (internal/application/assets/providers/stock/enrichment). When
+	// (internal/capabilities/assets/providers/stock/enrichment). When
 	// false, the composition root skips wiring the EnrichmentHandler
 	// (mirror of the StockPipelineEnabled pattern in
 	// api/assets/stock/module.go). When true, the worker pool picks up

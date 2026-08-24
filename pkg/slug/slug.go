@@ -5,7 +5,7 @@
 // godlike/06 SSOT (one canonical owner per fact): this package is
 // the SOLE canonical owner of the title-slug convention. Both
 // pkg/stockparser/parser.go::deriveSlug (the parser-side surface)
-// and internal/application/assets/providers/stock/stockpipeline/step_publish.go::slugifyTitle
+// and internal/capabilities/assets/providers/stock/stockpipeline/step_publish.go::slugifyTitle
 // (the stock-pipeline surface) route through SlugifyTitle so
 // identical inputs produce byte-equivalent slugs at both call
 // sites. The pre-PR-SLUG-HELPER-EXTRACT implementations diverged

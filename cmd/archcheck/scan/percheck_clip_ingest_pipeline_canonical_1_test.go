@@ -72,7 +72,7 @@ type ClipIngestPipeline struct {
 func TestScanClipIngestPipelineCanonical1_ShadowDeclarationReported(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{
 		canonicalOwnerPath: canonicalOwnerGo,
-		"internal/application/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
+		"internal/capabilities/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
 	})
 	defer cleanup()
 	v := ScanClipIngestPipelineCanonical1(dir)
@@ -104,7 +104,7 @@ func New() shadow.ClipIngestPipeline {
 func TestScanClipIngestPipelineCanonical1_ShadowLiteralReported(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{
 		canonicalOwnerPath: canonicalOwnerGo,
-		"internal/application/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
+		"internal/capabilities/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
 		"internal/application/ecommerce/clip_ingest_literal.go":              shadowLiteralGo,
 	})
 	defer cleanup()

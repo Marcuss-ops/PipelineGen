@@ -7,7 +7,7 @@ package app
 import (
 	"context"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
 )
 

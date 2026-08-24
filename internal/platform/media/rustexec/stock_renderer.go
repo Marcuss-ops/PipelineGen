@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"

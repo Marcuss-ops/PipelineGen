@@ -81,8 +81,8 @@
   },
   "stock": {
     "paths": [
-      "internal/application/assets/providers/stock/",
-      "internal/application/assets/providers/artlist/",
+      "internal/capabilities/assets/providers/stock/",
+      "internal/capabilities/assets/providers/artlist/",
       "internal/api/assets/stock/",
       "internal/api/assets/artlist/",
       "internal/infrastructure/artlist/",
@@ -90,8 +90,8 @@
       "tests/fixtures/stock/"
     ],
     "go_packages": [
-      "./internal/application/assets/providers/stock/...",
-      "./internal/application/assets/providers/artlist/...",
+      "./internal/capabilities/assets/providers/stock/...",
+      "./internal/capabilities/assets/providers/artlist/...",
       "./internal/api/assets/stock/...",
       "./internal/api/assets/artlist/...",
       "./internal/infrastructure/artlist/..."
@@ -413,7 +413,7 @@
   "youtube": {
     "paths": [
       "internal/application/youtube/",
-      "internal/application/assets/providers/youtube/",
+      "internal/capabilities/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
       "internal/infrastructure/youtube/",
       "internal/api/assets/youtube/",
@@ -432,7 +432,7 @@
     ],
     "go_packages": [
       "./internal/application/youtube/...",
-      "./internal/application/assets/providers/youtube/...",
+      "./internal/capabilities/assets/providers/youtube/...",
       "./internal/application/assets/sourcing/youtube/...",
       "./internal/infrastructure/youtube/...",
       "./internal/api/assets/youtube/..."
@@ -452,7 +452,7 @@
   },
   "artlist": {
     "paths": [
-      "internal/application/assets/providers/artlist/",
+      "internal/capabilities/assets/providers/artlist/",
       "internal/infrastructure/artlist/",
       "internal/api/assets/artlist/",
       "scripts/artlist_pipeline_live_test.sh",
@@ -463,7 +463,7 @@
       "config/artlist_presets.yaml"
     ],
     "go_packages": [
-      "./internal/application/assets/providers/artlist/...",
+      "./internal/capabilities/assets/providers/artlist/...",
       "./internal/infrastructure/artlist/...",
       "./internal/api/assets/artlist/..."
     ],

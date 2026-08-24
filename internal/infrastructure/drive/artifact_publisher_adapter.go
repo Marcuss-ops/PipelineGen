@@ -85,7 +85,7 @@ var ErrResolvedFolderNotVerified = errors.New("artifact publisher: resolved fold
 //
 // Drive cutover P0.4 (July 2026): this adapter supersedes the
 // previously-hand-wired deliveryToFinalizerPublisherAdapter in
-// internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go
+// internal/capabilities/assets/providers/stock/stockpipeline/run_orchestrator.go
 // (which hardcoded DestinationStock and skipped SHA-256 verification).
 // The per-kind mapping + verify-before-publish gate make this the
 // canonical upload surface for ALL capabilities.

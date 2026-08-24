@@ -139,9 +139,9 @@ max_lines_per_file_strict:
         Three newly-discovered offenders ship in the allowlist under
         the Wave-24 Bucket 5 header with a TIGHTER 2026-08-15 deadline
         (vs. the 2026-09-15 baseline) so the next wave MUST split them:
-          - internal/application/assets/providers/stock/stockpipeline/
+          - internal/capabilities/assets/providers/stock/stockpipeline/
             stager_adapter.go (714 LOC; @stock-pipeline-team)
-          - internal/application/assets/providers/stock/stockpipeline/
+          - internal/capabilities/assets/providers/stock/stockpipeline/
             step_extract_clips.go (634 LOC; @stock-pipeline-team)
           - internal/application/mediamemory/linker_worker.go
             (680 LOC; @mediamemory-team)

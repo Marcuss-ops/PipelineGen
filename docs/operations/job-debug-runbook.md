@@ -210,7 +210,7 @@ The Artlist discovery stage logged an `error` event whose `data_json`
 carried `{"error":"no candidates found"}`. The finalizer then emitted
 `job_retry_wait` with the same payload — the canonical mapping is
 `stageDiscoverClips → resp.Error = "no candidates found"` (literal
-per `internal/application/assets/providers/artlist/run_orchestrator_stages.go:52`).
+per `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:52`).
 
 The full retry path (classification → RETRY_WAIT → retry attempt →
 terminal CANCELLED) is sourced from `internal/kernel/job/finalize_commands.go`
@@ -220,7 +220,7 @@ Operator-facing next steps (CROSS-REFERENCE — this runbook is
 diagnostic-only, not an action plan):
 
 - Inspect the Artlist searcher chain produced by
-  `internal/application/assets/providers/artlist/search_core.go::buildSearcherChain`;
+  `internal/capabilities/assets/providers/artlist/search_core.go::buildSearcherChain`;
   confirm the search term yields ≥1 candidate against the configured
   provider precedence.
 - Verify the live scraper reachability via the
@@ -240,8 +240,8 @@ diagnostic-only, not an action plan):
 | Canonical SELECT projection for `job_events`                     | `internal/infrastructure/database/sqlite/jobs/repository_events.go`  |
 | Job INSERTs (status / error / retry_count writers)               | `internal/infrastructure/database/sqlite/jobs/finalize_attempt.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_complete.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_aggregation.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_progress.go` + `internal/infrastructure/database/sqlite/jobs/repository_claims.go` + `internal/application/jobs/finalizer/job_completion_writer.go` (lines 108, 138) |
 | Finalizer rows-error mapping (`jobs.error` ← `job_events.message`)| `internal/kernel/job/finalize_commands.go:226`                     |
-| `"no candidates found"` literal origin                            | `internal/application/assets/providers/artlist/run_orchestrator_stages.go:52` |
-| `stageDiscoverClips` function entry                              | `internal/application/assets/providers/artlist/run_orchestrator_stages.go:44` |
+| `"no candidates found"` literal origin                            | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:52` |
+| `stageDiscoverClips` function entry                              | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:44` |
 | `StatusRetryWait` definition                                     | `internal/domain/job/job.go:47` → `kerneljob.StatusRetryWait`         |
 | `StatusSucceeded` / `StatusFailed` enum split                    | `internal/domain/generation/status.go`                               |
 
@@ -271,7 +271,7 @@ operator-runnable guard for this lockstep.
   echo
   echo '-- canonical "no candidates found" literal --'
   grep -rnE '"no candidates found"' \
-    internal/application/assets/providers/artlist/
+    internal/capabilities/assets/providers/artlist/
   echo
   echo '-- runbook §7 lockstep references MUST resolve to real files --'
   for f in \
@@ -279,7 +279,7 @@ operator-runnable guard for this lockstep.
     internal/infrastructure/database/sqlite/jobs/repository_events.go \
     internal/infrastructure/database/sqlite/jobs/finalize_attempt.go \
     internal/kernel/job/finalize_commands.go \
-    internal/application/assets/providers/artlist/run_orchestrator_stages.go \
+    internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go \
     internal/domain/job/job.go \
     internal/domain/generation/status.go; do
     if [[ -f "$f" ]]; then

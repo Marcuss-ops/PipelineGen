@@ -34,7 +34,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
 // TestWireArtlistJobBindings_NilArtlistService_AbortsBoot: gate #1

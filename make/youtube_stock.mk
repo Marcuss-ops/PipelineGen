@@ -1,4 +1,4 @@
-YOUTUBE_STOCK_PACKAGE := ./internal/application/assets/providers/stock/stockplan
+YOUTUBE_STOCK_PACKAGE := ./internal/capabilities/assets/providers/stock/stockplan
 YOUTUBE_STOCK_TEST := $(GO) test -count=1 $(YOUTUBE_STOCK_PACKAGE)
 
 test-youtube-url:
@@ -23,10 +23,10 @@ test-stock-partial-download:
 	$(GO) test -count=1 ./internal/infrastructure/downloader -run 'TestDownload'
 
 test-stock-drive:
-	$(GO) test -count=1 ./internal/application/assets/providers/stock/stockpipeline -run 'Test.*Upload'
+	$(GO) test -count=1 ./internal/capabilities/assets/providers/stock/stockpipeline -run 'Test.*Upload'
 
 test-stock-concurrency:
-	$(GO) test -count=1 ./internal/application/assets/providers/stock/stockpipeline -run 'Test.*Concurrent|Test.*Interleave'
+	$(GO) test -count=1 ./internal/capabilities/assets/providers/stock/stockpipeline -run 'Test.*Concurrent|Test.*Interleave'
 
 test-race-youtube-stock:
 	$(GO) test -race -count=1 $(YOUTUBE_STOCK_PACKAGE)
@@ -35,13 +35,13 @@ test-stock-cut:
 	$(GO) test -count=1 ./internal/infrastructure/downloader -run TestDownload
 
 test-stock-dedupe test-stock-index test-stock-recovery:
-	$(GO) test -count=1 ./internal/application/assets/providers/stock/stockpipeline
+	$(GO) test -count=1 ./internal/capabilities/assets/providers/stock/stockpipeline
 
 test-stock-youtube-e2e:
 	$(YOUTUBE_STOCK_TEST)
 
 benchmark-stock-download:
-	$(GO) test -run '^$$' -bench 'Benchmark.*' -benchmem ./internal/application/assets/providers/stock/stockpipeline
+	$(GO) test -run '^$$' -bench 'Benchmark.*' -benchmem ./internal/capabilities/assets/providers/stock/stockpipeline
 
 benchmark-youtube-stock: benchmark-stock-download
 

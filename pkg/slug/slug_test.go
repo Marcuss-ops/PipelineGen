@@ -12,7 +12,7 @@ import "testing"
 // TestSlugifyTitle_Canonical asserts the 10+ canonical titles
 // map to the expected canonical slug. The titles mirror the
 // pre-extraction test fixtures in pkg/stockparser and
-// internal/application/assets/providers/stock/stockpipeline so
+// internal/capabilities/assets/providers/stock/stockpipeline so
 // both packages' regression tests stay byte-stable after the
 // extraction lands.
 func TestSlugifyTitle_Canonical(t *testing.T) {

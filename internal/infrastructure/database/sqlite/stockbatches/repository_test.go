@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
 )
 

@@ -188,12 +188,12 @@ deprecations:
             the alias-parity test in extraction_intent_test.go trended
             to zero drift.
     - id: PR-IMAGE-CAPABILITY
-      owner_capability: internal/application/assets/providers
+      owner_capability: internal/capabilities/assets/providers
       exact_symbol: |
         CapabilityImage (image Capability enum) +
         ProviderCapabilitySet.Image *ProviderCapabilityDetail (legacy slot;
         NOW scoped to icons/avatar ONLY via the FASE 5 Step 8 cutover).
-      file: internal/application/assets/providers/types.go + internal/application/assets/providers/registry.go
+      file: internal/capabilities/assets/providers/types.go + internal/capabilities/assets/providers/registry.go
       file_line: types.go CapabilityImage decl, registry.go ProviderCapabilitySet.Image field
       replacement: |
         Image-generation + retrieval consumption lives in

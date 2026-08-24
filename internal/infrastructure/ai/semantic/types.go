@@ -181,7 +181,7 @@ type Payload struct {
 // metadata_builder.go) and is part of the canonical shared surface
 // that production callers thread through the nop. Pre-fix callers
 // from internal/application/clips/enrich.go +
-// internal/application/assets/providers/artlist/semantic_enricher.go
+// internal/capabilities/assets/providers/artlist/semantic_enricher.go
 // + others persisted this struct to wire payloads; the P0-#2
 // closure keeps the type for forward-compat (the real semantic
 // tagger pipeline reintroduced per P0.18 will reuse the same input

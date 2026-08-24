@@ -116,7 +116,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	"internal/application/images/",
 	"internal/application/assets/soundeffect/",
 	"internal/application/assets/catalogsync/",
-	"internal/application/assets/providers/",
+	"internal/capabilities/assets/providers/",
 	"internal/recommendation/",
 	// 5. Composition-root bundles — emit the canonical
 	//    event_type literal only as typed documentation.

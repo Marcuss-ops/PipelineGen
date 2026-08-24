@@ -7,7 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"

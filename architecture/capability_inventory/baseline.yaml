@@ -30,7 +30,7 @@ capability_ownership_map:
       - mediaregistry   # canonical media/asset identity registry
   - macro_owner: artlist
     packages: []
-    note: "artlist provider adapters live in infrastructure/artlist and application/assets/providers/artlist; dedicated capability packages are not yet on disk"
+    note: "artlist provider adapters live in infrastructure/artlist and capabilities/assets/providers/artlist; dedicated capability packages are not yet on disk"
   - macro_owner: youtube
     packages:
       - youtube         # YouTube-specific asset types and job enums
