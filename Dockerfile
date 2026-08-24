@@ -34,7 +34,7 @@ RUN make -f make/build.mk web-build
 
 
 # ─── builder ─────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS builder
 ARG TARGETOS=linux
 ARG TARGETPLATFORM
 ARG VERSION=dev
