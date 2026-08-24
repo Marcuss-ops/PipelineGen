@@ -372,13 +372,5 @@ architecture/*.bak
 
 # Artifacts verify: generated output vs golden fixtures
 # Golden fixtures live in testdata/golden (versioned); per-run output in artifacts/verify is gitignored
-artifacts/verify/*.payload.json
-artifacts/verify/*.full.json
-artifacts/verify/*.dispatch.json
-artifacts/verify/*.report.json
-artifacts/verify/*.status.json
-artifacts/verify/latest.json
-artifacts/verify/changed-components.json
-artifacts/verify/component-coverage.json
-artifacts/verify/all-*.json
+artifacts/verify/
 !testdata/golden/*.json
