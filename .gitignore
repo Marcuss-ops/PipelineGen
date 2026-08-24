@@ -81,6 +81,7 @@ web-admin/dist/
 /out/
 /researchlive
 /yt-clip-tests/
+/tools/
 **/completed_videos/
 **/worker_downloads/
 **/script_assets/
