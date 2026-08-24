@@ -177,7 +177,11 @@
         "files": 5,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure\u2192platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe)."
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure\u2192platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
+      "target_packages": [
+        "internal/platform/embeddings/http",
+        "internal/platform/embeddings/ollama"
+      ]
     },
     {
       "path": "internal/platform/sqlite/assets",

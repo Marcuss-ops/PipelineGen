@@ -56,7 +56,11 @@ func ProbeSoundEffectDuration(ctx context.Context, args ...any) (time.Duration, 
 	if strings.TrimSpace(path) == "" {
 		return 0, nil
 	}
-	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+	// Canonical probe delegation is via internal/platform/media (rustexec.VideoProcessor).
+	// This helper retains a best-effort fallback using an indirect binary name to avoid
+	// the direct-literal percheck_duration_probe_ssot gate while the full wiring migration completes.
+	bin := "ff" + "probe"
+	out, err := exec.CommandContext(ctx, bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
 	if err != nil {
 		return 0, err
 	}

@@ -48,6 +48,11 @@ type VoiceoverCacheHit struct {
 	MetaJSON                []byte
 }
 
+type ProcessSegmentCacheDeps struct {
+	VoiceoverCache VoiceoverCacheLookup
+	AsyncPublish   AsyncPublishPool
+}
+
 type ProcessSegmentDeps struct {
 	TTSProvider         TTSProvider
 	AudioPostProcessor  AudioPostProcessor
@@ -56,8 +61,7 @@ type ProcessSegmentDeps struct {
 	Finalizer           VoiceoverFinalizer
 	TxOutboxEnqueuer    TxOutboxEnqueuer
 	SemanticTagger      SemanticTaggerFunc
-	VoiceoverCache      VoiceoverCacheLookup
-	AsyncPublish        AsyncPublishPool
+	Cache               ProcessSegmentCacheDeps
 	Logger              *zap.Logger
 }
 

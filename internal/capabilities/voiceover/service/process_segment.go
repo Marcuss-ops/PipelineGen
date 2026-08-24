@@ -102,9 +102,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if cmd.Timing != nil {
 		timingPolicy = cmd.Timing.Normalized()
 	}
-	if u.deps.VoiceoverCache != nil {
+	if u.deps.Cache.VoiceoverCache != nil {
 		fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
-		hit, lookupErr := u.deps.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
+		hit, lookupErr := u.deps.Cache.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
 		if lookupErr != nil {
 			log.Warn("voiceover cache lookup error — falling through to full pipeline",
 				zap.String("fingerprint", fingerprint),
@@ -240,7 +240,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// DriveFileID, DriveLink, DownloadLink, and Timing are NOT populated —
 	// they are committed to the DB by the async goroutine and become
 	// visible to downstream DB readers after the publish pool drains.
-	if u.deps.AsyncPublish != nil {
+	if u.deps.Cache.AsyncPublish != nil {
 		out.Status = StatusGenerated
 		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		observability.VoiceoverJobsTotal.WithLabelValues("generated").Inc()
@@ -263,7 +263,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			zap.String("language", string(cmd.Language)),
 			zap.Int64("duration_ms", out.DurationMs))
 
-		u.deps.AsyncPublish.Submit(ctx, func() {
+		u.deps.Cache.AsyncPublish.Submit(ctx, func() {
 			u.runAsyncPublish(ctx, &capturedCmd, &capturedOut, &capturedTTS, capturedPost, log)
 		})
 
