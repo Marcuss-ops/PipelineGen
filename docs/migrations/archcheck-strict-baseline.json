@@ -2,16 +2,16 @@
   "$schema": "archcheck-strict-baseline/v1",
   "$schema_changelog": "v4",
   "$v4_breaking_changes": [
-    "Refreshed on 2026-08-24 from the current main tree at commit 1eaa35f435e562ac9a56b65b3ad5bc5851436908.",
-    "Removed all expired July/August deadlines and resolved transitional entries from the active baseline.",
-    "Removed the historical audit ledger from the active baseline; repository history remains the archive.",
+    "Refreshed on 2026-08-24 from the current main tree at commit 90233a7c172f9fd6c4e24d6fbc44a5e84af9ca33.",
+    "Force-push realignment: local commits replaced by upstream refactoring wave; the eight production findings are unchanged.",
+    "Removed historical audit ledger from the active baseline; repository history remains the archive.",
     "Retained only the eight current production findings reported by the strict production-only scan, with owner, deadline and removal trigger."
   ],
   "$v4_consumers": "This file is an operator-facing governance snapshot referenced by architecture/current.yaml; executable enforcement remains in cmd/archcheck, architecture/policy.yaml and the migration allowlists.",
   "description": "Active transitional baseline for the cmd/archcheck --strict production-only snapshot captured on 2026-08-24. This document records current findings for ownership and removal tracking; it does not suppress hard gates or authorize new legacy code. Every active entry carries an owner, a future deadline and a concrete removal trigger.",
   "scan": {
     "captured_at": "2026-08-24",
-    "git_commit_sha": "1eaa35f435e562ac9a56b65b3ad5bc5851436908",
+    "git_commit_sha": "90233a7c172f9fd6c4e24d6fbc44a5e84af9ca33",
     "command": "go run ./cmd/archcheck --strict --production-only",
     "total_violations": 8,
     "by_rule": {

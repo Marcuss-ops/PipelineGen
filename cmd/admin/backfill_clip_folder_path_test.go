@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // fakeDriveMeta is a canned Drive metadata map keyed by file/folder ID.

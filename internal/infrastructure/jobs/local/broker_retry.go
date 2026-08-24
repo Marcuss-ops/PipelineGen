@@ -47,7 +47,7 @@ func (b *Broker) Progress(ctx context.Context, cmd appjobs.ProgressCommand) erro
 //	    gap.
 //
 //	(2) SetProgress does NOT bump the canonical `revision` column
-//	    today (see internal/infrastructure/database/sqlite/jobs/
+//	    today (see internal/platform/sqlite/jobs/
 //	    repository_lifecycle.go:16-26). If a future PR adds revision-
 //	    bumping in SetProgress, the Flush-then-Terminal ordering
 //	    would FAIL because the terminal CAS would see a stale

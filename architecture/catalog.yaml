@@ -11,7 +11,7 @@ current:
     not a claim that all listed migrations are complete.
   follow_up_tickets:
     - id: P0-GOVERNANCE-SNAPSHOT
-      note: "Regenerate archcheck strict baseline from the current scan; remove expired deadlines, resolved entries, and historical audit ledger from the active baseline."
+      note: "DONE 2026-08-24: Strict baseline regenerated from HEAD 90233a7c1, stale hotspot removed (infrastructure/database/sqlite/assets), package_hotspots counts realigned."
     - id: P0-POLICY-CANONICAL
       note: "Make policy.yaml executable and unambiguous: resolve the 40-file normal target versus 65-file emergency ceiling, validate subject_bindings, and align platform_subzones."
     - id: P0-LEGACY-REGISTRY
@@ -33,7 +33,7 @@ current:
     - id: P1-OBSERVABILITY
       note: "Establish platform/observability as the metrics owner; infrastructure observability becomes compatibility-only."
     - id: P1-SCRIPTS-CUTOVER
-      note: "IN PROGRESS: complete application/scripts to capabilities/scripts; semantic contracts belong in kernel/script and provider mechanics in platform."
+      note: "DONE 2026-08-24: application/scripts fully migrated to capabilities/scripts; legacy path no longer exists on disk. Semantic contracts in kernel/script, provider mechanics in platform."
     - id: P1-JOBS-CUTOVER
       note: "Migrate application/jobs, starting with outbox; policy/orchestration belongs in capabilities/jobs and persistence mechanics in platform/sqlite."
     - id: P1-IMAGES-CUTOVER
@@ -41,11 +41,11 @@ current:
     - id: P1-VOICEOVER-CUTOVER
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: P1-PLATFORM-ADAPTERS
-      note: "Collapse infrastructure/platform duplicates for drive, embeddings, filesystem/files, checksum/hash, SQLite, Qdrant, AI transport, and observability."
+      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery, embeddings, SQLite. REMAINING: filesystem/files, checksum/hash, Qdrant, AI transport, observability."
     - id: P1-API-CUTOVER
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: P2-DOMAIN-DISSOLUTION
-      note: "Dissolve domain by semantic ownership; assign drive, qdrantdr, remote, primitives, operations, linguistics, and remaining types to kernel, capabilities, or platform."
+      note: "DONE 2026-08-24: internal/domain root deleted. Types migrated to kernel and capabilities. Legacy import path banned via percheck_legacy_root_ban.go."
     - id: P2-LEGACY-ROOTS
       note: "Delete application, api, infrastructure, and domain only after import-zero gates; migration records then become history-only."
   cross_refs:

@@ -1,4 +1,4 @@
-// Package artifactstages — internal/infrastructure/database/sqlite/artifact_stages/repository.go
+// Package artifactstages — internal/platform/sqlite/artifact_stages/repository.go
 //
 // FASE 3 (Push 3.1a, July 2026): canonical concrete for the
 // `artifact.Repository` port (internal/domain/artifact/stages.go).
@@ -159,7 +159,7 @@ const selectColumns = `id, job_id, local_path, hash, size, mime, requirement, de
 // as TEXT in the canonical schema (migration 147) and the
 // mattn/go-sqlite3 driver's parseTime=true only auto-converts
 // TIMESTAMP/DATETIME columns. We mirror the production pattern at
-// internal/infrastructure/database/sqlite/jobs/finalize_attempt.go
+// internal/platform/sqlite/jobs/finalize_attempt.go
 // (which uses timeutil.FormatRFC3339 for the same columns): read
 // TEXT, parse to time.Time with time.RFC3339Nano. published_at
 // is NULL-able so we read into a *string + post-parse to *time.Time.

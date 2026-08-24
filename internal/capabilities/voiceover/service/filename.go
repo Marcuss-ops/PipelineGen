@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

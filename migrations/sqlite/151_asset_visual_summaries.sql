@@ -36,7 +36,7 @@
 --
 -- Consumed by:
 --   - internal/domain/asset/clip_visual_summary.go (canonical struct)
---   - internal/infrastructure/database/sqlite/assets/visual_summary_repository.go
+--   - internal/platform/sqlite/assets/visual_summary_repository.go
 --   - internal/infrastructure/qdrant/indexing/payload_builder.go
 --       (reads row, emits visual_summary/visible_actions/visible_entities
 --        + visual_preprocessing_version + visual_model_name +

@@ -1,7 +1,7 @@
 // Logger + RequestID middleware tests (PG-006, June 2026).
 //
-// The PG-006 typed-port cascade removes `internal/infrastructure/database`
-// and `internal/infrastructure/database/sqlite/logsink` imports from every
+// The PG-006 typed-port cascade removes `internal/platform/sqlite`
+// and `internal/platform/sqlite/logsink` imports from every
 // file under `internal/api/middleware/**`. The previous
 // TestPersistentLoggerMiddleware asserted the SQLite-backed
 // SQLiteRequestLogSink end-to-end (open in-memory DB → create

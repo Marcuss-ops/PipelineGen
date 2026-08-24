@@ -93,7 +93,7 @@ import (
 //
 // Regression guard: if a future commit re-introduces ProducesArtifacts=
 // true on job.TypeVoiceoverGenerate, the SQL-layer guard at
-// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+// internal/platform/sqlite/jobs/repository_lifecycle.go:115
 // will reject the legacy Complete with domainremote.ErrCompleteJobPathViolation
 // (the typed sentinel declared at internal/domain/remote/complete_job.go:148),
 // causing the voiceover.generate parent to be marked FAILED instead of
@@ -128,7 +128,7 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 			"voiceover.finalizer.Finalize is the canonical owner of media_assets + outbox writes inside the per-item tx; "+
 			"the broker's legacy Complete is the canonical mark-SUCCEEDED seam. "+
 			"If ProducesArtifacts=true is reintroduced, the SQL-layer guard at "+
-			"internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
+			"internal/platform/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
 			"with domainremote.ErrCompleteJobPathViolation, causing the voiceover.generate parent to be marked FAILED "+
 			"instead of SUCCEEDED — the exact bug PR-VO-COMPLETEPATH-FIX closed.")
 
@@ -174,7 +174,7 @@ func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 			"its own per-item tx via the unified finalizer. The broker's legacy Complete is the canonical mark-SUCCEEDED "+
 			"seam for this child type as well. "+
 			"If ProducesArtifacts=true is reintroduced, the SQL-layer guard at "+
-			"internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
+			"internal/platform/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
 			"with domainremote.ErrCompleteJobPathViolation, mirroring the parent-type bug.")
 
 	entry, ok := reg.Get(appjobs.TypeVoiceoverGenerateItem)

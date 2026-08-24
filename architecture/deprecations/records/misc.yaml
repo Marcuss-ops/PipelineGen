@@ -52,7 +52,7 @@ deprecations:
               drive.Reader.DownloadFile path remains inline in
               drive.go::ProcessBookFromDrive to preserve the F2.10
               closure (the audit-pinned `drive.Reader = (*drive.Uploader)(nil)`
-              compile-time assertion at internal/infrastructure/drive/ports.go).
+              compile-time assertion at internal/platform/drive/ports.go).
               Legacy EXPAND-window callers continue to compile and run.
       introduction_date: "2026-07-01"
       removal_date: never
@@ -118,7 +118,7 @@ deprecations:
         download in books/drive.go::ProcessBookFromDrive is
         PRESERVED for the EXPAND window to keep the F2.10 closure's
         audit-pinned compile-time assertion at
-        internal/infrastructure/drive/ports.go intact
+        internal/platform/drive/ports.go intact
         (`var _ drive.Reader = (*drive.Uploader)(nil)`). Future
         waves:
           - BACKFILL: implement BookSourceReader concrete + delegate
@@ -183,7 +183,7 @@ deprecations:
         uppercase job statuses (PENDING|LEASED|RUNNING|SUCCEEDED|FAILED|CANCELLED)
       introduction_date: 2026-04
       removal_date: 2026-Q3
-      tracking_issue: 'PR-JOB-STATUS-UPPERCASE-MIGRATION (owner: internal/infrastructure/database/sqlite/jobs)'
+      tracking_issue: 'PR-JOB-STATUS-UPPERCASE-MIGRATION (owner: internal/platform/sqlite/jobs)'
       compatibility_test: |
         After data migration writes all jobs.status as UPPERCASE, remove the
         LOWER() fold in livenessQuery and re-run `go test ./internal/infrastructure/health/... -short`.
@@ -300,15 +300,15 @@ deprecations:
           - AGENTS.md Pattern 11 (Atomic CompleteJob + idempotency): the
             Single-TX chain that CompleteWithArtifacts extends.
     - id: SQLITESTORE-DB
-      owner_capability: internal/infrastructure/database/sqlite/jobs
+      owner_capability: internal/platform/sqlite/jobs
       exact_symbol: SQLiteStore.DB() — returns *sql.DB, bypassing optimistic-lock + lease fencing + queue-notifier
-      file: internal/infrastructure/database/sqlite/jobs/repository.go
+      file: internal/platform/sqlite/jobs/repository.go
       file_line: ~95 (DB() method declaration)
       replacement: Use typed repository methods (Enqueue, Complete, Fail, RenewLease, etc.) instead of raw SQL access. Test fixtures and admin one-shot commands may continue using DB() until removal.
       introduction_date: "2026-07-06"
       removal_date: 2026-Q4
       tracking_issue: PR-DB-AUDIT-ACTION-5 (commit 5f06d328, July 2026). Zero production callers confirmed via rg audit.
-      compatibility_test: rg '\.DB\(\)' internal/infrastructure/database/sqlite/jobs/ --include='*.go' returns 1 hit (the declaration itself). Zero production callers.
+      compatibility_test: rg '\.DB\(\)' internal/platform/sqlite/jobs/ --include='*.go' returns 1 hit (the declaration itself). Zero production callers.
       usage_metric: 'Zero production callers. Test fixtures: 2 sites. Admin one-shot commands: 2 sites. Will trend to 0 before CONTRACT.'
       migration_phase: BACKFILL
       status: in_progress

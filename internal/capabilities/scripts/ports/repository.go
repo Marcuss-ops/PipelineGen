@@ -22,7 +22,7 @@ import (
 
 // ScriptRepository is the canonical persistence contract for scripts.
 // The concrete implementation lives in
-// internal/infrastructure/database/sqlite/scripts. Declaring it here
+// internal/platform/sqlite/scripts. Declaring it here
 // decouples the persistence consumer from the concrete repository and
 // makes engine_test.go / persistence_test.go cheap to write.
 //

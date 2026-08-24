@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 

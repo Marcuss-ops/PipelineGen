@@ -10,20 +10,20 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 

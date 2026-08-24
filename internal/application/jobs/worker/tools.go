@@ -21,7 +21,7 @@ import (
 // Progress/Renew commands after a renewal.
 //
 // Why: SQLiteStore.RenewLease advances revision on every successful
-// renewal (see internal/infrastructure/database/sqlite/jobs/repository_claims.go::RenewLease).
+// renewal (see internal/platform/sqlite/jobs/repository_claims.go::RenewLease).
 // Phase 7 introduced a renewing runLease loop, so a snapshot revision
 // captured at Claim is stale after the first renewal. Using it would
 // cause broker.Complete to return ErrLeaseLost (revision mismatch)

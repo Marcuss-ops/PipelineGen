@@ -4,7 +4,7 @@
 // underlying column returns TEXT (NOT native DATETIME). This is needed
 // for the strftime() canonical wrap applied on ListEvents' SELECT
 // (repository.go::ListEvents): with parseTime=false (the project's
-// default in `internal/infrastructure/database/sqlite/`), the mattn
+// default in `internal/platform/sqlite/`), the mattn
 // driver surfaces the strftime output as `driver.Value` type string;
 // the database/sql default value-converter cannot auto-convert
 // `string` → `*time.Time`.

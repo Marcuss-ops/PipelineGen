@@ -7,7 +7,7 @@
   rationale: "Converge PipelineGen on one owner per concept. Legacy roots may shrink but must not gain new production code; target architecture is app/kernel/ capabilities/platform. This checklist is the ordered Cleanup Day backlog, not a claim that all listed migrations are complete."
   follow_up_tickets:
     - id: "P0-GOVERNANCE-SNAPSHOT"
-      note: "Regenerate archcheck strict baseline from the current scan; remove expired deadlines, resolved entries, and historical audit ledger from the active baseline."
+      note: "DONE 2026-08-24: Strict baseline regenerated from HEAD 90233a7c1, stale hotspot removed (infrastructure/database/sqlite/assets), package_hotspots counts realigned."
     - id: "P0-POLICY-CANONICAL"
       note: "Make policy.yaml executable and unambiguous: resolve the 40-file normal target versus 65-file emergency ceiling, validate subject_bindings, and align platform_subzones."
     - id: "P0-LEGACY-REGISTRY"
@@ -29,7 +29,7 @@
     - id: "P1-OBSERVABILITY"
       note: "Establish platform/observability as the metrics owner; infrastructure observability becomes compatibility-only."
     - id: "P1-SCRIPTS-CUTOVER"
-      note: "IN PROGRESS: complete application/scripts to capabilities/scripts; semantic contracts belong in kernel/script and provider mechanics in platform."
+      note: "DONE 2026-08-24: application/scripts fully migrated to capabilities/scripts; legacy path no longer exists on disk. Semantic contracts in kernel/script, provider mechanics in platform."
     - id: "P1-JOBS-CUTOVER"
       note: "Migrate application/jobs, starting with outbox; policy/orchestration belongs in capabilities/jobs and persistence mechanics in platform/sqlite."
     - id: "P1-IMAGES-CUTOVER"
@@ -37,11 +37,11 @@
     - id: "P1-VOICEOVER-CUTOVER"
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: "P1-PLATFORM-ADAPTERS"
-      note: "Collapse infrastructure/platform duplicates for drive, embeddings, filesystem/files, checksum/hash, SQLite, Qdrant, AI transport, and observability."
+      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery, embeddings, SQLite. REMAINING: filesystem/files, checksum/hash, Qdrant, AI transport, observability."
     - id: "P1-API-CUTOVER"
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: "P2-DOMAIN-DISSOLUTION"
-      note: "Dissolve domain by semantic ownership; assign drive, qdrantdr, remote, primitives, operations, linguistics, and remaining types to kernel, capabilities, or platform."
+      note: "DONE 2026-08-24: internal/domain root deleted. Types migrated to kernel and capabilities. Legacy import path banned via percheck_legacy_root_ban.go."
     - id: "P2-LEGACY-ROOTS"
       note: "Delete application, api, infrastructure, and domain only after import-zero gates; migration records then become history-only."
   cross_refs:
@@ -50,18 +50,53 @@
     registry: "architecture/package_hotspots.json"
     verification: "make verify-architecture"
 - id: "WAVE-21-PR-G-SCRIPTS-SUBPKG"
-  status: "in_progress"
+  status: "completed"
   owner: "scripts-capability"
-  deadline: "2026-09-30T00:00:00Z"
-  rationale: "Reschedule the scripts capability split to 2026-09-30 because 56 files remain in CUTOVER after the 2026-08-01 deadline; preserve the existing public contracts and registry-driven composition while completing the redistribution."
+  completed_at: "2026-08-24"
+  rationale: "Scripts capability split completed. All files migrated from application/scripts to capabilities/scripts. Legacy path deleted. Public contracts preserved and registry-driven composition intact."
   count:
     baseline_initial: 64
-    current: 56
+    current: 0
     target_zero: 0
   cross_refs:
-    backfill_increment: "generation/plan_builder.go mirrors the legacy plan contract and is covered by package-local tests; CUTOVER is deferred until full parity and consumer migration."
     package: "internal/application/scripts"
-    pr_g_phase: "BACKFILL (August 2026) — generation now owns a parity-covered plan builder while the legacy usecase implementation remains active as a compatibility path; root facade and remaining callers are unchanged pending CUTOVER."
+    resolution: "Fully migrated to capabilities/scripts; kernel/script owns semantic contracts; platform adapters own provider mechanics."
+- id: "WAVE-25-DELIVERY-UNIFICATION"
+  status: "completed"
+  owner: "platform-delivery"
+  completed_at: "2026-08-24"
+  rationale: "Delivery boundary double ownership resolved. All 3 files migrated from internal/infrastructure/delivery to internal/platform/delivery. infrastructure/delivery deleted. Archcheck digest-sha256-ban exemption updated."
+  count:
+    baseline_initial: 3
+    current: 0
+    target_zero: 0
+  cross_refs:
+    package: "internal/infrastructure/delivery"
+    resolution: "Fully migrated to internal/platform/delivery; 13 files now under single canonical owner."
+- id: "WAVE-25-EMBEDDINGS-MIGRATION"
+  status: "completed"
+  owner: "platform-embeddings"
+  completed_at: "2026-08-24"
+  rationale: "Embeddings canonical owner established. All 5 implementation files migrated from internal/infrastructure/embeddings to internal/platform/embeddings. infrastructure/embeddings deleted."
+  count:
+    baseline_initial: 5
+    current: 0
+    target_zero: 0
+  cross_refs:
+    package: "internal/infrastructure/embeddings"
+    resolution: "Fully migrated to internal/platform/embeddings; 7 production files now under single canonical owner."
+- id: "WAVE-25-SQLITE-IMPORT-CLEANUP"
+  status: "completed"
+  owner: "platform-sqlite"
+  completed_at: "2026-08-24"
+  rationale: "All Go imports referencing internal/infrastructure/database/sqlite updated to internal/platform/sqlite. 7 import statements corrected, 8 architecture YAML files synced."
+  count:
+    baseline_initial: 7
+    current: 0
+    target_zero: 0
+  cross_refs:
+    package: "internal/infrastructure/database/sqlite"
+    resolution: "Zero production Go imports remain; docs/operations runbooks and gold test data synced."
 - id: "WAVE-22-PR-D-SERVICE-DEPS-CAP"
   status: "in_progress"
   owner: "api-composition"

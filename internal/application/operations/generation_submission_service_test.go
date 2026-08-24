@@ -36,7 +36,7 @@ import (
 
 // schemasFASE2 is the inline mirror of migrations/sqlite/092
 // (outbox_events), 145 (operations), and the canonical jobs
-// table from `internal/infrastructure/database/sqlite/jobs`.
+// table from `internal/platform/sqlite/jobs`.
 // Kept in lockstep with the production migrations. Drift
 // between this schema and the production migrations would
 // surface as SQL errors at INSERT time (NOT a silent mismatch).

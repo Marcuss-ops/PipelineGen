@@ -13,7 +13,7 @@ echo "=== Check: forbid legacy Template/TimelineJSON writes outside canonical ow
 hits=$(rg -n --type go \
     -e '^[[:space:]]*Template:\s' -e '^[[:space:]]*TimelineJSON:\s' \
     --glob '!**/internal/application/scripts/adapters/processor_persistence.go' \
-    --glob '!**/internal/infrastructure/database/sqlite/scripts/repository_adapter.go' \
+    --glob '!**/internal/platform/sqlite/scripts/repository_adapter.go' \
     --glob '!**/internal/application/voiceover/**' \
     --glob '!**/*_test.go' internal/ 2>/dev/null \
     | awk -F: '{

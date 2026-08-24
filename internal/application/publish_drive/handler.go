@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -50,7 +50,7 @@ import (
 // EventTypeArtifactStaged is the canonical outbox event_type
 // drained by this handler. The naming convention is
 // `<aggregate>.<action>.<version>` (semver), as documented at
-// internal/infrastructure/database/sqlite/outboxevents/repository.go.
+// internal/platform/sqlite/outboxevents/repository.go.
 // NOTE: this constant intentionally shadows
 // staging.EventTypeArtifactStaged — the consumer should reference
 // the consumer-side constant for read-side decoupling. The

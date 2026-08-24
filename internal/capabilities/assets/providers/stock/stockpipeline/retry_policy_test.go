@@ -486,7 +486,7 @@ func TestStock_RetryPolicy_DriveFailure_ResumesWithoutReRendering(t *testing.T) 
 //
 // Scope note: the heavy outbox-pool integration (processEvent +
 // Repository.MarkFailed + tabular event_status transitions) lives
-// in a follow-up commit scoped to internal/infrastructure/database/
+// in a follow-up commit scoped to internal/platform/sqlite/
 // sqlite/outboxevents; this test pins the typed-classifier + resume
 // pre-conditions that the heavier integration will exercise.
 func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {

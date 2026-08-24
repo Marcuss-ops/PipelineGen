@@ -3,7 +3,7 @@
 // Wave C (Blocco 1 Asset SSOT, June 2026): SQL receivers
 // DeleteSegmentEmbeddingsByScriptKey,
 // GetSegmentEmbeddingsByScriptKey, UpsertSegmentEmbedding migrated
-// to `internal/infrastructure/database/sqlite/assets
+// to `internal/platform/sqlite/assets
 // /segment_embedding_queries.go`. The slim domain file retains ONLY
 // the SegmentEmbeddingRecord type — no SQL, no `database/sql`
 // import — acceptance criterion: zero stdlib database/sql imports in this package.
@@ -16,7 +16,7 @@ package asset
 
 // SegmentEmbeddingRecord stores the semantic cache for a script
 // segment. Rows are persisted in the `segment_embeddings` table
-// (see `internal/infrastructure/database/sqlite/assets
+// (see `internal/platform/sqlite/assets
 // /segment_embedding_queries.go` for the SQL projection); this
 // struct is the in-process representation consumed by the script
 // pipeline.

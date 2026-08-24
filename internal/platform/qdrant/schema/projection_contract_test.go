@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	legacyschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 func TestProjectionContracts_CanonicalIdentity(t *testing.T) {
@@ -21,23 +20,23 @@ func TestProjectionContracts_CanonicalIdentity(t *testing.T) {
 			contract:   MediaAssetsProjection(),
 			wantKind:   ProjectionMediaAssets,
 			wantAlias:  "media_assets_current",
-			wantPhys:   legacyschema.DefaultV3Schema().PhysicalName,
+			wantPhys:   DefaultV3Schema().PhysicalName,
 			wantPrefix: AssetPointIDPrefix,
 		},
 		{
 			name:       "media_frames",
 			contract:   MediaFramesProjection(),
 			wantKind:   ProjectionMediaFrames,
-			wantAlias:  legacyschema.FrameCollectionName,
-			wantPhys:   legacyschema.FrameCollectionName,
-			wantPrefix: legacyschema.FramePointIDPrefix,
+			wantAlias:  FrameCollectionName,
+			wantPhys:   FrameCollectionName,
+			wantPrefix: FramePointIDPrefix,
 		},
 		{
 			name:       "media_concepts",
 			contract:   MediaConceptsProjection(),
 			wantKind:   ProjectionMediaConcepts,
-			wantAlias:  legacyschema.ConceptCollectionName,
-			wantPhys:   legacyschema.ConceptCollectionName,
+			wantAlias:  ConceptCollectionName,
+			wantPhys:   ConceptCollectionName,
 			wantPrefix: ConceptPointIDPrefix,
 		},
 	}

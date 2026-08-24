@@ -16,7 +16,7 @@
 --              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 --   - internal/domain/asset/store_core.go HardDelete adapter (line 391)
 --       DELETE FROM asset_versions WHERE asset_id = ?
---   - internal/infrastructure/database/sqlite/assets/txmutation/primitives.go
+--   - internal/platform/sqlite/assets/txmutation/primitives.go
 --       HardDeleteTx's hardDeleteChildTables also deletes via
 --         WHERE asset_id = ?
 --

@@ -130,7 +130,7 @@ var ErrCompleteJobIdempotencyConflict = errors.New("complete job: (jobID, attemp
 //	    looks up jobRow.JobType via the JobTypeRegistry port and rejects
 //	    when registry.ProducesArtifacts(jobType)=true AND the request carries
 //	    no artifacts (the typed-service fail-fast mirror of the SQL gate).
-//	(b) SQLiteStore.Complete (internal/infrastructure/database/sqlite/jobs/
+//	(b) SQLiteStore.Complete (internal/platform/sqlite/jobs/
 //	    repository_lifecycle.go) — legacy SQL-layer rejection when
 //	    r.producesArtifacts[jobType]=true. The SQL gate wraps this sentinel
 //	    via fmt.Errorf("%w: ...", ErrCompleteJobPathViolation, ...) so

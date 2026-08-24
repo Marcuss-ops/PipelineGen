@@ -17,7 +17,7 @@
 -- PRODUCTION ROLLOUT: apply once after audit confirms all
 -- lifecycle_status values match lifecycle_state (backfill
 -- already performed by migration 183). The fixture path
--- (internal/infrastructure/database/canonical.go) already omits
+-- (internal/platform/sqlite/canonical.go) already omits
 -- this column.
 
 ALTER TABLE media_assets DROP COLUMN lifecycle_status;

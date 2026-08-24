@@ -40,7 +40,7 @@ type Repository interface {
 	// InsertTx persists the new voiceover row in the caller-owned
 	// tx. Equivalent to *sqassets.VoiceoversRepository.InsertTx.
 	// Mirror schema source-of-truth:
-	// internal/infrastructure/database/sqlite/assets/
+	// internal/platform/sqlite/assets/
 	// voiceovers_repository.go::Record. Adding a column here
 	// without a SQLite migration will fail at INSERT time, NOT
 	// at compile time.
@@ -120,7 +120,7 @@ type Repository interface {
 // indirection means a future time-format migration does NOT
 // require touching the application-layer struct.
 //
-// Schema source-of-truth: internal/infrastructure/database/sqlite/
+// Schema source-of-truth: internal/platform/sqlite/
 // assets/voiceovers_repository.go::Record. The two struct shapes
 // are NOT identical: persistence.VoiceoverRecord is the wire shape
 // (string timestamps), assets.Record is the SQLite shape

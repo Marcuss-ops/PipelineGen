@@ -13,7 +13,7 @@ import (
 //
 // PG-005 (June 2026): mirrors artifacts.VoiceoverRecordToClip but
 // consumes the application-layer DTO so the api layer never imports
-// internal/infrastructure/database/sqlite/assets. Field set is the
+// internal/platform/sqlite/assets. Field set is the
 // same projection logic — name falls back to a 50-char TextPreview
 // slice when filename is empty; the canonical asset.Source value for
 // voiceovers is "voiceover". The DTO carries RFC3339-string

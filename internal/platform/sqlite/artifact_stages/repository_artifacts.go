@@ -1,4 +1,4 @@
-// internal/infrastructure/database/sqlite/artifact_stages/repository_artifacts.go —
+// internal/platform/sqlite/artifact_stages/repository_artifacts.go —
 // artifact CRUD reads/writes (Insert / GetByID / ListByJob / ListByState).
 // Extracted from repository.go; no behavior change.
 package artifactstages

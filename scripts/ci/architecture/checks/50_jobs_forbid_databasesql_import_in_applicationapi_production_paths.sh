@@ -19,7 +19,7 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 
 # ── Verbatim section body extracted from the original monolithic ────────
 # ── Check 42: forbid `database/sql` import in application/api production paths (P1-8, Wave 19) ──
-# AGENTS.md Pattern 0 mandates that `internal/infrastructure/database/**`
+# AGENTS.md Pattern 0 mandates that `internal/platform/sqlite/**`
 # owns SQL; `internal/application/**` and `internal/api/**` consume SQL
 # ONLY through typed ports declared in the consumer's `ports.go`.
 # Direct `database/sql` import in production app/api code is a layering
@@ -92,7 +92,7 @@ if [ -n "$violations" ]; then
     echo ""
     echo "Fix: route SQL through a typed port in"
     echo "      internal/application/<consumer>/ports.go with the adapter"
-    echo "      in internal/infrastructure/database/<feature>/, wired at"
+    echo "      in internal/platform/sqlite/<feature>/, wired at"
     echo "      the composition root (internal/app/<feature>_adapters.go)."
     echo ""
     echo "If the import is grandfathered under the Wave 19 P1-8 transitional"

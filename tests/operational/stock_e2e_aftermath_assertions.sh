@@ -346,7 +346,7 @@ echo "  parity (must match)                              = $([ "$HIT_IDS_COUNT" 
 if [ "$CROSSCHECK_COUNT" -ne "$HIT_IDS_COUNT" ]; then
     printf 'FAIL canonical: PR-STOCK-SEARCH-JOIN-BROKEN (%s hit(s) with asset_id NOT in media_assets)\n' \
         "$((HIT_IDS_COUNT - CROSSCHECK_COUNT))" >&2
-    printf '  Canonical owner: internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go\n' >&2
+    printf '  Canonical owner: internal/platform/sqlite/assets/clip_atomic_writer.go\n' >&2
     printf '  The /api/media/search handler is returning asset_ids that have\n' >&2
     printf '  no corresponding row in media_assets (broken wire).\n' >&2
     exit 1

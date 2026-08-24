@@ -53,7 +53,7 @@ echo "=== Check 33: forbid retention:created_at:mutable in sqlite/jobs ==="
 all_hits=$(rg -n --type go \
     -e 'retention:created_at:mutable' \
     --glob '!**/*_test.go' \
-    internal/infrastructure/database/sqlite/jobs/ 2>/dev/null \
+    internal/platform/sqlite/jobs/ 2>/dev/null \
     || true)
 literal_calls=$(printf '%s\n' "$all_hits" \
     | awk -F: '
@@ -80,7 +80,7 @@ hits_count=${all_hits:+$(printf '%s' "$all_hits" | wc -l | awk '{print $1+0}')}
 hits_count=${hits_count:-0}
 literal_count=${literal_calls:+$(printf '%s' "$literal_calls" | wc -l | awk '{print $1+0}')}
 literal_count=${literal_count:-0}
-echo "INFO: retention:created_at:mutable scan in internal/infrastructure/database/sqlite/jobs/:"
+echo "INFO: retention:created_at:mutable scan in internal/platform/sqlite/jobs/:"
 echo "      total hits: ${hits_count}"
 echo "      non-allowlisted hits: ${literal_count}"
 if [ -n "$literal_calls" ]; then

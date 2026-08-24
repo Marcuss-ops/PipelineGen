@@ -155,7 +155,7 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 // Restore, HardDelete, and HardDeleteClip are REMOVED from this concrete
 // repository as of PR-CLIP-RAW-MUTATIONS (June 2026). Their replacements live
 // in the restricted tx-scoped package
-// `internal/infrastructure/database/sqlite/assets/txmutation/`:
+// `internal/platform/sqlite/assets/txmutation/`:
 //
 //   - txmutation.RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
 //                                          'ready' inside a caller-owned tx.
@@ -172,7 +172,7 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 //      direct caller regardless.
 //   2. Tx-scoped only. The replacements REQUIRE the caller to hold an
 //      open *sql.Tx. The caller — `admin.PurgeService` in
-//      `internal/infrastructure/database/sqlite/admin/purge.go::HardDeleteClip`
+//      `internal/platform/sqlite/admin/purge.go::HardDeleteClip`
 //      and `RestoreClip` — opens the tx, calls the tx-scoped primitive,
 //      and commits. A future caller that skips the tx boundary won't
 //      compile because *sql.Tx is a non-optional parameter.

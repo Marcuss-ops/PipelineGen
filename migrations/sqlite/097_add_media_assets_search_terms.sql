@@ -16,7 +16,7 @@
 -- 091_add_media_assets_search_terms.sql; kept only for
 -- slot-conflict audit and SHA-256 ledger validity. The runner's
 -- soft-skip on duplicate ADD COLUMN
--- (internal/infrastructure/database/migrations.go::isDuplicateColumnError)
+-- (internal/platform/sqlite/migrations.go::isDuplicateColumnError)
 -- makes the rerun safe on any DB that already has the column —
 -- the statement logs at INFO "skipping duplicate ADD COLUMN" and
 -- the migration is recorded as fully applied. Do not extend the

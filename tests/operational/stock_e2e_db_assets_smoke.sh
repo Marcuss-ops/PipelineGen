@@ -200,7 +200,7 @@ if [ "$ROWS_NO_DRIVE_FILE_ID" -gt 0 ] || [ "$ROWS_NO_FILEHASH" -gt 0 ] || [ "$RO
     if [ "$ROWS_NO_DRIVE_LINK" -gt 0 ]; then
         echo "FAIL canonical: PR-STOCK-DRIVE-LINK-PERSIST" >&2
         echo "  $ROWS_NO_DRIVE_LINK rows with empty drive_link" >&2
-        echo "  Canonical owner: internal/infrastructure/drive/publisher.go::Publish" >&2
+        echo "  Canonical owner: internal/platform/drive/publisher.go::Publish" >&2
         echo "  Likely root cause: Drive upload succeeded but Web link not constructed" >&2
     fi
     if [ "$ROWS_ALL_THREE_MISSING" -gt 0 ] && [ "$ROWS_ALL_THREE_MISSING" -ne "$ROWS_NO_DRIVE_FILE_ID" ]; then

@@ -14,7 +14,7 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -64,7 +64,7 @@ func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string
 
 // stockAssetIndexAdapter wraps *assetindex.Service and adapts its Upsert
 // method from *assetindex.AssetRecord to *stockpipeline.StockAssetUpsertRecord,
-// keeping the application layer free of internal/infrastructure/database/assetindex
+// keeping the application layer free of internal/platform/sqlite/assetindex
 // imports (godlike/06 import-boundary discipline).
 type stockAssetIndexAdapter struct {
 	inner *assetindex.Service

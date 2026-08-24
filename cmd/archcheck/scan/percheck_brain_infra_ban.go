@@ -15,9 +15,9 @@
 //   - comment-only references (warn, not violate)
 //
 // Banned surfaces:
-//   - imports of internal/infrastructure/qdrant
-//   - imports of internal/infrastructure/database/sqlite
-//   - imports of internal/infrastructure/drive
+//   - imports of internal/platform/qdrant
+//   - imports of internal/platform/sqlite
+//   - imports of internal/platform/drive
 //   - imports of concrete external providers (Artlist/YouTube)
 //   - literal calls: qdrant.NewClient, db.Exec, repo.Upsert,
 //     exec.Command("ffmpeg"), exec.Command("yt-dlp")
@@ -49,9 +49,9 @@ const (
 
 var (
 	brainInfraBannedImportPrefixes = []string{
-		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/drive",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist",

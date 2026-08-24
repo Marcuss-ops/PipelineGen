@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
@@ -82,7 +82,7 @@ func buildOutboxDeps(
 	// `any(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
 	// raw cast is replaced because *assets.ClipsRepository
 	// statically implements the port (compile-time assertion at
-	// internal/infrastructure/database/sqlite/assets/clips_repository.go).
+	// internal/platform/sqlite/assets/clips_repository.go).
 	// Dropping the `, ok` form is safe: the assertion fails the build
 	// if port drift ever breaks the static implementation contract.
 	// PR 11 follow-up extends the assertion to SourceVersionQuerier
@@ -125,7 +125,7 @@ func buildOutboxDeps(
 	// when Qdrant is enabled) directly into outbox.Deps.Jobs.VectorPointDeleter.
 	// The previous `any` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
 	// is gone: the compile-time assertion at
-	// internal/infrastructure/qdrant/index_writer.go pins the
+	// internal/platform/qdrant/index_writer.go pins the
 	// conformance (`_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`),
 	// and qd.QdrantDeleter's field type is already
 	// jobsoutbox.VectorPointDeleter so direct assignment is type-safe.

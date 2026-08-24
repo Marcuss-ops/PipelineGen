@@ -13,7 +13,7 @@
 #   - cmd/admin/qdrant_readiness.go: 1466 → 468 (split into subcommands)
 #   - internal/application/assets/providers/aggregator.go: deleted
 #   - internal/application/clips/clip_ops.go: deleted
-#   - internal/infrastructure/database/sqlite/outbox/repository.go: deleted
+#   - internal/platform/sqlite/outbox/repository.go: deleted
 #   - internal/api/assets/clips/ops.go: 851 → 128 (split)
 #   - internal/app/module_media.go: deleted (split into wiring/)
 #   - internal/api/assets/clips/handler.go: 824 → 133 (split)

@@ -30,7 +30,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ func observeNonCanonicalPointID(pt ScrollPoint, cats *Categories) {
 
 // CanonicalPointID returns the canonical UUID v5 hash for assetID
 // using the project-namespaced boundary. Mirrors the canonical
-// QDRANT-001 surface at internal/infrastructure/qdrant/schema/AssetIDToQdrantPointID
+// QDRANT-001 surface at internal/platform/qdrant/schema/AssetIDToQdrantPointID
 // so the apply step can build replacement events without going
 // through the schema_aliases.go forwarded shell (which is no longer
 // the canonical entry point per the Check 2 gate).

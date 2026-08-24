@@ -35,7 +35,7 @@ import (
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

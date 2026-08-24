@@ -18,7 +18,7 @@ import (
 // specified origin, ordered by created_at DESC, hard-capped at
 // 200 (per PR-GENERATED-SEARCH-FIX, July 2026). Thin delegate to
 // the canonical repo surface at
-// internal/infrastructure/database/sqlite/assets/images_repository.go.
+// internal/platform/sqlite/assets/images_repository.go.
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this method is the
 // canonical SOLE application-layer entry point for the generated

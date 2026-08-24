@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 func TestFilterDriveNonFolders(t *testing.T) {

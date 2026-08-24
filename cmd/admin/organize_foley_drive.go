@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 const foleyDriveFolderID = "1bCGQCeS8mxsTbqRcGktezbsJ3eTrAyWP"

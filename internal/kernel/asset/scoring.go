@@ -13,7 +13,7 @@ import (
 //
 // Wave C (Blocco 1 Asset SSOT, June 2026): this variant is the
 // canonical public export. Cross-package callers reach the algorithm
-// through this name (see `internal/infrastructure/database/sqlite/assets
+// through this name (see `internal/platform/sqlite/assets
 // /search_queries.go::SearchClips`). The package-internal impl
 // `scoreClipsInternal` carries the actual logic; keeping both names
 // exports a stable public surface while leaving the package free to

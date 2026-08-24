@@ -39,9 +39,9 @@ import (
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/qdrantmm"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantmm"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )

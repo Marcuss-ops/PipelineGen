@@ -1,4 +1,4 @@
-// internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go
+// internal/platform/sqlite/assets/youtube_discoveries_repository.go
 // ──────────────────────────────────────────────────────────────────────────────
 // Per-channel discovery ledger repository — Commit 3/6 (June 2026, PR-C
 // YouTube cutover, P1 #5 + #6 + #7).

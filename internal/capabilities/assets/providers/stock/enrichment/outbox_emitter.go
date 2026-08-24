@@ -7,7 +7,7 @@
 // (per the codebase's "every code path that mutates authoritative
 // data AND triggers an external side-effect MUST route through
 // this repository's Enqueue method inside a transaction" invariant
-// at internal/infrastructure/database/sqlite/outboxevents/repository.go:1-22).
+// at internal/platform/sqlite/outboxevents/repository.go:1-22).
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - outboxBackedAssetPublishedEmitter lives ONLY in this file.

@@ -50,7 +50,7 @@ set -euo pipefail
 
 # ---- 9 Drive folder fixtures (per user spec; CANONICAL TEST SCOPE-LIMIT) -
 # NOTE: the authoritative folder registry lives at
-# internal/infrastructure/drive/folders/registry.go — these are operator-
+# internal/platform/drive/folders/registry.go — these are operator-
 # supplied test fixtures for the battery wave, NOT production SSOT.
 FOLDERS=(
     "1lSp-s8mNJOUOxIZbuZ0NjvzbXVMB1Y3I"

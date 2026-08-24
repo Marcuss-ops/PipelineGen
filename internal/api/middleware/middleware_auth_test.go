@@ -370,7 +370,7 @@ func TestAuth_RetiredWebhookPathReturns404(t *testing.T) {
 // any string field.
 //
 // PG-006 (June 2026) rationale: the previous test depended on
-// internal/infrastructure/database/sqlite/logsink to push entries
+// internal/platform/sqlite/logsink to push entries
 // into a real `api_requests` table. That infra import is now banned
 // from the api/middleware package. The new test uses a captureSink
 // that records entries in-memory and asserts the same invariant

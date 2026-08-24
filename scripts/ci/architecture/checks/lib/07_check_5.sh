@@ -61,7 +61,7 @@ all_hits=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!**/mutations/primitives.go' \
     --glob '!**/admin/purge*.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     internal/application internal/api 2>/dev/null \
     || true)
 # Step 2: drop full-line comments AND lines preceded by the ARCH-ALLOWLIST

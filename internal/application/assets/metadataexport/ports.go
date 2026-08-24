@@ -7,7 +7,7 @@
 // layer per AGENTS.md Pattern 0 + Pattern 8. After split, this file
 // declares the narrow surface so the handler depends ONLY on the two
 // ports, not the concrete infra. The compile-time assertions live at
-// the adapters (internal/infrastructure/database/sqlite/metadataexport/
+// the adapters (internal/platform/sqlite/metadataexport/
 // + internal/infrastructure/files/metadataexport/).
 //
 // Two ports:

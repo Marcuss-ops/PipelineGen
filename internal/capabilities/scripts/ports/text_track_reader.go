@@ -16,7 +16,7 @@
 // godlike/06 SSOT (one canonical owner per fact): this interface is
 // a SUB-INTERFACE of `asset.TextTrackRepository`. The concrete
 // `*TextTrackRepositorySQLite` (in
-// `internal/infrastructure/database/sqlite/assets/`) satisfies both
+// `internal/platform/sqlite/assets/`) satisfies both
 // surfaces; the split is purely a wiring-boundary concern so the
 // video pipeline imports a narrow read-only surface and not the
 // full mutator surface (UpsertBatch / MarkPending / MarkFailed / etc).

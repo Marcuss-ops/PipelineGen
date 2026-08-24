@@ -88,7 +88,7 @@ type OutboxRepairEnqueuer interface {
 // has no outbox primitive (partial-payload mutation is not modelled
 // in outbox_events), and qdrant.Client.DeletePayloadKeys is documented
 // as the canonical mechanism for this exact use case (see
-// internal/infrastructure/qdrant/client.go::DeletePayloadKeys
+// internal/platform/qdrant/client.go::DeletePayloadKeys
 // docstring). Production wiring adapts qdrant.Client to this port.
 //
 // Idempotent: repeated calls with the same (collection, keys,
@@ -128,7 +128,7 @@ var writeJSONFile = func(path string, v any) error {
 //
 // The reconciler does NOT import observability/metrics.go directly —
 // this indirection lets tests substitute a stubMetrics and keeps
-// adapter concrete in internal/infrastructure/qdrant.
+// adapter concrete in internal/platform/qdrant.
 //
 // Emission contract (per QDRANT-005C):
 //   - RecordFindings                : emitted on EVERY run (DryRun + Apply)

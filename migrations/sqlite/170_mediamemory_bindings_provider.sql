@@ -6,7 +6,7 @@
 -- application-level canonical is in
 -- internal/application/mediamemory/types.go::MediaBinding.Provider.
 -- The SQL ↔ Go row-scan lives in
--- internal/infrastructure/database/sqlite/mediamemory/bindings_repository.go.
+-- internal/platform/sqlite/mediamemory/bindings_repository.go.
 --
 -- godlike/06 SSOT (binding provenance contract): every binding
 -- row now carries the canonical Provider tag from the candidate

@@ -19,7 +19,7 @@
 // ProducesArtifacts=true on this entry without first wiring the
 // caller-owned tx for artifact persistence will re-introduce the
 // SQL-layer ErrCompleteJobPathViolation gate at
-// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+// internal/platform/sqlite/jobs/repository_lifecycle.go:115
 // and the job will be marked FAILED with the canonical "legacy
 // Complete path is forbidden for artifact-producing jobs" diagnostic.
 package jobs
@@ -73,7 +73,7 @@ func TestYouTubeClipExtract_RoutesToLegacyComplete(t *testing.T) {
 
 // TestYouTubeClipExtract_NotInProducesArtifactsMap is a secondary
 // pin: ProducesArtifactsMap() is the read-only map the SQLiteStore
-// gate consumes (internal/infrastructure/database/sqlite/jobs).
+// gate consumes (internal/platform/sqlite/jobs).
 // Confirming the YouTube entry is absent locks the gate's view of
 // the world to the same value as the typed accessor — a divergence
 // between the two would silently let the gate re-allow the legacy

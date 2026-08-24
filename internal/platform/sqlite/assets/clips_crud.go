@@ -177,7 +177,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 // the caller's struct literal.
 //
 // Layering note: the receiver lives in
-// internal/infrastructure/database/sqlite/assets/ and consumes the
+// internal/platform/sqlite/assets/ and consumes the
 // mutations.AssetMutationCommand type from
 // internal/application/assets/mutations/. This is the same cross-layer
 // pattern documented for the existing `jobsoutbox

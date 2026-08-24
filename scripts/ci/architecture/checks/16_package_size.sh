@@ -19,7 +19,7 @@ if [ ! -f "$DOC" ]; then
   exit 1
 fi
 
-ALLOWLIST_DIRS=$(grep -oE 'internal/infrastructure/qdrant(/[A-Za-z0-9_]+)?' "$DOC" | sort -u)
+ALLOWLIST_DIRS=$(grep -oE 'internal/platform/qdrant(/[A-Za-z0-9_]+)?' "$DOC" | sort -u)
 
 INTERNAL_DIR="$ROOT/internal"
 [ -d "$INTERNAL_DIR" ] || { echo "[FAIL] Check 16: $INTERNAL_DIR not found"; exit 1; }

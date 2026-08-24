@@ -27,7 +27,7 @@
 --     IndexDeleteHandler writes DELETE_PENDING pre-Qdrant, DELETED
 --     post-SoftDelete. idempotency pre-flight #2 now consults both
 --     lifecycle_state AND index_state for early-success skip.
---   internal/infrastructure/database/sqlite/assets/clips_repository.go
+--   internal/platform/sqlite/assets/clips_repository.go
 --     SetIndexState method on *assets.ClipsRepository (satisfies the
 --     extended AssetDeleter port).
 --

@@ -4,7 +4,7 @@
 // receivers (SearchClips/SearchClipsByKeywords/SearchClipsAdvanced/
 // SearchStockByKeywords) that used to live here are now canonical on
 // the LOCAL infra sqlite asset store
-// (internal/infrastructure/database/sqlite/assets/search_queries.go)
+// (internal/platform/sqlite/assets/search_queries.go)
 // and reached via HYBRID-embed promotion. Cross-package scoring
 // (`asset.ScoreClips`) is the public surface for the SearchClips
 // scoring algorithm; this file no longer holds scoring logic.

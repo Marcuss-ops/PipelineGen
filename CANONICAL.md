@@ -14,7 +14,7 @@ Only current, executable information belongs in the working tree. Historical pla
 | Capability ownership | `architecture/ownership.generated.yaml` |
 | Active exceptions only | `architecture/current.yaml` and `architecture/issues.yaml` |
 | Compatibility removals | `architecture/deprecations/` |
-| Qdrant schema | current adapter under migration-only `internal/infrastructure/qdrant/schema`; target platform ownership is `internal/platform/qdrant`; machine-readable files under `architecture/qdrant` |
+| Qdrant schema | current adapter under migration-only `internal/platform/qdrant/schema`; target platform ownership is `internal/platform/qdrant`; machine-readable files under `architecture/qdrant` |
 | Operational procedures | current files under `docs/operations` |
 | Clip pre-planner pipeline (input → planner → search → sampler → view redaction → generator → binding) | `docs/operations/clip-pre-planner.md` |
 | CI exceptions | allowlists under `docs/migrations` |

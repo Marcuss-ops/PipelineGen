@@ -26,8 +26,8 @@ import (
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )

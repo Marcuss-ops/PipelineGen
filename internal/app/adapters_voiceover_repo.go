@@ -46,7 +46,7 @@ var _ persistence.Repository = (*useCaseRepoAdapter)(nil)
 // use case so the post-commit cleanup goroutine can capture orphan
 // paths.
 //
-// Schema source-of-truth: internal/infrastructure/database/sqlite/
+// Schema source-of-truth: internal/platform/sqlite/
 // assets/voiceovers_repository.go. Adding a column here without a
 // SQLite migration will fail at INSERT time, NOT at compile time.
 // ─────────────────────────────────────────────────────────────────────

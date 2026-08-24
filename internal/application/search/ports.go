@@ -35,7 +35,7 @@
 //
 //	┌─ IndexProjection ──────────────────────────────────────────────┐
 //	│  SearchDocument → Qdrant payload                               │
-//	│   Owner: infrastructure/qdrant/index_writer.go                 │
+//	│   Owner: platform/qdrant/index_writer.go                 │
 //	│           (implements clipindexer.VectorStoreIndexer)          │
 //	│   Bridge: SearchDocument is a typed envelope that mirrors the  │
 //	│           Qdrant IndexSchema fields 1:1 (no Locator leak).    │
@@ -141,7 +141,7 @@ func (noopLogger) Error(string, ...any) {}
 // IndexProjection territory uses producers' pre-computed embeddings
 // directly via clipindexer.VectorStoreIndexer.UpsertFromClip).
 //
-// Method shape mirrors internal/infrastructure/qdrant.TextEmbedder
+// Method shape mirrors internal/platform/qdrant.TextEmbedder
 // (single `Embed(ctx, text) ([]float32, error)`) so the existing
 // qdrant.NewTextEmbedderAdapter concrete satisfies this port with no
 // adapter translation — the compile-time assertion lives in
@@ -174,7 +174,7 @@ type QueryEmbedder interface {
 // the schema, and the orchestrator agree byte-for-byte. The
 // sparse channel uses the wire-level "bm25_text" name because that
 // is what Qdrant expects for server-side BM25 inference
-// (see internal/infrastructure/qdrant/client_search.go::SparseText
+// (see internal/platform/qdrant/client_search.go::SparseText
 // + SparseVectorName pair semantics).
 const (
 	ChannelText       = "text"       // 768d intfloat/multilingual-e5-base (semantic meaning)

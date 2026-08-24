@@ -298,7 +298,7 @@ var (
 // LastSuccess / Duration) are consumed via the canonical Pattern 0
 // adapter at
 //
-//	internal/infrastructure/database/sqlite/deletion/metrics_adapter.go
+//	internal/platform/sqlite/deletion/metrics_adapter.go
 //
 // type ReconcilerMetricsAdapter struct{}
 //

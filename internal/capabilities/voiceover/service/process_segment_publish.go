@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )

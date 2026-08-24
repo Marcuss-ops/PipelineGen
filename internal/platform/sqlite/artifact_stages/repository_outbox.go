@@ -1,4 +1,4 @@
-// internal/infrastructure/database/sqlite/artifact_stages/repository_outbox.go —
+// internal/platform/sqlite/artifact_stages/repository_outbox.go —
 // atomic stage-row + outbox-event co-emission (InsertWithOutbox).
 // Extracted from repository.go; no behavior change.
 package artifactstages

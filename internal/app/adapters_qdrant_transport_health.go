@@ -35,8 +35,8 @@ import (
 	"time"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 

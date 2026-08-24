@@ -11,7 +11,7 @@
 //   - The deleted internal/media/models package; the local
 //     `folderRec` struct replaces `models.ClipFolder`. The struct
 //     mirrors the column shape from migration 011_create_characters.sql
-//   - the canonical schema in internal/infrastructure/database/canonical.go.
+//   - the canonical schema in internal/platform/sqlite/canonical.go.
 //   - internal/repository/clips is removed; the canonical
 //     *assets.ClipsRepository (root.Repos.ClipsRepo) only knows about
 //     `media_assets`, not the `clip_folders` table. We use raw SQL on
@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 const (

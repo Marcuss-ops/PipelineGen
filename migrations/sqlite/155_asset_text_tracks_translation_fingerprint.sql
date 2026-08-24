@@ -75,7 +75,7 @@
 -- the live row for their (asset, lang, kind) until a new
 -- translation attempt flips+inserts. The application layer's
 -- flip-and-insert method is documented in
--- internal/infrastructure/database/sqlite/assets/
+-- internal/platform/sqlite/assets/
 --   text_track_repository.go::InsertTranslationWithAuditPredecessor.
 --
 -- ─── Future-deprecation note (NOT a forward-pointer contract yet) ────

@@ -6,7 +6,7 @@
 //   - handler_integration_drain_test.go — drain-completion / no-op tests (Tests 1, 2, 5).
 //   - handler_integration_failure_test.go — drain-failure tests (Tests 3, 4). Mirrors the Push 3.1c pattern in
 //
-// internal/infrastructure/database/sqlite/artifact_stages/repository_test.go
+// internal/platform/sqlite/artifact_stages/repository_test.go
 // (real in-memory SQLite + verbatim DDL constants + direct DB
 // probes for state assertions).
 //
@@ -53,7 +53,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"

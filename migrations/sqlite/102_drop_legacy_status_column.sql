@@ -24,7 +24,7 @@
 -- PRODUCTION ROLLOUT: applied once after migration 101. The
 -- fixture path (drive.NewTestDBWithSchema) does NOT run this
 -- migration because its CanonicalMediaAssetsSchema already omits
--- the column — see internal/infrastructure/database/canonical.go
+-- the column — see internal/platform/sqlite/canonical.go
 -- for the in-memory CREATE TABLE block.
 
 ALTER TABLE media_assets DROP COLUMN status;

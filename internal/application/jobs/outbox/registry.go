@@ -89,7 +89,7 @@ import (
 // pre-flight supersede gate (real media_assets source_version via
 // *assets.ClipsRepository.SourceVersionFor, which delegates to the
 // canonical SQL helper in
-// internal/infrastructure/database/sqlite/assets/source_version.go).
+// internal/platform/sqlite/assets/source_version.go).
 // PR 11 follow-up (June 2026) replaced the legacy AssetSourceChecker
 // port — both the producer-side (cmd/admin/reconcile_qdrant.go) and
 // consumer-side (this handler) priority chains now share that single
@@ -252,7 +252,7 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 // Step 2 (June 2026) signature change: metadataExportHandler replaces
 // the pre-Step-2 deps.Infra.DB+deps.MetadataDir construction. The composition
 // root constructs the typed-port adapter (metadataexport.NewSQLiteAdapter
-// at internal/infrastructure/database/sqlite/metadataexport/ +
+// at internal/platform/sqlite/metadataexport/ +
 // FileWriter at internal/infrastructure/files/metadataexport/) and
 // stamps HandlerDeps{Resolver, Writer, OutputDir} onto the handler at
 // wire time. The application package no longer touches *sql.DB or os.

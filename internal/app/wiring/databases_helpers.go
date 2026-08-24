@@ -35,7 +35,6 @@ import (
 	"strings"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -48,7 +47,7 @@ type CleanupFunc func()
 // Exists only to keep the consumer-facing API of composition.go stable
 // (every Build*Bundle() takes `*Databases`); the inner state delegates
 // to the canonical DatabaseSet opened by `storage.OpenSet` (rule: no
-// `sql.Open` outside `internal/infrastructure/database/**`).
+// `sql.Open` outside `internal/platform/sqlite/**`).
 //
 // `main` and `logs` fields are kept for back-compat with the dozens of
 // `dbs.Main.<X>` references in `composition.go` / `shutdown.go` /
@@ -116,7 +115,7 @@ func (d *Databases) Close() {
 
 // InitDatabases opens BOTH the primary + observability DBs via the
 // canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
-// remains outside `internal/infrastructure/database/**`.
+// remains outside `internal/platform/sqlite/**`.
 //
 // Cut 6.2 sibling (July 2026): after the storage set opens, the
 // composition root constructs an additional DualPool via

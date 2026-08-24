@@ -1,7 +1,7 @@
 -- 159_media_assets_atomic_writer_columns.sql
 --
 -- Expand-phase migration for the clip/artlist atomic writers.
--- `internal/infrastructure/database/sqlite/assets/asset_committer.go`
+-- `internal/platform/sqlite/assets/asset_committer.go`
 -- now writes three canonical per-asset columns that were already
 -- declared in the in-memory canonical schema but never added to the
 -- SQLite migration chain on live databases.

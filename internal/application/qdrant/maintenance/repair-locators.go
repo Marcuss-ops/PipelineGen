@@ -8,7 +8,7 @@
 // FASE 1.2 PR-GODOBJ-12 closure (2026-07-04): verbatim migration from
 // cmd/admin/qdrant_maintenance_repair_locators.go per godlike/06 SSOT.
 // Service.Repair delegates to the injected QdrantCleaner port (defined in
-// service.go). The cmd/admin layer no longer imports internal/infrastructure/qdrant
+// service.go). The cmd/admin layer no longer imports internal/platform/qdrant
 // directly for repair — it goes through the canonical QdrantCleaner port.
 package maintenance
 

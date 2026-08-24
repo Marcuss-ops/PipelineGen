@@ -47,9 +47,9 @@
 //   - txmanager + IndexStateTxInput struct) is a separate concern.
 //   - The "atomic write" property of `media_assets.upsert + outbox_events.insert`
 //     in a single tx is already pinned by
-//     internal/infrastructure/database/sqlite/outbox/qdrant_flow_e2e_test.go
+//     internal/platform/sqlite/outbox/qdrant_flow_e2e_test.go
 //     (TestE2E_HappyPath_EnqueueProcessComplete) AND by
-//     internal/infrastructure/database/sqlite/youtube/clip_atomic_writer_test.go
+//     internal/platform/sqlite/youtube/clip_atomic_writer_test.go
 //     (the Commit F producer-side regression).
 //   - What THIS file uniquely pins is the **callback-count contract**:
 //     1 outbox_events row → 1 IndexClip call. Bypassing the Dispatcher
@@ -168,7 +168,7 @@ func (f *fakeIndexClipper) CallCount(clipID string) int {
 // fakeSourceQuerier returns the configured source_version for the given
 // aggregate id, or sql.ErrNoRows for unknowns (matches the canonical
 // SourceVersionQuerier contract pinned in
-// internal/infrastructure/database/sqlite/assets/source_version_test.go).
+// internal/platform/sqlite/assets/source_version_test.go).
 type fakeSourceQuerier struct {
 	versions map[string]string
 }

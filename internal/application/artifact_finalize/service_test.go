@@ -62,7 +62,7 @@ import (
 
 // canonicalDDL is the verbatim tbl-only subset of migration 147.
 // Full text/indexes (3 of them) are kept in lockstep with the
-// repository's own test helper (internal/infrastructure/database/sqlite/
+// repository's own test helper (internal/platform/sqlite/
 // artifact_stages/repository_test.go::canonicalDDL) and with the
 // production migration file. Drift between test + production is a
 // bug — fix both, fix the migration.

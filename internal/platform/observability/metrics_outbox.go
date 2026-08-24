@@ -1,7 +1,7 @@
 // Package observability — outbox events pool metrics (Fase 6(c) Push 6.2, July 2026).
 //
 // SRE surface for the outbox_events worker pool
-// (internal/infrastructure/database/sqlite/outboxevents/Pool).
+// (internal/platform/sqlite/outboxevents/Pool).
 // Five Prometheus collectors, all registered via promauto against
 // the default registry at package init so /metrics (api/routes.go)
 // exposes them on the standard scrape path.

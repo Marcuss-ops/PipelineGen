@@ -69,7 +69,7 @@ const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
 
 // VectorPointDeleter is satisfied by *qdrant.IndexWriter (see the
 // compile-time assertion at
-// internal/infrastructure/qdrant/index_writer.go). The interface
+// internal/platform/qdrant/index_writer.go). The interface
 // itself lives in ports.go per AGENTS.md Pattern 0 — application-layer
 // consumers MUST NOT redeclare it locally. PR 4 (refactor/single-qdrant-runtime)
 // consolidated the previous pair of duplicated `QdrantDeleter`
@@ -77,13 +77,13 @@ const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
 // into this single port.
 //
 // Production concrete: *qdrant.IndexWriter from
-// internal/infrastructure/qdrant which satisfies the signature exactly.
+// internal/platform/qdrant which satisfies the signature exactly.
 
 // AssetDeleter is the minimum surface for reading the current asset
 // state (pre-flight idempotency check) and writing the soft-delete +
 // canonical index_state transition (QDRANT-002 PR6). The production
 // concrete is *assets.ClipsRepository from
-// internal/infrastructure/database/sqlite/assets.
+// internal/platform/sqlite/assets.
 //
 // SetIndexState writes the canonical index_state column on
 // media_assets (the column added by migration 094). Called by
@@ -108,7 +108,7 @@ type AssetDeleter interface {
 	// for a fully retired asset. Production concrete
 	// *assets.ClipsRepository satisfies it directly (added in
 	// Blocco 3.1 commit 2/3 at
-	// internal/infrastructure/database/sqlite/assets/clips_lifecycle_state.go).
+	// internal/platform/sqlite/assets/clips_lifecycle_state.go).
 	// Pattern 0 narrowness: ONLY SetLifecycleState — not the
 	// broader CRUD port — so IndexDeleteHandler cannot accidentally
 	// UPSERT other columns.

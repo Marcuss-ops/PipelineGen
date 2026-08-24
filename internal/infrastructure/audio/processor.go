@@ -17,7 +17,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // Processor — PR-VO-B1 (June 2026): the previous direct Drive

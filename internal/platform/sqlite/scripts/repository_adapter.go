@@ -4,7 +4,7 @@
 // P1.6 (June 2026): the canonical interface + record types moved to
 // ports/repository.go. This file re-exports them as type aliases for
 // back-compat and implements the adapter (the sqliteRepoAdapter struct
-// could not live in internal/infrastructure/database/sqlite/assets/
+// could not live in internal/platform/sqlite/assets/
 // because of a pre-existing import cycle through resolver.go →
 // adapters → ports → voiceover → ... → sqlite/assets).
 package scripts

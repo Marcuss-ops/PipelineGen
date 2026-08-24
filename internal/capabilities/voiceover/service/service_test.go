@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 

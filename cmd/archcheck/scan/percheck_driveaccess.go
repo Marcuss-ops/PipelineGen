@@ -19,7 +19,7 @@
 // Allowlist:
 //   - internal/infrastructure/drive/**              : the Drive infrastructure implementation.
 //   - internal/app/**                               : composition-root wiring.
-//   - internal/application/assets/delivery/**       : the application-layer delivery port.
+//   - internal/platform/delivery/**       : the application-layer delivery port.
 //   - *_test.go                                     : tests may construct fakes directly.
 //   - cmd/archcheck/scan/**                         : the scanner's own package is exempt
 //     (out of the walk scope: ScanDriveAccessSSOT
@@ -131,7 +131,7 @@ func ScanDriveAccessSSOT(root string, pol *policy.Policy, r *report.Report) {
 
 	allowPrefixes := []string{
 		"internal/infrastructure/drive/",
-		"internal/application/assets/delivery/",
+		"internal/platform/delivery/",
 		"internal/app/",
 	}
 

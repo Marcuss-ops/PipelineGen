@@ -28,7 +28,7 @@ import (
 // it owns the migration runner, the schema_migrations ledger, and
 // the `targetDB="primary"` / `targetDB="observability"` scope
 // gating. The signature was confirmed against
-// internal/infrastructure/database/migrations.go:60.
+// internal/platform/sqlite/migrations.go:60.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	tmpDir := t.TempDir()

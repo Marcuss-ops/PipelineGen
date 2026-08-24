@@ -20,11 +20,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/qdrantmm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantmm"
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to

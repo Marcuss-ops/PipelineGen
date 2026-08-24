@@ -7,20 +7,20 @@
 // the `buildMediaAssetQuery` + `buildClipFolderQuery` helpers, and the
 // previously-implicit `clipFolderColumns` legacy const they referenced
 // were REMOVED from this domain file. Canonical home:
-// `internal/infrastructure/database/sqlite/assets/clips_repository.go`
+// `internal/platform/sqlite/assets/clips_repository.go`
 // exports `MediaAssetColumns` + `ClipFolderColumns`; the production
 // query builders stay in the same-package infra scope
-// (`internal/infrastructure/database/sqlite/assets/store_helpers.go`).
+// (`internal/platform/sqlite/assets/store_helpers.go`).
 //
 // What moved to Local infra (Phase 3):
 //
 //   - 4 receivers (GetFolderChildren/FindByPHash/MarkUsed/MarkClipsUsed) →
-//     internal/infrastructure/database/sqlite/assets/store_helpers.go
+//     internal/platform/sqlite/assets/store_helpers.go
 //   - 9 Store-CRD receivers (Get/Save/Delete/List) on the asset store →
-//     internal/infrastructure/database/sqlite/assets/asset_store.go
+//     internal/platform/sqlite/assets/asset_store.go
 //     (asset_repository_adapter + summary_query)
 //   - the concrete SQLite connection and repository adapters now live
-//     entirely in internal/infrastructure/database/sqlite/assets.
+//     entirely in internal/platform/sqlite/assets.
 //     The domain package retains only the consumer-facing contracts and
 //     the type-switch bridge used by Service.
 //
@@ -162,9 +162,9 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 // `clipFolderColumns`) and the SQL query builders
 // (`buildMediaAssetQuery`, `buildClipFolderQuery`, `clipSearchColumns`)
 // that previously mirrored here are REMOVED. The canonical home is
-// `internal/infrastructure/database/sqlite/assets/clips_repository.go`
+// `internal/platform/sqlite/assets/clips_repository.go`
 // (`MediaAssetColumns`, `ClipFolderColumns` — now exported) and
-// `internal/infrastructure/database/sqlite/assets/store_helpers.go`
+// `internal/platform/sqlite/assets/store_helpers.go`
 // (the production query builders). Domain retains the soft-delete
 // SSOT only — no SQL primitives, no `database/sql` import.
 func SoftDeleteFilter() string {

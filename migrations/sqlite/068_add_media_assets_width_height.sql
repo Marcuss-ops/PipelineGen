@@ -7,7 +7,7 @@
 -- schema. Migration 059 added lifecycle/quality/folder columns but
 -- missed width, height, and group_name. These columns are queried
 -- via COALESCE(col, default) in both domain/asset/query_helpers.go
--- and infrastructure/database/sqlite/assets/clips_repository.go.
+-- and platform/sqlite/assets/clips_repository.go.
 --
 -- Fixes: "no such column: width", "no such column: group_name"
 --        in /api/media/search and SearchClips paths.

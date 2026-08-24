@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 type Reader struct {

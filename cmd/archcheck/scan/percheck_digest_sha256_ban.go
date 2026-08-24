@@ -18,7 +18,7 @@
 //     HMAC-SHA256 signing or TLS cert fingerprinting — NOT application
 //     content identity. These are `pkg/hmacsign` (webhook signing),
 //     `pkg/tlsload` (TLS cert fingerprint) and
-//     `internal/infrastructure/delivery` (signed delivery URLs).
+//     `internal/platform/delivery` (signed delivery URLs).
 //  3. The transitional allowlist
 //     `docs/migrations/digest-sha256-imports-allowlist.txt` — every file
 //     that still imports crypto/sha256 while the digest migration is in
@@ -97,7 +97,7 @@ var digestSHA256PermanentExemptPrefixes = []string{
 	// TLS certificate fingerprint (FingerprintSHA256 of the DER).
 	"pkg/tlsload/",
 	// HMAC-SHA256 signed asset-delivery URLs (sig=<hex>).
-	"internal/infrastructure/delivery/",
+	"internal/platform/delivery/",
 }
 
 // digestSHA256BanSkipDirs mirrors the standard sibling scanning policy
@@ -130,7 +130,7 @@ var digestSHA256BanSkipPathPrefixes = []string{
 var digestSHA256ImportRe = regexp.MustCompile(regexp.QuoteMeta(digestSHA256ImportPath))
 
 // digestSHA256BanNote is the violation Note for any non-exempt import.
-const digestSHA256BanNote = "forbidden import of \"crypto/sha256\" outside internal/kernel/digest. The digest SSOT rule (godlike/06) centralizes the SHA-256 algorithm in internal/kernel/digest (SHA256Bytes/SHA256String/SHA256Reader/Fingerprint/ValidateSHA256); every other package MUST delegate to it. Delegation is byte-identical (verified by the golden old==new tests), so migrating does not change persisted digests. Exempt: internal/kernel/digest (owner), TLS/protocol internals (pkg/hmacsign, pkg/tlsload, internal/infrastructure/delivery), and the transitional allowlist docs/migrations/digest-sha256-imports-allowlist.txt (each entry removed in the same change as its migration)."
+const digestSHA256BanNote = "forbidden import of \"crypto/sha256\" outside internal/kernel/digest. The digest SSOT rule (godlike/06) centralizes the SHA-256 algorithm in internal/kernel/digest (SHA256Bytes/SHA256String/SHA256Reader/Fingerprint/ValidateSHA256); every other package MUST delegate to it. Delegation is byte-identical (verified by the golden old==new tests), so migrating does not change persisted digests. Exempt: internal/kernel/digest (owner), TLS/protocol internals (pkg/hmacsign, pkg/tlsload, internal/platform/delivery), and the transitional allowlist docs/migrations/digest-sha256-imports-allowlist.txt (each entry removed in the same change as its migration)."
 
 // digestSHA256WarnBucket is the centralized residue-emitter: comment-only
 // references to the banned import path are non-fatal per godlike/07.

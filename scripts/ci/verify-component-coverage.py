@@ -46,11 +46,11 @@ ALLOWED_OVERLAP_PREFIXES: tuple[tuple[str, frozenset[str]], ...] = (
     ("internal/application/assets/providers/artlist/", frozenset({"stock", "artlist"})),
     ("internal/infrastructure/artlist/", frozenset({"stock", "artlist"})),
     ("internal/api/assets/artlist/", frozenset({"stock", "artlist"})),
-    ("internal/infrastructure/drive/", frozenset({"drive", "storage"})),
+    ("internal/platform/drive/", frozenset({"drive", "storage"})),
     ("internal/api/assets/storage/", frozenset({"timeline", "storage"})),
     ("internal/api/assets/clips/indexing/", frozenset({"clips", "indexing"})),
-    ("internal/infrastructure/database/sqlite/jobs/", frozenset({"database", "jobs"})),
-    ("internal/infrastructure/database/sqlite/scripts/", frozenset({"database", "research"})),
+    ("internal/platform/sqlite/jobs/", frozenset({"database", "jobs"})),
+    ("internal/platform/sqlite/scripts/", frozenset({"database", "research"})),
 )
 
 

@@ -276,7 +276,7 @@ func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
 		matches += strings.Count(string(src), "QdrantHealthProbe any")
 	}
 	require.Equalf(t, 0, matches,
-		"PR 4: `QdrantHealthProbe any` must NOT appear in internal/app/*.go (acceptance criterion #2 of #6). Replace with *qdrant.HealthProbe concrete; the compile-time assertion in internal/infrastructure/qdrant/health.go pins the Probe contract.")
+		"PR 4: `QdrantHealthProbe any` must NOT appear in internal/app/*.go (acceptance criterion #2 of #6). Replace with *qdrant.HealthProbe concrete; the compile-time assertion in internal/platform/qdrant/health.go pins the Probe contract.")
 }
 
 // TestComposition_FrozenVectorPointDeleterPort: PR 4 acceptance #1 —
@@ -294,7 +294,7 @@ func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
 }
 
 // PR 7 #7.1 (chore/remove-qdrant-legacy): the legacy
-// internal/infrastructure/qdrant/reconciler.go (and absent test) were
+// internal/platform/qdrant/reconciler.go (and absent test) were
 // deleted. This test pins both the file-existence AND zero-stale-caller
 // invariant. The canonical reconciler lives at
 // internal/application/qdrant/reconciler/.
@@ -302,7 +302,7 @@ func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
 	chdirToProjectRoot(t)
 
 	// (1) The deleted file path must NOT exist.
-	const reconcilerPath = "internal/infrastructure/qdrant/reconciler.go"
+	const reconcilerPath = "internal/platform/qdrant/reconciler.go"
 	if _, err := os.Stat(reconcilerPath); err == nil {
 		t.Fatalf("PR 7 #7.1: %s must NOT exist (deleted in chore/remove-qdrant-legacy; canonical path is internal/application/qdrant/reconciler/)", reconcilerPath)
 	} else if !os.IsNotExist(err) {
@@ -324,13 +324,13 @@ func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
 // PR 6 #1 (refactor/qdrant-index-document): canonical Qdrant wire-shape
 // freeze. The IndexDocument / IndexedMetadata / EmbeddingArtifact /
 // VectorChannel types (and the ForbiddenIndexDocumentFields SSOT slice)
-// declared in internal/infrastructure/qdrant/indexing/index_document.go
+// declared in internal/platform/qdrant/indexing/index_document.go
 // are the airlock vocabulary. If any of these MOVE or get RENAMED,
 // update this test AND the file's doctrine comment together.
 func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 	chdirToProjectRoot(t)
 
-	const file = "internal/infrastructure/qdrant/indexing/index_document.go"
+	const file = "internal/platform/qdrant/indexing/index_document.go"
 	src, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("PR 6 #1: canonical wire-shape file %s must exist (created in refactor/qdrant-index-document): %v", file, err)
@@ -362,11 +362,11 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 
 	// BuildPayloadFromDocument (canonical writer-side payload emitter)
 	// must exist exactly once in payload_builder.go.
-	b, err := os.ReadFile("internal/infrastructure/qdrant/indexing/payload_builder.go")
+	b, err := os.ReadFile("internal/platform/qdrant/indexing/payload_builder.go")
 	require.NoError(t, err, "read canonical qdrant payload mapper")
 	emitterCount := strings.Count(string(b), "func BuildPayloadFromDocument")
 	require.Equalf(t, 1, emitterCount,
-		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/infrastructure/qdrant/payload_mapper.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
+		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/platform/qdrant/payload_mapper.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
 		emitterCount)
 
 	// The forbidden-fields SSOT slice must contain EXACTLY the SSOT
@@ -380,7 +380,7 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 
 // Task 3 (July 2026): exactly ONE production declaration of
 // AssetIDToQdrantPointID. Canonical implementation is UUID v5 SHA-1 in
-// internal/infrastructure/qdrant/schema/pointid.go. All callers MUST
+// internal/platform/qdrant/schema/pointid.go. All callers MUST
 // route through this single function; ad-hoc point ID generation is
 // forbidden. The aliases.go redirect `var ... = schema.AssetIDToQdrantPointID`
 // is NOT a declaration — the check only matches `func AssetIDToQdrantPointID`.
@@ -410,7 +410,7 @@ func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
 	})
 	require.NoError(t, err, "walkDir internal tree")
 	require.Equalf(t, frozenAssetIDToQdrantPointIDSites, matches,
-		"Task 3: exactly %d `func AssetIDToQdrantPointID` production declaration expected; found %d in: %v. The canonical UUID v5 SHA-1 function lives in internal/infrastructure/qdrant/schema/pointid.go. All callers must route through it — never create ad-hoc point ID generation.",
+		"Task 3: exactly %d `func AssetIDToQdrantPointID` production declaration expected; found %d in: %v. The canonical UUID v5 SHA-1 function lives in internal/platform/qdrant/schema/pointid.go. All callers must route through it — never create ad-hoc point ID generation.",
 		frozenAssetIDToQdrantPointIDSites, matches, matchFiles)
 }
 

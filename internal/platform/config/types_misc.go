@@ -73,7 +73,7 @@ type ServerConfig struct {
 // (voiceovers, images, youtube, etc.) are computed under MediaDir.
 //
 // The 6 explicit DB/dir fields below drive the canonical
-// `internal/infrastructure/database.DatabaseSet` opened at boot
+// `internal/platform/sqlite.DatabaseSet` opened at boot
 // (`codex/db-set-and-paths`). Defaults preserve the legacy single-file
 // path PrimaryDBPath = <DataDir>/media/media.db.sqlite so existing
 // deployments keep working without a migration. The path migration
@@ -138,4 +138,4 @@ type FeaturesConfig struct {
 }
 
 // ToDatabaseStorageConfig projects this StorageConfig into the
-// storage.StorageConfig consumed by `internal/infrastructure/database.OpenSet`.
+// storage.StorageConfig consumed by `internal/platform/sqlite.OpenSet`.

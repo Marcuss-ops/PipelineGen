@@ -81,7 +81,7 @@ const ModelIDMultilingualE5 = "intfloat/multilingual-e5-base"
 
 func TestScanEmbeddingConstantsSSOT_StructLiteralNotMatched(t *testing.T) {
 	root := t.TempDir()
-	makeEmbeddingConstantsFile(t, root, "internal/infrastructure/qdrant/schema/schema.go",
+	makeEmbeddingConstantsFile(t, root, "internal/platform/qdrant/schema/schema.go",
 		`package schema
 
 func Default() EmbeddingSpec {

@@ -133,7 +133,7 @@ func (s *p1fStubRepo) FindCurrentForTranslation(
 // tuple whose TranslationKey differs, then appends the new
 // track with IsCurrent=true and refreshed UpdatedAt. Mirrors the
 // canonical SQLite implementation in
-// `internal/infrastructure/database/sqlite/assets/text_track_repository.go`
+// `internal/platform/sqlite/assets/text_track_repository.go`
 // (godlike/06 SSOT — the stub honours the same audit-trail
 // semantics as the production port, no inline reimplementation
 // of the flip formula).

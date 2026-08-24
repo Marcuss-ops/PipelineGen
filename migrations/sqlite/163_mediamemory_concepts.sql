@@ -3,7 +3,7 @@
 -- godlike/06 SSOT (one canonical owner per fact): this is the
 -- SOLE DDL for the media_concepts table. The corresponding row-
 -- to-struct conversion lives in
--- internal/infrastructure/database/sqlite/mediamemory/concepts_repository.go.
+-- internal/platform/sqlite/mediamemory/concepts_repository.go.
 --
 -- godlike/07 NO-FAKE-AVAILABILITY: UNIQUE(language,
 -- phrase_fingerprint) is the canonical SSOT for "same phrase +

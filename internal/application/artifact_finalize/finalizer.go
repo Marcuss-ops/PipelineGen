@@ -17,7 +17,7 @@
 //   - `var _ Finalizer = (*finalizerService)(nil)` is in service.go
 //     of this package (concrete anchor).
 //   - `var _ artifact.Repository = (*Repository)(nil)` is in
-//     internal/infrastructure/database/sqlite/artifact_stages/repository.go
+//     internal/platform/sqlite/artifact_stages/repository.go
 //     (Repository concrete anchor).
 //
 // godlike/07 fail-closed:

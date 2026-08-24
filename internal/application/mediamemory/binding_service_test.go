@@ -30,7 +30,7 @@ import (
 // fakeConceptRepo is an in-memory ConceptRepository used by the
 // binding_service tests. It validates the canonical IsKnownXxx
 // predicates (mirror of the SQLite concrete in
-// internal/infrastructure/database/sqlite/mediamemory/concepts_repository.go)
+// internal/platform/sqlite/mediamemory/concepts_repository.go)
 // so a future drift between fake and concrete surfaces as a
 // expected-failure here.
 type fakeConceptRepo struct {

@@ -30,7 +30,7 @@
 // assetID computes the same SHA-256 → v8 point, irrespective of
 // how many times the outbox dispatches the same event.
 //
-// Anti-regression gate: `rg -g '!*_test.go' "ID:\\s*asset\\.ID" internal/infrastructure/qdrant/`
+// Anti-regression gate: `rg -g '!*_test.go' "ID:\\s*asset\\.ID" internal/platform/qdrant/`
 // must return ZERO hits after this commit (and similarly for `r.ID`
 // assignments to SearchResult.QdrantPointID outside the adapter).
 //

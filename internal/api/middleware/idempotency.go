@@ -33,7 +33,7 @@
 //
 // Reference: migration 095_create_idempotency_keys.sql,
 // internal/application/middleware/idempotency_store.go (port),
-// internal/infrastructure/database/sqlite/idempotency (concrete).
+// internal/platform/sqlite/idempotency (concrete).
 package middleware
 
 import (

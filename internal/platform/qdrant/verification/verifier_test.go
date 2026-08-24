@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 
 	"github.com/stretchr/testify/assert"

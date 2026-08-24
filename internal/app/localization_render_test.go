@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // fakeLocalizationRenderExecutor records the ClipRenderPlanV1 it was handed and

@@ -18,7 +18,7 @@ const (
 	sqliteAssetsClipsDuplicateRule = "percheck_sqlite_assets_clips_duplicate"
 	sqliteAssetsClipsImportRule    = "percheck_sqlite_assets_clips_import"
 	retiredSQLiteClipsImportPath   = "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/clips"
-	retiredSQLiteClipsDir          = "internal/infrastructure/database/sqlite/assets/clips"
+	retiredSQLiteClipsDir          = "internal/platform/sqlite/assets/clips"
 )
 
 // The subpackage remains only as the owner of the unrelated idempotency
@@ -56,7 +56,7 @@ func ScanSQLiteAssetsClipsDuplicateBan(root string, _ *policy.Policy, r *report.
 			Rule:        sqliteAssetsClipsDuplicateRule,
 			MatchedRule: "retired_sqlite_clips_file",
 			Severity:    string(report.SeverityError),
-			Note:        "business logic in internal/infrastructure/database/sqlite/assets/clips is retired; keep only the idempotency adapter there and use the canonical parent assets package for ClipsRepository",
+			Note:        "business logic in internal/platform/sqlite/assets/clips is retired; use the canonical parent assets package for ClipsRepository (the idempotency adapter now lives in internal/platform/sqlite/idempotency)",
 		})
 		return nil
 	})

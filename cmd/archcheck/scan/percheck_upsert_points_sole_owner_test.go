@@ -43,7 +43,7 @@ func makeFileForUpsertPointsTest(t *testing.T, root, relPath, content string) {
 // `.UpsertPoints(` is EXEMPT.
 func TestScanUpsertPointsSoleOwner_CanonicalExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForUpsertPointsTest(t, root, "internal/infrastructure/qdrant/indexing/index_writer_ops.go",
+	makeFileForUpsertPointsTest(t, root, "internal/platform/qdrant/indexing/index_writer_ops.go",
 		`package indexing
 import "fmt"
 type Writer struct{}
@@ -87,7 +87,7 @@ func (c *FakeClient) Work() {
 // is naturally exempt (no dot-receiver → no trip).
 func TestScanUpsertPointsSoleOwner_TransportDefinitionExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForUpsertPointsTest(t, root, "internal/infrastructure/qdrant/transport/client_points.go",
+	makeFileForUpsertPointsTest(t, root, "internal/platform/qdrant/transport/client_points.go",
 		`package transport
 import "context"
 type Client struct{}
@@ -189,7 +189,7 @@ func (c *C) Remove() {
 // canonical projection-writer surface emitting `.DeletePoints(` is exempt.
 func TestScanUpsertPointsSoleOwner_DeletePointsCanonicalExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForUpsertPointsTest(t, root, "internal/infrastructure/qdrant/indexing/projection_writer.go",
+	makeFileForUpsertPointsTest(t, root, "internal/platform/qdrant/indexing/projection_writer.go",
 		`package indexing
 type W struct{ client *C }
 func (w *W) Delete() { _ = w.client.DeletePoints("c", []string{"a"}) }

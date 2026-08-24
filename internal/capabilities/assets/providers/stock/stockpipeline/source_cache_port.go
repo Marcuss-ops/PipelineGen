@@ -5,7 +5,7 @@
 // YouTube/Drive video multiple times across pipeline runs.
 //
 // godlike/06 SSOT: the concrete implementation lives in
-// internal/infrastructure/database/sqlite/stocksourcecache.
+// internal/platform/sqlite/stocksourcecache.
 // Composition root (wire_stock_pipeline.go) injects the concrete
 // repository into the StockStager via WithSourceCache.
 package stockpipeline

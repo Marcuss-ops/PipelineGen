@@ -18,10 +18,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 )
 
 // runProjectionParity runs the active-projection parity verifier with

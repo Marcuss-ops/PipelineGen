@@ -11,7 +11,7 @@
 // no mock, no stub record, just the canonical SQL table.
 //
 // The production Dispatcher.EnqueueAndIndex (in
-// internal/infrastructure/database/sqlite/outbox/dispatcher_index.go)
+// internal/platform/sqlite/outbox/dispatcher_index.go)
 // does UPSERT media_assets + INSERT outbox_events (event_type=
 // 'asset.index.requested') in a single atomic transaction. The
 // outboxEmittingDispatcher replicates the INSERT half at the test
@@ -26,7 +26,7 @@
 // outbox integration-test layer, not here.
 //
 // godlike/06 SSOT: the canonical event_type constant lives at
-// internal/infrastructure/database/sqlite/outboxevents/registry.go
+// internal/platform/sqlite/outboxevents/registry.go
 // as EventAssetIndexRequested = "asset.index.requested".
 package artlist
 

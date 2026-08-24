@@ -43,7 +43,7 @@ var _ appexport.AssetResolver = (*sqliteAssetResolver)(nil)
 // legacy `db == nil` tolerance is preserved by returning nil slices).
 //
 // Naming: "SQLite" in the ctor matches the existing pattern under
-// internal/infrastructure/database/sqlite (e.g.
+// internal/platform/sqlite (e.g.
 // `NewRepository`, `NewSQLiteStore`); the package itself is named
 // "metadataexport" because the application-side package owns the
 // canonical name and the adapter layer mirrors it.

@@ -6,7 +6,7 @@
 // AppendVersion) + the scanVersion helper + the
 // versionRepositoryAdapter struct + the VersionRepository() factory
 // were relocated to Local infra at
-// internal/infrastructure/database/sqlite/assets/version_queries.go,
+// internal/platform/sqlite/assets/version_queries.go,
 // reachable via HYBRID-embed promotion through the legacy
 // asset store struct.
 //
@@ -155,7 +155,7 @@ func ActiveKey(prefix, term, folderID string, strategy string, dryRun bool) stri
 // MonitoredSource represents a discovered external source (YouTube video,
 // Artlist asset, Drive file, etc.). The SQLite persistence shape (column
 // names, table name) lives in
-// internal/infrastructure/database/sqlite/assets.MonitoredSourceRow; the
+// internal/platform/sqlite/assets.MonitoredSourceRow; the
 // repository converts via FromMonitoredSourceDomain / row.ToDomain so the
 // domain layer has zero knowledge of the underlying schema (PR4.B,
 // June 2026).

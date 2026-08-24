@@ -77,7 +77,7 @@ ALTER TABLE media_assets ADD COLUMN review_status TEXT NOT NULL DEFAULT 'none';
 -- 'asset.rights_extension.batch_applied' per apply, which
 -- downstream reindex workers can consume to schedule targeted
 -- re-projection for the affected assets (see
--- internal/infrastructure/database/sqlite/outboxevents/registry.go
+-- internal/platform/sqlite/outboxevents/registry.go
 -- EventAssetRightsExtensionBatchApplied). Concrete row-level
 -- updates follow naturally from any subsequent rights-touching
 -- operator action that emits EventAssetRightsChanged.

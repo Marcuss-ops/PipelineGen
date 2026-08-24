@@ -61,7 +61,7 @@ var ErrStagedArtifactReferenceMissingFields = errors.New(
 // ErrStagedArtifactReferenceInvalidDestination is the typed sentinel for
 // the destination field failing the canonical 4-letter validation. The
 // canonical destination set is bounded by the application-layer
-// delivery.DestinationKey enum (internal/application/assets/delivery/
+// delivery.DestinationKey enum (internal/platform/delivery/
 // types.go); the wire layer accepts only the rendered 4-letter keys
 // (drive, doc, image, sound_effect, script, voiceover, artlist, etc.)
 // per the canonical 9-key directory in godlike/06 §SSOT.
@@ -71,7 +71,7 @@ var ErrStagedArtifactReferenceInvalidDestination = errors.New(
 
 // CanonicalDestinationKeys is the canonical 9-key directory used by the
 // wire layer's destination validation. Kept here (rather than imported
-// from internal/application/assets/delivery) to avoid an import cycle
+// from internal/platform/delivery) to avoid an import cycle
 // (internal/domain -> internal/application is a layering violation per
 // godlike/06 one-canonical-owner-per-fact). The application-layer
 // delivery.DestinationKey enum is the CANONICAL source of these values;

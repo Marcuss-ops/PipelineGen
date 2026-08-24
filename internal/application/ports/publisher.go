@@ -26,7 +26,7 @@ import (
 // `delivery.Publisher` interface.
 //
 // godlike/06 SSOT: the canonical declaration lives at
-// `internal/application/assets/delivery/publisher.go:38`.
+// `internal/platform/delivery/publisher.go:38`.
 //
 // Usage:
 //

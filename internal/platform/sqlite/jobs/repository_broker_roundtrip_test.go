@@ -77,7 +77,7 @@ import (
 )
 
 // P0.F regression-surface synergy (July 2026): the previously
-// imported `sqljobs "...internal/infrastructure/database/sqlite/jobs"`
+// imported `sqljobs "...internal/platform/sqlite/jobs"`
 // alias is REMOVED. The alias created an import cycle at build time
 // (this test file is already in `package jobs`, so importing the
 // same package via its full path is a self-import). The pacote-local

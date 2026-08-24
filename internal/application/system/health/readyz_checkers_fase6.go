@@ -36,7 +36,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── Step 4 Drive preflight trios ──────────────────────────────────────

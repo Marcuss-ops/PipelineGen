@@ -3,7 +3,7 @@
 // AGENTS.md Pattern 0 typed-port abstraction (June 2026): this file
 // declares the application-tier QueueNotifier as a Go type alias to
 // the canonical infrastructure-tier interface declared in
-// internal/infrastructure/database/sqlite/jobs/queue_notifier.go.
+// internal/platform/sqlite/jobs/queue_notifier.go.
 //
 // Why an alias and not a re-declaration:
 //   - Compile-time seam unchanged: the assertion
@@ -53,7 +53,7 @@ import sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs
 // QueueNotifier is the application-tier wake-on-Enqueue port.
 //
 // Type alias of sqljobs.QueueNotifier (the canonical interface declared
-// at internal/infrastructure/database/sqlite/jobs/queue_notifier.go).
+// at internal/platform/sqlite/jobs/queue_notifier.go).
 // Go type aliases resolve to whatever the target is — struct or
 // interface — so the alias picks up the Pattern-0 interface shape
 // from queue_notifier.go automatically. If a future PR moves the

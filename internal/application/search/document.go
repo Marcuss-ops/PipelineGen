@@ -16,7 +16,7 @@
 // Shape rationale (godlike/06 "one owner per fact" + the QDRANT-001
 // locator-leak rule): the struct is the SSOT for the Qdrant IndexSchema
 // payload — every field except QdrantPointID is mirrored 1:1 to a
-// payload key by internal/infrastructure/qdrant/payload_mapper.go.
+// payload key by internal/platform/qdrant/payload_mapper.go.
 // No server-internal locator (LocalPath, DriveLink, DriveFileID,
 // InternalRootURL, FileSystemPath, raw collection/vector names) is
 // allowed in this struct; a locator leak here would flow through every

@@ -142,7 +142,7 @@ type Job struct {
 	// application-level state (godlike/06 SSOT — one canonical column per
 	// fact). Added by migration 129 (P1.2 typed-state column migration).
 	// The EXPAND-phase write-side dual-write in
-	// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go::FinalizeAggregateParent
+	// internal/platform/sqlite/jobs/repository_lifecycle.go::FinalizeAggregateParent
 	// populates this column atomically with the JSON result column;
 	// readers (PR-P1.2-SQL-DUAL-WRITE, July 2026) prefer this column
 	// over the JSON resultMap["parent_state"] with JSON fallback during

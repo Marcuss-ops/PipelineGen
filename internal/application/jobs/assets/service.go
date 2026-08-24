@@ -11,12 +11,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 type Service struct {

@@ -4,7 +4,7 @@
 // subject-resolution logic. Application-level code (image-side,
 // stock-side, future-side) routes displayName → Subject UUID
 // through this interface. Adapter implementations live in
-// `internal/infrastructure/database/sqlite/assets/subjectsrepo`
+// `internal/platform/sqlite/assets/subjectsrepo`
 // (the canonical SQLite adapter) and any future target adapter
 // must register here too — application code MUST NOT depend on a
 // concrete adapter.

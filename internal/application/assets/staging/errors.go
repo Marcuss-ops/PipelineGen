@@ -121,7 +121,7 @@ var mimeFormatRE = regexp.MustCompile(`^[a-zA-Z0-9!#$&\-^_.+]+/[a-zA-Z0-9!#$&\-^
 
 // artifactIDFormatRE matches the canonical `art_<...>` shape used
 // elsewhere in the pipeline (e.g., ID format from
-// internal/infrastructure/database/sqlite/operations/repository.go).
+// internal/platform/sqlite/operations/repository.go).
 // Length cap 256 mirrors the application-side safeguard for
 // filesystem corruption (a 256-char filename is the typical
 // syscall boundary on most Linux filesystems).

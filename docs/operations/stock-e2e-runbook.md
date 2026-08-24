@@ -106,9 +106,9 @@ Per action plan §4 ("Failure diagnosis table") + per-probe FAIL mappings from P
 | Job terminal status: stuck, never terminal (job_id returned but state never advances past step ladder) | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | Handler execution hang / orchestrator stuck mid-ladder (canonical 6-step `RunResilient` never returns terminal state) |
 | `SUCCEEDED` but `media_assets` empty | `PR-STOCK-FINALIZE-PROJECTION` | `internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go` | Finalizer/projection asset incomplete |
 | `media_assets` OK but search empty | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | Outbox delivery / Qdrant indexing best-effort silent-fail |
-| `outbox_events.status='failed'` (transient retry-able) | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go::MarkFailed` (line 252) | Pre-condition side: `attempt_count >= max_attempts` check + `RequeueExpiredLeases` scheduling |
-| `outbox_events.status='dead_lettered'` | `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` (line 252 + 321) | Canonical owner writes `SET status = 'dead_letter'` — investigate retry loop exhaustion |
-| `outbox_events.last_error` non-empty | `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` (lines 252, 266, 321, 367) | `last_error` write seam — inspect the surface error to identify the upstream cause |
+| `outbox_events.status='failed'` (transient retry-able) | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/platform/sqlite/outboxevents/repository.go::MarkFailed` (line 252) | Pre-condition side: `attempt_count >= max_attempts` check + `RequeueExpiredLeases` scheduling |
+| `outbox_events.status='dead_lettered'` | `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/platform/sqlite/outboxevents/repository.go` (line 252 + 321) | Canonical owner writes `SET status = 'dead_letter'` — investigate retry loop exhaustion |
+| `outbox_events.last_error` non-empty | `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/platform/sqlite/outboxevents/repository.go` (lines 252, 266, 321, 367) | `last_error` write seam — inspect the surface error to identify the upstream cause |
 | `download` 404 (no `/api/media/stock/clips/<id>/download` route) | `PR-STOCK-DOWNLOAD-ROUTE-REGISTRATION` | `internal/api/assets/stock/handler.go` (lines 39-40 = existing canonical r.POST calls) | Add the missing `r.POST(/api/media/stock/clips/:id/download, h.DownloadClip)` route + handler delegate to `StockRenderWriteStep` |
 | `download` zero-size (real route, surface broken) | `PR-STOCK-DOWNLOAD-ZERO-SIZE` | `internal/capabilities/assets/providers/stock/stockpipeline/step_compose_chunks.go::StockComposeChunksStep.Run` | Canonical stitch + write seam |
 | `download` ffprobe failed (no video stream OR duration 0) | `PR-STOCK-CUTTER` | `internal/infrastructure/media/render/cutter.go` | ffmpeg cutter / mp4 muxer diagnostic |
@@ -169,9 +169,9 @@ Per action plan §6 + §7 (godlike/06 SSOT one canonical owner per fact). Each P
 | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | forward-pointer |
 | `PR-STOCK-FINALIZE-PROJECTION` | `internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | forward-pointer |
-| `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` | forward-pointer |
-| `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` | forward-pointer |
-| `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` | forward-pointer |
+| `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
+| `PR-STOCK-OUTBOX-DEAD-LETTERED` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
+| `PR-STOCK-OUTBOX-LAST-ERROR` | `internal/platform/sqlite/outboxevents/repository.go` | forward-pointer |
 | `PR-STOCK-DOWNLOAD-ROUTE-REGISTRATION` | `internal/api/assets/stock/handler.go` (lines 39-40) | forward-pointer |
 | `PR-STOCK-DOWNLOAD-ZERO-SIZE` | `internal/capabilities/assets/providers/stock/stockpipeline/step_compose_chunks.go` | forward-pointer |
 | `PR-STOCK-DIRECT-URLS-FLOW` | `internal/capabilities/assets/providers/stock/stockpipeline/direct_url_resolver.go` (or canonical) | forward-pointer |
@@ -198,7 +198,7 @@ Adjacent waves (precedent / next-up):
 - **`architecture/current.yaml#GODOBJ-2026-07-03`** — stockpipeline decomposition wave (P0 #1 P0 absolute; closed pre-battery)
 - **`internal/api/assets/stock/handler.go`** — canonical HTTP surface (`POST /api/stock-pipeline/run` + `/search-and-run`)
 - **`internal/capabilities/assets/providers/stock/stockpipeline/orchestrator.go`** — canonical 6-step orchestrator under test
-- **`internal/infrastructure/database/sqlite/outboxevents/repository.go`** — canonical outbox write seam (lines 252, 266, 321, 367 for `last_error` per the action plan §4 mapping)
+- **`internal/platform/sqlite/outboxevents/repository.go`** — canonical outbox write seam (lines 252, 266, 321, 367 for `last_error` per the action plan §4 mapping)
 
 ---
 
@@ -593,7 +593,7 @@ Per godlike/06 SSOT (one canonical owner per fact). For the operator who lands o
 | First-party error event `"artlist run failed"` (any detail) but `error` column differs  | `PR-ARTLIST-RUN-FAILED`          | `internal/capabilities/assets/providers/artlist/job_core.go` (line 333: `tools.Event("error", "artlist run failed", map[string]any{...})`) | Inspect `data_json` for the underlying cause; the broker surfaces failure here AND moves the row to RETRY_WAIT (then CANCELLED on max-retries). |
 | Run alternates `run_service.go` (line 81 `resp.Error = "no candidates found"`) variant | `PR-ARTLIST-RUN-SERVICE-NO-HITS` | `internal/capabilities/assets/providers/artlist/run_service.go` (line 81)                                                     | Same root cause as `PR-ARTLIST-NO-CANDIDATES`; different entry-point. Apply the same fix; one canonical owner policy does NOT permit merging the two PRs — each entry owns a distinct seam. |
 | Job stuck on `WAITING_CHILDREN` longer than the orchestrator's aggregator timeout       | `PR-ARTLIST-PARENT-AGG-HANG`     | `internal/capabilities/scripts/jobs/parent_aggregator.go` (cross-capability aggregator; only applies to parent jobs of type `media.artlist`)  | Inspect parent aggregator; verify all children reached terminal. NOT a media.artlist-only symptom — may belong under the WAVE-21 PR-G scripts subpkg closure. |
-| `status=CANCELLED` (operator action or policy)                                           | (no auto-recovery)               | `n/a`                                                                                                                        | Document cancellation reason in `internal/infrastructure/database/sqlite/jobs/repository_commands.go::Cancel` lineage; operator re-runs after the upstream fix. |
+| `status=CANCELLED` (operator action or policy)                                           | (no auto-recovery)               | `n/a`                                                                                                                        | Document cancellation reason in `internal/platform/sqlite/jobs/repository_commands.go::Cancel` lineage; operator re-runs after the upstream fix. |
 
 ### §11.6 — Operator handoff ack checklist (run BEFORE re-running the affected job)
 

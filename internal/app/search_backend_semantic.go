@@ -356,7 +356,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 //     Language) + lifecycle allowlist (ACTIVE only). Empty fields
 //     drop out of the Qdrant filter (no zero-value must-clauses).
 //
-// The Qdrant adapter (infrastructure/qdrant/search_adapter.go)
+// The Qdrant adapter (platform/qdrant/search_adapter.go)
 // internally calls CompileQdrantFilter with these values.
 func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
 	category := strings.TrimSpace(q.Filters.Category)

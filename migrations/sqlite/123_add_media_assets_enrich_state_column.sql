@@ -13,7 +13,7 @@
 --     EnrichState type + 4 const constants + Valid/IsTerminal/IsFailed/
 --     IsScrapeCandidate helpers + CanonicalEnrichStateValues closed-set
 --     enumerator (godlike/06 SSOT: vocabulary lives in this ONE file).
---   internal/infrastructure/database/sqlite/assets/clips_enrich_state.go
+--   internal/platform/sqlite/assets/clips_enrich_state.go
 --     SetEnrichState mirrors SetIndexState (column + updated_at
 --     atomic UPDATE).
 --   internal/application/assets/enrichment/{ports,state_machine,errors}.go

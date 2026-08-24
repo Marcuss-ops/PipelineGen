@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
 // ── Search query embedder adapter (Fase 6 Spina Dorsale) ───────────────────

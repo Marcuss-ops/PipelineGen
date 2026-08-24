@@ -53,9 +53,9 @@ import (
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/logsink"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"go.uber.org/zap"
@@ -98,7 +98,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// composition root constructs a typed SQLiteRequestLogSink that
 	// owns the *sql.DB internally and exposes the typed
 	// RequestLogSink port to middleware.SetLogSink. The adapter lives
-	// under internal/infrastructure/database/sqlite/logsink so the
+	// under internal/platform/sqlite/logsink so the
 	// API layer never carries raw database/sql imports.
 	if root.DB != nil && root.DB.DB != nil {
 		logSink := logsink.NewSQLiteRequestLogSink(root.DB.DB, log)
@@ -246,7 +246,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// PR 4 typed wiring.ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
 	// (was `any` pre-PR4). The concrete type satisfies the probe
 	// contract via the compile-time assertion in
-	// internal/infrastructure/qdrant/health.go (`_ interface{ Probe(...) error }
+	// internal/platform/qdrant/health.go (`_ interface{ Probe(...) error }
 	// = (*HealthProbe)(nil)`); the runtime type-assertion
 	// `if p, ok := ... .(...) ...; ok` is gone.
 	var qdrantProbe interface{ Probe(context.Context) error }

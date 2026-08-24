@@ -78,7 +78,7 @@
       "internal/application/youtube (43 files) — in_progress to capability/youtube split",
       "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)",
       "internal/capabilities/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)",
-      "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
+      "internal/platform/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
     ],
     "StaleProseStems": [
       "compose_voiceover",
@@ -177,8 +177,8 @@
     "percheck_metadata_registry bare-key-residue: 1 non-namespaced (bare) metadata-key reference(s) in internal/capabilities/youtube/usecase/callbacks.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 43 non-namespaced (bare) metadata-key reference(s) in internal/capabilities/youtube/usecase/metadata_enrich.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "percheck_metadata_registry bare-key-residue: 9 non-namespaced (bare) metadata-key reference(s) in internal/infrastructure/ai/autotag/autotag.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
-    "percheck_metadata_registry commentonly-residue: 1 comment-only metadata-key reference(s) in internal/infrastructure/database/sqlite/assets/source_version.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "percheck_metadata_registry bare-key-residue: 2 non-namespaced (bare) metadata-key reference(s) in internal/infrastructure/database/sqlite/outbox/dispatcher_index.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
+    "percheck_metadata_registry commentonly-residue: 1 comment-only metadata-key reference(s) in internal/platform/sqlite/assets/source_version.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_metadata_registry bare-key-residue: 2 non-namespaced (bare) metadata-key reference(s) in internal/platform/sqlite/outbox/dispatcher_index.go (legacy Asset.Metadata via typed-accessor; residue-allowed for the migration window per godlike/07)",
     "input_immutability_census current_legacy_mutations=129 (informational census; new mutations are errors in production-only mode)",
     "percheck_asset_state_canonical_14 canonical-14-count: 23 comment-only reference(s) in internal/domain/asset/asset_state.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_asset_state_no_shadow_enum shadow-enum: 2 comment-only reference(s) in cmd/archcheck/runner.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
@@ -190,9 +190,9 @@
     "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/capabilities/scripts/scene/synthesizer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/application/scripts/scene_orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "domain_job_compatibility_aliases_census current_legacy_imports=172 (informational census; grandfathered under PRE-EXISTING-19; new imports are errors in production-only mode)",
-    "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "percheck_asset_committer_event_ssot index-event-comments: 2 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_metadata_writer_payload.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/platform/sqlite/assets/clip_atomic_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/platform/sqlite/assets/clip_metadata_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_asset_committer_event_ssot index-event-comments: 2 comment-only reference(s) in internal/platform/sqlite/assets/clip_metadata_writer_payload.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_search_aggregator_singleton search-aggregator-singleton-comments: 1 comment-only reference(s) to search.NewAggregator( in cmd/archcheck/runner.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)"
   ],
   "has_hard_gate_hits": false

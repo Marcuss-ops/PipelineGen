@@ -41,7 +41,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -120,7 +120,7 @@ type CompletionTxRunner interface {
 // or permanent Delete, Qdrant DeletePoints, SQLite SoftDelete, all
 // lifecycle_state hops on the canonical state machine) is delegated
 // to the outbox dispatcher. See the dispatcher's EnqueueDriveDelete
-// docstring (internal/infrastructure/database/sqlite/outbox/
+// docstring (internal/platform/sqlite/outbox/
 // dispatcher_delete.go) for the full state-machine sequence.
 //
 // Blocco 3.1 commit 3/3 (July 2026): CompleteAsset was added as the

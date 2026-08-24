@@ -38,7 +38,7 @@ import (
 //
 // Forward-pointer (post-Commit 2): the canonical
 // delivery.Publisher interface (in
-// internal/application/assets/delivery/publisher.go) does not expose
+// internal/platform/delivery/publisher.go) does not expose
 // ProbeFolderAccess today — a follow-up commit will lift it onto
 // the canonical publisher port surface so the prober can call it
 // without the composition root needing to construct an ad-hoc

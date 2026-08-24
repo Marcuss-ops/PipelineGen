@@ -68,9 +68,9 @@
 //   - TestPlaintextOutput_P0F — pre-existing failure
 //   - TestFallbackPolicy_P0G — KNOWN GAP
 //   - Pre-existing infra build errors in
-//     internal/infrastructure/database/sqlite/assets/text_track_repository.go +
+//     internal/platform/sqlite/assets/text_track_repository.go +
 //     internal/application/jobs/registry_texttracks.go +
-//     internal/infrastructure/database/sqlite/jobs/repository.go (orthogonal)
+//     internal/platform/sqlite/jobs/repository.go (orthogonal)
 package jobs
 
 import (

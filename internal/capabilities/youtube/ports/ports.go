@@ -296,7 +296,7 @@ type ClipAtomicWriter interface {
 var ErrOutboxTerminalConflict = errors.New("outbox: event suppressed by existing terminal row (dead_letter or superseded); media_assets row committed, index blocked")
 
 // ClipMetadataWriter is the port for metadata-enrichment writes. The
-// concrete ClipMetadataWriterAdapter (internal/infrastructure/database/
+// concrete ClipMetadataWriterAdapter (internal/platform/sqlite/
 // sqlite/assets/clip_metadata_writer.go) performs an atomic SQLite
 // transaction: UPDATE media_assets.metadata_json + INSERT outbox_events
 // in a single tx.

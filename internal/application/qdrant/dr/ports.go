@@ -17,7 +17,7 @@
 //	                                                   CollectionAgeReader (PR 7 typed-port),
 //	                                                   RetentionExecutor
 //	internal/domain/qdrantdr/types.go                ─► DR-owned canonical types
-//	internal/infrastructure/qdrant/dr_adapter.go     ─► type-aliases + wire-encode
+//	internal/platform/qdrant/dr_adapter.go     ─► type-aliases + wire-encode
 package dr
 
 import (
@@ -29,7 +29,7 @@ import (
 
 // SnapshotStore persists + restores Qdrant collection snapshots
 // across compatibility-version boundaries. Production concrete:
-// *qdrant.SnapshotClient in internal/infrastructure/qdrant.
+// *qdrant.SnapshotClient in internal/platform/qdrant.
 type SnapshotStore interface {
 	CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error)
 	RestoreSnapshot(ctx context.Context, collection, snapshotURL string) error
@@ -40,7 +40,7 @@ type SnapshotStore interface {
 
 // AliasSwitcher performs the blue-green atomic alias rotation that
 // Production concrete: *qdrant.CollectionManager in
-// internal/infrastructure/qdrant (manual admin path) +
+// internal/platform/qdrant (manual admin path) +
 // internal/application/qdrant/reconciler::Service (programmatic).
 type AliasSwitcher interface {
 	SwitchAlias(ctx context.Context, alias, oldTarget, newTarget string) error
@@ -56,7 +56,7 @@ type CollectionCreator interface {
 
 // Verifier is the read-only gate that decides whether an alias switch
 // is safe (QDRANT-002 PR10/11/12/13 invariants). Production concrete:
-// internal/infrastructure/qdrant/verifier.go.
+// internal/platform/qdrant/verifier.go.
 type Verifier interface {
 	VerifyReindex(ctx context.Context, targetCollection string, expectedPoints int) (*VerifyReport, error)
 }
@@ -70,7 +70,7 @@ type DRMetrics interface {
 
 // CollectionAgeReader is the canonical typed port for per-collection
 // creation-time tracking. Production concrete: the AgingTable
-// adapter registered at boot (see internal/infrastructure/qdrant/
+// adapter registered at boot (see internal/platform/qdrant/
 // collection_manager.go for the wire-side interface and the inline
 // agreement at the construction site).
 //
@@ -81,7 +81,7 @@ type DRMetrics interface {
 // placement rule), so a RetentionConfig consumer can be statically
 // checked by the compiler: `cfg.AgingTable` is `CollectionAgeReader`,
 // not `any`. The infra-side AgingTable interface continues to live
-// in internal/infrastructure/qdrant/collection_manager.go because
+// in internal/platform/qdrant/collection_manager.go because
 // the concrete adapter satisfies the wire-format concerns (string
 // RFC3339); a compile-time assertion
 // `var _ dr.CollectionAgeReader = (qdrant.AgingTable)(nil)` pins the
@@ -98,7 +98,7 @@ type CollectionAgeReader interface {
 // RetentionExecutor applies the keep-last-N + max-age retention
 // policy using the CollectionAgeReader for per-collection timestamps.
 // Production concrete: *qdrant.RetentionExecutor in
-// internal/infrastructure/qdrant (registered into outbox via
+// internal/platform/qdrant (registered into outbox via
 // internal/application/jobs/outbox DriveHandler).
 type RetentionExecutor interface {
 	CleanupWithConfig(ctx context.Context, cfg qdrantdr.RetentionConfig) (*qdrantdr.RetentionResult, error)

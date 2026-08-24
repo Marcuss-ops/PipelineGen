@@ -43,7 +43,7 @@ import (
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

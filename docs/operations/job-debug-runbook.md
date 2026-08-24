@@ -237,8 +237,8 @@ diagnostic-only, not an action plan):
 | Fact                                                             | Canonical reference                                                   |
 |------------------------------------------------------------------|----------------------------------------------------------------------|
 | `jobs` and `job_events` table schemas                            | `migrations/sqlite/001_velox_core.sql:193`                           |
-| Canonical SELECT projection for `job_events`                     | `internal/infrastructure/database/sqlite/jobs/repository_events.go`  |
-| Job INSERTs (status / error / retry_count writers)               | `internal/infrastructure/database/sqlite/jobs/finalize_attempt.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_complete.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_aggregation.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_progress.go` + `internal/infrastructure/database/sqlite/jobs/repository_claims.go` + `internal/application/jobs/finalizer/job_completion_writer.go` (lines 108, 138) |
+| Canonical SELECT projection for `job_events`                     | `internal/platform/sqlite/jobs/repository_events.go`  |
+| Job INSERTs (status / error / retry_count writers)               | `internal/platform/sqlite/jobs/finalize_attempt.go` + `internal/platform/sqlite/jobs/lifecycle_complete.go` + `internal/platform/sqlite/jobs/lifecycle_finalize.go` + `internal/platform/sqlite/jobs/lifecycle_aggregation.go` + `internal/platform/sqlite/jobs/lifecycle_progress.go` + `internal/platform/sqlite/jobs/repository_claims.go` + `internal/application/jobs/finalizer/job_completion_writer.go` (lines 108, 138) |
 | Finalizer rows-error mapping (`jobs.error` ← `job_events.message`)| `internal/kernel/job/finalize_commands.go:226`                     |
 | `"no candidates found"` literal origin                            | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:52` |
 | `stageDiscoverClips` function entry                              | `internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go:44` |
@@ -260,13 +260,13 @@ operator-runnable guard for this lockstep.
   echo
   echo '-- canonical job_events INSERT writers (BOTH dirs; per godlike/06 SSOT lockstep) --'
   grep -rnE 'INSERT INTO job_events\b' \
-    internal/infrastructure/database/sqlite/jobs/ \
+    internal/platform/sqlite/jobs/ \
     internal/application/jobs/finalizer/ \
     | grep -v _test.go
   echo
   echo '-- canonical jobs.error writer --'
   grep -rnE 'UPDATE jobs SET error\b|jobs\.error\s*=' \
-    internal/infrastructure/database/sqlite/jobs/ internal/kernel/job/ \
+    internal/platform/sqlite/jobs/ internal/kernel/job/ \
     | grep -v _test.go
   echo
   echo '-- canonical "no candidates found" literal --'
@@ -276,8 +276,8 @@ operator-runnable guard for this lockstep.
   echo '-- runbook §7 lockstep references MUST resolve to real files --'
   for f in \
     migrations/sqlite/001_velox_core.sql \
-    internal/infrastructure/database/sqlite/jobs/repository_events.go \
-    internal/infrastructure/database/sqlite/jobs/finalize_attempt.go \
+    internal/platform/sqlite/jobs/repository_events.go \
+    internal/platform/sqlite/jobs/finalize_attempt.go \
     internal/kernel/job/finalize_commands.go \
     internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go \
     internal/domain/job/job.go \

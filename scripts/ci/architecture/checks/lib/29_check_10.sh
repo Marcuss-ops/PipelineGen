@@ -12,7 +12,7 @@
 # dispatcher) risks silently writing to media_assets without an outbox event,
 # leaving the Qdrant vector stale.
 #
-# Allowlist: cmd/admin/**, internal/infrastructure/database/sqlite/**,
+# Allowlist: cmd/admin/**, internal/platform/sqlite/**,
 # internal/application/{assets/{ingest,jobs/assets,artifacts,providers,searchqueries,catalogsync},
 # voiceover,channels,images,youtube,clips}/**, internal/api/assets/**,
 # internal/app/**, internal/infrastructure/{ai/autotag,database/assetindex}/**,
@@ -21,7 +21,7 @@ echo "=== Check 10: forbid asset-repo Upsert outside canonical allowlist (TODO 1
 assetUpserts=$(rg -n --type go \
     -e '\.Upsert\(ctx,' \
     --glob '!**/cmd/admin/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/**' \
+    --glob '!**/internal/platform/sqlite/**' \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
@@ -39,7 +39,7 @@ assetUpserts=$(rg -n --type go \
     --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
     --glob '!**/internal/infrastructure/ai/autotag/**' \
-    --glob '!**/internal/infrastructure/database/assetindex/**' \
+    --glob '!**/internal/platform/sqlite/assetindex/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
@@ -97,8 +97,8 @@ all_ips=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     --glob '!**/cmd/admin/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/**' \
-    --glob '!**/internal/infrastructure/files/**' \
+    --glob '!**/internal/platform/sqlite/**' \
+    --glob '!**/internal/platform/filesystem/**' \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
@@ -113,7 +113,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
     --glob '!**/internal/infrastructure/ai/autotag/**' \
-    --glob '!**/internal/infrastructure/database/assetindex/**' \
+    --glob '!**/internal/platform/sqlite/assetindex/**' \
     . 2>/dev/null \
     || true)
 literal_ips=$(printf '%s\n' "$all_ips" \

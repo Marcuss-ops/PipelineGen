@@ -3,7 +3,7 @@ package scripts
 import "testing"
 
 // NormalizeSearchText edge-case tests for the SQLite scripts layer
-// (internal/infrastructure/database/sqlite/scripts/search.go).
+// (internal/platform/sqlite/scripts/search.go).
 // This implementation: lowercase, strip URL-ish tokens, replace punctuation
 // with spaces, collapse whitespace.
 

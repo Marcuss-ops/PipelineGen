@@ -30,9 +30,9 @@
 //     constructors (NewTextSourceResolver, NewClipsSourceResolver,
 //     NewCatalogSourceResolver, NewSearchSourceResolver,
 //     NewCurateSourceResolver, ClipSourceBuilder).
-//   - internal/infrastructure/qdrant: Searcher, TextEmbedder,
+//   - internal/platform/qdrant: Searcher, TextEmbedder,
 //     NewClipSearchAdapter.
-//   - internal/infrastructure/embeddings: OllamaEmbedderAdapter.
+//   - internal/platform/embeddings: OllamaEmbedderAdapter.
 package app
 
 import "time"
@@ -50,8 +50,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 

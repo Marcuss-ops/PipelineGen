@@ -23,7 +23,7 @@
 // RequeueExpiredLeasesNoArg, MarkRunningJobsOlderThanFailed) intentionally
 // do NOT live on this Service — the compile-time assertion
 // `var _ job.JobBroker = (*SQLiteStore)(nil)` in
-// `internal/infrastructure/database/sqlite/jobs/repository.go` is the load-bearing
+// `internal/platform/sqlite/jobs/repository.go` is the load-bearing
 // invariant: a future PR that resurrects `RequeueExpiredLeasesNoArg` (or any
 // other SQLite-only method) on this Service would have to widen the JobBroker
 // port to expose it, which the architecture review would catch at PR-merge time.

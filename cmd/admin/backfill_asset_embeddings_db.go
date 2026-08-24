@@ -22,7 +22,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The media_assets column selected here MUST match the schema
-//     declared in internal/infrastructure/database/sqlite/.../migrations.
+//     declared in internal/platform/sqlite/.../migrations.
 //     If a column is added or removed there, both helpers + their
 //     Scan() destructuring MUST be updated in lockstep — these
 //     queries read production shape by SSOT contract, no inline schema

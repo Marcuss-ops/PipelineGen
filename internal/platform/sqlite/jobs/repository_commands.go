@@ -38,7 +38,7 @@ import (
 // transparent re-export aliases in the sqlite package — but the alias
 // re-export step was never completed. The half-applied cutover left
 // `lifecycle_*.go` / `finalize_attempt.go` referencing the names
-// unprefixed and the entire `internal/infrastructure/database/sqlite/jobs/`
+// unprefixed and the entire `internal/platform/sqlite/jobs/`
 // package failed to build. The aliases below complete the cutover
 // correctly: re-export (not re-declare) so identity is preserved.
 var (

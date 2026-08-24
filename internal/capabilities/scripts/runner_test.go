@@ -32,7 +32,7 @@
 //     awaitCompletion
 //
 // Independence from Fase 4 precedent: Fase 4 split lived in the
-// `internal/infrastructure/database` package; this split lives
+// `internal/platform/sqlite` package; this split lives
 // in `internal/scriptgeneration`. The `migrations_092_093_test.go`
 // + `migrations_helpers_test.go` precedent illustrates the
 // "shared fixture + per-scenario test files" pattern; this

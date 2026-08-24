@@ -84,7 +84,7 @@ func TestMetrics_IncDownloadPath_LabelRouted(t *testing.T) {
 // downloader.NewResolver(cfg, ResolverConfig{}, log, nil)
 // MUST NOT panic on first Download call. The same nil-safety
 // DriveValidatorMetrics in
-// internal/application/assets/delivery/drive_validator_metrics_test.go
+// internal/platform/delivery/drive_validator_metrics_test.go
 // (P1.4 canonical precedent — the
 // TestDriveValidatorMetrics_NilReceiverNoOp_P1_4 test there is
 // the structural mirror of this one).

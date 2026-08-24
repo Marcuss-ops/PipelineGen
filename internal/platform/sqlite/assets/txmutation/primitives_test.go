@@ -1,7 +1,7 @@
 // Package txmutation (primitives_test.go) — unit tests for HardDeleteTx's
 // canonical deletion sequence. Companion tests for the lifecycle gate
 // (lifecycle_state=DELETED AND qdrant_point_state=absent) live in
-// internal/infrastructure/database/sqlite/admin/purge_test.go — they
+// internal/platform/sqlite/admin/purge_test.go — they
 // intentionally sit at the adapter layer because the gate is enforced
 // there, not in the primitive.
 //

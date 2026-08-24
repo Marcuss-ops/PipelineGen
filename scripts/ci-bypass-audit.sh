@@ -115,7 +115,7 @@ run_query "Check A: \`.Upsert(\` non-allowlisted hits" '\.Upsert\(' \
     --glob '!**/*_test.go' \
     --glob '!**/mutations/primitives.go' \
     --glob '!**/admin/purge*.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     || failures=$((failures + 1))
 
 # ── Check B: rg2 `UpsertClip\(` — direct calls to dispatcher-only primitive ──
@@ -126,7 +126,7 @@ run_query "Check B: \`UpsertClip(\` non-allowlisted hits" 'UpsertClip\(' \
     --glob '!**/*_test.go' \
     --glob '!**/mutations/primitives.go' \
     --glob '!**/admin/purge*.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     || failures=$((failures + 1))
 
 # ── Check C: rg3 `\.Restore\(` — restore-path callers ───────────────────
@@ -135,7 +135,7 @@ run_query "Check B: \`UpsertClip(\` non-allowlisted hits" 'UpsertClip\(' \
 run_query "Check C: \`.Restore(\` non-allowlisted hits" '\.Restore\(' \
     --glob '!**/*_test.go' \
     --glob '!**/admin/purge*.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     || failures=$((failures + 1))
 
 # ── Check D: rg4 `\.HardDelete\(` — physical-purge callers ─────────────
@@ -143,7 +143,7 @@ run_query "Check C: \`.Restore(\` non-allowlisted hits" '\.Restore\(' \
 run_query "Check D: \`.HardDelete(\` non-allowlisted hits" '\.HardDelete\(' \
     --glob '!**/*_test.go' \
     --glob '!**/admin/purge*.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     || failures=$((failures + 1))
 
 # ── Check E: rg5 `ExecContext.*media_assets` — raw-SQL anti-pattern ───

@@ -116,7 +116,7 @@ type JobsConfig struct {
 	// media_assets for deletion-stuck rows + re-emits the appropriate
 	// outbox event. Default 15min balances operator visibility against
 	// per-tick DB scan load (the query is bounded by batchSize=100,
-	// see internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go).
+	// see internal/platform/sqlite/deletion/stuck_row_scanner.go).
 	//
 	// DeletionReconcilerStuckThreshold is the age cutoff: rows whose
 	// updated_at is older than now-threshold are eligible for

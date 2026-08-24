@@ -21,7 +21,7 @@
 package monitor
 
 // assetsdb is the canonical monitor-package alias for
-// `internal/infrastructure/database/sqlite/assets` — matches the
+// `internal/platform/sqlite/assets` — matches the
 // convention used in `ports_discoveries.go` (the canonical port
 // definition for the youtube_discoveries ledger). The monitor
 // package re-exports ports / sentinels from this package under its

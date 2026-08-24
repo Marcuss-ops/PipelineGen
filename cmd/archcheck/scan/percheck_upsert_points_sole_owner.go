@@ -4,7 +4,7 @@
 // scan/percheck_upsert_points_sole_owner.go pins the
 // godlike/06 SSOT that the sole production caller of
 // `transport.Client.UpsertPoints(` is
-// `internal/infrastructure/qdrant/indexing/` (the IndexingHandler
+// `internal/platform/qdrant/indexing/` (the IndexingHandler
 // outbox consumer). The canonical apply-path is:
 //
 //	(caller) asset.index.requested asset.index.delete_requested outbox
@@ -29,12 +29,12 @@
 //
 // This gate is the forward-prevention fence. Production-code
 // emission of `\.UpsertPoints\(` outside the canonical
-// `internal/infrastructure/qdrant/indexing/` caller surface
+// `internal/platform/qdrant/indexing/` caller surface
 // surfaces as a CI build failure. Comment-only references are
 // residue-accounted as WARN.
 //
 // The transport-package function definition itself
-// (`internal/infrastructure/qdrant/transport/client_points.go`;
+// (`internal/platform/qdrant/transport/client_points.go`;
 // the literal `func (c *Client) UpsertPoints(`) is the
 // declaration line, NOT a call site — the regex `\.UpsertPoints\(
 // requires a dot-receiver before the function name, so the
@@ -51,7 +51,7 @@
 //     sibling scanners reference the canonical pattern for
 //     documentation).
 //   - skip the canonical IndexingHandler caller surface
-//     `internal/infrastructure/qdrant/indexing/`.
+//     `internal/platform/qdrant/indexing/`.
 //   - comment-only references are residue-accounted as WARN
 //     (godlike/07).
 //
@@ -91,15 +91,15 @@ var upsertPointsSoleOwnerSkipPathPrefixes = []string{
 // upsertPointsSoleOwnerCanonicalCallers is the EXEMPT set:
 // the canonical surfaces where direct `\.UpsertPoints\(` calls
 // are legitimate. The IndexingHandler routes asset index events
-// through `internal/infrastructure/qdrant/indexing/`; the
+// through `internal/platform/qdrant/indexing/`; the
 // qdrantmm package (mediamemory concept/frame indexers) is the
 // SOLE additional owner for concept/frame vector writes. The
 // generic ProjectionWriter adapter (TransportProjectionWriter)
 // moved to `internal/platform/qdrant/indexing/` and remains the
 // canonical translation layer for those calls.
 var upsertPointsSoleOwnerCanonicalCallers = []string{
-	"internal/infrastructure/qdrant/indexing/",
-	"internal/infrastructure/qdrant/qdrantmm/",
+	"internal/platform/qdrant/indexing/",
+	"internal/platform/qdrant/qdrantmm/",
 	"internal/platform/qdrant/indexing/",
 }
 
@@ -132,13 +132,13 @@ const upsertPointsSoleOwnerRule = "percheck_upsert_points_sole_owner"
 // The message references the canonical IndexingHandler +
 // outbox pipeline + the migrations/api/archcheck-strict-baseline.json
 // residue list so the operator sees the migration path inline.
-const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
+const upsertPointsSoleOwnerNote = "forbidden non-canonical call site of client.UpsertPoints( outside the IndexingHandler outbox consumer (PR-DIAGNOSI-FINALE rule 4, July 2026); godlike/06 SSOT requires the sole production caller of qdrant UpsertPoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer). The canonical outbox-driven path is asset.index.requested → IndexingHandler → clipindexer.IndexClip → (internally) client.UpsertPoints(. Any direct caller from non-canonical paths bypasses the outbox pipeline and risks silent at-least-once regression (outbox guarantees at-least-once delivery with idempotency-key dedup; direct callers don't). Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json (godlike/07 NO-FAKE-AVAILABILITY migration window)."
 
 // deletePointsSoleOwnerNote is the violation Note for any non-canonical
 // production call site of `.DeletePoints(`. It is the destructive twin of
 // upsertPointsSoleOwnerNote: a direct DeletePoints bypasses the projection
 // writer's retention/alias contract and can silently orphan points.
-const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/infrastructure/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/infrastructure/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json."
+const deletePointsSoleOwnerNote = "forbidden non-canonical call site of client.DeletePoints( outside the canonical projection writer surface (PR-HASH-SEMANTICS item 16, August 2026); godlike/06 SSOT requires the sole production caller of qdrant DeletePoints to be internal/platform/qdrant/indexing/ (the IndexingHandler outbox consumer) or internal/platform/qdrant/qdrantmm/. A direct DeletePoints from a non-canonical path bypasses the projection writer's alias/retention contract and risks silent point loss. Test-fixture residue callers are documented in migrations/api/archcheck-strict-baseline.json."
 
 // upsertPointsSoleOwnerWarn is the residue-emitter for
 // comment-only references.

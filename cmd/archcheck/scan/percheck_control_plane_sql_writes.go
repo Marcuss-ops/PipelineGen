@@ -29,8 +29,6 @@ const controlPlaneSQLWritesRule = "percheck_control_plane_sql_writes"
 // exemptions, so adding a new service cannot silently acquire write authority.
 var controlPlaneSQLCanonicalPrefixes = []string{
 	"internal/platform/sqlite/",
-	"internal/infrastructure/database/sqlite/",
-	"internal/infrastructure/database/clipcatalog/repository.go",
 	"internal/infrastructure/indexing/clipindexer/indexing_api_persistence.go",
 	"internal/infrastructure/indexing/clipindexer/indexing_state.go",
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",

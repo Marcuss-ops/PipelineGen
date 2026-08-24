@@ -2,7 +2,7 @@
 # the application/api layers.
 #
 # Wave 19 / P1-8 refactor ticket (June 2026): the canonical layering
-# rule per AGENTS.md Pattern 0 puts SQL in `internal/infrastructure/database/**`;
+# rule per AGENTS.md Pattern 0 puts SQL in `internal/platform/sqlite/**`;
 # `internal/application/**` and `internal/api/**` consume SQL only via typed
 # ports (declared in `internal/application/<consumer>/ports.go`). Direct
 # `database/sql` import in production app/api code is the violation this
@@ -39,7 +39,7 @@
 # These files have a narrow SQL surface (one query helper at most) and
 # a clear single-port target. Each lands as one PR with: port
 # declaration in the file's own `ports.go`, adapter in
-# `internal/infrastructure/database/<feature>/`, wire in
+# `internal/platform/sqlite/<feature>/`, wire in
 # `internal/app/<feature>_adapters.go`, plus tests.
 internal/application/assets/providers/artlist/service_deps.go  # P1-8 Artlist dependency boundary; owner: agent/Codebuff; deadline: 2026-08-31# Wave 19 PR-Wave19-MIGRATE-C closed 2026-07-30: search_cache.go migrated to typed ArtlistSearchCachePort + sqlite adapter; see REVERSE-REFERENCE below.
 

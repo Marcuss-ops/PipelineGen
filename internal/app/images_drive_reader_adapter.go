@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // imagesDriveReaderAdapter keeps Drive-specific DTOs at the composition root.

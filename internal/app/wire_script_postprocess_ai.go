@@ -19,7 +19,7 @@
 //     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
 //   - internal/platform/ollama/adapters: NewOllamaEntityExtractorAdapter,
 //     NewOllamaMetadataGeneratorAdapter
-//   - internal/infrastructure/embeddings: NewOllamaEmbedderAdapter
+//   - internal/platform/embeddings: NewOllamaEmbedderAdapter
 //   - internal/platform/observability: NewTranslationMetricsAdapter
 //   - internal/capabilities/scripts/ports: NewScriptTranslatorFromFunc
 package app

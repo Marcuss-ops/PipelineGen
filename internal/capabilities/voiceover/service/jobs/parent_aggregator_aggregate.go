@@ -70,7 +70,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// godlike/06 SSOT (one canonical owner per fact): the typed
 	// column name lives ONLY in
 	// internal/application/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn
-	// — the SQL mirror (internal/infrastructure/database/sqlite/jobs/parentStateTypedColumn)
+	// — the SQL mirror (internal/platform/sqlite/jobs/parentStateTypedColumn)
 	// is package-private. Both must agree (per the cross-package
 	// SSOT discipline; the explicit drift test was DROPPED per
 	// godlike/07 minimum-blast-radius — see repository_lifecycle_dualwrite_test.go).

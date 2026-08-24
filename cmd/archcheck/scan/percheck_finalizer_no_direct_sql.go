@@ -6,7 +6,7 @@
 // godlike/06 SSOT: the canonical owner of the asset commit
 // boundary is `persistence.AssetCommitter` (implemented by
 // `SQLiteAssetCommitter` at
-// `internal/infrastructure/database/sqlite/assets/asset_committer.go`).
+// `internal/platform/sqlite/assets/asset_committer.go`).
 // Every code path that durably creates or updates a media_assets
 // row, an asset_locations row, or the canonical
 // asset.index.requested outbox event MUST route through this port.
@@ -41,7 +41,7 @@
 //   - skip `cmd/archcheck/scan/**` (this scanner file + sibling
 //     scanners reference the canonical literals).
 //   - allow the canonical SOLE owner
-//     (internal/infrastructure/database/sqlite/assets/asset_committer.go)
+//     (internal/platform/sqlite/assets/asset_committer.go)
 //     — the gate inspects the finalizer package but the SSOT is
 //     elsewhere.
 //   - comment-only references to media_assets / asset_locations /
@@ -65,7 +65,7 @@ import (
 // SQL that writes media_assets + asset_locations + outbox_events.
 // The gate inspects the finalizer package but the inspection is
 // read-only — the SSOT lives here.
-const finalizerNoSQLCanonicalOwner = "internal/infrastructure/database/sqlite/assets/asset_committer.go"
+const finalizerNoSQLCanonicalOwner = "internal/platform/sqlite/assets/asset_committer.go"
 
 // finalizerNoSQLScanRoot is the package scanned by the gate.
 // Every Go file under this root (except tests + the canonical
@@ -108,7 +108,7 @@ const finalizerNoSQLRule = "percheck_finalizer_no_direct_sql"
 // forbidden SQL writes. The message references the canonical
 // SOLE owner + the forward-prevention gate so the operator sees
 // the migration path inline.
-const finalizerNoSQLNote = "forbidden direct SQL write to media_assets / asset_locations / outbox_events from the finalizer package (PR-ASSET-COMMITTER-CENTRALIZE, July 2026): the canonical owner of these writes is persistence.AssetCommitter (implemented by SQLiteAssetCommitter at internal/infrastructure/database/sqlite/assets/asset_committer.go). Route every asset commit through AssetTxFinalizer.WithCommitter(committer) or a higher-level AssetCommitter caller. The legacy finalizeLegacy path is retired; the canonical finalizeWithCommitter is the single point of write"
+const finalizerNoSQLNote = "forbidden direct SQL write to media_assets / asset_locations / outbox_events from the finalizer package (PR-ASSET-COMMITTER-CENTRALIZE, July 2026): the canonical owner of these writes is persistence.AssetCommitter (implemented by SQLiteAssetCommitter at internal/platform/sqlite/assets/asset_committer.go). Route every asset commit through AssetTxFinalizer.WithCommitter(committer) or a higher-level AssetCommitter caller. The legacy finalizeLegacy path is retired; the canonical finalizeWithCommitter is the single point of write"
 
 // finalizerNoSQLSkipDirs mirrors percheck_mediatransformer_no_infra_fields.go's
 // standard skip-dir set.
@@ -143,7 +143,7 @@ func finalizerNoSQLWarn(r *report.Report, label, msg string) {
 // are residue-accounted (WARNed, not violated) per godlike/07.
 //
 // The canonical AssetCommitter file
-// (`internal/infrastructure/database/sqlite/assets/asset_committer.go`)
+// (`internal/platform/sqlite/assets/asset_committer.go`)
 // is exempt — it IS the SSOT. The gate does not inspect that
 // file; the inspection target is the finalizer package only.
 //

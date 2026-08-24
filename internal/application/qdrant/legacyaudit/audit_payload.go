@@ -25,7 +25,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // classifyPoint does the per-point classification. The function is

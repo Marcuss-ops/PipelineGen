@@ -5,7 +5,7 @@
     "wave_tracker_id": "PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED",
     "target_collection_name": "media_assets_v3_e5_768_siglip_768",
     "runtime_alias": "media_assets_current",
-    "canonical_source": "internal/infrastructure/qdrant/schema/schema.go::DefaultV3Schema()",
+    "canonical_source": "internal/platform/qdrant/schema/schema.go::DefaultV3Schema()",
     "lockstep_refs": [
       "architecture/current.yaml#QDRANT-PREFLIGHT-EXECUTION-2026-07-04.linked_issues[PR-QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED]",
       "CHANGELOG.md##Unreleased->###Added->QDRANT-PREFLIGHT-SCHEMA-V3-SHIPPED",

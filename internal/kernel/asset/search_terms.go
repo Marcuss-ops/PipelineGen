@@ -4,7 +4,7 @@
 // receivers (SearchByTerms/fetchClipsByIDs/UpdateSearchTerms/
 // RebuildSearchTerms) that used to live here are now canonical on
 // the LOCAL infra sqlite asset store
-// (internal/infrastructure/database/sqlite/assets/search_terms_queries.go)
+// (internal/platform/sqlite/assets/search_terms_queries.go)
 // and reached via HYBRID-embed promotion. The `updateTermsInTx`
 // closure that `UpdateSearchTerms` used (lowercase, unexported) was
 // inlined into the infra file's `UpdateSearchTerms` implementation.

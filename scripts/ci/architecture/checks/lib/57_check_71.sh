@@ -13,7 +13,7 @@
 # and risks stale data racing the source_version supersede gate.
 #
 # Allowlist:
-#   - internal/infrastructure/qdrant/indexing/index_writer*.go : the canonical IndexWriter package.
+#   - internal/platform/qdrant/indexing/index_writer*.go : the canonical IndexWriter package.
 #   - *_test.go                                                   : tests may construct transport.Client fakes directly.
 #
 # Pattern anchors:

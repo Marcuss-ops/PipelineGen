@@ -70,7 +70,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
 )
 
@@ -79,7 +79,7 @@ import (
 // UploadIntentsRepository is the application-layer port for the
 // upload_intents SQLite row lifecycle. The concrete is
 // *scripts.UploadIntentsRepository (in
-// internal/infrastructure/database/sqlite/scripts/upload_intents_repository.go).
+// internal/platform/sqlite/scripts/upload_intents_repository.go).
 // Per AGENTS.md Pattern 0, the consumer declares the interface; the
 // production concrete satisfies it by structural conformance (Go's
 // implicit-interface rule). Compile-time assertion locks the

@@ -36,14 +36,14 @@
     "paths": [
       "internal/capabilities/scripts/usecase/",
       "internal/infrastructure/webresearch/",
-      "internal/infrastructure/database/sqlite/scripts/",
+      "internal/platform/sqlite/scripts/",
       "config/lexicons/",
       "tools/researchlive/"
     ],
     "go_packages": [
       "./internal/capabilities/scripts/usecase/...",
       "./internal/infrastructure/webresearch/...",
-      "./internal/infrastructure/database/sqlite/scripts/..."
+      "./internal/platform/sqlite/scripts/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -115,12 +115,12 @@
   "qdrant": {
     "paths": [
       "internal/application/qdrant/",
-      "internal/infrastructure/qdrant/",
+      "internal/platform/qdrant/",
       "scripts/operations/certify_media_registry_qdrant.sh"
     ],
     "go_packages": [
       "./internal/application/qdrant/...",
-      "./internal/infrastructure/qdrant/..."
+      "./internal/platform/qdrant/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -162,13 +162,13 @@
   },
   "drive": {
     "paths": [
-      "internal/infrastructure/drive/",
+      "internal/platform/drive/",
       "internal/application/publish_drive/",
       "scripts/verify_drive_only_certification.sh",
       "scripts/render_clip_watermark_drive.sh"
     ],
     "go_packages": [
-      "./internal/infrastructure/drive/...",
+      "./internal/platform/drive/...",
       "./internal/application/publish_drive/..."
     ],
     "node_tests": [],
@@ -309,12 +309,12 @@
     "paths": [
       "internal/application/assets/storage/",
       "internal/api/assets/storage/",
-      "internal/infrastructure/drive/"
+      "internal/platform/drive/"
     ],
     "go_packages": [
       "./internal/application/assets/storage/...",
       "./internal/api/assets/storage/...",
-      "./internal/infrastructure/drive/..."
+      "./internal/platform/drive/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -330,10 +330,10 @@
   },
   "database": {
     "paths": [
-      "internal/infrastructure/database/"
+      "internal/platform/sqlite/"
     ],
     "go_packages": [
-      "./internal/infrastructure/database/..."
+      "./internal/platform/sqlite/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -350,7 +350,7 @@
       "internal/application/jobs/",
       "internal/api/jobs/",
       "internal/infrastructure/jobs/",
-      "internal/infrastructure/database/sqlite/jobs/",
+      "internal/platform/sqlite/jobs/",
       "scripts/bridges/slide_worker_runtime/",
       "scripts/worker-bootstrap-smoke.sh",
       "scripts/velox_client.py",
@@ -361,7 +361,7 @@
       "./internal/application/jobs/...",
       "./internal/api/jobs/...",
       "./internal/infrastructure/jobs/...",
-      "./internal/infrastructure/database/sqlite/jobs/..."
+      "./internal/platform/sqlite/jobs/..."
     ],
     "node_tests": [],
     "python_tests": [],

@@ -25,7 +25,7 @@
 #                                                                     in build_bundles_core.go and
 #                                                                     injected into the
 #                                                                     assetindex.ResolverConfig).
-#   - internal/infrastructure/database/assetindex/resolver.go       : canonical registry
+#   - internal/platform/sqlite/assetindex/resolver.go       : canonical registry
 #                                                                     field declaration (`ClipsRepos`
 #                                                                     field, NOT a literal — the
 #                                                                     field type happens to use the
@@ -76,7 +76,7 @@ fail_messages=""
 all_hits=$(rg -nE 'map\[string\][ ]*\*[ ]*([A-Za-z0-9_]+\.)?[ ]*ClipsRepository\{' \
     --type go \
     --glob '!**/internal/app/**' \
-    --glob '!**/infrastructure/database/assetindex/resolver.go' \
+    --glob '!**/platform/sqlite/assetindex/resolver.go' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     internal/ 2>/dev/null) || true

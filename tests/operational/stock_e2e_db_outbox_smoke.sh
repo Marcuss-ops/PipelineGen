@@ -14,7 +14,7 @@
 #   migrations/sqlite/092_create_outbox_events.sql
 #   (CREATE TABLE IF NOT EXISTS outbox_events)
 # with companion code at
-#   internal/infrastructure/database/sqlite/outboxevents/
+#   internal/platform/sqlite/outboxevents/
 #     repository.go  (Enqueue, ClaimNext, MarkCompleted, MarkFailed,
 #                     RequeueExpiredLeases, CountByStatus, ListPending)
 #     pool.go         (lease-and-fence consumer)
@@ -36,19 +36,19 @@
 # Per action-plan §4 canonical PR-STOCK-* failure mapping:
 #   - status='failed' (transient, retry-able)        -> PR-STOCK-OUTBOX-RETRY-EXHAUSTED
 #       canonical owner:
-#         internal/infrastructure/database/sqlite/outboxevents/repository.go::
+#         internal/platform/sqlite/outboxevents/repository.go::
 #         MarkFailed / RequeueExpiredLeases (writes
 #         "SET status = 'pending', next_attempt_at = ?, last_error = ?"
 #         -- canonical last_error write seam)
 #   - status='dead_lettered' (terminal)              -> PR-STOCK-OUTBOX-DEAD-LETTERED
 #       canonical owner:
-#         internal/infrastructure/database/sqlite/outboxevents/repository.go::
+#         internal/platform/sqlite/outboxevents/repository.go::
 #         (the literal "SET status = 'dead_letter'" write at
 #         repository.go:252 + repository.go:321 — the canonical
 #         terminal-failure routing)
 #   - last_error != '' (transient error recorded)     -> PR-STOCK-OUTBOX-LAST-ERROR
 #       canonical owner:
-#         internal/infrastructure/database/sqlite/outboxevents/repository.go::
+#         internal/platform/sqlite/outboxevents/repository.go::
 #         (the canonical last_error write seam across
 #         repository.go lines 252, 266, 321, 367 — verified
 #         via rg "last_error" outboxevents/* -- the file OnError
@@ -207,7 +207,7 @@ if [ "$ROWS_DEAD_LETTERED" -gt 0 ] || [ "$ROWS_FAILED" -gt 0 ] || [ "$ROWS_LAST_
     if [ "$ROWS_DEAD_LETTERED" -gt 0 ]; then
         echo "FAIL canonical: PR-STOCK-OUTBOX-DEAD-LETTERED (terminal-failure permanent state)" >&2
         echo "  $ROWS_DEAD_LETTERED rows with status='dead_lettered'" >&2
-        echo "  Canonical owner: internal/infrastructure/database/sqlite/outboxevents/repository.go" >&2
+        echo "  Canonical owner: internal/platform/sqlite/outboxevents/repository.go" >&2
         echo "  (the literal 'SET status = dead_letter' write at lines 252 + 321)" >&2
         echo "  Likely root cause: max_attempts exhausted WITHOUT manual replay" >&2
         echo "  Recovery: requires operator intervention; rows must be replayed or archived" >&2
@@ -215,14 +215,14 @@ if [ "$ROWS_DEAD_LETTERED" -gt 0 ] || [ "$ROWS_FAILED" -gt 0 ] || [ "$ROWS_LAST_
     if [ "$ROWS_FAILED" -gt 0 ]; then
         echo "FAIL canonical: PR-STOCK-OUTBOX-RETRY-EXHAUSTED (transient failure retry-able)" >&2
         echo "  $ROWS_FAILED rows with status in ('failed','failure')" >&2
-        echo "  Canonical owner: internal/infrastructure/database/sqlite/outbox/repository.go::MarkFailed" >&2
+        echo "  Canonical owner: internal/platform/sqlite/outbox/repository.go::MarkFailed" >&2
         echo "  Likely root cause: transient error in IndexingHandler (worker transient disconnect)" >&2
         echo "  Self-heal: RequeueExpiredLeases polls + next_attempt_at scheduling" >&2
     fi
     if [ "$ROWS_LAST_ERROR" -gt 0 ]; then
         echo "FAIL canonical: PR-STOCK-OUTBOX-LAST-ERROR (transient error recorded on event)" >&2
         echo "  $ROWS_LAST_ERROR rows with last_error != empty" >&2
-        echo "  Canonical owner: internal/infrastructure/database/sqlite/outboxevents/repository.go" >&2
+        echo "  Canonical owner: internal/platform/sqlite/outboxevents/repository.go" >&2
         echo "  (the canonical last_error write seam at lines 252, 266, 321, 367)" >&2
         echo "  Likely root cause: IndexingHandler reported transient error mid-flight" >&2
     fi
@@ -231,7 +231,7 @@ if [ "$ROWS_DEAD_LETTERED" -gt 0 ] || [ "$ROWS_FAILED" -gt 0 ] || [ "$ROWS_LAST_
         # yet (per the dispatcher_cleanup contract); operator warning.
         echo "WARN canonical: PR-STOCK-OUTBOX-RETRY-EXHAUSTED pre-condition" >&2
         echo "  $ROWS_RETRY_EXHAUSTED rows where attempt_count >= max_attempts but status NOT dead_lettered" >&2
-        echo "  Canonical owner: internal/infrastructure/database/sqlite/outboxevents/repository.go" >&2
+        echo "  Canonical owner: internal/platform/sqlite/outboxevents/repository.go" >&2
         echo "  (the pre-condition side: attempt_count >= max_attempts check + RequeueExpiredLeases scheduling)" >&2
         echo "  These rows are about to flip to dead_lettered on next dispatcher_cleanup tick" >&2
     fi

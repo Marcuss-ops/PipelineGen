@@ -1,4 +1,4 @@
-// Package artifactstages — internal/infrastructure/database/sqlite/artifact_stages/repository_test.go
+// Package artifactstages — internal/platform/sqlite/artifact_stages/repository_test.go
 //
 // FASE 3 (Push 3.1a, July 2026) hermetic round-trip tests for the
 // concrete Repository. Uses in-memory SQLite + the canonical

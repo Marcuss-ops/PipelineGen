@@ -52,7 +52,7 @@ func SearchableLifecycleFilter() string {
 //
 // godlike/06 SSOT: this fragment is the local (SQLite) owner of the
 // classified-asset boundary; the Qdrant owner is
-// internal/infrastructure/qdrant/search/filter_compiler.go. Both MUST
+// internal/platform/qdrant/search/filter_compiler.go. Both MUST
 // exclude empty asset_kind so the two catalog-search backends agree.
 func ClassifiedAssetFilter() string {
 	return "COALESCE(asset_kind, '') != ''"

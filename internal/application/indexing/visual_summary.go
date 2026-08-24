@@ -51,7 +51,7 @@
 //     asset.MaxVisualSummaryChars).
 //
 //   - The aggregated row is upserted via the canonical
-//     VisualSummaryRepository (internal/infrastructure/database/sqlite/assets/
+//     VisualSummaryRepository (internal/platform/sqlite/assets/
 //     visual_summary_repository.go). SourceHash is computed via the
 //     canonical asset.ComputeSourceHash, so the supersede gate
 //     (ReindexVerifier/CLI) can short-circuit identical re-runs.

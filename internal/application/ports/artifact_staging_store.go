@@ -9,7 +9,7 @@
 // this port (Push 5.2 caller-migration).
 //
 // The concrete adapter lives in Phase 5(b) at
-// `internal/infrastructure/database/sqlite/artifact_staging_repository.go`
+// `internal/platform/sqlite/artifact_staging_repository.go`
 // (NOT this push — only the port declaration lands today).
 //
 // godlike/07 minimum-blast-radius: 3 methods, narrowly typed. Each

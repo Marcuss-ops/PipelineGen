@@ -49,7 +49,7 @@ type ClipFolderRef struct {
 	//   })
 	//
 	// The existing YouTubeClipPath builder
-	// (internal/application/assets/delivery/registry.go) emits the
+	// (internal/platform/delivery/registry.go) emits the
 	// `[group, subject]` segments, so the resolved folder ID is
 	// what Drive returns + the path-builder segments. No new folder
 	// creation, no new DB write.

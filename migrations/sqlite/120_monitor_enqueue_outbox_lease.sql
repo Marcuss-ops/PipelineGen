@@ -2,7 +2,7 @@
 --
 -- Canonical schema for the monitor_enqueue_outbox table. Previously the
 -- table was created at runtime by ensureOutboxTable in
--- internal/infrastructure/database/sqlite/assets/monitor_outbox.go.
+-- internal/platform/sqlite/assets/monitor_outbox.go.
 -- This migration moves the table into the canonical migration sequence
 -- and adds lease-based drainer columns (retry_count, next_retry_at,
 -- lease_id, lease_until) to support the atomic claim + retryable failure

@@ -3,7 +3,7 @@
 //
 // godlike/06 SSOT: this package is the SOLE owner of the typed-contract
 // shape of "where does this asset semantically live". Companion type
-// internal/application/assets/delivery.PublishRequest is the post-mapper
+// internal/platform/delivery.PublishRequest is the post-mapper
 // canonical form that the Publisher consumes (the same package also owns
 // the BuildPublishRequest mapper that translates AssetLocationInput into
 // the per-destination fields of PublishRequest).

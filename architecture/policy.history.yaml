@@ -30,7 +30,7 @@ max_files_per_package:
         The comment in policy.yaml claimed this raise happened, but the
         executable value remained 65. The discrepancy has been corrected
         by keeping the cap at 65 and recording the intended raise here.
-        internal/infrastructure/database/sqlite/assets reached 69 files
+        internal/platform/sqlite/assets reached 69 files
         while absorbing the canonical asset committer / outbox / clips /
         catalog / artifacts / delivery / maintenance / voiceover /
         visual-summary surfaces. The package is the SQLite persistence

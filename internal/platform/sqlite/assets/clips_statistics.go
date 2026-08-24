@@ -125,7 +125,7 @@ func (r *ClipsRepository) CountBySource(ctx context.Context, source string) (int
 // The media_assets.created_at column has `DEFAULT CURRENT_TIMESTAMP`
 // (per migrations/sqlite/033_media_assets_youtube_video_id_index.sql
 // line 36 + canonical schema in
-// internal/infrastructure/database/canonical.go). The Mattn
+// internal/platform/sqlite/canonical.go). The Mattn
 // driver + canonical Go writers (time.Now().UTC().Format(RFC3339))
 // produce TWO DIFFERENT FORMATS in the same column:
 //

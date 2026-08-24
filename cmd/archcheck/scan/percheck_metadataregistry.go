@@ -3,7 +3,7 @@
 // scan/percheck_metadataregistry.go owns the forward-prevention gate
 // for typed metadata. Domain types SHOULD NOT use raw
 // `map[string]any` for metadata fields; instead they should use the
-// typed metadata registry (internal/application/assets/delivery/registry.go
+// typed metadata registry (internal/platform/delivery/registry.go
 // and related typed registries). This gate flags new occurrences of
 // `map[string]any` in internal/domain/** so the codebase migrates
 // toward typed metadata structs.
@@ -101,7 +101,7 @@ func scanMetadataRegistryFile(root, path, relPath string, r *report.Report) {
 			Rule:        "percheck_metadata_registry",
 			Severity:    string(report.SeverityWarn),
 			MatchedRule: "metadata_map_string_any",
-			Note:        "raw `map[string]any` metadata field in domain type — migrate to the typed metadata registry (internal/application/assets/delivery/registry.go) or add to percheck_metadataregistry.go allowlist with owner + deadline",
+			Note:        "raw `map[string]any` metadata field in domain type — migrate to the typed metadata registry (internal/platform/delivery/registry.go) or add to percheck_metadataregistry.go allowlist with owner + deadline",
 		})
 	}
 }

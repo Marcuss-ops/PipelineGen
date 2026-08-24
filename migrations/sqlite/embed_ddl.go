@@ -53,7 +53,7 @@ import _ "embed"
 // this table, drained by publish_drive.Handler, and finalized by
 // the CANONICAL finalizer. Drift between this string and the live
 // migration is the most dangerous failure mode Push 3.1h tests
-// against — see internal/infrastructure/database/sqlite/artifact_stages/
+// against — see internal/platform/sqlite/artifact_stages/
 // for the producer / consumer contracts.
 //
 //go:embed 147_artifact_stages.sql

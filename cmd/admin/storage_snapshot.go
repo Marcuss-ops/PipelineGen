@@ -64,8 +64,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

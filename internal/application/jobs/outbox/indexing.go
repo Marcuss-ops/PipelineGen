@@ -125,7 +125,7 @@ type IndexClipper interface {
 // method that returns the same value the producer computes.
 //
 // Production concrete is *assets.ClipsRepository from
-// internal/infrastructure/database/sqlite/assets, which delegates
+// internal/platform/sqlite/assets, which delegates
 // to assets.SourceVersionFor (the canonical SQL helper — same
 // function cmd/admin/reconcile_qdrant.go imports). A single
 // function owns the priority chain semantics so future drift is
@@ -286,4 +286,4 @@ func (h *IndexingHandler) IdempotencyKey() string {
 
 // Historical note: the legacy readSourceVersion helper was removed in
 // PR 11 (June 2026). Both producer and consumer route through
-// assets.SourceVersionFor (internal/infrastructure/database/sqlite/assets/source_version.go).
+// assets.SourceVersionFor (internal/platform/sqlite/assets/source_version.go).

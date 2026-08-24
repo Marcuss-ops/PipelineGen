@@ -12,7 +12,7 @@
 // absent. It deliberately EXCLUDES image assets: for images the url
 // column holds the canonicalized Drive web link while the metadata key
 // preserves the original source URL (see ScanMediaAsset in
-// internal/infrastructure/database/sqlite/assets/scan_helpers.go) — those
+// internal/platform/sqlite/assets/scan_helpers.go) — those
 // two values are intentionally different and must not be merged.
 //
 // The command is idempotent (json_extract guard) and additive; it never

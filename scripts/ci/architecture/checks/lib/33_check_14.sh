@@ -29,7 +29,7 @@ legacyStatusKey=$(rg -n --type go \
     --glob '!**/internal/api/script/**' \
     --glob '!**/internal/api/assets/clips/**' \
     --glob '!**/internal/capabilities/assets/providers/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/assets/**' \
+    --glob '!**/internal/platform/sqlite/assets/**' \
     . 2>/dev/null \
     | awk -F: '{
         rest = ""

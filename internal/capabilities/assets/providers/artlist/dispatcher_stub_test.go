@@ -162,7 +162,7 @@ var _ RunRepository = (*stubRunRepoForArtlist)(nil)
 // Record is a no-op for tests that don't exercise the artlist_runs
 // aggregate write path. Production code goes through the SQLite-
 // backed ArtlistRunsRepository in
-// internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go.
+// internal/platform/sqlite/assets/artlist_runs_repository.go.
 func (s *stubRunRepoForArtlist) Record(_ context.Context, _ RunRecord) error {
 	return nil
 }

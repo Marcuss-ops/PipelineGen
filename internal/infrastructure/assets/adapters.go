@@ -59,7 +59,7 @@ func (a *ToolCheckerAdapter) LookPath(name string) (string, error) {
 	return process.LookPath(name)
 }
 
-// DBHealthCheckerAdapter adapts infrastructure/database to the application-layer DBHealthChecker port.
+// DBHealthCheckerAdapter adapts platform/sqlite to the application-layer DBHealthChecker port.
 type DBHealthCheckerAdapter struct {
 	log *zap.Logger
 }

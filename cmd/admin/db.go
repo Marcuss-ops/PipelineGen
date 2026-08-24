@@ -9,11 +9,11 @@
 //   - cmd/admin/db_restore.go    → db restore --verify
 //   - cmd/admin/db_rotate.go     → db rotate (observability retention, branch 2)
 //
-// All subcommands route through `internal/infrastructure/database.OpenSet`
-// and call helpers in `internal/infrastructure/database/doctor.go` and
+// All subcommands route through `internal/platform/sqlite.OpenSet`
+// and call helpers in `internal/platform/sqlite/doctor.go` and
 // `backup.go`. The admin command itself NEVER calls sql.Open directly —
 // the only place in the repo where sql.Open is allowed is
-// `internal/infrastructure/database/`.
+// `internal/platform/sqlite/`.
 package main
 
 import (

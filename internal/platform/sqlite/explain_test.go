@@ -1,7 +1,7 @@
 // Package sqlite — explain_test.go (FASE 6 Cut 6.2, July 2026).
 //
 // Regression tests for the canonical startup-only EXPLAIN instrumentation
-// surface (internal/infrastructure/database/sqlite/explain.go). The
+// surface (internal/platform/sqlite/explain.go). The
 // tests pin:
 //   - the 2-query catalog (jobs_list_awaiting_aggregation +
 //     finalize_aggregate_parent_cas) is byte-stable across runs.

@@ -68,7 +68,7 @@
 --   - internal/application/scripts/usecase/translation.go (already
 --     produces the in-memory TranslatedSpecScene; persistence layer
 --     to be wired in the next step).
---   - internal/infrastructure/database/sqlite/scripts/localizations.go
+--   - internal/platform/sqlite/scripts/localizations.go
 --     (future repository; minimal-blast-radius: schema-fixture only
 --     this PR).
 --

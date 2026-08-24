@@ -299,7 +299,7 @@ case "$V2" in
 esac
 
 # Table 3: outbox_events — asset.index.requested + voiceover.cleanup.requested
-# (event names are canonical per internal/infrastructure/database/sqlite/outboxevents/registry.go
+# (event names are canonical per internal/platform/sqlite/outboxevents/registry.go
 # — EventVoiceoverCleanupRequested = "voiceover.cleanup.requested")
 V3=$(sqlite3 -separator '|' "$DB_PATH" \
   "SELECT COUNT(*) FROM outbox_events WHERE (event_type='voiceover.cleanup.requested' OR event_type='asset.index.requested') AND created_at > '$POST_TS'" 2>/dev/null) || V3="ERR"

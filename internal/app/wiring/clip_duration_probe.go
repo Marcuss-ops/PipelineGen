@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	mediaexec "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

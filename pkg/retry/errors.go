@@ -34,7 +34,7 @@
 //     as the migration target for `time.Sleep → pkg/retry.Do`. The
 //     file does NOT exist on disk — the actual retry sites on
 //     origin/main are distributed across outbox pool
-//     (internal/infrastructure/database/sqlite/outboxevents/pool.go,
+//     (internal/platform/sqlite/outboxevents/pool.go,
 //     out of scope here — see forward-pointer below), monitor
 //     scheduler (internal/application/assets/monitor/scheduler.go,
 //     uses custom backoff math), and workerruntime preflight
