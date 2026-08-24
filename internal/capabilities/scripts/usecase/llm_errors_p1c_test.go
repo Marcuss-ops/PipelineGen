@@ -125,7 +125,7 @@
 //
 // ── Sibling / counterpart files ─────────────────────────────────
 //
-//   - internal/infrastructure/ai/ollama/client/client_errors
+//   - internal/platform/ollama/client/client_errors
 //     _p1c_test.go  — the wire-level counterpart that pins the
 //     HTTP-client error mapping (404, 500, 503, network errors,
 //     timeout) using httptest.NewServer. Together, the two

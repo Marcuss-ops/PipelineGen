@@ -53,7 +53,7 @@ import (
 	"testing"
 	"time"
 
-	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
+	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	_ "github.com/mattn/go-sqlite3"
 

@@ -10,7 +10,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 const jobsSchema = `CREATE TABLE jobs (

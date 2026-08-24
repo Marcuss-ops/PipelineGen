@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	vorepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	vorepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 type voiceoverStoreAdapter struct {

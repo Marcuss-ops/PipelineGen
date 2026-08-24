@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

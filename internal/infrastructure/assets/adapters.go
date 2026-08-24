@@ -4,7 +4,7 @@ import (
 	"context"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"go.uber.org/zap"
 )

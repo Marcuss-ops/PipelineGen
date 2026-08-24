@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 

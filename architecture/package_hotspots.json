@@ -25,13 +25,13 @@
       "path": "cmd/archcheck/scan",
       "owner": "cmd/archcheck architecture enforcement",
       "deadline": "2026-09-30",
-      "baseline_files": 72,
+      "baseline_files": 73,
       "baseline": {
-        "files": 70,
+        "files": 73,
         "max_loc": 13718
       },
       "current": {
-        "files": 58,
+        "files": 73,
         "max_loc": 13718
       },
       "target_packages": [
@@ -45,13 +45,13 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 156,
+      "baseline_files": 140,
       "baseline": {
-        "files": 154,
+        "files": 140,
         "max_loc": 26637
       },
       "current": {
-        "files": 154,
+        "files": 140,
         "max_loc": 23098
       },
       "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
@@ -66,13 +66,13 @@
       "path": "internal/capabilities/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
-      "baseline_files": 64,
+      "baseline_files": 51,
       "baseline": {
-        "files": 64,
+        "files": 51,
         "max_loc": 11473
       },
       "current": {
-        "files": 64,
+        "files": 51,
         "max_loc": 9396
       },
       "target_packages": [
@@ -107,13 +107,13 @@
       "path": "internal/application/images",
       "owner": "internal/application/images",
       "deadline": "2026-10-15",
-      "baseline_files": 55,
+      "baseline_files": 54,
       "baseline": {
-        "files": 55,
+        "files": 54,
         "max_loc": 6760
       },
       "current": {
-        "files": 57,
+        "files": 54,
         "max_loc": 6760
       },
       "target_packages": [
@@ -127,13 +127,13 @@
       "path": "internal/application/jobs",
       "owner": "internal/application/jobs",
       "deadline": "2026-09-15",
-      "baseline_files": 41,
+      "baseline_files": 44,
       "baseline": {
-        "files": 41,
+        "files": 44,
         "max_loc": 5218
       },
       "current": {
-        "files": 41,
+        "files": 44,
         "max_loc": 5218
       },
       "target_packages": [
@@ -147,13 +147,13 @@
       "path": "internal/infrastructure/database/sqlite/assets",
       "owner": "internal/infrastructure/database/sqlite/assets",
       "deadline": "2026-09-30",
-      "baseline_files": 63,
+      "baseline_files": 50,
       "baseline": {
-        "files": 63,
+        "files": 50,
         "max_loc": 9659
       },
       "current": {
-        "files": 48,
+        "files": 50,
         "max_loc": 9659
       },
       "target_packages": [

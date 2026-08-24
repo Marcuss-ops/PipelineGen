@@ -48,7 +48,7 @@ import (
 	"testing"
 	"time"
 
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
 // cannedOllamaResponse is the canonical /api/chat response shape

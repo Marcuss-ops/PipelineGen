@@ -7,7 +7,7 @@ import (
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // RunnerProbe is an optional port that proves the broker goroutine

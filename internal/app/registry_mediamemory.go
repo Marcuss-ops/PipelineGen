@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	mediamemoryapp "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 

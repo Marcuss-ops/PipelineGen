@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	capimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )

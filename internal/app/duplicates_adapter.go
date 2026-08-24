@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 // clipsRepoDuplicateSource adapts *assets.ClipsRepository to the

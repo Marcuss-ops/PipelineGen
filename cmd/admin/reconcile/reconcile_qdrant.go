@@ -42,8 +42,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"

@@ -17,7 +17,7 @@ import (
 const (
 	sqliteAssetsClipsDuplicateRule = "percheck_sqlite_assets_clips_duplicate"
 	sqliteAssetsClipsImportRule    = "percheck_sqlite_assets_clips_import"
-	retiredSQLiteClipsImportPath   = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/clips"
+	retiredSQLiteClipsImportPath   = "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/clips"
 	retiredSQLiteClipsDir          = "internal/infrastructure/database/sqlite/assets/clips"
 )
 

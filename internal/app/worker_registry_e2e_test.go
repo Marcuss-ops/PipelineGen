@@ -26,7 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"

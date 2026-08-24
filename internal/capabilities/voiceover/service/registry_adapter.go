@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

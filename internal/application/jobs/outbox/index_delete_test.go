@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

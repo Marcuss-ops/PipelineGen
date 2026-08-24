@@ -12,8 +12,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"

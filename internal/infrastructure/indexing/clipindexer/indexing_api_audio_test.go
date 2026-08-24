@@ -41,7 +41,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // phase4TestSchema inlines the MINIMUM columns the indexer writers

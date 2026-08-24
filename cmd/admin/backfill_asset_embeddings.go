@@ -65,7 +65,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // ── Entry point ───────────────────────────────────────────────────────

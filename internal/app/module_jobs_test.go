@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"go.uber.org/zap/zaptest"
 )
 

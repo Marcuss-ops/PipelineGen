@@ -135,7 +135,7 @@
 //     — the P1.C engine-level suite (8 LLM error scenarios).
 //     P2.B complements P1.C by testing the PROMPT-LEVEL
 //     defense (not the ERROR-LEVEL mapping).
-//   - internal/infrastructure/ai/ollama/client/client_errors
+//   - internal/platform/ollama/client/client_errors
 //     _p1c_test.go  — the P1.C HTTP-level suite (wire-level
 //     error mapping). P2.B does not have a wire-level
 //     counterpart because the injection defense is a use-case

@@ -22,8 +22,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

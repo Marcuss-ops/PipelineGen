@@ -28,8 +28,6 @@ internal/application/assets/providers/artlist/semantic_enricher.go -> github.com
 internal/application/assets/providers/artlist/semantic_enricher.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/assets/providers/artlist/semantic_enricher_enrich.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic
 internal/application/assets/providers/artlist/storage_paths.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
-internal/application/assets/providers/stock/enrichment/llm_client_ollama.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client
-internal/application/assets/providers/stock/enrichment/llm_client_ollama.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types
 internal/application/assets/providers/stock/enrichment/outbox_emitter.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/assets/reconciliation/voiceover/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/assets/reconciliation/voiceover/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
@@ -47,7 +45,6 @@ internal/application/clips/conversions.go -> github.com/Marcuss-ops/PipelineGen/
 internal/application/clips/download.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/clips/download.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/clips/enrich.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic
-internal/application/images/deps.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/images/deps.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo
 internal/application/images/deps.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/images/diagnostics_service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo
@@ -90,8 +87,6 @@ internal/application/jobs/outbox/workflow_step_failed.go -> github.com/Marcuss-o
 internal/application/jobs/stats.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
 internal/application/jobs/types.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
 internal/application/lessons/generator.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
-internal/application/lessons/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
-internal/application/lessons/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types
 internal/application/operations/ports.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/publish_drive/handler.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/publish_outbox/handler.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
@@ -103,15 +98,11 @@ internal/application/qdrant/maintenance/service.go -> github.com/Marcuss-ops/Pip
 internal/application/qdrant/maintenance/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema
 internal/application/qdrant/maintenance/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport
 internal/application/scripts/adapters/clip_resolver.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
-internal/application/scripts/adapters/ollama_generation.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
-internal/application/scripts/adapters/ollama_generation.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types
 internal/application/scripts/adapters/repository.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts
 internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier
-internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client
 internal/application/transcripts/transcription.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube
 internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader
 internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp
-internal/application/translation/ollama_translator.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/voiceover/filename.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
 internal/application/voiceover/registry_adapter.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/workerdoctor/default_probes.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process

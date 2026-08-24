@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	webclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	webclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
 func TestSearXNGSearch(t *testing.T) {

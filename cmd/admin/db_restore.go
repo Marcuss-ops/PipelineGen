@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 func runDBRestore(ctx context.Context, args []string) error {

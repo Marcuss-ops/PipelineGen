@@ -34,7 +34,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/stockbuild"
-	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/subjectsrepo"
+	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/subjectsrepo"
 )
 
 // BuildStockbuildHandler constructs the canonical stockbuild.Handler

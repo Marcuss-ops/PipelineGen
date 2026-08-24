@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 	"go.uber.org/zap"
 )

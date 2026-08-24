@@ -44,7 +44,7 @@ import (
 	"go.uber.org/zap"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )

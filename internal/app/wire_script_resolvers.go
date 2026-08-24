@@ -49,7 +49,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
+	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"

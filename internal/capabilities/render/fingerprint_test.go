@@ -105,7 +105,7 @@ func TestComputeSceneFingerprintRejectsInvalidInput(t *testing.T) {
 		"asset with bad sha256":   sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.VideoAssets[0].SHA256 = "not-a-hash" }),
 		"duplicate asset":         sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.VideoAssets = append(i.VideoAssets, i.VideoAssets[0]) }),
 		"missing timeline hash":   sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.TimelineHash = "" }),
-		"bad timeline hash":       sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.TimelineHash = strings.ToUpper(hash64('c')) }),
+		"bad timeline hash":       sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.TimelineHash = hash64('g') }),
 		"bad overlay hash":        sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.OverlayPlanHash = "short" }),
 		"bad subtitle hash":       sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.SubtitlePlanHash = "not-hex" }),
 		"missing audio plan hash": sceneWith(validSceneFingerprintInput(), func(i *SceneFingerprintInput) { i.AudioPlanHash = "" }),

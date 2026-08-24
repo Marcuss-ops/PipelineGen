@@ -1,6 +1,6 @@
 # PipelineGen prompt manifest.
 # Prompt sections live in config/prompts/*.yaml and are merged by unique
-# top-level key by internal/infrastructure/ai/ollama/prompts.Load.
+# top-level key by internal/platform/ollama/prompts.Load.
 includes:
   - prompts/core.yaml
   - prompts/scripts.yaml

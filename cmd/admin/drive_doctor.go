@@ -29,8 +29,8 @@ import (
 
 	"go.uber.org/zap"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/delivery"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

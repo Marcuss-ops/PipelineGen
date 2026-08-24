@@ -27,7 +27,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

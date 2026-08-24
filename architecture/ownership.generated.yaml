@@ -573,7 +573,7 @@ infrastructure_process:
 
 infrastructure_ai:
   owner: internal/infrastructure/ai
-  sub_dirs: [ai/ollama, ai/reranker, ai/vlm, ai/images]
+  sub_dirs: [ai/reranker, ai/vlm, ai/images]
 
 
 infrastructure_media:

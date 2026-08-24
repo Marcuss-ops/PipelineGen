@@ -17,7 +17,7 @@
 //     are skipped entirely when backend is absent)
 //   - internal/application/scripts/usecase: NewTranslationUseCaseAdapter,
 //     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
-//   - internal/infrastructure/ai/ollama/adapters: NewOllamaEntityExtractorAdapter,
+//   - internal/platform/ollama/adapters: NewOllamaEntityExtractorAdapter,
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/infrastructure/embeddings: NewOllamaEmbedderAdapter
 //   - internal/platform/observability: NewTranslationMetricsAdapter
@@ -36,7 +36,7 @@ import (
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

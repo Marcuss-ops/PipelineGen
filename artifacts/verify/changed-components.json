@@ -198,6 +198,7 @@
     "internal/app/registry_internal_modules.go",
     "internal/app/registry_runtime_graph.go",
     "internal/app/registry_search.go",
+    "internal/app/rendering_runtime_test.go",
     "internal/app/research_coordinator_adapter.go",
     "internal/app/script_memory_gate.go",
     "internal/app/search_backend_provider.go",
@@ -261,16 +262,7 @@
     "internal/application/jobs/registry_wiring_test.go",
     "internal/application/lessons/generate_usecase.go",
     "internal/application/scriptassets/provider.go",
-    "internal/application/scripts/jobs/generation_batch_executor.go",
-    "internal/application/scripts/jobs/generation_handler.go",
-    "internal/application/scripts/jobs/generation_job_failures_test.go",
-    "internal/application/scripts/jobs/generation_job_manifest_test.go",
-    "internal/application/scripts/jobs/generation_single_executor.go",
-    "internal/application/scripts/jobs/job_helpers.go",
-    "internal/application/scripts/jobs/job_helpers_test.go",
-    "internal/application/scripts/jobs/script_generation_item_handler.go",
     "internal/application/scripts/re_exports.go",
-    "internal/application/scripts/submission/factory.go",
     "internal/application/semantic/ollama_analyzer.go",
     "internal/application/semantic/ollama_analyzer_segments.go",
     "internal/application/workflow/promo/canonical_migration_test.go",
@@ -525,6 +517,8 @@
     "internal/capabilities/assets/providers/youtube/stager_errors.go",
     "internal/capabilities/assets/providers/youtube/stager_helpers.go",
     "internal/capabilities/assets/scriptassets/module_test.go",
+    "internal/capabilities/entities/certification_test.go",
+    "internal/capabilities/entities/overlay_resolver_test.go",
     "internal/capabilities/images/entitycatalog/port.go",
     "internal/capabilities/images/entitycatalog/port_test.go",
     "internal/capabilities/images/entitycatalog/recertification.go",
@@ -549,6 +543,13 @@
     "internal/capabilities/images/retrieved/spec_aliases.go",
     "internal/capabilities/images/retrieved/storage_bridge.go",
     "internal/capabilities/imagesearch/live_relevance_e2e_test.go",
+    "internal/capabilities/overlays/chronon_test.go",
+    "internal/capabilities/overlays/deterministic_preset_sampler_test.go",
+    "internal/capabilities/overlays/golden.go",
+    "internal/capabilities/overlays/golden_content.go",
+    "internal/capabilities/overlays/golden_content_test.go",
+    "internal/capabilities/overlays/golden_v2_test.go",
+    "internal/capabilities/render/fingerprint_test.go",
     "internal/capabilities/research/research_coordinator.go",
     "internal/capabilities/research/research_coordinator_test.go",
     "internal/capabilities/research/research_ranker.go",
@@ -1312,7 +1313,6 @@
     "scripts/archcheck/categorize_deprecations_test.go",
     "scripts/archcheck/checks_coupling.go",
     "scripts/archcheck/gates/gate_c2_source_catalog_only_main.go",
-    "scripts/archcheck/phase0_baseline.json",
     "scripts/ci/architecture/checks/50_jobs_forbid_legacy_stock_pipeline_keywords.sh",
     "scripts/ci/architecture/checks/50_jobs_go_vet_internal_drift_gate.sh",
     "scripts/ci/architecture/checks/lib/28_check_9.sh",
@@ -4748,6 +4748,31 @@
       "rust-muscles",
       "web"
     ],
+    "internal/app/rendering_runtime_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
     "internal/app/research_coordinator_adapter.go": [
       "script",
       "research",
@@ -6037,35 +6062,30 @@
       "rust-muscles",
       "web"
     ],
-    "internal/application/scripts/jobs/generation_batch_executor.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/generation_handler.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/generation_job_failures_test.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/generation_job_manifest_test.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/generation_single_executor.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/job_helpers.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/job_helpers_test.go": [
-      "script"
-    ],
-    "internal/application/scripts/jobs/script_generation_item_handler.go": [
-      "script"
-    ],
     "internal/application/scripts/re_exports.go": [
-      "script"
-    ],
-    "internal/application/scripts/submission/factory.go": [
-      "script"
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
     ],
     "internal/application/semantic/ollama_analyzer.go": [
       "script",
@@ -7177,6 +7197,56 @@
       "rust-muscles",
       "web"
     ],
+    "internal/capabilities/entities/certification_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/entities/overlay_resolver_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
     "internal/capabilities/images/entitycatalog/port.go": [
       "script",
       "research",
@@ -7777,6 +7847,181 @@
       "rust-muscles",
       "web"
     ],
+    "internal/capabilities/overlays/chronon_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/overlays/deterministic_preset_sampler_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/overlays/golden.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/overlays/golden_content.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/overlays/golden_content_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/overlays/golden_v2_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
+    "internal/capabilities/render/fingerprint_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "rust-muscles",
+      "web"
+    ],
     "internal/capabilities/research/research_coordinator.go": [
       "script",
       "research",
@@ -7928,3450 +8173,1719 @@
       "web"
     ],
     "internal/capabilities/scripts/adapters/artifacts_persistence.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/artifacts_persistence_audio_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/artlist_queries_live_e2e_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/asset_materializer.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/asset_materializer_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/canonical_timing_adapter.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/canonical_timing_adapter_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/certification_final_table_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/clip_resolver.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/clip_resolver_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/compat_adapters.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/compat_adapters_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/doc.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_extractor_live_e2e_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_identity_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_integration_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_metrics.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_metrics_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_quality_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_state_integration_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_image_catalog_system_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_parser.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/entity_parser_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/gemmamemory.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/gemmamemory_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/generation_identity.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/generation_normalizer.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/json_contract_roundtrip_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/language_helpers.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/manifest_builder.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/media_mode_processor_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/model_output_decoder_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/normalize_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/normalizer_plan_tests_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/pipeline_result.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocess_result.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_composite.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_composite_merge.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_composite_merge_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_composite_run.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_document.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_document_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_image.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_progress.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_registry_synthesized_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_registry_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_voiceover.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/postprocessor_voiceover_merge_contract_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/process_input.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_asset_location_commit_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_asset_location_persistence_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_asset_location_reconciliation.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_bindings.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_bindings_doc_json_diff_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_bindings_multi_contract_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_bindings_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_search.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_clip_search_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_default_policy_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_document_translation_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_entities.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_entities_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_entity_image_coherence_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_images.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_images_contracts.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_images_fanout.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_images_scene.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_images_voiceover_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_internet_images.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_internet_images_binding_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_internet_images_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_manifest_v2_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_metadata.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_names.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_names_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_narration_sanitizer.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_narration_sanitizer_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_persistence.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_persistence_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_stock_bindings.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_stock_bindings_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_integration_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_pipeline_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_pr5_pr6_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_translateto_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_voiceover_merge_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_translation_voiceover_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_vidrush_materialization.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_vidrush_materialization_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_visual_planning.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_visual_planning_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_visual_slots.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_visual_slots_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_moments_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_required_timing_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_skip_contract_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_speakable_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/processor_voiceover_translation_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_clip_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_general_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_image_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_process.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_stock_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_test_helpers_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_verify.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/reconciliation_voiceover_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/repository.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/scene_annotations.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/scene_annotations_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/scene_asset_binder_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/script_memory.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/segment_scene_merger_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/semantic_asset_search.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/semantic_asset_search_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/source_registry.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/source_registry_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_contract_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_generation_planner.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_helpers.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_helpers_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_image_validation.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_provider_registry.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_provider_registry_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_registry_searchers.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_registry_searchers_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_search_resolver.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_search_resolver_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_timing.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/vidrush_timing_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/voiceover_scene_fanout.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/voiceover_scene_fanout_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/adapters/voiceover_scene_fanout_timing_test.go": [
+      "script",
       "translation"
     ],
     "internal/capabilities/scripts/apiutil/response.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/artlist_phrase/ports.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/artlist_phrase/preprocess.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/artlist_phrase/service.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/artlist_phrase/service_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/artlist_phrase/test_helpers.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/builder.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/builder_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/curation/scene_orchestrator.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/curation/scene_orchestrator_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/curation_types.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/doc.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/language_helpers.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/language_helpers_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/metadata.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/metadata_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/dto/scene_stubs.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/job_types.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder_clips_job_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder_contract_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder_timing_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/plan_builder_video_metadata_contract_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/workflow_state_machine.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/generation/workflow_state_machine_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/doc.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_batch_executor.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_dispatcher.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_enqueue.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_enqueue_registry_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_envelope_merger.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_handler.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_handler_correlation_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_handler_kill_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_job.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_job_failures_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_job_manifest_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_job_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_manifest.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_outcome.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_registration.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_result_mapper.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_result_mapper_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/generation_single_executor.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/job_helpers.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/job_helpers_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/parent_aggregator.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/parent_aggregator_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/ports.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/script_generation_item_handler.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/sibling_dispatcher.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/sibling_dispatcher_dispatch.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jobs/voiceover_destination_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jsonextract/extractor.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jsonextract/fresh_parser.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jsonextract/mode_matrix_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jsonextract/scanner.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/jsonextract/scanner_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/model.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/asset_materializer.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/asset_search_port.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/clip_resolver_port.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/clip_sampler_port.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/doc.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/documents.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/generation.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/generation_errors.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/metrics/metrics.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/ports.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/repository.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/research.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/script_memory.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/slot_search_port.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/source_text_enricher.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/text_track_reader.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/translation.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/translation_metrics.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/vidrush_provider.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/ports/voiceover_group_port.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/binder.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/binder_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/scene_planner.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/scene_planner_evidence.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/scene_planner_kinds.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/scene_planner_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/scratch_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/synthesizer.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/scene/synthesizer_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/submission/command.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/submission/factory.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/submission/factory_test.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/submission/policy.go": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
+      "script"
     ],
     "internal/capabilities/scripts/usecase/cache_race_p2a_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_evidence_validation.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_fallback_policy_p0g_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_native_enforce.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_native_enforce_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_plaintext_output_p0f_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_resolution_p0c_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_resolution_p0d_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_audit_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_gates.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_gates_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_impl.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_impl_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_registry.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_sampler_registry_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_errors.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_fase4_strict_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_no_translation_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_ordering_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_builder_transcript.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_evidence.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_resolve.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_source_text.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/clip_text_provenance_p0e_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/deterministic_planner.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/deterministic_planner_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/doc.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/document_builder.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/documents_usecase.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/documents_usecase_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_defaults.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_generate.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_generate_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_invoke.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_memory_adapter_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_metrics.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_metrics_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_prompt.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_prompt_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/engine_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/fixtures_real_scripts_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers_artlist.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers_clips.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers_script.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/flow_helpers_voiceover.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_cache_fingerprint_p1a_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_e2e_documents_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_e2e_helpers_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_e2e_mandatory_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_length_tolerance_p0i_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_many_usecase.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_many_usecase_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_one_usecase.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_one_usecase_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_quality_gate_p0h_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generate_segments_p1r_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_audio_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_engine.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_engine_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_finalize.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_finalize_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_plan_builder.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_postprocess.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_postprocess_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_prepare.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_validator.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/generation_validator_media_plan_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/helpers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/identity_resolver.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/identity_resolver_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/insight_builder.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/json_envelope_helpers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/lexicon_testmain_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/llm_errors_p1c_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/margot_robbie_fixture_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_audit_trail_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_canonical_case_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_helpers_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_missing_translation_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_multilingual_8scenes_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/multilingual_persistence_p1f_stubs_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/output_sanitizer.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/output_sanitizer_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/pacquiao_broner_pre_planner_schema_contract_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/pathological_inputs_p2c_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/payload_validator.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/payload_validator_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/persistence.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/persistence_translated_text_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/plan_builder_parity_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/plan_resolution.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/ports_pre_planner.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/post_voiceover_composer.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/post_voiceover_composer_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/postgen_usecase.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/preset_resolver.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/progress.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/progress_stage_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/progress_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/project_canonical_timings_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/prompt_injection_p2b_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/provenance.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/qa_word_budget.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/qa_word_budget_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_checkers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_claims.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_coverage.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_language.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_research.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_research_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_segments.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_text.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/quality_gate_words.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/query_planner.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/query_planner_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/research_evidence_engine_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/research_fanout_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/research_subject_filter.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/research_subject_filter_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/sceneplan_builder.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/sceneplan_builder_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/script_runtime_ports.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/script_timing_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/scriptflow_usecase_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/segment_grounding_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/segment_validation.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/segment_validation_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/semaphore_usecase.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/semaphore_usecase_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/services.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/services_extra_param_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_enrichment.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_enrichment_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_enrichment_testhelpers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_research_queries.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_research_queries_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_research_validate.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_catalog.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_clips.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_clips_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_curate.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_curate_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_research.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_research_fanout.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_research_fanout_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_research_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_search.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_search_semantics_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_search_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_shared.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_resolver_text.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_text_log.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/source_text_log_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/specscene.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/specscene_gemma_final_pass_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/specscene_validator.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/specscene_validator_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/status_classifier.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/testdata/pacquiao_broner_pre_planner_e2e_golden.json": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/testschema_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_adapters.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_clip_bindings_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_helpers.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_json_keys_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_long_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_structure_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/translation_test.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/voiceover_group_resolver.go": [
+      "script",
       "research",
       "translation"
     ],
     "internal/capabilities/scripts/usecase/voiceover_group_resolver_test.go": [
+      "script",
       "research",
       "translation"
     ],
@@ -13236,31 +11750,6 @@
     "scripts/archcheck/gates/gate_c2_source_catalog_only_main.go": [
       "api"
     ],
-    "scripts/archcheck/phase0_baseline.json": [
-      "script",
-      "research",
-      "clips",
-      "stock",
-      "qdrant",
-      "indexing",
-      "drive",
-      "docs",
-      "voiceover",
-      "images",
-      "translation",
-      "timeline",
-      "storage",
-      "database",
-      "jobs",
-      "api",
-      "ollama",
-      "youtube",
-      "artlist",
-      "node-scraper",
-      "kernel",
-      "rust-muscles",
-      "web"
-    ],
     "scripts/ci/architecture/checks/50_jobs_forbid_legacy_stock_pipeline_keywords.sh": [
       "script",
       "research",
@@ -14191,23 +12680,50 @@
   "skipped": [],
   "components": {
     "script": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
+      "status": "PASS",
+      "duration_ms": 4357,
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/kernel/script/...",
-        "go test ./internal/application/scripts/...",
+        "go test ./internal/capabilities/scripts/...",
         "go test ./internal/api/script/..."
       ],
       "packages": 3,
-      "command_results": [],
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 553,
+          "timed_out": false,
+          "command": "go test ./internal/kernel/script/...",
+          "kind": "go",
+          "source": "./internal/kernel/script/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3013,
+          "timed_out": false,
+          "command": "go test ./internal/capabilities/scripts/...",
+          "kind": "go",
+          "source": "./internal/capabilities/scripts/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 790,
+          "timed_out": false,
+          "command": "go test ./internal/api/script/...",
+          "kind": "go",
+          "source": "./internal/api/script/..."
+        }
+      ],
       "dependencies": [],
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "e94ad63942d6098a2851ccbf71abe1269a973ffd93150241bcb27b8f087412a4",
-      "cache_hit": true,
-      "original_duration_ms": 13833
+      "fingerprint": "4ecfd5f29c9d7dc0019febb5aa8df3bf7549b6cc58dde8d14ba9fe47dd903e96",
+      "cache_hit": false
     },
     "database": {
       "status": "CACHED_PASS",
@@ -14228,7 +12744,7 @@
     },
     "research": {
       "status": "PASS",
-      "duration_ms": 12500,
+      "duration_ms": 4940,
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/capabilities/scripts/usecase/...",
@@ -14240,7 +12756,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 7856,
+          "duration_ms": 1662,
           "timed_out": false,
           "command": "go test ./internal/capabilities/scripts/usecase/...",
           "kind": "go",
@@ -14249,7 +12765,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2517,
+          "duration_ms": 802,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/webresearch/...",
           "kind": "go",
@@ -14258,7 +12774,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2126,
+          "duration_ms": 2474,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
           "kind": "go",
@@ -14272,7 +12788,7 @@
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "1ef2e36cafd5b220c3981542cd783bf4b45d71de3661906e904333cc80d24aac",
+      "fingerprint": "6f30b69fe8e40589bce3412b7a65818c9f41fa30405e02bba8cc91c38a63a08c",
       "cache_hit": false
     },
     "clips": {
@@ -14295,7 +12811,7 @@
     },
     "stock": {
       "status": "PASS",
-      "duration_ms": 40117,
+      "duration_ms": 44816,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/capabilities/assets/providers/stock/...",
@@ -14309,7 +12825,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 32124,
+          "duration_ms": 36072,
           "timed_out": false,
           "command": "go test ./internal/capabilities/assets/providers/stock/...",
           "kind": "go",
@@ -14318,7 +12834,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 953,
+          "duration_ms": 1088,
           "timed_out": false,
           "command": "go test ./internal/capabilities/assets/providers/artlist/...",
           "kind": "go",
@@ -14327,7 +12843,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2425,
+          "duration_ms": 2627,
           "timed_out": false,
           "command": "go test ./internal/api/assets/stock/...",
           "kind": "go",
@@ -14336,7 +12852,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2518,
+          "duration_ms": 2794,
           "timed_out": false,
           "command": "go test ./internal/api/assets/artlist/...",
           "kind": "go",
@@ -14345,7 +12861,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 2095,
+          "duration_ms": 2231,
           "timed_out": false,
           "command": "go test ./internal/infrastructure/artlist/...",
           "kind": "go",
@@ -14422,7 +12938,7 @@
     },
     "docs": {
       "status": "PASS",
-      "duration_ms": 282,
+      "duration_ms": 289,
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/application/documents/..."
@@ -14432,7 +12948,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 282,
+          "duration_ms": 289,
           "timed_out": false,
           "command": "go test ./internal/application/documents/...",
           "kind": "go",
@@ -14446,7 +12962,7 @@
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "376b2477321267788e7026609bbda8110802e4b528f26e749ba51a56bed4fecc",
+      "fingerprint": "4df760278d192af588b5dc932f87703e832c1570c6b7d5fed315cdbbf7c8ae9f",
       "cache_hit": false
     },
     "voiceover": {
@@ -14511,7 +13027,7 @@
     },
     "translation": {
       "status": "PASS",
-      "duration_ms": 10542,
+      "duration_ms": 2387,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/translation/...",
@@ -14523,7 +13039,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 488,
+          "duration_ms": 499,
           "timed_out": false,
           "command": "go test ./internal/application/translation/...",
           "kind": "go",
@@ -14532,7 +13048,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 10053,
+          "duration_ms": 1888,
           "timed_out": false,
           "command": "go test ./internal/capabilities/scripts/adapters/...",
           "kind": "go",
@@ -14541,7 +13057,7 @@
         {
           "status": "PASS",
           "exit_code": 0,
-          "duration_ms": 7856,
+          "duration_ms": 1662,
           "timed_out": false,
           "command": "go test ./internal/capabilities/scripts/usecase/...",
           "kind": "go",
@@ -14556,7 +13072,7 @@
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "38f12a98db91eb33982de33aac30a0cfa5623237ea52b05cb9a04ee25b6304ad",
+      "fingerprint": "36a19c9ea10ce1a5f8c99582ab9f8de6278c57c1262ecf7ba89db8b37a2be3d3",
       "cache_hit": false
     },
     "storage": {
@@ -14641,8 +13157,8 @@
       "original_duration_ms": 3833
     },
     "youtube": {
-      "status": "PASS",
-      "duration_ms": 15290,
+      "status": "CACHED_PASS",
+      "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/capabilities/youtube/...",
@@ -14652,53 +13168,7 @@
         "go test ./internal/api/assets/youtube/..."
       ],
       "packages": 5,
-      "command_results": [
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 4288,
-          "timed_out": false,
-          "command": "go test ./internal/capabilities/youtube/...",
-          "kind": "go",
-          "source": "./internal/capabilities/youtube/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 2870,
-          "timed_out": false,
-          "command": "go test ./internal/capabilities/assets/providers/youtube/...",
-          "kind": "go",
-          "source": "./internal/capabilities/assets/providers/youtube/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 1197,
-          "timed_out": false,
-          "command": "go test ./internal/application/assets/sourcing/youtube/...",
-          "kind": "go",
-          "source": "./internal/application/assets/sourcing/youtube/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 3385,
-          "timed_out": false,
-          "command": "go test ./internal/infrastructure/youtube/...",
-          "kind": "go",
-          "source": "./internal/infrastructure/youtube/..."
-        },
-        {
-          "status": "PASS",
-          "exit_code": 0,
-          "duration_ms": 3547,
-          "timed_out": false,
-          "command": "go test ./internal/api/assets/youtube/...",
-          "kind": "go",
-          "source": "./internal/api/assets/youtube/..."
-        }
-      ],
+      "command_results": [],
       "dependencies": [
         "database",
         "drive"
@@ -14707,7 +13177,8 @@
       "skipped_live": [],
       "race_skipped": false,
       "fingerprint": "0e15456bce81916774f9ba6236a5f3c2ab30440ef4f862291291c1ea592eb23d",
-      "cache_hit": false
+      "cache_hit": true,
+      "original_duration_ms": 15290
     },
     "artlist": {
       "status": "CACHED_PASS",
@@ -14732,22 +13203,40 @@
       "original_duration_ms": 56528
     },
     "node-scraper": {
-      "status": "CACHED_PASS",
-      "duration_ms": 0,
+      "status": "PASS",
+      "duration_ms": 14086,
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/infrastructure/artlist/scraper/...",
         "npm --prefix node-scraper test"
       ],
       "packages": 1,
-      "command_results": [],
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2690,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/artlist/scraper/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/artlist/scraper/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 11396,
+          "timed_out": false,
+          "command": "npm --prefix node-scraper test",
+          "kind": "node",
+          "source": "node_tests[0]"
+        }
+      ],
       "dependencies": [],
       "blocked_by": [],
       "skipped_live": [],
       "race_skipped": false,
-      "fingerprint": "20966c6a02233512ab0ec7546a5fb8c00ffb19dc30409892b97734c08099a60c",
-      "cache_hit": true,
-      "original_duration_ms": 13907
+      "fingerprint": "112fffffc214e25374a7eab7d44fb3cbc8657fd15d1d725f75cf89b79a1e9362",
+      "cache_hit": false
     },
     "kernel": {
       "status": "CACHED_PASS",
@@ -14878,29 +13367,56 @@
       "rust-muscles",
       "web"
     ],
-    "started_at": "2026-08-24T09:32:25.003651Z",
-    "finished_at": "2026-08-24T09:33:05.124877Z",
-    "git_sha": "2a99bd8ad2e916a8c6767129e2e1fe2f35354afa",
-    "duration_ms": 40125,
+    "started_at": "2026-08-24T10:08:39.589195Z",
+    "finished_at": "2026-08-24T10:09:28.787498Z",
+    "git_sha": "2c50805e3544eed6ae10cf395d8079d567ac5903",
+    "duration_ms": 49217,
     "components": {
       "script": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
+        "status": "PASS",
+        "duration_ms": 4357,
         "timeout_seconds": 300.0,
         "commands": [
           "go test ./internal/kernel/script/...",
-          "go test ./internal/application/scripts/...",
+          "go test ./internal/capabilities/scripts/...",
           "go test ./internal/api/script/..."
         ],
         "packages": 3,
-        "command_results": [],
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 553,
+            "timed_out": false,
+            "command": "go test ./internal/kernel/script/...",
+            "kind": "go",
+            "source": "./internal/kernel/script/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3013,
+            "timed_out": false,
+            "command": "go test ./internal/capabilities/scripts/...",
+            "kind": "go",
+            "source": "./internal/capabilities/scripts/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 790,
+            "timed_out": false,
+            "command": "go test ./internal/api/script/...",
+            "kind": "go",
+            "source": "./internal/api/script/..."
+          }
+        ],
         "dependencies": [],
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "e94ad63942d6098a2851ccbf71abe1269a973ffd93150241bcb27b8f087412a4",
-        "cache_hit": true,
-        "original_duration_ms": 13833
+        "fingerprint": "4ecfd5f29c9d7dc0019febb5aa8df3bf7549b6cc58dde8d14ba9fe47dd903e96",
+        "cache_hit": false
       },
       "database": {
         "status": "CACHED_PASS",
@@ -14921,7 +13437,7 @@
       },
       "research": {
         "status": "PASS",
-        "duration_ms": 12500,
+        "duration_ms": 4940,
         "timeout_seconds": 300.0,
         "commands": [
           "go test ./internal/capabilities/scripts/usecase/...",
@@ -14933,7 +13449,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 7856,
+            "duration_ms": 1662,
             "timed_out": false,
             "command": "go test ./internal/capabilities/scripts/usecase/...",
             "kind": "go",
@@ -14942,7 +13458,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2517,
+            "duration_ms": 802,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/webresearch/...",
             "kind": "go",
@@ -14951,7 +13467,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2126,
+            "duration_ms": 2474,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
             "kind": "go",
@@ -14965,7 +13481,7 @@
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "1ef2e36cafd5b220c3981542cd783bf4b45d71de3661906e904333cc80d24aac",
+        "fingerprint": "6f30b69fe8e40589bce3412b7a65818c9f41fa30405e02bba8cc91c38a63a08c",
         "cache_hit": false
       },
       "clips": {
@@ -14988,7 +13504,7 @@
       },
       "stock": {
         "status": "PASS",
-        "duration_ms": 40117,
+        "duration_ms": 44816,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/capabilities/assets/providers/stock/...",
@@ -15002,7 +13518,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 32124,
+            "duration_ms": 36072,
             "timed_out": false,
             "command": "go test ./internal/capabilities/assets/providers/stock/...",
             "kind": "go",
@@ -15011,7 +13527,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 953,
+            "duration_ms": 1088,
             "timed_out": false,
             "command": "go test ./internal/capabilities/assets/providers/artlist/...",
             "kind": "go",
@@ -15020,7 +13536,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2425,
+            "duration_ms": 2627,
             "timed_out": false,
             "command": "go test ./internal/api/assets/stock/...",
             "kind": "go",
@@ -15029,7 +13545,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2518,
+            "duration_ms": 2794,
             "timed_out": false,
             "command": "go test ./internal/api/assets/artlist/...",
             "kind": "go",
@@ -15038,7 +13554,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 2095,
+            "duration_ms": 2231,
             "timed_out": false,
             "command": "go test ./internal/infrastructure/artlist/...",
             "kind": "go",
@@ -15115,7 +13631,7 @@
       },
       "docs": {
         "status": "PASS",
-        "duration_ms": 282,
+        "duration_ms": 289,
         "timeout_seconds": 300.0,
         "commands": [
           "go test ./internal/application/documents/..."
@@ -15125,7 +13641,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 282,
+            "duration_ms": 289,
             "timed_out": false,
             "command": "go test ./internal/application/documents/...",
             "kind": "go",
@@ -15139,7 +13655,7 @@
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "376b2477321267788e7026609bbda8110802e4b528f26e749ba51a56bed4fecc",
+        "fingerprint": "4df760278d192af588b5dc932f87703e832c1570c6b7d5fed315cdbbf7c8ae9f",
         "cache_hit": false
       },
       "voiceover": {
@@ -15204,7 +13720,7 @@
       },
       "translation": {
         "status": "PASS",
-        "duration_ms": 10542,
+        "duration_ms": 2387,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/application/translation/...",
@@ -15216,7 +13732,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 488,
+            "duration_ms": 499,
             "timed_out": false,
             "command": "go test ./internal/application/translation/...",
             "kind": "go",
@@ -15225,7 +13741,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 10053,
+            "duration_ms": 1888,
             "timed_out": false,
             "command": "go test ./internal/capabilities/scripts/adapters/...",
             "kind": "go",
@@ -15234,7 +13750,7 @@
           {
             "status": "PASS",
             "exit_code": 0,
-            "duration_ms": 7856,
+            "duration_ms": 1662,
             "timed_out": false,
             "command": "go test ./internal/capabilities/scripts/usecase/...",
             "kind": "go",
@@ -15249,7 +13765,7 @@
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "38f12a98db91eb33982de33aac30a0cfa5623237ea52b05cb9a04ee25b6304ad",
+        "fingerprint": "36a19c9ea10ce1a5f8c99582ab9f8de6278c57c1262ecf7ba89db8b37a2be3d3",
         "cache_hit": false
       },
       "storage": {
@@ -15334,8 +13850,8 @@
         "original_duration_ms": 3833
       },
       "youtube": {
-        "status": "PASS",
-        "duration_ms": 15290,
+        "status": "CACHED_PASS",
+        "duration_ms": 0,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/capabilities/youtube/...",
@@ -15345,53 +13861,7 @@
           "go test ./internal/api/assets/youtube/..."
         ],
         "packages": 5,
-        "command_results": [
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 4288,
-            "timed_out": false,
-            "command": "go test ./internal/capabilities/youtube/...",
-            "kind": "go",
-            "source": "./internal/capabilities/youtube/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 2870,
-            "timed_out": false,
-            "command": "go test ./internal/capabilities/assets/providers/youtube/...",
-            "kind": "go",
-            "source": "./internal/capabilities/assets/providers/youtube/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 1197,
-            "timed_out": false,
-            "command": "go test ./internal/application/assets/sourcing/youtube/...",
-            "kind": "go",
-            "source": "./internal/application/assets/sourcing/youtube/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 3385,
-            "timed_out": false,
-            "command": "go test ./internal/infrastructure/youtube/...",
-            "kind": "go",
-            "source": "./internal/infrastructure/youtube/..."
-          },
-          {
-            "status": "PASS",
-            "exit_code": 0,
-            "duration_ms": 3547,
-            "timed_out": false,
-            "command": "go test ./internal/api/assets/youtube/...",
-            "kind": "go",
-            "source": "./internal/api/assets/youtube/..."
-          }
-        ],
+        "command_results": [],
         "dependencies": [
           "database",
           "drive"
@@ -15400,7 +13870,8 @@
         "skipped_live": [],
         "race_skipped": false,
         "fingerprint": "0e15456bce81916774f9ba6236a5f3c2ab30440ef4f862291291c1ea592eb23d",
-        "cache_hit": false
+        "cache_hit": true,
+        "original_duration_ms": 15290
       },
       "artlist": {
         "status": "CACHED_PASS",
@@ -15425,22 +13896,40 @@
         "original_duration_ms": 56528
       },
       "node-scraper": {
-        "status": "CACHED_PASS",
-        "duration_ms": 0,
+        "status": "PASS",
+        "duration_ms": 14086,
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/infrastructure/artlist/scraper/...",
           "npm --prefix node-scraper test"
         ],
         "packages": 1,
-        "command_results": [],
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2690,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/artlist/scraper/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/artlist/scraper/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 11396,
+            "timed_out": false,
+            "command": "npm --prefix node-scraper test",
+            "kind": "node",
+            "source": "node_tests[0]"
+          }
+        ],
         "dependencies": [],
         "blocked_by": [],
         "skipped_live": [],
         "race_skipped": false,
-        "fingerprint": "20966c6a02233512ab0ec7546a5fb8c00ffb19dc30409892b97734c08099a60c",
-        "cache_hit": true,
-        "original_duration_ms": 13907
+        "fingerprint": "112fffffc214e25374a7eab7d44fb3cbc8657fd15d1d725f75cf89b79a1e9362",
+        "cache_hit": false
       },
       "kernel": {
         "status": "CACHED_PASS",
@@ -15493,10 +13982,10 @@
       }
     },
     "cache_summary": {
-      "hits": 18,
-      "misses": 5,
-      "executed": 5,
-      "saved_ms": 188698,
+      "hits": 17,
+      "misses": 6,
+      "executed": 6,
+      "saved_ms": 176248,
       "gates": [
         {
           "gate": "api",
@@ -15521,7 +14010,7 @@
         {
           "gate": "docs",
           "result": "MISS",
-          "duration_ms": 282
+          "duration_ms": 289
         },
         {
           "gate": "drive",
@@ -15550,8 +14039,8 @@
         },
         {
           "gate": "node-scraper",
-          "result": "HIT",
-          "duration_ms": 13907
+          "result": "MISS",
+          "duration_ms": 14086
         },
         {
           "gate": "ollama",
@@ -15566,7 +14055,7 @@
         {
           "gate": "research",
           "result": "MISS",
-          "duration_ms": 12500
+          "duration_ms": 4940
         },
         {
           "gate": "rust-muscles",
@@ -15575,13 +14064,13 @@
         },
         {
           "gate": "script",
-          "result": "HIT",
-          "duration_ms": 13833
+          "result": "MISS",
+          "duration_ms": 4357
         },
         {
           "gate": "stock",
           "result": "MISS",
-          "duration_ms": 40117
+          "duration_ms": 44816
         },
         {
           "gate": "storage",
@@ -15596,7 +14085,7 @@
         {
           "gate": "translation",
           "result": "MISS",
-          "duration_ms": 10542
+          "duration_ms": 2387
         },
         {
           "gate": "voiceover",
@@ -15610,7 +14099,7 @@
         },
         {
           "gate": "youtube",
-          "result": "MISS",
+          "result": "HIT",
           "duration_ms": 15290
         }
       ]
@@ -15620,11 +14109,10 @@
     "dry_run": false,
     "include_live": false,
     "diagnostics": [
-      "component=script status=CACHED_PASS original_duration_ms=13833",
       "component=database status=CACHED_PASS original_duration_ms=13234",
       "component=qdrant status=CACHED_PASS original_duration_ms=13833",
-      "component=indexing status=CACHED_PASS original_duration_ms=3027",
       "component=clips status=CACHED_PASS original_duration_ms=8358",
+      "component=indexing status=CACHED_PASS original_duration_ms=3027",
       "component=drive status=CACHED_PASS original_duration_ms=8685",
       "component=voiceover status=CACHED_PASS original_duration_ms=10567",
       "component=images status=CACHED_PASS original_duration_ms=8061",
@@ -15633,18 +14121,18 @@
       "component=timeline status=CACHED_PASS original_duration_ms=3509",
       "component=jobs status=CACHED_PASS original_duration_ms=14568",
       "component=api status=CACHED_PASS original_duration_ms=3833",
+      "component=youtube status=CACHED_PASS original_duration_ms=15290",
       "component=artlist status=CACHED_PASS original_duration_ms=56528",
-      "component=node-scraper status=CACHED_PASS original_duration_ms=13907",
       "component=kernel status=CACHED_PASS original_duration_ms=2602",
       "component=rust-muscles status=CACHED_PASS original_duration_ms=0",
       "component=web status=CACHED_PASS original_duration_ms=7747"
     ]
   },
   "cache_summary": {
-    "hits": 18,
-    "misses": 5,
-    "executed": 5,
-    "saved_ms": 188698,
+    "hits": 17,
+    "misses": 6,
+    "executed": 6,
+    "saved_ms": 176248,
     "gates": [
       {
         "gate": "api",
@@ -15669,7 +14157,7 @@
       {
         "gate": "docs",
         "result": "MISS",
-        "duration_ms": 282
+        "duration_ms": 289
       },
       {
         "gate": "drive",
@@ -15698,8 +14186,8 @@
       },
       {
         "gate": "node-scraper",
-        "result": "HIT",
-        "duration_ms": 13907
+        "result": "MISS",
+        "duration_ms": 14086
       },
       {
         "gate": "ollama",
@@ -15714,7 +14202,7 @@
       {
         "gate": "research",
         "result": "MISS",
-        "duration_ms": 12500
+        "duration_ms": 4940
       },
       {
         "gate": "rust-muscles",
@@ -15723,13 +14211,13 @@
       },
       {
         "gate": "script",
-        "result": "HIT",
-        "duration_ms": 13833
+        "result": "MISS",
+        "duration_ms": 4357
       },
       {
         "gate": "stock",
         "result": "MISS",
-        "duration_ms": 40117
+        "duration_ms": 44816
       },
       {
         "gate": "storage",
@@ -15744,7 +14232,7 @@
       {
         "gate": "translation",
         "result": "MISS",
-        "duration_ms": 10542
+        "duration_ms": 2387
       },
       {
         "gate": "voiceover",
@@ -15758,15 +14246,15 @@
       },
       {
         "gate": "youtube",
-        "result": "MISS",
+        "result": "HIT",
         "duration_ms": 15290
       }
     ]
   },
-  "started_at": "2026-08-24T09:32:17.087658Z",
-  "finished_at": "2026-08-24T09:33:05.129596Z",
-  "git_sha": "2a99bd8ad2e916a8c6767129e2e1fe2f35354afa",
-  "duration_ms": 40125,
+  "started_at": "2026-08-24T10:08:26.669930Z",
+  "finished_at": "2026-08-24T10:09:28.807675Z",
+  "git_sha": "2c50805e3544eed6ae10cf395d8079d567ac5903",
+  "duration_ms": 49217,
   "dry_run": false,
   "final": "PASS"
 }

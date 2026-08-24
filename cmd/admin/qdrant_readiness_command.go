@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 func runQdrantReadiness(args []string) error {

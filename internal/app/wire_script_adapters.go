@@ -57,7 +57,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 

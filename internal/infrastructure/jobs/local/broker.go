@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

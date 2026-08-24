@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	idem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/idempotency"
 )
 
 // inMemStore builds an IdempotencyStore backed by an in-memory

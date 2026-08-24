@@ -9,7 +9,7 @@
 //
 // Import discipline:
 //   - MAY import contracts/, dto/, ports/, usecase/.
-//   - MAY import external infrastructure (infrastructure/ai/ollama,
+//   - MAY import external infrastructure (platform/ollama,
 //     compatibility-shims, etc.) under godlike/06 §"Single capability
 //     ownership" strictness.
 //

@@ -18,7 +18,7 @@ package embeddings
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

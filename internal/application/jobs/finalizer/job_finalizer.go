@@ -58,7 +58,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

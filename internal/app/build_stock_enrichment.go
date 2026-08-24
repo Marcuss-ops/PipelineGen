@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
 // wireStockEnrichment wires the stock RLM/LLM enrichment handler

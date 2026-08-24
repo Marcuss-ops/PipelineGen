@@ -218,7 +218,7 @@ measurements:
 
   - current_symbol: "ScriptGenerationDuration"
     current_owner: "internal/platform/observability/metrics_scripts.go"
-    current_writer: "internal/infrastructure/ai/ollama/generate.go:133"
+    current_writer: "internal/platform/ollama/generate.go:133"
     current_storage: "Prometheus histogram"
     current_metric: "script_generation_duration_seconds{model,language,outcome}"
     canonical_type: operation

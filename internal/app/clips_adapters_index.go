@@ -6,7 +6,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )

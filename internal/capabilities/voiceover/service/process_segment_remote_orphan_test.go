@@ -13,8 +13,8 @@ import (
 
 	joboutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
-	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // remoteOrphanRepo delegates the real E2E repository to the finalizer

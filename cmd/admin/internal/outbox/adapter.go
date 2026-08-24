@@ -26,7 +26,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // RepairAdapter satisfies the canonical outbox-repair port by

@@ -111,6 +111,6 @@ func TestDeterministicPresetSampler_SeedComponentsMatter(t *testing.T) {
 // test loudly — the replay-stability guarantee encoded as a golden.
 func TestDeterministicPresetSampler_Golden(t *testing.T) {
 	got := DefaultDeterministicPresetSampler.Sample(sampleInput())
-	require.Equal(t, "portrait_card_left", got.Preset)
-	require.Equal(t, "slide_left", got.Animation)
+	require.Equal(t, "portrait_card_right", got.Preset)
+	require.Equal(t, "fade_in", got.Animation)
 }

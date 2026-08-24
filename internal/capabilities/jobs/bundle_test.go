@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )

@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )

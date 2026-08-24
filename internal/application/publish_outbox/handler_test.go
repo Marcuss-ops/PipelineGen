@@ -34,7 +34,7 @@ import (
 
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
