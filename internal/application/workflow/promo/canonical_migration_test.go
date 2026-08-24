@@ -10,7 +10,7 @@
 // TestPromo_CanonicalMigrationGate (5b): regression-guard for the
 // BLOC5.4 migration target. Today the bridge uses
 // Service.GenerateWithDestination (per
-// internal/application/voiceover/promo.go:1-8). The migration target is
+// internal/capabilities/voiceover/service/promo.go:1-8). The migration target is
 // to route the per-language voiceover step through jobs.Dispatcher with
 // the canonical TypeVoiceoverGenerate job type. This test pins:
 //  1. The canonical async job type literal is "voiceover.generate"
@@ -20,7 +20,7 @@
 //     and re-introduce the TTS-double-invocation regression class).
 //
 // The migration is forward-deferred to BLOC5.4 per
-// internal/application/voiceover/promo.go:1-8. This test serves as a
+// internal/capabilities/voiceover/service/promo.go:1-8. This test serves as a
 // regression-guard: a future agent re-introducing
 // Service.GenerateBatch in the bridge would surface as a test failure.
 package promo
@@ -193,7 +193,7 @@ func TestPromo_StrictTranslationAccounting(t *testing.T) {
 
 // findRepoRoot walks up from this test file's directory until it finds
 // go.mod. The walk-up is bounded by the filesystem root. Used to
-// resolve the bridge source path (`internal/application/voiceover/promo.go`)
+// resolve the bridge source path (`internal/capabilities/voiceover/service/promo.go`)
 // regardless of which directory `go test` was invoked from.
 //
 // runtime.Caller(0) returns the file:line of the current function
@@ -225,11 +225,11 @@ func findRepoRoot(t *testing.T) string {
 //
 //  1. The canonical async job type literal is "voiceover.generate"
 //     (one canonical const per jobType, per godlike/06 SSOT — see
-//     internal/domain/job/job.go:78 `TypeVoiceoverGenerate =
+//     internal/kernel/job/canonical_definitions.go:62 `TypeVoiceoverGenerate =
 //     "voiceover.generate"`). A future PR that renames the const
 //     literal would break the canonical contract and surface here.
 //
-//  2. The bridge source at internal/application/voiceover/promo.go
+//  2. The bridge source at internal/capabilities/voiceover/service/promo.go
 //     MUST NOT call Service.GenerateBatch (the legacy batch method
 //     that would double-invoke the TTS pipeline). Today the bridge
 //     uses Service.GenerateWithDestination (the canonical non-batch
@@ -260,12 +260,12 @@ func findRepoRoot(t *testing.T) string {
 func TestPromo_CanonicalMigrationGate(t *testing.T) {
 	// ── 1. Canonical async job type const (godlike/06 SSOT) ──────
 	// The single canonical const for the voiceover.generate job type
-	// lives at internal/domain/job/job.go:78. Renaming this literal
+	// lives at internal/kernel/job/canonical_definitions.go:62. Renaming this literal
 	// would break the wire-shape contract (jobs.Service.Enqueue callers
 	// use this const exclusively; see AGENTS.md Git-Lesson-3).
 	const wantJobType = "voiceover.generate"
 	if got := string(job.TypeVoiceoverGenerate); got != wantJobType {
-		t.Fatalf("job.TypeVoiceoverGenerate = %q, want %q (canonical one-canonical-const-per-jobType per godlike/06 SSOT — see internal/domain/job/job.go:78)", got, wantJobType)
+		t.Fatalf("job.TypeVoiceoverGenerate = %q, want %q (canonical one-canonical-const-per-jobType per godlike/06 SSOT — see internal/kernel/job/canonical_definitions.go:62)", got, wantJobType)
 	}
 
 	// ── 2. Bridge source does NOT call Service.GenerateBatch ──────
@@ -277,7 +277,7 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 	// voiceover.Finalizer.Finalize, and GenerateBatch would invoke
 	// the pipeline a SECOND time.
 	repoRoot := findRepoRoot(t)
-	bridgePath := filepath.Join(repoRoot, "internal", "application", "voiceover", "promo.go")
+	bridgePath := filepath.Join(repoRoot, "internal", "capabilities", "voiceover", "service", "promo.go")
 	bridgeSrc, err := os.ReadFile(bridgePath)
 	if err != nil {
 		t.Fatalf("read bridge source %q: %v (test fixture assumes repo-root resolution via findRepoRoot)", bridgePath, err)
@@ -287,7 +287,7 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 	if strings.Contains(bridgeBody, "GenerateBatch(") {
 		t.Errorf("bridge source %q must NOT call Service.GenerateBatch (legacy batch method that would double-invoke the TTS pipeline); "+
 			"the canonical async path is voiceover.generate via jobs.Dispatcher (job.TypeVoiceoverGenerate = %q); "+
-			"see internal/application/voiceover/promo.go:1-8 (BLOC5.4 migration forward-deferred)",
+			"see internal/capabilities/voiceover/service/promo.go:1-8 (BLOC5.4 migration forward-deferred)",
 			bridgePath, wantJobType)
 	}
 

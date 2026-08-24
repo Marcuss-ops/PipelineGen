@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/jobs"
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
+	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/jobs"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

@@ -20,8 +20,8 @@ package api
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
 // Descriptor is the canonical contract returned by a capability's

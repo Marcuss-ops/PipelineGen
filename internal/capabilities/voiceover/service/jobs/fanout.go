@@ -29,8 +29,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )

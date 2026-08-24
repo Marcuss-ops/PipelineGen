@@ -71,8 +71,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	capvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"

@@ -17,8 +17,8 @@
 package app
 
 import (
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"

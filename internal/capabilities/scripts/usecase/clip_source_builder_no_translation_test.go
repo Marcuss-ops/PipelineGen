@@ -26,8 +26,8 @@ import (
 	"go.uber.org/zap"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

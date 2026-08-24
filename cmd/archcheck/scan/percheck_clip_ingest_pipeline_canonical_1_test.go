@@ -105,7 +105,7 @@ func TestScanClipIngestPipelineCanonical1_ShadowLiteralReported(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{
 		canonicalOwnerPath: canonicalOwnerGo,
 		"internal/capabilities/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
-		"internal/application/ecommerce/clip_ingest_literal.go":              shadowLiteralGo,
+		"internal/application/ecommerce/clip_ingest_literal.go":               shadowLiteralGo,
 	})
 	defer cleanup()
 	v := ScanClipIngestPipelineCanonical1(dir)

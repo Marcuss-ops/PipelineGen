@@ -31,8 +31,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 

@@ -2,31 +2,31 @@
 // consolidated from youtube_enrichment_adapter.go + youtube_fetch_adapter.go
 // (PR-GODOBJ-Azione-4, July 2026).
 //
-// 2 adapters: youtubeEnrichmentAdapter, sourcingFetchAdapter.
-package app
+// 2 adapters: YoutubeEnrichmentAdapter, SourcingFetchAdapter.
+package adapters
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
-// ── youtubeEnrichmentAdapter ───────────────────────────────────────────
+// ── YoutubeEnrichmentAdapter ───────────────────────────────────────────
 
-type youtubeEnrichmentAdapter struct {
+type YoutubeEnrichmentAdapter struct {
 	jobs       sourcing.JobsPort
 	enrichment sourcing.EnrichmentPort
 	search     sourcing.SearchProviderPort
 	config     sourcing.ConfigPort
 }
 
-func (a *youtubeEnrichmentAdapter) IndexingEnabled() bool {
+func (a *YoutubeEnrichmentAdapter) IndexingEnabled() bool {
 	return a.enrichment != nil && a.jobs != nil
 }
 
-func (a *youtubeEnrichmentAdapter) DispatchPostRegister(ctx context.Context, clipID, source, localPath string) error {
+func (a *YoutubeEnrichmentAdapter) DispatchPostRegister(ctx context.Context, clipID, source, localPath string) error {
 	if a.jobs == nil {
 		return nil
 	}
@@ -42,34 +42,34 @@ func (a *youtubeEnrichmentAdapter) DispatchPostRegister(ctx context.Context, cli
 	return err
 }
 
-func (a *youtubeEnrichmentAdapter) SearchRelated(ctx context.Context, query string, limit int) ([]sourcing.SearchCandidate, error) {
+func (a *YoutubeEnrichmentAdapter) SearchRelated(ctx context.Context, query string, limit int) ([]sourcing.SearchCandidate, error) {
 	if a.search == nil {
 		return nil, nil
 	}
 	return a.search.Search(ctx, query, limit)
 }
 
-func (a *youtubeEnrichmentAdapter) FolderDefaults() (clipsFolder, rootFolder string) {
+func (a *YoutubeEnrichmentAdapter) FolderDefaults() (clipsFolder, rootFolder string) {
 	if a.config == nil {
 		return "", ""
 	}
 	return a.config.ClipsFolder(), a.config.RootFolder()
 }
 
-// ── sourcingFetchAdapter ───────────────────────────────────────────────
+// ── SourcingFetchAdapter ───────────────────────────────────────────────
 
-type sourcingFetchAdapter struct {
+type SourcingFetchAdapter struct {
 	registry *providers.Registry
 }
 
-// Compile-time pin: sourcingFetchAdapter satisfies sourcing.FetchProviderPort.
+// Compile-time pin: SourcingFetchAdapter satisfies sourcing.FetchProviderPort.
 // PR-CLIP-DECOM-5 (July 2026): drift in the Fetch signature surfaces as a
 // build failure, not a runtime panic. NoAudio forwarding is the 4th adapter
 // layer in the YouTube fetch chain (usecase.FetchRequest → sourcing.FetchRequest
 // → providers.FetchRequest → ffmpeg.Processor).
-var _ sourcing.FetchProviderPort = (*sourcingFetchAdapter)(nil)
+var _ sourcing.FetchProviderPort = (*SourcingFetchAdapter)(nil)
 
-func (a *sourcingFetchAdapter) Fetch(ctx context.Context, req sourcing.FetchRequest) (*sourcing.FetchedAsset, error) {
+func (a *SourcingFetchAdapter) Fetch(ctx context.Context, req sourcing.FetchRequest) (*sourcing.FetchedAsset, error) {
 	if a.registry == nil {
 		return nil, fmt.Errorf("register fetch provider registry not configured")
 	}
