@@ -62,7 +62,7 @@ import (
 	"go.uber.org/zap"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"

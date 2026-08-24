@@ -190,7 +190,7 @@ type ProcessSegmentObservabilityDeps struct {
 	// godlike/06 SSOT: this port is the SOLE canonical
 	// application-layer surface for Step 10 partial-state
 	// telemetry. The composition root wires the concrete
-	// adapter (internal/infrastructure/observability.Step10
+	// adapter (internal/platform/observability.Step10
 	// MetricsAdapter).
 	Step10Metrics youtubeports.Step10MetricsRecorder
 

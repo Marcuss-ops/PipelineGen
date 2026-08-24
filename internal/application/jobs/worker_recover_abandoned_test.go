@@ -26,7 +26,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )

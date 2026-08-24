@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // call is the single Go→Rust execution seam. Every operation (probe,

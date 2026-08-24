@@ -49,7 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"

@@ -42,7 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // ── outboxMonitorAdapter ──────────────────────────────────────

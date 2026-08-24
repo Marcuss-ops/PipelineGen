@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"

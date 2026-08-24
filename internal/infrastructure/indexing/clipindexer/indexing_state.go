@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )

@@ -2,7 +2,7 @@
 //
 // Adapter exposing the application-layer reconciler.Metrics port
 // wired against the observability package's Prometheus-backed
-// counters (see internal/infrastructure/observability/metrics_media.go).
+// counters (see internal/platform/observability/metrics_media.go).
 //
 // Pattern 0 (AGENTS.md): the application layer declares the
 // Metrics interface in reconciler/ports.go; the infrastructure
@@ -20,7 +20,7 @@
 package deletion
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // ReconcilerMetricsAdapter is the production-side adapter that

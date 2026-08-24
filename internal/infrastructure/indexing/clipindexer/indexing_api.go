@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // indexViaAPI hits the embedding HTTP server for the four embedding kinds:

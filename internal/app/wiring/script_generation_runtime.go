@@ -18,7 +18,7 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"

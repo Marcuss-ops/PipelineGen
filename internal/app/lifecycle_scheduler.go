@@ -32,7 +32,7 @@ import (
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	platformyoutube "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"

@@ -135,7 +135,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	"internal/api/images/",
 	// 9. Metrics / observability — event_type labels for
 	//    metric dimensions (NOT for emission).
-	"internal/infrastructure/observability/",
+	"internal/platform/observability/",
 	// 10. Qdrant search dead-letter adapter — references the
 	//     literal event_type for classification (NOT for
 	//     emission).

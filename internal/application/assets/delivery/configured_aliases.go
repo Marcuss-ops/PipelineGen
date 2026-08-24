@@ -2,7 +2,7 @@ package delivery
 
 import (
 	capdelivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	platformdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/prometheus/client_golang/prometheus"

@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // PromMetricsAdapter is the canonical wiring of reconciler.Metrics
-// to internal/infrastructure/observability vars (QDRANT-005C).
+// to internal/platform/observability vars (QDRANT-005C).
 //
 // The adapter constructs nothing — all underlying metrics are
 // package-level promauto collectors, so the struct is empty and can

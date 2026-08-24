@@ -22,7 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"

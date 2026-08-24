@@ -12,7 +12,7 @@ import (
 
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // ── Fakes ────────────────────────────────────────────────────────────

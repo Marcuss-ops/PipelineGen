@@ -12,7 +12,7 @@
 // private prometheus.NewCounterVec instances (NOT promauto), so
 // the test never registers against prometheus.DefaultRegisterer.
 // The same discipline is used in
-// internal/infrastructure/observability/metrics_adapter_test.go
+// internal/platform/observability/metrics_adapter_test.go
 // (FASE 3.7 Commit 2 canonical precedent) + P1.1
 // downloader_metrics_test.go.
 package health

@@ -17,7 +17,7 @@
 // tests in the same run start at counter value 0; test
 // interleaving cannot contaminate assertions. The same
 // discipline is used in
-// internal/infrastructure/observability/metrics_adapter_test.go
+// internal/platform/observability/metrics_adapter_test.go
 // (FASE 3.7 Commit 2 canonical precedent).
 package downloader
 

@@ -24,7 +24,7 @@ package downloader
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // Metrics groups the Prometheus collectors that the downloader
@@ -38,7 +38,7 @@ import (
 //
 // Production construction: NewMetrics() backs the field with the
 // promauto global from
-// internal/infrastructure/observability/metrics_artlist.go —
+// internal/platform/observability/metrics_artlist.go —
 // that global auto-registers with prometheus.DefaultRegisterer
 // and is surfaced via api/routes.go::/metrics (promhttp.Handler()).
 type Metrics struct {

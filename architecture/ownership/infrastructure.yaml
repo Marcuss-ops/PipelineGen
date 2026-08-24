@@ -48,7 +48,7 @@ infrastructure_jobs:
         - jobbrokerclient       # HTTP client for job broker (worker side)
 
 infrastructure_observability:
-  owner: internal/infrastructure/observability
+  owner: internal/platform/observability
   rationale: metrics, tracing, health checks.
 
 infrastructure_config:

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // Handle is the canonical handler for asset.index.requested.v1 events.

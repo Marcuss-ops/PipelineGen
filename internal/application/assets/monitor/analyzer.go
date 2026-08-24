@@ -101,7 +101,7 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 	// Metrics observations — FASE 3.7 Commit 2 (2026-07-04):
 	// emit via the typed m.metrics port (declared in
 	// internal/application/assets/monitor/ports_metrics.go) instead
-	// of the legacy `internal/infrastructure/observability`
+	// of the legacy `internal/platform/observability`
 	// package-level vars. The composition root wires an
 	// *observability.ObservabilityMetricsRecorder adapter; tests
 	// + partial-deploy paths get a NoopMetricsRecorder default so

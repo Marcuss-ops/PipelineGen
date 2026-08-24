@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 

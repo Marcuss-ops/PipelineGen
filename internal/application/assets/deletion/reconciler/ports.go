@@ -89,7 +89,7 @@ type OutboxEnqueuer interface {
 // Metrics is the application-layer observability port. Production
 // wiring satisfies this with the canonical Prometheus-backed
 // implementations at
-// internal/infrastructure/observability/metrics_media.go.
+// internal/platform/observability/metrics_media.go.
 //
 // Each method is called at most ONCE per row per tick.
 //

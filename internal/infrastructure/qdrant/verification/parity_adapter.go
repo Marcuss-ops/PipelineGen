@@ -13,7 +13,7 @@
 //     (SearchIndexEligibilitySQL SSOT), active = scroll of the runtime
 //     alias target.
 //   - ParityMetricsAdapter — emits the Prometheus gauges declared in
-//     internal/infrastructure/observability/metrics_media.go
+//     internal/platform/observability/metrics_media.go
 //     (projection_coverage_ratio, projection_orphan_count, ...).
 package verification
 
@@ -22,7 +22,7 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // Compile-time assertions: the adapters satisfy the application ports.

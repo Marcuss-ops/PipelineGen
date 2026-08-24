@@ -10,7 +10,7 @@ import (
 	"time"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
