@@ -10,13 +10,8 @@ internal/capabilities/scripts/adapters/vidrush_helpers.go
 internal/application/staging/service.go
 internal/platform/sqlite/backup.go
 internal/capabilities/voiceover/service/process_segment_publish.go
-internal/infrastructure/acquisition/filesystem_stager_prepare.go
-internal/infrastructure/ai/autotag/autotag.go
-internal/infrastructure/artifacts/local_store_fs.go
-internal/infrastructure/artifacts/local_store_stage.go
 internal/platform/drive/artifact_publisher_adapter.go
 internal/platform/drive/verifier.go
-internal/infrastructure/stager/http_source_stager.go
 internal/kernel/job/workspace/manager.go
 internal/platform/cas/replay_source.go
 internal/platform/cas/store.go

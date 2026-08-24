@@ -37,11 +37,11 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // WorkerComposition is the canonical post-build surface for the

@@ -3,7 +3,7 @@
 // godlike/06 SSOT (single-purpose doctrine): one file per nominal type,
 // so the file *name* in this package == the type name it owns. This
 // prevents "god files" as the package grows and matches the codebase
-// convention (see sibling domain/*/job_types.go + application/ports/*.go).
+// convention (see sibling kernel/*/ and platform/httpclient for similar patterns).
 //
 // Why nominal types?
 // ------------------

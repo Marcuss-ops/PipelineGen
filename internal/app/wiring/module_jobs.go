@@ -7,13 +7,13 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	platformjobregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
 // JobsBundle is the Job module's *owned* runtime surface.

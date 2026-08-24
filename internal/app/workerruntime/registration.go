@@ -30,10 +30,10 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // LoadLogger initialises the structured logger so Run() can mint

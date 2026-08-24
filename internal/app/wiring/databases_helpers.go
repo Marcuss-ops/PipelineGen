@@ -34,8 +34,8 @@ import (
 	"runtime"
 	"strings"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 
 	"go.uber.org/zap"
 )

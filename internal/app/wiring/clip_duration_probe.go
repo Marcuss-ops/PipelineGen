@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	mediaexec "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // ClipProber is the canonical media probe port used to measure an asset's

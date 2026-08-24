@@ -217,25 +217,8 @@
       "targets": [
         "internal/capabilities"
       ],
-      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. Approved additions for multi-provider research fallback remain in place.",
+      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. All previously approved webresearch additions migrated with the infrastructure→platform consolidation (commit 1dcc5e4).",
       "new_files_approved": []
-    },
-    {
-      "path": "internal/infrastructure",
-      "owner": "infrastructure adapter migration owner",
-      "deadline": "2026-12-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/platform",
-        "internal/capabilities"
-      ],
-      "note": "New adapters for multi-provider research fallback (August 2026): dedup.go, provider_duckduckgo.go, multi_provider.go added to webresearch as search-adapter zone.",
-      "new_files_approved": [
-        "internal/infrastructure/webresearch/dedup.go",
-        "internal/infrastructure/webresearch/provider_duckduckgo.go",
-        "internal/infrastructure/webresearch/multi_provider.go"
-      ]
     }
   ],
   "completed_migrations": [
@@ -278,6 +261,17 @@
       "resolution": "Root deleted from filesystem. Code migrated to internal/kernel and internal/capabilities. Legacy import path banned via percheck_legacy_root_ban.go.",
       "targets": [
         "internal/kernel",
+        "internal/capabilities"
+      ]
+    },
+    {
+      "path": "internal/infrastructure",
+      "owner": "infrastructure adapter migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Root completely deleted (commit 1dcc5e4). ~39 leaf packages, ~196 files migrated to internal/platform/ and internal/capabilities/. ~390 consumer imports retargeted. Zero production Go imports remain. Webresearch adapters dissolved into platform adapters; no standalone webresearch package survives. All sub-migrations (delivery, embeddings, SQLite) already individually recorded as completed.",
+      "targets": [
+        "internal/platform",
         "internal/capabilities"
       ]
     },
