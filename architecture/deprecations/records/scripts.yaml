@@ -1,8 +1,8 @@
 deprecations:
     - id: DL-SCRIPT-BRANCH-B-001
-      owner_capability: internal/application/scripts/usecase/buildClipGroundingInstructions+SegmentTopics
-      exact_symbol: buildClipGroundingInstructions SegmentTopics prompt block (internal/application/scripts/usecase/engine_prompt.go)
-      file: internal/application/scripts/usecase/engine_prompt.go
+      owner_capability: internal/capabilities/scripts/usecase/buildClipGroundingInstructions+SegmentTopics
+      exact_symbol: buildClipGroundingInstructions SegmentTopics prompt block (internal/capabilities/scripts/usecase/engine_prompt.go)
+      file: internal/capabilities/scripts/usecase/engine_prompt.go
       file_line: "0"
       replacement: 'Branch B (SegmentTopics prompt rendering in buildClipGroundingInstructions) REMOVED August 2026. Only Branch A (ScriptSegment via buildSegmentInstructions) remains. Source of truth: PR-CS-1 FASE 14.'
       introduction_date: "2026-07-12"
