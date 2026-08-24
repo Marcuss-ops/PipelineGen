@@ -8,6 +8,9 @@
 package images
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 )
 
@@ -101,4 +104,47 @@ type GenerateBatchItem struct {
 	Height int `json:"height,omitempty"`
 	// Tags are metadata labels to attach to the generated asset.
 	Tags []string `json:"tags,omitempty"`
+}
+
+// Validate runs the canonical request-side validation for a single
+// image generation request. It enforces the contract invariants that
+// binding:"required" alone cannot: a whitespace-only prompt and negative
+// dimensions are rejected at the boundary instead of being discovered
+// too late in the provider/use case.
+func (r *ImageGenerationRequest) Validate() error {
+	if err := validatePrompt(r.Prompt); err != nil {
+		return err
+	}
+	return validateDimensions(r.Width, r.Height)
+}
+
+// Validate runs the canonical per-item validation for a batch item.
+func (i GenerateBatchItem) Validate() error {
+	if err := validatePrompt(i.Prompt); err != nil {
+		return err
+	}
+	return validateDimensions(i.Width, i.Height)
+}
+
+// validatePrompt is the canonical prompt normalization+validation: trim
+// whitespace and reject an empty result. binding:"required" only rejects
+// an absent key; this closes the whitespace-only hole.
+func validatePrompt(prompt string) error {
+	if strings.TrimSpace(prompt) == "" {
+		return fmt.Errorf("prompt is required")
+	}
+	return nil
+}
+
+// validateDimensions enforces width >= 0 and height >= 0, with 0 meaning
+// "use the canonical default" (1920×1080). Negative dimensions are invalid
+// and rejected at the boundary.
+func validateDimensions(width, height int) error {
+	if width < 0 {
+		return fmt.Errorf("width must be >= 0")
+	}
+	if height < 0 {
+		return fmt.Errorf("height must be >= 0")
+	}
+	return nil
 }

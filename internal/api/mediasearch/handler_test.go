@@ -513,6 +513,61 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 	}
 }
 
+// TestSearchHandlerRejectsWhitespaceQuery certifies the canonical
+// required-string normalization: a whitespace-only query must be
+// rejected with 400 BEFORE the aggregator is called (binding:"required"
+// only rejects an absent key).
+func TestSearchHandlerRejectsWhitespaceQuery(t *testing.T) {
+	var captured search.Query
+	stub := &actorCapturingAggregator{captured: &captured}
+	h := NewHandler(WireParams{Aggregator: stub, Log: nil})
+
+	c, w := newTestGinContext()
+	c.Set("is_admin", true) // admin skips the workspace-scope gate
+
+	body := strings.NewReader(`{"query":"   "}`)
+	req := httptest.NewRequest("POST", "/search", body)
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+
+	h.Search(c)
+
+	if w.Code != 400 {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "query is required") {
+		t.Fatalf("body should mention query required, got %s", w.Body.String())
+	}
+	if captured.Text != "" {
+		t.Fatalf("aggregator must not be called for whitespace query; captured.Text=%q", captured.Text)
+	}
+}
+
+// TestSearchHandlerTrimsQuery certifies that a valid query with
+// surrounding whitespace is normalized (TrimSpace) before dispatch.
+func TestSearchHandlerTrimsQuery(t *testing.T) {
+	var captured search.Query
+	stub := &actorCapturingAggregator{captured: &captured}
+	h := NewHandler(WireParams{Aggregator: stub, Log: nil})
+
+	c, w := newTestGinContext()
+	c.Set("is_admin", true)
+
+	body := strings.NewReader(`{"query":"  hello world  "}`)
+	req := httptest.NewRequest("POST", "/search", body)
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+
+	h.Search(c)
+
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if captured.Text != "hello world" {
+		t.Fatalf("captured.Text = %q, want trimmed %q", captured.Text, "hello world")
+	}
+}
+
 // TestHandlerReturns503WhenNoBackend verifies that when the
 // aggregator returns ErrNoBackendAvailable, the handler responds 503.
 func TestMediaSearchResponse_DoesNotSerializeRawDriveLink(t *testing.T) {

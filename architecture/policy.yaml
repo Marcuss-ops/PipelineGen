@@ -144,7 +144,6 @@ canonical_application_areas:
   - internal/application/assets/artifacts
   - internal/application/scripts
   - internal/application/assets/catalogsync
-  - internal/capabilities/assets/providers/stock/stockpipeline
 
 # Expected capability slices (target: internal/capabilities/<x>).
 # Each owns module.go, contract.go, service.go, http.go, jobs.go,

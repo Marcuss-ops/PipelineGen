@@ -135,10 +135,13 @@ var ErrSegmentTopicEmpty = errors.New("styleerrors: script_params.segments[i].to
 // mode the target is per-block, so the validator accepts
 // TargetWords=0 when len(Segments) > 0; this sentinel fires only
 // when no segments are present AND no target was supplied.
-// Existing logic kept verbatim per user spec ("mantiene invariata
-// logica esistente"): same Code (INVALID_TARGET_WORDS) + same
-// message ("target_words must be > 0"), only the pre-condition
-// `len(Segments)==0` is added to the conjunction.
+//
+// NOTE (universal-invariant migration, Aug 2026): the target_words
+// check moved into the kernel as a structural contract invariant
+// (internal/kernel/script.validateGenerationScriptParams) and now
+// surfaces as *PlanInvalidError (code INVALID_PAYLOAD). This sentinel
+// is retained for back-compat with any `errors.Is` consumer but is no
+// longer produced by the canonical validation path.
 var ErrTargetWordsNotPositive = errors.New("styleerrors: script_params.target_words must be > 0 when no segments are present")
 
 // ErrTooManySegments — len(Segments) exceeds the operator cap

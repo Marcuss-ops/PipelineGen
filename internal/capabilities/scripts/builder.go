@@ -22,6 +22,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"strings"
 
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -123,6 +124,17 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	audioMode, err := audiocap.ResolveAudioMode(audiocap.AudioMode(audioModeInput), item.Output.VoiceoverEnabled.AsBool())
 	if err != nil {
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+	}
+
+	// godlike/07 NO-FAKE-AVAILABILITY: a voiceover-producing audio mode
+	// publishes artifacts, so Project is REQUIRED. Fail at the preflight
+	// boundary (before the run is enqueued/started) rather than at the
+	// voiceover phase — this turns "job FAILED after pipeline start" into
+	// an immediate 400. The runner-phase gate (runner_phase_voiceover.go)
+	// remains as a defensive backstop for resumed runs and internal callers.
+	needsVoiceover := audioMode == audiocap.AudioModeChunkedVoiceover || audioMode == audiocap.AudioModeCombinedTimeline
+	if needsVoiceover && strings.TrimSpace(item.Project) == "" {
+		return GenerateRequest{}, fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
 	}
 
 	// Voiceover timing policy: the canonical top-level audio config carries

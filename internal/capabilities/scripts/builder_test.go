@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -166,7 +167,7 @@ func TestBuildGenerateRequest_MapsResearchSourcePolicy(t *testing.T) {
 
 func TestBuildGenerateRequest_MapsExplicitAudioMode(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"combined","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"combined","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-mode-key")
@@ -234,7 +235,7 @@ func TestBuildGenerateRequest_MapsMediaPlan(t *testing.T) {
 // any video render gate: the audio master is never blocked by render flags.
 func TestBuildGenerateRequest_CombinedTimelineIsTheOnlyAudioGate(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"combined","language":"en","source":{"type":"text","topic":"topic"},"output":{"generate_timeline":true,"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"combined","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"generate_timeline":true,"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-mode-no-render")
@@ -254,7 +255,7 @@ func TestBuildGenerateRequest_CombinedTimelineIsTheOnlyAudioGate(t *testing.T) {
 // []BackgroundMusicIntent.
 func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-intents-key")
@@ -285,7 +286,7 @@ func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 // survive the builder untouched.
 func TestBuildGenerateRequest_MapsSegmentedBackgroundMusic(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"segmented-bgm","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","background_music":[{"asset_id":"music_intro","start_ms":0,"end_ms":60000,"loop":true},{"asset_id":"music_dark","start_ms":60000,"end":"video_end","loop":true}]}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"segmented-bgm","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","background_music":[{"asset_id":"music_intro","start_ms":0,"end_ms":60000,"loop":true},{"asset_id":"music_dark","start_ms":60000,"end":"video_end","loop":true}]}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "segmented-bgm-key")
@@ -308,7 +309,7 @@ func TestBuildGenerateRequest_MapsSegmentedBackgroundMusic(t *testing.T) {
 // nested output.audio shape is used.
 func TestBuildGenerateRequest_AudioIntentFallsBackToOutputAudio(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"fallback","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"audio":{"mix_policy":"VOICEOVER_ONLY","background_music":[{"asset_id":"music_fb"}]}},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"fallback","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"audio":{"mix_policy":"VOICEOVER_ONLY","background_music":[{"asset_id":"music_fb"}]}},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-intent-fallback-key")
@@ -328,7 +329,7 @@ func TestBuildGenerateRequest_AudioIntentFallsBackToOutputAudio(t *testing.T) {
 // unchanged).
 func TestBuildGenerateRequest_NoAudioIntentsStayEmpty(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"plain","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"plain","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "plain-key")
@@ -346,7 +347,7 @@ func TestBuildGenerateRequest_NoAudioIntentsStayEmpty(t *testing.T) {
 // required/best-effort fail-closed semantics end-to-end.
 func TestBuildGenerateRequest_PropagatesVoiceoverTiming(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"timing","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","timing":{"mode":"required","boundary":"word","formats":["json","srt","vtt"]}}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"timing","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","timing":{"mode":"required","boundary":"word","formats":["json","srt","vtt"]}}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "timing-key")
@@ -372,7 +373,7 @@ func TestBuildGenerateRequest_PropagatesVoiceoverTiming(t *testing.T) {
 // output.audio.timing shape is used.
 func TestBuildGenerateRequest_TimingFallsBackToOutputAudio(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"timing","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"audio":{"timing":{"mode":"required","boundary":"word","formats":["json"]}}},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"timing","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"audio":{"timing":{"mode":"required","boundary":"word","formats":["json"]}}},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "timing-fallback-key")
@@ -401,12 +402,70 @@ func TestBuildGenerateRequest_ResolvesExplicitProject(t *testing.T) {
 	}
 }
 
+// TestBuildGenerateRequest_VoiceoverWithoutProjectFailsAtPreflight certifies
+// the fail-fast Project gate: a voiceover-producing audio mode with an empty
+// Project is rejected at the preflight boundary (BuildGenerateRequest) instead
+// of failing at the voiceover phase after the pipeline has already started.
+func TestBuildGenerateRequest_VoiceoverWithoutProjectFailsAtPreflight(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+	}{
+		{"chunked voiceover", "CHUNKED_VOICEOVER"},
+		{"combined timeline", "COMBINED_TIMELINE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var env scriptpkg.GenerationEnvelopeV2
+			raw := `{"version":2,"items":[{"title":"no-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"` + tc.mode + `"}}]}`
+			if err := json.Unmarshal([]byte(raw), &env); err != nil {
+				t.Fatal(err)
+			}
+			_, err := BuildGenerateRequest(&env, "no-project-key")
+			if err == nil {
+				t.Fatalf("voiceover mode %s with empty Project must fail at preflight", tc.mode)
+			}
+			if !strings.Contains(err.Error(), "Project is required") {
+				t.Fatalf("error should mention Project required, got %q", err.Error())
+			}
+		})
+	}
+}
+
+// TestBuildGenerateRequest_WhitespaceProjectFailsAtPreflight certifies that a
+// whitespace-only Project is treated as empty (TrimSpace) at the gate.
+func TestBuildGenerateRequest_WhitespaceProjectFailsAtPreflight(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"ws-project","project":"   ","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	_, err := BuildGenerateRequest(&env, "ws-project-key")
+	if err == nil || !strings.Contains(err.Error(), "Project is required") {
+		t.Fatalf("whitespace-only Project must fail, got %v", err)
+	}
+}
+
+// TestBuildGenerateRequest_NoAudioDoesNotRequireProject certifies the gate is
+// conditional: a non-voiceover request (no audio mode) must NOT require Project.
+func TestBuildGenerateRequest_NoAudioDoesNotRequireProject(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"text-only","language":"en","source":{"type":"text","topic":"topic"}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "text-only-key")
+	if err != nil {
+		t.Fatalf("text-only generation without Project must build: %v", err)
+	}
+	if got.Project != "" {
+		t.Fatalf("Project = %q, want empty for non-voiceover request", got.Project)
+	}
+}
+
 // TestBuildGenerateRequest_NoTimingStaysNil certifies that an absent timing
 // policy stays nil (the pipeline applies the canonical defaults downstream —
 // capture is never implicitly mandatory).
 func TestBuildGenerateRequest_NoTimingStaysNil(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"no-timing","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"no-timing","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE"}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "no-timing-key")

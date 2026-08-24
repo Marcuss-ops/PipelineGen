@@ -32,7 +32,7 @@ import (
 	"context"
 	"fmt"
 
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 )
 
 // Acquirer is the canonical godlike/06 SSOT narrow port for

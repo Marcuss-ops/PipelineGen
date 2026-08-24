@@ -8,7 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 

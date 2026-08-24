@@ -255,11 +255,13 @@ func TestPayloadValidator_TargetWordsMustBePositive(t *testing.T) {
 
 	err := v.ValidateEnvelope(env)
 	require.Error(t, err)
-	var pve *scriptpkg.PayloadValidationError
-	require.ErrorAs(t, err, &pve)
-	assert.Equal(t, "INVALID_TARGET_WORDS", pve.Code)
-	assert.Equal(t, "target_words must be > 0", pve.Message)
-	assert.Equal(t, 0, pve.Extra.ActualTargetWords)
+	// Universal invariant now lives in the kernel
+	// (GenerationEnvelopeV2.Validate → validateGenerationScriptParams),
+	// so it surfaces as *PlanInvalidError — not the application-layer
+	// *PayloadValidationError (INVALID_TARGET_WORDS).
+	var pie *scriptpkg.PlanInvalidError
+	require.ErrorAs(t, err, &pie)
+	assert.Contains(t, pie.Details[0], "target_words")
 }
 
 func TestPayloadValidator_UnsupportedLanguage(t *testing.T) {

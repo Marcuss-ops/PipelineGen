@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	texttrackssql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 )
 

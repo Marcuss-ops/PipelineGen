@@ -108,6 +108,15 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 		return
 	}
 
+	// Canonical per-item validation: whitespace-only prompt and negative
+	// dimensions must be rejected before enqueue.
+	for i, item := range items {
+		if err := item.Validate(); err != nil {
+			apiutil.BadRequest(c, fmt.Sprintf("item %d: %v", i, err))
+			return
+		}
+	}
+
 	if h.jobsSvc == nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"error": "job service not wired — image generation requires the async job system",

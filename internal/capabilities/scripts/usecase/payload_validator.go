@@ -94,22 +94,10 @@ func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref str
 		}
 	}
 
-	// PR-CS-1 / FASE 6 (DoD #8): target_words <= 0 is allowed when
-	// the caller supplied ≥1 ScriptSegment (each per-block carries
-	// its own TargetWords). Existing logic preserved verbatim — same
-	// Code (INVALID_TARGET_WORDS), same Message, same Extra — only
-	// the conjunction `&& len(Segments) == 0` is added.
-	if item.ScriptParams.TargetWords <= 0 && len(item.ScriptParams.Segments) == 0 {
-		return &scriptpkg.PayloadValidationError{
-			Code:      "INVALID_TARGET_WORDS",
-			Message:   "target_words must be > 0",
-			Stage:     "request.validation",
-			Retryable: false,
-			Extra: scriptpkg.ValidationExtras{
-				ActualTargetWords: item.ScriptParams.TargetWords,
-			},
-		}
-	}
+	// target_words > 0 (or segments present) is now a UNIVERSAL contract
+	// invariant enforced in the kernel
+	// (GenerationEnvelopeV2.Validate → validateGenerationScriptParams). It is
+	// deliberately NOT duplicated here — config-aware limits only below.
 
 	if err := v.validateSegmentsCap(item); err != nil {
 		return err

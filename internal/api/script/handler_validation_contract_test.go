@@ -65,15 +65,17 @@ import (
 //
 //  1. env.Validate() in internal/kernel/script/generation_envelope.go —
 //     structural checks (version, items, source.type, clip_ids shape,
-//     language allowlist, policy values, policy<->source compatibility).
+//     language allowlist, policy values, policy<->source compatibility)
+//     AND universal contract invariants (target_words > 0 unless
+//     segments are supplied, non-negative numeric fields).
 //     Returns *PlanInvalidError → mapped to 400 with
 //     code="INVALID_PAYLOAD".
 //
 //  2. PayloadValidator.ValidateEnvelope() in
 //     internal/application/scripts/usecase/payload_validator.go —
-//     config-aware limits (target_words > 0, source_text size + ratio).
+//     config-aware limits (source_text size + ratio, max segments).
 //     Returns *PayloadValidationError → mapped to 400 with the typed
-//     Code field (e.g. "INVALID_TARGET_WORDS", "SOURCE_TEXT_TOO_LARGE").
+//     Code field (e.g. "SOURCE_TEXT_TOO_LARGE", "TOO_MANY_SEGMENTS").
 //
 // Both error surfaces are caught by HandlerGenerate.Generate BEFORE
 // the broker is touched.
@@ -131,13 +133,13 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 		{
 			name:      "target_words_zero",
 			body:      `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":0}}]}`,
-			wantCode:  "INVALID_TARGET_WORDS",
+			wantCode:  "INVALID_PAYLOAD",
 			errDetail: "target_words",
 		},
 		{
 			name:      "target_words_negative",
 			body:      `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":-5}}]}`,
-			wantCode:  "INVALID_TARGET_WORDS",
+			wantCode:  "INVALID_PAYLOAD",
 			errDetail: "target_words",
 		},
 		{
@@ -220,7 +222,7 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 			//   {"ok":false, "error":{"code","message","stage","retryable"}}
 			// For Typed *PayloadValidationError it's the same shape
 			// but error.code is the typed Code field (e.g.
-			// "INVALID_TARGET_WORDS").
+			// "SOURCE_TEXT_TOO_LARGE").
 			var resp map[string]any
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp),
 				"response body must be valid JSON; got=%s", w.Body.String())

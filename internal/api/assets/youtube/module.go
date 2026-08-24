@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"

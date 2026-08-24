@@ -84,7 +84,7 @@
         {"struct": "ClipsHandler", "path": "internal/api/assets/clips/handler.go", "fields": 23},
         {"struct": "ScriptModuleDeps", "path": "internal/api/script/module.go", "fields": 20},
         {"struct": "ScriptFlowHandler", "path": "internal/api/script/handler_flow.go", "fields": 19},
-        {"struct": "YouTubeUseCaseDeps", "path": "internal/application/youtube/usecase/service.go", "fields": 19},
+        {"struct": "YouTubeUseCaseDeps", "path": "internal/capabilities/youtube/usecase/service.go", "fields": 19},
         {"struct": "IngestHandler", "path": "internal/api/assets/clips/ingest.go", "fields": 12},
         {"struct": "ArtlistServiceDeps", "path": "internal/capabilities/assets/providers/artlist/service.go", "fields": 10},
         {"struct": "AssetsCoreDeps", "path": "internal/app/assets_core.go", "fields": 9},

@@ -57,15 +57,21 @@ type Source struct {
 	Research           scriptpkg.ResearchPolicy    `json:"research,omitempty"`
 }
 
-// SourceType enumerates the supported generation sources.
-type SourceType string
+// SourceType is the canonical generation-source enum, aliased to the kernel
+// script.SourceType so the kernel remains the single source of truth for the
+// enum contract (including SourceResearch). The constants below re-export the
+// kernel values so existing callers compile without churn while no drift is
+// possible — a value the local model did not declare ("research") previously
+// slipped through a permissive string cast; the alias makes that impossible.
+type SourceType = scriptpkg.SourceType
 
 const (
-	SourceText    SourceType = "text"
-	SourceClips   SourceType = "clips"
-	SourceCatalog SourceType = "catalog"
-	SourceSearch  SourceType = "search"
-	SourceCurate  SourceType = "curate"
+	SourceText     = scriptpkg.SourceText
+	SourceClips    = scriptpkg.SourceClips
+	SourceCatalog  = scriptpkg.SourceCatalog
+	SourceSearch   = scriptpkg.SourceSearch
+	SourceCurate   = scriptpkg.SourceCurate
+	SourceResearch = scriptpkg.SourceResearch
 )
 
 // ClipReference identifies a single media clip.
