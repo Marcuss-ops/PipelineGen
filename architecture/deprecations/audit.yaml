@@ -1,15 +1,32 @@
+# Deprecation registry audit — derived from records/ (godlike/06 SSOT:
+# the records/*.yaml shards are the source of truth; these counts are
+# re-derived, never hand-authored as the primary fact).
+#
+# ── CAPABILITY MIGRATION (Aug 2026) ────────────────────────────────────────
+# voiceover and youtube owner_capability paths migrated from the
+# application layer to the capabilities layer:
+#   internal/application/voiceover  →  internal/capabilities/voiceover
+#   internal/application/youtube    →  internal/capabilities/youtube
+#   internal/application/scripts    →  internal/capabilities/scripts
+# The canonical prefix→bucket map lives in
+# scripts/archcheck/categorize_deprecations.go (subsystemPrefixes) and is
+# the SSOT for bucketing; the `voiceover` shard below now hosts records
+# rooted at internal/capabilities/voiceover, while youtube records root at
+# internal/capabilities/youtube (→ bucket "media", currently zero records).
+# Regenerate this file with `go run ./scripts/archcheck -migrate-deprecations`
+# after any record add/remove/move so the counts cannot drift.
 audit:
     manifest_version: sharded-migration-v1
     total_records: 11
     by_status:
         removed: 0
-        in_progress: 9
+        in_progress: 6
         keep: 1
-        other: 1
+        other: 4
     by_migration_phase:
         BACKFILL: 2
-        CONTRACT: 2
-        CUTOVER: 1
-        EXPAND: 8
-        not applicable: 2
+        CONTRACT: 5
+        CUTOVER: 0
+        EXPAND: 3
+        not applicable: 1
     ci_gate_impact: ""

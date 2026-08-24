@@ -1,3 +1,23 @@
+# Deprecation registry index — machine-consumed aggregate manifest of the
+# records/ shards. total_records and each count are re-derived from the
+# shard files; this file is informational and is not read by the validator
+# (scripts/archcheck loads records/*.yaml + audit.yaml directly).
+#
+# ── CAPABILITY MIGRATION (Aug 2026) ────────────────────────────────────────
+# voiceover and youtube owner_capability paths migrated from the
+# application layer to the capabilities layer:
+#   internal/application/voiceover  →  internal/capabilities/voiceover
+#   internal/application/youtube    →  internal/capabilities/youtube
+#   internal/application/scripts    →  internal/capabilities/scripts
+# The canonical prefix→bucket map is subsystemPrefixes in
+# scripts/archcheck/categorize_deprecations.go:
+#   - internal/capabilities/voiceover → bucket "voiceover" (shard below)
+#   - internal/capabilities/youtube   → bucket "media" (no records yet,
+#     hence no records/media.yaml shard in this index)
+#   - internal/capabilities/scripts   → bucket "scripts"
+# The legacy internal/application/* prefixes remain mapped for back-compat
+# with not-yet-migrated records, so a record under the old path still lands
+# in the correct shard instead of silently overflowing to "misc".
 schema_version: 1
 source_directory: architecture/deprecations
 total_records: 11
