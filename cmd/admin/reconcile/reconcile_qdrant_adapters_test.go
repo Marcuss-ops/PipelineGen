@@ -60,7 +60,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // sqlite3 driver for in-memory outbox_events
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // setupAdminOutboxTable spins up a fresh in-memory SQLite

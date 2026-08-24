@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	qrecovery "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/recovery"
 	mediaenrichment "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaenrichment"
 )

@@ -47,7 +47,7 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 type rerankerClient interface {

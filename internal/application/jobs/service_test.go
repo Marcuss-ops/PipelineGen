@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )

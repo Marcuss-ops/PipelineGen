@@ -8,7 +8,7 @@ import (
 	"context"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
+	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 )
 
 // artlistDownloadAuditAdapter adapts sqlite/artlist.DownloadAuditRepository to

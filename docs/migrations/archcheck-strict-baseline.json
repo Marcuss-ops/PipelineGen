@@ -1,188 +1,96 @@
 {
   "$schema": "archcheck-strict-baseline/v1",
-  "$schema_changelog": "v3",
-  "$v3_breaking_changes": [
-    "Retired cmd_main_max_lines entry (all cmd/<bin>/main.go ≤200 lines per 2026-06-30 verification: admin=184, worker=55, archcheck=44, architecture-aggregate=115, server=112).",
-    "Added max_struct_deps transitional entry for 9 struct-dependency violations (new rule family from policy.yaml Phase 1+ P1.7).",
-    "Updated max_files_per_package with exact counts (app=59, qdrant=46).",
-    "Updated max_constructor_deps description (10 violations; 'assets/sourcing service 15' replaced with youtube/sourcing 10 — root sourcing.Service is now 5 deps).",
-    "Updated max_lines_per_file with exact 27 failing file paths from archcheck --strict 2026-06-30.",
-    "Added audit_ledger entry for cmd/worker/main.go drift resolved (55 lines, was 349)."
+  "$schema_changelog": "v4",
+  "$v4_breaking_changes": [
+    "Refreshed on 2026-08-24 from the current main tree at commit 1eaa35f435e562ac9a56b65b3ad5bc5851436908.",
+    "Removed all expired July/August deadlines and resolved transitional entries from the active baseline.",
+    "Removed the historical audit ledger from the active baseline; repository history remains the archive.",
+    "Retained only the eight current production findings reported by the strict production-only scan, with owner, deadline and removal trigger."
   ],
-  "$v3_consumers": "scripts/ci-architectural-checks.sh references this file's path only in comments, not as a load. Any future jq consumer must update path selectors.",
-  "description": "Transitional baseline for cmd/archcheck --strict gate (June 2026, updated 2026-06-30). Fail-closed per godlike/08 §zero-baseline rule: any past-deadline entry produces a hard CI exit-1 at --strict evaluation. Each entry MUST carry owner + deadline + removal_trigger (sorted_urgency: soonest first) or it is rejected.",
+  "$v4_consumers": "This file is an operator-facing governance snapshot referenced by architecture/current.yaml; executable enforcement remains in cmd/archcheck, architecture/policy.yaml and the migration allowlists.",
+  "description": "Active transitional baseline for the cmd/archcheck --strict production-only snapshot captured on 2026-08-24. This document records current findings for ownership and removal tracking; it does not suppress hard gates or authorize new legacy code. Every active entry carries an owner, a future deadline and a concrete removal trigger.",
+  "scan": {
+    "captured_at": "2026-08-24",
+    "git_commit_sha": "1eaa35f435e562ac9a56b65b3ad5bc5851436908",
+    "command": "go run ./cmd/archcheck --strict --production-only",
+    "total_violations": 8,
+    "by_rule": {
+      "percheck_asset_committer_event_ssot": 2,
+      "percheck_spec_aliases": 1,
+      "struct_deps": 1,
+      "percheck_binder_scene_field_writes": 4
+    }
+  },
   "transitional_baselines_sorted_urgency": [
     {
-      "urgency": "soonest",
-      "rule": "duplicate-types-allowlist",
-      "failing_entries": [],
-      "owner": "qdrant-hygiene Work Stream (Wave 20 AWK→Go rewrite)",
-      "deadline": "2026-07-25",
-      "removal_trigger": "AWK→Go helper deployed + zero violations reported by Check 5"
-    },
-    {
       "urgency": "primary",
-      "rule": "max_files_per_package",
-      "failing_packages": [
-        {"package": "internal/app", "file_count": 59, "max": 40},
-        {"package": "internal/infrastructure/qdrant", "file_count": 46, "max": 40}
-      ],
-      "owner": "PR-G.4+ refactoring stream (composition-root + qdrant adapter split)",
-      "deadline": "2026-08-01",
-      "removal_trigger": "Both packages ≤40 files each (cmd/archcheck --strict pkg_size rule reports zero)."
-    },
-    {
-      "urgency": "resolved",
-      "rule": "max_lines_per_file",
-      "failing_entries": [],
-      "owner": "PR-G.4+ file-size split work stream (P0 aggregator.go + clip_ops.go + outbox/repository.go first per cleanup plan)",
-      "deadline": "2026-08-01",
-      "removal_trigger_met": "RESOLVED 2026-07-29: all production .go files under internal/ + cmd/ ≤600 lines (census confirmed zero violations). Allowlist cleared in max-lines-strict-allowlist.txt.",
-      "resolution_notes": [
-        "cmd/admin/qdrant_readiness.go: 1466 → 468 (split into subcommands)",
-        "internal/capabilities/assets/providers/aggregator.go: deleted",
-        "internal/application/clips/clip_ops.go: deleted",
-        "internal/infrastructure/database/sqlite/outbox/repository.go: deleted",
-        "internal/api/assets/clips/ops.go: 851 → 128",
-        "internal/app/module_media.go: deleted (migrated to wiring/)",
-        "internal/api/assets/clips/handler.go: 824 → 133",
-        "internal/infrastructure/observability/metrics.go: deleted",
-        "internal/api/script/handler_legacy_adapters.go: deleted",
-        "internal/application/clips/bulk_upload_worker.go: 707 → 300",
-        "internal/app/composition.go: 666 → 214 (migrated to wiring/)",
-        "internal/application/qdrant/legacyaudit/legacyaudit.go: 660 → 144",
-        "internal/application/workerdoctor/default_probes.go: 629 → 176",
-        "internal/app/module_sources.go: deleted (migrated to wiring/)",
-        "internal/app/assets_register_sourcing.go: 607 → 356",
-        "internal/application/mediamemory/linker_worker.go: >600 → 368"
-      ]
-    },
-    {
-      "urgency": "primary",
-      "rule": "max_constructor_deps",
+      "rule": "percheck_binder_scene_field_writes",
       "failing_entries": [
-        {"function": "images.NewService", "path": "internal/application/images/service.go", "params": 17},
-        {"function": "voiceover.NewService", "path": "internal/capabilities/voiceover/service/service.go", "params": 12},
-        {"function": "deletion.NewService", "path": "internal/application/assets/deletion/deletion.go", "params": 11},
-        {"function": "soundeffect.NewHandler", "path": "internal/api/assets/soundeffect/handler.go", "params": 10},
-        {"function": "NewServerWithHealth", "path": "internal/api/server.go", "params": 10},
-        {"function": "youtube/sourcing.NewService", "path": "internal/application/assets/sourcing/youtube/service.go", "params": 10},
-        {"function": "bulk_upload.NewWorker", "path": "internal/application/clips/bulk_upload_worker.go", "params": 9},
-        {"function": "clip_ops.NewService", "path": "internal/application/clips/clip_ops.go", "params": 9},
-        {"function": "jobs.NewWorker", "path": "internal/application/jobs/worker.go", "params": 9},
-        {"function": "drive.NewStore", "path": "internal/infrastructure/drive/store.go", "params": 9}
+        {
+          "file": "internal/capabilities/scripts/durable_mapper.go",
+          "line": 117
+        },
+        {
+          "file": "internal/capabilities/scripts/result_reducer.go",
+          "line": 107
+        },
+        {
+          "file": "internal/capabilities/scripts/runner_phase_script.go",
+          "line": 78
+        },
+        {
+          "file": "internal/capabilities/scripts/runner_phase_script.go",
+          "line": 79
+        }
       ],
-      "owner": "complexity-budget stream per godlike/08 §'Complexity budgets'",
-      "deadline": "2026-08-01",
-      "removal_trigger": "Each constructor ≤8 params (cmd/archcheck --strict constructor_deps rule reports zero)."
+      "owner": "scripts capability scene-planning stream",
+      "deadline": "2026-09-30",
+      "removal_trigger": "All SpecScene shape writes flow through the canonical internal/capabilities/scripts/scene/scene_planner.go and the percheck reports zero production violations."
     },
     {
       "urgency": "primary",
-      "rule": "max_struct_deps",
+      "rule": "percheck_spec_aliases",
       "failing_entries": [
-        {"struct": "ClipsModuleDeps", "path": "internal/api/assets/clips/module.go", "fields": 25},
-        {"struct": "ClipsHandler", "path": "internal/api/assets/clips/handler.go", "fields": 23},
-        {"struct": "ScriptModuleDeps", "path": "internal/api/script/module.go", "fields": 20},
-        {"struct": "ScriptFlowHandler", "path": "internal/api/script/handler_flow.go", "fields": 19},
-        {"struct": "YouTubeUseCaseDeps", "path": "internal/capabilities/youtube/usecase/service.go", "fields": 19},
-        {"struct": "IngestHandler", "path": "internal/api/assets/clips/ingest.go", "fields": 12},
-        {"struct": "ArtlistServiceDeps", "path": "internal/capabilities/assets/providers/artlist/service.go", "fields": 10},
-        {"struct": "AssetsCoreDeps", "path": "internal/app/assets_core.go", "fields": 9},
-        {"struct": "BootstrapDeps", "path": "internal/app/bootstrap.go", "fields": 9}
+        {
+          "file": "internal/capabilities/images/retrieved/spec_aliases.go",
+          "line": 1
+        }
       ],
-      "owner": "complexity-budget stream per godlike/08 §'Complexity budgets' (P1.7 struct-deps gate)",
-      "deadline": "2026-08-15",
-      "removal_trigger": "Each struct ≤8 mandatory dependency fields (cmd/archcheck --strict struct_deps rule reports zero)."
+      "owner": "images capability ownership stream",
+      "deadline": "2026-09-30",
+      "removal_trigger": "Move the compatibility alias surface to an approved territory or remove it after all callers use the canonical retrieval types; the territory gate reports zero violations."
     },
     {
-      "urgency": "deferred",
-      "rule": "stale_prose_paths_<stem>",
-      "failing_entries": "Stem list defined in architecture/policy.yaml::stale_prose_paths (compose_voiceover, module_artlist, module_fullimages, compose_content, compose_images, module_ingest, module_jobs, module_stock, module_youtube) — counts vary by write-cycle; tracked at the rule-family level not per-stem.",
-      "owner": "doc-debt cleanup stream",
-      "deadline": "2026-08-15",
-      "removal_trigger": "Stems list shrinks as files genuinely rename. Trigger is rename-only — current prose rewrites cannot run ahead of the underlying rename; rewriting to a name that doesn't yet exist is doc drift per godlike/07."
-    }
-  ],
-  "audit_ledger": [
-    {
-      "ledger_kind": "transitional_retired",
-      "rule": "max_files_per_package",
-      "package": "internal/application/scripts",
-      "was_count": 55,
-      "was_deadline": "2026-07-10",
-      "was_owner": "PR-G mega-package split work stream",
-      "retired_by": "Step 6 PR-G.3 CUTOVER (June 2026)",
-      "retired_in_commit_chain": [
-        "Step 5 PR-G.2 BACKFILL: a4394411 → push e74735d4 (June 2026)"
+      "urgency": "primary",
+      "rule": "percheck_asset_committer_event_ssot",
+      "failing_entries": [
+        {
+          "file": "internal/platform/sqlite/outboxevents/envelope.go",
+          "line": 76
+        },
+        {
+          "file": "internal/platform/sqlite/outboxevents/registry.go",
+          "line": 17
+        }
       ],
-      "removal_trigger_met": "Split into 8 subpackages (adapters/ contracts/ dto/ events/ jobs/ jsonextract/ ports/ usecase/); root contains zero .go files; total files per subpackage under cap-40."
+      "owner": "SQLite asset-committer event SSOT stream",
+      "deadline": "2026-09-30",
+      "removal_trigger": "Keep asset.index.requested emission behind the canonical AssetCommitter/AssetMutationDispatcher chain and make the percheck report zero non-canonical emission sites."
     },
     {
-      "ledger_kind": "non_member_retired",
-      "rule": "max_files_per_package",
-      "package": "internal/application/youtube",
-      "was_count": "43 per prior narrative (was NOT a transitional_baselines member)",
-      "retired_from_reference": "Step 6 PR-G.3 CUTOVER (June 2026); description string dropped the youtube reference"
-    },
-    {
-      "ledger_kind": "transitional_retired",
-      "ledger_id": "cmd_archcheck_drift_resolved",
-      "rule": "cmd_main_max_lines",
-      "file": "cmd/archcheck/main.go",
-      "was_count_lines": 996,
-      "now_count_lines": 44,
-      "was_deadline": "2026-08-01",
-      "was_owner": "cmd-binaries maintainers stream",
-      "retired_by": "Phase 0 baseline drift correction (2026-06-29)",
-      "retired_in_commit_chain": [
-        "FASE 1.C PR1-PR4 (June 2026): monolitico 996-LoC cmd/archcheck/main.go split into cmd/archcheck/{runner.go,policy/{model,load}.go,report/model.go,scan/{packages,roots,documents,constructors}.go}"
+      "urgency": "primary",
+      "rule": "struct_deps",
+      "failing_entries": [
+        {
+          "struct": "ProcessSegmentDeps",
+          "path": "internal/capabilities/voiceover/service/process_segment_types.go",
+          "fields": 9,
+          "max": 8
+        }
       ],
-      "removal_trigger_met": "cmd/archcheck/main.go reduced to 44 lines (≤200 cap)."
-    },
-    {
-      "ledger_kind": "transitional_retired",
-      "ledger_id": "cmd_worker_main_drift_resolved",
-      "rule": "cmd_main_max_lines",
-      "file": "cmd/worker/main.go",
-      "was_count_lines": 349,
-      "now_count_lines": 55,
-      "was_deadline": "2026-08-01",
-      "was_owner": "cmd-binaries maintainers stream (P1-3 follow-up)",
-      "retired_by": "2026-06-30 baseline refresh — P1-3 follow-up already reduced worker main.go to 55 lines",
-      "retired_in_commit_chain": [
-        "P1-3 follow-up (pre-2026-06-30): cmd/worker/main.go reduced from 349 to 55 lines"
-      ],
-      "removal_trigger_met": "All cmd/<bin>/main.go ≤200 lines (verified 2026-06-30: admin=184, worker=55, archcheck=44, architecture-aggregate=115, server=112). cmd_main_max_lines rule fully resolved."
-    },
-    {
-      "ledger_kind": "transitional_retired",
-      "ledger_id": "sourcing_service_deps_reduced",
-      "rule": "max_constructor_deps",
-      "function": "sourcing.NewService",
-      "path": "internal/application/assets/sourcing/service.go",
-      "was_count_params": 15,
-      "now_count_params": 5,
-      "was_deadline": "2026-08-01",
-      "was_owner": "complexity-budget stream",
-      "retired_by": "P0-1 / commit 5 (June 2026): root sourcing.Service reduced from 14→5 deps via façade pattern. The 4 sub-services (youtube, batch, drivesync, localimport) absorb the concrete deps directly.",
-      "retired_in_commit_chain": [
-        "P0-1 commit 1-5 (June 2026): god Service split into 4 use-case sub-packages"
-      ],
-      "removal_trigger_met": "sourcing.NewService now takes 5 args (youtube + batch + drivesync + localimport + log); well under the 8-param cap. The youtube sub-service (youtube/sourcing.NewService, 10 params) is a separate rule entry."
-    },
-    {
-      "ledger_kind": "transitional_retired",
-      "ledger_id": "stopword_maps_consolidated",
-      "rule": "percheck_stopword_maps_in_app",
-      "was_entries": 8,
-      "was_deadline": "2026-08-10",
-      "was_owner": "SSOT lexicon consolidation stream (Azione 2 — replace hardcoded stop-word maps with LexiconRegistry lookups)",
-      "retired_by": "Azione 2 (August 2026): all hardcoded stop-word maps replaced by LexiconRegistry/fallback lookups",
-      "retired_in_commit_chain": [
-        "Azione 1: percheck_stopword_maps_in_app registered + strengthened for multi-line maps",
-        "Azione 2: source_resolver_research.go, search_scoring.go, tagutil_extract.go, tagutil_normalize.go, quality_gate.go, entities_util.go, textutil.go now delegate to config/lexicons SSOT"
-      ],
-      "removal_trigger_met": "percheck_stopword_maps_in_app reports zero violations (verified 2026-08-02); 'e' present in config/lexicons/it/stopwords.txt:51 (SSOT, no manual patch)."
+      "owner": "voiceover capability complexity stream",
+      "deadline": "2026-09-30",
+      "removal_trigger": "Split ProcessSegmentDeps into cohesive dependency bundles so every mandatory dependency struct has at most eight fields."
     }
   ]
 }

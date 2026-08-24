@@ -28,7 +28,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/subjects"
 
-	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/subjectsrepo"
+	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/subjectsrepo"
 )
 
 // BuildSubjectsResolver constructs the canonical SQLite-backed

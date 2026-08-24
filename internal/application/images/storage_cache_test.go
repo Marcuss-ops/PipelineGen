@@ -12,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )

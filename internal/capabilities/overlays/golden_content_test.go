@@ -107,7 +107,7 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
     "schema": "chronon.render-plan",
     "version": 1,
     "job_id": "golden-content-01-phrases",
-    "canvas": { "width": 1280, "height": 720, "fps": 30, "duration_frames": 150 },
+    "canvas": { "width": 1280, "height": 720, "fps_num": 30, "fps_den": 1, "duration_frames": 150 },
     "layers": [
       {
         "id": "background",
@@ -124,7 +124,7 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "A MAJOR CHANGE",
-        "preset": "clean_slide_up",
+        "preset": "slide_lateral",
         "start_frame": 24,
         "duration_frames": 48
       },
@@ -133,7 +133,7 @@ func TestCompileChrononPlanGoldenContent01JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "THIS CHANGES EVERYTHING",
-        "preset": "slide_lateral",
+        "preset": "clean_slide_up",
         "start_frame": 90,
         "duration_frames": 54
       }

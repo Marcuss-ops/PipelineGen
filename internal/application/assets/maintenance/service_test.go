@@ -8,9 +8,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

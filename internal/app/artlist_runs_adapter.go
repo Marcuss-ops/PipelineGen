@@ -32,7 +32,7 @@ import (
 	"fmt"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
+	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 )
 
 // artlistRunsRepoAdapter is the canonical composition-root adapter

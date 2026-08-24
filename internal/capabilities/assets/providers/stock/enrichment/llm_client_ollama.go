@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
 // enrichmentSystemPromptV1 is the canonical English system message
@@ -37,7 +37,7 @@ const enrichmentSystemPromptV2 = `Sei un assistente di arricchimento dei metadat
 //
 // godlike/06 SSOT: ollamaEnrichmentLLMClient lives ONLY in this
 // file. The ollama client itself lives in
-// internal/infrastructure/ai/ollama/client (canonical port for
+// internal/platform/ollama/client (canonical port for
 // /api/chat wire).
 type ollamaEnrichmentLLMClient struct {
 	// client is the canonical ollama wire-contract adapter.

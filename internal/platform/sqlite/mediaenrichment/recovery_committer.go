@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/google/uuid"
 )

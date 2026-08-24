@@ -9,8 +9,8 @@ import (
 
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
 )
 
 // ── Diagnostics adapters ───────────────────────────────────────────────

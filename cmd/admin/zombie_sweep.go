@@ -73,8 +73,8 @@ import (
 
 	"go.uber.org/zap"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

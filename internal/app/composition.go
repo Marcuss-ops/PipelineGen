@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifacts"
+	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
 
 	"go.uber.org/zap"

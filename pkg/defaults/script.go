@@ -10,7 +10,7 @@ package defaults
 //     internal/application/scripts/adapters/generation_normalizer.go's
 //     `applyConfigDefaults` since V2 unification, June 2026).
 //   - DefaultDuration = 600
-//     (internal/infrastructure/ai/ollama/types/defaults.go).
+//     (internal/platform/ollama/types/defaults.go).
 //   - DefaultLanguage = "it"
 //     (same file).
 //   - DefaultTemplate = "documentary"
@@ -25,7 +25,7 @@ package defaults
 //   - Literal `140` in
 //     internal/application/lessons/service.go::estimateChapterDuration
 //     (the formula `(words * 60) / 140`); and the typed constant
-//     `internal/infrastructure/ai/ollama/types/constants.go::WordsPerMinute
+//     `internal/platform/ollama/types/constants.go::WordsPerMinute
 //     (=140). Both are DEFERRED — see Blocco 2.C follow-up TODOs
 //     registered against this commit; unifying them would cross
 //     domain boundaries (lessons + ollama-internal infra) with

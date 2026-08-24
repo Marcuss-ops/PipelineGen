@@ -41,7 +41,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
     "schema": "chronon.render-plan",
     "version": 1,
     "job_id": "golden-overlay-v2",
-    "canvas": { "width": 1280, "height": 720, "fps": 30, "duration_frames": 240 },
+    "canvas": { "width": 1280, "height": 720, "fps_num": 30, "fps_den": 1, "duration_frames": 240 },
     "layers": [
       {
         "id": "background_video",
@@ -58,7 +58,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "IL FUTURO È ADESSO",
-        "preset": "slide_lateral",
+        "preset": "phrase_word_reveal",
         "start_frame": 24,
         "duration_frames": 84,
         "animation": { "preset": "fade_in" }
@@ -68,7 +68,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "VELOCITÀ",
-        "preset": "phrase_word_reveal",
+        "preset": "fast_fade_through",
         "start_frame": 24,
         "duration_frames": 84,
         "animation": { "preset": "scale_drop" }
@@ -77,7 +77,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
         "id": "image_overlay_1",
         "type": "image",
         "asset": "assets/overlay_globe.png",
-        "preset": "image_slide_right",
+        "preset": "image_fast_fade",
         "box_width": 300,
         "box_height": 300,
         "position": [380, 0],
@@ -89,7 +89,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "CAMBIARE IL MERCATO",
-        "preset": "slide_lateral",
+        "preset": "fast_fade_through",
         "start_frame": 132,
         "duration_frames": 84,
         "animation": { "preset": "fade_shift_vertical" }
@@ -99,7 +99,7 @@ func TestCompileChrononPlanGoldenV2JSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "POTENZA",
-        "preset": "snap_scale",
+        "preset": "phrase_word_reveal",
         "start_frame": 132,
         "duration_frames": 84,
         "animation": { "preset": "fade_in" }

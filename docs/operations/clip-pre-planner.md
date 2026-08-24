@@ -151,7 +151,7 @@ unit testing.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/domain/generation/generator.go` (`Generator` interface), `internal/infrastructure/ai/ollama/generate.go` (`Generator` Ollama impl), `internal/application/scripts/usecase/generate_one_usecase.go` (orchestrator invocation) |
+| **Primary code paths** | `internal/domain/generation/generator.go` (`Generator` interface), `internal/platform/ollama/generate.go` (`Generator` Ollama impl), `internal/application/scripts/usecase/generate_one_usecase.go` (orchestrator invocation) |
 | **Godlike contract** | godlike/06 SSOT: there is one Generator contract (`domain/generation/generator.go`); alternative generation backends MUST implement it. godlike/07: every Generator call MUST return a typed result; raw text without a typed envelope is reject. |
 | **Inputs** | redacted candidate projections from stage 5 |
 | **Outputs** | generated typed envelope (per the Generator contract) |

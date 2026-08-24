@@ -7,7 +7,7 @@ import (
 	"os"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	platformcontrol "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/controlplane"
 )
 

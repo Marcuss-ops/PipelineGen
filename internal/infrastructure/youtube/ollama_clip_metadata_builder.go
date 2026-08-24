@@ -35,7 +35,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 

@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
-	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
+	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	obsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

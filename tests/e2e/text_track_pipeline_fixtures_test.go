@@ -9,7 +9,7 @@ import (
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

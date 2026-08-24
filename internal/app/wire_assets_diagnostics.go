@@ -17,7 +17,7 @@ import (
 
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"go.uber.org/zap"
 )
 

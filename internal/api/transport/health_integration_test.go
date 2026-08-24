@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 )
 

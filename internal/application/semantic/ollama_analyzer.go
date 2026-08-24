@@ -45,7 +45,7 @@ import (
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
 // Deps is the ctor payload for NewOllamaAnalyzer. The OllamaClient

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // UnitOfWork is the SQLite implementation of the canonical mutation boundary.

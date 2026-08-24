@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 type mockVectorStoreIndexer struct {

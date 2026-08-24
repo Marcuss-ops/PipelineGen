@@ -28,9 +28,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
-	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
+	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

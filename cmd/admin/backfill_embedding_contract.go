@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 

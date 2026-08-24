@@ -48,7 +48,7 @@
 // calling methods on the nil interface.
 package jobs
 
-import sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+import sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 
 // QueueNotifier is the application-tier wake-on-Enqueue port.
 //

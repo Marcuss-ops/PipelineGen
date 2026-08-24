@@ -33,8 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -52,7 +51,7 @@ type SQLiteMediaCommitter struct {
 	db     *sql.DB
 	box    *outboxevents.Repository
 	ledger RegistryTxWriter
-	assets *sqassets.SQLiteAssetCommitter // reuses the canonical media_assets upsert (step 2)
+	assets *SQLiteAssetCommitter // reuses the canonical media_assets upsert (step 2)
 	log    *zap.Logger
 }
 
@@ -103,7 +102,7 @@ func NewSQLiteMediaCommitter(db *sql.DB, box *outboxevents.Repository, ledger Re
 		db:     db,
 		box:    box,
 		ledger: ledger,
-		assets: sqassets.NewSQLiteAssetCommitter(db, box, log),
+		assets: NewSQLiteAssetCommitter(db, box, log),
 		log:    log,
 	}
 }
@@ -215,10 +214,10 @@ func (c *SQLiteMediaCommitter) commitTx(ctx context.Context, tx *sql.Tx, req med
 	}
 
 	// 7. Outbox asset.index.requested when indexable.
-	var indexResult sqassets.IndexRequestCommitResult
+	var indexResult IndexRequestCommitResult
 	if req.IndexPolicy.Indexable {
 		sourceVersion := firstNonEmpty(req.Source.SourceVersion, req.Asset.ContentHash)
-		indexResult, err = sqassets.CommitIndexRequestTx(ctx, tx, c.box, sqassets.IndexRequest{
+		indexResult, err = CommitIndexRequestTx(ctx, tx, c.box, IndexRequest{
 			AssetID:       assetID,
 			Source:        req.Asset.Source,
 			MediaType:     req.Asset.MediaType,

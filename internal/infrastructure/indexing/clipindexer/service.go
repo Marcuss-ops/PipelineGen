@@ -10,7 +10,7 @@ import (
 	"time"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 

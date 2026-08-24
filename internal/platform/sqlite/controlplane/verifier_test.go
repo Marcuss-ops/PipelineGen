@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 )
 

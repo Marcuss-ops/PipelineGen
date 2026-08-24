@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"go.uber.org/zap/zaptest"
 )
 

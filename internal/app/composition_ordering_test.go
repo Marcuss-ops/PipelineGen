@@ -49,7 +49,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )

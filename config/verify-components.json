@@ -398,11 +398,11 @@
   },
   "ollama": {
     "paths": [
-      "internal/infrastructure/ai/ollama/",
+      "internal/platform/ollama/",
       "scripts/systemd/ollama.service.d/"
     ],
     "go_packages": [
-      "./internal/infrastructure/ai/ollama/..."
+      "./internal/platform/ollama/..."
     ],
     "node_tests": [],
     "python_tests": [],

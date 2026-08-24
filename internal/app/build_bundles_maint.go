@@ -21,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

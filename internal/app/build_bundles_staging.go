@@ -35,7 +35,7 @@ import (
 	"go.uber.org/zap"
 
 	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
+	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // MetadataExportRequestSchemaVersion is retained at the outbox boundary as

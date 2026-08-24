@@ -6,7 +6,7 @@ import (
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // SQLiteChecker verifies the primary SQLite database.

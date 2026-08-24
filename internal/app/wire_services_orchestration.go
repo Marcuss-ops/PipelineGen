@@ -52,7 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/logsink"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"

@@ -13,7 +13,7 @@ import (
 	"context"
 	"errors"
 
-	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/delivery"
+	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 )
 
 // NewCatalogFolderLookup creates a CatalogFolderLookup backed by the

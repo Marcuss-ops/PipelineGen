@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	_ "github.com/mattn/go-sqlite3"
 )
 

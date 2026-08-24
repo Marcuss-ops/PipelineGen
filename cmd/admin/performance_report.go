@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/performance"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )
 

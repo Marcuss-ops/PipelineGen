@@ -22,8 +22,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	"go.uber.org/zap"
 )
 

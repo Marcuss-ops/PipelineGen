@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )

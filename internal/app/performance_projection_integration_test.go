@@ -35,8 +35,8 @@ import (
 	"go.uber.org/zap"
 
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 )

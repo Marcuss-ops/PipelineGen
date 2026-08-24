@@ -5,7 +5,7 @@ import (
 	"context"
 	"strings"
 
-	ollama "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	ollama "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	"go.uber.org/zap"
 )
 

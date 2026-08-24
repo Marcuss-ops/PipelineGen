@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
 // fakeReadyProbe is a minimal stand-in for the Qdrant HealthProbe.

@@ -19,7 +19,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
@@ -56,7 +56,7 @@ const (
 )
 
 // rankerGenOptions mirrors the writer-path generation defaults (see
-// internal/infrastructure/ai/ollama/generate.go): without an explicit
+// internal/platform/ollama/generate.go): without an explicit
 // num_ctx Ollama falls back to the model default (4096), which the
 // multi-candidate ranker prompt overflows and the model answers with a
 // truncated `{"` instead of the ranking JSON.

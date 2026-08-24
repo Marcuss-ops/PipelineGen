@@ -68,7 +68,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
     "schema": "chronon.render-plan",
     "version": 1,
     "job_id": "golden-overlay-v1",
-    "canvas": { "width": 1280, "height": 720, "fps": 30, "duration_frames": 150 },
+    "canvas": { "width": 1280, "height": 720, "fps_num": 30, "fps_den": 1, "duration_frames": 150 },
     "layers": [
       {
         "id": "background",
@@ -85,7 +85,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "QUESTO CAMBIA TUTTO",
-        "preset": "clean_slide_up",
+        "preset": "fast_fade_through",
         "start_frame": 20,
         "duration_frames": 41
       },
@@ -94,7 +94,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "type": "text",
         "font_asset": { "asset": "assets/fonts/DejaVuSans.ttf", "family": "DejaVu Sans", "weight": 700 },
         "text": "APPLE",
-        "preset": "phrase_word_reveal",
+        "preset": "fast_fade_through",
         "start_frame": 65,
         "duration_frames": 31
       },
@@ -102,7 +102,7 @@ func TestCompileChrononPlanGoldenJSON(t *testing.T) {
         "id": "image_overlay",
         "type": "image",
         "asset": "assets/apple.png",
-        "preset": "image_fast_fade",
+        "preset": "image_slide_right",
         "start_frame": 90,
         "duration_frames": 46
       }

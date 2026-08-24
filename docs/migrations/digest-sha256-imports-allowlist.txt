@@ -6,14 +6,14 @@ internal/app/vidrush_materialization_wiring.go
 internal/application/assets/artifacts/local_blob.go
 internal/application/assets/artifacts/service.go
 internal/capabilities/delivery/types.go
-internal/application/scripts/adapters/vidrush_helpers.go
+internal/capabilities/scripts/adapters/vidrush_helpers.go
 internal/application/staging/service.go
-internal/application/voiceover/process_segment_publish.go
+internal/platform/sqlite/backup.go
+internal/capabilities/voiceover/service/process_segment_publish.go
 internal/infrastructure/acquisition/filesystem_stager_prepare.go
 internal/infrastructure/ai/autotag/autotag.go
 internal/infrastructure/artifacts/local_store_fs.go
 internal/infrastructure/artifacts/local_store_stage.go
-internal/infrastructure/database/backup.go
 internal/infrastructure/drive/artifact_publisher_adapter.go
 internal/infrastructure/drive/verifier.go
 internal/infrastructure/stager/http_source_stager.go

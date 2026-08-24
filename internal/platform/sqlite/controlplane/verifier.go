@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 type Verifier struct {

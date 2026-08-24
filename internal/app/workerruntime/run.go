@@ -37,7 +37,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"

@@ -55,8 +55,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifact_stages"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	migration "github.com/Marcuss-ops/PipelineGen/migrations/sqlite"
 

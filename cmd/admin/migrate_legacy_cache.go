@@ -22,7 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 func runMigrateLegacyCache(args []string) error {

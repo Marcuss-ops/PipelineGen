@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // ── Audit report types ───────────────────────────────────────────────────
