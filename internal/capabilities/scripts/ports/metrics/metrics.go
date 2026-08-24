@@ -117,7 +117,7 @@ const (
 
 // TranslationMetricsRecorder is the canonical SOLE consumer surface
 // for the script_translation_warnings_total Prometheus counter.
-// The observability adapter (internal/infrastructure/observability/metrics_translation.go)
+// The observability adapter (internal/platform/observability/metrics_translation.go)
 // is the SOLE canonical producer; any other writer is a
 // godlike/06 SSOT regression.
 //

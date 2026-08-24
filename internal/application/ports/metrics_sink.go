@@ -5,12 +5,12 @@
 //
 // The concrete implementations live in:
 //
-//   - internal/infrastructure/observability/*    (production — wraps prometheus promauto globals)
+//   - internal/platform/observability/*    (production — wraps prometheus promauto globals)
 //   - A test fake (`metricsink.NoOp` or per-test stub)         (hermetic tests)
 //
 // godlike/07 minimum-blast-radius: until Phase 5(b), the application
 // layer imports `github.com/prometheus/client_golang/prometheus/promauto`
-// directly via `internal/infrastructure/observability` package
+// directly via `internal/platform/observability` package
 // references. Fase 5(b) removes those imports — application code calls
 // `sink.Inc(...)` instead of `promauto.X.WithLabelValues(...).Inc()`.
 //

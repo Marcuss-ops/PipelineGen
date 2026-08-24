@@ -22,7 +22,7 @@
 //     fix for the pre-fix "all workers wake at once" storm.
 //
 //  2. observability metrics (5 collectors in
-//     internal/infrastructure/observability/metrics_outbox.go):
+//     internal/platform/observability/metrics_outbox.go):
 //     - OutboxLagSeconds           (gauge)   : per-event_type lag
 //     - OutboxDispatchDurationSeconds (hist) : per-event_type+outcome
 //     - OutboxReclaimTotal         (counter) : successful reclaims
@@ -56,7 +56,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // ── Clock — injectable time source for testability ────────────────────

@@ -16,7 +16,7 @@
 // TestCompositionRootPortSatisfaction field-assignment test. That
 // in-test import pulled in monitor's transitive dependency graph,
 // which closed a Go package cycle through the clips/adapters/outbox
-// chain back to `internal/infrastructure/observability`. The cycle
+// chain back to `internal/platform/observability`. The cycle
 // was:
 //
 //	observability test → monitor (from metrics_adapter_test.go)

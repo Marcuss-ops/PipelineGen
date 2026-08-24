@@ -56,7 +56,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // DualPool is the canonical WAL-mode reader/writer split for the

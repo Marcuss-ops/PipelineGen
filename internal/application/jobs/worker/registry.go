@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

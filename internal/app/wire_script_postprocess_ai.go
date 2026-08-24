@@ -20,7 +20,7 @@
 //   - internal/infrastructure/ai/ollama/adapters: NewOllamaEntityExtractorAdapter,
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/infrastructure/embeddings: NewOllamaEmbedderAdapter
-//   - internal/infrastructure/observability: NewTranslationMetricsAdapter
+//   - internal/platform/observability: NewTranslationMetricsAdapter
 //   - internal/capabilities/scripts/ports: NewScriptTranslatorFromFunc
 package app
 
@@ -38,7 +38,7 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/prometheus/client_golang/prometheus"

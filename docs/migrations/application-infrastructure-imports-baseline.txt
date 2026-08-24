@@ -17,7 +17,6 @@ internal/application/assets/deletion/delete_clip.go -> github.com/Marcuss-ops/Pi
 internal/application/assets/deletion/deletion.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex
 internal/application/assets/deletion/deletion.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/assets/deletion/deletion.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo
-internal/application/assets/delivery/drive_validator_metrics.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/assets/ingest/adapter_image.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo
 internal/application/assets/ingest/adapter_voiceover.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/assets/ingest/image.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
@@ -41,7 +40,6 @@ internal/application/assets/videomuscles/youtube_pipeline.go -> github.com/Marcu
 internal/application/assets/videomuscles/youtube_pipeline.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
 internal/application/assets/videomuscles/youtube_pipeline.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg
 internal/application/assets/videomuscles/youtube_pipeline.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types
-internal/application/assets/videomuscles/youtube_pipeline.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/books/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/channels/adapters.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels
 internal/application/clips/bulk_tags.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
@@ -65,9 +63,7 @@ internal/application/jobs/assets/service.go -> github.com/Marcuss-ops/PipelineGe
 internal/application/jobs/assets/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo
 internal/application/jobs/assets/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/jobs/enqueue_id.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
-internal/application/jobs/finalizer/artifact_writer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/jobs/finalizer/job_finalizer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
-internal/application/jobs/finalizer/job_finalizer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/jobs/job_queries.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
 internal/application/jobs/notifier.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
 internal/application/jobs/outbox/asset_published_handler.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
@@ -82,7 +78,6 @@ internal/application/jobs/outbox/indexing.go -> github.com/Marcuss-ops/PipelineG
 internal/application/jobs/outbox/indexing.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer
 internal/application/jobs/outbox/indexing_handle.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/jobs/outbox/indexing_handle.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer
-internal/application/jobs/outbox/indexing_handle.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/jobs/outbox/indexing_validate.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/jobs/outbox/metadataexport_handler.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/jobs/outbox/provider_sync.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
@@ -94,11 +89,6 @@ internal/application/jobs/outbox/workflow_step_completed.go -> github.com/Marcus
 internal/application/jobs/outbox/workflow_step_failed.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents
 internal/application/jobs/stats.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
 internal/application/jobs/types.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs
-internal/application/jobs/worker.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
-internal/application/jobs/worker/registry.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
-internal/application/jobs/worker/runner_execute.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
-internal/application/jobs/worker_execution.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
-internal/application/jobs/worker_polling.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/lessons/generator.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive
 internal/application/lessons/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/lessons/service.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types
@@ -116,7 +106,6 @@ internal/application/scripts/adapters/clip_resolver.go -> github.com/Marcuss-ops
 internal/application/scripts/adapters/ollama_generation.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/scripts/adapters/ollama_generation.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types
 internal/application/scripts/adapters/repository.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts
-internal/application/scripts/usecase/engine_metrics.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier
 internal/application/semantic/ollama_analyzer.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client
 internal/application/transcripts/transcription.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube
@@ -124,8 +113,6 @@ internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/Pi
 internal/application/transcripts/ytdlp_subtitles.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp
 internal/application/translation/ollama_translator.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama
 internal/application/voiceover/filename.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files
-internal/application/voiceover/process.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
-internal/application/voiceover/process_segment.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability
 internal/application/voiceover/registry_adapter.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets
 internal/application/workerdoctor/default_probes.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process
 internal/application/youtube/adapters/segment_finder.go -> github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp

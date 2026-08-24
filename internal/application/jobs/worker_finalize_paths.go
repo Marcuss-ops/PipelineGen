@@ -32,7 +32,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"

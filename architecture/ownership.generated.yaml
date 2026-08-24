@@ -595,7 +595,7 @@ infrastructure_jobs:
         - jobbrokerclient       # HTTP client for job broker (worker side)
 
 infrastructure_observability:
-  owner: internal/infrastructure/observability
+  owner: internal/platform/observability
   rationale: metrics, tracing, health checks.
 
 infrastructure_config:
@@ -641,5 +641,5 @@ pkg:
 # project the POJO verbatim (no field copies, no JSON-tag renames) and
 # MUST satisfy architecture/policy.yaml::prometheus_boundary (no
 # prometheus/client_golang imports at the leaf pkg layer; metric var
-# definitions stay in internal/infrastructure/observability/ — the
+# definitions stay in internal/platform/observability/ — the
 # now-cleaned Option B governance).

@@ -134,7 +134,7 @@ var (
 	}, []string{"failure_code"})
 
 	// Translation warnings counter is now PER-ADAPTER, registered
-	// in internal/infrastructure/observability/metrics_translation.go
+	// in internal/platform/observability/metrics_translation.go
 	// via NewTranslationMetricsAdapter(reg). The package-level
 	// global was removed in the CR#1+#2+#3 review-fix pass (per
 	// godlike/06 SSOT one-canonical-owner-per-fact: the counter is

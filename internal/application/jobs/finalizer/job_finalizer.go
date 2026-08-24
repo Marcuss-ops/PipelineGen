@@ -59,7 +59,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

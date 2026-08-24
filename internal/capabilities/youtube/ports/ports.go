@@ -345,13 +345,13 @@ type FFProbePort interface {
 // Step10MetricsRecorder is the application-layer port for the YouTube
 // Step 10 partial-state metric (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY,
 // July 2026). The concrete adapter lives in
-// internal/infrastructure/observability/metrics_step10.go and wraps
+// internal/platform/observability/metrics_step10.go and wraps
 // the Prometheus counter
 // `transcript_metadata_step10_fail_after_clip_total{failure_code}`.
 //
 // godlike/06 SSOT: this port is the SOLE canonical application-layer
 // surface for Step 10 partial-state telemetry. The use case MUST NOT
-// import internal/infrastructure/observability directly (clean
+// import internal/platform/observability directly (clean
 // architecture — application layer is forbidden from depending on
 // infrastructure); the composition root wires the concrete adapter.
 //

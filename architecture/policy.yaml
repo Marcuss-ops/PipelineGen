@@ -179,10 +179,6 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #
 # Deferred migrations (exist in infrastructure/, not yet cut over):
 #
-#   observability  — 28 files in internal/infrastructure/observability/
-#                     (metrics, recorders, runreports). 52 import sites.
-#                     Target: internal/platform/observability/
-#
 #   ollama         — 46 files in internal/infrastructure/ai/ollama/
 #                     (adapters, client). 54 import sites.
 #                     Target: internal/platform/ollama/
@@ -198,7 +194,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #   nvidia         — GPU/NVIDIA capability probing lives in
 #                     platform/overlays/gpu_gate.go and app/workerruntime.
 #                     No standalone nvidia package needed.
-platform_subzones: config, sqlite, drive, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery
+platform_subzones: config, sqlite, drive, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery, observability
 
 # CANONICAL LAYOUT (binding): target_internal_roots
 #

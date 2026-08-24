@@ -346,7 +346,7 @@ func startDriveBackgroundFolders(
 		// SRE dashboard sees per-destination probe counters + latency
 		// histograms + run-summary gauges. The struct is built against
 		// the promauto package globals declared in
-		// internal/infrastructure/observability/metrics_delivery.go
+		// internal/platform/observability/metrics_delivery.go
 		// — production wiring always uses this constructor so all four
 		// metrics auto-register with the default Prometheus registry.
 		metrics := delivery.NewDriveValidatorMetrics()

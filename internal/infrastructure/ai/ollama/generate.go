@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"

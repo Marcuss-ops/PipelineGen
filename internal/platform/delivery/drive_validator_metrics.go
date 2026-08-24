@@ -40,7 +40,7 @@ import (
 //
 // Production construction: NewDriveValidatorMetrics() backs the
 // fields with the promauto globals from
-// internal/infrastructure/observability/metrics_delivery.go — those
+// internal/platform/observability/metrics_delivery.go — those
 // globals auto-register with prometheus.DefaultRegisterer and are
 // surfaced via api/routes.go::/metrics (promhttp.Handler()).
 type DriveValidatorMetrics struct {

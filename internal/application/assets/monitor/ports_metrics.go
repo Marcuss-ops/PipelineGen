@@ -2,12 +2,12 @@
 //
 // FASE 3.7 Commit 2 (2026-07-04): zero-infra-imports commitment
 // for the Prometheus counters + histogram previously consumed
-// directly via the `internal/infrastructure/observability`
+// directly via the `internal/platform/observability`
 // package-level vars. The monitor package now declares its own
 // narrow MetricsRecorder port + calls it through m.metrics on the
 // ChannelMonitor struct. The infrastructure-side adapter
 // (ObservabilityMetricsRecorder, in
-// internal/infrastructure/observability/metrics_adapter.go) is
+// internal/platform/observability/metrics_adapter.go) is
 // wired at the composition root in internal/app/lifecycle.go.
 //
 // Pattern 0 + godlike/06 (one owner per fact): monitor OWNS the
@@ -34,7 +34,7 @@ package monitor
 // label values) at composition time.
 //
 // Methods enforce two rules from the legacy
-// `internal/infrastructure/observability` direct-usage path:
+// `internal/platform/observability` direct-usage path:
 //   - IncVideosChecked(handle): one Inc per analyzer-call channel
 //     (pre-Commit-2 call site: `metrics.ChannelMonitorVideosChecked
 //     .WithLabelValues(handle).Inc()`).

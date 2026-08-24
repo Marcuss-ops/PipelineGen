@@ -70,7 +70,7 @@ type ChannelMonitor struct {
 	// emitting the channel-monitor Prometheus counters/histograms.
 	// Replaces the pre-Commit-2 direct `metrics.ChannelMonitor*` calls
 	// in analyzer.go + discovery.go so the monitor package has zero
-	// `internal/infrastructure/observability` imports. Composition wires
+	// `internal/platform/observability` imports. Composition wires
 	// the concrete *observability.ObservabilityMetricsRecorder via
 	// CompositionDeps.MetricsRecorder; nil-tolerant at the ctor: a
 	// missing wire installs NoopMetricsRecorder (matches the partial-

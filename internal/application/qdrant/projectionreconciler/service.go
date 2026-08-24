@@ -89,7 +89,7 @@ type ParityChecker interface {
 // concrete is
 // internal/infrastructure/qdrant/verification.ParityMetricsAdapter
 // (Prometheus gauges declared in
-// internal/infrastructure/observability/metrics_media.go).
+// internal/platform/observability/metrics_media.go).
 type Metrics interface {
 	// ObserveParity records a successful parity sample (sets the
 	// coverage/orphan/missing gauges + bumps the runs counter + stamps

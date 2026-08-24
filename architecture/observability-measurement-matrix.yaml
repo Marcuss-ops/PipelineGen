@@ -87,7 +87,7 @@ measurements:
   - current_symbol: "VidRushTimingMetrics.ObserveProcessorDuration"
     current_owner: "internal/application/scripts/adapters/vidrush_timing.go"
     current_writer: "PostProcessorRegistry.Run in postprocessor_composite_run.go:128-130"
-    current_storage: "Prometheus collector registered by internal/infrastructure/observability/metrics_vidrush.go"
+    current_storage: "Prometheus collector registered by internal/platform/observability/metrics_vidrush.go"
     current_metric: "vidrush_processor_duration_seconds{processor}"
     canonical_type: stage
     canonical_stage: "script/VidRush processor execution"
@@ -217,7 +217,7 @@ measurements:
     removal_condition: "Report queries replace duration_ms reads and canonical operation parity passes for cache hit, success, retry, and failure"
 
   - current_symbol: "ScriptGenerationDuration"
-    current_owner: "internal/infrastructure/observability/metrics_scripts.go"
+    current_owner: "internal/platform/observability/metrics_scripts.go"
     current_writer: "internal/infrastructure/ai/ollama/generate.go:133"
     current_storage: "Prometheus histogram"
     current_metric: "script_generation_duration_seconds{model,language,outcome}"
@@ -229,7 +229,7 @@ measurements:
     removal_condition: "OLLAMA_OBSERVED=PASS, labels are bounded per policy, and no Ollama caller times the same request independently"
 
   - current_symbol: "ScriptPhaseDuration"
-    current_owner: "internal/infrastructure/observability/metrics_scripts.go"
+    current_owner: "internal/platform/observability/metrics_scripts.go"
     current_writer: "script phase metric call sites under internal/application/scripts"
     current_storage: "Prometheus histogram"
     current_metric: "script_phase_duration_seconds{phase,topic}"
@@ -277,7 +277,7 @@ measurements:
     removal_condition: "FFmpeg duration is emitted once by ObservedFFmpeg and all legacy DurationMS consumers use OperationReport"
 
   - current_symbol: "EmbeddingServerLatency"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "clipindexer.indexTextViaAPI/indexTranscriptViaAPI/indexVisualMultiViaAPI/indexAudioViaAPI"
     current_storage: "Prometheus histogram"
     current_metric: "embedding_server_duration_seconds{endpoint,outcome}"
@@ -289,7 +289,7 @@ measurements:
     removal_condition: "NLP, image, audio, and transcription calls all pass through observed provider wrappers and direct Observe calls are absent"
 
   - current_symbol: "QdrantSearchLatency"
-    current_owner: "internal/infrastructure/observability/metrics_qdrant.go"
+    current_owner: "internal/platform/observability/metrics_qdrant.go"
     current_writer: "qdrant/search/searcher.go Search and HybridSearch"
     current_storage: "Prometheus histogram"
     current_metric: "qdrant_search_latency_seconds{vector_name}"
@@ -301,7 +301,7 @@ measurements:
     removal_condition: "Qdrant search is observed once, vector_name is replaced by bounded operation metadata, and direct timers are removed"
 
   - current_symbol: "QdrantSearchDuration/QdrantRequestDuration"
-    current_owner: "internal/infrastructure/observability/metrics_qdrant.go"
+    current_owner: "internal/platform/observability/metrics_qdrant.go"
     current_writer: "Qdrant transport/search/indexing paths"
     current_storage: "Prometheus histograms"
     current_metric: "qdrant_search_duration_seconds and qdrant_request_duration_seconds"
@@ -313,7 +313,7 @@ measurements:
     removal_condition: "All Qdrant REST calls use the observed client and no duplicate search/request timers remain"
 
   - current_symbol: "QdrantAliasSwitchDuration"
-    current_owner: "internal/infrastructure/observability/metrics_qdrant.go"
+    current_owner: "internal/platform/observability/metrics_qdrant.go"
     current_writer: "maintenance.PromDRMetricsAdapter.RecordAliasSwitch in dr_adapter.go"
     current_storage: "Prometheus histogram"
     current_metric: "qdrant_alias_switch_duration_seconds{action}"
@@ -325,7 +325,7 @@ measurements:
     removal_condition: "Alias switch is emitted by the canonical Qdrant observer and adapter-level duration is no longer independently timed"
 
   - current_symbol: "QdrantReconcilerDuration"
-    current_owner: "internal/infrastructure/observability/metrics_qdrant.go"
+    current_owner: "internal/platform/observability/metrics_qdrant.go"
     current_writer: "qdrant/search/metrics_adapter.go RecordRunComplete"
     current_storage: "Prometheus histogram"
     current_metric: "qdrant_reconciler_duration_seconds{mode}"
@@ -337,7 +337,7 @@ measurements:
     removal_condition: "Reconciler remains outside job reports or is explicitly modeled as a run; no ambiguous dual classification remains"
 
   - current_symbol: "ConnectionWaitSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_db.go"
+    current_owner: "internal/platform/observability/metrics_db.go"
     current_writer: "instrumented SQLite pool acquire path in internal/infrastructure/database/sqlite/pool.go:284-294"
     current_storage: "Prometheus histogram"
     current_metric: "connection_wait_seconds{op}"
@@ -349,7 +349,7 @@ measurements:
     removal_condition: "Infrastructure pool latency and job operation latency have disjoint ownership and no second acquire timer is introduced"
 
   - current_symbol: "TxDurationSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_db.go"
+    current_owner: "internal/platform/observability/metrics_db.go"
     current_writer: "instrumented transaction commit/rollback paths in sqlite/pool.go:329-347"
     current_storage: "Prometheus histogram"
     current_metric: "tx_duration_seconds{op,outcome}"
@@ -361,7 +361,7 @@ measurements:
     removal_condition: "All job-owned transactions use the observed executor and direct transaction timers are not duplicated"
 
   - current_symbol: "SqliteBusyTotal"
-    current_owner: "internal/infrastructure/observability/metrics_db.go"
+    current_owner: "internal/platform/observability/metrics_db.go"
     current_writer: "SQLite retry/error classifier and pool paths"
     current_storage: "Prometheus counter"
     current_metric: "sqlite_busy_total{op}"
@@ -373,7 +373,7 @@ measurements:
     removal_condition: "Canonical operation retry/failure counters are persisted and this family is documented as infrastructure projection"
 
   - current_symbol: "job_claim_duration_seconds/JobClaimDurationSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "SQLiteStore.ClaimNext instrumentation in the job claim path"
     current_storage: "Prometheus histogram only"
     current_metric: "job_claim_duration_seconds"
@@ -493,7 +493,7 @@ measurements:
     removal_condition: "RunReport satisfies the Job–Attempt–Run contract and all report persistence/query gates pass"
 
   - current_symbol: "RunReportsCollector"
-    current_owner: "internal/infrastructure/observability/metrics_runreports.go"
+    current_owner: "internal/platform/observability/metrics_runreports.go"
     current_writer: "RunObserver.emit collector callback"
     current_storage: "Prometheus histograms/counter"
     current_metric: "job_run_duration_seconds, job_run_queue_wait_seconds, job_run_retries_total, job_operation_duration_seconds{component,operation,status}, job_stage_duration_seconds{stage,status}"
@@ -505,7 +505,7 @@ measurements:
     removal_condition: "Canonical metric family is authoritative, no report fields are omitted, and dashboards no longer depend on duplicate job_run_* names"
 
   - current_symbol: "vidrushJobDuration/vidrushQueueWait"
-    current_owner: "internal/infrastructure/observability/metrics_vidrush.go"
+    current_owner: "internal/platform/observability/metrics_vidrush.go"
     current_writer: "VidRushMetricsAdapter.ObserveJobDuration/ObserveQueueWait"
     current_storage: "Prometheus histograms"
     current_metric: "vidrush_job_duration_seconds{scenario,cache_mode}; vidrush_queue_wait_seconds{scenario}"
@@ -517,7 +517,7 @@ measurements:
     removal_condition: "VidRush uses canonical RunReport for job and queue timing; old adapter methods are projections only"
 
   - current_symbol: "vidrush cache counters"
-    current_owner: "internal/infrastructure/observability/metrics_vidrush.go"
+    current_owner: "internal/platform/observability/metrics_vidrush.go"
     current_writer: "VidRushMetricsAdapter.IncExtractionCache/IncAssetCache"
     current_storage: "Prometheus counters; cache state in VidRush cache adapters"
     current_metric: "vidrush_extraction_cache_hits_total/misses_total; vidrush_asset_cache_hits_total/misses_total{provider}"
@@ -529,7 +529,7 @@ measurements:
     removal_condition: "Every cache lookup has one canonical operation event and legacy cache writers are projections"
 
   - current_symbol: "Media DownloadDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "application/assets/videomuscles/youtube_pipeline.go:161"
     current_storage: "Prometheus histogram"
     current_metric: "download_duration_seconds{source,status}"
@@ -541,7 +541,7 @@ measurements:
     removal_condition: "DOWNLOADERS_OBSERVED=PASS for YouTube, Artlist, stock, and VidRush; no caller-level download timer remains"
 
   - current_symbol: "VideoRenderDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "application/assets/videomuscles/youtube_pipeline.go:213"
     current_storage: "Prometheus histogram"
     current_metric: "video_render_duration_seconds{status,fallback}"
@@ -553,7 +553,7 @@ measurements:
     removal_condition: "ObservedFFmpeg is the sole render timer and the metric is fed only from its canonical observation"
 
   - current_symbol: "FFmpegExecCount/FFprobeExecCount/FramesDecoded/FramesEncoded"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "media/rustexec/client_transport.go::Client.call (media-plane dispatch boundary)"
     current_storage: "Prometheus counters"
     current_metric: "ffmpeg_exec_count, ffprobe_exec_count, frames_decoded, frames_encoded"
@@ -565,7 +565,7 @@ measurements:
     removal_condition: "Copy-only certification asserts frames_decoded==0 and frames_encoded==0 after a mux_audio_copy, and ffmpeg_exec_count increments by the dispatched mux without an ffprobe increment"
 
   - current_symbol: "MediaIndexDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "application/jobs/outbox/indexing_handle.go:44"
     current_storage: "Prometheus histogram"
     current_metric: "media_index_duration_seconds{event_type,outcome}"
@@ -577,7 +577,7 @@ measurements:
     removal_condition: "Index handler and nested Qdrant/embedding timings have explicit non-overlapping ownership and direct timer is projection-only"
 
   - current_symbol: "MediaIndexAttemptsTotal/RetryTotal/SupersededTotal"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "IndexingHandler.Handle"
     current_storage: "Prometheus counters"
     current_metric: "media_index_attempts_total, media_index_retry_total, media_index_superseded_total"
@@ -589,7 +589,7 @@ measurements:
     removal_condition: "Canonical index counters are persisted and old counters are projections with no duplicate increments"
 
   - current_symbol: "DriveRootsValidatorProbeDuration"
-    current_owner: "internal/infrastructure/observability/metrics_delivery.go"
+    current_owner: "internal/platform/observability/metrics_delivery.go"
     current_writer: "DriveValidatorMetrics.observeProbe via startup_validator.go"
     current_storage: "Prometheus histogram; validator result structs contain Elapsed"
     current_metric: "drive_roots_validator_probe_duration_seconds{destination,outcome}"
@@ -601,7 +601,7 @@ measurements:
     removal_condition: "Probe timing remains separated from business delivery timing and no API consumer treats it as job wall time"
 
   - current_symbol: "OutboxLagSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_outbox.go"
+    current_owner: "internal/platform/observability/metrics_outbox.go"
     current_writer: "outboxevents.Pool.processEvent"
     current_storage: "Prometheus gauge"
     current_metric: "outbox_lag_seconds{event_type}"
@@ -613,7 +613,7 @@ measurements:
     removal_condition: "Outbox lag is documented as infrastructure and not counted as attempt queue_wait twice"
 
   - current_symbol: "OutboxDispatchDurationSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_outbox.go"
+    current_owner: "internal/platform/observability/metrics_outbox.go"
     current_writer: "outboxevents.Pool.finish"
     current_storage: "Prometheus histogram"
     current_metric: "outbox_dispatch_duration_seconds{event_type,outcome}"
@@ -625,7 +625,7 @@ measurements:
     removal_condition: "Outbox dispatch and nested business operations have disjoint intervals and no double-counted stage+dispatch totals"
 
   - current_symbol: "OutboxRetriesTotal/OutboxDLQTotal/OutboxReclaimTotal"
-    current_owner: "internal/infrastructure/observability/metrics_outbox.go"
+    current_owner: "internal/platform/observability/metrics_outbox.go"
     current_writer: "outboxevents.Pool.processEvent/reclaim"
     current_storage: "Prometheus counters plus outbox_events status/attempt columns"
     current_metric: "outbox_retries_total, outbox_dlq_total, outbox_reclaim_total"
@@ -637,7 +637,7 @@ measurements:
     removal_condition: "Canonical retry semantics distinguish job attempts from outbox handler retries and no consumer conflates them"
 
   - current_symbol: "worker runtime and claim metrics"
-    current_owner: "internal/infrastructure/observability/worker_metrics.go and metrics_jobs.go"
+    current_owner: "internal/platform/observability/worker_metrics.go and metrics_jobs.go"
     current_writer: "worker poll/heartbeat/lease/progress paths"
     current_storage: "Prometheus gauges/counters/histograms"
     current_metric: "worker_*, jobs_queue_depth, jobs_oldest_pending_seconds, worker_lease_renewal_failures_total, worker_progress_*"
@@ -649,7 +649,7 @@ measurements:
     removal_condition: "Runtime health metrics and job reports have disjoint ownership and no job/run identity is a Prometheus label"
 
   - current_symbol: "worker bytes/resource gauges"
-    current_owner: "internal/infrastructure/observability/worker_metrics.go"
+    current_owner: "internal/platform/observability/worker_metrics.go"
     current_writer: "worker heartbeat/resource sampler"
     current_storage: "Prometheus gauges"
     current_metric: "worker_memory_*_bytes, worker_disk_free_bytes, worker_temp_bytes, worker_network_*_bytes"
@@ -805,7 +805,7 @@ measurements:
     removal_condition: "All stock callers consume ArtifactManifest/RunReport and no caller requires the legacy ServiceRunner PipelineResult signature"
 
   - current_symbol: "VidRushMetricsAdapter.ObserveJobDuration"
-    current_owner: "internal/infrastructure/observability/metrics_vidrush.go"
+    current_owner: "internal/platform/observability/metrics_vidrush.go"
     current_writer: "VidRushMetricsAdapter.ObserveJobDuration; no production caller found in the current internal search"
     current_storage: "Prometheus histogram"
     current_metric: "vidrush_job_duration_seconds{scenario,cache_mode}"
@@ -817,7 +817,7 @@ measurements:
     removal_condition: "Search confirms zero production callers or all callers are migrated to RunReportsCollector; legacy metric is removed or explicitly retained as a projection"
 
   - current_symbol: "VidRushMetricsAdapter.ObserveQueueWait"
-    current_owner: "internal/infrastructure/observability/metrics_vidrush.go"
+    current_owner: "internal/platform/observability/metrics_vidrush.go"
     current_writer: "VidRushMetricsAdapter.ObserveQueueWait; no production caller found in the current internal search"
     current_storage: "Prometheus histogram"
     current_metric: "vidrush_queue_wait_seconds{scenario}"
@@ -829,7 +829,7 @@ measurements:
     removal_condition: "Every VidRush job has canonical persisted queue wait and no production caller writes a separate VidRush queue timer"
 
   - current_symbol: "JobClaimDurationSeconds"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "metric definition only; no Observe call found in the current internal search"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "job_claim_duration_seconds"
@@ -841,7 +841,7 @@ measurements:
     removal_condition: "A static writer audit proves exactly one claim writer and dashboards use the resulting metric, or the unused collector is deleted"
 
   - current_symbol: "ScriptPhaseDuration"
-    current_owner: "internal/infrastructure/observability/metrics_scripts.go"
+    current_owner: "internal/platform/observability/metrics_scripts.go"
     current_writer: "metric definition only; no Observe call found in the current internal search"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "script_phase_duration_seconds{phase,topic}"
@@ -853,7 +853,7 @@ measurements:
     removal_condition: "Static writer audit finds one canonical Stage projection and topic cardinality is approved, or the unused collector is removed"
 
   - current_symbol: "QdrantSearchDuration/QdrantRequestDuration"
-    current_owner: "internal/infrastructure/observability/metrics_qdrant.go"
+    current_owner: "internal/platform/observability/metrics_qdrant.go"
     current_writer: "metric definitions; no direct Observe call found for these exact families in the current internal search (QdrantSearchLatency is written instead)"
     current_storage: "Prometheus histograms registered at package init"
     current_metric: "qdrant_search_duration_seconds{vector_name,status}; qdrant_request_duration_seconds{operation,status}"
@@ -865,7 +865,7 @@ measurements:
     removal_condition: "A full static writer audit finds an actual single writer and parity passes, or zero-writer collectors are removed"
 
   - current_symbol: "MediaCuratorSearchDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "metric definition; current search did not find a direct Observe call"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "mediacurator_search_duration_seconds{backend}"
@@ -877,7 +877,7 @@ measurements:
     removal_condition: "A concrete writer is identified and migrated to the canonical operation, or the unused collector is removed"
 
   - current_symbol: "OutboxProcessingDuration"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "metric definition; outboxevents.Pool currently writes OutboxDispatchDurationSeconds instead"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "outbox_processing_duration_seconds{status}"
@@ -961,7 +961,7 @@ measurements:
     removal_condition: "DOWNLOADERS_OBSERVED=PASS and no Artlist provider/download caller owns a competing timer"
 
   - current_symbol: "ScriptCacheHits"
-    current_owner: "internal/infrastructure/observability/metrics_scripts.go"
+    current_owner: "internal/platform/observability/metrics_scripts.go"
     current_writer: "script memory-gate/cache call sites using ScriptCacheHits.WithLabelValues(...).Inc"
     current_storage: "Prometheus counter"
     current_metric: "script_cache_hits_total{level,channel_id}"
@@ -973,7 +973,7 @@ measurements:
     removal_condition: "Canonical cache events are emitted once per lookup, forbidden identity labels are removed from the legacy family, and all cache consumers use canonical cache status"
 
   - current_symbol: "JobEventsRetentionSweepDuration"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "job event retention sweeper timing call site"
     current_storage: "Prometheus histogram"
     current_metric: "job_events_retention_sweep_duration_seconds"
@@ -985,7 +985,7 @@ measurements:
     removal_condition: "Retention remains a maintenance loop and no dashboard or report treats its duration as business job wall time"
 
   - current_symbol: "JobProgressFlushDuration"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "job progress coalescer flush path"
     current_storage: "Prometheus histogram"
     current_metric: "job_progress_flush_duration_seconds"
@@ -997,7 +997,7 @@ measurements:
     removal_condition: "Progress flush remains excluded from RunReport stage/operation totals and no duplicate timer is introduced"
 
   - current_symbol: "MediaCuratorSearchDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "metric definition; current search did not find a direct Observe call"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "mediacurator_search_duration_seconds{backend}"
@@ -1009,7 +1009,7 @@ measurements:
     removal_condition: "A concrete writer is identified and migrated to the canonical operation, or the unused collector is removed"
 
   - current_symbol: "DeletionReconcilerDuration"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "internal/infrastructure/database/sqlite/deletion/metrics_adapter.go RecordRunComplete"
     current_storage: "Prometheus histogram"
     current_metric: "deletion_reconciler_duration_seconds"
@@ -1021,7 +1021,7 @@ measurements:
     removal_condition: "Reconciler remains outside business Run reports or is explicitly modeled as a run; no ambiguous dual classification remains"
 
   - current_symbol: "FinalizerWriteArtifactsIterTotal"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "application/jobs/finalizer/artifact_writer.go"
     current_storage: "Prometheus counter"
     current_metric: "finalizer_write_artifacts_iter_total{outcome}"
@@ -1033,7 +1033,7 @@ measurements:
     removal_condition: "ArtifactReport persistence covers per-artifact outcomes and this family is a projection with no duplicate increments"
 
   - current_symbol: "FinalizerCompleteArtifactsTotal"
-    current_owner: "internal/infrastructure/observability/metrics_media.go"
+    current_owner: "internal/platform/observability/metrics_media.go"
     current_writer: "application/jobs/finalizer/job_finalizer.go"
     current_storage: "Prometheus counter"
     current_metric: "finalizer_complete_artifacts_total{outcome}"
@@ -1045,7 +1045,7 @@ measurements:
     removal_condition: "Run finalization and artifact observations are persisted idempotently; legacy counter is fed only as a projection"
 
   - current_symbol: "OutboxProcessingDuration"
-    current_owner: "internal/infrastructure/observability/metrics_jobs.go"
+    current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "metric definition; outboxevents.Pool currently writes OutboxDispatchDurationSeconds instead"
     current_storage: "Prometheus histogram registered at package init"
     current_metric: "outbox_processing_duration_seconds{status}"

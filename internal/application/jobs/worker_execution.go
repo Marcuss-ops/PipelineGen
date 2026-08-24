@@ -77,7 +77,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"

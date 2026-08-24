@@ -15,7 +15,7 @@
 // every test that reads from the Prometheus global registry) does NOT
 // mask deltas. The helper `readConflictCounter` reads counter values
 // via the canonical prometheus dto Write path (mirrors the pattern
-// from internal/infrastructure/observability/progress_ratio_collector.go).
+// from internal/platform/observability/progress_ratio_collector.go).
 package jobs
 
 import (
@@ -24,14 +24,14 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // readConflictCounter returns the current cumulative value of the
 // job_transition_conflict_total{method=<method>} counter via the
 // prometheus dto Write path. Same pattern as
-// internal/infrastructure/observability/progress_ratio_collector.go::counterValue.
+// internal/platform/observability/progress_ratio_collector.go::counterValue.
 func readConflictCounter(method string) float64 {
 	var pb dto.Metric
 	_ = observability.JobTransitionConflictTotal.WithLabelValues(method).Write(&pb)
