@@ -46,7 +46,7 @@ import (
 
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

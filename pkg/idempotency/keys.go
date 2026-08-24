@@ -46,7 +46,7 @@
 //     (e.g. "sha256:deadbeef..."), per the convention in
 //     tests/e2e/qdrant_e2e_youtube_test.go::testSourceVersionFor
 //   - clipID for the stock pipeline is "planner:<hash>:<index>"
-//     (per internal/application/assets/providers/stock/.../
+//     (per internal/capabilities/assets/providers/stock/.../
 //     planner.go::buildClipPlan)
 //   - sha256File may carry a "sha256:<hex>" prefix in some
 //     upstream adapters

@@ -9,9 +9,9 @@ through `*sql.DB`, `net/http`, `os`, or `RootFolderOverride`.
 | `internal/application/assets/delivery` | 5 |
 | `internal/application/assets/ingest` | 9 |
 | `internal/application/assets/lifecycle` | 2 |
-| `internal/application/assets/providers/artlist` | 10 |
-| `internal/application/assets/providers/stock/enrichment` | 8 |
-| `internal/application/assets/providers/stock/stockpipeline` | 25 |
+| `internal/capabilities/assets/providers/artlist` | 10 |
+| `internal/capabilities/assets/providers/stock/enrichment` | 8 |
+| `internal/capabilities/assets/providers/stock/stockpipeline` | 25 |
 | `internal/application/assets/sourcing/youtube` | 1 |
 | `internal/application/assets/verification` | 8 |
 | `internal/application/assets/videomuscles` | 7 |

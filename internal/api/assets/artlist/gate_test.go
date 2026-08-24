@@ -19,7 +19,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	// NIT-B): `artlistadapter.NewAdapter` + `artlist.NewService` are the
 	// canonical direct-orchestrator constructors; the API layer must reach
 	// the artlist provider via the typed registry in
-	// internal/application/assets/providers, not via direct construction
+	// internal/capabilities/assets/providers, not via direct construction
 	// here. Grep-verified: zero hits in internal/api/* production code
 	// at HEAD, safe to enforce as hard-fail patterns.
 	{Name: "artlistadapter.NewAdapter direct construction", Pattern: "artlistadapter.NewAdapter"},

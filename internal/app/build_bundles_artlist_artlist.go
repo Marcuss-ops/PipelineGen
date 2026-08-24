@@ -29,7 +29,7 @@ import (
 
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"

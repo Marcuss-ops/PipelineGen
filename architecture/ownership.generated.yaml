@@ -155,13 +155,13 @@ job_handler_map:
     owner: internal/api/assets/artlist
   - job_type: media.artlist
     handler: artlist.jobHandler
-    owner: internal/application/assets/providers/artlist
+    owner: internal/capabilities/assets/providers/artlist
   - job_type: media.youtube_clip
     handler: YouTube clip ingest handler
-    owner: internal/application/assets/providers/youtube
+    owner: internal/capabilities/assets/providers/youtube
   - job_type: media.stock_pipeline
     handler: StockPipeline handler
-    owner: internal/application/assets/providers/stock
+    owner: internal/capabilities/assets/providers/stock
   - job_type: maintenance.deep_cleanup
     handler: MaintenanceService
     owner: internal/application/assets/maintenance

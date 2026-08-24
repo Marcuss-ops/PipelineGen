@@ -128,7 +128,7 @@ func BuildKey(provider string, canonical map[string]any) (string, error) {
 // `chunkID + ":" + contentHash + ":" + string(version)`) and
 // needs the SAME byte-stable hash output the legacy
 // `hashutil.SHA256String(joined)` invocation produced. Typical
-// pre-Commit-A surface: `internal/application/assets/providers/
+// pre-Commit-A surface: `internal/capabilities/assets/providers/
 // stock/enrichment/idempotency.go::EnrichmentIdempotencyKey`
 // (the bespoke stock RLM/LLM enrichment key constructor). After
 // migration, the caller delegates to BuildKeyString instead of

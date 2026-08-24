@@ -38,7 +38,7 @@
         "internal/application/images/",
         "internal/application/assets/soundeffect/",
         "internal/application/assets/catalogsync/",
-        "internal/application/assets/providers/",
+        "internal/capabilities/assets/providers/",
         "internal/recommendation/",
         "internal/app/",
         "pkg/idempotency/",
@@ -185,7 +185,7 @@
       "residue_allowed": [],
       "documented_in": "PR-79 (PR-METADATA-REGISTRY-FOUNDATION, July 2026)",
       "current_registered_keys": [
-        {"key": "artlist.clip_page_url", "owner": "internal/application/assets/providers/artlist/", "type": "string"},
+        {"key": "artlist.clip_page_url", "owner": "internal/capabilities/assets/providers/artlist/", "type": "string"},
         {"key": "youtube.channel_id", "owner": "internal/application/youtube/", "type": "string"},
         {"key": "youtube.video_id", "owner": "internal/application/youtube/", "type": "string"}
       ]

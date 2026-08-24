@@ -120,19 +120,19 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// DestinationRegistry — deferred to PR-P12-STOCK-SEMANTIC-ROUTING
 	// (deadline 2026-09-01). The 8 violations are architecturally
 	// justified: callers pass explicit folder IDs via the API.
-	"internal/application/assets/providers/stock/stockpipeline/step_publish.go":                true,
-	"internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go":          true,
-	"internal/application/assets/providers/stock/stockpipeline/step_publish_chunks_phase.go":   true,
-	"internal/application/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": true,
-	"internal/application/assets/providers/stock/stockpipeline/step_publish_naming.go":         true,
+	"internal/capabilities/assets/providers/stock/stockpipeline/step_publish.go":                true,
+	"internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips.go":          true,
+	"internal/capabilities/assets/providers/stock/stockpipeline/step_publish_chunks_phase.go":   true,
+	"internal/capabilities/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": true,
+	"internal/capabilities/assets/providers/stock/stockpipeline/step_publish_naming.go":         true,
 	// PR-P12-ARTLIST-WHITELIST (July 2026): artlist destination_service
 	// uses the parent-folder seam for non-media-root explicit folder
 	// targeting; semantic_enricher_metadata uses it for metadata.json
 	// sidecar placement in the clip's parent folder. Both require
 	// explicit folder IDs that semantic routing cannot replace without
 	// breaking the cumulative metadata.json sync contract.
-	"internal/application/assets/providers/artlist/destination_service.go":        true,
-	"internal/application/assets/providers/artlist/semantic_enricher_metadata.go": true,
+	"internal/capabilities/assets/providers/artlist/destination_service.go":        true,
+	"internal/capabilities/assets/providers/artlist/semantic_enricher_metadata.go": true,
 	// Progressive cutover: ParentFolderID remains only in the
 	// already-allowlisted parent-resolution callers until the
 	// dedicated resolution request seam replaces it.

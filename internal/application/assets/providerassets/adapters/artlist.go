@@ -11,7 +11,7 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
 // ErrAdapterNotWired is returned when Search is called on an adapter

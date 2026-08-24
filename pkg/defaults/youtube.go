@@ -21,7 +21,7 @@ package defaults
 //     (group := "general")
 //     internal/application/assets/videomuscles/youtube_pipeline.go
 //     (filepath.Join(... "media", "clips", "general", videoID))
-//     internal/application/assets/providers/artlist/run_orchestrator_stages.go
+//     internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go
 //     (same path-join pattern under "media", "artlist", "general", genID).
 //   - channels.Default policy struct (internal/application/channels/
 //     service.go::Default) — MaxClipDuration=60, Priority=2,

@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
 // Stage2SessionFreshnessWindow is the canonical Stage-2 freshness
@@ -80,7 +80,7 @@ const Stage2SessionFreshnessWindow = 90 * time.Second
 //	ProbeResult.ElapsedMs = wall-clock sum of stage measurements
 //
 // godlike/06 SSOT: the ProbeStage shape lives in
-// internal/application/assets/providers/artlist/types.go (the
+// internal/capabilities/assets/providers/artlist/types.go (the
 // canonical wire-by-wire site). probeScraperDeep here is the SOLE
 // producer of ProbeStage values for the Scraper probe — adding
 // parallel per-stage checks elsewhere would be a godlike/06

@@ -139,7 +139,7 @@ nilDispatcher=$(rg -nU --type go \
     --glob '!**/*_test.go' \
     --glob '!**/cmd/admin/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/app/|internal/infrastructure/database/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/application/assets/providers/|tests/fixtures/zero_legacy/)' \
+    | grep -Ev '^\./(internal/app/|internal/infrastructure/database/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -179,7 +179,7 @@ assetUpserts=$(rg -n --type go \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
-    --glob '!**/internal/application/assets/providers/**' \
+    --glob '!**/internal/capabilities/assets/providers/**' \
     --glob '!**/internal/application/voiceover/**' \
     --glob '!**/internal/application/channels/**' \
     --glob '!**/internal/application/images/**' \
@@ -252,7 +252,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
-    --glob '!**/internal/application/assets/providers/**' \
+    --glob '!**/internal/capabilities/assets/providers/**' \
     --glob '!**/internal/application/voiceover/**' \
     --glob '!**/internal/application/channels/**' \
     --glob '!**/internal/application/images/**' \
@@ -499,7 +499,7 @@ legacyStatusKey=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/api/|internal/application/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/infrastructure/database/sqlite/assets/)' \
+    | grep -Ev '^\./(internal/api/|internal/capabilities/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/infrastructure/database/sqlite/assets/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i

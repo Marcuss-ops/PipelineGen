@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
 // probeDriveFolder returns the canonical drive_folder probe result.

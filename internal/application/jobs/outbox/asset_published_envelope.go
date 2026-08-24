@@ -15,7 +15,7 @@
 //     the Compilation contract check.
 //   - AssetPublishedRequestV1 lives ONLY in this file. The producer
 //     (EnrichmentHandler at
-//     internal/application/assets/providers/stock/enrichment/handler.go)
+//     internal/capabilities/assets/providers/stock/enrichment/handler.go)
 //     and the consumer (AssetPublishedHandler at
 //     asset_published_handler.go) MUST both reference this struct
 //     for the wire-shape.

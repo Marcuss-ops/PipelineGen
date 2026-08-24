@@ -102,7 +102,7 @@ func TestScanMetadataKeys_RegisteredKeyPasses(t *testing.T) {
 	writeFakeMetadataKeyRegistry(t, tempDir, [][3]string{
 		{"youtube.video_id", "internal/application/youtube/", "string"},
 		{"youtube.channel_id", "internal/application/youtube/", "string"},
-		{"artlist.clip_page_url", "internal/application/assets/providers/artlist/", "string"},
+		{"artlist.clip_page_url", "internal/capabilities/assets/providers/artlist/", "string"},
 	})
 	writeFakeCallerFile(t, tempDir, "internal/application/youtube/foo.go",
 		"package youtube\n\n"+

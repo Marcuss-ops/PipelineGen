@@ -1,6 +1,6 @@
 package stock
 
-import stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+import stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 
 // runRequest is the JSON body for POST /api/stock-pipeline/run.
 type runRequest struct {

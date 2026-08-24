@@ -9,7 +9,7 @@
 // system harder to test and migrate.
 //
 // Allowlist:
-//   - internal/application/assets/providers/*/stager_adapter.go :
+//   - internal/capabilities/assets/providers/*/stager_adapter.go :
 //     SourceStager adapter implementations.
 //   - internal/infrastructure/media/** : infrastructure media adapters.
 //   - internal/app/** : composition-root wiring.

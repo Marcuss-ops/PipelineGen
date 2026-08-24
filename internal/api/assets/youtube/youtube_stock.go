@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

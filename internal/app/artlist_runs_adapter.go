@@ -2,7 +2,7 @@
 //
 // Composition-root adapter that bridges
 //
-//	artlist.RunRepository (port in internal/application/assets/providers/artlist/ports.go)
+//	artlist.RunRepository (port in internal/capabilities/assets/providers/artlist/ports.go)
 //	sqlite/assets.RunRepository (infra side: internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go)
 //
 // Without this adapter, the import cycle would be: artlist pkg imports
@@ -31,7 +31,7 @@ import (
 	"context"
 	"fmt"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
 )
 

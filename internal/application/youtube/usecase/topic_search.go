@@ -10,7 +10,7 @@
 // capability service (Service.TopicSearch, defined in search_topic.go);
 // the orchestrator exposes Service.SearchByTopicWithFilter as a
 // thin forwarder for the searcher port surfaced by
-// internal/application/assets/providers/youtube.
+// internal/capabilities/assets/providers/youtube.
 package usecase
 
 import (

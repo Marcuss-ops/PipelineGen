@@ -8,6 +8,6 @@
     "internal/api/assets/clips"
   ],
   "known_independent_compile_debt": [
-    "internal/application/assets/providers/artlist: missing Service.RunTag and JobAdapter handler methods"
+    "internal/capabilities/assets/providers/artlist: missing Service.RunTag and JobAdapter handler methods"
   ]
 }

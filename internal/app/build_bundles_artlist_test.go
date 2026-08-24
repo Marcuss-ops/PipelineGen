@@ -19,7 +19,7 @@
 // this is the live-probe endpoint that WireArtlist pings via
 // NewHTTPSelfLoopProbe. The HTTPSelfLoopProbe adapter is *DIRECTLY* tested
 // by the unit tests in
-// internal/application/assets/providers/artlist/http_live_probe_test.go;
+// internal/capabilities/assets/providers/artlist/http_live_probe_test.go;
 // this test file focuses on the COMPOSITION wiring path.
 package app
 

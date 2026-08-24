@@ -156,7 +156,7 @@ func generatedImageStrategy(input appsearchtext.SearchTextInput) string {
 // the keys listed in stockChunkStrategyAdditionalKeys. Title, Tags
 // and Category come from the typed top-level fields so the consumer
 // (e.g. the finalizer in
-// internal/application/assets/providers/stock/stockpipeline) only
+// internal/capabilities/assets/providers/stock/stockpipeline) only
 // needs to populate the standard DTO fields + Additional.
 //
 // godlike/07 minimum-blast-radius: each labelled segment is dropped

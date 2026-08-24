@@ -11,7 +11,7 @@
 //
 // godlike/06 SSOT (provider registry): this concrete
 // implements the canonical providers.SearchProvider interface
-// (from internal/application/assets/providers). It is THE
+// (from internal/capabilities/assets/providers). It is THE
 // canonical owner of the "images" / "pexels_images" provider
 // name in providers.Registry.
 //
@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

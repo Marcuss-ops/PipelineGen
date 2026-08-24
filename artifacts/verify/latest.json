@@ -244,8 +244,8 @@
       "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
-        "go test ./internal/application/assets/providers/stock/...",
-        "go test ./internal/application/assets/providers/artlist/...",
+        "go test ./internal/capabilities/assets/providers/stock/...",
+        "go test ./internal/capabilities/assets/providers/artlist/...",
         "go test ./internal/api/assets/stock/...",
         "go test ./internal/api/assets/artlist/...",
         "go test ./internal/infrastructure/artlist/..."
@@ -257,18 +257,18 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/stock/...",
+          "command": "go test ./internal/capabilities/assets/providers/stock/...",
           "kind": "go",
-          "source": "./internal/application/assets/providers/stock/..."
+          "source": "./internal/capabilities/assets/providers/stock/..."
         },
         {
           "status": "PASS",
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/artlist/...",
+          "command": "go test ./internal/capabilities/assets/providers/artlist/...",
           "kind": "go",
-          "source": "./internal/application/assets/providers/artlist/..."
+          "source": "./internal/capabilities/assets/providers/artlist/..."
         },
         {
           "status": "PASS",
@@ -801,7 +801,7 @@
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/youtube/...",
-        "go test ./internal/application/assets/providers/youtube/...",
+        "go test ./internal/capabilities/assets/providers/youtube/...",
         "go test ./internal/application/assets/sourcing/youtube/...",
         "go test ./internal/infrastructure/youtube/...",
         "go test ./internal/api/assets/youtube/..."
@@ -822,9 +822,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/youtube/...",
+          "command": "go test ./internal/capabilities/assets/providers/youtube/...",
           "kind": "go",
-          "source": "./internal/application/assets/providers/youtube/..."
+          "source": "./internal/capabilities/assets/providers/youtube/..."
         },
         {
           "status": "PASS",
@@ -869,7 +869,7 @@
       "duration_ms": 0,
       "timeout_seconds": 900.0,
       "commands": [
-        "go test ./internal/application/assets/providers/artlist/...",
+        "go test ./internal/capabilities/assets/providers/artlist/...",
         "go test ./internal/infrastructure/artlist/...",
         "go test ./internal/api/assets/artlist/..."
       ],
@@ -880,9 +880,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/application/assets/providers/artlist/...",
+          "command": "go test ./internal/capabilities/assets/providers/artlist/...",
           "kind": "go",
-          "source": "./internal/application/assets/providers/artlist/...",
+          "source": "./internal/capabilities/assets/providers/artlist/...",
           "reused": true
         },
         {

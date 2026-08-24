@@ -25,7 +25,7 @@ assetUpserts=$(rg -n --type go \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
-    --glob '!**/internal/application/assets/providers/**' \
+    --glob '!**/internal/capabilities/assets/providers/**' \
     --glob '!**/internal/application/assets/sourcing/**' \
     --glob '!**/internal/application/assets/reconciliation/**' \
     --glob '!**/internal/application/voiceover/**' \
@@ -102,7 +102,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
-    --glob '!**/internal/application/assets/providers/**' \
+    --glob '!**/internal/capabilities/assets/providers/**' \
     --glob '!**/internal/application/voiceover/**' \
     --glob '!**/internal/application/channels/**' \
     --glob '!**/internal/application/images/**' \

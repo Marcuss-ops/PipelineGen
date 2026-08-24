@@ -25,7 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"

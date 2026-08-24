@@ -33,7 +33,7 @@ banned_words='\bassetIndex\b|media_assets|\bEnqueueAndIndex\b|\bUploadFile\b|\bP
 #    command level (kept outside $() so bash parsing isn't confused by
 #    pipe+or+close-paren combinations).
 all_hits=$(grep -rnE "$banned_words" \
-    internal/application/assets/providers/stock/ 2>/dev/null || true)
+    internal/capabilities/assets/providers/stock/ 2>/dev/null || true)
 # Comments may name canonical columns and ports while documenting a
 # migration. Only executable source lines are part of this regression gate.
 all_hits=$(printf '%s\n' "$all_hits" | grep -vE ':[0-9]+:[[:space:]]*(//|\*)' || true)
@@ -73,7 +73,7 @@ if [ -n "$fails" ]; then
     echo "Fix: the stock pipeline is locked for cleanup (Commits 4-8). Do not"
     echo "introduce NEW occurrences of assetIndex, media_assets, EnqueueAndIndex,"
     echo "UploadFile, Publisher.Publish, YTDLPDownloader, or youtube.Service in"
-    echo "production paths of internal/application/assets/providers/stock/."
+    echo "production paths of internal/capabilities/assets/providers/stock/."
     echo "If retiring a legacy file (Commits 4-8), remove the matching entry"
     echo "from docs/migrations/stock-legacy-keyword-allowlist.txt at the same commit."
     exit 1

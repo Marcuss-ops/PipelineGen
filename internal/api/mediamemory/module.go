@@ -34,7 +34,7 @@ import (
 //
 // godlike/06 SSOT invariant: mediamemory NEVER registers itself as
 // a catalog provider. Catalog providers are owned by
-// internal/application/assets/providers (composition root wires
+// internal/capabilities/assets/providers (composition root wires
 // `artlist`, `youtube`, `images` etc.); mediamemory only CONSUMES
 // their search fan-out.
 type Module struct {

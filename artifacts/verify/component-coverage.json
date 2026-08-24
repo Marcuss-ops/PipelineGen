@@ -7137,1579 +7137,1579 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/artlist/acquisition_mode.go": {
+    "internal/capabilities/assets/providers/artlist/acquisition_mode.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/adapter.go": {
+    "internal/capabilities/assets/providers/artlist/adapter.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/adapter_core.go": {
+    "internal/capabilities/assets/providers/artlist/adapter_core.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/adapter_test.go": {
+    "internal/capabilities/assets/providers/artlist/adapter_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/assetrepo_integration_test.go": {
+    "internal/capabilities/assets/providers/artlist/assetrepo_integration_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/cache_ports.go": {
+    "internal/capabilities/assets/providers/artlist/cache_ports.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/cached_search.go": {
+    "internal/capabilities/assets/providers/artlist/cached_search.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/concept_binding_linker.go": {
+    "internal/capabilities/assets/providers/artlist/concept_binding_linker.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/concept_binding_linker_test.go": {
+    "internal/capabilities/assets/providers/artlist/concept_binding_linker_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/destination_service.go": {
+    "internal/capabilities/assets/providers/artlist/destination_service.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/diagnostics.go": {
+    "internal/capabilities/assets/providers/artlist/diagnostics.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/diagnostics_types.go": {
+    "internal/capabilities/assets/providers/artlist/diagnostics_types.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/discovery_no_qdrant_dispatch_test.go": {
+    "internal/capabilities/assets/providers/artlist/discovery_no_qdrant_dispatch_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/dispatcher_stub_test.go": {
+    "internal/capabilities/assets/providers/artlist/dispatcher_stub_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/evaluate_run_outcome_test.go": {
+    "internal/capabilities/assets/providers/artlist/evaluate_run_outcome_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/evaluate_run_state_test.go": {
+    "internal/capabilities/assets/providers/artlist/evaluate_run_state_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/f2_11_publisher_only_test.go": {
+    "internal/capabilities/assets/providers/artlist/f2_11_publisher_only_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate01_happy_path_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate01_happy_path_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate02_drive_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate02_drive_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate03_sqlite_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate03_sqlite_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate04_outbox_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate04_outbox_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate06_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate06_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate07_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate07_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate08_search_roundtrip_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate08_search_roundtrip_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate10_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate10_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate11_scraper_failure_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate11_scraper_failure_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate_block_classifier.go": {
+    "internal/capabilities/assets/providers/artlist/gate_block_classifier.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/gate_block_classifier_test.go": {
+    "internal/capabilities/assets/providers/artlist/gate_block_classifier_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/helpers_test.go": {
+    "internal/capabilities/assets/providers/artlist/helpers_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/http_live_probe.go": {
+    "internal/capabilities/assets/providers/artlist/http_live_probe.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/http_live_probe_test.go": {
+    "internal/capabilities/assets/providers/artlist/http_live_probe_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/import_test.go": {
+    "internal/capabilities/assets/providers/artlist/import_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/job_codec_test.go": {
+    "internal/capabilities/assets/providers/artlist/job_codec_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/job_core.go": {
+    "internal/capabilities/assets/providers/artlist/job_core.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/job_types.go": {
+    "internal/capabilities/assets/providers/artlist/job_types.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/live_adapter.go": {
+    "internal/capabilities/assets/providers/artlist/live_adapter.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/live_adapter_test.go": {
+    "internal/capabilities/assets/providers/artlist/live_adapter_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/ports.go": {
+    "internal/capabilities/assets/providers/artlist/ports.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/provider_utils.go": {
+    "internal/capabilities/assets/providers/artlist/provider_utils.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/provider_utils_test.go": {
+    "internal/capabilities/assets/providers/artlist/provider_utils_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/relevance_filter.go": {
+    "internal/capabilities/assets/providers/artlist/relevance_filter.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/relevance_filter_test.go": {
+    "internal/capabilities/assets/providers/artlist/relevance_filter_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/resolve_adapter.go": {
+    "internal/capabilities/assets/providers/artlist/resolve_adapter.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/retry_fallback.go": {
+    "internal/capabilities/assets/providers/artlist/retry_fallback.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_existing_strategy_test.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_existing_strategy_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_persist.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_persist.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_stages.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_stages_gate_test.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_stages_gate_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_stages_skip_transcription_test.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_stages_skip_transcription_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_orchestrator_stages_transcription_test.go": {
+    "internal/capabilities/assets/providers/artlist/run_orchestrator_stages_transcription_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/run_service.go": {
+    "internal/capabilities/assets/providers/artlist/run_service.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_cache.go": {
+    "internal/capabilities/assets/providers/artlist/search_cache.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_cache_persistence_test.go": {
+    "internal/capabilities/assets/providers/artlist/search_cache_persistence_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_cache_test.go": {
+    "internal/capabilities/assets/providers/artlist/search_cache_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_chain_prefer_remote_test.go": {
+    "internal/capabilities/assets/providers/artlist/search_chain_prefer_remote_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_core.go": {
+    "internal/capabilities/assets/providers/artlist/search_core.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_core_hydration_test.go": {
+    "internal/capabilities/assets/providers/artlist/search_core_hydration_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_strategy.go": {
+    "internal/capabilities/assets/providers/artlist/search_strategy.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/search_strategy_test.go": {
+    "internal/capabilities/assets/providers/artlist/search_strategy_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searcher_cache.go": {
+    "internal/capabilities/assets/providers/artlist/searcher_cache.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searcher_cache_coalescing_test.go": {
+    "internal/capabilities/assets/providers/artlist/searcher_cache_coalescing_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searcher_cache_job_test.go": {
+    "internal/capabilities/assets/providers/artlist/searcher_cache_job_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searcher_mapping.go": {
+    "internal/capabilities/assets/providers/artlist/searcher_mapping.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searcher_sqlite.go": {
+    "internal/capabilities/assets/providers/artlist/searcher_sqlite.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/searchers_test.go": {
+    "internal/capabilities/assets/providers/artlist/searchers_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/semantic_enricher.go": {
+    "internal/capabilities/assets/providers/artlist/semantic_enricher.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/semantic_enricher_enrich.go": {
+    "internal/capabilities/assets/providers/artlist/semantic_enricher_enrich.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/semantic_enricher_metadata.go": {
+    "internal/capabilities/assets/providers/artlist/semantic_enricher_metadata.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service.go": {
+    "internal/capabilities/assets/providers/artlist/service.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_delegates.go": {
+    "internal/capabilities/assets/providers/artlist/service_delegates.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_deps.go": {
+    "internal/capabilities/assets/providers/artlist/service_deps.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_import.go": {
+    "internal/capabilities/assets/providers/artlist/service_import.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_jobs.go": {
+    "internal/capabilities/assets/providers/artlist/service_jobs.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_normalizer.go": {
+    "internal/capabilities/assets/providers/artlist/service_normalizer.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/service_test.go": {
+    "internal/capabilities/assets/providers/artlist/service_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/solar_panel_integration_test.go": {
+    "internal/capabilities/assets/providers/artlist/solar_panel_integration_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/source_version_fix_test.go": {
+    "internal/capabilities/assets/providers/artlist/source_version_fix_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/stager_adapter.go": {
+    "internal/capabilities/assets/providers/artlist/stager_adapter.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/stager_adapter_test.go": {
+    "internal/capabilities/assets/providers/artlist/stager_adapter_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/storage_paths.go": {
+    "internal/capabilities/assets/providers/artlist/storage_paths.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/stub_test.go": {
+    "internal/capabilities/assets/providers/artlist/stub_test.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/test_helpers.go": {
+    "internal/capabilities/assets/providers/artlist/test_helpers.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/transcriber.go": {
+    "internal/capabilities/assets/providers/artlist/transcriber.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/artlist/types.go": {
+    "internal/capabilities/assets/providers/artlist/types.go": {
       "owners": [
         "artlist",
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/provider.go": {
+    "internal/capabilities/assets/providers/provider.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/registry.go": {
+    "internal/capabilities/assets/providers/registry.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/registry_entry.go": {
+    "internal/capabilities/assets/providers/registry_entry.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/registry_lookup.go": {
+    "internal/capabilities/assets/providers/registry_lookup.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/registry_registration.go": {
+    "internal/capabilities/assets/providers/registry_registration.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/registry_test.go": {
+    "internal/capabilities/assets/providers/registry_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/stock/adapter.go": {
+    "internal/capabilities/assets/providers/stock/adapter.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/adapter_test.go": {
+    "internal/capabilities/assets/providers/stock/adapter_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/emitter.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/emitter.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/errors.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/errors.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/handler.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/handler.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/handler_emit.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/handler_emit.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/handler_repository.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/handler_repository.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/handler_test.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/handler_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/idempotency.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/idempotency.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/idempotency_test.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/idempotency_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/llm_client.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/llm_client.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/llm_client_ollama.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/llm_client_ollama.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/llm_client_request.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/llm_client_request.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/ollama_client_test.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/ollama_client_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/outbox_emitter.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/outbox_emitter.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/enrichment/outbox_emitter_test.go": {
+    "internal/capabilities/assets/providers/stock/enrichment/outbox_emitter_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/fingerprint.go": {
+    "internal/capabilities/assets/providers/stock/fingerprint.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/fingerprint_test.go": {
+    "internal/capabilities/assets/providers/stock/fingerprint_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/aliases.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/aliases.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/cancellation_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/cancellation_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/command.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/command.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/contract_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/contract_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/fake_local_fs_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/fake_local_fs_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/finalization_render.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/finalization_render.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/finalizer_gates.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/finalizer_gates_build.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates_build.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/finalizer_gates_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/ingest/cache_key.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/ingest/cache_key.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/ingest/cache_key_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/ingest/cache_key_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/job_handler.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/job_handler_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/job_handler_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/job_ports.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/job_ports.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/lease_extractor_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/lease_extractor_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/manifest_projection.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/manifest_projection.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestration_helpers.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestration_helpers.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_constructor.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_constructor.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_finalize_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_finalize_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_metadata.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_metadata.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_metadata_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_metadata_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_production.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_production.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_production_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_production_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_resume_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_resume_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_run.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_run.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_run_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_run_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_test_helpers_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_test_helpers_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/orchestrator_types.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/orchestrator_types.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/performance_benchmark_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/performance_benchmark_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/phase_metrics_contract_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/phase_metrics_contract_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/phase_metrics_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/phase_metrics_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/planner_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/planner_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/ports.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/ports.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/ports_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/ports_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/process.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/process.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/publish/naming.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/publish/naming.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/publish/naming_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/publish/naming_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/query.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/query.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/query_resolution.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/query_resolution.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/query_resolution_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/query_resolution_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/registry_contract_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/registry_contract_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/render_plan.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/render_plan.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/render_plan_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/render_plan_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/resume_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/resume_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/retry_policy_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/retry_policy_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/rounds_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/rounds_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/roundtrip_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/roundtrip_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_counts.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_counts.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_counts_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_counts_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_orchestrator.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_orchestrator_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_orchestrator_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_success_gate_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_success_gate_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/run_upload_indexing_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/run_upload_indexing_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service_constructor_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service_constructor_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service_constructors.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service_constructors.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service_split_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service_split_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/service_types.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/service_types.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/source_cache_port.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/source_cache_port.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/source_cache_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/source_cache_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stage_snapshots_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stage_snapshots_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stager_adapter.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stager_concurrency_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stager_concurrency_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stager_lease_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stager_lease_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/staging.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/staging.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_compose_chunks.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_compose_chunks.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_compose_chunks_p0_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_compose_chunks_p0_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_assets.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_assets.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_batch.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_batch.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_concurrency_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_concurrency_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_cut.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_cut.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_durable_state_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_durable_state_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_duration_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_duration_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_helpers_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_helpers_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_metadata.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_metadata.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_publish.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_publish.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_upload.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_upload.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_extract_clips_validation.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_extract_clips_validation.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_finalize.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_finalize.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_finalize_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_finalize_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_fingerprint.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_fingerprint.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_fingerprint_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_fingerprint_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_plan_clips.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_plan_clips.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_plan_clips_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_plan_clips_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish_chunks_phase.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish_chunks_phase.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish_ext_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish_ext_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish_helpers_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish_helpers_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_publish_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_publish_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_runner.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_runner.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_split_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_split_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/step_stage_sources.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/step_stage_sources.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/steps.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/steps.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/steps_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/steps_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stock_dispatcher_writer.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stock_dispatcher_writer.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stock_e2e_timestamp_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stock_e2e_timestamp_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stock_fake_availability_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stock_fake_availability_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stock_stager_wiring_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stock_stager_wiring_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stock_test_helpers.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stock_test_helpers.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/stockpipeline_smoke_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/stockpipeline_smoke_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/terminal_cleanup_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/terminal_cleanup_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/batch_repository.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/batch_repository.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/downloader_port.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/downloader_port.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/orchestrator_step_errors.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/orchestrator_step_errors.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/payloads.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/payloads.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/planner.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/planner.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/render_dto.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/render_dto.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/render_transitions.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/render_transitions.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/rounds.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/rounds.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/service_errors.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/service_errors.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/source_ports.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/source_ports.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/steps.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/steps.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/types/types_run.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/types/types_run.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/upload_orchestration.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/upload_orchestration.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/usecase.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/usecase.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/util.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/util.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockpipeline/util_test.go": {
+    "internal/capabilities/assets/providers/stock/stockpipeline/util_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/coordinator.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/coordinator.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/coordinator_test.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/coordinator_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/resolver.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/resolver.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/resolver_test.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/resolver_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/sampler.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/sampler.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/sampler_test.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/sampler_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/types.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/types.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/youtube_highlights.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/youtube_highlights.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/youtube_highlights_test.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/youtube_highlights_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/youtube_stock_service.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/youtube_stock_service.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/stockplan/youtube_stock_service_test.go": {
+    "internal/capabilities/assets/providers/stock/stockplan/youtube_stock_service_test.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/stock/usecase.go": {
+    "internal/capabilities/assets/providers/stock/usecase.go": {
       "owners": [
         "stock"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/types.go": {
+    "internal/capabilities/assets/providers/types.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/application/assets/providers/youtube/adapter.go": {
+    "internal/capabilities/assets/providers/youtube/adapter.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/youtube/adapter_test.go": {
+    "internal/capabilities/assets/providers/youtube/adapter_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/youtube/stager_adapter.go": {
+    "internal/capabilities/assets/providers/youtube/stager_adapter.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/youtube/stager_adapter_test.go": {
+    "internal/capabilities/assets/providers/youtube/stager_adapter_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/youtube/stager_errors.go": {
+    "internal/capabilities/assets/providers/youtube/stager_errors.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/assets/providers/youtube/stager_helpers.go": {
+    "internal/capabilities/assets/providers/youtube/stager_helpers.go": {
       "owners": [
         "youtube"
       ],

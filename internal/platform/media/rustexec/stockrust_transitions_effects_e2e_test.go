@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 // TestStockRustAppliesResolvedTransitions drives the real Rust render_stock

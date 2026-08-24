@@ -20,7 +20,7 @@ package api
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -161,6 +161,6 @@ var _ JobRegistrar = (*appjobs.Service)(nil)
 //
 // The api package imports providers (not the other way around):
 // api declares ProviderRegistrar; providers.Registry satisfies it.
-// No cycle because internal/application/assets/providers does not
+// No cycle because internal/capabilities/assets/providers does not
 // import internal/api.
 var _ ProviderRegistrar = (*providers.Registry)(nil)

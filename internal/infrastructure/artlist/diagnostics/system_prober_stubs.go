@@ -5,7 +5,7 @@
 //
 // godlike/06 SSOT: stubFailSet is the SINGLE canonical "every probe
 // failed" set. The application-layer stubSystemProber (in
-// internal/application/assets/providers/artlist/diagnostics.go)
+// internal/capabilities/assets/providers/artlist/diagnostics.go)
 // hand-rolls a similar but distinct version with Error="stub prober"
 // (vs the canonical "stub" string) — both honor godlike/07 fail-closed
 // semantics (every probe reported as failed, never fake-availability)
@@ -19,7 +19,7 @@
 package diagnostics
 
 import (
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
 // stubFailSet returns the canonical "every probe failed" set used by

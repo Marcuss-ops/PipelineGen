@@ -33,7 +33,7 @@ var controlPlaneSQLCanonicalPrefixes = []string{
 	"internal/infrastructure/database/clipcatalog/repository.go",
 	"internal/infrastructure/indexing/clipindexer/indexing_api_persistence.go",
 	"internal/infrastructure/indexing/clipindexer/indexing_state.go",
-	"internal/application/assets/providers/stock/enrichment/handler_repository.go",
+	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",
 	"internal/application/assets/lifecycle/service_voiceover.go",
 	"internal/application/assets/finalizer/asset_finalizer_renditions.go",
 	"internal/application/assets/finalizer/asset_finalizer_versions.go",

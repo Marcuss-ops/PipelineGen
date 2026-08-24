@@ -40,7 +40,7 @@
       "removal_trigger_met": "RESOLVED 2026-07-29: all production .go files under internal/ + cmd/ ≤600 lines (census confirmed zero violations). Allowlist cleared in max-lines-strict-allowlist.txt.",
       "resolution_notes": [
         "cmd/admin/qdrant_readiness.go: 1466 → 468 (split into subcommands)",
-        "internal/application/assets/providers/aggregator.go: deleted",
+        "internal/capabilities/assets/providers/aggregator.go: deleted",
         "internal/application/clips/clip_ops.go: deleted",
         "internal/infrastructure/database/sqlite/outbox/repository.go: deleted",
         "internal/api/assets/clips/ops.go: 851 → 128",
@@ -86,7 +86,7 @@
         {"struct": "ScriptFlowHandler", "path": "internal/api/script/handler_flow.go", "fields": 19},
         {"struct": "YouTubeUseCaseDeps", "path": "internal/application/youtube/usecase/service.go", "fields": 19},
         {"struct": "IngestHandler", "path": "internal/api/assets/clips/ingest.go", "fields": 12},
-        {"struct": "ArtlistServiceDeps", "path": "internal/application/assets/providers/artlist/service.go", "fields": 10},
+        {"struct": "ArtlistServiceDeps", "path": "internal/capabilities/assets/providers/artlist/service.go", "fields": 10},
         {"struct": "AssetsCoreDeps", "path": "internal/app/assets_core.go", "fields": 9},
         {"struct": "BootstrapDeps", "path": "internal/app/bootstrap.go", "fields": 9}
       ],

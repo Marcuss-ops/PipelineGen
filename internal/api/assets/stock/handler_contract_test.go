@@ -16,7 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -349,7 +349,7 @@ func TestStockHandler_WithClips_Returns200(t *testing.T) {
 	_, router := newStockHandler(nil, "job-clips-456")
 
 	// ClipSpec JSON keys are url / start_sec / end_sec (omitempty)
-	// per internal/application/assets/providers/stock/stockpipeline/types_run.go.
+	// per internal/capabilities/assets/providers/stock/stockpipeline/types_run.go.
 	payload := `{"clips":[{"url":"https://example.com/video.mp4","start_sec":0,"end_sec":4}],"folder_name":"test"}`
 	body := bytes.NewBufferString(payload)
 	req := httptest.NewRequest(http.MethodPost, "/run", body)

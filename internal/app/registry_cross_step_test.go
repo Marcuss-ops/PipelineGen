@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
 // TestRegistryCrossStepState_IsExplicit protects the composition graph

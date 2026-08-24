@@ -7,7 +7,7 @@ reconcile-pipeline:
 	@$(RECONCILE_PIPELINE_RUNNER) $(if $(RECONCILE_APPLY),--apply,) --report artifacts/reconcile/pipeline.json
 
 verify-reconciliation-contracts:
-	@$(GO) test ./internal/application/qdrant/reconciler ./internal/application/scripts/adapters ./internal/application/assets/deletion/reconciler ./internal/application/jobs/finalizer ./internal/infrastructure/drive ./internal/infrastructure/database/sqlite/outboxevents ./internal/application/assets/providers/stock/enrichment ./internal/application/assets/providers/stock/stockpipeline ./internal/application/jobs/completion ./internal/application/jobs/outbox
+	@$(GO) test ./internal/application/qdrant/reconciler ./internal/application/scripts/adapters ./internal/application/assets/deletion/reconciler ./internal/application/jobs/finalizer ./internal/infrastructure/drive ./internal/infrastructure/database/sqlite/outboxevents ./internal/capabilities/assets/providers/stock/enrichment ./internal/capabilities/assets/providers/stock/stockpipeline ./internal/application/jobs/completion ./internal/application/jobs/outbox
 
 verify-orphan-cleanup:
 	@$(GO) test ./internal/application/assets/deletion ./internal/application/assets/deletion/reconciler ./internal/application/jobs/finalizer ./internal/application/jobs/outbox ./internal/infrastructure/drive

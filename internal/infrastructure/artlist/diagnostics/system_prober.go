@@ -65,7 +65,7 @@ import (
 
 	"go.uber.org/zap"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
 // DefaultProbeTimeout is the per-probe HTTP/wall-clock budget. 5s

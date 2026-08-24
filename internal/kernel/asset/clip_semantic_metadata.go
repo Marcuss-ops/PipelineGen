@@ -9,7 +9,7 @@
 //	YouTube has CanonicalClipMetadata (35 fields) at
 //	internal/capabilities/youtube/dto/metadata_types.go and Stock has
 //	ChunkState + ChunkMetadataEntry + StockRunMetadata (40+ fields) at
-//	internal/application/assets/providers/stock/stockpipeline/. Both
+//	internal/capabilities/assets/providers/stock/stockpipeline/. Both
 //	pipelines independently write metadata that eventually lands in
 //	Qdrant's AssetData (60+ fields) at
 //	internal/infrastructure/qdrant/indexing/index_writer_types.go.

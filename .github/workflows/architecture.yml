@@ -203,7 +203,7 @@ jobs:
           compile_one app ./internal/app
           compile_one deletion ./internal/application/assets/deletion
           compile_one maintenance ./internal/application/assets/maintenance
-          compile_one stock ./internal/application/assets/providers/stock/...
+          compile_one stock ./internal/capabilities/assets/providers/stock/...
           compile_one archcheck ./cmd/archcheck
 
           gate_log=/tmp/architecture-p1-gates.log

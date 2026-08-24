@@ -28,7 +28,7 @@ Consequences for callers:
 - Items expose `"drive_link"` (a Google Drive URL hydrated from SQLite) instead of `"thumbnail_url"` / `"preview_url"`.
 - Titles are often asset IDs or generic test labels rather than real YouTube titles.
 
-**Forward pointer:** canonical wiring surface is `internal/app/search_backends.go` (`BuildSearchBackends`). The YouTube adapter lives in `internal/application/assets/providers/youtube/adapter.go` and must be registered in the provider registry passed to `BuildSearchBackends`.
+**Forward pointer:** canonical wiring surface is `internal/app/search_backends.go` (`BuildSearchBackends`). The YouTube adapter lives in `internal/capabilities/assets/providers/youtube/adapter.go` and must be registered in the provider registry passed to `BuildSearchBackends`.
 
 ### 2. No true "Suggested videos" endpoint
 
@@ -38,7 +38,7 @@ There is currently no `/api/media/suggested`, `/api/media/related`, or equivalen
 
 ### 3. `sort` and `publishedAfter` are not exposed in the public DTO
 
-The internal YouTube provider adapter (`internal/application/assets/providers/youtube/adapter.go`) supports native sort modes and a `publishedAfter` filter, but the public `POST /api/media/search` request DTO does not include `sort` or `publishedAfter` fields. Callers cannot request view-based sorting or date filtering through the canonical HTTP surface.
+The internal YouTube provider adapter (`internal/capabilities/assets/providers/youtube/adapter.go`) supports native sort modes and a `publishedAfter` filter, but the public `POST /api/media/search` request DTO does not include `sort` or `publishedAfter` fields. Callers cannot request view-based sorting or date filtering through the canonical HTTP surface.
 
 **Forward pointer:** extend `searchRequest` in `internal/api/assets/search/handler.go` and map the new fields to `providers.SearchFilters` in the handler.
 
