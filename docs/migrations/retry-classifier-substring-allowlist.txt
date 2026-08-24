@@ -20,6 +20,6 @@
 internal/infrastructure/artlist/downloader/downloader.go	# artlist-infrastructure	2026-07-25	isRetryable deny-list substring matcher for 4xx codes (400/401/403/404/410); typed-path migration gated on upstream error wrapping.
 # Additional offenders caught at Check 50 introduction time (June 2026).
 # Migration plan below per AGENTS.md godlike/08 zero-baseline rule.
-internal/application/youtube/jobs/classify.go	# youtube-classify	2026-07-25	YouTube classify.go has typed result classifier that uses substring matching for retryable 4xx/5xx detection; typed-path migration gated on iterative classifier closure.
+internal/capabilities/youtube/jobs/classify.go	# youtube-classify	2026-07-25	YouTube classify.go has typed result classifier that uses substring matching for retryable 4xx/5xx detection; typed-path migration gated on iterative classifier closure.
 internal/infrastructure/drive/uploader.go	# drive	2026-07-25	IsRetryable uses substring matching despite 6f327b10 typed-wrap at SDK exit (typed path now augments but substring classifier is the existing fallback per PR-VO-A3 / pre-Step-7 contract); typed-path migration requires design decision on whether substring predicate is canonical for HitRateLimit vs RateLimit semantic.
 internal/infrastructure/youtube/ollama_clip_metadata_builder.go	# youtube-ollama	2026-07-25	Ollama metadata builder has retry-classifier substring basenameMatch pattern; typed-path migration gated on upstream LLM-error wrapping.
