@@ -12,9 +12,6 @@ import (
 	"errors"
 	"net/http"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
-
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -98,11 +95,11 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		req.Tags,
 		req.Width,
 		req.Height,
-		generated.CanonicalGoogleSlidesModel,
+		CanonicalGoogleSlidesModel,
 		skipDrive,
 	)
 	if err != nil {
-		if errors.Is(err, imgservice.ErrImageGenNotImplemented) {
+		if errors.Is(err, ErrImageGenNotImplemented) {
 			c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
 				"error":   "image generation endpoint has been removed",
 				"message": err.Error(),

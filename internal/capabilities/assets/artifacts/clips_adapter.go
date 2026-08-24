@@ -1,14 +1,14 @@
-package assets
+package artifacts
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -17,7 +17,7 @@
 //   - cmd/admin/text_tracks_backfill.go: calls ListCandidates
 //     directly on the dry-run path (--
 //     dry-run is list-only; no DB writes).
-package assets
+package texttracks
 
 import (
 	"context"

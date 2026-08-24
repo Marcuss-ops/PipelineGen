@@ -3,10 +3,10 @@
 //
 // godlike/06 SSOT (test mirrors contract): every assertion
 // verifies that the adapter:
-//   - Translates mediamemory.SearchFanOutQuery → search.Query
+//   - Translates SearchFanOutQuery → search.Query
 //     (Language/MediaTypes/Sources/Limit/Text mirror the canonical
 //     shape verbatim).
-//   - Translates search.Result.Candidate[] → mediamemory.MediaCandidate[]
+//   - Translates search.Result.Candidate[] → MediaCandidate[]
 //     with NO LocalPath/DriveLink leaks (QDRANT-004 invariant).
 //   - Propagates Partial + ProviderErrors verbatim.
 //   - Returns ErrCandidateNotFound when inner is nil or returns nil
@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
@@ -74,7 +73,7 @@ func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	_, err = adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{
+	_, err = adapter.Search(context.Background(), SearchFanOutQuery{
 		Text:       "Maya archaeology",
 		Language:   "it",
 		MediaTypes: []string{"video", "image"},
@@ -101,7 +100,7 @@ func TestSearchFanOutAdapterClampsOverMaxLimit(t *testing.T) {
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	_, err = adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{
+	_, err = adapter.Search(context.Background(), SearchFanOutQuery{
 		Text:  "x",
 		Limit: 9999,
 	})
@@ -116,7 +115,7 @@ func TestSearchFanOutAdapterDefaultsZeroLimitToCanonical(t *testing.T) {
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	_, err = adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{
+	_, err = adapter.Search(context.Background(), SearchFanOutQuery{
 		Text: "x",
 	})
 	require.NoError(t, err)
@@ -155,7 +154,7 @@ func TestSearchFanOutAdapterTranslatesCandidatesLosslessWithoutLeaking(t *testin
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	out, err := adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{Text: "x"})
+	out, err := adapter.Search(context.Background(), SearchFanOutQuery{Text: "x"})
 	require.NoError(t, err)
 
 	require.Len(t, out.Candidates, 2)
@@ -168,8 +167,8 @@ func TestSearchFanOutAdapterTranslatesCandidatesLosslessWithoutLeaking(t *testin
 	assert.Equal(t, "Maya sunrise", c0.Title)
 	assert.Equal(t, "Alternate title", c0.Description)
 	assert.Equal(t, 0.91, c0.CandidateScore)
-	assert.Equal(t, mediamemory.DiscoverySearched, c0.DiscoveryStatus)
-	assert.Equal(t, mediamemory.MaterializationCold, c0.MaterializationStatus)
+	assert.Equal(t, DiscoverySearched, c0.DiscoveryStatus)
+	assert.Equal(t, MaterializationCold, c0.MaterializationStatus)
 
 	// QDRANT-004 invariant: NO LocalPath/DriveLink in the
 	// mediamemory MediaCandidate. The wire shape has no field for
@@ -190,7 +189,7 @@ func TestSearchFanOutAdapterErrorFromInnerPropagatesTyped(t *testing.T) {
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	_, err = adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{Text: "x"})
+	_, err = adapter.Search(context.Background(), SearchFanOutQuery{Text: "x"})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, search.ErrAllBackendsFailed),
 		"inner ErrAllBackendsFailed MUST propagate via errors.Is")
@@ -211,7 +210,7 @@ func TestSearchFanOutAdapterNilResultReturnsTypedSentinel(t *testing.T) {
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
-	_, err = adapter.Search(context.Background(), mediamemory.SearchFanOutQuery{Text: "x"})
+	_, err = adapter.Search(context.Background(), SearchFanOutQuery{Text: "x"})
 	// Search returns &search.Result{}, nil — the adapter then
 	// dereferences it safely. The nil-result guard fires only
 	// when the inner returns literal nil for the *Result. To
@@ -225,5 +224,5 @@ func TestSearchFanOutAdapterNilResultReturnsTypedSentinel(t *testing.T) {
 // TestSearchFanOutAdapterCompileTimeGuard pins the port
 // implementation contract.
 func TestSearchFanOutAdapterCompileTimeGuard(t *testing.T) {
-	var _ mediamemory.SearchFanOut = (*SearchFanOutAdapter)(nil)
+	var _ SearchFanOut = (*SearchFanOutAdapter)(nil)
 }

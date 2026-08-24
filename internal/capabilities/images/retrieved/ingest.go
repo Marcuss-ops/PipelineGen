@@ -16,13 +16,11 @@
 //
 // Like search_service.go, this file uses the structural-port
 // pattern to avoid a parent-import cycle.
-package images
+package retrieved
 
 import (
 	"context"
 	"io"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -48,7 +46,7 @@ type IngestServicePort interface {
 }
 
 // IngestServiceAdapter wraps an IngestServicePort for callers
-// that consume routing.Service. Today the parent's
+// that consume Service. Today the parent's
 // *ImageStorageService satisfies IngestServicePort; the
 // adapter is the bridge that lets Router handle Upload-territory
 // requests through the same dispatch surface.
@@ -63,7 +61,7 @@ func NewIngestServiceAdapter(port IngestServicePort) *IngestServiceAdapter {
 	return &IngestServiceAdapter{port: port}
 }
 
-// Search delegates to IngestImage. The routing.Router
+// Search delegates to IngestImage. The Router
 // interface requires a Search method; on Upload-territory
 // requests this adapter synthesises a Search from the request
 // origin metadata (slug + lang) and triggers ingest.
@@ -72,20 +70,20 @@ func NewIngestServiceAdapter(port IngestServicePort) *IngestServiceAdapter {
 // not search). Composition roots using this adapter in Upload
 // territory should pre-catalog the asset before the request —
 // this adapter is a TRANSPORT SHIM, not an ingest orchestrator.
-func (a *IngestServiceAdapter) Search(ctx context.Context, req routing.SearchRequest) (routing.SearchResponse, error) {
+func (a *IngestServiceAdapter) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	if a == nil || a.port == nil {
-		return routing.SearchResponse{}, ErrIngestPortNotWired
+		return SearchResponse{}, ErrIngestPortNotWired
 	}
 	_ = ctx
 	if req.Query == "" {
-		return routing.SearchResponse{SubService: a.Name()}, nil
+		return SearchResponse{SubService: a.Name()}, nil
 	}
 	// Returning an empty result is the documented behaviour
 	// for the Upload-territory fast-path: catalog lookups go
 	// through catalog.CatalogSearch (read-only), not here.
 	// This adapter exists only so Router has a uniform
 	// service shape; the Upload-path semantics live elsewhere.
-	return routing.SearchResponse{SubService: a.Name()}, nil
+	return SearchResponse{SubService: a.Name()}, nil
 }
 
 // Name returns the territory identifier for the upload/

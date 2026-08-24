@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // (June 2026) the Storage field type migrated from *storage.Handler to

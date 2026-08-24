@@ -27,7 +27,7 @@
 // Multiple goroutines racing on the same (jobID, stepKey,
 // fingerprint) row are serialized via the underlying mutex + a
 // single-writer mutation model.
-package execution
+package steps
 
 import (
 	"context"

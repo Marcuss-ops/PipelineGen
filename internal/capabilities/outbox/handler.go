@@ -19,20 +19,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler is the thin HTTP transport for outbox events monitoring.
 type Handler struct {
-	port outbox.MonitorPort
+	port jobs.MonitorPort
 	log  *zap.Logger
 }
 
-// NewHandler creates a new outbox events HTTP handler. The handler is
-// read-only by design — CountByStatus + ListPending are the two
-// methods on outbox.MonitorPort exercised here.
-func NewHandler(port outbox.MonitorPort, log *zap.Logger) *Handler {
+// NewHandler creates a new outbox events HTTP handler.
+func NewHandler(port jobs.MonitorPort, log *zap.Logger) *Handler {
 	return &Handler{port: port, log: log}
 }
 
@@ -86,7 +84,7 @@ func (h *Handler) handleEvents(c *gin.Context) {
 	}
 
 	if events == nil {
-		events = []outbox.EventDTO{}
+		events = []jobs.EventDTO{}
 	}
 
 	apiutil.OK(c, gin.H{

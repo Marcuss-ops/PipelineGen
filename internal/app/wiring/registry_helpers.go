@@ -16,9 +16,9 @@ package wiring
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 
 	"go.uber.org/zap"
 )

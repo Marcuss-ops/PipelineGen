@@ -10,7 +10,6 @@ import (
 
 	"go.uber.org/zap"
 
-	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )

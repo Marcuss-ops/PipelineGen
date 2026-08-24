@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
@@ -37,7 +36,7 @@ func RunTrimSoundEffects(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -109,7 +108,7 @@ func RunTrimSoundEffects(args []string) error {
 		if newDuration <= 0 || newDuration > time.Duration(*maxSeconds*float64(time.Second)) {
 			return fmt.Errorf("trimmed duration invalid for %s: %.3fs", clip.Name, newDuration.Seconds())
 		}
-		hash, err := sha256File(localPath)
+		hash, err := cli.Sha256File(localPath)
 		if err != nil {
 			return fmt.Errorf("hash %s: %w", localPath, err)
 		}

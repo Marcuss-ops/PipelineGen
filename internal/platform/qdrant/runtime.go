@@ -4,7 +4,7 @@
 // PR 4 (June 2026, refactor/single-qdrant-runtime) — sections #2 + #6
 // of the verdict Qdrant:
 //
-//   - Before PR 4: qdrant.NewClient was called from
+//   - Before PR 4: NewClient was called from
 //     composition.go::buildQdrantDeps AND from
 //     build_bundles_process.go::BuildProcessBundle; each constructed its
 //     own *Client / *IndexSchema. The two *Clients were structurally
@@ -32,17 +32,17 @@ import (
 
 	"go.uber.org/zap"
 
-	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	capmediaregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 )
 
 // RuntimeConfig is the bundle NewRuntime consumes. Avoiding a direct
@@ -85,7 +85,7 @@ type QdrantRuntime struct {
 	// previous duplication (composition.go + build_bundles_process.go
 	// each calling DefaultV3Schema() independently) is gone.
 	Schema *schema.IndexSchema
-	// Client is the canonical *qdrant.Client used for every HTTP
+	// Client is the canonical *Client used for every HTTP
 	// round-trip. ONE Client for the whole runtime — wire-step
 	// invariants (api-key header, retry policy, timeout) cannot drift
 	// between subsystems.
@@ -138,10 +138,10 @@ type QdrantRuntime struct {
 // gate on cfg.Qdrant.Enabled before calling.
 func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	if cfg.QdrantCfg == nil {
-		return nil, fmt.Errorf("qdrant.NewRuntime: RuntimeConfig.QdrantCfg is nil (composition forgot to translate cfg.Qdrant to RuntimeConfig?)")
+		return nil, fmt.Errorf("NewRuntime: RuntimeConfig.QdrantCfg is nil (composition forgot to translate cfg.Qdrant to RuntimeConfig?)")
 	}
 	if cfg.DB == nil {
-		return nil, fmt.Errorf("qdrant.NewRuntime: RuntimeConfig.DB is nil (Mapper requires SQLiteAssetStore; pass dbs.main.DB or equivalent)")
+		return nil, fmt.Errorf("NewRuntime: RuntimeConfig.DB is nil (Mapper requires SQLiteAssetStore; pass dbs.main.DB or equivalent)")
 	}
 	log := cfg.Logger
 	if log == nil {
@@ -155,7 +155,7 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 		}
 		resolved, err := verification.ResolveSchema(version)
 		if err != nil {
-			return nil, fmt.Errorf("qdrant.NewRuntime: %w", err)
+			return nil, fmt.Errorf("NewRuntime: %w", err)
 		}
 		schema = resolved
 	}
@@ -194,7 +194,7 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	// failures blocking before an alias can become ACTIVE.
 	manager.SetReindexVerifier(verification.NewReindexVerifier(client, store, nil, schema, nil, log))
 	if err := manager.SetRegistryLedger(context.Background(), cfg.RegistryLedger); err != nil {
-		return nil, fmt.Errorf("qdrant.NewRuntime: %w", err)
+		return nil, fmt.Errorf("NewRuntime: %w", err)
 	}
 	// QDRANT-ALIAS-CACHE (July 2026): wire the cache invalidation so
 	// PromoteCandidate resets the Searcher's alias-target cache

@@ -32,7 +32,7 @@
 // search.SearchFanOut — the telemetry decorator that wraps the
 // aggregator and exposes the user-spec Option{Hits, Latencies}
 // Stats surface. All callers consume SearchFanOut via the
-// wiring.AssetsWiring struct.
+// AssetsWiring struct.
 package wiring
 
 import (
@@ -43,11 +43,11 @@ import (
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 type rerankerClient interface {

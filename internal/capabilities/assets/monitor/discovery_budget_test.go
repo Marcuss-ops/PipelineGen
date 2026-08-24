@@ -14,7 +14,7 @@
 //  4. After a post-broker rejection (Rejected), budgetUsed is
 //     decremented AND outcomes.rejected is +1 (not -1, not 0).
 //  5. Enqueued keeps the budget slot (no decrement).
-package assets
+package monitor
 
 import (
 	"sync"

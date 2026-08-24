@@ -25,7 +25,7 @@ import (
 	"context"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"

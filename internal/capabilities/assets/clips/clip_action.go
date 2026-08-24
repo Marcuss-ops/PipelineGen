@@ -1,5 +1,5 @@
 // Package clips — action transport for download, reupload and duplicate lookup.
-package assets
+package clips
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/duplicates"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

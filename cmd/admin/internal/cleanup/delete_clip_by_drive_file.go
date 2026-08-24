@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // runDeleteClipByDriveFile removes exactly one catalog asset identified by
@@ -48,7 +48,7 @@ func RunDeleteClipByDriveFile(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -84,7 +84,7 @@ func RunDeleteClipByDriveFile(args []string) error {
 		return fmt.Errorf("enqueue deletion for %s: %w", *driveFileID, err)
 	}
 
-	if err := waitForAssetDeletion(ctx, root.DB.DB, assetBefore.id); err != nil {
+	if err := cli.WaitForAssetDeletion(ctx, root.DB.DB, assetBefore.id); err != nil {
 		return err
 	}
 	mode := "trashed"
@@ -118,7 +118,7 @@ func findAssetByDriveFileID(ctx context.Context, db *sql.DB, driveFileID, source
 	return &row, nil
 }
 
-func waitForAssetDeletion(ctx context.Context, db *sql.DB, assetID string) error {
+func WaitForAssetDeletion(ctx context.Context, db *sql.DB, assetID string) error {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {

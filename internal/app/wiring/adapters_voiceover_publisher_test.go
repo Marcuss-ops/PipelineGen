@@ -129,7 +129,7 @@ func canonicalVoiceoverPublishCommand() voiceover.VoiceoverPublishCommand {
 //
 // The already-resolved script folder must be forwarded as
 // DestinationFolderID so the canonical Publisher does not re-resolve
-// it through registry/config/root routing.
+// it through registry/config/root images.
 func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testing.T) {
 	pub := canonicalRecordingPublisher()
 	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())

@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

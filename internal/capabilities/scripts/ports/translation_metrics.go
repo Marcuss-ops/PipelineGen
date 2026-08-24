@@ -12,14 +12,14 @@
 // `ports/metrics/metrics.go` (the SOLE canonical owner per
 // godlike/06 one-canonical-owner-per-fact). This file uses Go
 // type aliases to preserve the canonical import path
-// `ports.TranslationWarningReason` /
-// `ports.TranslationMetricsRecorder` for the 8 existing call sites
+// `TranslationWarningReason` /
+// `TranslationMetricsRecorder` for the 8 existing call sites
 // in:
 //
 //   - internal/application/scripts/usecase/translation.go
-//     (ports.TranslationWarningReason + ports.TranslationMetricsRecorder)
+//     (TranslationWarningReason + TranslationMetricsRecorder)
 //   - internal/application/scripts/adapters/processor_translation.go
-//     (local interface mirrors ports.TranslationMetricsRecorder)
+//     (local interface mirrors TranslationMetricsRecorder)
 //   - internal/application/scripts/adapters/processor_translation_integration_test.go
 //     (compiles against the type)
 //
@@ -42,7 +42,7 @@
 //
 // PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP3 (2026-08-08): this
 // re-export shim is the load-bearing piece that keeps the existing
-// `ports.TranslationWarningReason` import path working across the
+// `TranslationWarningReason` import path working across the
 // 8 call sites without forcing a re-import sweep. Go type aliases
 // (`type A = B`) are byte-equivalent at compile time — the existing
 // compile-time pins + noop receiver methods + interface assertions
@@ -50,7 +50,7 @@
 package ports
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 )
 
 // TranslationWarningReason is the bounded enum for Prometheus

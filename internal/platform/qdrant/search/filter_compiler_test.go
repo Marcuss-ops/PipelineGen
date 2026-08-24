@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // filterClauseValues extracts match values from both Qdrant boolean

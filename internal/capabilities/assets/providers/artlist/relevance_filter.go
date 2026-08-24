@@ -81,7 +81,7 @@
 // observability counterpart of the fail-closed surface: when
 // results are 0, the operator can see WHY (which predicate is
 // rejecting the candidates) without re-running the filter.
-package assets
+package artlist
 
 import (
 	"strings"

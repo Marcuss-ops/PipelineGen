@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 func (b *Broker) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {

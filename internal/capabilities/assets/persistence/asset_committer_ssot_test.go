@@ -10,7 +10,7 @@
 // These tests use an in-memory SQLite database with the canonical
 // outbox_events + media_assets + asset_locations tables so the
 // CommitAsset behavior is exercised end-to-end (not mocked).
-package assets
+package persistence
 
 import (
 	"context"

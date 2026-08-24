@@ -14,13 +14,13 @@
 //
 // Sub-package construction is *Service.NewService(enqueuer, log) — see
 // internal/app/assets_register_sourcing.go for wiring.
-package assets
+package batch
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // ClipJobEnqueuer is the narrow port for enqueuing a per-clip registration

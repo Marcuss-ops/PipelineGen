@@ -49,9 +49,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -71,16 +70,16 @@ import (
 
 // BuildOutboxBundle constructs the canonical ingestion outbox + outbox_events.Pool.
 //
-// PR9-B (June 2026): BuildOutboxBundle returns an wiring.IOpaqueStartFunc closure
+// PR9-B (June 2026): BuildOutboxBundle returns an IOpaqueStartFunc closure
 // that defers the outbox events pool goroutines (Start + shutdown) to the
-// lifecycle. The bundle itself is fully populated on return.
+//  The bundle itself is fully populated on return.
 //
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): the previous
-// `process *wiring.ProcessBundle` arg was replaced with `qd *wiring.QdrantDeps`, the
+// `process *ProcessBundle` arg was replaced with `qd *QdrantDeps`, the
 // tiny pre-phase bundle that composition.go::buildQdrantDeps populates
-// BEFORE BuildOutboxBundle runs. The ring between wiring.ProcessBundle and
-// wiring.OutboxBundle is broken: BuildOutboxBundle now reads ONLY
-// `qd.QdrantDeleter` + `qd.ClipIndexerService` (NOT the full wiring.ProcessBundle),
+// BEFORE BuildOutboxBundle runs. The ring between ProcessBundle and
+// OutboxBundle is broken: BuildOutboxBundle now reads ONLY
+// `qd.QdrantDeleter` + `qd.ClipIndexerService` (NOT the full ProcessBundle),
 // so BuildOutboxBundle can run BEFORE BuildProcessBundle. Composition graph:
 //
 //	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd)
@@ -100,7 +99,7 @@ import (
 //
 // Blocco 3.1 commit 2/3 (June 2026) — driveDeleter wiring: the
 // driveDeleter arg passes drive.FileLifecycle (from
-// wiring.DriveBundle.Lifecycle) into the outbox Deps so
+// DriveBundle.Lifecycle) into the outbox Deps so
 // DriveDeleteHandler (asset.drive.delete_requested.v1) can trash /
 // permanently-delete the Drive file and atomically advance the
 // deletion state machine. nil driveDeleter is tolerated —
@@ -108,7 +107,7 @@ import (
 // production it is a dead-letter regression, so the wiring logs a
 // loud Warn when it is missing. Production wiring always supplies
 // the canonical drive.FileLifecycle adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
@@ -124,9 +123,9 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		// FASE 3 Push 3.1e: the DriveUploader worker consumes
 		// artifact.Repository for the MarkPublished fenced-CAS. A
 		// nil repo is fail-closed — composition must inject the
-		// same artifact.Repository port that wiring.StagingBundle uses
+		// same artifact.Repository port that StagingBundle uses
 		// (single-writer SSOT; no second DB wrapper).
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: repo is required (FASE 3 Push 3.1e; composition must inject wiring.StagingBundle.Repository)")
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: repo is required (FASE 3 Push 3.1e; composition must inject StagingBundle.Repository)")
 	}
 	if drivePublisher == nil {
 		// FASE 3 Push 3.1e: the DriveUploader worker is the
@@ -135,8 +134,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		// moment the saga's first Publish step). A nil
 		// drivePublisher is fail-closed — composition must
 		// inject the canonical delivery.Publisher from
-		// wiring.DriveBundle (built in BuildDriveBundle).
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject wiring.DriveBundle.Publisher)")
+		// DriveBundle (built in BuildDriveBundle).
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject DriveBundle.Publisher)")
 	}
 
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
@@ -252,7 +251,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		return startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log)
 	}
 
-	return &wiring.OutboxBundle{
+	return &OutboxBundle{
 		Dispatcher:     dispatcher,
 		EventsRepo:     outboxEventsRepo,
 		EventsRegistry: eventsRegistry,

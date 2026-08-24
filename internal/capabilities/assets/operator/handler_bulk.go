@@ -3,7 +3,7 @@
 // Provides a unified admin bulk-operation surface under
 // /api/assets/operator/bulk. All mutations route through the canonical
 // AssetMutationDispatcher so SQLite, outbox and Qdrant stay consistent.
-package assets
+package operator
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

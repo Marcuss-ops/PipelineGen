@@ -16,7 +16,7 @@
 //  6. TestStateMachine_Transition_EmptyAssetID — pre-flight guard
 //     rejects empty IDs BEFORE the SQL roundtrip (godlike/07
 //     typed-error contract).
-package assets
+package enrichment
 
 import (
 	"context"

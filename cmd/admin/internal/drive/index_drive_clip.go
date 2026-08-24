@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
@@ -77,7 +77,7 @@ func RunIndexDriveClip(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -142,13 +142,13 @@ func RunIndexDriveClip(args []string) error {
 	}
 
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	probeDuration, probeErr := probeSoundEffectDuration(ctx, prober, localPath)
+	probeDuration, probeErr := cli.ProbeSoundEffectDuration(ctx, prober, localPath)
 	duration, durationSource, err := resolveClipDuration(probeDuration, probeErr, manifest.DurationFallbackSeconds, *allowDeclared)
 	if err != nil {
 		return err
 	}
 
-	hash, err := sha256File(localPath)
+	hash, err := cli.Sha256File(localPath)
 	if err != nil {
 		return fmt.Errorf("hash clip: %w", err)
 	}
@@ -201,7 +201,7 @@ func RunIndexDriveClip(args []string) error {
 	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
 		return fmt.Errorf("save and index drive clip: %w", err)
 	}
-	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
 	fmt.Printf("Drive clip indexed: id=%s name=%s duration=%.3fs duration_source=%s local=%s manifest=%s\n",

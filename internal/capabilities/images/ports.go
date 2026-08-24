@@ -21,7 +21,7 @@ import (
 
 // RepositoryListFilter is the application-layer read-request filter
 // shape for the SQLite images_repository ListImages path. Distinct
-// from the canonical routing.ImageFilter (in dto.go) which is the
+// from the canonical ImageFilter (in dto.go) which is the
 // cross-territory filter consumed by the ImageSearcher interface;
 // the SQLite adapter needs the underlying Subject/Slug/Description
 // columns to populate the join projection, so the filter carries
@@ -44,7 +44,7 @@ type RepositoryListFilter struct {
 // catalog/result.go) downstream.
 //
 // FASE 8: renamed from ImageSearchResult to disambiguate from the
-// canonical routing.ImageSearchResult (in dto.go) which the
+// canonical ImageSearchResult (in dto.go) which the
 // ImageSearcher interface returns. The SQLite adapter needs the
 // Subject/Slug/Description/Tags/CreatedAt fields to carry the joined
 // projection columns that the routing-level DTO doesn't expose.

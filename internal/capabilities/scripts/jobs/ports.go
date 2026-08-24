@@ -16,7 +16,7 @@ package jobs
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 )
 
 // ClipsFolderExtPort is the canonical typed port for the single-purpose

@@ -45,7 +45,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
@@ -169,7 +169,7 @@ func RunIndexProvidedSoundEffects(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -220,11 +220,11 @@ func RunIndexProvidedSoundEffects(args []string) error {
 		if err != nil {
 			return fmt.Errorf("create Drive family folder %s: %w", spec.family, err)
 		}
-		duration, err := probeSoundEffectDuration(ctx, prober, localPath)
+		duration, err := cli.ProbeSoundEffectDuration(ctx, prober, localPath)
 		if err != nil {
 			return fmt.Errorf("probe %s: %w", spec.name, err)
 		}
-		hash, err := sha256File(localPath)
+		hash, err := cli.Sha256File(localPath)
 		if err != nil {
 			return fmt.Errorf("hash %s: %w", spec.name, err)
 		}
@@ -256,7 +256,7 @@ func RunIndexProvidedSoundEffects(args []string) error {
 		}
 		fmt.Printf("indexed %s (Drive: %s) family=%s subtype=%s duration=%.3fs\n", spec.name, meta.Name, spec.family, spec.subtype, duration.Seconds())
 	}
-	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
 	return nil

@@ -45,7 +45,7 @@
 // (INDEX_PENDING → INDEXED, INDEXED → READY, READY → READY_MULTILINGUAL)
 // are out of pipeline scope (outbox worker, readiness gate, dashboard
 // process them asynchronously).
-package assets
+package ingest
 
 import (
 	"context"
@@ -55,9 +55,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -65,16 +65,16 @@ import (
 
 // Downloader downloads source bytes for a clip asset. Production
 // candidates: existing YouTubeStager / ArtlistStager / StockStager —
-// each implements assets.SourceStager whose StageSource signature
+// each implements ports.SourceStager whose StageSource signature
 // matches Downloader.Download.
 type Downloader interface {
-	Download(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error)
+	Download(ctx context.Context, ref ports.SourceRef) (*ports.StagedAsset, error)
 }
 
 // MediaNormalizer normalizes a staged source asset into the canonical
 // media container / codec (e.g., MP4 / H.264 / AAC).
 type MediaNormalizer interface {
-	Normalize(ctx context.Context, staged *assets.StagedAsset) (NormalizedMedia, error)
+	Normalize(ctx context.Context, staged *ports.StagedAsset) (NormalizedMedia, error)
 }
 
 // ContentHasher computes the canonical content fingerprint (SHA-256).
@@ -274,7 +274,7 @@ func NewClipIngestPipeline(deps ClipIngestPipelineDeps) (*ClipIngestPipeline, er
 // godlike/07 fail-closed contract: empty SourceURL rejected with
 // ErrClipIngestPipelineSourceRefEmpty. nil receiver rejected with
 // ErrClipIngestPipelineFailClosed. Component errors wrapped via %w.
-func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref assets.SourceRef) (*ClipIngestResult, error) {
+func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref ports.SourceRef) (*ClipIngestResult, error) {
 	if p == nil {
 		return nil, fmt.Errorf("%w: nil receiver", ErrClipIngestPipelineFailClosed)
 	}

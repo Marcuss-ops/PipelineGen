@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	adminapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -23,12 +22,12 @@ const (
 
 // Handler is the thin HTTP transport for the admin console registry.
 type Handler struct {
-	service *adminapp.Service
+	service *Service
 	log     *zap.Logger
 }
 
 // NewHandler creates a new admin console handler.
-func NewHandler(service *adminapp.Service, log *zap.Logger) *Handler {
+func NewHandler(service *Service, log *zap.Logger) *Handler {
 	return &Handler{service: service, log: log}
 }
 
@@ -58,7 +57,7 @@ func (h *Handler) handleSchema(c *gin.Context) {
 
 func (h *Handler) handleList(c *gin.Context) {
 	entity := c.Param("entity")
-	opts := adminapp.ListOptions{}
+	opts := ListOptions{}
 	// TODO: parse filters, orderBy, orderDir, limit, offset from query string
 	result, err := h.service.List(c.Request.Context(), entity, opts)
 	if err != nil {
@@ -97,7 +96,7 @@ func (h *Handler) handlePatch(c *gin.Context) {
 	updated, err := h.service.Patch(ctx, entity, id, req.Changes, req.ExpectedVersion)
 	if err != nil {
 		h.log.Error("failed to patch entity", zap.String("entity", entity), zap.String("id", id), zap.Error(err))
-		var verr *adminapp.VersionConflictError
+		var verr *VersionConflictError
 		if errors.As(err, &verr) {
 			c.JSON(http.StatusConflict, map[string]any{
 				"error_code":      "VERSION_CONFLICT",

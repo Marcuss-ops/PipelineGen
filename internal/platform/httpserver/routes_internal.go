@@ -3,7 +3,9 @@ package httpserver
 import (
 	"github.com/gin-gonic/gin"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // registerInternalRoutes wires the WorkerAuth-protected /internal/v1

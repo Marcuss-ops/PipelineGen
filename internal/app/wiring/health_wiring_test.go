@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )

@@ -33,7 +33,7 @@
 //     for --only-missing short-circuit).
 //   - cmd/admin/text_tracks_backfill.go: calls Run on the
 //     --apply path.
-package assets
+package texttracks
 
 import (
 	"context"

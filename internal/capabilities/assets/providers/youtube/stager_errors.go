@@ -5,7 +5,7 @@
 // errors.Is from any caller seam; the error messages carry the failing
 // input via fmt.Errorf %w so log-scanners can correlate rejections
 // with the SourceRef that triggered them.
-package assets
+package youtube
 
 import "errors"
 

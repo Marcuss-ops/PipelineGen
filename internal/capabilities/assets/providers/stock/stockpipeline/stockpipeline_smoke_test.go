@@ -17,14 +17,14 @@
 // pins a single behavior (StageURL recording / Deps 8-cap /
 // JobSubmission context-detach). The merge does NOT change
 // any test's runtime contract.
-package assets
+package stockpipeline
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"

@@ -21,7 +21,7 @@
 // that the package no longer carries. Replaced with the testSecurity
 // stub from port_fakes_test.go (3-method AuthSecurityPort fake).
 
-package httpserver
+package middleware
 
 import (
 	"net/http"

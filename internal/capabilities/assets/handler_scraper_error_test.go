@@ -9,24 +9,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
 type scraperTestRunner struct {
 	calls int
 }
 
-func (r *scraperTestRunner) Run(context.Context, string, []string, appassets.ProcessOptions) (*appassets.ProcessResult, error) {
+func (r *scraperTestRunner) Run(context.Context, string, []string, ProcessOptions) (*ProcessResult, error) {
 	r.calls++
-	return &appassets.ProcessResult{Stdout: `{"ok":true}`}, nil
+	return &ProcessResult{Stdout: `{"ok":true}`}, nil
 }
 
-func (r *scraperTestRunner) RunSimple(context.Context, string, ...string) (*appassets.ProcessResult, error) {
+func (r *scraperTestRunner) RunSimple(context.Context, string, ...string) (*ProcessResult, error) {
 	r.calls++
-	return &appassets.ProcessResult{Stdout: `{"ok":true}`}, nil
+	return &ProcessResult{Stdout: `{"ok":true}`}, nil
 }
 
-var _ appassets.ProcessRunner = (*scraperTestRunner)(nil)
+var _ ProcessRunner = (*scraperTestRunner)(nil)
 
 func scraperTestRouter(t *testing.T, handler *ScraperHandler) *gin.Engine {
 	t.Helper()

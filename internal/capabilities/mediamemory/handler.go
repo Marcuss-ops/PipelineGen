@@ -31,7 +31,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -39,7 +38,7 @@ import (
 // ── Handler ports (composition-root-narrow) ────────────────────────
 
 // ResolverPort is the narrow request side the handler depends on.
-// Production wiring injects *mediamemory.VisualResolver (cast to the
+// Production wiring injects *VisualResolver (cast to the
 // interface). Skeletons inject a stub closure (see
 // Handler.WireParams).
 //
@@ -51,7 +50,7 @@ import (
 // leak the HTTP framework into the resolver — anti-pattern.
 // The binding port accepts context.Context for the same reason.
 type ResolverPort interface {
-	Resolve(ctx context.Context, req mediamemory.ResolveRequest) (mediamemory.ResolveResult, error)
+	Resolve(ctx context.Context, req ResolveRequest) (ResolveResult, error)
 }
 
 // BindingServicePort is the narrow binding-service surface. The
@@ -64,13 +63,13 @@ type ResolverPort interface {
 // solely so future workspace-scope middleware can attach it; for
 // now, the ports above are direct passthroughs.
 type BindingServicePort interface {
-	Create(ctx context.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error)
-	Update(ctx context.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error)
+	Create(ctx context.Context, b MediaBinding) (MediaBinding, error)
+	Update(ctx context.Context, b MediaBinding) (MediaBinding, error)
 	Delete(ctx context.Context, id string) error
 	Approve(ctx context.Context, id string) error
 	Reject(ctx context.Context, id string) error
-	ListByConcept(ctx context.Context, conceptID string) ([]mediamemory.MediaBinding, error)
-	ListBySlot(ctx context.Context, conceptID string, slot media.SlotKind, limit int) ([]mediamemory.MediaBinding, error)
+	ListByConcept(ctx context.Context, conceptID string) ([]MediaBinding, error)
+	ListBySlot(ctx context.Context, conceptID string, slot media.SlotKind, limit int) ([]MediaBinding, error)
 }
 
 // ── WireParams + Handler ───────────────────────────────────────────
@@ -81,23 +80,23 @@ type BindingServicePort interface {
 //
 // godlike/06 SSOT (canonical logger seam): the API handler layer
 // uses ONLY a *zap.Logger (mirrors internal/api/mediasearch).
-// mediamemory.Logger belongs to the application layer; the handler
+// Logger belongs to the application layer; the handler
 // does NOT re-export it (no double logger seam).
 type WireParams struct {
 	Resolver       ResolverPort
-	PolicyResolver mediamemory.ResolutionPolicyResolver
+	PolicyResolver ResolutionPolicyResolver
 	Bindings       BindingServicePort
 	Log            *zap.Logger
-	Clock          mediamemory.Clock
+	Clock          Clock
 }
 
 // Handler is the thin HTTP transport for the canonical MediaMemory API.
 type Handler struct {
 	resolver       ResolverPort
-	policyResolver mediamemory.ResolutionPolicyResolver
+	policyResolver ResolutionPolicyResolver
 	bindings       BindingServicePort
 	log            *zap.Logger
-	clock          mediamemory.Clock
+	clock          Clock
 }
 
 // NewHandler creates the Handler. The composition root wires the
@@ -106,11 +105,11 @@ type Handler struct {
 func NewHandler(p WireParams) *Handler {
 	clock := p.Clock
 	if clock == nil {
-		clock = mediamemory.RealClock()
+		clock = RealClock()
 	}
 	policyResolver := p.PolicyResolver
 	if policyResolver == nil {
-		policyResolver = mediamemory.NewResolutionPolicyResolver()
+		policyResolver = NewResolutionPolicyResolver()
 	}
 	return &Handler{
 		resolver:       p.Resolver,
@@ -177,7 +176,7 @@ type notImplementedResponse struct {
 // application-side dependency is unavailable.
 //
 // godlike/06 SSOT (constructor invariant): NewHandler always
-// inits h.clock from mediamemory.RealClock(); the nil-guard is
+// inits h.clock from RealClock(); the nil-guard is
 // unnecessary.
 func (h *Handler) notImplemented(c *gin.Context, route string) {
 	c.JSON(http.StatusNotImplemented, notImplementedResponse{
@@ -260,7 +259,7 @@ func (h *Handler) BindingsCreate(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.writeError(c, "POST /api/media-memory/bindings",
 			fmt.Errorf("mediamemory: bind JSON: %w",
-				mediamemory.ErrInvalidSlotKind)) // 400 surface
+				ErrInvalidSlotKind)) // 400 surface
 		return
 	}
 
@@ -371,7 +370,7 @@ func (h *Handler) BindingsDelete(c *gin.Context) {
 // bindingsToDTOs projects a slice of canonical MediaBindings into
 // the wire shape (godlike/06 SSOT: no LocalPath / DriveLink
 // leaks; canonical bool strings preserved exactly).
-func bindingsToDTOs(in []mediamemory.MediaBinding) []bindingDTO {
+func bindingsToDTOs(in []MediaBinding) []bindingDTO {
 	out := make([]bindingDTO, 0, len(in))
 	for _, b := range in {
 		out = append(out, toBindingDTO(b))

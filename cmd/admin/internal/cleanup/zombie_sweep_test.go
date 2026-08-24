@@ -12,7 +12,7 @@
 //  2. formatDryRunReport(cutoff, reason) — output stays
 //     byte-stable so operators can rely on the format
 //     (e.g. for monitoring scripts that grep the output).
-//  3. resolveDBPath(cfg, flag) — canonical SSOT delegation to
+//  3. cli.ResolveDBPath(cfg, flag) — canonical SSOT delegation to
 //     cfg.Storage.PrimaryDBFullPath() (the helper shared by
 //     24+ cmd/admin/ callers per the qdrant_readiness.go
 //     precedent). Added in the round-2b refactor.
@@ -25,6 +25,7 @@
 package cleanup
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"errors"
 	"fmt"
 	"strings"
@@ -155,7 +156,7 @@ func TestErrZombieSweepOpenDB_IsExported(t *testing.T) {
 func TestResolveDBPath_FlagWins(t *testing.T) {
 	flagPath := "/explicit/override.db.sqlite"
 	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/from/cfg"}}
-	got := resolveDBPath(cfg, flagPath)
+	got := cli.ResolveDBPath(cfg, flagPath)
 	if got != flagPath {
 		t.Errorf("resolveDBPath: --db-path flag must win (got %q, want %q)", got, flagPath)
 	}
@@ -168,7 +169,7 @@ func TestResolveDBPath_FlagWins(t *testing.T) {
 // hard-coded path; an unconfigured caller must see the typed
 // error.
 func TestResolveDBPath_CfgNil_FallsThroughToEmpty(t *testing.T) {
-	got := resolveDBPath(nil, "")
+	got := cli.ResolveDBPath(nil, "")
 	if got != "" {
 		t.Errorf(`resolveDBPath: cfg=nil + empty flag must return empty string (caller surfaces ErrZombieSweepNoDB); got %q`, got)
 	}
@@ -189,7 +190,7 @@ func TestResolveDBPath_CfgNil_FallsThroughToEmpty(t *testing.T) {
 // silently break on a future FullPath refactor).
 func TestResolveDBPath_CfgProvided_CallsPrimaryDBFullPath(t *testing.T) {
 	cfg := &config.Config{Storage: config.StorageConfig{MediaDir: "/data/from/cfg"}}
-	got := resolveDBPath(cfg, "")
+	got := cli.ResolveDBPath(cfg, "")
 	want := cfg.Storage.PrimaryDBFullPath()
 	if got != want {
 		t.Errorf("resolveDBPath: must delegate to cfg.Storage.PrimaryDBFullPath() (got %q, want %q)", got, want)

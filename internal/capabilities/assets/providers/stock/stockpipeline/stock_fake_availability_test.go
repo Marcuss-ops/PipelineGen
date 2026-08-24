@@ -28,7 +28,7 @@
 // to remove the old t.Skip()-gated tests and replace with the
 // contracts in this file — see the PR-STOCK-SOURCESTAGER-WIRE
 // forward-pointer in architecture/current.yaml).
-package assets
+package stockpipeline
 
 import (
 	"context"
@@ -37,8 +37,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 )
 
 // mapStager is a test stub that delegates StageSource decisions to a

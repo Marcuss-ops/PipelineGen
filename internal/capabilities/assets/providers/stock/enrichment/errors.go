@@ -52,7 +52,7 @@
 // PR-VO-TYPED-PRIMITIVES + PR-ARTLIST-FAKE-AVAILABILITY precedent):
 // composition-time + chunk-lookup + LLM-unavailable + LLM-bad-response
 // + persist-failed.
-package assets
+package enrichment
 
 import (
 	"errors"

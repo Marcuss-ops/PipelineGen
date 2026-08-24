@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 )
 
 func (r *InventoryReader) facets(ctx context.Context) (*operator.AssetInventoryFacets, error) {

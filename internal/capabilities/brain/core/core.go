@@ -4,17 +4,17 @@
 // resolver, ranker, planner) with the MediaMemoryResolutionPort to
 // implement the Brain port. It performs no IO directly: every
 // backend access flows through the MediaMemoryResolutionPort.
-package brain
+package core
 
 import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/intent"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )

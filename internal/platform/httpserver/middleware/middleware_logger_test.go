@@ -21,7 +21,7 @@
 // The StuckSink stub (below) implements the canonical RequestLogSink port
 // without any infra dependency.
 
-package httpserver
+package middleware
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware/requestlog"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )

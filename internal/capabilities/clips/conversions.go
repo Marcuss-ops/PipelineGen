@@ -35,7 +35,7 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

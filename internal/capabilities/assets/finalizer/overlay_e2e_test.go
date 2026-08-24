@@ -1,4 +1,4 @@
-package assets
+package finalizer
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 
 	appwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -186,7 +185,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 		Action:       delivery.PublishActionCreated,
 	}}
 	adapter := drive.NewArtifactPublisherAdapter(pub, nil)
-	prep := finalizer.NewArtifactPreparation(adapter, nil)
+	prep := NewArtifactPreparation(adapter, nil)
 	published, err := prep.Prepare(ctx, verified)
 	if err != nil {
 		t.Fatalf("ArtifactPreparation.Prepare: %v", err)
@@ -227,7 +226,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(ctx, finalizer.WrapTx(tx), published); err != nil {
+	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(ctx, WrapTx(tx), published); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}
 

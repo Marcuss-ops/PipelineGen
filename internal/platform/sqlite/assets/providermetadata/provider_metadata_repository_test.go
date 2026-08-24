@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

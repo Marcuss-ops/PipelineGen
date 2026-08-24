@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 type driveOrganizationPolicy struct {
@@ -56,7 +56,7 @@ func RunOrganizeDriveFolder(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -111,4 +111,13 @@ func RunOrganizeDriveFolder(args []string) error {
 	}
 	fmt.Printf("Drive organization complete: folder=%s subfolders=%d moved=%d\n", destination, len(folders), len(moves))
 	return nil
+}
+
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }

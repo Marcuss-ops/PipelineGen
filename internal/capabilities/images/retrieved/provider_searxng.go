@@ -5,7 +5,7 @@
 // SearXNGProvider searches the configured SearXNG instance for images.
 // Healthy() probes /healthz; Search returns 0 results when the
 // instance is unreachable or unconfigured.
-package images
+package retrieved
 
 import (
 	"context"
@@ -15,8 +15,6 @@ import (
 	"time"
 
 	nethttp "net/http"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -65,7 +63,7 @@ func (p *SearXNGProvider) Healthy(ctx context.Context) error {
 	return nil
 }
 
-func (p *SearXNGProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (p *SearXNGProvider) Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if p.baseURL == "" || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}

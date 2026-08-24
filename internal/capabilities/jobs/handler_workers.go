@@ -27,28 +27,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/assets"
-	completiontransport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// Broker is the narrow port for worker session RPC. Satisfied by
-// *appjobs.Service in production; tests can stub.
-//
-// Issue 15e (June 2026): type alias to appjobs.Broker — single source
-// of truth. The 8-method interface lives canonically in
-// internal/capabilities/jobs/queue/broker.go.
-type Broker = appjobs.Broker
+
 
 // AssetTransferService is the narrow port for the worker binary's
-// asset push/pull. Satisfied by *jobs.assets.AssetTransferService.
+// asset push/pull. Satisfied by *AssetTransferService.
 type AssetTransferService interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
-	InitiateUpload(ctx context.Context, assetID string) (*assets.UploadResponse, error)
+	InitiateUpload(ctx context.Context, assetID string) (*UploadResponse, error)
 	Upload(ctx context.Context, assetID, filename string, content io.Reader) error
 	FinalizeUpload(ctx context.Context, assetID string) error
 }
@@ -90,7 +82,7 @@ type registerWorkerRequest struct {
 	Name         string                     `json:"name,omitempty"`
 	Version      string                     `json:"version,omitempty"`
 	Hostname     string                     `json:"hostname,omitempty"`
-	Capabilities appjobs.WorkerCapabilities `json:"capabilities"`
+	Capabilities WorkerCapabilities `json:"capabilities"`
 }
 
 func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
@@ -99,7 +91,7 @@ func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	session, err := h.broker.RegisterWorker(c.Request.Context(), appjobs.RegisterWorkerCommand{
+	session, err := h.broker.RegisterWorker(c.Request.Context(), RegisterWorkerCommand{
 		WorkerID:     req.WorkerID,
 		Name:         req.Name,
 		Version:      req.Version,
@@ -124,7 +116,7 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	if err := h.broker.Heartbeat(c.Request.Context(), appjobs.HeartbeatCommand{
+	if err := h.broker.Heartbeat(c.Request.Context(), HeartbeatCommand{
 		WorkerID:        req.WorkerID,
 		WorkerSessionID: req.WorkerSessionID,
 		SessionTTL:      time.Duration(req.SessionTTL) * time.Second,
@@ -136,7 +128,7 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
-	var req appjobs.ClaimCommand
+	var req ClaimCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -150,7 +142,7 @@ func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
-	var req appjobs.RenewCommand
+	var req RenewCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -165,7 +157,7 @@ func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
-	var req appjobs.ProgressCommand
+	var req ProgressCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -179,7 +171,7 @@ func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
-	var req appjobs.CompleteCommand
+	var req CompleteCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -192,7 +184,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 		// when err matches one of the 7 canonical kinds; false
 		// falls through to apiutil.InternalError so the 500 path
 		// stays intact for genuine unknowns.
-		if completiontransport.MapErrorToHTTP(c, err) {
+		if completion.MapErrorToHTTP(c, err) {
 			return
 		}
 		apiutil.InternalError(c, err)
@@ -203,7 +195,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 
 // CompleteArtifactsRequest is the typed HTTP-in DTO for
 // POST /internal/v1/jobs/:id/complete-with-artifacts. It mirrors
-// appjobs.CompleteWithArtifactsCommand but exposes StagedArtifacts
+// CompleteWithArtifactsCommand but exposes StagedArtifacts
 // (the pre-publish artifact reference catalog submitted by the
 // caller) under the canonical wire-field name.
 //
@@ -301,7 +293,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		apiutil.BadRequest(c, fmt.Sprintf("staged_artifacts marshal: %v", marshalErr))
 		return
 	}
-	cmd := appjobs.CompleteWithArtifactsCommand{
+	cmd := CompleteWithArtifactsCommand{
 		WorkerID:         req.WorkerID,
 		WorkerSessionID:  req.WorkerSessionID,
 		JobID:            c.Param("id"),
@@ -318,7 +310,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		// MapErrorToHTTP. Same semantics as Complete:
 		// true = aborts gin chain + sets typed envelope; false =
 		// fall-through to apiutil.InternalError for unmapped errors.
-		if completiontransport.MapErrorToHTTP(c, err) {
+		if completion.MapErrorToHTTP(c, err) {
 			return
 		}
 		apiutil.InternalError(c, err)
@@ -340,7 +332,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Fail(c *gin.Context) {
-	var req appjobs.FailCommand
+	var req FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return

@@ -50,17 +50,15 @@
 // caller; the handler is prefix-agnostic (it registers RELATIVE
 // paths like "/summary" + "/assets"). This preserves the canonical
 // URL surface after the split.
-package assets
+package operator
 
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -70,11 +68,11 @@ import (
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
 	assetService  *asset.Service
-	readModel     operator.AssetInventoryReader
-	indexVerifier operator.IndexVerifier
+	readModel     AssetInventoryReader
+	indexVerifier IndexVerifier
 	jobService    job.Service
 	jobStats      JobStatsReader
-	outboxPort    outbox.MonitorPort
+	outboxPort    jobs.MonitorPort
 	mutator       mutations.AssetMutationDispatcher
 	committer     persistence.AssetCommitter
 	allowedRoots  []string
@@ -92,11 +90,11 @@ type OperatorOptions struct {
 type Dependencies struct {
 	*OperatorOptions
 	AssetService  *asset.Service
-	ReadModel     operator.AssetInventoryReader
-	IndexVerifier operator.IndexVerifier
+	ReadModel     AssetInventoryReader
+	IndexVerifier IndexVerifier
 	JobService    job.Service
 	JobStats      JobStatsReader
-	OutboxPort    outbox.MonitorPort
+	OutboxPort    jobs.MonitorPort
 	Mutator       mutations.AssetMutationDispatcher
 	Committer     persistence.AssetCommitter
 }

@@ -1,4 +1,4 @@
-package assets
+package clips
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

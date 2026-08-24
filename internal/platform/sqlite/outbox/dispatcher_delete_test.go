@@ -47,8 +47,9 @@ import (
 
 	"go.uber.org/zap"
 
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // minimalMediaAssetsFixture creates the lean media_assets table the

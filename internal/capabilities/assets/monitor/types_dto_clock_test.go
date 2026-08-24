@@ -12,7 +12,7 @@
 // package-level defaultNowFn, so concurrent execution against the
 // rest of the monitor package would race. Sequence them sequentially
 // by convention.
-package assets
+package monitor
 
 import (
 	"testing"

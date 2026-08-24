@@ -1,7 +1,7 @@
-package assets
+package clips
 
 import (
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

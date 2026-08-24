@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -26,7 +26,7 @@ import (
 // Returned by BuildServer and consumed by (*ServerRuntime).Run.
 //
 // The runtime is a thin transport shell: it holds the
-// already-constructed *api.Server (HTTP) + *AppDeps (composition
+// already-constructed *api.Server (HTTP) + *App (composition
 // output) so the slim main can drive both via Run(ctx). Constructors
 // for cmd/server's transport shell mirror the `workerruntime.Runtime`
 // shape for cmd/worker (P1-3), minus the worker-specific background
@@ -101,7 +101,7 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 		// ModelsHandler probes the sidecar at request time; when empty the
 		// canonical "models sidecar not configured" 200 JSON is returned.
 		ModelsSidecarURL: cfg.ClipIndexer.ServerURL,
-		// FASE 7 routing singleton from app.wiring.DomainBundle; held on the
+		// FASE 7 routing singleton from app.DomainBundle; held on the
 		// server for downstream handlers. nil-typed-port safe.
 		ImageSearchResolver: deps.Images.ImageSearchResolver,
 	})

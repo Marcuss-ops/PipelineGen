@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -136,8 +135,8 @@ var _ delivery.Publisher = (*stubPublisher)(nil)
 
 // ── Test helpers ───────────────────────────────────────────────────────
 
-func validPayload() publishdrive.TypedStageEventPayload {
-	return publishdrive.TypedStageEventPayload{
+func validPayload() TypedStageEventPayload {
+	return TypedStageEventPayload{
 		StageID:     "art-1234567890-abcd",
 		JobID:       "job-x",
 		LocalPath:   "/var/lib/pipelinegen/staging/job-x/art-1234567890-abcd",
@@ -150,10 +149,10 @@ func validPayload() publishdrive.TypedStageEventPayload {
 	}
 }
 
-func makeEvent(payload publishdrive.TypedStageEventPayload) outboxevents.Event {
+func makeEvent(payload TypedStageEventPayload) outboxevents.Event {
 	body, _ := json.Marshal(payload)
 	return outboxevents.Event{
-		EventType:   publishdrive.EventTypeArtifactStaged,
+		EventType:   EventTypeArtifactStaged,
 		PayloadJSON: string(body),
 		EventKey:    "stage:job-x:art-1234567890-abcd",
 	}
@@ -162,7 +161,7 @@ func makeEvent(payload publishdrive.TypedStageEventPayload) outboxevents.Event {
 // newHandler constructs a Handler backed by a stubRepository +
 // stubPublisher + observed zap.Logger. Tests use observerLogs to
 // assert on emitted structured-log fields.
-func newHandler(t *testing.T) (*publishdrive.Handler, *stubRepository, *stubPublisher, *observer.ObservedLogs) {
+func newHandler(t *testing.T) (*Handler, *stubRepository, *stubPublisher, *observer.ObservedLogs) {
 	t.Helper()
 	repo := &stubRepository{}
 	pub := &stubPublisher{
@@ -176,7 +175,7 @@ func newHandler(t *testing.T) (*publishdrive.Handler, *stubRepository, *stubPubl
 	}
 	core, logs := observer.New(zapcore.InfoLevel)
 	log := zap.New(core)
-	h, err := publishdrive.NewHandler(repo, pub, log)
+	h, err := NewHandler(repo, pub, log)
 	if err != nil {
 		t.Fatalf("NewHandler (test helper): %v", err)
 	}
@@ -188,7 +187,7 @@ func newHandler(t *testing.T) (*publishdrive.Handler, *stubRepository, *stubPubl
 func TestNewHandler_RejectsNilRepo(t *testing.T) {
 	pub := &stubPublisher{}
 	core, _ := observer.New(zapcore.InfoLevel)
-	_, err := publishdrive.NewHandler(nil, pub, zap.New(core))
+	_, err := NewHandler(nil, pub, zap.New(core))
 	if err == nil {
 		t.Fatalf("NewHandler(nil repo): expected error, got nil")
 	}
@@ -199,7 +198,7 @@ func TestNewHandler_RejectsNilRepo(t *testing.T) {
 func TestNewHandler_RejectsNilPublisher(t *testing.T) {
 	repo := &stubRepository{}
 	core, _ := observer.New(zapcore.InfoLevel)
-	_, err := publishdrive.NewHandler(repo, nil, zap.New(core))
+	_, err := NewHandler(repo, nil, zap.New(core))
 	if err == nil {
 		t.Fatalf("NewHandler(nil publisher): expected error, got nil")
 	}
@@ -210,7 +209,7 @@ func TestNewHandler_RejectsNilPublisher(t *testing.T) {
 func TestNewHandler_RejectsNilLog(t *testing.T) {
 	repo := &stubRepository{}
 	pub := &stubPublisher{}
-	_, err := publishdrive.NewHandler(repo, pub, nil)
+	_, err := NewHandler(repo, pub, nil)
 	if err == nil {
 		t.Fatalf("NewHandler(nil log): expected error, got nil")
 	}
@@ -220,10 +219,10 @@ func TestNewHandler_RejectsNilLog(t *testing.T) {
 
 func TestHandler_EventTypeAndIdempotencyKeyStable(t *testing.T) {
 	h, _, _, _ := newHandler(t)
-	if got, want := h.EventType(), publishdrive.EventTypeArtifactStaged; got != want {
+	if got, want := h.EventType(), EventTypeArtifactStaged; got != want {
 		t.Errorf("EventType() = %q, want %q", got, want)
 	}
-	if got, want := h.IdempotencyKey(), publishdrive.EventTypeArtifactStaged; got != want {
+	if got, want := h.IdempotencyKey(), EventTypeArtifactStaged; got != want {
 		t.Errorf("IdempotencyKey() = %q, want %q", got, want)
 	}
 }
@@ -377,10 +376,10 @@ func TestHandler_Handle_TerminalStateRejection_ReturnsNil(t *testing.T) {
 func TestHandler_Handle_RejectsMalformedJSON(t *testing.T) {
 	h, repo, pub, _ := newHandler(t)
 	err := h.Handle(context.Background(), outboxevents.Event{
-		EventType:   publishdrive.EventTypeArtifactStaged,
+		EventType:   EventTypeArtifactStaged,
 		PayloadJSON: "[not-json",
 	})
-	if !errors.Is(err, publishdrive.ErrInvalidPayload) {
+	if !errors.Is(err, ErrInvalidPayload) {
 		t.Errorf("Handle malformed JSON: err = %v, want ErrInvalidPayload", err)
 	}
 	if got := len(pub.pubCalls); got != 0 {
@@ -397,7 +396,7 @@ func TestHandler_Handle_RejectsEmptyStageID(t *testing.T) {
 	h, _, pub, _ := newHandler(t)
 	p := validPayload()
 	p.StageID = ""
-	if err := h.Handle(context.Background(), makeEvent(p)); !errors.Is(err, publishdrive.ErrEmptyStageID) {
+	if err := h.Handle(context.Background(), makeEvent(p)); !errors.Is(err, ErrEmptyStageID) {
 		t.Errorf("Handle empty StageID: err = %v, want ErrEmptyStageID", err)
 	}
 	if got := len(pub.pubCalls); got != 0 {
@@ -412,7 +411,7 @@ func TestHandler_Handle_RejectsDestinationWithoutPrefix(t *testing.T) {
 	p := validPayload()
 	p.Destination = "voiceover/test" // missing "drive:" prefix
 	err := h.Handle(context.Background(), makeEvent(p))
-	if !errors.Is(err, publishdrive.ErrDestinationFormat) {
+	if !errors.Is(err, ErrDestinationFormat) {
 		t.Errorf("Handle bad destination: err = %v, want ErrDestinationFormat", err)
 	}
 	if got := len(pub.pubCalls); got != 0 {
@@ -427,7 +426,7 @@ func TestHandler_Handle_RejectsDestinationEmptyKey(t *testing.T) {
 	p := validPayload()
 	p.Destination = "drive:/test" // empty key after "drive:"
 	err := h.Handle(context.Background(), makeEvent(p))
-	if !errors.Is(err, publishdrive.ErrDestinationFormat) {
+	if !errors.Is(err, ErrDestinationFormat) {
 		t.Errorf("Handle empty-key destination: err = %v, want ErrDestinationFormat", err)
 	}
 }

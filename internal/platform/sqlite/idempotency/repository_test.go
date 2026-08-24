@@ -15,7 +15,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 )
 
 // openTestDB creates a one-shot in-memory SQLite db with the

@@ -1,4 +1,4 @@
-package assets
+package maintenance
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

@@ -1,9 +1,9 @@
-package assets
+package artlist
 
 import (
 	"context"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

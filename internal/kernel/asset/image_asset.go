@@ -41,3 +41,42 @@ type ImageTag struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
+
+// RepositoryListFilter is the read-request filter shape for the SQLite images_repository ListImages path.
+type RepositoryListFilter struct {
+	SubjectID string
+	Origins   []ImageOrigin
+	Providers []string
+	StyleIDs  []string
+	Tags      []string
+	Limit     int
+}
+
+// RepositoryImageRow is the read-model returned by the SQLite images_repository.
+type RepositoryImageRow struct {
+	AssetID       string
+	Subject       string
+	Slug          string
+	Name          string
+	PreviewURL    string
+	Provider      string
+	Origin        ImageOrigin
+	License       string
+	Author        string
+	SourcePageURL string
+	DriveLink     string
+	LegacyFileMD5 string
+	Description   string
+	Width         int
+	Height        int
+	Score         float64
+	Tags          []string
+	StyleID       string
+	StyleVersion  string
+	CreatedAt     string
+}
+
+const (
+	DefaultResolvedLimit = 25
+	MaxListImagesLimit   = 100
+)

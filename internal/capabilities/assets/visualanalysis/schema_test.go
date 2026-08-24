@@ -1,4 +1,4 @@
-package assets
+package visualanalysis
 
 import (
 	"testing"

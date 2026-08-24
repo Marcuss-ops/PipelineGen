@@ -22,7 +22,7 @@ import (
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────────
 
-// GenerateImageRequest is the canonical request for AI image generation.
+// GenerateImageRequest is the canonical request for AI image 
 // It contains all parameters needed by any image generation provider
 // (Playwright/Chrome, NVIDIA Flux, remote generation, etc.).
 type GenerateImageRequest struct {
@@ -72,44 +72,9 @@ type GenerateImageRequest struct {
 	OutputPath string `json:"output_path,omitempty"`
 }
 
-// GeneratedImage is the canonical result of a successful image generation.
-// It carries the raw image bytes, metadata, and the on-disk path for
-// file-based ingest into media_assets.
-type GeneratedImage struct {
-	// Data is the raw image bytes (PNG, JPEG, etc.).
-	Data []byte `json:"-"`
-
-	// Format is the MIME type or file extension (e.g. "png", "jpg").
-	Format string `json:"format"`
-
-	// Width and Height are the actual pixel dimensions of the generated image.
-	Width  int `json:"width"`
-	Height int `json:"height"`
-
-	// PromptUsed is the exact prompt that was sent to the generator
-	// (may differ from request if the provider normalises it).
-	PromptUsed string `json:"prompt_used"`
-
-	// Provider identifies which generator produced this image
-	// (e.g. "google-slides", "nvidia-flux").
-	// Used as the source label in media_assets.
-	Provider string `json:"provider"`
-
-	// SourceHash is a deterministic idempotency key computed as
-	// SHA256(provider + normalized_prompt + style + width + height + model).
-	// It prevents duplicate generation of identical requests.
-	SourceHash string `json:"source_hash,omitempty"`
-
-	// OutputPath is the canonical on-disk path where the image was saved
-	// by the provider. When set, ingestGeneratedImage opens this file
-	// directly instead of re-reading Data bytes, enabling zero-copy
-	// file-based ingest into media_assets (FASE 9, June 2026).
-	OutputPath string `json:"output_path,omitempty"`
-}
-
 // ── Structural port ───────────────────────────────────────────────────────
 
-// ImageGenerator is the canonical port for AI image generation.
+// ImageGenerator is the canonical port for AI image 
 //
 // The service layer depends on this interface, not on concrete providers.
 // Concrete infrastructure implementations satisfy this port
@@ -209,7 +174,7 @@ var ErrImageGenBlankOrPlaceholder = fmt.Errorf("image generation: blank/placehol
 //
 // godlike/07 FAIL-CLOSED contract (P0.4, July 2026): the pre-fix
 // behaviour logged a screenshot and PROCEEDED with extraction,
-// potentially ingesting a stale image from a previous generation.
+// potentially ingesting a stale image from a previous 
 // We RETIRE that path: timeout is a terminal failure for this
 // request, the worker reports ErrImageGenTimeout, and the caller
 // (and the page-recycle wiring in chrome_provider.go::resetWorker)
@@ -319,7 +284,7 @@ func ClassifyError(errMsg string) error {
 // ComputeSourceHash returns a deterministic idempotency key for a generation
 // request. SHA256(provider + "|" + normalized_prompt + "|" + style + "|" +
 // width + "|" + height + "|" + model). Same request → same hash → no
-// duplicate generation.
+// duplicate 
 func ComputeSourceHash(provider, prompt, style string, width, height int, model string) string {
 	// Normalise: trim + lowercase for consistent hashing.
 	prompt = strings.TrimSpace(strings.ToLower(prompt))

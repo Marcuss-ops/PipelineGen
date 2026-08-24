@@ -32,11 +32,11 @@
 #
 # Temporary entries retained while these legacy command/adapter files are
 # split into focused units. They remain below the 1000-LOC hard cap.
-cmd/admin/broken_references.go  # split pending, owner=admin, deadline=2026-09-30
-cmd/admin/sqlite_audit.go  # split pending, owner=admin, deadline=2026-09-30
-cmd/admin/storage_snapshot.go  # split pending, owner=admin, deadline=2026-09-30
-internal/application/voiceover/process_segment.go  # split pending, owner=voiceover, deadline=2026-09-30
-internal/platform/sqlite/assets/asset_committer.go  # split pending, owner=assets, deadline=2026-09-30
+cmd/admin/internal/audit/broken_references.go  # split pending, owner=admin, deadline=2026-09-30
+cmd/admin/internal/audit/sqlite_audit.go  # split pending, owner=admin, deadline=2026-09-30
+cmd/admin/internal/audit/storage_snapshot.go  # split pending, owner=admin, deadline=2026-09-30
+internal/capabilities/voiceover/service/process_segment.go  # split pending, owner=voiceover, deadline=2026-09-30
+internal/platform/sqlite/assets/imagesregistry/asset_committer.go  # split pending, owner=assets, deadline=2026-09-30
 internal/platform/qdrant/collections/projection_manager.go  # split pending, owner=qdrant, deadline=2026-09-30
 #
 # POLICY: any NEW file exceeding 600 LOC must be split before merge

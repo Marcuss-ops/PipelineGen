@@ -19,7 +19,7 @@
 // until ctx.Done(); cancellation drops the loop without a final
 // flush (the next worker startup or admin command picks up any
 // in-flight stuck rows).
-package assets
+package reconciler
 
 import (
 	"context"

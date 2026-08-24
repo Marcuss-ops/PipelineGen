@@ -29,7 +29,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

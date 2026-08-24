@@ -27,7 +27,7 @@
 // end-to-end SQL assertion belongs to the logsink package's own
 // tests, where the infra import is allowed.
 
-package httpserver
+package middleware
 
 import (
 	"context"
@@ -37,7 +37,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware/requestlog"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

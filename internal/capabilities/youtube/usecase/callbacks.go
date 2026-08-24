@@ -19,7 +19,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/classifier"

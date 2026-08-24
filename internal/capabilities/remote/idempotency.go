@@ -40,7 +40,7 @@ package remote
 import (
 	"errors"
 
-	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -49,7 +49,7 @@ import (
 // the typed-factory pattern. Future production callers SHOULD
 // migrate to:
 //
-//	derive := remote.MakeArtifactIdempotencyKey(hashutil.HashFunc)
+//	derive := MakeArtifactIdempotencyKey(hashutil.HashFunc)
 //	service := &ArtifactService{derive: derive, ...} // field injection
 //
 // (composition root wires the derive using hashutil.HashFunc
@@ -135,9 +135,9 @@ type ArtifactIdempotencyKeyFunc func(jobID, artifactID, sha256Hex string) string
 // (composition root MUST inject a non-nil HashFunc,
 // or a test fake for unit-test isolation per Commit D spec literal
 // "Aggiungi un test unit con fake `HashFunc`").
-func MakeArtifactIdempotencyKey(hash domainhashutil.HashFunc) ArtifactIdempotencyKeyFunc {
+func MakeArtifactIdempotencyKey(hash hashutil.HashFunc) ArtifactIdempotencyKeyFunc {
 	if hash == nil {
-		panic("remote.MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
+		panic("MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
 	return func(jobID, artifactID, sha256Hex string) string {
 		if jobID == "" || artifactID == "" || sha256Hex == "" {
@@ -156,7 +156,7 @@ func MakeArtifactIdempotencyKey(hash domainhashutil.HashFunc) ArtifactIdempotenc
 // New code SHOULD prefer MakeArtifactIdempotencyKey + struct-field injection for
 // explicit hash customisation (testable with fake HashFunc per the
 // Commit D spec).
-var defaultArtifactKey = MakeArtifactIdempotencyKey(domainhashutil.SHA256String)
+var defaultArtifactKey = MakeArtifactIdempotencyKey(hashutil.SHA256String)
 
 // IsValidIdempotencyKey returns true if `key` is a well-formed
 // X-Idempotency-Key header value: either the empty marker (64-char

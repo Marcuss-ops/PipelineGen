@@ -418,7 +418,7 @@ func TestJobRegistryRecorder_PreservesPayloadAndRuntimeLineage(t *testing.T) {
 }
 
 // TestJobRegistryRecorder_FinishAnchorsStartedAtToRunStart pins the
-// telemetry anchoring fix: jobs.started_at and worker.execution.started_at
+// telemetry anchoring fix: started_at and worker.execution.started_at
 // must be the run's start (RunReport.StartedAt), not the claim (job.StartedAt),
 // so completed_at − started_at reconciles with duration_ms (RunReport.WallTimeMs).
 func TestJobRegistryRecorder_FinishAnchorsStartedAtToRunStart(t *testing.T) {
@@ -446,10 +446,10 @@ func TestJobRegistryRecorder_FinishAnchorsStartedAtToRunStart(t *testing.T) {
 		t.Fatalf("jobs writes = %d, want 2", len(fake.jobs))
 	}
 	if got := fake.jobs[1].StartedAt; got != wantStarted {
-		t.Fatalf("jobs.started_at = %q, want run start %q (not claim)", got, wantStarted)
+		t.Fatalf("started_at = %q, want run start %q (not claim)", got, wantStarted)
 	}
 	if got := fake.jobs[1].DurationMS; got != 3000 {
-		t.Fatalf("jobs.duration_ms = %d, want 3000 (wall time)", got)
+		t.Fatalf("duration_ms = %d, want 3000 (wall time)", got)
 	}
 
 	lastStep := fake.steps[len(fake.steps)-1]
@@ -482,7 +482,7 @@ func TestJobRegistryRecorder_StartAnchorsToRunFromContext(t *testing.T) {
 	recorder.Start(kernobs.WithRun(context.Background(), run), j, "worker-1", "attempt-anchor-start")
 
 	if got := fake.jobs[len(fake.jobs)-1].StartedAt; got != runStart {
-		t.Fatalf("jobs.started_at = %q, want run start %q (not claim)", got, runStart)
+		t.Fatalf("started_at = %q, want run start %q (not claim)", got, runStart)
 	}
 	step := fake.steps[len(fake.steps)-1]
 	if got := step.StartedAt; got != runStart {

@@ -3,7 +3,7 @@
 // diagnostics, clipresolver recommend, and catalog sync. Split out from
 // the now-deleted internal/api/sources/ package (PR-A Phase 3 consolidation)
 // to keep the Artlist transport isolated from the rest of SourcesHandler.
-package assets
+package artlist
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

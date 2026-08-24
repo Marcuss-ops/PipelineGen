@@ -9,11 +9,11 @@
 // typed-narrow cluster interface + 4 standard infra. The composition
 // root wires (`*clips.Handler).nonops` (parent's NonOpsHandler
 // pointer already built in NewHandler) as the ProcessingRoutes value.
-package assets
+package processing
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

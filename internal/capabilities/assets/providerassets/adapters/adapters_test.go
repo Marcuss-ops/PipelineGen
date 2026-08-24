@@ -1,11 +1,11 @@
-package assets
+package adapters
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )

@@ -25,7 +25,7 @@
 // Drive upload, the SQLite INSERT, the outbox event commit, the
 // per-job atomic publish, or the finalizer. Those belong to
 // FASE 3-B/C/D respectively.
-package assets
+package staging
 
 import (
 	"context"

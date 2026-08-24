@@ -12,7 +12,7 @@
 //     expansion sentinel constant.
 //   - requests.go — the 3 wire-shape DTOs (RegisterFromYouTubeRequest +
 //     BatchRegisterRequest + BatchRegisterResponse).
-package assets
+package register
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )

@@ -16,7 +16,7 @@
 //
 // godlike/06 SSOT: RunRecord fields live in ports.go; the artlist_runs
 // schema lives in migrations/sqlite/001_velox_core.sql.
-package assets
+package artlist
 
 import (
 	"context"
@@ -29,9 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

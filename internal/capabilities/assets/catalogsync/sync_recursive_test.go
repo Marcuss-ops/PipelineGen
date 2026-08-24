@@ -1,4 +1,4 @@
-package assets
+package catalogsync
 
 import (
 	"strings"

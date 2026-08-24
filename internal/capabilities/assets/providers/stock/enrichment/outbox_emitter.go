@@ -14,7 +14,7 @@
 //   - The AssetPublishedEmitter port (1-method interface) lives
 //     ONLY in emitter.go (the canonical port per godlike/06 SSOT).
 //   - The v1 envelope wire-shape lives ONLY in
-//     outbox.AssetPublishedRequestV1 (canonical SOLE owner).
+//     jobs.AssetPublishedRequestV1 (canonical SOLE owner).
 //   - The event-type constant lives ONLY at
 //     outboxevents.EventAssetPublished (canonical SOLE owner).
 //   - The aggregate_type value "media_asset" is the codebase's
@@ -53,7 +53,7 @@
 // No silent-success path exists — a successful emit
 // ALWAYS corresponds to a row in outbox_events (new or
 // pre-existing with the same event_key).
-package assets
+package enrichment
 
 import (
 	"context"
@@ -63,7 +63,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -135,7 +135,7 @@ func NewOutboxBackedAssetPublishedEmitter(db *sql.DB, log *zap.Logger) (*outboxB
 // godlike/07 nil-tolerance: nil-receiver safe. A nil
 // *outboxBackedAssetPublishedEmitter returns the composition-time
 // sentinel (mirrors the stub's nil-tolerance discipline).
-func (e *outboxBackedAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload outbox.AssetPublishedRequestV1) error {
+func (e *outboxBackedAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload jobs.AssetPublishedRequestV1) error {
 	if e == nil || e.db == nil {
 		return WrapHandlerNotConfigured("emitter")
 	}

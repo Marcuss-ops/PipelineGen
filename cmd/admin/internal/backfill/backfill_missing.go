@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -33,7 +33,7 @@ func RunBackfillMissing(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, coreCleanup, err := app.InitComposition(cfg, log)
+	root, _, coreCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -64,7 +64,7 @@ func RunBackfillMissing(args []string) error {
 		WHERE `
 	var queryArgs []any
 	if strings.TrimSpace(*assetIDs) != "" {
-		ids := splitCSV(*assetIDs)
+		ids := cli.SplitCSV(*assetIDs)
 		placeholders := make([]string, len(ids))
 		for i, id := range ids {
 			placeholders[i] = "?"

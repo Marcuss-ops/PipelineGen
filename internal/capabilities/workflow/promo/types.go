@@ -1,6 +1,6 @@
 // Package promo provides a multi-language voiceover generation workflow.
 // Extracted from voiceover/promo.go (PR 6, June 2026).
-package workflow
+package promo
 
 import "errors"
 

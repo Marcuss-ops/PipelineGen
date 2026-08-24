@@ -5,7 +5,7 @@
 // small per-group child stock jobs. Each child job receives at most
 // MaxClipsPerGroup clips, and all children share the source through
 // the cross-run source cache.
-package assets
+package stockplan
 
 import (
 	"context"

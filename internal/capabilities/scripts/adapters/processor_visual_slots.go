@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	visual "github.com/Marcuss-ops/PipelineGen/internal/application/visual"
+	visual "github.com/Marcuss-ops/PipelineGen/internal/capabilities/visual"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

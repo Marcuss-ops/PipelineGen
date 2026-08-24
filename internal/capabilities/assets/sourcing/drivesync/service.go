@@ -20,14 +20,14 @@
 // (currently `*outbox.Dispatcher` covers the IndexDispatcher family but
 // not the legacy Enqueue(ctx, EnqueueRequest) surface), the adapter is
 // a one-field struct mapping EnqueueRequest → the outbox API.
-package assets
+package drivesync
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // Service is the DriveFolderSynchronizer implementation. 2-port budget per

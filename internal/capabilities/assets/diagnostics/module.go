@@ -29,7 +29,7 @@
 //
 // UNIQUE TO DIAGNOSTICS (vs stock/voiceover/soundeffect/register):
 // the Handler is the thinnest in the assets tree today — it depends
-// on a single *appdiag.Service (1 dep) plus a logger. The 3 routes
+// on a single *Service (1 dep) plus a logger. The 3 routes
 // (/diagnostics + /index-health + /qdrant/cleanup) all delegate to
 // the Service.Check method (with the QDRANT-005 cleanup endpoint
 // returning an honest status — the background cleaner was removed in
@@ -45,27 +45,26 @@
 // tests, internal services) reads a raw *Handler from outside the
 // package.
 //
-// The composition root constructs the *appdiag.Service from 3 typed-
+// The composition root constructs the *Service from 3 typed-
 // port adapters (IndexHealthAdapter + AssetStatsAdapter + ZapLogAdapter)
 // in `internal/app/module_media.go::WireAssets` per AGENTS.md Pattern 0
 // (the api/ layer must stay thin; the composition root owns the
 // typed-port adapter chain). The Service flows through Build as a
 // flat Dependencies field (canonical pattern: composition root
 // builds, api layer consumes).
-package assets
+package diagnostics
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // Dependencies is the typed narrow input to Build. The Handler depends
-// on a *appdiag.Service (constructed at the composition root), an
+// on a *Service (constructed at the composition root), an
 // EnabledFunc, an optional list of route-module decorators, and a
 // logger.
 //
@@ -74,7 +73,7 @@ import (
 // short-circuits to 503 — never panic, never NPE). Logger nil →
 // zap.NewNop() (composition-root-friendly default).
 type Dependencies struct {
-	// Service is the canonical *appdiag.Service façade built by
+	// Service is the canonical *Service façade built by
 	// the composition root in
 	// `internal/app/module_media.go::WireAssets` from the
 	// typed-port adapter chain (IndexHealthAdapter +
@@ -83,7 +82,7 @@ type Dependencies struct {
 	// the 3 routes call svc.Check unconditionally. A nil
 	// Service would NPE at first request; fail at startup
 	// instead.
-	Service *appdiag.Service
+	Service *Service
 
 	// EnabledFunc is the closure that decides whether the
 	// module's routes are mounted. The diagnostics capability
@@ -163,7 +162,7 @@ func (d *DiagnosticsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 func Build(deps Dependencies) (api.Descriptor, error) {
 	// Mandatory-shape validation.
 	if deps.Service == nil {
-		return nil, fmt.Errorf("diagnostics.Build: Service is required (composition root must pre-construct *appdiag.Service from the 3 typed-port adapters IndexHealthAdapter + AssetStatsAdapter + ZapLogAdapter; the api/ layer never builds it)")
+		return nil, fmt.Errorf("diagnostics.Build: Service is required (composition root must pre-construct *Service from the 3 typed-port adapters IndexHealthAdapter + AssetStatsAdapter + ZapLogAdapter; the api/ layer never builds it)")
 	}
 	if deps.EnabledFunc == nil {
 		return nil, fmt.Errorf("diagnostics.Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")

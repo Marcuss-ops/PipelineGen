@@ -35,7 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"os"
 	"path/filepath"
 	"strings"

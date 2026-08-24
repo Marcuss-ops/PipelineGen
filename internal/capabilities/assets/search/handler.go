@@ -5,13 +5,13 @@
 // (Artlist /search + /search/live, YouTube /search, clips /search/advanced,
 // scraper /search, /api/assets/search) are absorbed into a single
 // POST /api/media/search endpoint. The handler delegates to the canonical
-// search.Aggregator. Response envelope is the canonical search.Result
+// Aggregator. Response envelope is the canonical Result
 // projection (items, next_cursor, partial, provider_errors).
 //
 // Body: { "query": "text", "sources": ["youtube","artlist"], "mode": "hybrid",
 //
 //	"filters": { "source": "...", "media_type": "video", ... }, "limit": 20 }
-package assets
+package search
 
 import (
 	"context"
@@ -22,8 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/application/assets/resolver"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -32,7 +31,7 @@ import (
 // Handler is the thin HTTP transport for canonical Aggregator-backed
 // unified media search. Wire shape: POST /api/media/search with JSON body.
 type Handler struct {
-	aggreg   *search.Aggregator
+	aggreg   *Aggregator
 	resolver interface {
 		Resolve(context.Context, assetresolver.Request) (*providers.FetchedAsset, error)
 	}
@@ -40,7 +39,7 @@ type Handler struct {
 }
 
 // NewHandler constructs the canonical Aggregator-backed SearchHandler.
-func NewHandler(aggreg *search.Aggregator, resolver interface {
+func NewHandler(aggreg *Aggregator, resolver interface {
 	Resolve(context.Context, assetresolver.Request) (*providers.FetchedAsset, error)
 }, log *zap.Logger) *Handler {
 	return &Handler{aggreg: aggreg, resolver: resolver, log: log}
@@ -93,7 +92,7 @@ func (h *Handler) Resolve(c *gin.Context) {
 // searchRequest is the canonical JSON body for POST /api/media/search.
 //
 // Field semantics (Blocco A2):
-//   - query     — Text field for canonical search.Query
+//   - query     — Text field for canonical Query
 //   - sources   — Source filter (empty=all: artlist,youtube,stock,clips,sound_effect)
 //   - mode      — "hybrid" (default) or "ann" for semantic backend
 //   - filters   — Structured filters (source, media_type, category, language, tags, duration_ms_min)
@@ -143,10 +142,10 @@ func (h *Handler) Search(c *gin.Context) {
 		apiutil.BadRequest(c, "query is required")
 		return
 	}
-	limit := defaults.Int(req.Limit, search.DefaultLimit)
+	limit := defaults.Int(req.Limit, DefaultLimit)
 
 	// Parse mode from the wire value; unknown/empty defaults to hybrid.
-	mode := search.ParseMode(req.Mode)
+	mode := ParseMode(req.Mode)
 
 	// PR-SEARCH-HANDLER-MOUNT (July 2026): the /api/media/search
 	// endpoint is admin-authenticated. Set IsAdmin=true so the
@@ -155,7 +154,7 @@ func (h *Handler) Search(c *gin.Context) {
 	// search with mode=hybrid fails with
 	// "SearchScope.WorkspaceID is required" from the Qdrant
 	// filter compiler, producing 503 + ErrSemanticBackendUnavailable.
-	actor := search.Actor{IsAdmin: true, IsSystem: true}
+	actor := Actor{IsAdmin: true, IsSystem: true}
 	if isAdmin, ok := c.Get("is_admin"); ok {
 		if adminFlag, ok2 := isAdmin.(bool); ok2 {
 			actor.IsAdmin = adminFlag
@@ -163,15 +162,15 @@ func (h *Handler) Search(c *gin.Context) {
 		}
 	}
 
-	res, err := h.aggreg.Search(c.Request.Context(), search.Query{
+	res, err := h.aggreg.Search(c.Request.Context(), Query{
 		Text:     q,
 		Sources:  req.Sources,
 		Limit:    limit,
 		Mode:     mode,
-		Universe: search.ParseUniverse(req.Universe),
+		Universe: ParseUniverse(req.Universe),
 		Cursor:   req.Cursor,
 		Actor:    actor,
-		Filters: search.Filters{
+		Filters: Filters{
 			Source:        strings.TrimSpace(req.Filters.Source),
 			MediaType:     strings.TrimSpace(req.Filters.MediaType),
 			Category:      strings.TrimSpace(req.Filters.Category),
@@ -185,12 +184,12 @@ func (h *Handler) Search(c *gin.Context) {
 		// A bare switch on the error value would miss wrapped forms (e.g. ErrAllBackendsFailed
 		// is wrapped as "%w: N backend(s) failed").
 		switch {
-		case errors.Is(err, search.ErrInvalidCursor):
+		case errors.Is(err, ErrInvalidCursor):
 			apiutil.Error(c, http.StatusUnprocessableEntity, "invalid cursor")
-		case errors.Is(err, search.ErrCursorEncoding):
+		case errors.Is(err, ErrCursorEncoding):
 			h.log.Error("search cursor encoding failed", zap.Error(err))
 			apiutil.InternalError(c, err)
-		case errors.Is(err, search.ErrAllBackendsFailed):
+		case errors.Is(err, ErrAllBackendsFailed):
 			// 502 Bad Gateway — every eligible backend errored.
 			// res.ProviderErrors carries per-backend diagnostics (e.g.
 			// {"semantic":"embed channel ...", "local":"no such column: status"}).
@@ -212,8 +211,8 @@ func (h *Handler) Search(c *gin.Context) {
 				"error":           err.Error(),
 				"provider_errors": providerErrs,
 			})
-		case errors.Is(err, search.ErrNoEligibleBackends),
-			errors.Is(err, search.ErrSemanticBackendUnavailable):
+		case errors.Is(err, ErrNoEligibleBackends),
+			errors.Is(err, ErrSemanticBackendUnavailable):
 			// 503 Service Unavailable — no backend matches the query filters.
 			apiutil.Error(c, http.StatusServiceUnavailable, err.Error())
 		default:

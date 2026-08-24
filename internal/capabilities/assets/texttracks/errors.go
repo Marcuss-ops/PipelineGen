@@ -8,7 +8,7 @@
 // job handler in jobs.go classifies these sentinels into TERMINAL
 // (no retry benefit) vs RETRYABLE (broker default policy) per the
 // canonical broker job-handler pattern.
-package assets
+package texttracks
 
 import (
 	"errors"

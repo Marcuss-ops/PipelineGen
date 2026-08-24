@@ -13,7 +13,7 @@
 // The sort is implemented as a copy + SliceStable so the input
 // slice is not mutated (good citizen at the merge step where the
 // dedupIndex's merged slice is shared with future insert paths).
-package assets
+package search
 
 import "sort"
 

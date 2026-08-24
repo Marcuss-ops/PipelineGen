@@ -33,9 +33,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -115,7 +115,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 
 	if profile == nil {
 		// Legacy (no-profile) path
-		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+		compositionRoot, workerCleanup, workerErr := InitWorkerComposition(cfg, log)
 		if workerErr != nil {
 			log.Error("failed to build worker composition", zap.Error(workerErr))
 			err = fmt.Errorf("worker composition: %w", workerErr)
@@ -123,7 +123,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}
 		cleanup = workerCleanup
 
-		registry, registeredCaps, registryErr := app.BuildWorkerRegistry(compositionRoot)
+		registry, registeredCaps, registryErr := BuildWorkerRegistry(compositionRoot)
 		if registryErr != nil {
 			log.Error("failed to build worker registry", zap.Error(registryErr))
 			err = fmt.Errorf("worker registry: %w", registryErr)
@@ -177,11 +177,11 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		// composition without DB, Drive, Qdrant, Scheduler, or
 		// CatalogSync reach. Registry + workspace are built by
 		// the canonical CreatorRuntime factory
-		// (app.BuildCreatorRuntime in creator_runtime.go).
+		// (BuildCreatorRuntime in creator_runtime.go).
 		// The no-DB / no-Qdrant / no-Scheduler / no-CatalogSync
 		// contract is enforced at the canonical surface via
 		// compile-time orphan pin + import-allowlist AST scan.
-		creatorRuntime, creatorCleanup, creatorErr := app.BuildCreatorRuntime(cfg, log)
+		creatorRuntime, creatorCleanup, creatorErr := wiring.BuildCreatorRuntime(cfg, log)
 		if creatorErr != nil {
 			log.Error("failed to build creator runtime", zap.Error(creatorErr))
 			err = fmt.Errorf("creator runtime: %w", creatorErr)
@@ -207,7 +207,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}, nil
 
 	case "renderer":
-		renderingRuntime, renderingCleanup, renderingErr := app.BuildRenderingRuntime(cfg, log)
+		renderingRuntime, renderingCleanup, renderingErr := wiring.BuildRenderingRuntime(cfg, log)
 		if renderingErr != nil {
 			err = fmt.Errorf("rendering runtime: %w", renderingErr)
 			return nil, err
@@ -240,7 +240,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 
 	default:
 		// Standard profile-gated worker: full ComposeRoot with DB, Drive, etc.
-		compositionRoot, workerCleanup, workerErr := app.InitWorkerComposition(cfg, log)
+		compositionRoot, workerCleanup, workerErr := InitWorkerComposition(cfg, log)
 		if workerErr != nil {
 			log.Error("failed to build worker composition", zap.Error(workerErr))
 			err = fmt.Errorf("worker composition: %w", workerErr)
@@ -248,7 +248,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}
 		cleanup = workerCleanup
 
-		registry, registeredCaps, registryErr := app.BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
+		registry, registeredCaps, registryErr := BuildProfileWorkerRegistry(compositionRoot, profile.AllowedJobTypes)
 		if registryErr != nil {
 			log.Error("failed to build profile worker registry", zap.Error(registryErr))
 			err = fmt.Errorf("profile worker registry: %w", registryErr)

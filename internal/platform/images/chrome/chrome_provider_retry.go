@@ -25,7 +25,7 @@ package chrome
 import (
 	"context"
 	"errors"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 
 	"go.uber.org/zap"
 )

@@ -36,7 +36,7 @@ func RunPerformanceBackfill(args []string) error {
 	if *limit < 0 {
 		return fmt.Errorf("--limit must be non-negative")
 	}
-	types := splitBackfillCSV(*jobType)
+	types := cli.SplitBackfillCSV(*jobType)
 
 	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {

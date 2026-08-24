@@ -21,9 +21,8 @@ import (
 	"fmt"
 	"strings"
 
+	legacyaudit "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audit"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/legacyaudit"
 )
 
 // DeleteOptions is the typed-input envelope for Service.Delete.

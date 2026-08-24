@@ -29,7 +29,7 @@
 //     search_cache_test.go bypass the constructor and construct
 //     `&liveSearchCache{items: ...}` directly to exercise L1
 //     semantics in isolation.
-package assets
+package artlist
 
 import (
 	"context"

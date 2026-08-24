@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"time"
 
-	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 

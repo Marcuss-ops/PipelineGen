@@ -26,7 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

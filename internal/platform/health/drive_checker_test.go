@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 )
 
 // TestDriveChecker_NilProbe_ApplicableFalse verifies the canonical

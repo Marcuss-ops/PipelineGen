@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // searchReadAdapter wraps *assets.ClipsRepository to satisfy the

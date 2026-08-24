@@ -2,7 +2,7 @@
 //
 // Per AGENTS.md Pattern 5 (June 2026): one concept per file. This file holds
 // the command and result structs used by the sourcing service's public API.
-package assets
+package sourcing
 
 import (
 	domain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/sourcing"

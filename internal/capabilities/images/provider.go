@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// GenerationProvider is the single backend contract for AI image generation.
+// GenerationProvider is the single backend contract for AI image 
 // Production composition must register GoogleSlidesProvider and nothing else.
 type GenerationProvider interface {
 	Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error)

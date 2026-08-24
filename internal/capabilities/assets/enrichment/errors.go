@@ -11,7 +11,7 @@
 // Companion surface: internal/kernel/asset/enrich_state.go (the typed
 // enum canonical 4-state vocabulary lives there per godlike/06 SSOT
 // one-owner-per-fact).
-package assets
+package enrichment
 
 import (
 	"errors"

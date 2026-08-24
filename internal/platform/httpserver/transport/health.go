@@ -13,7 +13,7 @@
 //   - GET /health?check=db,jobs → comma-separated (compatibility)
 //   - Unknown check → HTTP 400 (typed ErrUnknownCheck)
 //   - Empty names after normalisation → fast liveness
-package httpserver
+package transport
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/gin-gonic/gin"
 )
 

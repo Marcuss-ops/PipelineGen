@@ -34,9 +34,9 @@ import (
 // Router dispatches a SearchRequest to the right Service based
 // on origin (or to all three in "all-territories" mode).
 type Router struct {
-	retrieved Service
-	generated Service
-	catalog   Service
+	retrieved SubService
+	generated SubService
+	catalog   SubService
 }
 
 // NewRouter constructs a Router from the three canonical
@@ -44,7 +44,7 @@ type Router struct {
 // is silently skipped (not an error). At least ONE must be
 // non-nil; otherwise NewRouter returns nil and callers must
 // detect Router == nil.
-func NewRouter(retrieved, generated, catalog Service) *Router {
+func NewRouter(retrieved, generated, catalog SubService) *Router {
 	if retrieved == nil && generated == nil && catalog == nil {
 		return nil
 	}
@@ -113,11 +113,11 @@ func (r *Router) SearchAll(ctx context.Context, req SearchRequest) (SearchRespon
 }
 
 // services returns the wired sub-services in declaration order.
-func (r *Router) services() []Service {
+func (r *Router) services() []SubService {
 	if r == nil {
 		return nil
 	}
-	return []Service{r.retrieved, r.generated, r.catalog}
+	return []SubService{r.retrieved, r.generated, r.catalog}
 }
 
 // ── Sentinel errors (Step 9 stable names) ──

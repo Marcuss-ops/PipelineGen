@@ -39,7 +39,7 @@ func TestScanMonitorInfraImport_HardFail(t *testing.T) {
 
 import "context"
 
-import sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+import sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 
 type ChannelMonitor struct {
 	_ sqlassets.SomeType
@@ -139,7 +139,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 type ChannelMonitor struct {
@@ -197,7 +197,7 @@ func TestScanMonitorInfraImport_TestFileIncluded(t *testing.T) {
 	src := `package monitor
 
 import (
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 type ChannelMonitor struct {

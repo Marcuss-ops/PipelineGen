@@ -4,27 +4,26 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // TestToResolvePlanDTO_IncludesBrainDebugFields verifies that the
 // brain's intent, trace and decision fingerprint are forwarded into
 // the wire DTO.
 func TestToResolvePlanDTO_IncludesBrainDebugFields(t *testing.T) {
-	plan := mediamemory.SceneVisualPlan{
+	plan := SceneVisualPlan{
 		ProjectID: "proj-1",
 		SceneID:   "scene-1",
 		Text:      "I Maya osservavano Venere",
 		Language:  "it",
-		Intent: mediamemory.SceneIntent{
+		Intent: SceneIntent{
 			Entities: []string{"maya", "venere"},
 			Concepts: []string{"astronomia maya"},
 			Actions:  []string{"osservare"},
 			Keywords: []string{"maya", "venere", "osservare"},
 		},
-		Trace: mediamemory.SceneResolutionTrace{
+		Trace: SceneResolutionTrace{
 			NormalizedText: "i maya osservavano venere",
-			BackendCalls: []mediamemory.SceneBackendCall{
+			BackendCalls: []SceneBackendCall{
 				{Backend: "search", Hits: 10},
 			},
 			Reasons: []string{"ok"},
@@ -55,7 +54,7 @@ func TestToResolvePlanDTO_IncludesBrainDebugFields(t *testing.T) {
 // empty intent/trace/fingerprint fields are omitted from the JSON
 // response thanks to `omitempty`.
 func TestToResolvePlanDTO_EmptyBrainDebugFieldsOmitted(t *testing.T) {
-	plan := mediamemory.SceneVisualPlan{
+	plan := SceneVisualPlan{
 		ProjectID: "proj-1",
 		SceneID:   "scene-2",
 		Text:      "hello",

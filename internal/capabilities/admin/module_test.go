@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	apimiddleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	apimiddleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

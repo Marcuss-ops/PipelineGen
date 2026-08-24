@@ -10,11 +10,11 @@
 // cluster interface + 4 standard infra. The composition root wires
 // `(*clips.Handler).ingest` (parent's per-cluster handler pointer
 // already built in NewHandler) as the IngestRoutes value.
-package assets
+package ingest
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

@@ -17,10 +17,10 @@
 // `var _ <Port> = (*Adapter)(nil)` lines, one PR at a time — do NOT
 // collapse multiple ports into a single assertion or widen the
 // adapter surface to make every assertion trivial.
-package httpserver
+package middleware
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 )
 
 // Compile-time assertion (PG-006.1 round-2, June 2026): the canonical

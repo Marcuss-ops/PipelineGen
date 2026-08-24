@@ -24,12 +24,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-// SearchFanOutAdapter implements mediamemory.SearchFanOut on top
+// SearchFanOutAdapter implements SearchFanOut on top
 // of the canonical search.SearchFanOut (the one that wraps
 // search.Aggregator + telemetry decorator per PR 9).
 //
@@ -50,29 +49,29 @@ type SearchFanOutAdapter struct {
 // MUST inject a fully-wired inner (post-PR-9 telemetry decorator).
 func NewSearchFanOutAdapter(inner search.SearchFanOut) (*SearchFanOutAdapter, error) {
 	if inner == nil {
-		return nil, mediamemory.ErrCandidateNotFound // typed sentinel for fail-closed composition
+		return nil, ErrCandidateNotFound // typed sentinel for fail-closed composition
 	}
 	return &SearchFanOutAdapter{inner: inner}, nil
 }
 
 // Compile-time assertion: SearchFanOutAdapter implements
-// mediamemory.SearchFanOut. Drift surfaces as a build error.
-var _ mediamemory.SearchFanOut = (*SearchFanOutAdapter)(nil)
+// SearchFanOut. Drift surfaces as a build error.
+var _ SearchFanOut = (*SearchFanOutAdapter)(nil)
 
 // Search translates the mediamemory envelope to the canonical
 // search.Query, dispatches to inner, and projects the result back
 // to the mediamemory envelope.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: an inner-typed nil result is
-// surfaced as wrapped mediamemory.ErrCandidateNotFound (never as a
+// surfaced as wrapped ErrCandidateNotFound (never as a
 // silent zero-candidate success). ProviderErrors from the inner
 // search.Result are translated into BackendNames/BackendErrors so
 // the resolver's cascadeWarns can branch on per-backend failures.
-func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFanOutQuery) (mediamemory.SearchFanOutResult, error) {
+func (a *SearchFanOutAdapter) Search(ctx context.Context, q SearchFanOutQuery) (SearchFanOutResult, error) {
 	if a == nil || a.inner == nil {
-		return mediamemory.SearchFanOutResult{}, fmt.Errorf(
+		return SearchFanOutResult{}, fmt.Errorf(
 			"%w: search fanout adapter has nil inner (composition wiring failed)",
-			mediamemory.ErrCandidateNotFound,
+			ErrCandidateNotFound,
 		)
 	}
 
@@ -117,23 +116,23 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 
 	res, err := a.inner.Search(ctx, canonicalQuery)
 	if err != nil {
-		return mediamemory.SearchFanOutResult{}, fmt.Errorf(
+		return SearchFanOutResult{}, fmt.Errorf(
 			"mediamemory: search fanout adapter inner.Search: %w",
 			err,
 		)
 	}
 	if res == nil {
-		return mediamemory.SearchFanOutResult{}, fmt.Errorf(
+		return SearchFanOutResult{}, fmt.Errorf(
 			"mediamemory: search fanout adapter returned nil result: %w",
-			mediamemory.ErrCandidateNotFound,
+			ErrCandidateNotFound,
 		)
 	}
 
-	out := mediamemory.SearchFanOutResult{
+	out := SearchFanOutResult{
 		Partial:       res.Partial,
 		BackendNames:  make([]string, 0, len(res.ProviderErrors)),
 		BackendErrors: make(map[string]string, len(res.ProviderErrors)),
-		Candidates:    make([]mediamemory.MediaCandidate, 0, len(res.Items)),
+		Candidates:    make([]MediaCandidate, 0, len(res.Items)),
 	}
 
 	for name, msg := range res.ProviderErrors {
@@ -142,7 +141,7 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 	}
 
 	for _, c := range res.Items {
-		out.Candidates = append(out.Candidates, mediamemory.MediaCandidate{
+		out.Candidates = append(out.Candidates, MediaCandidate{
 			// godlike/06 SSOT (QDRANT-004 invariant): no
 			// LocalPath / DriveLink leaks across this boundary.
 			// The mediamemory MediaCandidate carries AssetID +
@@ -154,8 +153,8 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 			Title:                 c.Title,
 			Description:           c.Name,
 			CandidateScore:        c.Score,
-			DiscoveryStatus:       mediamemory.DiscoverySearched,
-			MaterializationStatus: mediamemory.MaterializationCold,
+			DiscoveryStatus:       DiscoverySearched,
+			MaterializationStatus: MaterializationCold,
 			AssetID:               c.AssetID,
 		})
 	}

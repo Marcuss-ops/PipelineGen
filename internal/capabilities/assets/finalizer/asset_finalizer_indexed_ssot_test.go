@@ -1,4 +1,4 @@
-package assets
+package finalizer
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -53,7 +52,7 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 	defer tx.Rollback()
 
 	artifact := publishedArtifact("asset-indexed-only-via-outbox", "hash-ssot-1", "file-ssot-1")
-	_, events, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), artifact)
+	_, events, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact)
 	if err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}

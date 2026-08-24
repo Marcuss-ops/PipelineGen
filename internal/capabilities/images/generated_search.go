@@ -22,8 +22,6 @@ package images
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -56,18 +54,18 @@ func NewGeneratedSearchServiceAdapter(port GeneratedSearchServicePort) *Generate
 // comes from SearchRequest.Limit. Empty Origin → returns an
 // empty result (defensive: Router already knows which
 // territory it's dispatching to).
-func (a *GeneratedSearchServiceAdapter) Search(ctx context.Context, req routing.SearchRequest) (routing.SearchResponse, error) {
+func (a *GeneratedSearchServiceAdapter) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	if a == nil || a.port == nil {
-		return routing.SearchResponse{}, ErrGeneratedPortNotWired
+		return SearchResponse{}, ErrGeneratedPortNotWired
 	}
 	if req.Origin == "" {
-		return routing.SearchResponse{SubService: a.Name()}, nil
+		return SearchResponse{SubService: a.Name()}, nil
 	}
 	assets, err := a.port.ListImagesByOrigin(ctx, req.Origin, req.Limit)
 	if err != nil {
-		return routing.SearchResponse{SubService: a.Name()}, err
+		return SearchResponse{SubService: a.Name()}, err
 	}
-	return routing.SearchResponse{
+	return SearchResponse{
 		Assets:     assets,
 		SubService: a.Name(),
 	}, nil

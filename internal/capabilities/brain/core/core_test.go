@@ -1,4 +1,4 @@
-package brain
+package core
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/intent"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

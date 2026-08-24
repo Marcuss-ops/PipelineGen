@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"

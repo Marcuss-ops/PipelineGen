@@ -10,7 +10,7 @@
 //
 // Import-cycle note (fixed during test-write review): an earlier
 // draft of this file imported the application-layer
-// `github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor`
+// `github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor`
 // package to host an in-test `var _ monitor.MetricsRecorder = (*ObservabilityMetricsRecorder)(nil)`
 // structural pin, plus a cross-package TestNoopMetricsRecorder and a
 // TestCompositionRootPortSatisfaction field-assignment test. That

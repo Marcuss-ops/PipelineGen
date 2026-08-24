@@ -1,6 +1,6 @@
 // Package app — build_bundles_artlist_providers.go
 //
-// Artlist provider-side wiring. Lives next to, but separate from,
+// Artlist provider-side  Lives next to, but separate from,
 // the WireArtlist orchestrator (build_bundles_artlist_artlist.go)
 // so that the ~6 inline construction blocks (ffmpeg processor,
 // AdminSystemProber, HTTPSelfLoopProbe, downloader.Resolver + its
@@ -17,7 +17,6 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"time"
 
@@ -32,7 +31,7 @@ import (
 )
 
 // constructArtlistProviders returns the provider-side bundle built from
-// cfg + the wiring.ArtlistBundle + the auditAdapter parameter (constructor-
+// cfg + the ArtlistBundle + the auditAdapter parameter (constructor-
 // order: caller must run constructArtlistRepositories first so this
 // audit adapter is available before the Resolver is constructed).
 //
@@ -58,7 +57,7 @@ import (
 func constructArtlistProviders(
 	cfg *config.Config,
 	log *zap.Logger,
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	auditAdapter artlist.DownloadAuditRepository,
 	mediaConfig mediaexec.ExecutionConfig,
 ) artlistProviders {
@@ -240,7 +239,7 @@ func constructArtlistProviders(
 // but the log.Info confirms the wiring landed.
 func wireArtlistProcessorDownloader(
 	log *zap.Logger,
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	artlistDownloader *downloader.Resolver,
 ) {
 	if bundle == nil || bundle.MediaProcessor == nil {

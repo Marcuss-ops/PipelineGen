@@ -1,11 +1,11 @@
-package assets
+package youtube
 
 import (
 	"encoding/json"
 	"fmt"
 
-	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

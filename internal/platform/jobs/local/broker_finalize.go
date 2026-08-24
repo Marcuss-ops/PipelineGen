@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )

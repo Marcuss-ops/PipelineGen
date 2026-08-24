@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 import (
 	"database/sql"
@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

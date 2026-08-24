@@ -13,8 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
@@ -76,9 +75,9 @@ func makeEvidence(assetID, name, description, transcript string, tags []string) 
 // as nil, preserving the prior 503 behavior when the canonical
 // resolver is unavailable.
 func TestNewClipResolverRecommendAdapter_NilCanonical(t *testing.T) {
-	a := wiring.NewClipResolverRecommendAdapter(nil, nil)
+	a := NewClipResolverRecommendAdapter(nil, nil)
 	if a != nil {
-		t.Fatalf("wiring.NewClipResolverRecommendAdapter(nil) = %v, want nil (godlike/07 fail-closed fast path)", a)
+		t.Fatalf("NewClipResolverRecommendAdapter(nil) = %v, want nil (godlike/07 fail-closed fast path)", a)
 	}
 }
 
@@ -86,9 +85,9 @@ func TestNewClipResolverRecommendAdapter_NilCanonical(t *testing.T) {
 // happy-path constructor returns a non-nil adapter.
 func TestNewClipResolverRecommendAdapter_NonNil(t *testing.T) {
 	canonical := &stubCanonicalResolver{}
-	a := wiring.NewClipResolverRecommendAdapter(canonical, nil)
+	a := NewClipResolverRecommendAdapter(canonical, nil)
 	if a == nil {
-		t.Fatalf("wiring.NewClipResolverRecommendAdapter(stub) = nil, want non-nil adapter")
+		t.Fatalf("NewClipResolverRecommendAdapter(stub) = nil, want non-nil adapter")
 	}
 }
 
@@ -98,12 +97,12 @@ func TestNewClipResolverRecommendAdapter_NonNil(t *testing.T) {
 // in production, but the sentinel is the typed-error contract for
 // any future programmatic caller.
 func TestRecommend_NilReceiver(t *testing.T) {
-	var a *wiring.ClipResolverRecommendAdapter // nil receiver
+	var a *ClipResolverRecommendAdapter // nil receiver
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		Topic: "anything",
 	})
-	if !errors.Is(err, wiring.ErrRecommendAdapterNotConfigured) {
-		t.Fatalf("err = %v, want wiring.ErrRecommendAdapterNotConfigured", err)
+	if !errors.Is(err, ErrRecommendAdapterNotConfigured) {
+		t.Fatalf("err = %v, want ErrRecommendAdapterNotConfigured", err)
 	}
 	if resp != nil {
 		t.Fatalf("resp = %v, want nil", resp)
@@ -115,12 +114,12 @@ func TestRecommend_NilReceiver(t *testing.T) {
 // nil. This is defensive (the constructor guards against this) but
 // locked here for type-discipline.
 func TestRecommend_NilCanonical(t *testing.T) {
-	a := &wiring.ClipResolverRecommendAdapter{Canonical: nil, Log: nil}
+	a := &ClipResolverRecommendAdapter{Canonical: nil, Log: nil}
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		Topic: "anything",
 	})
-	if !errors.Is(err, wiring.ErrRecommendAdapterNotConfigured) {
-		t.Fatalf("err = %v, want wiring.ErrRecommendAdapterNotConfigured", err)
+	if !errors.Is(err, ErrRecommendAdapterNotConfigured) {
+		t.Fatalf("err = %v, want ErrRecommendAdapterNotConfigured", err)
 	}
 	if resp != nil {
 		t.Fatalf("resp = %v, want nil", resp)
@@ -143,7 +142,7 @@ func TestRecommend_SegmentIDYouTubeShapeFansOut(t *testing.T) {
 			Unresolved: []ports.UnresolvedReference{},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	_, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "yt_ABCDEFGHIJK_seg3_7",
 		Topic:     "anything", // non-empty so the dispatch is exercised
@@ -174,7 +173,7 @@ func TestRecommend_SegmentIDNonYouTubeShapeUsesMediaAssetID(t *testing.T) {
 			Unresolved: []ports.UnresolvedReference{},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	_, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "some-uuid-or-other-id",
 		Topic:     "anything",
@@ -208,7 +207,7 @@ func TestRecommend_QueriesAreNotTranslatedToReferences(t *testing.T) {
 			Unresolved: []ports.UnresolvedReference{},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	_, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "abc-123", // non-YouTube, so dispatches as MediaAssetID
 		Topic:     "test topic",
@@ -236,7 +235,7 @@ func TestRecommend_QueriesAreNotTranslatedToReferences(t *testing.T) {
 // recommendations to make.
 func TestRecommend_EmptyRequestReturnsEmptyResults(t *testing.T) {
 	stub := &stubCanonicalResolver{}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{})
 	if err != nil {
 		t.Fatalf("Recommend: %v", err)
@@ -263,7 +262,7 @@ func TestRecommend_EmptyRequestReturnsEmptyResults(t *testing.T) {
 // the adapter must defend against direct programmatic callers.
 func TestRecommend_NilRequestReturnsError(t *testing.T) {
 	stub := &stubCanonicalResolver{}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), nil)
 	if err == nil {
 		t.Fatalf("err = nil, want error for nil request")
@@ -282,7 +281,7 @@ func TestRecommend_NilRequestReturnsError(t *testing.T) {
 // scoring layer has nothing to score.
 func TestRecommend_OnlyQueryNoSegmentIDReturnsEmptyResults(t *testing.T) {
 	stub := &stubCanonicalResolver{}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		Topic: "test topic",
 	})
@@ -318,7 +317,7 @@ func TestRecommend_SortByScoreDescending(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "anything",
 		Topic:     "mountain sunrise",
@@ -358,7 +357,7 @@ func TestRecommend_MinScoreFilterWorks(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	// MinScore=0.5 should filter out asset-B (which would have
 	// 0 overlap) but include asset-A (which has 1.0 overlap on
 	// the Name field).
@@ -401,7 +400,7 @@ func TestRecommend_FieldWeightedScoringIsMonotonic(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "anything",
 		Topic:     "kubernetes deployment",
@@ -444,7 +443,7 @@ func TestRecommend_ResultFieldsMatchEvidence(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "asset-xyz",
 		Topic:     "matching",
@@ -481,7 +480,7 @@ func TestRecommend_CanonicalErrorPropagates(t *testing.T) {
 	stub := &stubCanonicalResolver{
 		cannedErr: dbErr,
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "asset-1",
 		Topic:     "anything",
@@ -515,7 +514,7 @@ func TestRecommend_EmptyResolvedReturnsEmptyResults(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "missing",
 		Topic:     "anything",
@@ -543,7 +542,7 @@ func TestRecommend_StopwordOnlyQueryReturnsEmptyResults(t *testing.T) {
 			},
 		},
 	}
-	a := wiring.NewClipResolverRecommendAdapter(stub, nil)
+	a := NewClipResolverRecommendAdapter(stub, nil)
 	// "a of to" — all 1-2 char tokens, filtered out by TokenSet.
 	resp, err := a.Recommend(context.Background(), &artlist.ClipResolverRecommendRequest{
 		SegmentID: "anything",

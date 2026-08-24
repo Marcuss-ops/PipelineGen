@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	adminapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -14,7 +13,7 @@ import (
 func TestRegisterRoutes_DoesNotExposeGlobalEventsStream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	service := adminapp.NewService(adminapp.NewRegistry(), adminapp.NoOpAuditLogger{}, nil)
+	service := NewService(NewRegistry(), NoOpAuditLogger{}, nil)
 	handler := NewHandler(service, zap.NewNop())
 	engine := gin.New()
 	handler.RegisterRoutes(engine.Group("/api/admin"))

@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"

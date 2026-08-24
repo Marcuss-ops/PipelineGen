@@ -6,16 +6,15 @@
 package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 
 // appendVoiceoverCriticalValidators populates the critical-handler
 // validators slice with voiceover.generate + voiceover.generate_item bindings.
 // Extracted from NewComposition per PG-028 (July 2026).
-func appendVoiceoverCriticalValidators(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
+func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
 	// voiceover.generate: literal Register re-call gated by
 	// HasHandler check to preserve BLOC5.3 + Catena A P0 idempotency
 	// (parent gate at late-bindings time). If the dispatcher already

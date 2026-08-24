@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"go.uber.org/zap"
 )
 

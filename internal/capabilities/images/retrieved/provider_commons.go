@@ -1,9 +1,7 @@
-package images
+package retrieved
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -27,7 +25,7 @@ func (p *WikimediaCommonsProvider) Name() asset.ImageProvider {
 
 func (p *WikimediaCommonsProvider) Healthy(_ context.Context) error { return nil }
 
-func (p *WikimediaCommonsProvider) Search(ctx context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (p *WikimediaCommonsProvider) Search(ctx context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if p == nil || p.bridge == nil {
 		return nil, nil
 	}
@@ -37,7 +35,7 @@ func (p *WikimediaCommonsProvider) Search(ctx context.Context, query string, _ r
 	}
 	hit.Provider = asset.ProviderWikimediaCommons
 	hit.Origin = asset.ImageOriginRetrieved
-	return []routing.RetrievalSearchResult{hit}, nil
+	return []RetrievalSearchResult{hit}, nil
 }
 
 func (p *WikimediaCommonsProvider) ID() string { return string(p.Name()) }

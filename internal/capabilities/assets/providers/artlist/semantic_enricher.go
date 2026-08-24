@@ -9,7 +9,7 @@
 //
 // All cross-file symbol resolution works via same-package scope visibility.
 // Pure code-motion split — zero behavior change, zero new exported symbols.
-package assets
+package artlist
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	searchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	searchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

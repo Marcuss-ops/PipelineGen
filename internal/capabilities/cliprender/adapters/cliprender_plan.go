@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )

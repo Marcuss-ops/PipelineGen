@@ -18,12 +18,12 @@
 //
 // The TranscriptProvider / VideoAnalyzer / JobEnqueuer ports are held as
 // flat fields on the struct but consumed elsewhere (analyzer.go + enqueue.go).
-package assets
+package monitor
 
 import (
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

@@ -4,13 +4,13 @@
 // contract. Each adapter is a thin, stateless translation layer so the
 // canonical ProviderAsset model can be consumed without changing the
 // underlying source integrations.
-package assets
+package adapters
 
 import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 

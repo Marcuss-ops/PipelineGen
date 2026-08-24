@@ -31,7 +31,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -90,7 +90,7 @@ func main() {
 		zap.String("host", cfg.Server.Host),
 	)
 
-	runtime, err := app.BuildServer(cfg, *mode, log)
+	runtime, err := wiring.BuildServer(cfg, *mode, log)
 	if err != nil {
 		log.Fatal("failed to build server", zap.Error(err))
 	}

@@ -25,16 +25,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"go.uber.org/zap"
 
-	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/policy"
+	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
@@ -47,8 +46,8 @@ import (
 )
 
 // WireStockPipeline constructs every stock pipeline dependency from the
-// wiring.ComposeRoot and routes them through BuildStockBundle. Returns a fully
-// populated *wiring.StockPipelineWiring on success, or (nil, error) when a
+// ComposeRoot and routes them through BuildStockBundle. Returns a fully
+// populated *StockPipelineWiring on success, or (nil, error) when a
 // required dep is missing (godlike/07 fail-closed).
 //
 // Dep construction sequence:
@@ -61,7 +60,7 @@ import (
 //
 // Returns (nil, nil) when StockPipelineEnabled is false — the caller
 // treats nil wiring as "route not mounted" (no error, no registration).
-func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot) (*wiring.StockPipelineWiring, error) {
+func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*StockPipelineWiring, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("wire stock pipeline: cfg is nil")
 	}

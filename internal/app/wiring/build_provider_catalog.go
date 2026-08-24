@@ -3,8 +3,8 @@ package wiring
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets/adapters"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 

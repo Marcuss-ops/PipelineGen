@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 )

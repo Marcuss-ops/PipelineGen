@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

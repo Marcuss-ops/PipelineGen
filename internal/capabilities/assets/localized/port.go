@@ -16,7 +16,7 @@
 // call through this interface. The composition root wires the
 // concrete (ClipAtomicWriterAdapter); production code does NOT
 // reach around the port.
-package assets
+package localized
 
 import (
 	"context"

@@ -4,30 +4,29 @@
 // Bundle constructors live in per-bundle files under
 // `internal/app/build_<bundle>.go`.
 // composition.go retains NewComposition.
-// Lifecycle (lifecycle.go) and Shutdown (shutdown.go) operate on the
-// assembled wiring.ComposeRoot.
+// Lifecycle (go) and Shutdown (shutdown.go) operate on the
+// assembled ComposeRoot.
 package wiring
 
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
 
 	"go.uber.org/zap"
 
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // NewComposition assembles all bundles in dependency order and returns
-// the fully-wired wiring.ComposeRoot. Cleanup is owned by shutdown.go.
-func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.ComposeRoot, error) {
-	mediaConfig := wiring.MediaexecConfig(cfg)
+// the fully-wired ComposeRoot. Cleanup is owned by shutdown.go.
+func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*ComposeRoot, error) {
+	mediaConfig := MediaexecConfig(cfg)
 
 	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
 	if err != nil {
@@ -48,9 +47,9 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 	if dbs.Jobs != nil {
 		jobsDB = dbs.Jobs
 	}
-	// Cross-domain dependencies are threaded into wiring.JobsBundle here so that
+	// Cross-domain dependencies are threaded into JobsBundle here so that
 	// downstream constructors can keep strict, narrow signatures.
-	jobs, err := wiring.BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
+	jobs, err := BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}
@@ -78,14 +77,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 		voiceoverDriver = driveAdmin
 	}
 
-	// wiring.StagingBundle must be built before wiring.OutboxBundle so the Publisher
+	// StagingBundle must be built before OutboxBundle so the Publisher
 	// handler can register against staging.Store at wire-time.
 	staging, err := BuildStagingBundle(dbs, cfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
-	// wiring.OutboxBundle consumes wiring.StagingBundle.Store and Repository, plus the
+	// OutboxBundle consumes StagingBundle.Store and Repository, plus the
 	// canonical delivery.Publisher, to drain artifact lifecycle events.
 	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle)
 	if err != nil {
@@ -118,13 +117,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 
 	utility := BuildUtilityBundle(cfg, dbs.Main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
-	acquirePorts := &wiring.AcquirePorts{
+	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
 		Whisper:   ai.WhisperTranscriber,
 		Drive:     driveBundle.Reader,
 		CueWriter: domains.CueWriter,
 	}
-	textTracks, err := wiring.BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, driveBundle.Publisher, log)
+	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, driveBundle.Publisher, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: %w", err)
 	}
@@ -144,7 +143,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 		return nil, err
 	}
 
-	root := &wiring.ComposeRoot{
+	root := &ComposeRoot{
 		MediaExec:       mediaConfig,
 		DB:              dbs.Main,
 		ObservabilityDB: dbs.Logs,
@@ -174,7 +173,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 
 // wireScriptReadinessProbe registers the script.generate readiness probe
 // when any script feature is enabled.
-func wireScriptReadinessProbe(cfg *config.Config, utility *wiring.UtilityBundle, ai *wiring.AIBundle, driveBundle *wiring.DriveBundle, jobs *wiring.JobsBundle) {
+func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AIBundle, driveBundle *DriveBundle, jobs *JobsBundle) {
 	if utility.ReadyChecker == nil || utility.HealthService == nil || !anyScriptFeatureEnabled(cfg) {
 		return
 	}
@@ -194,7 +193,7 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *wiring.UtilityBundle,
 
 // wireLateBindings connects circular/lazy job handler registrations after
 // all bundles have been constructed.
-func wireLateBindings(cfg *config.Config, sync *wiring.SyncBundle, domains *wiring.DomainBundle, jobs *wiring.JobsBundle, process *wiring.ProcessBundle, textTracks *wiring.TextTrackBundle, log *zap.Logger) error {
+func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, process *ProcessBundle, textTracks *TextTrackBundle, log *zap.Logger) error {
 	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
 		return fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)
 	}
@@ -207,19 +206,19 @@ func wireLateBindings(cfg *config.Config, sync *wiring.SyncBundle, domains *wiri
 	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
 		return fmt.Errorf("compose clipindexer late-binding: %w", err)
 	}
-	if err := wiring.WireTextTrackJobBindings(textTracks, jobs); err != nil {
+	if err := WireTextTrackJobBindings(textTracks, jobs); err != nil {
 		return fmt.Errorf("compose texttracks late-binding: %w", err)
 	}
-	wiring.WireTextTracksFanOut(textTracks, jobs.Service, log)
+	WireTextTracksFanOut(textTracks, jobs.Service, log)
 	if textTracks.FanOut != nil {
-		textTracks.FanOut.SetDefaultSourceLanguage(wiring.ActiveMultilingualConfig(cfg).SourceLanguage)
+		textTracks.FanOut.SetDefaultSourceLanguage(ActiveMultilingualConfig(cfg).SourceLanguage)
 	}
 	return nil
 }
 
 // validateCriticalHandlers assembles and runs the critical handler
 // validation suite after all bundles and late bindings are wired.
-func validateCriticalHandlers(jobs *wiring.JobsBundle, sync *wiring.SyncBundle, domains *wiring.DomainBundle, process *wiring.ProcessBundle, log *zap.Logger) error {
+func validateCriticalHandlers(jobs *JobsBundle, sync *SyncBundle, domains *DomainBundle, process *ProcessBundle, log *zap.Logger) error {
 	var criticalHandlerValidators []CriticalHandler
 	appendYoutubeCatalogCriticalValidators(sync, domains, jobs, &criticalHandlerValidators)
 	appendImagesCriticalValidator(domains, jobs, &criticalHandlerValidators)

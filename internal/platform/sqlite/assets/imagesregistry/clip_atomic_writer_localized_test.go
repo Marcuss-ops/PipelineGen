@@ -60,7 +60,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

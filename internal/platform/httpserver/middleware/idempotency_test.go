@@ -13,7 +13,7 @@
 //  7. 409 on in-flight row.
 //  8. Multipart bypass — body_hash empty, request body streamed
 //     through unmodified (handler sees c.Request.Body intact).
-package httpserver
+package middleware
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	idem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	idem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/idempotency"
 )
 

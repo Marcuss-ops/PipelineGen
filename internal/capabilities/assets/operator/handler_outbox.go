@@ -12,7 +12,7 @@
 // handler.go::RegisterRoutes.
 //
 // No cross-resource helpers needed by this file.
-package assets
+package operator
 
 import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

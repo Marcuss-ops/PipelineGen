@@ -38,7 +38,7 @@
 // file). The test surface is hermetic and idempotent —
 // `go test -short -count=1` passes deterministically on any
 // Go toolchain.
-package assets
+package enrichment
 
 import (
 	"context"
@@ -49,7 +49,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // outboxEventsSchema is the canonical outbox_events DDL
@@ -103,9 +103,9 @@ func outboxEmitterDB(t *testing.T) *sql.DB {
 // validV1Payload is the canonical AssetPublishedRequestV1 used
 // across the test surface. Mirrors the handler-built payload
 // (PR-011C follow-up) with a valid 64-char hex idempotency_key.
-func validV1Payload() outbox.AssetPublishedRequestV1 {
-	return outbox.AssetPublishedRequestV1{
-		SchemaVersion:  outbox.AssetPublishedSchemaVersion,
+func validV1Payload() jobs.AssetPublishedRequestV1 {
+	return jobs.AssetPublishedRequestV1{
+		SchemaVersion:  jobs.AssetPublishedSchemaVersion,
 		EventID:        "11111111-2222-3333-4444-555555555555",
 		AssetID:        "stock:run_abc:chunk:0",
 		Destination:    "stock",
@@ -194,7 +194,7 @@ func TestOutboxBackedAssetPublishedEmitter_HappyPath_InsertsRow(t *testing.T) {
 	// Verify the payload_json is the byte-equivalent JSON
 	// serialization of the v1 envelope (roundtrip invariant
 	// for the consumer AssetPublishedHandler).
-	var gotPayload outbox.AssetPublishedRequestV1
+	var gotPayload jobs.AssetPublishedRequestV1
 	if err := json.Unmarshal([]byte(gotPayloadJSON), &gotPayload); err != nil {
 		t.Fatalf("unmarshal payload_json: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestOutboxBackedAssetPublishedEmitter_PayloadJSON_PersistedAtomically(t *te
 		t.Fatalf("query payload_json: %v", err)
 	}
 
-	var got outbox.AssetPublishedRequestV1
+	var got jobs.AssetPublishedRequestV1
 	if err := json.Unmarshal([]byte(payloadJSON), &got); err != nil {
 		t.Fatalf("unmarshal payload_json: %v", err)
 	}

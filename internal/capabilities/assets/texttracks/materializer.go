@@ -16,7 +16,7 @@
 //	e. Emit asset.index.requested outbox event for Qdrant reindex.
 //	f. On translation error: record in FailedLanguages; loop
 //	   continues with the next target language.
-package assets
+package texttracks
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"

@@ -24,7 +24,7 @@ type Section struct {
 }
 
 // SectionImageWidth / SectionImageHeight are the canonical output
-// dimensions for section-mode batch generation. They preserve the
+// dimensions for section-mode batch  They preserve the
 // retired fullimages sync pipeline's imageGenWidth / imageGenHeight
 // contract (1344×768) so mode=sections produces the same aspect ratio.
 const (

@@ -1,4 +1,4 @@
-package assets
+package stock
 
 import stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 

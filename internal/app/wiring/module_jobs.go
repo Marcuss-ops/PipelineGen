@@ -6,11 +6,11 @@ import (
 	"go.uber.org/zap"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	platformjobregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"

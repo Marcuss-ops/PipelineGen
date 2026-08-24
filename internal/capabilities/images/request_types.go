@@ -10,8 +10,6 @@ package images
 import (
 	"fmt"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/fullimages"
 )
 
 // UploadRequest is the JSON body for POST /api/images/upload (legacy
@@ -70,7 +68,7 @@ type ImageGenerationRequest struct {
 // IMAGES-LEGACY-CLEANUP (August 2026): mode="sections" was merged in from
 // the retired POST /api/fullimages/image/generate surface. Each section
 // becomes one image.generate.google job whose prompt is the canonical
-// section→prompt composition (fullimages.BuildPrimaryPrompt).
+// section→prompt composition (BuildPrimaryPrompt).
 type GenerateBatchRequest struct {
 	// RequestID is an optional caller-supplied identifier for correlation.
 	RequestID string `json:"request_id,omitempty"`
@@ -90,7 +88,7 @@ type GenerateBatchRequest struct {
 
 	// Sections is the list of text sections (required when mode is
 	// "sections"). Each section → one image.generate.google job.
-	Sections []fullimages.Section `json:"sections"`
+	Sections []Section `json:"sections"`
 }
 
 // GenerateBatchItem describes a single image to generate in a batch.

@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

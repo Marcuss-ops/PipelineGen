@@ -7,7 +7,7 @@
 // skip/retranslate decision. The materializer main loop delegates
 // here; callers MUST NOT inline the version-equality check
 // themselves.
-package assets
+package texttracks
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

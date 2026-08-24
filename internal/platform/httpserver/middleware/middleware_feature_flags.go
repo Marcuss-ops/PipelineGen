@@ -1,10 +1,10 @@
-package httpserver
+package middleware
 
 import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/gin-gonic/gin"
 )
 

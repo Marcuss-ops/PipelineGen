@@ -29,7 +29,7 @@
 // This file NEVER imports os/exec, the OllamaClient, or VTT regex
 // helpers — those concerns moved out under the TranscriptProvider /
 // VideoAnalyzer / JobEnqueuer ports.
-package assets
+package monitor
 
 import (
 	"context"
@@ -40,7 +40,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // effectivePlaylistEnd picks the playlist-end limit for the caller's

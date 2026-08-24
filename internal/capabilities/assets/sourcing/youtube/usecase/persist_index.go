@@ -15,7 +15,7 @@
 // godlike/06 SSOT (one canonical owner per fact): this file is the canonical
 // owner of YouTube-clip DB persistence for the sourcing/youtube registration
 // pipeline. The atomic upsert + outbox contract is enforced here.
-package assets
+package usecase
 
 import (
 	"context"

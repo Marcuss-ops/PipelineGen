@@ -27,11 +27,11 @@ import (
 	"fmt"
 	"time"
 
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -125,7 +125,7 @@ func newArtlistPublishTxAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 		log = zap.NewNop()
 	}
 	return &artlistPublishTxAdapter{
-		committer: assets.NewSQLiteAssetCommitter(db, box, log),
+		committer: imagesregistry.NewSQLiteAssetCommitter(db, box, log),
 		log:       log,
 		now:       time.Now,
 	}

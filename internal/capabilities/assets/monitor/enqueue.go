@@ -41,7 +41,7 @@
 // Questo garantisce che anche se il dispatcher crasha tra broker publish
 // e outbox ACK, il retry userà la stessa event_key e l'ActiveKey dedup
 // del broker previene la creazione di job duplicati.
-package assets
+package monitor
 
 import (
 	"context"
@@ -53,7 +53,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 

@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	appstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
@@ -22,7 +22,7 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -88,7 +88,7 @@ type MediaIngestBundle struct {
 	Committer         assetspersistence.AssetCommitter
 }
 
-// MediaIngestWiring holds the Mediaingest module wiring.
+// MediaIngestWiring holds the Mediaingest module 
 type MediaIngestWiring struct {
 	Handler *assetsapi.MediaingestHandler
 	Module  module.Module

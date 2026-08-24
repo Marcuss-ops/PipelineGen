@@ -22,7 +22,7 @@
 // the infra-row projection into the monitor canonical projection so
 // this file NEVER imports `internal/infrastructure/*`. Zero infra
 // import in this file.
-package assets
+package monitor
 
 import (
 	"context"

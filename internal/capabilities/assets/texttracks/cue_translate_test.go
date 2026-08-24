@@ -1,4 +1,4 @@
-package assets
+package texttracks
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

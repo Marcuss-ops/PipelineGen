@@ -24,6 +24,7 @@
 package wiring
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"errors"
 	"net/http"
@@ -34,13 +35,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -145,7 +144,7 @@ func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
 
 	// bundle WITHOUT Publisher (mandatory gate #1; F2.11 enforces nil-rejection).
 	// All other mandatory gates ALSO nil: ClipsRepo nil, Jobs nil.
-	bundle := &wiring.ArtlistBundle{
+	bundle := &ArtlistBundle{
 		DB:                 nil,
 		ClipsRepo:          nil,
 		DriveUploader:      nil,
@@ -155,10 +154,10 @@ func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
 		MediaProcessor:     nil,
 	}
 
-	wiring, err := WireArtlist(context.Background(), log, cfg, bundle, nil, nil, nil, nil, nil)
+	wiringRes, err := WireArtlist(context.Background(), log, cfg, bundle, nil, nil, nil, nil, nil)
 
 	require.Error(t, err)
-	require.Nil(t, wiring)
+	require.Nil(t, wiringRes)
 	var missing ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
 		"Fase 1: WireArtlist MUST return typed ErrArtlistDepMissing{Kind: DepKindPublisher} on the mandatory Publisher gate")
@@ -193,7 +192,7 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 	// bundle WITHOUT Publisher (mandatory gate #1) but with the OTHER
 	// mandatory gates intact where possible: ClipsRepo nil (would be gate
 	// #3 but Publisher runs first), Jobs nil (would be gate #4).
-	bundle := &wiring.ArtlistBundle{
+	bundle := &ArtlistBundle{
 		DB:                 nil,
 		ClipsRepo:          nil, // would be mandatory gate #3 if Publisher passed
 		DriveUploader:      nil,
@@ -203,13 +202,13 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 		MediaProcessor:     nil,
 	}
 
-	wiring, err := WireArtlist(context.Background(), log, cfg, bundle,
+	wiringRes, err := WireArtlist(context.Background(), log, cfg, bundle,
 		&outbox.Dispatcher{}, // gate #2 wired: Dispatcher is non-nil
 		nil, nil, nil, nil,
 	)
 
 	require.Error(t, err)
-	require.Nil(t, wiring)
+	require.Nil(t, wiringRes)
 	var missing ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
 		"Fase 1: Publisher must short-circuit BEFORE Dispatcher gate; typed sentinel MUST still publish the Ladder-1 Kind")
@@ -378,14 +377,14 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// Real ClipsRepository on the same *sql.DB (satisfies
 	// artlist.AssetStore port directly via Pattern 0 compile-time pin
 	// established in build_bundles_artlist_artlist.go).
-	clipsRepo := assets.NewClipsRepository(sqliteDB.DB, log)
+	clipsRepo := imagesregistry.NewClipsRepository(sqliteDB.DB, log)
 	require.NotNil(t, clipsRepo, "assets.NewClipsRepository must return a non-nil concrete on a fresh schema")
 
 	// Real JobsBundle through the composition-root's canonical
 	// BuildJobsBundle helper. The 4 trailing args (voiceoverRepo,
 	// imagesRepo, driveUploader, driveLifecycle) are nil-tolerant per
 	// the helper's documented contract.
-	jobsBundle, err := wiring.BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
 	require.NotNil(t, jobsBundle.Service, "JobsBundle.Service must be populated so WireArtlist gate #4 passes")
 
@@ -398,13 +397,13 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 	}
 
-	bundle := &wiring.ArtlistBundle{
+	bundle := &ArtlistBundle{
 		DB:                 sqliteDB,
 		ClipsRepo:          clipsRepo,
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		Committer:          imagesregistry.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
 		MediaProcessor:     nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
 		TextTrackRepo:      &stubTextTrackRepoForArtlistComposition{},
 	}
@@ -415,7 +414,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// downstream consumer in NewService / SemanticEnricher is
 	// nil-tolerant at construction (they DEFER their dispatch to
 	// runtime methods which this test does not exercise).
-	wiring, err := WireArtlist(
+	wiringRes, err := WireArtlist(
 		context.Background(),
 		log,
 		cfg,
@@ -433,35 +432,35 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// WireArtlist returns a fully-populated *ArtlistWiring.
 	require.NoError(t, err,
 		"WireArtlist must succeed when all 4 mandatory composition gates are up — the run-repo field is no longer swallowed by a comment (ART-002 P0 fix, July 2026)")
-	require.NotNil(t, wiring,
+	require.NotNil(t, wiringRes,
 		"wiring must be non-nil so registerArtlist can promote it into the registry")
 
-	// Routes-mount proof: wiring.Module is the api.Module returned by
+	// Routes-mount proof: Module is the api.Module returned by
 	// the NewRouteModule construction; its non-nil presence is
 	// what triggers tryRegisterModuleStrict to mount /api/artlist/* in
 	// production.
-	require.NotNil(t, wiring.Module,
-		"wiring.Module must be non-nil so /api/artlist/* routes get registered by tryRegisterModuleStrict")
-	require.Contains(t, wiring.Module.Name(), "artlist",
+	require.NotNil(t, wiringRes.Module,
+		"Module must be non-nil so /api/artlist/* routes get registered by tryRegisterModuleStrict")
+	require.Contains(t, wiringRes.Module.Name(), "artlist",
 		"module name must identify the capability so route-prefix /api/artlist/* maps correctly")
 
-	// Service proof: wiring.Service is the canonical *artlist.Service
+	// Service proof: Service is the canonical *artlist.Service
 	// built via artlist.NewService. Its NON-NIL presence confirms
 	// RunRepository was actually wired in (the bug chain would have
 	// returned nil here via NewService's ErrRunRepositoryUnavailable).
-	require.NotNil(t, wiring.Service,
-		"wiring.Service must be non-nil — confirms Artlist.NewService did NOT fail on ErrRunRepositoryUnavailable")
-	assert.NotNil(t, wiring.ProviderAssets,
+	require.NotNil(t, wiringRes.Service,
+		"Service must be non-nil — confirms Artlist.NewService did NOT fail on ErrRunRepositoryUnavailable")
+	assert.NotNil(t, wiringRes.ProviderAssets,
 		"ProviderAssets registry must be wired + frozen for search fan-out")
-	assert.NotNil(t, wiring.LicenseRepo,
+	assert.NotNil(t, wiringRes.LicenseRepo,
 		"LicenseRepo must be wired so the compliance manifests endpoint works")
-	assert.NotNil(t, wiring.ReleaseRepo,
+	assert.NotNil(t, wiringRes.ReleaseRepo,
 		"ReleaseRepo must be wired so the release manifest endpoint works")
-	assert.NotNil(t, wiring.RenditionRepo,
+	assert.NotNil(t, wiringRes.RenditionRepo,
 		"RenditionRepo must be wired so the rendition metadata endpoint works")
 
-	if wiring.Service != nil {
-		_ = wiring.Service.Close()
+	if wiringRes.Service != nil {
+		_ = wiringRes.Service.Close()
 	}
 }
 

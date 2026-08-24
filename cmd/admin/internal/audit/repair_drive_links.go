@@ -17,6 +17,7 @@
 package audit
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"database/sql"
@@ -29,10 +30,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 func RunRepairDriveLinks(args []string) error {
@@ -56,7 +56,7 @@ func RunRepairDriveLinks(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
@@ -342,7 +342,7 @@ func RunRepairDriveLinks(args []string) error {
 		for _, change := range locationChanges {
 			changes = append(changes, change)
 		}
-		committer := assets.NewSQLiteAssetLocationCommitter(db, root.Outbox.EventsRepo, log)
+		committer := imagesregistry.NewSQLiteAssetLocationCommitter(db, root.Outbox.EventsRepo, log)
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("repair durable transaction begin failed: %w", err)

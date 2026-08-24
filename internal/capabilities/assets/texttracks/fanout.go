@@ -28,42 +28,31 @@
 // failures (pre-broker-side) and wraps broker errors in
 // "texttracks.fanout.enqueue: %w" form so the error chain is
 // observable.
-package assets
+package texttracks
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
 )
 
-// MaterializeEnqueuer is the narrow port surface a fanout
-// producer needs from the broker. Defining this interface
-// keeps the production wiring explicit (Pipeline X depends on
+// MaterializeEnqueuer is the narrow consumer-side port for the
+// fanout helper. The fanout helper requires ONLY the Enqueue
+// method on the broker (godlike/07 minimum-blast-radius: isolates
 // the enqueue surface, NOT the full *jobs.Service) AND keeps
-// hermetic tests trivial — a stub satisfying the surface is
+// the helper unit-testable with a hand-rolled fake that implements
 // one short method.
 //
 // godlike/06 SSOT: the canonical production implementation is
 // *appjobs.Service (the broker's typed Enqueue entry point).
-// The compile-time assertion below pins this — a future
-// signature drift in appjobs.Service.Enqueue surfaces as a
-// build failure here, not as a runtime nil-method-call panic.
 type MaterializeEnqueuer interface {
 	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
 }
-
-// Compile-time assertion: *jobs.Service (the application-layer
-// broker facade) satisfies the MaterializeEnqueuer surface.
-// AGENTS.md Pattern 0 build-time lock for signature drift:
-// future drift in jobs.Service.Enqueue surfaces as a build
-// failure here, not as a runtime nil-method-call panic.
-var _ MaterializeEnqueuer = (*jobs.Service)(nil)
 
 // errMissingJobs is the panic message surfaced at construction
 // when the broker is nil. Centralized so the message stays

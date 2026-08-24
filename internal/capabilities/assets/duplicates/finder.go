@@ -4,7 +4,7 @@
 // finder.go exposes the DuplicateFinder orchestrator. It fans out a
 // content-hash query to every registered Source, merges the results,
 // and returns a deterministic slice of DuplicateMatch rows.
-package assets
+package duplicates
 
 import (
 	"context"

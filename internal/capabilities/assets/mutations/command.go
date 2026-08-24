@@ -59,7 +59,7 @@
 // "index" would not deliver the outbox-event emit the name implies and
 // would silently diverge from production expectation). It is REMOVED
 // from this PR until the future dispatcher-promotion lands.
-package assets
+package mutations
 
 import (
 	"errors"

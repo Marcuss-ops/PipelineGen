@@ -21,7 +21,7 @@
 //     aac audio, no stub).
 //
 // Skips when the pipelinegen-muscles binary or ffmpeg are missing.
-package assets
+package videomuscles
 
 import (
 	"bytes"

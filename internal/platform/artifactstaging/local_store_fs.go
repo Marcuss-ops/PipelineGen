@@ -29,7 +29,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
 )
 
 // ── Test seam ────────────────────────────────────────────────────────

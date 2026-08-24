@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"

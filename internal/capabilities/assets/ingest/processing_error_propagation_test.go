@@ -1,12 +1,12 @@
-package assets
+package ingest
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

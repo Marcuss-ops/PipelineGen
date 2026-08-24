@@ -3,7 +3,7 @@
 // AssetPublishedEmitter is the canonical Pattern-0 typed port for
 // emitting the asset.published v1 outbox event from the
 // EnrichmentHandler. The handler builds the v1 envelope (via the
-// canonical outbox.AssetPublishedRequestV1 struct) after the
+// canonical jobs.AssetPublishedRequestV1 struct) after the
 // LLM call + UPDATE succeed, then hands it to this port for
 // emission to the outbox_events table.
 //
@@ -15,7 +15,7 @@
 //     by the composition root in
 //     internal/app/build_bundles_stock.go::BuildStockBundle.
 //   - The wire-shape of the v1 envelope is the canonical
-//     outbox.AssetPublishedRequestV1 (in
+//     jobs.AssetPublishedRequestV1 (in
 //     internal/capabilities/jobs/outbox/asset_published.go).
 //
 // godlike/07 fail-closed contracts:
@@ -36,12 +36,12 @@
 // The composition root wires the emitter ONLY when
 // cfg.External.StockEnrichmentEnabled=true (mirroring the existing
 // EnrichmentLLMClient gate at build_bundles_stock.go).
-package assets
+package enrichment
 
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // AssetPublishedEmitter is the narrow Pattern-0 typed port for
@@ -54,7 +54,7 @@ import (
 // Implementations:
 //   - StubAssetPublishedEmitter (this file — noop, returns nil).
 //   - The future production concrete (composition root wires
-//     outbox.Dispatcher.EnqueueAssetPublished — added in PR-011C
+//     jobs.Dispatcher.EnqueueAssetPublished — added in PR-011C
 //     follow-up if not yet present) or a thin adapter that wraps
 //     outboxEventsRepo.Enqueue inside a tx.
 //
@@ -70,7 +70,7 @@ import (
 //     happen with a valid payload but is guarded for godlike/07
 //     no-fake-availability).
 type AssetPublishedEmitter interface {
-	EmitAssetPublished(ctx context.Context, payload outbox.AssetPublishedRequestV1) error
+	EmitAssetPublished(ctx context.Context, payload jobs.AssetPublishedRequestV1) error
 }
 
 // StubAssetPublishedEmitter is the canonical noop concrete for
@@ -88,7 +88,7 @@ type StubAssetPublishedEmitter struct {
 	// LastPayload captures the most-recent EmitAssetPublished
 	// payload for hermetic TDD assertions. nil until the first
 	// emit call. Read-only from the test's perspective.
-	LastPayload *outbox.AssetPublishedRequestV1
+	LastPayload *jobs.AssetPublishedRequestV1
 
 	// CallCount tracks the number of emit invocations. Tests
 	// use this to assert the emit happened exactly once per
@@ -105,7 +105,7 @@ type StubAssetPublishedEmitter struct {
 // *StubAssetPublishedEmitter can be called via the interface
 // without panicking (the method is a value receiver, not a
 // pointer receiver).
-func (s *StubAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload outbox.AssetPublishedRequestV1) error {
+func (s *StubAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload jobs.AssetPublishedRequestV1) error {
 	_ = ctx
 	if s == nil {
 		return nil

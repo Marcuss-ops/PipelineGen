@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
@@ -72,11 +72,11 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
 		}
 
-		commitResult, err := sqliteassets.CommitIndexRequestTx(
+		commitResult, err := imagesregistry.CommitIndexRequestTx(
 			ctx,
 			tx,
 			d.outboxEventsRepo,
-			sqliteassets.IndexRequest{
+			imagesregistry.IndexRequest{
 				AssetID:       clip.ID,
 				Source:        string(clip.Source),
 				SourceVersion: contentHash,
@@ -173,11 +173,11 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 		return errors.New("outbox.Dispatcher.EnqueueIndexEvent: contentHash is required (supersede gate cannot function without a content fingerprint)")
 	}
 
-	commitResult, err := sqliteassets.CommitIndexRequestTx(
+	commitResult, err := imagesregistry.CommitIndexRequestTx(
 		ctx,
 		tx,
 		d.outboxEventsRepo,
-		sqliteassets.IndexRequest{
+		imagesregistry.IndexRequest{
 			AssetID:       assetID,
 			Source:        source,
 			SourceVersion: contentHash,

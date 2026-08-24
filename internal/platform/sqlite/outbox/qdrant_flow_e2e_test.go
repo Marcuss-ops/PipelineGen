@@ -42,9 +42,10 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // ── helpers ────────────────────────────────────────────────────────

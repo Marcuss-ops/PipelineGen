@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

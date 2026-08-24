@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 func RunCheckDriveNames(args []string) error {
@@ -27,7 +27,7 @@ func RunCheckDriveNames(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -31,7 +30,7 @@ func TestBuildAIBundle_WhisperUnavailableDegradesSoftly(t *testing.T) {
 	cfg := minimalConfig(t.TempDir())
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {

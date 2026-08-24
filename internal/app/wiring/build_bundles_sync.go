@@ -12,11 +12,10 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -30,12 +29,12 @@ import (
 // the dispatcher is captured at construction time. Composition-root
 // pre-rejection lives here so a nil outbox dispatcher fails the bundle
 // build with an explicit error instead of racing the late-bind sequence.
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, drive *wiring.DriveBundle, outbox *wiring.OutboxBundle) (*wiring.SyncBundle, error) {
+func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
 	_ = ctx
 	_ = cfg
 	_ = dbs
 	_ = repos
-	syncTargets := wiring.BuildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
+	syncTargets := BuildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
 
 	// PR-D composition-root pre-rejection is relaxed for the no-Drive
 	// test path: when Drive is disabled the sync bundle still builds
@@ -63,7 +62,7 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 		return nil, fmt.Errorf("BuildSyncBundle: catalogsync.NewService: %w", err)
 	}
 
-	return &wiring.SyncBundle{
+	return &SyncBundle{
 		CatalogSync: catalogSync,
 	}, nil
 }

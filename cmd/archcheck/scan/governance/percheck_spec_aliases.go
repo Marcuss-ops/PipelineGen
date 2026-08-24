@@ -79,6 +79,8 @@ const specAliasesFilename = "spec_aliases.go"
 var specAliasesApprovedDirs = []string{
 	"internal/capabilities/images/workflow/generated",
 	"internal/capabilities/images/workflow/retrieved",
+	"internal/capabilities/images",
+	"internal/capabilities/images/retrieved",
 }
 
 // specAliasesSkipDirs is the standard skip-list for whole-repo

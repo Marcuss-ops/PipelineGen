@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

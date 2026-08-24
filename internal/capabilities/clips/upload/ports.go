@@ -23,7 +23,7 @@ import (
 	"context"
 	"io"
 
-	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 )
 
 // ── Reused canonical ports (compile-time type aliases, NOT new interfaces) ──

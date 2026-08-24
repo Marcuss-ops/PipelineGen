@@ -1,4 +1,4 @@
-package assets
+package stock
 
 import (
 	"context"
@@ -8,15 +8,13 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	stock "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 // Compile-time interface guards: catches interface drift at build time.
 // The Adapter satisfies both SearchProvider and FetchProvider.
 var (
-	_ providers.SearchProvider = (*stock.Adapter)(nil)
-	_ providers.FetchProvider  = (*stock.Adapter)(nil)
+	_ providers.SearchProvider = (*Adapter)(nil)
+	_ providers.FetchProvider  = (*Adapter)(nil)
 )
 
 // fakeRunner is a minimal stub of stockpipeline.stockRunner. It captures the
@@ -55,7 +53,7 @@ func (f *fakeRunner) Search(_ context.Context, query string, limit int) ([]stock
 
 // TestAdapter_NameReturnsStock verifies the canonical identifier.
 func TestAdapter_NameReturnsStock(t *testing.T) {
-	a := stock.NewAdapter(nil) // nil runner tolerated by Name/Capabilities (no methods invoked)
+	a := NewAdapter(nil) // nil runner tolerated by Name/Capabilities (no methods invoked)
 	if got := a.Name(); got != "stock" {
 		t.Fatalf("Name() = %q, want stock", got)
 	}
@@ -64,7 +62,7 @@ func TestAdapter_NameReturnsStock(t *testing.T) {
 // TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo verifies that
 // Stock declares CapabilitySearch, CapabilityFetch and CapabilityVideo.
 func TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo(t *testing.T) {
-	a := stock.NewAdapter(nil)
+	a := NewAdapter(nil)
 	caps := a.Capabilities()
 	if !hasCap(caps, providers.CapabilitySearch) {
 		t.Errorf("Capabilities() missing CapabilitySearch: %v", caps)
@@ -82,7 +80,7 @@ func TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo(t *testing.T) {
 // not the runtime value (so a typed-nil pointer is sufficient to
 // validate).
 func TestAdapter_ImplementsSearchProvider(t *testing.T) {
-	a := stock.NewAdapter(nil)
+	a := NewAdapter(nil)
 	if _, ok := any(a).(providers.SearchProvider); !ok {
 		t.Fatal("stock Adapter must satisfy SearchProvider")
 	}
@@ -91,11 +89,11 @@ func TestAdapter_ImplementsSearchProvider(t *testing.T) {
 // TestFetch_NilRunnerReturnsErrSourceNotWired protects against
 // production-wired nil pointers. Same contract as artlist/youtube.
 func TestFetch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
-	a := stock.NewAdapter(nil)
+	a := NewAdapter(nil)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
-	if !errors.Is(err, stock.ErrSourceNotWired) {
+	if !errors.Is(err, ErrSourceNotWired) {
 		t.Fatalf("Fetch(nil runner) err = %v, want ErrSourceNotWired", err)
 	}
 }
@@ -105,7 +103,7 @@ func TestFetch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
 // to allow wrapper-style error messages.
 func TestFetch_EmptySourceRef_ReturnsError(t *testing.T) {
 	fr := &fakeRunner{}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{SourceRef: ""})
 	if err == nil {
 		t.Fatal("Fetch(empty SourceRef) err = nil, want non-nil")
@@ -131,7 +129,7 @@ func TestFetch_DispatchesViaStageSource(t *testing.T) {
 			Bytes:     int64(len("payload")),
 		},
 	}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	got, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
@@ -163,7 +161,7 @@ func TestFetch_DispatchesViaStageSource(t *testing.T) {
 // nil without an error.
 func TestFetch_NilStaged_ReturnsError(t *testing.T) {
 	fr := &fakeRunner{staged: nil}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
@@ -178,7 +176,7 @@ func TestFetch_NilStaged_ReturnsError(t *testing.T) {
 func TestFetch_StageSourceError_Wrapped(t *testing.T) {
 	sentinel := errors.New("stage source unreachable")
 	fr := &fakeRunner{stageErr: sentinel}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
@@ -196,7 +194,7 @@ func TestFetch_EmptyLocalPath_ReturnsError(t *testing.T) {
 	fr := &fakeRunner{
 		staged: &stockpipeline.StagedSource{LocalPath: ""},
 	}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{
 		SourceRef: "https://example.com/a.mp4",
 	})
@@ -208,12 +206,12 @@ func TestFetch_EmptyLocalPath_ReturnsError(t *testing.T) {
 // TestSearch_NilRunnerReturnsErrSourceNotWired protects against
 // production-wired nil pointers, mirroring Fetch.
 func TestSearch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
-	a := stock.NewAdapter(nil)
+	a := NewAdapter(nil)
 	_, err := a.Search(context.Background(), providers.SearchRequest{
 		Query: "boxing",
 		Limit: 5,
 	})
-	if !errors.Is(err, stock.ErrSourceNotWired) {
+	if !errors.Is(err, ErrSourceNotWired) {
 		t.Fatalf("Search(nil runner) err = %v, want ErrSourceNotWired", err)
 	}
 }
@@ -222,7 +220,7 @@ func TestSearch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
 // empty query is a programmer error, not a transient one.
 func TestSearch_EmptyQuery_ReturnsError(t *testing.T) {
 	fr := &fakeRunner{}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Search(context.Background(), providers.SearchRequest{Query: ""})
 	if err == nil {
 		t.Fatal("Search(empty query) err = nil, want non-nil")
@@ -242,7 +240,7 @@ func TestSearch_MapsVideoSourceToCandidate(t *testing.T) {
 			{URL: "https://www.youtube.com/watch?v=def456", Title: "", DurationSec: 0},
 		},
 	}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "Floyd Mayweather", Limit: 2})
 	if err != nil {
 		t.Fatalf("Search(...) err = %v", err)
@@ -281,7 +279,7 @@ func TestSearch_MapsVideoSourceToCandidate(t *testing.T) {
 func TestSearch_RunnerError_Wrapped(t *testing.T) {
 	sentinel := errors.New("channel lister down")
 	fr := &fakeRunner{searchErr: sentinel}
-	a := stock.NewAdapter(fr)
+	a := NewAdapter(fr)
 	_, err := a.Search(context.Background(), providers.SearchRequest{Query: "boxing", Limit: 1})
 	if err == nil {
 		t.Fatal("Search(search err) err = nil, want non-nil")

@@ -36,12 +36,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // QdrantCleaner is the godlike/06 SSOT port for the drive_link/local_path
@@ -118,7 +116,6 @@ type Service struct {
 
 	// Heavy-init fields (Audit + Delete modes only).
 	sqliteDB   *sql.DB
-	root       *wiring.ComposeRoot
 	client     qdrantClient
 	activeCol  string
 	scanner    *QdrantScannerAdapter
@@ -131,28 +128,16 @@ type Service struct {
 // Deps is the canonical constructor-input envelope for NewService.
 // godlike/06 SSOT: this struct is the canonical SOLE owner of the
 // dependency-contract shape for the maintenance package.
-//
-// Per godlike/07 minimum-blast-radius (post-review): OutboxDispatcher
-// removed — Service.initHeavy populates the dispatcher lazily from the
-// composition root it opens for audit + delete modes.
 type Deps struct {
-	Cfg       *config.Config
-	Log       *zap.Logger
-	CliWriter io.Writer // optional; NewService defaults to os.Stdout when nil
-	Cleaner   QdrantCleaner
+	Cfg        *config.Config
+	Log        *zap.Logger
+	CliWriter  io.Writer // optional; NewService defaults to os.Stdout when nil
+	Cleaner    QdrantCleaner
+	Dispatcher DispatcherPort
+	SQLiteDB   *sql.DB
 }
 
 // NewService is the canonical fail-closed constructor for Service.
-// Pre-conditions:
-//   - cfg.Qdrant.Enabled = true (validated by caller; qdrant-maintenance
-//     requires qdrant.enabled=true)
-//   - cleaner is non-nil (Repair mode requires it)
-//
-// Lazy fields (sqliteDB, root, client, activeCol, scanner, dispatcher)
-// are NOT populated at construction time — Service.initHeavy populates
-// them only when Audit or Delete mode is requested. This avoids the heavy
-// composition-root initialize cost when only Repair mode is in play
-// (the fast path that doesn't require SQLite or app.InitComposition).
 func NewService(d Deps) (*Service, error) {
 	if d.Cfg == nil {
 		return nil, errors.New("maintenance.NewService: cfg is nil")
@@ -169,16 +154,13 @@ func NewService(d Deps) (*Service, error) {
 	if d.Cleaner == nil {
 		return nil, errors.New("maintenance.NewService: cleaner is nil (composition root missing QdrantCleaner port)")
 	}
-	// godlike/07 fail-closed-at-construction: NewCLIOutput defaults to
-	// os.Stdout so CLI UX is byte-equivalent with the pre-split fmt.Print*
-	// surface. Tests pass an explicit bytes.Buffer via Deps.CliWriter;
-	// cmd/admin never passes CliWriter because the default is correct
-	// for normal operator UX (stdout).
 	return &Service{
-		cfg:     d.Cfg,
-		log:     d.Log,
-		cli:     NewCLIOutput(d.CliWriter),
-		cleaner: d.Cleaner,
+		cfg:        d.Cfg,
+		log:        d.Log,
+		cli:        NewCLIOutput(d.CliWriter),
+		cleaner:    d.Cleaner,
+		dispatcher: d.Dispatcher,
+		sqliteDB:   d.SQLiteDB,
 	}, nil
 }
 
@@ -273,17 +255,13 @@ type RunOptions struct {
 // through this exact path (`mctx.root.Outbox.Dispatcher.EnqueueAndDelete`),
 // so the post-split lazy-init preserves byte-equivalent runtime behavior.
 func (s *Service) initHeavy(ctx context.Context, limit int) error {
-	sqliteDB, err := storage.OpenSQLiteDB(s.cfg.Storage.PrimaryDBFullPath(), s.log)
-	if err != nil {
-		return fmt.Errorf("open media DB: %w", err)
+	if s.sqliteDB == nil {
+		sqliteDB, err := storage.OpenSQLiteDB(s.cfg.Storage.PrimaryDBFullPath(), s.log)
+		if err != nil {
+			return fmt.Errorf("open media DB: %w", err)
+		}
+		s.sqliteDB = sqliteDB.DB
 	}
-	defer sqliteDB.Close()
-
-	root, _, rootCleanup, err := app.InitComposition(s.cfg, s.log)
-	if err != nil {
-		return fmt.Errorf("production composition root init failed: %w", err)
-	}
-	defer rootCleanup()
 
 	client := transport.NewClient(&schema.Config{
 		BaseURL: s.cfg.Qdrant.BaseURL,
@@ -299,31 +277,9 @@ func (s *Service) initHeavy(ctx context.Context, limit int) error {
 		return fmt.Errorf("runtime alias %q has no target; run EnsureSchema first", idxSchema.RuntimeAlias)
 	}
 
-	s.sqliteDB = sqliteDB.DB
-	s.root = root
 	s.client = client
 	s.activeCol = active
 	s.scanner = NewQdrantScannerAdapter(client, active, limit)
-
-	// godlike/07 fixup (post-review): wire the outbox dispatcher from
-	// the composition root. Matches the pre-split
-	// `mctx.root.Outbox.Dispatcher.EnqueueAndDelete` reach-through.
-	if root != nil && root.Outbox != nil && root.Outbox.Dispatcher != nil {
-		s.dispatcher = root.Outbox.Dispatcher
-	}
-
-	// godlike/07 fail-closed-at-boot gate (per DL-006 disposition):
-	// if the orchestrator couldn't wire a dispatcher but Delete mode
-	// is going to be used, surface a typed error NOW (at composition
-	// time) rather than crashing mid-loop on nil-deref at first
-	// EnqueueAndDelete call site.
-	//
-	// Per AGENTS.md Git-Lesson-3 audit-pin discipline: the fail-closed
-	// gate preserves the pre-split `mctx.root.Outbox.Dispatcher ==
-	// nil` behavior byte-equivalently (the pre-split handler returned
-	// `ErrDispatcherNil` at mode-handler entry time; post-split we
-	// surface the same NOT-available state at initHeavy time so the
-	// call to Service.Run fails fast before any per-asset loop runs).
 	return nil
 }
 

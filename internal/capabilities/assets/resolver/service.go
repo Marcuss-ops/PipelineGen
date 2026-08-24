@@ -1,7 +1,7 @@
 // Package resolver owns the provider-agnostic asset materialization use case.
 // Search callers never need to know whether the selected provider uses an API,
 // scraper, browser, or local staging implementation.
-package assets
+package resolver
 
 import (
 	"context"

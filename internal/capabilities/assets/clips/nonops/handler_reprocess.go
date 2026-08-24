@@ -3,14 +3,14 @@
 // (July 2026). The method's body is byte-equivalent with the
 // pre-extraction version — only the receiver type changed from
 // *Handler to *NonOpsHandler.
-package assets
+package nonops
 
 import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

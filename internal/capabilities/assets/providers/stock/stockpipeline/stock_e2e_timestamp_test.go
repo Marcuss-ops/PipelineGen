@@ -34,7 +34,7 @@
 // NewInMemoryStepStore) without a parallel mirror. External callers
 // that want to mirror this assertion surface should use the same
 // Orchestrator API + the same fixture interface shapes.
-package assets
+package stockpipeline
 
 import (
 	"context"
@@ -49,7 +49,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

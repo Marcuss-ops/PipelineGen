@@ -18,7 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

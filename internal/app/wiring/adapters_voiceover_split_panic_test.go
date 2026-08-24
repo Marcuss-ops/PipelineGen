@@ -24,7 +24,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -152,7 +152,7 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 func TestSplit_ProjectionAdapter_PanicInvariants(t *testing.T) {
 	t.Run("Projection_NilSvc_Panics", func(t *testing.T) {
 		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: newVoiceoverProjectionAdapter: svc is required (*lifecycle.Service)",
+			"app.adapters_voiceover_use_case: newVoiceoverProjectionAdapter: svc is required (*Service)",
 			func() { _ = newVoiceoverProjectionAdapter(nil) },
 			"newVoiceoverProjectionAdapter must panic with the canonical message when svc is nil")
 	})

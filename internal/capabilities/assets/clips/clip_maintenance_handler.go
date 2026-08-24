@@ -2,7 +2,7 @@
 //
 // Extracted from ops.go: clip deletion operations (TrashClip, DeleteClip).
 // Depends on: DeletionSvc.
-package assets
+package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

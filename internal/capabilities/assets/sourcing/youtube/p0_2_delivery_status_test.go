@@ -9,7 +9,7 @@
 //  2. Drive-fail → delivery_status=PUBLISH_FAILED, retry_scheduled=true,
 //     asset registered (OK=true, clipID non-empty)
 //  3. RequireDrive=true + Drive-fail → error (ErrYouTubeDriveRequired)
-package assets
+package youtube
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

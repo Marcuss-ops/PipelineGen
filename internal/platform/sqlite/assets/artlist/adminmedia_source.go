@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 )
 
 // AdminMediaMetadataSource exposes the canonical sound-effect projection to

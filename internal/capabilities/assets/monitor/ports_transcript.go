@@ -1,5 +1,5 @@
 // Package monitor — transcript provider port.
-package assets
+package monitor
 
 import (
 	"context"

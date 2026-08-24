@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
 var _ acquisition.SourceStager = (*ArtlistStager)(nil)

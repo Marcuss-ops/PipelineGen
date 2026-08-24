@@ -29,7 +29,7 @@
 // godlike/06 SSOT: each file owns its single concept; godlike/07
 // minimum-blast-radius: same-package visibility lets Register reach
 // all helpers + adapters without import cycles.
-package assets
+package youtube
 
 import (
 	"context"
@@ -37,8 +37,8 @@ import (
 	"strings"
 	"time"
 
-	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
+	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

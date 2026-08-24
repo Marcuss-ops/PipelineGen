@@ -28,8 +28,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // TestOutboxKey_DistinguishesHashesSamePrefix is the PR 5 gate

@@ -4,7 +4,7 @@
 // youtube_discoveries_test_smoke.go + youtube_discoveries_test_indexing.go
 // + youtube_discoveries_test_recovery.go in package monitor.
 
-package assets
+package monitor
 
 import (
 	"context"

@@ -12,7 +12,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
@@ -40,7 +39,7 @@ func RunSyncDriveFolder(args []string) error {
 	if strings.TrimSpace(*folder) == "" {
 		*folder = normalClipsDriveFolderID
 	}
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -80,7 +79,7 @@ func RunSyncDriveFolder(args []string) error {
 	if summary == nil {
 		return fmt.Errorf("sync Drive folder recursively: empty summary")
 	}
-	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
 	log.Info("normal clips Drive sync completed",
@@ -95,7 +94,7 @@ func RunSyncDriveFolder(args []string) error {
 	return nil
 }
 
-func waitForAssetIndexOutbox(ctx context.Context, root *wiring.ComposeRoot, deadLettersBefore int64) error {
+func WaitForAssetIndexOutbox(ctx context.Context, root *wiring.ComposeRoot, deadLettersBefore int64) error {
 	for {
 		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "pending")
 		if err != nil {

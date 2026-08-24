@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

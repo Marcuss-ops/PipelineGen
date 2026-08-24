@@ -1,11 +1,11 @@
-package assets
+package deletion
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"

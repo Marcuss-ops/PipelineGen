@@ -2,7 +2,7 @@
 // image.generate.google (PR-GODOBJ-3-IMAGES-GENERATION, July 2026).
 //
 // godlike/06 SSOT: canonical owner of the ASYNC job adapter for image
-// generation. The handler is thin — it drives the usecase and emits the
+//  The handler is thin — it drives the usecase and emits the
 // typed *job.ArtifactManifest sidecar via handlerResult[job.ManifestKey].
 // Per PR-GODOBJ-3 KILL LIST b: the handler does NOT call IngestImage
 // (no media_assets writes, no asset.Hash / asset.PathRel in handlerResult).
@@ -34,26 +34,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
+
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // JobHandler is the canonical async adapter for image.generate.google
 // jobs. Composition wires a single JobHandler per worker; the handler
-// binds via RegisterHandler to appjobs.Dispatcher.
+// binds via RegisterHandler to jobs.Dispatcher.
 type JobHandler struct {
-	registry *generated.GenerationProviderRegistry
-	styles   generation.StyleResolver
+	registry *GenerationProviderRegistry
+	styles   StyleResolver
 	log      *zap.Logger
 }
 
 // NewJobHandler constructs the canonical async adapter (composition
 // root helper; not exported beyond the package).
-func NewJobHandler(registry *generated.GenerationProviderRegistry, styles generation.StyleResolver, log *zap.Logger) *JobHandler {
+func NewJobHandler(registry *GenerationProviderRegistry, styles StyleResolver, log *zap.Logger) *JobHandler {
 	return &JobHandler{registry: registry, styles: styles, log: log}
 }
 
@@ -77,7 +75,7 @@ type imageGeneratePayload struct {
 //	(b) The handler returns ONLY (payload + manifest sidecar). NO inline
 //	    IngestImage — the runner's finalizer handles persistence via
 //	    handlerResult[job.ManifestKey].Finalizer handles media_assets.
-func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling image.generate.google job",
 		zap.String("job_id", j.ID),
 		zap.String("correlation_id", j.CorrelationID),
@@ -178,12 +176,12 @@ func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.J
 //
 // Register propagates wiring errors — composition root MUST fail-closed
 // on non-nil return.
-func (h *JobHandler) RegisterHandler(jobsSvc *appjobs.Service) error {
+func (h *JobHandler) RegisterHandler(jobsSvc *jobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("images.JobHandler.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
+		return fmt.Errorf("images.JobHandler.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", jobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeImageGenerateGoogle, appjobs.HandlerFunc(h.HandleJob)); err != nil {
-		return fmt.Errorf("images.JobHandler.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeImageGenerateGoogle, err)
+	if err := jobsSvc.RegisterHandler(jobs.TypeImageGenerateGoogle, jobs.HandlerFunc(h.HandleJob)); err != nil {
+		return fmt.Errorf("images.JobHandler.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeImageGenerateGoogle, err)
 	}
 	h.log.Info("registered image.generate.google job handler")
 	return nil

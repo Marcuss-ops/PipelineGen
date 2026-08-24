@@ -29,7 +29,7 @@
 //
 // PR-VO-C1 invariant: destination.kind="group" + empty group is a
 // hard 400 ("no fake availability" per godlike/07).
-package assets
+package voiceover
 
 import (
 	"crypto/sha256"

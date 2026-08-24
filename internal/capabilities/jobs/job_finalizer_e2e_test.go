@@ -11,8 +11,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/policy"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/policy"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -352,7 +350,7 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 //     NOT req.Result.Attempt. A future reader changing markSucceeded's
 //     UPDATE statement to `revision = revision + 2` (silent value
 //     drift) would fail THIS assertion.
-//  3. evt.FinalStatus = jobs.StatusSucceeded (typed-port invariant:
+//  3. evt.FinalStatus = StatusSucceeded (typed-port invariant:
 //     the Finalizer's terminal transition is shaped as a typed event,
 //     not a free-form string).
 //
@@ -427,9 +425,9 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 	if evt.JobID != jobID {
 		t.Errorf("evt.JobID = %q, want %q", evt.JobID, jobID)
 	}
-	if evt.FinalStatus != jobs.StatusSucceeded {
+	if evt.FinalStatus != StatusSucceeded {
 		t.Errorf("evt.FinalStatus = %q, want %q (StatusSucceeded)",
-			evt.FinalStatus, jobs.StatusSucceeded)
+			evt.FinalStatus, StatusSucceeded)
 	}
 	if err := evt.Err; err != nil {
 		t.Errorf("evt.Err = %v, want nil on SUCCEEDED event", err)

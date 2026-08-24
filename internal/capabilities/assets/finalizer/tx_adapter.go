@@ -2,7 +2,7 @@
 // AssetFinalizerTx and ArtifactPreparationService (FASE 3, July 2026).
 //
 // Canonical reference: Piano d'Azione Completo § 5.
-package assets
+package finalizer
 
 import (
 	"context"

@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"

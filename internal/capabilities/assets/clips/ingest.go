@@ -24,16 +24,16 @@
 // ih.RegisterRoutes(r, idem). All ingest routes have idem
 // installed before the handler per AGENTS.md Pattern 8 (writes are
 // atomic via Dispatcher + jobs media.enrich enqueue).
-package assets
+package clips
 
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
-	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"

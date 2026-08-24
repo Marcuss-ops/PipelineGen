@@ -29,7 +29,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // runBackfillSourceURLMetadata reconciles the source_url metadata mirror
@@ -54,7 +54,7 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}

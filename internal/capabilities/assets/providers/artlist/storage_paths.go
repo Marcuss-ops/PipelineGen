@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 import (
 	"path/filepath"

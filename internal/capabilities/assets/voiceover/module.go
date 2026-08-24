@@ -46,12 +46,12 @@
 // forwarder methods). There is no non-HTTP consumer of the voiceover
 // handler in the codebase (the only route is /generate, only
 // reachable via HTTP).
-package assets
+package voiceover
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"

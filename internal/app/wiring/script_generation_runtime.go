@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"

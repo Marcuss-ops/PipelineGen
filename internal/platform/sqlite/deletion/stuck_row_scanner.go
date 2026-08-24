@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion/reconciler"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

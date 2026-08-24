@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 )
 
 // Compile-time assertion: Registry satisfies the application-layer port.

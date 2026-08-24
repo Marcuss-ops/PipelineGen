@@ -10,7 +10,7 @@
 // as part of the use-case extraction. The parent sourcing/helpers.go now
 // keeps only ScanLocalMp4 (which belongs to the LocalImporter use case,
 // slated for commit 4 of P0-1).
-package assets
+package youtube
 
 import (
 	"fmt"

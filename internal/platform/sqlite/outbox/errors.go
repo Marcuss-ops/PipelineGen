@@ -1,7 +1,7 @@
 package outbox
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 )
 
 // ── Errors / Schema Constants ──────────────────────────────────────────

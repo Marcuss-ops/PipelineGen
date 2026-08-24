@@ -1,4 +1,4 @@
-package assets
+package finalizer
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 
@@ -72,7 +71,7 @@ func TestArtifactPreparation_StampsDriveIdentity(t *testing.T) {
 		FolderPath:   "/video/847/overlay",
 		Action:       finalization.PublishCreated,
 	}}
-	prep := finalizer.NewArtifactPreparation(stub, nil)
+	prep := NewArtifactPreparation(stub, nil)
 
 	published, err := prep.Prepare(context.Background(), writeVerifiedArtifact(t, "chronon overlay bytes", nil))
 	if err != nil {
@@ -105,7 +104,7 @@ func TestArtifactPreparation_StampsDriveIdentity(t *testing.T) {
 // publisher returning an empty Drive identity does not stamp empty keys.
 func TestArtifactPreparation_EmptyDriveLocationDoesNotStamp(t *testing.T) {
 	stub := &stubPublisherPort{location: finalization.AssetLocation{Provider: "drive", Action: finalization.PublishCreated}}
-	prep := finalizer.NewArtifactPreparation(stub, nil)
+	prep := NewArtifactPreparation(stub, nil)
 
 	published, err := prep.Prepare(context.Background(), writeVerifiedArtifact(t, "chronon overlay bytes", nil))
 	if err != nil {

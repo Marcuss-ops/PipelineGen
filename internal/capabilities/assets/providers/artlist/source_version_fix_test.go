@@ -10,7 +10,7 @@
 // Fix: stagePersistResults is now fail-closed — it rejects assets with an
 // empty SHA-256 and never emits an outbox event. The fallback hash path has
 // been retired; every persisted asset must carry a real content hash.
-package assets
+package artlist
 
 import (
 	"context"
@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"

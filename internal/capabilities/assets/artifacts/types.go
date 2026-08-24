@@ -10,7 +10,7 @@
 // job-artifact linking (JobArtifact), URI resolution (ResolverRegistry),
 // and job-payload binding extraction (BindingExtractorRegistry) now live
 // here — the legacy internal/assetregistry package is being absorbed.
-package assets
+package artifacts
 
 import (
 	"context"

@@ -27,7 +27,7 @@
 //     transition via a SQL UPDATE (same pattern as gate06). Test 2
 //     inserts clips with mixed index_states directly (no RunTag needed)
 //     to assert the DBSearcher contract.
-package assets
+package artlist
 
 import (
 	"context"
@@ -38,8 +38,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

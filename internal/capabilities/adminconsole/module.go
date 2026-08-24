@@ -1,8 +1,7 @@
 package adminconsole
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	adminapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -15,7 +14,7 @@ type Descriptor struct {
 }
 
 // Build constructs the admin console descriptor from the given service and logger.
-func Build(service *adminapp.Service, log *zap.Logger) *Descriptor {
+func Build(service *Service, log *zap.Logger) *Descriptor {
 	return &Descriptor{
 		handler: NewHandler(service, log),
 		name:    "adminconsole",

@@ -23,7 +23,7 @@
 //
 // Safe to add fields later because CompositionDeps already exposes
 // the optional `*MonitorRuntimePolicy` shape (nil → defaults).
-package assets
+package monitor
 
 import "time"
 

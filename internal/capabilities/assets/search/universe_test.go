@@ -3,7 +3,7 @@
 // (where), and BackendRegistry.Eligible routes by universe so catalog
 // queries never hit live providers and discovery queries never touch
 // Qdrant.
-package assets
+package search
 
 import (
 	"reflect"

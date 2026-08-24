@@ -2,13 +2,13 @@
 //
 // Extracted from ops.go: clip operations (VerifyClip, HandleFixHash, Cleanup, Reconcile).
 // Depends on: ClipOpsService.
-package assets
+package clips
 
 import (
 	"errors"
 	"net/http"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

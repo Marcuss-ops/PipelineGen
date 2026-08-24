@@ -2,7 +2,7 @@
 // TextTrackMaterializer + policy helpers.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
-package assets
+package texttracks
 
 import (
 	"context"
@@ -14,8 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -199,7 +198,7 @@ func (f *fakeOutbox) Enqueue(_ context.Context, _ *sql.Tx, eventType, aggregateI
 	return &outboxevents.EnqueueResult{EventID: 1, Inserted: true}, nil
 }
 
-func newTestMaterializer(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob texttracks.OutboxEnqueuer, srcLang string, targets []string, modelVer, promptVer string) *texttracks.Materializer {
+func newTestMaterializer(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob OutboxEnqueuer, srcLang string, targets []string, modelVer, promptVer string) *Materializer {
 	t.Helper()
 	// PR-CATALOG-MULTILINGUA step 3: build the per-test
 	// registry from a `[]string` literal via
@@ -211,11 +210,11 @@ func newTestMaterializer(t *testing.T, repo *fakeTextTrackRepo, tr translation.T
 	if err != nil {
 		t.Fatalf("NewLanguageRegistryFromCodes(%v): %v", targets, err)
 	}
-	m, err := texttracks.NewMaterializer(
+	m, err := NewMaterializer(
 		repo,
 		tr,
 		ob,
-		texttracks.ResolverConfig{
+		ResolverConfig{
 			Registry:       reg,
 			SourceLanguage: srcLang,
 			ModelVersion:   modelVer,
@@ -244,7 +243,7 @@ func seedSourceTrack(repo *fakeTextTrackRepo, assetID, srcLang string, kind asse
 		Provider:           "whisper",
 		ModelName:          "whisper-large-v3",
 		ModelVersion:       "v3",
-		TextHash:           texttracks.ComputeSourceTextHash(text),
+		TextHash:           ComputeSourceTextHash(text),
 		SourceVersion:      sourceVersion,
 		Status:             asset.TextTrackReady,
 		CreatedAt:          time.Now(),
@@ -267,7 +266,7 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 	// (translationModel="" default, modelVersion="model-v1",
 	// promptVersion="prompt-v1"). Without this, the new gate
 	// (FindCurrentForTranslation) would miss and retranslate IT.
-	srcTextHash := texttracks.ComputeSourceTextHash(srcText)
+	srcTextHash := ComputeSourceTextHash(srcText)
 	expectedKey := asset.TranslationKey(srcTextHash, "it", "", "model-v1", "prompt-v1")
 
 	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
@@ -283,7 +282,7 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 		ModelName:          "fake-model",
 		ModelVersion:       "model-v1",
 		PromptVersion:      "prompt-v1",
-		TextHash:           texttracks.ComputeSourceTextHash("[it] hello world"),
+		TextHash:           ComputeSourceTextHash("[it] hello world"),
 		SourceVersion:      srcVer,
 		TranslationKey:     expectedKey,
 		IsCurrent:          true,
@@ -344,7 +343,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 		Provider:           "fake",
 		ModelName:          "fake-model",
 		ModelVersion:       "model-v1",
-		TextHash:           texttracks.ComputeSourceTextHash("[it] hello world v1 (stale)"),
+		TextHash:           ComputeSourceTextHash("[it] hello world v1 (stale)"),
 		SourceVersion:      "src-v1",
 		Status:             asset.TextTrackReady,
 		CreatedAt:          time.Now().Add(-time.Hour),
@@ -353,7 +352,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	srcHash := texttracks.ComputeSourceTextHash("hello world v2")
+	srcHash := ComputeSourceTextHash("hello world v2")
 	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
@@ -389,7 +388,7 @@ func TestMaterialize_ConcurrentSameKey_NoCorruption(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es", "fr"}, "model-v1", "prompt-v1")
 
-	srcHash := texttracks.ComputeSourceTextHash("hello world")
+	srcHash := ComputeSourceTextHash("hello world")
 
 	var wg sync.WaitGroup
 	var err1, err2 error
@@ -438,7 +437,7 @@ func TestMaterialize_NoSourceTrack_Terminal(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ErrNoSourceTrack, got nil")
 	}
-	var typed *texttracks.ErrNoSourceTrack
+	var typed *ErrNoSourceTrack
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected *ErrNoSourceTrack, got %T: %v", err, err)
 	}
@@ -460,11 +459,11 @@ func TestMaterialize_SourceNotReady_Terminal(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrTrackNotReady, got nil")
 	}
-	var typed *texttracks.ErrTrackNotReady
+	var typed *ErrTrackNotReady
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected *ErrTrackNotReady, got %T: %v", err, err)
 	}
@@ -503,7 +502,7 @@ func TestMaterialize_TranslationFailure_RecordedInReport(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: expected nil error (per-language failures are in report), got %v", err)
 	}
@@ -534,7 +533,7 @@ func TestMaterialize_OutboxFailure_ReturnsError(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	_, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected error from outbox failure, got nil")
 	}
@@ -554,7 +553,7 @@ func TestMaterialize_ExcludesSourceLanguage(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -592,7 +591,7 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 	// resolver's 5-tuple (source_text_hash + target_lang +
 	// translation_model + model_version + prompt_version).
 	const srcText = "hello world"
-	srcHash := texttracks.ComputeSourceTextHash(srcText)
+	srcHash := ComputeSourceTextHash(srcText)
 	expectedKey := asset.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
 
 	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
@@ -608,7 +607,7 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 		ModelName:          "qwen2.5",
 		ModelVersion:       "model-v1",
 		PromptVersion:      "prompt-v1",
-		TextHash:           texttracks.ComputeSourceTextHash("[it] hello world"),
+		TextHash:           ComputeSourceTextHash("[it] hello world"),
 		SourceVersion:      "src-v1",
 		TranslationKey:     expectedKey,
 		IsCurrent:          true,
@@ -655,7 +654,7 @@ func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testi
 
 	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"}, "ollama-qwen", "model-v1", "prompt-v1")
 
-	srcHash := texttracks.ComputeSourceTextHash("hello world")
+	srcHash := ComputeSourceTextHash("hello world")
 	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
@@ -684,7 +683,7 @@ func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testi
 	}
 }
 
-func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob texttracks.OutboxEnqueuer, srcLang string, targets []string, modelName, modelVer, promptVer string) *texttracks.Materializer {
+func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob OutboxEnqueuer, srcLang string, targets []string, modelName, modelVer, promptVer string) *Materializer {
 	t.Helper()
 	// PR-CATALOG-MULTILINGUA step 3: same registry-from-codes
 	// construction as newTestMaterializer (`targets` literal
@@ -694,11 +693,11 @@ func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr tran
 	if err != nil {
 		t.Fatalf("NewLanguageRegistryFromCodes(%v): %v", targets, err)
 	}
-	m, err := texttracks.NewMaterializer(
+	m, err := NewMaterializer(
 		repo,
 		tr,
 		ob,
-		texttracks.ResolverConfig{
+		ResolverConfig{
 			Registry:         reg,
 			SourceLanguage:   srcLang,
 			ModelVersion:     modelVer,
@@ -746,7 +745,7 @@ func TestMaterialize_OllamaFallbackUnderArgos_PersistsHonestFingerprint(t *testi
 	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"},
 		translation.ArgosTranslationModel, translation.ArgosTranslationModelVersion, "prompt-v1")
 
-	srcHash := texttracks.ComputeSourceTextHash("hello world")
+	srcHash := ComputeSourceTextHash("hello world")
 	_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)

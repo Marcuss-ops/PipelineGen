@@ -1,4 +1,4 @@
-package brain
+package normalizer
 
 import (
 	"context"

@@ -16,11 +16,17 @@
 package asset
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
+
+// SourceVersionQuerier queries the source version for a given asset ID.
+type SourceVersionQuerier interface {
+	SourceVersionFor(ctx context.Context, assetID string) (string, error)
+}
 
 // ClipFolder represents a folder containing multiple clips from the same source.
 type ClipFolder struct {

@@ -14,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -23,11 +22,11 @@ import (
 // remain mounted under /api/scraper/* for backward compatibility.
 type ScraperHandler struct {
 	nodeScraperDir string
-	processRunner  appassets.ProcessRunner
+	processRunner  ProcessRunner
 }
 
 // NewScraperHandler creates a new scraper handler.
-func NewScraperHandler(nodeScraperDir string, processRunner appassets.ProcessRunner) *ScraperHandler {
+func NewScraperHandler(nodeScraperDir string, processRunner ProcessRunner) *ScraperHandler {
 	return &ScraperHandler{nodeScraperDir: nodeScraperDir, processRunner: processRunner}
 }
 
@@ -109,7 +108,7 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 		"--limit", strconv.Itoa(limit),
 	}
 
-	result, err := h.processRunner.Run(ctx, "node", args, appassets.ProcessOptions{
+	result, err := h.processRunner.Run(ctx, "node", args, ProcessOptions{
 		WorkDir:        scraperDir,
 		CombinedOutput: false,
 	})

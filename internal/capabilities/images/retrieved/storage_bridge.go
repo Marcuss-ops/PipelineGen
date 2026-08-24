@@ -9,19 +9,17 @@
 // providers in this subpackage call them, the parent package constructs
 // each provider with an opaque StorageBridge. This interface declares
 // only the methods providers need.
-package images
+package retrieved
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 )
 
 type StorageBridge interface {
 	SearchWikipedia(ctx context.Context, query, lang string) (imgURL string, wikiTitle string)
-	SearchWikimediaCommons(ctx context.Context, query string) routing.RetrievalSearchResult
+	SearchWikimediaCommons(ctx context.Context, query string) RetrievalSearchResult
 	SearchSearXNGImages(ctx context.Context, query string) string
-	SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []routing.RetrievalSearchResult
+	SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []RetrievalSearchResult
 	SearchDDGWide(ctx context.Context, query string) string
 	// SearchBySlug is the Drive-side list look-up; returns up to limit
 	// previously-ingested image URLs for the given subject slug. The

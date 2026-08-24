@@ -28,7 +28,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/workflow/promo"
 	domainvo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 

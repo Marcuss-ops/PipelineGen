@@ -1,130 +1,88 @@
-// Package worker — runner.go: thin core (struct, constructor, constants)
-//
-// LONG-FILES-SPLIT-2026-07-06 Band A #6: the original 668-LOC
-// runner.go has been decomposed into 4 single-purpose files per
-// AGENTS.md Pattern 5:
-//
-//	runner.go         — thin core: struct, constructor, constants
-//	runner_lease.go   — Run (claim loop), renewLoop, fail,
-//	                    postRenewFailClosedCheck, ErrLeaseLostDuringRun
-//	runner_execute.go — runLease (main job execution pipeline)
-//	runner_upload.go  — uploadManifest, uploadOutputsLegacy,
-//	                    OutputArtifact, sha256File,
-//	                    ErrArtifactClientRequired, ErrLegacyUploadPathRemoved
-//
-// godlike/06 SSOT (one canonical owner per fact): each file owns
-// exactly one pipeline phase.
-//
-// godlike/07 minimum-blast-radius: pure code-motion, zero logic changes.
 package jobs
 
 import (
-	"time"
+	"context"
+	"fmt"
 
-	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
-// DefaultLeaseTTL is the canonical lease TTL used by the runner's
-// renewing loop. Cadence (DefaultRenewInterval) is half of this so
-// a single renewal failure remains non-fatal — the lease still has
-// TTL/2 of slack before expiry.
-//
-// Tuning notes:
-//   - 60s is conservative for the W1 spec; long-running handlers
-//     (media.artlist / extract / batch) routinely run multi-minute.
-//   - The HTTP broker round-trip is sub-second under steady state;
-//     TTL/2 = 30s gives ample room for a transient retry even on
-//     a degraded link.
-//   - Smaller TTLs are possible but a flame-detection loop at 5s
-//     cadence quickly drowns the broker in Renew traffic.
-const DefaultLeaseTTL = 60 * time.Second
-
-// DefaultRenewInterval is the cadence at which the runner ticks a
-// Renew call inside runLease. Equal to DefaultLeaseTTL/2 (see
-// rationale on DefaultLeaseTTL).
-const DefaultRenewInterval = DefaultLeaseTTL / 2
-
-// minRenewInterval bounds the lower edge of a configurable cadence
-// to prevent a misconfigured test (or production override) from
-// re-entering the renewal loop faster than the broker can answer.
-const minRenewInterval = 50 * time.Millisecond
-
 type Runner struct {
-	broker        appjobs.Broker
-	registry      *Registry
-	workspace     *Workspace
-	assetClient   AssetClient
-	log           *zap.Logger
-	workerID      string
-	sessionID     string
-	caps          []string
-	renewInterval time.Duration // 0 → DefaultRenewInterval; clamped to >= minRenewInterval
-
-	// observer is the kernel observability entry point (FASE 2, August
-	// 2026). When non-nil, every claimed lease executed by runLease gets
-	// a Run (queue_wait, wall_time, status, attempts). nil = legacy
-	// un-instrumented behaviour (test fixtures keep working).
-	observer  *kernobs.RunObserver
-	jobLedger capjobregistry.Registry
+	repo       job.Store
+	dispatcher *Dispatcher
+	log        *zap.Logger
+	cfg        RunnerConfig
+	reg        *Registry
+	broker     CompletionPort
+	jobLedger  capjobregistry.Registry
+	observer   *kernobs.RunObserver
 }
 
-// NewRunner constructs a Runner with the default renewal cadence
-// (DefaultRenewInterval). Production callers should not need to
-// override it; the W1 Phase 7 test suite injects a faster cadence
-// to exercise the renewal protocol end-to-end without a 30s wait.
-func NewRunner(broker appjobs.Broker, registry *Registry, workspace *Workspace, assetClient AssetClient, log *zap.Logger, workerID, sessionID string, caps []string) *Runner {
+func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg RunnerConfig) *Runner {
+	if cfg.Workers <= 0 {
+		cfg.Workers = 1
+	}
 	return &Runner{
-		broker:        broker,
-		registry:      registry,
-		workspace:     workspace,
-		assetClient:   assetClient,
-		log:           log,
-		workerID:      workerID,
-		sessionID:     sessionID,
-		caps:          caps,
-		renewInterval: DefaultRenewInterval,
+		repo:       repo,
+		dispatcher: dispatcher,
+		log:        log,
+		cfg:        cfg,
 	}
 }
 
-// WithObserver attaches the kernel observability RunObserver to the
-// Runner (FASE 2, August 2026). Mirrors SetRenewInterval's fluent
-// receiver pattern; nil-tolerant so test fixtures that don't wire an
-// observer keep the legacy un-instrumented runLease path.
-func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
-	r.observer = observer
+func (r *Runner) WithRegistry(reg *Registry) *Runner {
+	r.reg = reg
 	return r
 }
 
-// WithJobRegistry attaches the durable Job Registry projection to this runner.
-func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
-
-// SetRenewInterval overrides the renewal cadence. Returns the
-// receiver for chaining. Zero / negative / sub-minRenewInterval
-// values are clamped to DefaultRenewInterval or minRenewInterval
-// respectively so a misconfigured test cannot re-enter the renewal
-// loop faster than the broker can answer (which would surface as
-// broker-side TCP pressure).
-func (r *Runner) SetRenewInterval(d time.Duration) *Runner {
-	switch {
-	case d <= 0:
-		r.renewInterval = DefaultRenewInterval
-	case d < minRenewInterval:
-		r.renewInterval = minRenewInterval
-	default:
-		r.renewInterval = d
-	}
+func (r *Runner) WithBroker(broker CompletionPort) *Runner {
+	r.broker = broker
 	return r
 }
 
-// effectiveRenewInterval returns the cadence actually used inside
-// runLease. Falls back to DefaultRenewInterval when not configured.
-func (r *Runner) effectiveRenewInterval() time.Duration {
-	if r.renewInterval <= 0 {
-		return DefaultRenewInterval
+func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner {
+	r.jobLedger = reg
+	return r
+}
+
+func (r *Runner) WithObserver(obs *kernobs.RunObserver) *Runner {
+	r.observer = obs
+	return r
+}
+
+func (r *Runner) Start(ctx context.Context) {
+	for i := 0; i < r.cfg.Workers; i++ {
+		workerID := fmt.Sprintf("%s_%d", workerIDPrefix, i+1)
+		w := NewWorker(WorkerDeps{
+			ID:         workerID,
+			Repo:       r.repo,
+			Dispatcher: r.dispatcher,
+			Notifier:   r.cfg.Notifier,
+			Log:        r.log,
+			LeaseTTL:   r.cfg.LeaseTTL,
+			PollEvery:  r.cfg.PollEvery,
+			Backoff:    r.cfg.Backoff,
+			Types:      r.cfg.JobTypes,
+		})
+		if r.reg != nil {
+			w.WithRegistry(r.reg)
+		}
+		if r.broker != nil {
+			w.WithBroker(r.broker)
+		}
+		if r.jobLedger != nil {
+			w.WithJobRegistry(r.jobLedger)
+		}
+		if r.observer != nil {
+			w.WithObserver(r.observer)
+		}
+		concurrent.SafeGo(fmt.Sprintf("worker-%d", i+1), func() {
+			w.Start(ctx)
+		})
 	}
-	return r.renewInterval
+	<-ctx.Done()
 }

@@ -3,12 +3,11 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
@@ -20,21 +19,21 @@ import (
 
 // buildDomainScriptServices constructs the artifact service, image
 // search resolver, and the canonical segment-selection resolver and
-// populates the wiring.DomainBundle with them.
+// populates the DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the canonical SOLE
 // owner of its composition.
 func buildDomainScriptServices(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *wiring.Databases,
+	dbs *Databases,
 	log *zap.Logger,
-	drive *wiring.DriveBundle,
-	repos *wiring.RepoBundle,
-	search *wiring.SearchBundle,
-	process *wiring.ProcessBundle,
-	ai *wiring.AIBundle,
-	bundle *wiring.DomainBundle,
+	drive *DriveBundle,
+	repos *RepoBundle,
+	search *SearchBundle,
+	process *ProcessBundle,
+	ai *AIBundle,
+	bundle *DomainBundle,
 	imageSvc *imgservice.Service,
 ) error {
 	artifactBlobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)

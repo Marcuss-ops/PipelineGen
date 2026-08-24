@@ -34,7 +34,7 @@
 // "Filters forwarding", not "filter execution"; execution tests
 // belong to the per-backend's native test packages (qdrant,
 // sqlite/assets, provider adapters).
-package assets
+package search
 
 import (
 	"context"

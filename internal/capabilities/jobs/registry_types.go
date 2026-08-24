@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -214,7 +213,7 @@ const (
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
 	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
-	TypeImageGenerateGoogle   = image.TypeGenerateGoogle
+	TypeImageGenerateGoogle   = "image.generate.google"
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
 	// (NOT in codec.go) so the package-level re-export surface stays in
@@ -279,7 +278,7 @@ const (
 	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
 	TypeYouTubeClipExtract     = youtube.TypeClipExtract
 	TypeScriptGenerate         = script.TypeGenerate
-	TypeImagesGenerate         = image.TypeImagesGenerate
+	TypeImagesGenerate         = "images.generate"
 	TypeDocumentGenerate       = document.TypeGenerate
 	TypeBulkUploadYouTubeClips = media.TypeBulkUploadYouTubeClips
 	TypeAssetTextMaterialize   = asset.TypeTextMaterialize

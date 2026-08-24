@@ -31,7 +31,7 @@ func RunPerformanceReport(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	ids := splitBackfillCSV(*jobIDs)
+	ids := cli.SplitBackfillCSV(*jobIDs)
 	if len(ids) == 0 {
 		return fmt.Errorf("--job-ids is required")
 	}

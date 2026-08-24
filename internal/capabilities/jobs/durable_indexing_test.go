@@ -78,10 +78,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

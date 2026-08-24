@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"

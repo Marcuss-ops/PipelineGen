@@ -77,8 +77,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -195,7 +195,7 @@ func RunTextTracksBackfill(args []string) error {
 	// already wired. The composition root also opens the
 	// SQLite DB and runs migrations — matches the pattern in
 	// backfill_asset_embeddings.go.
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("text-tracks-backfill: init composition: %w", err)
 	}
@@ -242,7 +242,7 @@ func RunTextTracksBackfill(args []string) error {
 		TextKind:        textKind,
 		OnlyMissing:     deps.OnlyMissing,
 		Limit:           deps.Limit,
-		AssetIDs:        splitCSV(deps.AssetIDs),
+		AssetIDs:        cli.SplitCSV(deps.AssetIDs),
 	}
 	if err := opts.Validate(); err != nil {
 		return fmt.Errorf("text-tracks-backfill: %w", err)
@@ -307,7 +307,7 @@ func RunTextTracksBackfill(args []string) error {
 		cp.TextKind = string(textKind)
 		cp.OnlyMissing = deps.OnlyMissing
 		cp.Limit = deps.Limit
-		cp.AssetIDs = splitCSV(deps.AssetIDs)
+		cp.AssetIDs = cli.SplitCSV(deps.AssetIDs)
 	}
 
 	out := textTracksBackfillReport{

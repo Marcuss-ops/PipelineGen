@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"

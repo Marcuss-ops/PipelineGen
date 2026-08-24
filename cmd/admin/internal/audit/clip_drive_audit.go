@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -181,7 +181,7 @@ func RunClipDriveAudit(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	rootCtx, _, rootCleanup, err := app.InitComposition(cfg, log)
+	rootCtx, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -555,3 +555,6 @@ func extractDriveFileID(raw string) string {
 	}
 	return ""
 }
+
+const maxFolderDepth = 10
+const driveFolderMimeType = "application/vnd.google-apps.folder"

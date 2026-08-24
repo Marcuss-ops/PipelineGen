@@ -23,15 +23,15 @@
 // alias chain (image/styles.StyleDefinition = asset.GenerationStyle =
 // asset.StyleDefinition) collapses to a single type identity at compile
 // time, so existing consumers in this shim continue to work unchanged.
-package assets
+package generation
 
-import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/styles"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 
 // ── Type aliases (transparent — same type, same method set) ─────────────
 
 // StyleRegistry is the canonical YAML-backed style registry.
-// See internal/capabilities/images/workflow/styles/ for the implementation.
-type StyleRegistry = styles.StyleRegistry
+// See internal/capabilities/images/ for the implementation.
+type StyleRegistry = images.StyleRegistry
 
 // ResolvedStyle is the output of StyleResolver.Resolve.
 //
@@ -39,24 +39,24 @@ type StyleRegistry = styles.StyleRegistry
 // from ResolvedStyle (caller-supplied dimensions through the image
 // generation request). Existing call sites that read ResolvedStyle.W/H
 // must migrate.
-type ResolvedStyle = styles.ResolvedStyle
+type ResolvedStyle = images.ResolvedStyle
 
 // StyleResolver resolves a style ID into validated generation parameters.
-type StyleResolver = styles.StyleResolver
+type StyleResolver = images.StyleResolver
 
-// ── Sentinel errors (same pointer as styles/) ──────────────────────────
+// ── Sentinel errors (same pointer as images/) ──────────────────────────
 
 var (
-	ErrStyleNotFound            = styles.ErrStyleNotFound
-	ErrStyleProviderUnsupported = styles.ErrStyleProviderUnsupported
-	ErrStyleModelUnsupported    = styles.ErrStyleModelUnsupported
-	ErrStyleDisabled            = styles.ErrStyleDisabled
+	ErrStyleNotFound            = images.ErrStyleNotFound
+	ErrStyleProviderUnsupported = images.ErrStyleProviderUnsupported
+	ErrStyleModelUnsupported    = images.ErrStyleModelUnsupported
+	ErrStyleDisabled            = images.ErrStyleDisabled
 )
 
 // ── Constructor ────────────────────────────────────────────────────────
 
 // NewStyleRegistry creates a new registry and loads styles from the given
-// YAML file. Delegates to styles.NewStyleRegistry.
+// YAML file. Delegates to images.NewStyleRegistry.
 func NewStyleRegistry(yamlPath string) (*StyleRegistry, error) {
-	return styles.NewStyleRegistry(yamlPath)
+	return images.NewStyleRegistry(yamlPath)
 }

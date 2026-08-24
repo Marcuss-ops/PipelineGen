@@ -15,7 +15,7 @@ import (
 
 	"go.uber.org/zap"
 
-	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
+	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

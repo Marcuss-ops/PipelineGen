@@ -64,13 +64,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"io"
 	"os/exec"
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	"go.uber.org/zap"
 )
 
@@ -238,6 +237,6 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req appimages.Ge
 	// 1280x720 reuses the same hash as a direct 1280x720 request — the
 	// downstream ingestion path is dim-correct.
 	format := "png"
-	sourceHash := appimages.ComputeSourceHash("google-slides", req.Prompt, req.Style, realW, realH, generated.CanonicalGoogleSlidesModel)
+	sourceHash := appimages.ComputeSourceHash("google-slides", req.Prompt, req.Style, realW, realH, appimages.CanonicalGoogleSlidesModel)
 	return buildGeneratedImage(data, outputPath, req, realW, realH, sourceHash, format), nil
 }

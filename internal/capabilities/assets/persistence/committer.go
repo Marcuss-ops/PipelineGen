@@ -19,7 +19,7 @@
 // INSERT/UPSERT into media_assets, asset_locations, or outbox_events
 // for asset.index.requested directly. AssetCommitter is the single
 // point of commit.
-package assets
+package persistence
 
 import (
 	"context"

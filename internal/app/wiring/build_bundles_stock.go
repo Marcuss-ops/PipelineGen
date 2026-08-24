@@ -12,7 +12,7 @@
 //
 //   - The 2 typed sentinels live ONLY in stockpipeline/upload_orchestration.go
 //     (ErrStockProductionJobFinalizerMissing + ErrStockProductionArtifactPrepMissing).
-//   - The wiring.StockPipelineWiring struct lives in bundle_types.go
+//   - The StockPipelineWiring struct lives in bundle_types.go
 //     (Module api.Module + Service *stockpipeline.Service).
 //   - The canonical StockUseCase constructor lives in
 //     stockpipeline/usecase.go::NewStockUseCase (returns *stockpipeline.StockUseCase,
@@ -44,8 +44,7 @@ package wiring
 import (
 	"fmt"
 
-	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	stockapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stock"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -59,7 +58,7 @@ import (
 //  3. stockpipeline.NewStockUseCase (ServiceRunner + narrowed jobsEnqueuer).
 //  4. stockapi.Build (API Descriptor with EnabledFunc closure).
 //
-// Returns a fully populated *wiring.StockPipelineWiring (Module + Service).
+// Returns a fully populated *StockPipelineWiring (Module + Service).
 // The HTTP Handler stays internal to stockapi.Build per Block
 // C1-Step 6 — no caller reads it outside the API module's
 // RegisterRoutes closure.
@@ -92,7 +91,7 @@ import (
 // preamble in one probe.
 //
 // Returns:
-//   - *wiring.StockPipelineWiring (nil, non-nil) on success — caller registers
+//   - *StockPipelineWiring (nil, non-nil) on success — caller registers
 //     the Module via tryRegisterModuleStrict.
 //   - (nil, ErrStockProduction*) on asymmetric wiring (gate fires
 //     before NewProductionStockPipeline).
@@ -100,7 +99,7 @@ import (
 //     required dep (NewProductionStockPipeline rejects Cfg/Log/SourceStager/ClipsRepo/
 //     AssetIndex/Dispatcher/Cutter/Renderer/Jobs).
 //   - (nil, stockapi.Build error) on missing UseCase / EnabledFunc.
-func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error) {
+func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// ── Gate 1: godlike/07 symmetric production pairing ────────
 	if err := validateStockSymmetricGate(deps.Delivery.Publisher, deps.Delivery.Finalizer); err != nil {
 		return nil, err
@@ -199,7 +198,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		return nil, err
 	}
 
-	return &wiring.StockPipelineWiring{
+	return &StockPipelineWiring{
 		Module:      typed.Module,
 		BatchModule: batchModule,
 		Service:     svc,

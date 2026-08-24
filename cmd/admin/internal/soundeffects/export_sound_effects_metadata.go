@@ -1,6 +1,7 @@
 package soundeffects
 
 import (
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
@@ -8,10 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 const soundEffectsMetadataDriveFolderID = "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
@@ -23,7 +23,7 @@ func RunExportSoundEffectsMetadata(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -37,7 +37,7 @@ func RunExportSoundEffectsMetadata(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	report, err := adminmedia.ExportSoundEffectsMetadata(ctx, assets.AdminMediaMetadataSource{DB: root.DB.DB}, uploader, soundEffectsMetadataDriveFolderID, "sound_effects_metadata.json")
+	report, err := adminmedia.ExportSoundEffectsMetadata(ctx, artlist.AdminMediaMetadataSource{DB: root.DB.DB}, uploader, soundEffectsMetadataDriveFolderID, "sound_effects_metadata.json")
 	if err != nil {
 		return err
 	}

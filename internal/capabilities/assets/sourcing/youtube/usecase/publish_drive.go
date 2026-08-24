@@ -16,7 +16,7 @@
 // owner of YouTube-clip Drive-publish orchestration for the sourcing/youtube
 // registration pipeline. The canonical Drive write canal is
 // delivery.Publisher.Publish (FASE 5 since June 2026).
-package assets
+package usecase
 
 import (
 	"context"

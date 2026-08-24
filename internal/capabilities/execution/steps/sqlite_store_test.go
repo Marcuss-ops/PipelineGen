@@ -16,7 +16,7 @@
 //     returns the full fingerprint-version audit log.
 //   - godlike/07 fail-closed: concurrent goroutines racing on
 //     the same key surface typed sentinels (not opaque strings).
-package execution
+package steps
 
 import (
 	"bytes"

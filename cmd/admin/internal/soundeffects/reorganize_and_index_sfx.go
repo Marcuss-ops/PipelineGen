@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -192,7 +192,7 @@ func RunReorganizeAndIndexSFX(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -243,7 +243,7 @@ func RunReorganizeAndIndexSFX(args []string) error {
 			return fmt.Errorf("write local file: %w", err)
 		}
 
-		hash, err := sha256File(localPath)
+		hash, err := cli.Sha256File(localPath)
 		if err != nil {
 			return fmt.Errorf("hash file: %w", err)
 		}
@@ -336,7 +336,7 @@ func RunReorganizeAndIndexSFX(args []string) error {
 			return fmt.Errorf("write local file: %w", err)
 		}
 
-		hash, err := sha256File(localPath)
+		hash, err := cli.Sha256File(localPath)
 		if err != nil {
 			return fmt.Errorf("hash file: %w", err)
 		}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 )
 

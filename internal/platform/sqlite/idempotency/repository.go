@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

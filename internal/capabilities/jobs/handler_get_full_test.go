@@ -35,7 +35,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

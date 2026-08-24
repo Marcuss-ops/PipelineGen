@@ -11,9 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan"
 )
 
 // TestReportContract replaces the stale full-repository golden snapshot with

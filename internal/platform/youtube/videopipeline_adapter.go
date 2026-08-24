@@ -14,7 +14,7 @@ import (
 	"context"
 
 	// DTOs (VideoCutRequest/Result, DownloaderMetadata, VideoChapter) live in ports/.
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 

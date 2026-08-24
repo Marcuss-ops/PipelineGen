@@ -4,7 +4,7 @@
 // function. Mirrors qdrant/reconciler/service_test.go style:
 // in-memory mocks for ports, hand-built StuckRow literals, no
 // real DB.
-package assets
+package reconciler
 
 import (
 	"context"

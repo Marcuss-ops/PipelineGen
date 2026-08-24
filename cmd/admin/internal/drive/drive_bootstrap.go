@@ -115,7 +115,7 @@ func RunDriveBootstrap(args []string) error {
 
 func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID, dbPathFlag string) error {
 	// Resolve DB path.
-	path := resolveDBPath(cfg, dbPathFlag)
+	path := cli.ResolveDBPath(cfg, dbPathFlag)
 	if path == "" {
 		return ErrAdminNoDB
 	}
@@ -129,7 +129,7 @@ func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	catalogRepo := sqlitedelivery.NewRepository(sqliteDB.DB)
 
 	// Build Drive admin client — mirrors build_bundles_drive.go pattern.
-	driveAdmin, err := buildDriveAdminForCLI(ctx, cfg, log)
+	driveAdmin, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
 		return fmt.Errorf("drive-bootstrap: init Drive client: %w", err)
 	}
@@ -191,7 +191,7 @@ func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 // NewDriveServiceFromFiles + &drive.Uploader{Service, Log}.
 // Returns the concrete *Uploader so callers can use methods from both
 // drive.Admin (folder CRUD) and drive.Reader (ListFiles, SearchFiles).
-func buildDriveAdminForCLI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*drive.Uploader, error) {
+func BuildDriveAdminForCLI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*drive.Uploader, error) {
 	svc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("NewDriveServiceFromFiles: %w", err)

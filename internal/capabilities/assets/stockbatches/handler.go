@@ -1,4 +1,4 @@
-package assets
+package stockbatches
 
 import (
 	"net/http"

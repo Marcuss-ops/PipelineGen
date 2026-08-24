@@ -1,4 +1,4 @@
-package assets
+package search
 
 // catalog_discovery_certification_test.go is the item-15 certification that
 // Catalog and Discovery are genuinely separated (PR-SEARCH-UNIVERSE,

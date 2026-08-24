@@ -19,7 +19,7 @@
 // The legacy /generate-with-group /batch /promo /sync /groups routes
 // were removed from RegisterRoutes PR-VOICEOVER-RECOVERY (V1..V7,
 // Wave 21); their Sunset machinery has been retired.
-package assets
+package voiceover
 
 import (
 	"github.com/gin-gonic/gin"

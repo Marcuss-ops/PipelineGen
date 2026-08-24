@@ -55,9 +55,6 @@ package images
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -72,8 +69,8 @@ import (
 // exhausted by the constructor (no struct-literal callers remain after
 // the migration).
 type GenerationService struct {
-	registry *generated.GenerationProviderRegistry
-	styles   generation.StyleResolver
+	registry *GenerationProviderRegistry
+	styles   StyleResolver
 	log      *zap.Logger
 	storage  *ImageStorageService
 }
@@ -83,8 +80,8 @@ type GenerationService struct {
 // RETIRED (PR-IMAGES-SHIM-REMOVAL, 2026-07-04) so the constructor
 // signature is final at 4 args.
 func NewGenerationService(
-	registry *generated.GenerationProviderRegistry,
-	styles generation.StyleResolver,
+	registry *GenerationProviderRegistry,
+	styles StyleResolver,
 	log *zap.Logger,
 	storage *ImageStorageService,
 ) *GenerationService {

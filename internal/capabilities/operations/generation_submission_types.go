@@ -51,7 +51,6 @@ import (
 
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -111,7 +110,7 @@ import (
 //     package). The caller MAY pass pre-generated IDs to
 //     enable deterministic test fixtures.
 type SubmitRequest struct {
-	Scope          domainops.Scope
+	Scope          Scope
 	IdempotencyKey string
 	RequestHash    string
 	ForceRefresh   bool
@@ -152,7 +151,7 @@ type SubmitRequest struct {
 //     be an idempotency hit — the caller explicitly asked
 //     for a new operation).
 type SubmitResult struct {
-	Operation *domainops.Operation
+	Operation *Operation
 	// Job is the canonical live Job state. On fresh submission
 	// and supersede paths, this is the Job just INSERTed in the
 	// atomic TX (no extra DB read needed). On the idempotency-

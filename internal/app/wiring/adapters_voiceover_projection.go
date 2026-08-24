@@ -12,7 +12,7 @@
 // type that the canonical port signatures require (see
 // internal/application/voiceover/ports.go::UpsertVoiceoverProjectionTx
 // and Verify). The actual SQL work happens in
-// lifecycle.Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) and
+// Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) and
 // the bare QueryRowContext calls in voiceoverPostCommitVerifierAdapter.
 // Future PR-VO-ADAPTERS-TYPED-PORT (deadline TBD, forward-pointer)
 // will abstract the *sql.Tx parameter into a typed envelope so the
@@ -27,16 +27,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 )
 
 // ─────────────────────────────────────────────────────────────────────
 // LifecycleProjectionUpserter adapter (P0.4 Fase 3a, July 2026).
 //
-// Bridges *lifecycle.Service → voiceover.LifecycleProjectionUpserter.
+// Bridges *Service → voiceover.LifecycleProjectionUpserter.
 // The two VoiceoverProjectionInput types (voiceover.VoiceoverProjectionInput
-// and lifecycle.VoiceoverProjectionInput) have identical field sets but
+// and VoiceoverProjectionInput) have identical field sets but
 // are separate types by design (domain separation — godlike/06 §one-
 // owner-per-fact). The adapter translates between them so the
 // voiceover.Finalizer stays free of any lifecycle package import.
@@ -48,7 +48,7 @@ type voiceoverProjectionAdapter struct {
 
 func newVoiceoverProjectionAdapter(svc *lifecycle.Service) *voiceoverProjectionAdapter {
 	if svc == nil {
-		panic("app.adapters_voiceover_use_case: newVoiceoverProjectionAdapter: svc is required (*lifecycle.Service)")
+		panic("app.adapters_voiceover_use_case: newVoiceoverProjectionAdapter: svc is required (*Service)")
 	}
 	return &voiceoverProjectionAdapter{svc: svc}
 }

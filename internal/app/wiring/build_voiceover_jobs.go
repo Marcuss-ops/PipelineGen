@@ -8,7 +8,6 @@ package wiring
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
@@ -19,7 +18,7 @@ import (
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +
 // voiceover.generate_item (BLOC5.3 child fanout) handlers into jobs.Service.
 // Extracted from NewComposition per PG-028 (July 2026).
-func wireVoiceoverJobBindings(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, log *zap.Logger) error {
+func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.Logger) error {
 	// Voiceover registration moved to the new GenerateJobHandler path
 	// (P0.1, June 2026) — see buildVoiceoverService.
 	// The legacy Service.RegisterHandler hook (which registered

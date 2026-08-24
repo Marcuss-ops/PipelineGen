@@ -26,7 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )

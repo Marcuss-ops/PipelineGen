@@ -50,7 +50,7 @@ func (g *GenerationService) ingestGeneratedImage(
 	slug := buildGeneratedImageSlug(result.PromptUsed)
 	filename := buildGeneratedImageFilename(result.PromptUsed, result.Format)
 	description := buildGeneratedImageDescription(result.PromptUsed)
-	source := resolveGeneratedImageSource(result.Provider)
+	source := resolveGeneratedImageSource(string(result.Provider))
 
 	var dataReader io.Reader = bytes.NewReader(result.Data)
 	if result.OutputPath != "" {

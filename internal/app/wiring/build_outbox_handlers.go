@@ -20,15 +20,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
+	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_drive"
+	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/metadataexport"
@@ -45,11 +44,11 @@ import (
 // metadataexport.MetadataExportHandler. Extracted verbatim from
 // BuildOutboxBundle (July 2026); called by the reduced orchestrator.
 func buildOutboxDeps(
-	dbs *wiring.Databases,
+	dbs *Databases,
 	cfg *config.Config,
-	repos *wiring.RepoBundle,
-	jobs *wiring.JobsBundle,
-	qd *wiring.QdrantDeps,
+	repos *RepoBundle,
+	jobs *JobsBundle,
+	qd *QdrantDeps,
 	voiceoverDriver jobsoutbox.VoiceoverCleanupDriver,
 	log *zap.Logger,
 ) (*jobsoutbox.Deps, outboxevents.Handler) {
@@ -170,8 +169,8 @@ func buildOutboxDeps(
 func registerOutboxCoreHandlers(
 	eventsRegistry *outboxevents.HandlerRegistry,
 	cfg *config.Config,
-	repos *wiring.RepoBundle,
-	qd *wiring.QdrantDeps,
+	repos *RepoBundle,
+	qd *QdrantDeps,
 	outboxDeps *jobsoutbox.Deps,
 	log *zap.Logger,
 ) error {
@@ -208,14 +207,14 @@ func registerOutboxCoreHandlers(
 // registerOutboxWorkers registers the optional + worker handlers
 // (metadata export, script.generate.queued, publish_outbox Publisher,
 // publish_drive DriveUploader) and returns the two canonical workers
-// for the wiring.OutboxBundle fields. Extracted verbatim from
+// for the OutboxBundle fields. Extracted verbatim from
 // BuildOutboxBundle (July 2026).
 func registerOutboxWorkers(
 	eventsRegistry *outboxevents.HandlerRegistry,
 	log *zap.Logger,
 	outboxDeps *jobsoutbox.Deps,
 	metadataExportHandler outboxevents.Handler,
-	jobs *wiring.JobsBundle,
+	jobs *JobsBundle,
 	stagingSvc staging.Store,
 	repo artifact.ArtifactStageRepository,
 	imageRepo *imagesrepo.ImagesRepository,
@@ -322,7 +321,7 @@ func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxe
 // missing DB handle or a construction error logs a Warn and skips — the
 // performance-backfill admin command remains the recovery path. It never
 // aborts boot.
-func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *wiring.Databases, log *zap.Logger) {
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, log *zap.Logger) {
 	if eventsRegistry == nil {
 		return
 	}

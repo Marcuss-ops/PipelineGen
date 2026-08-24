@@ -24,7 +24,7 @@
 //
 // Each port is the smallest surface this handler needs; expand it
 // only when a new call site emerges.
-package assets
+package metadataexport
 
 import "context"
 

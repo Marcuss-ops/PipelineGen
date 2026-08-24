@@ -32,7 +32,7 @@ import (
 	// compile time. The alias keeps the canonical port surface
 	// single-sourced in application/acquisition/ rather than
 	// duplicating types (godlike/06 one-owner-per-fact).
-	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
 // ── test-fetch helpers ──────────────────────────────────────────────

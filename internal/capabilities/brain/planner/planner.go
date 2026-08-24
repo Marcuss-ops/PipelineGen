@@ -4,12 +4,12 @@
 // godlike/06 SSOT: the SceneVisualPlanner is the single owner of
 // the (ranked candidates + scene -> SceneVisualPlan) transformation.
 // It performs no IO and depends only on the brain types and stdlib.
-package brain
+package planner
 
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

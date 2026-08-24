@@ -3,21 +3,20 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
-	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/reconciliation/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
+	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -36,23 +35,23 @@ import (
 type buildDomainAssetServicesParams struct {
 	ctx           context.Context
 	cfg           *config.Config
-	dbs           *wiring.Databases
+	dbs           *Databases
 	log           *zap.Logger
-	drive         *wiring.DriveBundle
-	repos         *wiring.RepoBundle
-	search        *wiring.SearchBundle
-	process       *wiring.ProcessBundle
-	ai            *wiring.AIBundle
-	outbox        *wiring.OutboxBundle
+	drive         *DriveBundle
+	repos         *RepoBundle
+	search        *SearchBundle
+	process       *ProcessBundle
+	ai            *AIBundle
+	outbox        *OutboxBundle
 	mutationsDisp mutations.AssetMutationDispatcher
 	voMetaWriter  semantic.MetadataWriterPort
-	bundle        *wiring.DomainBundle
+	bundle        *DomainBundle
 	mediaConfig   mediaexec.ExecutionConfig
 }
 
 // buildDomainAssetServices constructs the voiceover, books, ingest,
 // images, lessons, and voiceover-sync services and populates the
-// wiring.DomainBundle with them.
+// DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the SOLE canonical
 // owner of its composition.
@@ -63,7 +62,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	voiceoverDestResolver := params.drive.DestResolver
 	// Voiceover group names are resolved against the canonical SQLite
 	// asset tree rooted at Drive.VoiceoverFolder. Do not reuse the
-	// generic wiring.DriveBundle resolver here: that resolver may belong to a
+	// generic DriveBundle resolver here: that resolver may belong to a
 	// different asset family (for example images) and would turn a valid
 	// voiceover group into an empty destination.
 	if params.search != nil && params.cfg.Drive.VoiceoverFolder() != "" {

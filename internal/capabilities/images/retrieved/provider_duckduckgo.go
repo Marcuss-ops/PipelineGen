@@ -4,7 +4,7 @@
 //
 // DuckDuckGoProvider scrapes DuckDuckGo image search via the public
 // /i.js endpoint. Healthy() returns nil (DDG has no health endpoint).
-package images
+package retrieved
 
 import (
 	"context"
@@ -12,8 +12,6 @@ import (
 	"time"
 
 	nethttp "net/http"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -50,7 +48,7 @@ func (p *DuckDuckGoProvider) Healthy(_ context.Context) error {
 	return nil
 }
 
-func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if p == nil || p.bridge == nil || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
@@ -58,12 +56,12 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing
 		SearchDDGWideMany(context.Context, string, int) []string
 	}); ok {
 		urls := many.SearchDDGWideMany(ctx, query, 10)
-		out := make([]routing.RetrievalSearchResult, 0, len(urls))
+		out := make([]RetrievalSearchResult, 0, len(urls))
 		for _, imgURL := range urls {
 			if strings.TrimSpace(imgURL) == "" {
 				continue
 			}
-			out = append(out, routing.RetrievalSearchResult{
+			out = append(out, RetrievalSearchResult{
 				Provider: asset.ProviderDuckDuckGo, Origin: asset.ImageOriginRetrieved,
 				PreviewURL: imgURL, PageURL: imgURL, License: "Unknown", Author: "Unknown",
 			})
@@ -74,7 +72,7 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing
 	if imgURL == "" {
 		return nil, nil
 	}
-	return []routing.RetrievalSearchResult{{
+	return []RetrievalSearchResult{{
 		Provider:   asset.ProviderDuckDuckGo,
 		Origin:     asset.ImageOriginRetrieved,
 		PreviewURL: imgURL,

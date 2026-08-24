@@ -45,17 +45,17 @@ type YamlResolver struct {
 // misconfiguration at startup, not in a runtime traceback).
 func NewYamlResolver(yamlPath, fallbackID string) (*YamlResolver, error) {
 	if yamlPath == "" {
-		return nil, fmt.Errorf("destinations.NewYamlResolver: yamlPath is empty")
+		return nil, fmt.Errorf("NewYamlResolver: yamlPath is empty")
 	}
 
 	data, err := os.ReadFile(yamlPath)
 	if err != nil {
-		return nil, fmt.Errorf("destinations.NewYamlResolver: read %q: %w", yamlPath, err)
+		return nil, fmt.Errorf("NewYamlResolver: read %q: %w", yamlPath, err)
 	}
 
 	var parsed destinationsFile
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
-		return nil, fmt.Errorf("destinations.NewYamlResolver: unmarshal %q: %w", yamlPath, err)
+		return nil, fmt.Errorf("NewYamlResolver: unmarshal %q: %w", yamlPath, err)
 	}
 
 	cache := make(map[string]string, len(parsed.Destinations))

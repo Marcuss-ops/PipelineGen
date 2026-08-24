@@ -37,7 +37,7 @@
 // No application-level mutex is needed — the underlying SQL
 // constraint model is sufficient (proven by 053_job_lifecycle_atomic.sql
 // precedent on the jobs table).
-package execution
+package steps
 
 import (
 	"context"

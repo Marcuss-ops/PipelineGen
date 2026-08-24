@@ -1,9 +1,9 @@
-package assets
+package stockpipeline
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"strconv"
 )

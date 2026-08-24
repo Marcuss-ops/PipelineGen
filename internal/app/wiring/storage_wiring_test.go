@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	appstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 )
 
 // TestStorageDriveAdapter_ImplementsPort verifies at compile time

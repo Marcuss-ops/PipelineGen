@@ -54,7 +54,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -144,8 +143,8 @@ func validStageForTest(id string) *artifact.ArtifactStage {
 // `stage:<jobID>:<stageID>` (artifact_stages/repository.go:
 // InsertWithOutbox returns that exact key for cross-consumer
 // dedupe).
-func validEnvelopeForTest(stageID, jobID string) (publishdrive.TypedStageEventPayload, outboxevents.Event) {
-	p := publishdrive.TypedStageEventPayload{
+func validEnvelopeForTest(stageID, jobID string) (TypedStageEventPayload, outboxevents.Event) {
+	p := TypedStageEventPayload{
 		StageID:     stageID,
 		JobID:       jobID,
 		LocalPath:   "/var/lib/pipelinegen/staging/" + jobID + "/" + stageID,
@@ -158,7 +157,7 @@ func validEnvelopeForTest(stageID, jobID string) (publishdrive.TypedStageEventPa
 	}
 	body, _ := json.Marshal(p)
 	return p, outboxevents.Event{
-		EventType:   publishdrive.EventTypeArtifactStaged,
+		EventType:   EventTypeArtifactStaged,
 		PayloadJSON: string(body),
 		EventKey:    fmt.Sprintf("stage:%s:%s", jobID, stageID),
 	}

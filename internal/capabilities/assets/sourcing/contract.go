@@ -19,7 +19,7 @@
 // LocalToDrive) to the corresponding implementation. The composition root
 // (internal/app/assets_register_sourcing.go::newAssetRegisterService) wires
 // each sub-package's service into the façade on construction.
-package assets
+package sourcing
 
 import "context"
 

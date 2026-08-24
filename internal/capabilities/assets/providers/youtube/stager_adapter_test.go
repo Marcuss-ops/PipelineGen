@@ -1,4 +1,4 @@
-package assets
+package youtube
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
 func TestYouTubeStager_Prepare_NilAdapter(t *testing.T) {

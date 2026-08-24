@@ -1,4 +1,4 @@
-package assets
+package catalogsync
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 )
 
 type Target struct {

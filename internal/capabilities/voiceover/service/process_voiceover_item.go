@@ -42,8 +42,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
 type voiceoverFingerprintLookup interface {

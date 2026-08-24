@@ -10,13 +10,11 @@
 // The provider also serves as the canonical migration target for
 // Step 9 (Style-aware assets) and beyond, when the on-disk index
 // must be queried before any network round-trip.
-package images
+package retrieved
 
 import (
 	"context"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -36,15 +34,15 @@ func (p *DriveImageProvider) Name() asset.ImageProvider { return asset.ProviderD
 
 func (p *DriveImageProvider) Healthy(_ context.Context) error { return nil }
 
-func (p *DriveImageProvider) Search(_ context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (p *DriveImageProvider) Search(_ context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	slug := strings.TrimSpace(query)
 	if slug == "" {
 		return nil, nil
 	}
 	hits := p.bridge.SearchBySlug(context.Background(), slug, 1)
-	out := make([]routing.RetrievalSearchResult, 0, len(hits))
+	out := make([]RetrievalSearchResult, 0, len(hits))
 	for _, url := range hits {
-		out = append(out, routing.RetrievalSearchResult{
+		out = append(out, RetrievalSearchResult{
 			Provider:   asset.ProviderDrive,
 			Origin:     asset.ImageOriginRetrieved,
 			PreviewURL: url,

@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/legacyaudit"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audit"
 )
 
 // AuditOptions is the typed-input envelope for the Service.Audit method.
@@ -67,7 +67,7 @@ func (s *Service) Audit(ctx context.Context, opts AuditOptions) error {
 	}
 
 	s.cli.HumanLine("=== qdrant-maintenance audit ===")
-	s.cli.HumanLine(legacyaudit.StringifyReport(report))
+	s.cli.HumanLine(audit.StringifyReport(report))
 	s.cli.HumanLine("\nRe-run with 'repair-locators' to strip legacy payload keys,")
 	s.cli.HumanLine("or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
 	return nil

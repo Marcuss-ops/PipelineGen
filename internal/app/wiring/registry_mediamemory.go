@@ -8,9 +8,8 @@ package wiring
 import (
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	mediamemoryapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -24,7 +23,7 @@ import (
 // bindings + feedback surface. The resolver is backed by the Brain
 // (canonical 9-level cascade); the binding service is backed by
 // SQLite + outbox dispatcher.
-func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, searchFanOut search.SearchFanOut) error {
+func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *ComposeRoot, searchFanOut search.SearchFanOut) error {
 	if searchFanOut == nil {
 		log.Warn("registerMediaMemory: searchFanOut not wired; skipping (Level 3-9 cascade unavailable)")
 		return nil

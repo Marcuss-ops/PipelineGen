@@ -11,7 +11,7 @@
 // in this package exercises the WithLocationResolver fluent setter or
 // the resolveLocationFallback helper. Future tests targeting the
 // resolver port route through these 5 cases (a..e) per the disposition.
-package assets
+package sourcing
 
 import (
 	"context"

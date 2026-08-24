@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

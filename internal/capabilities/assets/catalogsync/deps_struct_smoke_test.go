@@ -5,7 +5,7 @@
 // `dispatcher_test.go::TestNewService_NilDepsRejected` — this file stays
 // a pure structural smoke (cap lock) so the sentinel test names don't
 // collide across _test.go files in the same package.
-package assets
+package catalogsync
 
 import (
 	"testing"

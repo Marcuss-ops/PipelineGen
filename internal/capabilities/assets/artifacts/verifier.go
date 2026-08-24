@@ -1,4 +1,4 @@
-package assets
+package artifacts
 
 // DriveVerifier is the application-side port for verifying Google Drive
 // links. PR2.7 (June 2026) extracted the SDK-wired concrete

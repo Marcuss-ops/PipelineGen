@@ -6,7 +6,7 @@
 //	(2) compile-time assertion that the canonical type compiles;
 //	(3) residue grep test — zero references to the retired IndexingStatus
 //	    alias (the alias was removed in §12-5 CONTRACT).
-package assets
+package sourcing
 
 import (
 	"encoding/json"

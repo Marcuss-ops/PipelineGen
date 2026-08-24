@@ -7,11 +7,8 @@ import (
 	"sync"
 	"time"
 
-	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
-	"go.uber.org/zap"
 )
 
 // ── Store / command types ───────────────────────────────────────────────────
@@ -171,6 +168,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecut
 	return handler(ctx, j, tools)
 }
 
+
+
 type RunnerConfig struct {
 	Workers   int
 	PollEvery time.Duration
@@ -191,135 +190,4 @@ type RunnerConfig struct {
 	// Composition root wires the in-process *SQLiteStore today; a
 	// future postgres adapter (LISTEN/NOTIFY) plugs in here via Deps.
 	Notifier sqljobs.QueueNotifier
-}
-
-// Runner manages a pool of Workers. Depends on the domain Repository
-// interface — NOT on the concrete *jobs.Repository.
-//
-// Issue 2 / P0 (June 2026): Runner now carries a typed config-port
-// for per-job-type timeouts + retries, sourced from *Registry. The
-// Registry is attached via the WithRegistry builder (mirrors
-// Worker.WithRegistry, HC-1 June 2026 plumbing) and propagated to
-// every Worker constructed by buildWorkers/Start. Without it, each
-// Worker would fall back to the pre-HC-1 literal 10-minute timeout
-// and literal 3-retry defaults — bypassing the typed-port contract
-// declared in jobs.Compose().
-//
-// Composition root pattern (canonical):
-//
-//	r := jobs.NewRunner(repo, dispatcher, log, cfg).
-//	    WithRegistry(jobs.Compose())
-//	r.Start(ctx)
-type Runner struct {
-	repo       jobs.Store
-	dispatcher *Dispatcher
-	log        *zap.Logger
-	config     RunnerConfig
-	registry   *Registry
-	workers    []*Worker
-	broker     CompletionPort
-	jobLedger  capjobregistry.Registry
-
-	// observer is the kernel observability entry point propagated to
-	// every Worker built by buildWorkers (FASE 2, August 2026). nil =
-	// legacy un-instrumented workers (test fixtures keep working).
-	observer *kernobs.RunObserver
-}
-
-func NewRunner(repo jobs.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
-	return &Runner{
-		repo:       repo,
-		dispatcher: dispatcher,
-		log:        log,
-		config:     config,
-	}
-}
-
-// WithRegistry attaches a typed Registry to the Runner. The Registry
-// is propagated to every Worker constructed in Start so each Worker
-// honors the per-job-type Timeout / DefaultMaxRetries values declared
-// in jobs.Compose().
-//
-// Nil-tolerant: a nil reg means the workers fall back to the legacy
-// literal defaults (10-min timeout, 3 retries), preserving test
-// fixtures that don't build a registry. Mirrors Worker.WithRegistry.
-//
-// Returns the receiver for builder-style chaining.
-func (r *Runner) WithRegistry(reg *Registry) *Runner {
-	r.registry = reg
-	return r
-}
-
-// WithBroker attaches a CompletionPort narrow port (like the local Broker)
-// to the Runner so that local workers can complete artifact-producing jobs.
-func (r *Runner) WithBroker(cp CompletionPort) *Runner {
-	r.broker = cp
-	return r
-}
-
-// WithJobRegistry attaches the durable execution ledger to every worker.
-func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
-
-// WithObserver attaches the kernel observability RunObserver to the
-// Runner (FASE 2, August 2026). The observer is propagated onto every
-// Worker constructed by buildWorkers so each claimed job produces a
-// Run (queue_wait, wall_time, status, attempts).
-//
-// Nil-tolerant: a nil observer means the workers skip instrumentation
-// entirely, preserving legacy test fixtures. Mirrors WithRegistry /
-// WithBroker.
-//
-// Returns the receiver for builder-style chaining.
-func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
-	r.observer = observer
-	return r
-}
-
-// buildWorkers constructs the worker pool with the attached Registry
-// wired onto each Worker (via Worker.WithRegistry). Called by Start;
-// kept package-private so tests can assert the binding without
-// spinning up the poll loop.
-//
-// Issue 2 / P0 (June 2026): the WithRegistry chain here is the fix
-// surface. Pre-fix Start called NewWorker(...) directly and the
-// workers silently regressed to the HC-0 literal defaults.
-func (r *Runner) buildWorkers() []*Worker {
-	workers := make([]*Worker, 0, r.config.Workers)
-	for i := 0; i < r.config.Workers; i++ {
-		workerID := fmt.Sprintf("%s_worker-%d", workerIDPrefix, i+1)
-		w := NewWorker(WorkerDeps{
-			ID:         workerID,
-			Repo:       r.repo,
-			Dispatcher: r.dispatcher,
-			Notifier:   r.config.Notifier,
-			Log:        r.log,
-			LeaseTTL:   r.config.LeaseTTL,
-			PollEvery:  r.config.PollEvery,
-			Backoff:    r.config.Backoff,
-			Types:      r.config.JobTypes,
-		})
-		w.WithRegistry(r.registry)
-		if r.broker != nil {
-			w.WithBroker(r.broker)
-		}
-		if r.jobLedger != nil {
-			w.WithJobRegistry(r.jobLedger)
-		}
-		if r.observer != nil {
-			w.WithObserver(r.observer)
-		}
-		workers = append(workers, w)
-	}
-	return workers
-}
-
-func (r *Runner) Start(ctx context.Context) {
-	r.log.Info("starting job runner", zap.Int("workers", r.config.Workers))
-
-	r.workers = r.buildWorkers()
-	for _, w := range r.workers {
-		go w.Start(ctx)
-	}
-
-	r.log.Info("job runner started", zap.Int("worker_count", len(r.workers)))
 }

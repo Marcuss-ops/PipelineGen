@@ -5,7 +5,7 @@
 // behavior. The honest-zero case (TestRelevanceFilter_AllFail_HonestZero)
 // locks the user-spec literal "pu\u00f2 restituire onestamente 0
 // risultati pertinenti invece di riempire di clip casuali".
-package assets
+package artlist
 
 import (
 	"strings"

@@ -20,7 +20,7 @@
 //
 // POST-FIX PRODUCER CONTRACT (godlike/06 SSOT, July 2026):
 // the fanout hands the broker a typed struct
-// (texttracks.MaterializeJobPayload) — NOT pre-marshaled
+// (MaterializeJobPayload) — NOT pre-marshaled
 // bytes — so the broker's canonical Service.Enqueue can
 // perform the SINGLE json.Marshal(req.Payload) that derives
 // the SQLite payload_json bytes. The pre-fix design
@@ -28,7 +28,7 @@
 // JSON string → cannot unmarshal on the worker side) is the
 // regression this test pins AGAINST, via the stubEnqueuer
 // contract panic and the marshal→unmarshal wire-shape probe.
-package assets
+package texttracks
 
 import (
 	"context"
@@ -41,7 +41,6 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -75,7 +74,7 @@ func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// POST-FIX PRODUCER CONTRACT (godlike/06 SSOT): the fanout
-	// hands the broker a typed texttracks.MaterializeJobPayload
+	// hands the broker a typed MaterializeJobPayload
 	// struct (NOT pre-marshaled []byte, NOT map[string]any).
 	// The broker's canonical Service.Enqueue performs the
 	// SINGLE json.Marshal(req.Payload) that writes payload_json
@@ -92,9 +91,9 @@ func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 	// surfaces as a FAIL line — louder than t.Fatalf and bounded
 	// to test-process scope, with zero surface-area impact on
 	// the production broker.
-	ps, ok := req.Payload.(texttracks.MaterializeJobPayload)
+	ps, ok := req.Payload.(MaterializeJobPayload)
 	if !ok {
-		panic("stubEnqueuer.Enqueue: expected texttracks.MaterializeJobPayload struct Payload (fanout producer contract regression: producer must hand the broker a typed struct, NOT pre-marshaled bytes — pre-marshal design caused base64 double-encoding regression on July 2026)")
+		panic("stubEnqueuer.Enqueue: expected MaterializeJobPayload struct Payload (fanout producer contract regression: producer must hand the broker a typed struct, NOT pre-marshaled bytes — pre-marshal design caused base64 double-encoding regression on July 2026)")
 	}
 	s.recorded = append(s.recorded, enqueueJob{
 		Type:      req.Type,
@@ -118,13 +117,13 @@ func (s *stubEnqueuer) last() enqueueJob {
 
 // Compile-time pin: stubEnqueuer satisfies the texttracks
 // MaterializeEnqueuer surface. AGENTS.md Pattern 0.
-var _ texttracks.MaterializeEnqueuer = (*stubEnqueuer)(nil)
+var _ MaterializeEnqueuer = (*stubEnqueuer)(nil)
 
 // ── Probe 1: happy path enqueues with correct type + active_key + payload ────
 
 func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 	stub := &stubEnqueuer{}
-	f := texttracks.NewMaterializeFanOut(stub, nil) // nil log → zap.NewNop() fallback
+	f := NewMaterializeFanOut(stub, nil) // nil log → zap.NewNop() fallback
 
 	const (
 		assetID = "asset-yt-001"
@@ -154,9 +153,9 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 
 	// Payload field assertions (post-fix producer contract hands
 	// the broker a typed struct; probes inspect fields directly).
-	ps, ok := last.Payload.(texttracks.MaterializeJobPayload)
+	ps, ok := last.Payload.(MaterializeJobPayload)
 	if !ok {
-		t.Fatalf("Payload type = %T, want texttracks.MaterializeJobPayload", last.Payload)
+		t.Fatalf("Payload type = %T, want MaterializeJobPayload", last.Payload)
 	}
 	if ps.AssetID != assetID {
 		t.Fatalf("AssetID = %q, want %q", ps.AssetID, assetID)
@@ -248,7 +247,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubEnqueuer{}
-			f := texttracks.NewMaterializeFanOut(stub, nil)
+			f := NewMaterializeFanOut(stub, nil)
 
 			err := f.EnqueueMaterializeOne(
 				context.Background(), tc.assetID, tc.lang, tc.hash, tc.kinds,
@@ -256,7 +255,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected ErrInvalidMaterializeRequest, got nil")
 			}
-			var typed *texttracks.ErrInvalidMaterializeRequest
+			var typed *ErrInvalidMaterializeRequest
 			if !errors.As(err, &typed) {
 				t.Fatalf("expected *ErrInvalidMaterializeRequest, got %T: %v", err, err)
 			}
@@ -274,7 +273,7 @@ func TestFanOut_EnqueueMaterializeOne_InvalidArgs(t *testing.T) {
 
 func TestFanOut_EnqueueMaterializeOne_BrokerErrorWrapped(t *testing.T) {
 	stub := &stubEnqueuer{hookErr: errors.New("simulated broker down")}
-	f := texttracks.NewMaterializeFanOut(stub, nil)
+	f := NewMaterializeFanOut(stub, nil)
 
 	err := f.EnqueueMaterializeOne(
 		context.Background(), "asset-x", "en", "hash",
@@ -304,7 +303,7 @@ func TestFanOut_EnqueueMaterializeOne_BrokerErrorWrapped(t *testing.T) {
 
 func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 	stub := &stubEnqueuer{}
-	f := texttracks.NewMaterializeFanOut(stub, nil)
+	f := NewMaterializeFanOut(stub, nil)
 
 	kinds := []asset.TextTrackKind{
 		asset.TextTrackTranscript,
@@ -317,9 +316,9 @@ func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 		t.Fatalf("EnqueueMaterializeOne returned error: %v", err)
 	}
 	last := stub.last()
-	ps, ok := last.Payload.(texttracks.MaterializeJobPayload)
+	ps, ok := last.Payload.(MaterializeJobPayload)
 	if !ok {
-		t.Fatalf("Payload type = %T, want texttracks.MaterializeJobPayload", last.Payload)
+		t.Fatalf("Payload type = %T, want MaterializeJobPayload", last.Payload)
 	}
 	if len(ps.TextKinds) != len(kinds) {
 		t.Fatalf("TextKinds len = %d, want %d", len(ps.TextKinds), len(kinds))
@@ -340,7 +339,7 @@ func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("payload marshal: %v", err)
 	}
-	var rt texttracks.MaterializeJobPayload
+	var rt MaterializeJobPayload
 	if err := json.Unmarshal(wireBytes, &rt); err != nil {
 		t.Fatalf("payload round-trip unmarshal: %v", err)
 	}
@@ -360,7 +359,7 @@ func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 // enqueues.
 func TestFanOut_EnqueueMaterializeOne_ActiveKeyCollapsedAcrossKinds(t *testing.T) {
 	stub := &stubEnqueuer{}
-	f := texttracks.NewMaterializeFanOut(stub, nil)
+	f := NewMaterializeFanOut(stub, nil)
 
 	const (
 		assetID = "asset-collapse"

@@ -21,11 +21,11 @@
 // duck-typing — the parent's Build wires the per-cluster handler
 // pointer as the interface value so this package has zero imports
 // from internal/api/assets/clips (parent) to avoid cyclic imports.
-package assets
+package catalog
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

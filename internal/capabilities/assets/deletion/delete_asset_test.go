@@ -1,4 +1,4 @@
-package assets
+package deletion
 
 import (
 	"context"
@@ -9,9 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -103,7 +102,7 @@ func TestDeleteAsset_UnknownAssetReturnsNotFound(t *testing.T) {
 	svc := newTestService(t, db, dispatcher)
 
 	err := svc.DeleteAsset(context.Background(), "asset-missing", false)
-	if !errors.Is(err, deletion.ErrAssetNotFound) {
+	if !errors.Is(err, ErrAssetNotFound) {
 		t.Fatalf("want ErrAssetNotFound; got %v", err)
 	}
 	if len(dispatcher.calls) != 0 {
@@ -119,15 +118,15 @@ func TestDeleteAsset_MissingDispatcherFailsBeforeMutation(t *testing.T) {
 	minimalMediaAssetsFixture(t, db)
 	seedAssetRowWithSource(t, db, "asset-nil-disp", "clip")
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	svc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		Repos: deletion.DeletionRepoDeps{
+	svc := NewDeletionService(DeletionServiceDeps{
+		Repos: DeletionRepoDeps{
 			ClipsRepo: clipsRepo,
 		},
 		Log: zap.NewNop(),
 	})
 
 	err := svc.DeleteAsset(context.Background(), "asset-nil-disp", false)
-	if !errors.Is(err, deletion.ErrDeletionDispatcherUnavailable) {
+	if !errors.Is(err, ErrDeletionDispatcherUnavailable) {
 		t.Fatalf("want ErrDeletionDispatcherUnavailable; got %v", err)
 	}
 }
@@ -140,7 +139,7 @@ func TestDeleteAsset_EmptyAssetID(t *testing.T) {
 	svc := newTestService(t, db, dispatcher)
 
 	err := svc.DeleteAsset(context.Background(), "", false)
-	if !errors.Is(err, deletion.ErrAssetIDRequired) {
+	if !errors.Is(err, ErrAssetIDRequired) {
 		t.Fatalf("want ErrAssetIDRequired; got %v", err)
 	}
 	if len(dispatcher.calls) != 0 {
@@ -150,13 +149,13 @@ func TestDeleteAsset_EmptyAssetID(t *testing.T) {
 
 // TestDeleteAsset_MissingRepository pins the repository wiring guard.
 func TestDeleteAsset_MissingRepository(t *testing.T) {
-	svc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
+	svc := NewDeletionService(DeletionServiceDeps{
 		Dispatcher: &recordingDispatcher{},
 		Log:        zap.NewNop(),
 	})
 
 	err := svc.DeleteAsset(context.Background(), "asset-no-repo", false)
-	if !errors.Is(err, deletion.ErrAssetRepositoryUnavailable) {
+	if !errors.Is(err, ErrAssetRepositoryUnavailable) {
 		t.Fatalf("want ErrAssetRepositoryUnavailable; got %v", err)
 	}
 }
@@ -237,14 +236,14 @@ func newTestServiceForAssetTree(
 	db *sql.DB,
 	treeSvc *assettree.Service,
 	tx *recordingCompletionTxRunner,
-) *deletion.DeletionService {
+) *DeletionService {
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		Repos:      deletion.DeletionRepoDeps{ClipsRepo: clipsRepo},
-		Index:      deletion.DeletionIndexDeps{AssetTreeSvc: treeSvc},
+	return NewDeletionService(DeletionServiceDeps{
+		Repos:      DeletionRepoDeps{ClipsRepo: clipsRepo},
+		Index:      DeletionIndexDeps{AssetTreeSvc: treeSvc},
 		Dispatcher: &recordingDispatcher{},
-		Finalize: deletion.DeletionFinalizeDeps{
+		Finalize: DeletionFinalizeDeps{
 			DriveGoneChecker:   &recordingDriveGoneChecker{isGone: true},
 			CompletionTxRunner: tx,
 		},

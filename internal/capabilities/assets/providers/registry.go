@@ -1,4 +1,4 @@
-package assets
+package providers
 
 import (
 	"errors"

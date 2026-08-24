@@ -15,7 +15,7 @@
 // (the VLM sweeper tests use the same port pair with a mock
 // repository; production wires the concrete via
 // internal/app/build_bundles_process.go).
-package assets
+package enrichment
 
 import (
 	"context"

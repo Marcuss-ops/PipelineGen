@@ -22,8 +22,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

@@ -16,15 +16,15 @@
 // godlike/07 NO-FAKE-AVAILABILITY: each adapter's nil-inner branch
 // returns the typed sentinel through fmt.Errorf; compose-time wiring
 // gates catch the empty case via adapter_test.go.
-package assets
+package youtube
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
+	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 

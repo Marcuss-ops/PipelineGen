@@ -3,13 +3,13 @@ package clipindexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -20,25 +20,16 @@ import (
 // DefaultBatchConcurrency is the default number of parallel workers for batch reindex.
 const DefaultBatchConcurrency = 3
 
-// RegisterJobHandler registers the batch reindex job handler with the
-// jobs service.
-//
-// Register propagates wiring errors — composition root MUST fail-closed on non-nil return.
-//
-// P1 #1 (July 2026): wraps appjobs.ErrMissingDeps via %w so the
-// composition root + tests can assert via errors.Is(err, appjobs.ErrMissingDeps)
-// regardless of which handler-specific prefix the future maintainer
-// adds or removes. The handler-specific diagnostic prefix is preserved
-// for operator logs. The error-return signature (refactored in
-// Audit P0 #2 cont. — PR-VALIDATOR-LITERAL-REGISTER, July 2026)
-// closes the silent-success class of "if jobsSvc != nil { log.Info }"
-// that pre-P0 #2 swallowed nil-typed-dispatcher + duplicate-bind
-// failures.
-func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
+type JobRegistrar interface {
+	RegisterHandler(jobType string, h any) error
+}
+
+// RegisterJobHandler registers the batch reindex job handler with the jobs service.
+func (s *Service) RegisterJobHandler(jobsSvc JobRegistrar) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
+		return errors.New("clipindexer.Service.RegisterJobHandler: jobsSvc is nil")
 	}
-	if err := jobsSvc.RegisterHandler(jobmedia.TypeReindex, appjobs.HandlerFunc(s.HandleJob)); err != nil {
+	if err := jobsSvc.RegisterHandler(jobmedia.TypeReindex, s.HandleJob); err != nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", jobmedia.TypeReindex, err)
 	}
 	s.log.Info("registered media.reindex job handler")
@@ -48,7 +39,7 @@ func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
 // HandleJob processes a batch reindex job from the job system.
 // Payload: {"source": "artlist", "media_type": "video", "limit": 100}
 // Reports progress via tools.Progress(pct, msg).
-func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (map[string]any, error) {
 	var req struct {
 		Source    string `json:"source"`
 		MediaType string `json:"media_type"`

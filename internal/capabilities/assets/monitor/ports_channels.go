@@ -1,10 +1,10 @@
 // Package monitor — category channel service port.
-package assets
+package monitor
 
 import (
 	"context"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -11,10 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	joboutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	joboutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
 // remoteOrphanRepo delegates the real E2E repository to the finalizer

@@ -25,6 +25,7 @@
 package wiring
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"errors"
 	"net/http"
@@ -38,11 +39,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -56,7 +55,7 @@ import (
 // parameter.
 type happyPathWireArtlistArgs struct {
 	cfg        *config.Config
-	bundle     *wiring.ArtlistBundle
+	bundle     *ArtlistBundle
 	dispatcher *outbox.Dispatcher
 	log        *zap.Logger
 }
@@ -102,13 +101,13 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 	require.NoError(t, err, "artlistCompositionSchema must apply cleanly")
 
 	// Real ClipsRepository on the same *sql.DB.
-	clipsRepo := assets.NewClipsRepository(sqliteDB.DB, log)
+	clipsRepo := imagesregistry.NewClipsRepository(sqliteDB.DB, log)
 	require.NotNil(t, clipsRepo,
 		"assets.NewClipsRepository must return a non-nil concrete on a fresh schema (Phase 1 gate #4)")
 
 	// Real JobsBundle through the composition-root's canonical
 	// BuildJobsBundle helper.
-	jobsBundle, err := wiring.BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
 	require.NotNil(t, jobsBundle.Service,
 		"JobsBundle.Service must be populated so WireArtlist gate #5 passes")
@@ -122,13 +121,13 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 	}
 
-	bundle := &wiring.ArtlistBundle{
+	bundle := &ArtlistBundle{
 		DB:                 sqliteDB,
 		ClipsRepo:          clipsRepo,
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		Committer:          imagesregistry.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
 		// MediaProcessor / AssetIndexService / DestinationService /
 		// AssetLocRepo / AssetVerRepo are intentionally nil: the
 		// production WireArtlist treats them as runtime-nil-tolerant

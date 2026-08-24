@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 )
 
 // stubFailingTranslationPort returns an error for every Translate call.

@@ -1,11 +1,11 @@
 // Package jobs_test — register_wiring_test.go (external test package).
 //
 // P1 #1 audit-pinned contract test for every JobHandler.Register*
-// method that takes a *jobs.Service. Locks the canonical
-// jobs.ErrMissingDeps sentinel (errors.go) so a future contributor
+// method that takes a *Service. Locks the canonical
+// ErrMissingDeps sentinel (errors.go) so a future contributor
 // cannot reintroduce the silent-success class of "log.Info+continue
 // on nil/svc" (the pre-P1 #1 audit-closed failure class that let
-// jobs.Service come up without registering a critical handler).
+// Service come up without registering a critical handler).
 //
 // External test package (jobs_test, not jobs): the test imports its
 // own package as `jobs` so we exercise the public API surface
@@ -14,7 +14,6 @@
 // also named `jobs` here is generic — `service_import_cycle` is the
 // canonical Go tracestate error that fires when an internal test
 // file in package "jobs" imports
-// "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue".
 //
 // SCOPE OF THIS FILE (deliberately narrow per AGENTS.md scope
 // discipline — see commit body):
@@ -23,7 +22,7 @@
 //     because Register's first line is the jobsSvc == nil check,
 //     which short-circuits BEFORE dereferencing any handler field
 //     (so the unexported-field access issue doesn't apply).
-//  2. sentinel-export test — pins jobs.ErrMissingDeps as a typed
+//  2. sentinel-export test — pins ErrMissingDeps as a typed
 //     sentinel value non-nil + non-empty.
 //
 // OUT-OF-SCOPE tests live elsewhere (per package):
@@ -37,7 +36,7 @@
 //     nil-tolerant constructors for the valid-svc test path.
 //
 // Excludes scripts/jobs/generation_job.go::GenerateJobHandler.RegisterJobs
-// because that method takes ports.Broker (not *jobs.Service) — its
+// because that method takes ports.Broker (not *Service) — its
 // wiring contract is locked by tests in
 // internal/capabilities/scripts/jobs/generation_job_test.go.
 package jobs
@@ -47,9 +46,8 @@ import (
 	"testing"
 	"time"
 
-	catalogsync "github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	images "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	catalogsync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
+	images "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
@@ -93,38 +91,38 @@ var _ job.JobBroker = nakedJobBroker{}
 func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 	cases := []struct {
 		name string
-		call func(*jobs.Service) error
+		call func(*Service) error
 	}{
 		// voiceover/jobs — parent-child handler pair, both refactored.
 		{
 			name: "voiceover.GenerateJobHandler.Register",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&voiceoverjobs.GenerateJobHandler{}).Register(svc)
 			},
 		},
 		{
 			name: "voiceover.GenerateItemJobHandler.Register",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&voiceoverjobs.GenerateItemJobHandler{}).Register(svc)
 			},
 		},
 		// catalogsync — 2 methods, both refactored.
 		{
 			name: "catalogsync.Service.RegisterHandler (catalog.sync)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&catalogsync.Service{}).RegisterHandler(svc)
 			},
 		},
 		{
 			name: "catalogsync.Service.RegisterDriveFolderSyncHandler (drive.folder.sync)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&catalogsync.Service{}).RegisterDriveFolderSyncHandler(svc)
 			},
 		},
 		// clipindexer — 1 method.
 		{
 			name: "clipindexer.Service.RegisterJobHandler (media.reindex)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&clipindexer.Service{}).RegisterJobHandler(svc)
 			},
 		},
@@ -139,21 +137,21 @@ func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 		// architecture/issues.yaml tracks this state.
 		{
 			name: "images.Service.RegisterHandler (image.generate.google via facade, post-IMAGES-SHIM-REMOVAL canonical)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&images.Service{}).RegisterHandler(svc)
 			},
 		},
 		// stockpipeline — 1 method.
 		{
 			name: "stockpipeline.Service.RegisterHandler (media.stock)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&stockpipeline.Service{}).RegisterHandler(svc)
 			},
 		},
 		// youtube — 1 method.
 		{
 			name: "youtube.Service.RegisterHandler (youtube.clip_extract + youtube.rebuild_search_text)",
-			call: func(svc *jobs.Service) error {
+			call: func(svc *Service) error {
 				return (&youtubeusecase.Service{}).RegisterHandler(svc)
 			},
 		},
@@ -164,12 +162,12 @@ func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.call(nil)
 			if err == nil {
-				t.Fatalf("Register(nil) returned nil error; want jobs.ErrMissingDeps (P1 #1 contract)")
+				t.Fatalf("Register(nil) returned nil error; want ErrMissingDeps (P1 #1 contract)")
 			}
-			if !errors.Is(err, jobs.ErrMissingDeps) {
+			if !errors.Is(err, ErrMissingDeps) {
 				t.Fatalf("Register(nil) error does NOT wrap ErrMissingDeps via %%w: err = %v\n"+
 					"P1 #1 contract: every Register method MUST wrap nil-svc with "+
-					"fmt.Errorf(\"<diagnostic>: %%w\", jobs.ErrMissingDeps) so tests "+
+					"fmt.Errorf(\"<diagnostic>: %%w\", ErrMissingDeps) so tests "+
 					"can assert via errors.Is.", err)
 			}
 		})
@@ -181,11 +179,11 @@ func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 // the sentinel (e.g. via a code-move to a non-exported const) breaks
 // the test, surfacing the import-graph regression at unit-test time.
 func TestErrMissingDeps_IsExportedSentinel(t *testing.T) {
-	if jobs.ErrMissingDeps == nil {
-		t.Fatal("jobs.ErrMissingDeps is nil; canonical sentinel MISSING (P1 #1 contract violated)")
+	if ErrMissingDeps == nil {
+		t.Fatal("ErrMissingDeps is nil; canonical sentinel MISSING (P1 #1 contract violated)")
 	}
-	if jobs.ErrMissingDeps.Error() == "" {
-		t.Fatal("jobs.ErrMissingDeps.Error() is empty; canonical sentinel string-is-empty is a regression")
+	if ErrMissingDeps.Error() == "" {
+		t.Fatal("ErrMissingDeps.Error() is empty; canonical sentinel string-is-empty is a regression")
 	}
 }
 
@@ -210,7 +208,7 @@ func TestErrMissingDeps_IsExportedSentinel(t *testing.T) {
 // returns a non-nil error referencing the missing voiceover.generate_item.
 // Then register the child handler and assert the check passes.
 func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
-	dispatcher := jobs.NewDispatcher()
+	dispatcher := NewDispatcher()
 
 	// Build a minimal registry scoped to ONLY the voiceover
 	// parent-child pair. Using Compose() would register ALL job
@@ -225,12 +223,12 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	// ValidateHandlerCompleteness(reg) at the assertion sites.
 	// Using ONE registry for both surfaces avoids drift between
 	// the SSOT job-type list and the resolver lookup.
-	registry := jobs.NewRegistry()
-	if err := registry.Register(jobs.JobPolicy{
-		Completion: jobs.CompletionDeclaration{
-			JobType:              jobs.TypeVoiceoverGenerate,
-			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
-			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+	registry := NewRegistry()
+	if err := registry.Register(JobPolicy{
+		Completion: CompletionDeclaration{
+			JobType:              TypeVoiceoverGenerate,
+			ArtifactOwnership:    ArtifactOwnershipApplication,
+			FinalizationStrategy: FinalizationStrategyLegacyComplete,
 		},
 		Description:       "Voiceover single generation",
 		Timeout:           30 * time.Minute,
@@ -238,11 +236,11 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("§15.9: register voiceover.generate in test registry: %v", err)
 	}
-	if err := registry.Register(jobs.JobPolicy{
-		Completion: jobs.CompletionDeclaration{
-			JobType:              jobs.TypeVoiceoverGenerateItem,
-			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
-			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+	if err := registry.Register(JobPolicy{
+		Completion: CompletionDeclaration{
+			JobType:              TypeVoiceoverGenerateItem,
+			ArtifactOwnership:    ArtifactOwnershipApplication,
+			FinalizationStrategy: FinalizationStrategyLegacyComplete,
 		},
 		Description:       "Voiceover per-language child",
 		Timeout:           10 * time.Minute,
@@ -252,26 +250,26 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 		t.Fatalf("§15.9: register voiceover.generate_item in test registry: %v", err)
 	}
 
-	svc, err := jobs.NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), registry)
+	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), registry)
 	if err != nil {
-		t.Fatalf("§15.9 setup: jobs.NewService error: %v", err)
+		t.Fatalf("§15.9 setup: NewService error: %v", err)
 	}
 
 	// Step 1: register ONLY the parent — child is missing.
 	// The zero-value GenerateJobHandler{}.Register only does
-	// jobsSvc.RegisterHandler(jobs.TypeVoiceoverGenerate, ...) — it
+	// jobsSvc.RegisterHandler(TypeVoiceoverGenerate, ...) — it
 	// does NOT register voiceover.generate_item.
 	if err := (&voiceoverjobs.GenerateJobHandler{}).Register(svc); err != nil {
 		t.Fatalf("§15.9: Register parent (GenerateJobHandler) failed: %v", err)
 	}
 
 	// Parent IS consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after Register, parent handler must be present (HasHandler returned false)")
 	}
 
 	// Child is NOT consumable — the gap that ValidateHandlerCompleteness must detect.
-	if svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+	if svc.HasHandler(TypeVoiceoverGenerateItem) {
 		t.Fatal("§15.9: child handler must NOT be present yet (only parent registered)")
 	}
 
@@ -282,9 +280,9 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	} else {
 		// The error must reference the missing job type so operators can
 		// grep the boot log for the specific gap.
-		if !containsString(err.Error(), jobs.TypeVoiceoverGenerateItem) {
+		if !containsString(err.Error(), TypeVoiceoverGenerateItem) {
 			t.Fatalf("§15.9: ValidateHandlerCompleteness error must mention the missing job type %q, got: %v",
-				jobs.TypeVoiceoverGenerateItem, err)
+				TypeVoiceoverGenerateItem, err)
 		}
 		t.Logf("§15.9 parent-only check passed: %v", err)
 	}
@@ -298,10 +296,10 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Both handlers must be consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after child register, parent handler must still be present")
 	}
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+	if !svc.HasHandler(TypeVoiceoverGenerateItem) {
 		t.Fatal("§15.9: after child register, child handler must be present")
 	}
 

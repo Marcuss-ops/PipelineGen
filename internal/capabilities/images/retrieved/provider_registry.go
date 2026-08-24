@@ -13,15 +13,13 @@
 //
 // FASE 8 (July 2026): the per-call DTOs moved to routing to break
 // the routing↔retrieved import cycle.
-package images
+package retrieved
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"sort"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -64,7 +62,7 @@ func NewDefaultProviderRegistry(bridge StorageBridge, client httpDoer, log *zap.
 // abort the DuckDuckGo fallback.
 //
 // FASE 8: opts/result types relocated to routing (cycle break).
-func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if r == nil || len(r.providers) == 0 {
 		return nil, nil
 	}
@@ -97,7 +95,7 @@ func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string,
 // SearchProvider invokes exactly one provider from this registry. Unlike
 // SearchAll it never falls through to another source, which makes explicit
 // provider canaries deterministic while preserving the shared provider code.
-func (r *RetrievalProviderRegistry) SearchProvider(ctx context.Context, provider, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (r *RetrievalProviderRegistry) SearchProvider(ctx context.Context, provider, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if r == nil {
 		return nil, nil
 	}

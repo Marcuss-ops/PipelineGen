@@ -11,7 +11,7 @@
 // handler delegates to; pre-S2a the api handler drove dispatch
 // inline (with a stray ListClipsPaged(10000) sync fallback that
 // was removed in S2b).
-package assets
+package stock
 
 import (
 	"context"
@@ -28,7 +28,7 @@ import (
 //
 // StockCommand is canonical in stockpipeline (the package that owns
 // the runner + RunInput + ChunkMetadataInput shape). Re-exposed via
-// type alias here so api-layer code can import `stock.StockCommand`
+// type alias here so api-layer code can import `StockCommand`
 // without duplicating the struct or risking drift on a future
 // field add. The two paths resolve to the same underlying type at
 // compile time — no wrapping, no projection, no copy.

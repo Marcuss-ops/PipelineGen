@@ -1,38 +1,38 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"net/http"
 	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/books/pythontransformer"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/platform/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	processinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
-	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqentity "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/entitycatalog"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
@@ -51,32 +51,32 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
-func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.RepoBundle, error) {
+func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger) (*RepoBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetsStore := sqassets.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
+	assetsStore := imagesregistry.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
 	assetsSvc := asset.NewService(assetsStore, log)
 	imageRepo := imagesrepo.NewImagesRepository(dbs.DualPool.Writer)
-	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.DualPool.Writer)
+	voiceoverRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 	monitorsRepo := monitors.NewMonitorsRepository(dbs.DualPool.Writer)
-	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.DualPool.Writer, log, assetsSvc.Repository())
+	clipsRepo := imagesregistry.NewClipsRepositoryCanonical(dbs.DualPool.Writer, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
-	entityImageCatalogRepo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(dbs.DualPool.Writer)
+	entityImageCatalogRepo := sqentity.NewSQLiteEntityImageCatalogAdapter(dbs.DualPool.Writer)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.DualPool.Writer)
-	sqRepo := sqassets.NewSearchQueriesRepository(dbs.DualPool.Writer)
+	sqRepo := imagesregistry.NewSearchQueriesRepository(dbs.DualPool.Writer)
 	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.DualPool.Writer)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
 	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
 	// the video pipeline + the AcquireService backfill CLI. It MUST
-	// be wired at the wiring.RepoBundle composition root (BuildRepoBundle)
-	// so every consumer (wiring.BuildTextTrackBundle, BuildDomainBundle, the
+	// be wired at the RepoBundle composition root (BuildRepoBundle)
+	// so every consumer (BuildTextTrackBundle, BuildDomainBundle, the
 	// AcquireService wiring in composition.go, the Qdrant
 	// PayloadMapper in buildQdrantDeps) sees the SAME non-nil
 	// dependency. The pre-PR scattered construction in
 	// build_bundles_domain_media.go::buildDomainMediaServices and
 	// build_process_qdrant.go::buildQdrantDeps is now removed — both
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
-	// fail-closed: wiring.BuildTextTrackBundle rejects nil TextTrackRepo so
+	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
 	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.DualPool.Writer, log)
 	if err != nil {
@@ -86,7 +86,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 	if err != nil {
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
 	}
-	return &wiring.RepoBundle{
+	return &RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, EntityImageCatalog: entityImageCatalogRepo,
@@ -95,7 +95,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 	}, nil
 }
 
-func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle) (*wiring.SearchBundle, error) {
+func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle) (*SearchBundle, error) {
 	_ = ctx
 	_ = cfg
 	assetIndexRepo := assetindex.NewRepository(dbs.DualPool.Writer)
@@ -116,7 +116,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	assetResolver := assetindex.NewResolver(assetIndexService, &assetindex.ResolverConfig{
 		ClipsRepos: clipsRepos, ImageRepo: repos.ImageRepo, VoiceoverRepo: repos.VoiceoverRepo,
 	}, log)
-	return &wiring.SearchBundle{
+	return &SearchBundle{
 		AssetIndexService: assetIndexService,
 		AssetTreeService:  assetTreeService,
 		AssetResolver:     assetResolver,
@@ -124,7 +124,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *wiring.UtilityBundle {
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
 	svc := buildHealthService(cfg, db)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithTools(processinfra.NewToolsChecker()).
@@ -202,7 +202,7 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 		))
 	}
 
-	return &wiring.UtilityBundle{
+	return &UtilityBundle{
 		HealthService: svc,
 		ReadyChecker:  rc,
 	}
@@ -253,7 +253,7 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 }
 
 // buildBooksService wires the books apply-layer Service.
-func buildBooksService(cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
+func buildBooksService(cfg *config.Config, dbs *Databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
 	var transformer *pythontransformer.SubprocessTransformer
 	if cfg.Books.Enabled {
 		var err error
@@ -293,9 +293,9 @@ type buildImagesParams struct {
 
 func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic.MetadataWriterPort) {
 	const destinationsYAMLPath = "config/image_destinations.yaml"
-	destResolver, err := destinations.NewYamlResolver(destinationsYAMLPath, params.Cfg.Drive.ImagesFolder())
+	destResolver, err := images.NewYamlResolver(destinationsYAMLPath, params.Cfg.Drive.ImagesFolder())
 	if err != nil {
-		params.Log.Warn("destinations.NewYamlResolver failed; ImageStorageService.destResolver will be nil",
+		params.Log.Warn("images.NewYamlResolver failed; ImageStorageService.destResolver will be nil",
 			zap.String("yaml_path", destinationsYAMLPath), zap.Error(err))
 		destResolver = nil
 	}

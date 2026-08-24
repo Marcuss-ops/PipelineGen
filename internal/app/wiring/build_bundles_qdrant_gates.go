@@ -119,7 +119,7 @@ func validateQdrantIndexerCompatibility(cfg *config.Config) error {
 	// outbox marks asset.index.requested as COMPLETED without writing to
 	// Qdrant. Operators seeing this in boot logs must choose one of the
 	// two escape hatches listed in the message.
-	// Qdrant and the indexer are independent capabilities. When the indexer
+	// Qdrant and the indexer are independent  When the indexer
 	// is off, its event handler returns the typed retry sentinel; startup must
 	// remain available for script/video workflows that do not need indexing.
 

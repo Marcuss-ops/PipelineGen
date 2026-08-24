@@ -1,7 +1,7 @@
 // Package diagnostics provides HTTP transport for system diagnostics
 // (index-health, qdrant health, qdrant cleanup). All business logic
 // is delegated to the application/assets/diagnostics.Service.
-package assets
+package diagnostics
 
 import (
 	"net/http"
@@ -9,18 +9,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler is the thin HTTP transport for diagnostics operations.
 type Handler struct {
-	svc *appdiag.Service
+	svc *Service
 	log *zap.Logger
 }
 
 // NewHandler creates a DiagnosticsHandler.
-func NewHandler(svc *appdiag.Service, log *zap.Logger) *Handler {
+func NewHandler(svc *Service, log *zap.Logger) *Handler {
 	return &Handler{svc: svc, log: log}
 }
 
@@ -39,7 +38,7 @@ func (h *Handler) Diagnostics(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
 		return
 	}
-	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
+	result, err := h.svc.Check(c.Request.Context(), HealthCommand{})
 	if err != nil {
 		h.log.Error("diagnostics check failed", zap.Error(err))
 		apiutil.InternalError(c, err)
@@ -59,7 +58,7 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
 		return
 	}
-	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
+	result, err := h.svc.Check(c.Request.Context(), HealthCommand{})
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return

@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
 )
 

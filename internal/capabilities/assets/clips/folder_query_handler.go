@@ -2,13 +2,13 @@
 //
 // Extracted from ops.go: read-only folder operations.
 // Depends on: ClipsRepository (folder queries), AssetTreeSvc (tree/breadcrumb).
-package assets
+package clips
 
 import (
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"net/http"

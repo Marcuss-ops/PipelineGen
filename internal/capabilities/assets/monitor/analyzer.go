@@ -27,7 +27,7 @@
 //     AI gate succeeded and the segments are ready. If Segments is
 //     empty (e.g. score below threshold, transcript too short, the
 //     caller treats it as "skip without error").
-package assets
+package monitor
 
 import (
 	"context"
@@ -35,7 +35,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // analyzeVideo runs the AI gate for a single video using the one-shot

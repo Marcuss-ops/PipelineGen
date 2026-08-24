@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
-	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

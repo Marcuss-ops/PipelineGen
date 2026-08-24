@@ -1,6 +1,6 @@
 // Package generated (application/images/generated) — provider_registry.go
 // holds the GenerationProviderRegistry — the canonical single-provider
-// registry for AI image generation. Per PR-IMG-SPLIT-5 (July 2026), the
+// registry for AI image  Per PR-IMG-SPLIT-5 (July 2026), the
 // registry is now in its own file, separate from types, errors, interfaces,
 // and concrete providers.
 //

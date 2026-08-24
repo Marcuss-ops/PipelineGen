@@ -1,4 +1,4 @@
-package assets
+package voiceover
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )

@@ -70,7 +70,7 @@
 // error (errors.Is) AND the returned key (IsValidEnrichmentIdempotencyKey)
 // — the sentinel + the empty-key marker are TWO independent
 // signals for the same wire-shape invariant.
-package assets
+package enrichment
 
 import (
 	"errors"

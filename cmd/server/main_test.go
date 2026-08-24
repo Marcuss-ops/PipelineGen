@@ -19,8 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	httpserver "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 )
 
 // testMetricsAuthAdapter — minimal AuthSecurityPort stub for server-level tests.
@@ -43,7 +43,7 @@ func (testMetricsFeaturesAdapter) ScriptClipsEnabled() bool { return false }
 // TestServerMetricsMountMatrix verifies the (mode×token) matrix for
 // /metrics at the cmd/server package boundary. Test-only subst: the
 // router is constructed directly (no config.yaml, no BuildServer) so
-// wiring drift between api.NewRouter and app.BuildServer is not masked.
+// wiring drift between httpserver.NewRouter and app.BuildServer is not masked.
 func TestServerMetricsMountMatrix(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -62,7 +62,7 @@ func TestServerMetricsMountMatrix(t *testing.T) {
 			t.Cleanup(func() { _ = os.Unsetenv("METRICS_AUTH_TOKEN") })
 
 			gin.SetMode(tc.ginMode)
-			router := api.NewRouter(&api.RouterConfig{
+			router := httpserver.NewRouter(&httpserver.RouterConfig{
 				ServerGinMode: tc.ginMode,
 				Log:           zap.NewNop(),
 				Auth:          testMetricsAuthAdapter{},
@@ -94,7 +94,7 @@ func TestServerMetricsLoopbackRestriction(t *testing.T) {
 	_ = os.Setenv("METRICS_AUTH_TOKEN", "")
 	t.Cleanup(func() { _ = os.Unsetenv("METRICS_AUTH_TOKEN") })
 
-	router := api.NewRouter(&api.RouterConfig{
+	router := httpserver.NewRouter(&httpserver.RouterConfig{
 		ServerGinMode: gin.DebugMode,
 		Log:           zap.NewNop(),
 		Auth:          testMetricsAuthAdapter{},

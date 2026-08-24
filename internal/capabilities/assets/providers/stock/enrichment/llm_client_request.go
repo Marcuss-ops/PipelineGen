@@ -6,7 +6,7 @@
 // ONLY in this file. Future enrichment passes that need to evolve
 // the wire shape MUST extend this file (NOT introduce a parallel
 // envelope) to preserve one-canonical-owner-per-fact.
-package assets
+package enrichment
 
 import (
 	"fmt"

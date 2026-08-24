@@ -2,7 +2,7 @@
 // when wired with an asset.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (assets.ClipsRepository) observe the
 // same row data.
-package assets
+package artlist
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

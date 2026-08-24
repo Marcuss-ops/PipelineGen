@@ -23,9 +23,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
@@ -479,7 +479,7 @@ func containsPath(haystack, needle string) bool {
 //   - clipindexer.Service.HandleJob running through the Dispatcher
 //   - worker.Registry populated from dispatcher.AllHandlers() via an
 //     inline adaptHandler (the same bridging path
-//     app.BuildWorkerRegistry uses in production cmd/worker)
+//     BuildWorkerRegistry uses in production cmd/worker)
 //   - worker.Tools.Progress / IsCancelled forwarding to the broker
 //   - worker.Runner.runLease completing the lifecycle (parsing
 //     payload, calling the handler, marshalling the result, calling
@@ -567,7 +567,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	//    the in-process Dispatcher call and the remote-worker call.
 	//
 	// godlike/06 SSOT: both adapt here and the production
-	//    app.BuildWorkerRegistry consume the same jobs.Handler;
+	//    BuildWorkerRegistry consume the same jobs.Handler;
 	//    no inline bridge is needed.
 	//
 	// P0 #4 (July 2026) — adapt wraps each handler with

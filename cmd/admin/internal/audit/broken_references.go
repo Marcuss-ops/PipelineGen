@@ -419,7 +419,7 @@ func loadDriveInventoryFromFile(path string) (map[string]bool, []string) {
 }
 
 func walkLiveDriveIDs(ctx context.Context, cfg *config.Config, log *zap.Logger) (map[string]bool, []string, error) {
-	uploader, err := buildDriveAdminForCLI(ctx, cfg, log)
+	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("init Drive: %w", err)
 	}
@@ -541,7 +541,7 @@ func detectMissingQdrantPoints(
 		return nil, len(eligibleIDs), fmt.Errorf("alias %q has no target", schema.RuntimeAlias)
 	}
 
-	qdrantIDs, _, scrollErrs, err := scrollQdrantAssetIDs(ctx, client, collection, 500)
+	qdrantIDs, _, scrollErrs, err := cli.ScrollQdrantAssetIDs(ctx, client, collection, 500)
 	if err != nil {
 		return nil, len(eligibleIDs), fmt.Errorf("scroll Qdrant: %w", err)
 	}

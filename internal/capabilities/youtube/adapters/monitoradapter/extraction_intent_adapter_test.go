@@ -30,8 +30,8 @@ import (
 	"strings"
 	"testing"
 
-	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	monitor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

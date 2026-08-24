@@ -2,7 +2,7 @@
 // AI stock analyser. It converts the external document into canonical domain
 // visual events without creating transcript rows or leaking Drive locators
 // into semantic text.
-package assets
+package visualanalysis
 
 import (
 	"encoding/json"

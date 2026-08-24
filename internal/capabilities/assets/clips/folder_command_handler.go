@@ -2,7 +2,7 @@
 //
 // Extracted from ops.go: write folder operations (RegenerateManifest, TrashFolder, DeleteFolder).
 // Depends on: ClipsRepository, DriveAdmin, FolderMemSvc.
-package assets
+package clips
 
 import (
 	"fmt"

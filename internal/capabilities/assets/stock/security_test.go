@@ -35,7 +35,7 @@
 //
 // Self-test: `go test -race -count=1 -run TestStockHandler ./internal/api/assets/stock/`
 // must exit 0.
-package assets
+package stock
 
 import (
 	"bytes"

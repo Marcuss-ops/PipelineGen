@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 func RunDeleteSpecificFolders(args []string) error {
@@ -22,7 +22,7 @@ func RunDeleteSpecificFolders(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}

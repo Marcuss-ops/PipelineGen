@@ -3,7 +3,6 @@ package imagesregistry
 import (
 	"database/sql"
 
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -67,7 +66,7 @@ import (
 // to implement the new method — same compile-time behaviour under
 // the new name. The same pattern as
 // qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
-var _ jobsoutbox.SourceVersionQuerier = (*ClipsRepository)(nil)
+var _ asset.SourceVersionQuerier = (*ClipsRepository)(nil)
 
 // MediaAssetColumns is the canonical SELECT projection used by every
 // Get / List / Search / Resolve path in this package. The projection
@@ -157,9 +156,9 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 // in the restricted tx-scoped package
 // `internal/platform/sqlite/assets/txmutation/`:
 //
-//   - txmutation.RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
+//   - RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
 //                                          'ready' inside a caller-owned tx.
-//   - txmutation.HardDeleteTx(ctx, tx, id) — physically removes the row
+//   - HardDeleteTx(ctx, tx, id) — physically removes the row
 //                                          + dependent rows inside a
 //                                          caller-owned tx.
 //

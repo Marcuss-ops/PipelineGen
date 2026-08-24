@@ -10,10 +10,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // EnqueueAndDelete performs the canonical DISPATCH step of an
@@ -84,16 +85,16 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 // repo.SoftDelete. Every side-effect lives in a later outbox handler.
 func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, permanently bool) error {
 	if d == nil {
-		return errors.New("outbox.Dispatcher is nil")
+		return errors.New("Dispatcher is nil")
 	}
 	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
+		return errors.New("Dispatcher: txmgr not configured")
 	}
 	if d.outboxEventsRepo == nil {
-		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+		return errors.New("Dispatcher: outbox events repo not configured")
 	}
 	if assetID == "" {
-		return errors.New("outbox.Dispatcher.EnqueueDriveDelete: assetID is required")
+		return errors.New("Dispatcher.EnqueueDriveDelete: assetID is required")
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
@@ -212,16 +213,16 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 // error rather than silently corrupting the dedup layer.
 func (d *Dispatcher) EnqueueIndexDelete(ctx context.Context, assetID string) error {
 	if d == nil {
-		return errors.New("outbox.Dispatcher is nil")
+		return errors.New("Dispatcher is nil")
 	}
 	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
+		return errors.New("Dispatcher: txmgr not configured")
 	}
 	if d.outboxEventsRepo == nil {
-		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+		return errors.New("Dispatcher: outbox events repo not configured")
 	}
 	if assetID == "" {
-		return errors.New("outbox.Dispatcher.EnqueueIndexDelete: assetID is required")
+		return errors.New("Dispatcher.EnqueueIndexDelete: assetID is required")
 	}
 
 	payload := buildDeleteRequestV1(assetID)
@@ -274,19 +275,19 @@ func (d *Dispatcher) EnqueueIndexDelete(ctx context.Context, assetID string) err
 //	  2. INSERT outbox_events (event_type='asset.index.restore_requested')
 func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) error {
 	if d == nil {
-		return errors.New("outbox.Dispatcher is nil")
+		return errors.New("Dispatcher is nil")
 	}
 	if d.txmgr == nil {
-		return errors.New("outbox.Dispatcher: txmgr not configured")
+		return errors.New("Dispatcher: txmgr not configured")
 	}
 	if d.stateWriter == nil {
-		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndRestore — wire *assets.ClipsRepository)")
+		return errors.New("Dispatcher: state writer not configured (required for EnqueueAndRestore — wire *assets.ClipsRepository)")
 	}
 	if d.outboxEventsRepo == nil {
-		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+		return errors.New("Dispatcher: outbox events repo not configured")
 	}
 	if assetID == "" {
-		return errors.New("outbox.Dispatcher.EnqueueAndRestore: assetID is required")
+		return errors.New("Dispatcher.EnqueueAndRestore: assetID is required")
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {

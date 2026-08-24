@@ -16,7 +16,7 @@
 // handler bound successfully; if any bind fails, NewComposition
 // returns non-nil and the server boot aborts.
 //
-// Why the slice-of-closures shape (instead of pulling wiring.ComposeRoot or
+// Why the slice-of-closures shape (instead of pulling ComposeRoot or
 // domain services directly into the validator): the validator is
 // decoupled from the composition-tree shape — the caller decides
 // what handlers to register. This makes the validator trivially
@@ -31,7 +31,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // CriticalHandler is the canonical bind-spec for the critical-handler
@@ -89,7 +89,7 @@ type CriticalHandler struct {
 //     chosen by the late-bindings block is preserved verbatim.
 //   - **stockpipeline.media_stock** — bound AFTER NewComposition
 //     returns (via registerInternalModules::WireStockPipeline). The
-//     canonical stockpipeline validator pass lives in lifecycle.go
+//     canonical stockpipeline validator pass lives in go
 //     (post-WireStockPipeline + pre-ListenAndServe), NOT here.
 //
 // Contract (single source of truth for this validator):
@@ -97,7 +97,7 @@ type CriticalHandler struct {
 //   - svc == nil → typed error (composition-root wiring bug;
 //     the validator cannot run without a wired jobs.Service).
 //   - log == nil → swaps in zap.NewNop() so the validator remains
-//     usable from composition roots without explicit logger wiring.
+//     usable from composition roots without explicit logger 
 //   - handlers slice is the canonical authoritative list — a
 //     missing handler is a composition-shape bug, NOT a failure
 //     to log. Empty handlers slice → nil error (no bindings to
@@ -109,7 +109,7 @@ type CriticalHandler struct {
 //
 // godlike/05 fail-fast posture: any non-nil error from this
 // function MUST abort NewComposition so the caller never sees
-// `(*wiring.ComposeRoot, nil)` with a half-registered dispatcher.
+// `(*ComposeRoot, nil)` with a half-registered dispatcher.
 //
 // godlike/07 no-fake-availability: validators do NOT fabricate a
 // "soft success" on binding failure. A nil Bind closure that

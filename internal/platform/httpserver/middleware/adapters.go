@@ -34,7 +34,7 @@
 // (intentional — auth state is server-mutable only via explicit
 // re-wire); the trade-off matches test fixture ergonomics
 // (`&TokenSecurityAdapter{Admin: "x"}`).
-package httpserver
+package middleware
 
 import "os"
 

@@ -28,7 +28,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

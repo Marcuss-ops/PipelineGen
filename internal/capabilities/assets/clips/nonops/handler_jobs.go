@@ -11,13 +11,13 @@
 // below. The legacy "Deprecated" back-compat surface is REMOVED;
 // this is no longer a back-compat path but the canonical THIRD link
 // of the production registration chain.
-package assets
+package nonops
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )

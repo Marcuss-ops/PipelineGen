@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 // retry_fallback.go is the split-by-capability (Phase 7) CAPABILITY
 // DECLARATION file for the "retry/fallback" bucket.

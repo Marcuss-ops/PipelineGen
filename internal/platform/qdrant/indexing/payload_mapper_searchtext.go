@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

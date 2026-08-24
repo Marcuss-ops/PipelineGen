@@ -46,20 +46,19 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math/rand"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
+	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 
 	"go.uber.org/zap"
 )
@@ -79,7 +78,7 @@ import (
 //
 //	(a) Registry has the type. Looks up appjobs.Compose().IsRegistered
 //	    for script.generate -- the canonical job-type registry built
-//	    in module_media.go::wiring.BuildJobsBundle.
+//	    in module_media.go::BuildJobsBundle.
 //
 //	(b) Broker has the handler. The handler-registration itself is
 //	    the proof: RegisterJobs just successfully pushed the handler
@@ -102,7 +101,7 @@ import (
 // other composition validators (validateRequiredProcessors,
 // etc.). Tests pin the fail-fast contract in
 // internal/capabilities/scripts/jobs/generation_job_test.go.
-func validateScriptGenerateWiring(root *wiring.ComposeRoot, log *zap.Logger) error {
+func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	// (a) Registry has the type. Direct query against the canonical
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
@@ -126,7 +125,7 @@ func validateScriptGenerateWiring(root *wiring.ComposeRoot, log *zap.Logger) err
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
-	//     script.generate. Forward-looking: when wiring.JobsBundle
+	//     script.generate. Forward-looking: when JobsBundle
 	//     exposes a WorkerTypes field, uncomment the check below.
 	//     Until then, the operator must rely on Worker.ExportTypes
 	//     runtime audit.

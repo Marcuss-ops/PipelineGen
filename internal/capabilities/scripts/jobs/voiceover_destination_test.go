@@ -21,10 +21,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/destination"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 const testVoiceoverRootID = "voiceover-root-id"

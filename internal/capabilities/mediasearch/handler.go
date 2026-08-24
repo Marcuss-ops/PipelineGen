@@ -90,7 +90,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"

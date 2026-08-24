@@ -1,4 +1,4 @@
-package assets
+package operator
 
 // Label helpers for canonical enum values. Keeping the maps in the
 // application layer lets the UI receive ready-to-display labels without

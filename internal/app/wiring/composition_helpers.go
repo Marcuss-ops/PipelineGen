@@ -5,17 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stockbatches"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stockbatches"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -137,7 +136,7 @@ var _ artifacts.AssetIndexPort = (*artifactAssetIndexAdapter)(nil)
 // Package app — clipindexer job handler late-binding.
 // wireClipIndexerJobBinding registers the media_reindex handler into
 // jobs.Service.
-func wireClipIndexerJobBinding(process *wiring.ProcessBundle, jobs *wiring.JobsBundle) error {
+func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
 			return fmt.Errorf("clipindexer.media_reindex: %w", err)
@@ -148,7 +147,7 @@ func wireClipIndexerJobBinding(process *wiring.ProcessBundle, jobs *wiring.JobsB
 
 // appendClipIndexerCriticalValidator populates the critical-handler
 // validators slice with the clipindexer.media_reindex binding.
-func appendClipIndexerCriticalValidator(process *wiring.ProcessBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
+func appendClipIndexerCriticalValidator(process *ProcessBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		ci := process.ClipIndexerService
 		*validators = append(*validators,
@@ -166,7 +165,7 @@ func appendClipIndexerCriticalValidator(process *wiring.ProcessBundle, jobs *wir
 // composition.go NewComposition per PG-028 capability split, July 2026).
 // wireImagesJobBinding registers the image generation handler into
 // jobs.Service. Extracted from NewComposition per PG-028.
-func wireImagesJobBinding(domains *wiring.DomainBundle, jobs *wiring.JobsBundle) error {
+func wireImagesJobBinding(domains *DomainBundle, jobs *JobsBundle) error {
 	if domains.ImageService != nil && jobs.Service != nil {
 		if err := domains.ImageService.RegisterHandler(jobs.Service); err != nil {
 			return fmt.Errorf("images.image_generate_google: %w", err)
@@ -178,7 +177,7 @@ func wireImagesJobBinding(domains *wiring.DomainBundle, jobs *wiring.JobsBundle)
 // appendImagesCriticalValidator populates the critical-handler validators
 // slice with the images.image_generate_google binding.
 // Extracted from NewComposition per PG-028.
-func appendImagesCriticalValidator(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
+func appendImagesCriticalValidator(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
 	if domains.ImageService != nil && jobs.Service != nil {
 		img := domains.ImageService
 		*validators = append(*validators,
@@ -306,7 +305,7 @@ func (m *sqliteTxManager) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return m.db.BeginTx(ctx, nil)
 }
 
-func buildScriptSubmissionService(root *wiring.ComposeRoot, log *zap.Logger) (*opsapp.Service, error) {
+func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.Service, error) {
 	if root == nil || root.DB == nil || root.Jobs == nil || root.Jobs.Repo == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, fmt.Errorf("script submission: required runtime dependencies are nil")
 	}

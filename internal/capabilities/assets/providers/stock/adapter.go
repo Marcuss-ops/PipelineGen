@@ -14,7 +14,7 @@
 // providers/stock/adapter.go, parallel to artlist/adapter.go and
 // youtube/adapter.go. The historical nesting under
 // providers/adapters/<src>/ is removed.
-package assets
+package stock
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

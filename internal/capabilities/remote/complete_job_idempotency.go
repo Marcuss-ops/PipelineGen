@@ -39,7 +39,7 @@ import (
 	"fmt"
 	"strconv"
 
-	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -48,7 +48,7 @@ import (
 // the typed-factory pattern. Future production callers SHOULD
 // migrate to:
 //
-//	derive := remote.MakeCompleteJobIdempotencyKey(hashutil.HashFunc)
+//	derive := MakeCompleteJobIdempotencyKey(hashutil.HashFunc)
 //	service := &CompletionService{derive: derive, ...} // field injection
 //
 // (composition root wires the derive using hashutil.HashFunc
@@ -136,9 +136,9 @@ type CompleteJobIdempotencyKeyFunc func(jobID string, attempt int, resultHash st
 // the C6 MakeArtifactIdempotencyKey shape: panic-on-nil HashFunc at
 // construction (godlike/07 fail-closed); callers receive the
 // HashFunc via constructor injection.
-func MakeCompleteJobIdempotencyKey(hash domainhashutil.HashFunc) CompleteJobIdempotencyKeyFunc {
+func MakeCompleteJobIdempotencyKey(hash hashutil.HashFunc) CompleteJobIdempotencyKeyFunc {
 	if hash == nil {
-		panic("remote.MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
+		panic("MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
 	return func(jobID string, attempt int, resultHash string) string {
 		if jobID == "" || resultHash == "" || attempt < 0 {
@@ -151,7 +151,7 @@ func MakeCompleteJobIdempotencyKey(hash domainhashutil.HashFunc) CompleteJobIdem
 // defaultCompleteJobKey is the package-level production default
 // bound to the domain-owned standard-library SHA-256 implementation. Mirrors
 // defaultArtifactKey for the (jobID, attempt, resultHash) surface.
-var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(domainhashutil.SHA256String)
+var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(hashutil.SHA256String)
 
 // IsValidCompleteJobIdempotencyKey returns true if `key` is a
 // well-formed key for the job_results UNIQUE column: either the

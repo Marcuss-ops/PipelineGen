@@ -387,10 +387,10 @@ func capabilityOfFile(relPath string, caps map[string]bool) string {
 }
 
 // capabilityOfImport returns the capability name for an import line
-// shaped like `github.com/Marcuss-ops/PipelineGen/internal/application/<cap>/...`.
+// shaped like `github.com/Marcuss-ops/PipelineGen/internal/capabilities/<cap>/...`.
 // Returns "" for non-matching imports.
 func capabilityOfImport(importLine string, caps map[string]bool) string {
-	const marker = "github.com/Marcuss-ops/PipelineGen/internal/application/"
+	const marker = "github.com/Marcuss-ops/PipelineGen/internal/capabilities/"
 	idx := strings.Index(importLine, marker)
 	if idx < 0 {
 		return ""

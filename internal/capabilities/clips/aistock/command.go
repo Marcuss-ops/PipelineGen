@@ -1,5 +1,5 @@
 // Package aistock — typed command for AI-generated stock clip ingestion.
-package clips
+package aistock
 
 // CreateAIStockCommand is the input for creating a new AI-generated stock clip
 // from a visual analysis document and a Google Drive video reference.

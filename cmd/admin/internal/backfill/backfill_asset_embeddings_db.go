@@ -15,7 +15,7 @@
 //
 // Commit F (August 2026): the reusable core moved to
 // internal/application/indexing/backfill; the shared row/run shapes
-// (backfill.Candidate, backfill.Deps, backfill.Checkpoint) now come from
+// (indexing.Candidate, indexing.Deps, indexing.Checkpoint) now come from
 // that package. Both helpers additionally select the content_hash
 // expression so the core can build the deterministic event_key
 // fingerprint without owning SQL.
@@ -54,7 +54,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
@@ -69,9 +69,9 @@ const searchableMediaAssetWhere = capregistry.SearchIndexTaxonomySQL
 func fetchEmbeddingCandidates(
 	ctx context.Context,
 	db *sql.DB,
-	deps backfill.Deps,
-	cp *backfill.Checkpoint,
-) ([]backfill.Candidate, error) {
+	deps indexing.Deps,
+	cp *indexing.Checkpoint,
+) ([]indexing.Candidate, error) {
 	query := `
 		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
 		       COALESCE(local_path, ''),
@@ -110,9 +110,9 @@ func fetchEmbeddingCandidates(
 	}
 	defer rows.Close()
 
-	var out []backfill.Candidate
+	var out []indexing.Candidate
 	for rows.Next() {
-		var a backfill.Candidate
+		var a indexing.Candidate
 		var hasText, hasTranscript, hasVisual, hasAudio int
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
 			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
@@ -132,7 +132,7 @@ func fetchEmbeddingCandidates(
 }
 
 // fetchFailedCandidates returns candidate rows only for the given asset IDs.
-func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]backfill.Candidate, error) {
+func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]indexing.Candidate, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -163,9 +163,9 @@ func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]bac
 	}
 	defer rows.Close()
 
-	var out []backfill.Candidate
+	var out []indexing.Candidate
 	for rows.Next() {
-		var a backfill.Candidate
+		var a indexing.Candidate
 		var hasText, hasTranscript, hasVisual, hasAudio int
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
 			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {

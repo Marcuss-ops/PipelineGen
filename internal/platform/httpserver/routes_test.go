@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {

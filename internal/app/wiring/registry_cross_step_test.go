@@ -10,7 +10,7 @@ import (
 )
 
 // TestRegistryCrossStepState_IsExplicit protects the composition graph
-// boundary introduced for search and idempotency capabilities. Cross-step
+// boundary introduced for search and idempotency  Cross-step
 // values must travel through registryCrossStepState; RegistryWiring is the
 // returned graph result and must not become a temporal scratchpad again.
 func TestRegistryCrossStepState_IsExplicit(t *testing.T) {
@@ -30,10 +30,10 @@ func TestRegistryCrossStepState_IsExplicit(t *testing.T) {
 		}
 		text := string(body)
 		for _, forbidden := range []string{
-			"wiring.searchFanOut",
-			"wiring.searchBackends",
-			"wiring.searchAgg",
-			"wiring.idempotencyHandler",
+			"searchFanOut",
+			"searchBackends",
+			"searchAgg",
+			"idempotencyHandler",
 			"regWiring.searchFanOut",
 			"regWiring.searchBackends",
 			"regWiring.searchAgg",

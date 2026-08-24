@@ -5,7 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"

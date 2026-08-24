@@ -2,7 +2,7 @@
 // helpers for AI image generation (PR-GODOBJ-3-IMAGES-GENERATION, July 2026).
 //
 // godlike/06 SSOT: one canonical owner per fact — request normalization
-// for image generation. All helpers in this file are side-effect free so
+// for image  All helpers in this file are side-effect free so
 // they can be unit-tested without a registry / imageGen / storage wire.
 //
 // PR-GODOBJ-3 KILL LIST (c) applied: account/project parameters removed

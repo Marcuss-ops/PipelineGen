@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -22,7 +21,7 @@ import (
 // the canonical domain interface (job.Service); the stats reader is a
 // narrow port (JobStatsReader) exposing the SQLite-specific GetStats
 // helper without leaking it onto the orchestrator surface.
-// *appjobs.Service satisfies both interfaces — composition-root wiring
+// *Service satisfies both interfaces — composition-root wiring
 // passes the same concrete pointer to both fields. The Stats
 // endpoint consumes only the reader; Enqueue/Cancel/Retry/etc.
 // consume only the orchestrator. The split is intentional so a future
@@ -31,8 +30,8 @@ import (
 // mutation surface.
 type JobsHandler struct {
 	service job.Service
-	stats   appjobs.JobStatsReader
-	history appjobs.HistoryReader
+	stats   JobStatsReader
+	history HistoryReader
 	replay  *replayConfig
 	log     *zap.Logger
 }
@@ -40,16 +39,16 @@ type JobsHandler struct {
 // NewJobsHandler creates a new jobs HTTP handler.
 //
 // PR-0 (June 2026): signature expanded to (job.Service,
-// JobStatsReader). Canonical composition root passes `jobs.Service`
+// JobStatsReader). Canonical composition root passes `Service`
 // for both fields (it satisfies both via compile-time assertion in
 // internal/capabilities/jobs/queue/stats.go). A reader-only binding (e.g.
 // a Postgres-backed aggregator without the mutation surface) passes
 // an implementation that satisfies only JobStatsReader.
-func NewJobsHandler(service job.Service, stats appjobs.JobStatsReader, log *zap.Logger) *JobsHandler {
+func NewJobsHandler(service job.Service, stats JobStatsReader, log *zap.Logger) *JobsHandler {
 	return &JobsHandler{service: service, stats: stats, log: log}
 }
 
-func (h *JobsHandler) SetHistoryReader(reader appjobs.HistoryReader) { h.history = reader }
+func (h *JobsHandler) SetHistoryReader(reader HistoryReader) { h.history = reader }
 
 // RegisterRoutes mounts the job endpoints under the given router group.
 func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
@@ -69,7 +68,7 @@ func (h *JobsHandler) History(c *gin.Context) {
 		apiutil.Error(c, 503, "operation history is not configured")
 		return
 	}
-	f := appjobs.HistoryFilter{Status: c.Query("status"), Type: c.Query("type")}
+	f := HistoryFilter{Status: c.Query("status"), Type: c.Query("type")}
 	if raw := c.Query("from"); raw != "" {
 		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
 			f.From = &parsed
@@ -98,7 +97,7 @@ func (h *JobsHandler) History(c *gin.Context) {
 }
 
 func (h *JobsHandler) Enqueue(c *gin.Context) {
-	dto, ok := apiutil.BindJSON[appjobs.EnqueueRequest](c)
+	dto, ok := apiutil.BindJSON[EnqueueRequest](c)
 	if !ok {
 		return
 	}

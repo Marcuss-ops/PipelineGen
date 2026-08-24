@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // TestResolveGenerationFormat is the canonical SSOT for the PR-3

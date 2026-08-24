@@ -26,7 +26,6 @@ import (
 
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -41,22 +40,22 @@ import (
 // Validation contract (regression-locked by
 // generation_submission_service_test.go):
 //   - Scope must be in the canonical enum
-//     (domainops.Scope.IsValid); else ErrInvalidOperationScope.
+//     (Scope.IsValid); else ErrInvalidOperationScope.
 //   - IdempotencyKey must pass
-//     domainops.IsValidIdempotencyKey; else
+//     IsValidIdempotencyKey; else
 //     ErrIdempotencyKeyInvalid.
-//   - RequestHash must pass domainops.IsValidRequestHash
+//   - RequestHash must pass IsValidRequestHash
 //     (64-char lowercase hex); else ErrRequestHashInvalid.
 //   - JobType non-empty; JobPayload non-empty (raw JSON bytes).
 func validateSubmitRequest(req SubmitRequest) error {
 	if !req.Scope.IsValid() {
-		return fmt.Errorf("%w: %q", domainops.ErrInvalidOperationScope, req.Scope)
+		return fmt.Errorf("%w: %q", ErrInvalidOperationScope, req.Scope)
 	}
-	if !domainops.IsValidIdempotencyKey(req.IdempotencyKey) {
-		return domainops.ErrIdempotencyKeyInvalid
+	if !IsValidIdempotencyKey(req.IdempotencyKey) {
+		return ErrIdempotencyKeyInvalid
 	}
-	if !domainops.IsValidRequestHash(req.RequestHash) {
-		return domainops.ErrRequestHashInvalid
+	if !IsValidRequestHash(req.RequestHash) {
+		return ErrRequestHashInvalid
 	}
 	if req.JobType == "" {
 		return fmt.Errorf("operations.Submit: empty JobType")
@@ -81,12 +80,12 @@ func validateSubmitRequest(req SubmitRequest) error {
 // passing nil for the tx argument is the typed-port contract for
 // "no caller-owned transaction". Returns (nil, nil) when no
 // prior exists OR when the only prior is in SUPERSEDED state.
-func (s *Service) lookupPriorOperation(ctx context.Context, scope domainops.Scope, idempotencyKey string) (*domainops.Operation, error) {
+func (s *Service) lookupPriorOperation(ctx context.Context, scope Scope, idempotencyKey string) (*Operation, error) {
 	prior, err := s.ops.GetLatestForKey(ctx, scope, idempotencyKey, nil)
 	if err != nil {
 		return nil, err
 	}
-	if prior != nil && prior.State == domainops.StateSuperseded {
+	if prior != nil && prior.State == StateSuperseded {
 		return nil, nil
 	}
 	return prior, nil
@@ -118,7 +117,7 @@ func (s *Service) lookupPriorOperation(ctx context.Context, scope domainops.Scop
 // The typed "idempotency hit" log is emitted here (godlike/10
 // decision locality: the info-level log is co-located with the
 // classification that triggers it).
-func (s *Service) decideReplayOrFresh(ctx context.Context, prior *domainops.Operation, req SubmitRequest) (*SubmitResult, bool, error) {
+func (s *Service) decideReplayOrFresh(ctx context.Context, prior *Operation, req SubmitRequest) (*SubmitResult, bool, error) {
 	// Push 2.2a MEDIUM code-review fix (pre-tx guard): a caller
 	// pre-supplying req.OperationID == prior.OperationID AND
 	// force_refresh=true would surface as ErrSelfSupersedeReference
@@ -127,7 +126,7 @@ func (s *Service) decideReplayOrFresh(ctx context.Context, prior *domainops.Oper
 	// instead of at the input boundary. Detect here.
 	if prior != nil && prior.RequestHash != req.RequestHash && req.OperationID != "" && req.OperationID == prior.OperationID {
 		return nil, false, fmt.Errorf("%w: operation_id=%q",
-			domainops.ErrSelfSupersedeReference, req.OperationID)
+			ErrSelfSupersedeReference, req.OperationID)
 	}
 
 	switch {
@@ -171,7 +170,7 @@ func (s *Service) decideReplayOrFresh(ctx context.Context, prior *domainops.Oper
 	case !req.ForceRefresh && prior.RequestHash != req.RequestHash:
 		// 409 IDEMPOTENCY_CONFLICT — same key, different hash.
 		// No DB write. Caller (HTTP layer) maps to 409.
-		return nil, false, domainops.WrapIdempotencyConflict(
+		return nil, false, WrapIdempotencyConflict(
 			req.Scope, req.IdempotencyKey, prior.RequestHash, req.RequestHash)
 	case req.ForceRefresh:
 		// Force-refresh on a prior op — falls through to TX body

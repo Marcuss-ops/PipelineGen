@@ -1,4 +1,4 @@
-package assets
+package texttracks
 
 // ass_content_test.go — determinism + fail-closed contract for the canonical
 // ASS content generator (CompileASSContent), the single owner of ASS content

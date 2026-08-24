@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
@@ -58,12 +57,12 @@ func TestHandlerIntegration_Drain_MalformedEnvelope_ErrorsBeforeAnyCAS(t *testin
 		},
 	}
 	core, logs := observer.New(zapcore.InfoLevel)
-	h, err := publishdrive.NewHandler(repo, pub, zap.New(core))
+	h, err := NewHandler(repo, pub, zap.New(core))
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
 	badEvt := outboxevents.Event{
-		EventType:   publishdrive.EventTypeArtifactStaged,
+		EventType:   EventTypeArtifactStaged,
 		PayloadJSON: "[not-json",
 		EventKey:    "stage:bad:env",
 	}
@@ -71,7 +70,7 @@ func TestHandlerIntegration_Drain_MalformedEnvelope_ErrorsBeforeAnyCAS(t *testin
 	if err == nil {
 		t.Fatalf("Handle malformed envelope: expected error, got nil")
 	}
-	if !errors.Is(err, publishdrive.ErrInvalidPayload) {
+	if !errors.Is(err, ErrInvalidPayload) {
 		t.Errorf("err = %v, want chain includes ErrInvalidPayload", err)
 	}
 
@@ -125,7 +124,7 @@ func TestHandlerIntegration_Drain_PublisherFailureLeavesRowStaged(t *testing.T) 
 
 	_, evt := validEnvelopeForTest(stageID, "job-integ-1")
 	core, logs := observer.New(zapcore.InfoLevel)
-	h, err := publishdrive.NewHandler(repo, pub, zap.New(core))
+	h, err := NewHandler(repo, pub, zap.New(core))
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}

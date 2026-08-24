@@ -3,9 +3,11 @@ package httpserver
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"go.uber.org/zap"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 
 // registerHealthRoutes wires the unified health surface: /health with
@@ -26,7 +28,11 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 	var healthHandler *transport.HealthHandler
 	if r.healthSvc != nil {
 		if svc, svcOk := r.healthSvc.(*systemhealth.Service); svcOk {
-			healthHandler = transport.NewHealthHandler(svc, r.readyChecker)
+			var rc *systemhealth.ReadyChecker
+			if r.readyChecker != nil {
+				rc, _ = r.readyChecker.(*systemhealth.ReadyChecker)
+			}
+			healthHandler = transport.NewHealthHandler(svc, rc)
 		}
 	}
 	if healthHandler == nil {

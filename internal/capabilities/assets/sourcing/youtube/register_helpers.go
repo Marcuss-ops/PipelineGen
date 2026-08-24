@@ -26,7 +26,7 @@
 // fmt.Errorf %w chains for context). best-effort vs required gates
 // (P0.2 RequireDrive, QDRANT-isolation indexDisp REQUIRED) preserved
 // verbatim.
-package assets
+package youtube
 
 import (
 	"context"
@@ -34,8 +34,8 @@ import (
 	"strings"
 	"time"
 
-	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
+	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

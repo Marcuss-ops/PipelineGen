@@ -28,7 +28,7 @@
 // MediaSearch) MUST treat missing fields as zero-value gracefully.
 // SchemaVersion tracks forward-compatible evolution of the payload —
 // readers reject unknown versions.
-package assets
+package search
 
 // SearchDocument is the canonical typed envelope that bridges the three
 // search territories (SemanticEnrichment, IndexProjection, MediaSearch).

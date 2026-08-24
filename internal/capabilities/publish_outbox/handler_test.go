@@ -32,8 +32,7 @@ import (
 	"sync"
 	"testing"
 
-	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -67,7 +66,7 @@ func (s *stubStore) Stage(_ context.Context, req staging.StageRequest) (*staging
 // accepts it without surprise.
 func makeEvent(payloadJSON, eventKey string) outboxevents.Event {
 	return outboxevents.Event{
-		EventType:   publishoutbox.EventTypeArtifactPublishRequested,
+		EventType:   EventTypeArtifactPublishRequested,
 		PayloadJSON: payloadJSON,
 		EventKey:    eventKey,
 	}
@@ -75,8 +74,8 @@ func makeEvent(payloadJSON, eventKey string) outboxevents.Event {
 
 // validRequestPayload returns the canonical happy-path payload.
 // Tests mutate one field at a time to exercise each rejection.
-func validRequestPayload() publishoutbox.PublishRequestPayload {
-	return publishoutbox.PublishRequestPayload{
+func validRequestPayload() PublishRequestPayload {
+	return PublishRequestPayload{
 		JobID:       "job-x",
 		Mime:        "audio/mpeg",
 		Requirement: "required",
@@ -89,12 +88,12 @@ func validRequestPayload() publishoutbox.PublishRequestPayload {
 // newHandler constructs a Handler backed by a stubStore + an
 // observed zap.Logger. Tests use observerLogs to assert on
 // emitted structured-log fields without parsing human output.
-func newHandler(t *testing.T) (*publishoutbox.Handler, *stubStore, *observer.ObservedLogs) {
+func newHandler(t *testing.T) (*Handler, *stubStore, *observer.ObservedLogs) {
 	t.Helper()
 	store := &stubStore{}
 	core, logs := observer.New(zapcore.InfoLevel)
 	log := zap.New(core)
-	h, err := publishoutbox.NewHandler(store, log)
+	h, err := NewHandler(store, log)
 	if err != nil {
 		t.Fatalf("NewHandler (test helper): %v", err)
 	}
@@ -117,7 +116,7 @@ func writeSourceFile(t *testing.T, content string) string {
 
 func TestNewHandler_RejectsNilStore(t *testing.T) {
 	core, _ := observer.New(zapcore.InfoLevel)
-	_, err := publishoutbox.NewHandler(nil, zap.New(core))
+	_, err := NewHandler(nil, zap.New(core))
 	if err == nil {
 		t.Fatalf("NewHandler(nil store): expected error, got nil")
 	}
@@ -127,7 +126,7 @@ func TestNewHandler_RejectsNilStore(t *testing.T) {
 
 func TestNewHandler_RejectsNilLog(t *testing.T) {
 	store := &stubStore{}
-	_, err := publishoutbox.NewHandler(store, nil)
+	_, err := NewHandler(store, nil)
 	if err == nil {
 		t.Fatalf("NewHandler(nil log): expected error, got nil")
 	}
@@ -137,10 +136,10 @@ func TestNewHandler_RejectsNilLog(t *testing.T) {
 
 func TestHandler_EventTypeAndIdempotencyKeyStable(t *testing.T) {
 	h, _, _ := newHandler(t)
-	if got, want := h.EventType(), publishoutbox.EventTypeArtifactPublishRequested; got != want {
+	if got, want := h.EventType(), EventTypeArtifactPublishRequested; got != want {
 		t.Errorf("EventType() = %q, want %q", got, want)
 	}
-	if got, want := h.IdempotencyKey(), publishoutbox.EventTypeArtifactPublishRequested; got != want {
+	if got, want := h.IdempotencyKey(), EventTypeArtifactPublishRequested; got != want {
 		t.Errorf("IdempotencyKey() = %q, want %q", got, want)
 	}
 }
@@ -222,7 +221,7 @@ func TestHandler_Handle_HappyPath(t *testing.T) {
 func TestHandler_Handle_RejectsMalformedJSON(t *testing.T) {
 	h, store, _ := newHandler(t)
 	err := h.Handle(context.Background(), makeEvent("[not-json", ""))
-	if !errors.Is(err, publishoutbox.ErrInvalidPayload) {
+	if !errors.Is(err, ErrInvalidPayload) {
 		t.Errorf("Handle malformed JSON: err = %v, want ErrInvalidPayload", err)
 	}
 	if got := len(store.calls); got != 0 {
@@ -235,12 +234,12 @@ func TestHandler_Handle_RejectsMalformedJSON(t *testing.T) {
 func TestHandler_Handle_RejectsMissingFields(t *testing.T) {
 	cases := []struct {
 		name   string
-		mutate func(*publishoutbox.PublishRequestPayload)
+		mutate func(*PublishRequestPayload)
 	}{
-		{"missing JobID", func(p *publishoutbox.PublishRequestPayload) { p.JobID = "" }},
-		{"missing Mime", func(p *publishoutbox.PublishRequestPayload) { p.Mime = "" }},
-		{"missing SourceURI", func(p *publishoutbox.PublishRequestPayload) { p.SourceURI = "" }},
-		{"whitespace-only JobID", func(p *publishoutbox.PublishRequestPayload) { p.JobID = "   " }},
+		{"missing JobID", func(p *PublishRequestPayload) { p.JobID = "" }},
+		{"missing Mime", func(p *PublishRequestPayload) { p.Mime = "" }},
+		{"missing SourceURI", func(p *PublishRequestPayload) { p.SourceURI = "" }},
+		{"whitespace-only JobID", func(p *PublishRequestPayload) { p.JobID = "   " }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,7 +257,7 @@ func TestHandler_Handle_RejectsMissingFields(t *testing.T) {
 			}
 			body, _ := json.Marshal(p)
 			err := h.Handle(context.Background(), makeEvent(string(body), ""))
-			if !errors.Is(err, publishoutbox.ErrMissingFields) {
+			if !errors.Is(err, ErrMissingFields) {
 				t.Errorf("err = %v, want ErrMissingFields", err)
 			}
 			if got := len(store.calls); got != 0 {
@@ -277,7 +276,7 @@ func TestHandler_Handle_RejectsInvalidRequirement(t *testing.T) {
 	p.Requirement = "mandatory" // not in canonical {optional, required}
 	body, _ := json.Marshal(p)
 	err := h.Handle(context.Background(), makeEvent(string(body), ""))
-	if !errors.Is(err, publishoutbox.ErrInvalidPayload) {
+	if !errors.Is(err, ErrInvalidPayload) {
 		t.Errorf("err = %v, want ErrInvalidPayload", err)
 	}
 	if got := len(store.calls); got != 0 {
@@ -313,7 +312,7 @@ func TestHandler_Handle_RejectsNonOpenableSourceURI(t *testing.T) {
 	p.SourceURI = "/this/path/does/not/exist/" + t.Name()
 	body, _ := json.Marshal(p)
 	err := h.Handle(context.Background(), makeEvent(string(body), ""))
-	if !errors.Is(err, publishoutbox.ErrSourceOpen) {
+	if !errors.Is(err, ErrSourceOpen) {
 		t.Errorf("err = %v, want ErrSourceOpen", err)
 	}
 	if got := len(store.calls); got != 0 {

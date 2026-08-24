@@ -14,7 +14,7 @@
 // Provider contract. As a result this adapter ONLY satisfies
 // SearchProvider — it has no Fetch method and the registry must
 // not return it for ByCapability(CapabilityFetch).
-package assets
+package youtube
 
 import (
 	"context"

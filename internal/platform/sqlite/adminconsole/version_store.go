@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
+	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 )
 
 // VersionStore is the SQLite-backed adminconsole.EntityVersionStore.

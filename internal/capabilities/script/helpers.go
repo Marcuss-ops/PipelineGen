@@ -13,12 +13,13 @@ package script
 import (
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 )
 
 // ── Post-gen metadata helpers ───────────────────────────────────────────────

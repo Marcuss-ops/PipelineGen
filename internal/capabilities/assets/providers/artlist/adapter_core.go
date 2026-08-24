@@ -9,4 +9,4 @@
 //
 // Production SQLite construction lives in
 // platform/sqlite/artlist_searcher.go.
-package assets
+package artlist

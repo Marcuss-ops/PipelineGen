@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
 // metaFileEnvelope is the on-disk JSON shape for {ID}.meta.json.

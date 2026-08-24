@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	contract "github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

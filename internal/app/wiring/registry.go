@@ -79,7 +79,7 @@
 //
 //   - Data-flow ordering: registerInternalModules runs BEFORE
 //     registerImages AND registerAssets because both consume
-//     wiring.MediaIngest.Service (Images) and the explicit search capability
+//     MediaIngest.Service (Images) and the explicit search capability
 //     passed to the Assets phase.
 //     The user-stated orchestrator listing (assets before internal)
 //     is illustrative; the executable order is internal → scripts →
@@ -100,9 +100,8 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -137,11 +136,11 @@ var (
 // outputs exposed to the server and tests.
 type RegistryWiring struct {
 	Registry      *module.Registry
-	ArtlistSvc    *wiring.ArtlistWiring
-	YouTubeClip   *wiring.YouTubeClipWiring
+	ArtlistSvc    *ArtlistWiring
+	YouTubeClip   *YouTubeClipWiring
 	MediaIngest   *MediaIngestWiring
-	Assets        *wiring.AssetsWiring
-	StockPipeline *wiring.StockPipelineWiring
+	Assets        *AssetsWiring
+	StockPipeline *StockPipelineWiring
 
 	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
 	// These handlers are constructed by WireRegistry but NOT registered
@@ -167,7 +166,7 @@ type RegistryWiring struct {
 // now an 8-step orchestrator. Each step delegates to a cohesive helper
 // in the same package; cross-step capability state flows as an explicit
 // short-lived value rather than through RegistryWiring fields.
-func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot) (*RegistryWiring, error) {
+func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error) {
 	if root == nil {
 		return nil, fmt.Errorf("wire registry: compose root is nil")
 	}
@@ -198,7 +197,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Step 2 — Internal modules (bundle-driven). MUST run before
-	// registerImages (consumes wiring.MediaIngest.Service) and
+	// registerImages (consumes MediaIngest.Service) and
 	// registerAssets (consumes explicit registryCrossStepState). Wraps
 	// registerIdempotencyMiddleware +
 	// registerSearchBackend + registerArtlist + registerYouTubeClip +
@@ -217,7 +216,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: scripts: %w", err)
 	}
 
-	// Step 4 — Images: single route module; consumes wiring.MediaIngest.Service.
+	// Step 4 — Images: single route module; consumes MediaIngest.Service.
 	if err := registerImages(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: images: %w", err)
 	}

@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

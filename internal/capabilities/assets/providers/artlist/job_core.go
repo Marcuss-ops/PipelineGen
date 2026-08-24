@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )

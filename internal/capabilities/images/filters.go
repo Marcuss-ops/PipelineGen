@@ -15,10 +15,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+
+
 // ImageFilter is the canonical filter for catalog search.
 // Composed by callers; can be partial (any field zero-value
 // means "no constraint on that dimension").
 type ImageFilter struct {
+	SubjectID string
+	Origins   []asset.ImageOrigin
+	Tags      []string
 	// Origines (territory) — empty = no origin constraint.
 	// Multi-origin filters let callers ask for "retrieved OR
 	// generated" in a single query.
@@ -92,6 +97,7 @@ const DefaultLimit = 50
 // MaxLimit is the canonical upper bound. Callers asking for
 // more are clamped by the catalog engine.
 const MaxLimit = 500
+const MaxListImagesLimit = MaxLimit
 
 // EffectiveLimit returns the clamped limit: caller-supplied
 // value when in range, DefaultLimit when 0, MaxLimit when above.
@@ -152,4 +158,14 @@ func FilterByStyle(styleID string, providers ...asset.ImageProvider) ImageFilter
 		StyleIDs:  []string{styleID},
 		Providers: providers,
 	}
+}
+
+func ResolvedLimit(l int) int {
+	if l <= 0 {
+		return DefaultLimit
+	}
+	if l > MaxListImagesLimit {
+		return MaxListImagesLimit
+	}
+	return l
 }

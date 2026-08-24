@@ -1,6 +1,6 @@
 package semantic
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 
 type ArtifactsMetadataAdapter struct{}
 

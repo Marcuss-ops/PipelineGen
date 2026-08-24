@@ -40,7 +40,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -106,7 +106,7 @@ func RunBackfillClipFolderPath(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	rootCtx, _, rootCleanup, err := app.InitComposition(cfg, log)
+	rootCtx, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}

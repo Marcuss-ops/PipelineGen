@@ -1,9 +1,9 @@
-package assets
+package stockpipeline
 
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assetsports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -39,7 +39,7 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 			return nil, downloadErr
 		}
 		result = &assetsports.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes}
-		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
+		s.populateCache(ctx, cacheKey, "youtube", extractVideoID(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return result, nil
 	})
 	if sfErr != nil {

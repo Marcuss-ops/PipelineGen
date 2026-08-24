@@ -23,7 +23,7 @@
 // internal/capabilities/voiceover/service/promo.go:1-8. This test serves as a
 // regression-guard: a future agent re-introducing
 // Service.GenerateBatch in the bridge would surface as a test failure.
-package workflow
+package promo
 
 import (
 	"context"

@@ -8,8 +8,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/gin-gonic/gin"
 )
@@ -18,14 +17,14 @@ import (
 // Fields are nil-safe at construction time; nil-tolerant handlers
 // return 503 ServiceUnavailable for unwired dependencies.
 type ImagesHandler struct {
-	service   *imgservice.Service
+	service   *Service
 	ingestSvc *ingest.Service
 	jobsSvc   jobs.Service
 }
 
 // NewImagesHandler constructs the handler with the application-layer
 // services it delegates to.
-func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jobsSvc jobs.Service) *ImagesHandler {
+func NewImagesHandler(service *Service, ingestSvc *ingest.Service, jobsSvc jobs.Service) *ImagesHandler {
 	return &ImagesHandler{service: service, ingestSvc: ingestSvc, jobsSvc: jobsSvc}
 }
 

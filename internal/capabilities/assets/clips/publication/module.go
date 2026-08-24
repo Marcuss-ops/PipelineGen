@@ -8,11 +8,11 @@
 // root wires (`*clips.Handler).DownloadClip + .ReuploadClip` as the
 // PublicationRoutes method-value pair (parent instance satisfies
 // the interface via Go's structural interface satisfaction).
-package assets
+package publication
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

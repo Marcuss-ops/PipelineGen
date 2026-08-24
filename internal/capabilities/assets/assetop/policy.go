@@ -1,4 +1,4 @@
-package assets
+package assetop
 
 // DuplicatePolicy defines the policy for checking duplicate assets before upload.
 type DuplicatePolicy struct {

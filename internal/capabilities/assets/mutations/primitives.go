@@ -51,7 +51,7 @@
 //     artlist.ErrAssetMutationDispatcherUnavailable
 //     so the same diagnostic phrasing reads
 //     across packages).
-package assets
+package mutations
 
 import (
 	"context"

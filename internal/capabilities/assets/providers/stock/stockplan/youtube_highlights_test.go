@@ -1,4 +1,4 @@
-package assets
+package stockplan
 
 import (
 	"encoding/json"

@@ -11,15 +11,15 @@
 //   - RegisterProviders propagates registry errors (ErrAlreadyRegistered
 //     is the critical one a real composition root will hit if the
 //     "script_assets" name is duplicated by another capability)
-package assets
+package scriptassets
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scriptassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 

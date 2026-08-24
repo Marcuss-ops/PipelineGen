@@ -1,13 +1,12 @@
 // Package soundeffect exposes the canonical Build entrypoint for the
 // Soundeffect HTTP capability.
-package assets
+package soundeffect
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -15,21 +14,21 @@ import (
 
 // CoreDeps groups the capability's use-case and processing dependencies.
 type CoreDeps struct {
-	ClipsRepo     sfxports.ClipRepositoryPort
-	MetaWriter    sfxports.SemanticMetadataWriterPort
+	ClipsRepo     ClipRepositoryPort
+	MetaWriter    SemanticMetadataWriterPort
 	ProcessRunner appassets.ProcessRunner
 }
 
 // DeliveryDeps groups destination and publication dependencies.
 type DeliveryDeps struct {
-	Resolver               sfxports.DestinationResolverPort
-	Publisher              sfxports.PublisherPort
+	Resolver               DestinationResolverPort
+	Publisher              PublisherPort
 	SoundEffectsRootFolder string
 }
 
 // TransportDeps groups route and dispatch wiring.
 type TransportDeps struct {
-	Dispatcher  sfxports.DispatcherPort
+	Dispatcher  DispatcherPort
 	EnabledFunc func() bool
 	ModuleOpts  []api.RouteModuleOption
 }

@@ -29,7 +29,7 @@
 //	MarkFailed are convenience helpers that internally call
 //	Transition(_, ENRICHING, ENRICHED) / Transition(_, ENRICHING,
 //	FAILED) respectively.
-package assets
+package enrichment
 
 import (
 	"context"

@@ -1,10 +1,10 @@
-package assets
+package lifecycle
 
 import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 )
 
 // RegistryStoreAdapter adapts a artifacts.Registry to the AssetRecordStore interface.

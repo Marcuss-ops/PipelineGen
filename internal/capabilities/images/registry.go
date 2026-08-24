@@ -354,7 +354,7 @@ func (r *StyleRegistry) Validate(styleID, provider, model string) error {
 
 // Inner returns self. It preserves the back-compat surface for callers
 // that used the thin-wrapper's Inner() method to reach the underlying
-// *generation.StyleRegistry. After FASE 8 migration, the returned type
+// *StyleRegistry. After FASE 8 migration, the returned type
 // is *StyleRegistry (the canonical implementation).
 func (r *StyleRegistry) Inner() *StyleRegistry {
 	return r

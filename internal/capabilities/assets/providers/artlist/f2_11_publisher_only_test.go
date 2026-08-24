@@ -26,7 +26,7 @@
 // Go convention: `_test.go` in the same package) so they exercise the
 // exact internal symbols (ErrPublisherUnavailable, PublisherPort,
 // NewDestinationService) without exporting them just for tests.
-package assets
+package artlist
 
 import (
 	"context"

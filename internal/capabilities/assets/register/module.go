@@ -61,13 +61,13 @@
 // non-empty AND *drive.Uploader.Service is nil (the canonical
 // silent-failure mode before the gate). nil → defensive
 // always-fail checker (no Service==nil silent-success path).
-package assets
+package register
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
