@@ -25,14 +25,14 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
 	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
@@ -200,7 +200,7 @@ func WireArtlist(
 	// the same adapter used by the YouTube registrar. Reusing it here
 	// keeps the Whisper wiring in a single place and satisfies the
 	// artlist.Transcriber port via implicit interface satisfaction.
-	transcriber := &sourcingTranscriberAdapter{cfg: cfg, log: log}
+	transcriber := ytadapters.NewSourcingTranscriberAdapter(cfg, log)
 
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
