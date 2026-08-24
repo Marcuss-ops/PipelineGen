@@ -17,15 +17,15 @@
 //
 // File layout (capability-level SSOT):
 //
-//   ports.go             — interfaces only (the port surface)
-//   ports_telemetry.go   — telemetry implementations (noopLogger, realClock, noopMetrics)
-//   ports_types.go       — port-level data shapes (envelopes, options, verdicts)
-//   types.go             — package doc + SlotKind alias
-//   types_enums.go       — closed-set enums (ConceptType, ApprovalStatus, …) + IsKnown predicates + Provider tags
-//   types_entities.go    — MediaConcept, MediaBinding, MediaCandidate, BatchSpec, Batch, BatchChild, UsageEvent
-//   types_resolver.go    — VisualIntent, SceneSpec, Layer, CandidateOption, …
-//   types_linker.go      — LinkerRequest, LinkerResult, EncodingChannels, MediaEmbedding, …
-//   types_sentinels.go   — typed fail-closed sentinel errors
+//	ports.go             — interfaces only (the port surface)
+//	ports_telemetry.go   — telemetry implementations (noopLogger, realClock, noopMetrics)
+//	ports_types.go       — port-level data shapes (envelopes, options, verdicts)
+//	types.go             — package doc + SlotKind alias
+//	types_enums.go       — closed-set enums (ConceptType, ApprovalStatus, …) + IsKnown predicates + Provider tags
+//	types_entities.go    — MediaConcept, MediaBinding, MediaCandidate, BatchSpec, Batch, BatchChild, UsageEvent
+//	types_resolver.go    — VisualIntent, SceneSpec, Layer, CandidateOption, …
+//	types_linker.go      — LinkerRequest, LinkerResult, EncodingChannels, MediaEmbedding, …
+//	types_sentinels.go   — typed fail-closed sentinel errors
 package mediamemory
 
 import (
