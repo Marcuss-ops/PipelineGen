@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "jackie-chan-generate-clips-e2e-v2",
+  "items": [
+    {
+      "id": "jackie-chan-doc-voiceover",
+      "title": "Jackie Chan Doc Voiceover",
+      "language": "en",
+      "tone": "documentary, cinematic, warm and playfully humorous",
+      "style": "Write a cohesive documentary narration grounded in the supplied Jackie Chan clips. Preserve a clear intro, middle section and outro, emphasizing physical comedy, resilience, performance craft and global cinematic influence.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "1cQVbWKK4Tlmf2b9XIoMpLq3DnIblb53t",
+          "17XMsyHBx4ufQR5tnMNAec7wbIsK6ZzpI",
+          "1-niQ26KA_GcaF-q9V172DmMM8CQZ3oSW"
+        ],
+        "intro_clip_ids": [
+          "1cQVbWKK4Tlmf2b9XIoMpLq3DnIblb53t"
+        ],
+        "num_clips": 3,
+        "ordering_strategy": "input_order",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 1500,
+        "segment_words": 500,
+        "force_refresh": true,
+        "use_memory": false
+      },
+      "output": {
+        "translate_to": "it",
+        "extract_entities": false,
+        "generate_metadata": false,
+        "save_to_db": true,
+        "generate_timeline": false
+      }
+    }
+  ]
+}
