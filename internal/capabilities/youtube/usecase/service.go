@@ -42,7 +42,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
@@ -271,7 +270,7 @@ func NewServiceFromSubBundles(
 // composition root calls this once after NewServiceFromSubBundles;
 // a nil resolver leaves the extraction service in explicit-only mode
 // (selection.mode="important" fails closed, godlike/07).
-func (s *Service) SetSegmentSelectionResolver(r *capyoutubeusecase.SegmentSelectionResolver) {
+func (s *Service) SetSegmentSelectionResolver(r *SegmentSelectionResolver) {
 	if s == nil {
 		return
 	}

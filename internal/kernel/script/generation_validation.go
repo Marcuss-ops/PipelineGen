@@ -37,6 +37,13 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
+
+		// Universal numeric invariants — every payload must satisfy these
+		// regardless of config, caller, or installation.
+		if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
+
 		if err := validateMediaMode(item, ref); err != nil {
 			return err
 		}
@@ -104,6 +111,41 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validateGenerationScriptParams enforces the universal contract invariants
+// on ScriptSpec. These are structural rules that every item must obey
+// regardless of config, caller, or installation:
+//
+//   - target_words <= 0 is rejected UNLESS the caller supplied per-segment
+//     targets via script_params.segments (each segment carries its own
+//     TargetWords). This replaces the previous application-only check in
+//     PayloadValidator.validateItem.
+//   - Negative numeric fields (target_words, duration, min_words) are
+//     unconditionally rejected.
+//
+// Config-dependent limits (max segments, source-text size) remain in the
+// application layer (PayloadValidator) because they vary per installation.
+func validateGenerationScriptParams(sp ScriptSpec, ref string) []string {
+	var d []string
+
+	// target_words <= 0 without per-segment targets → structural invariant
+	if sp.TargetWords <= 0 && len(sp.Segments) == 0 {
+		d = append(d, ref+": target_words must be > 0 (or supply script_params.segments with per-segment targets)")
+	}
+
+	// Non-negative invariants
+	if sp.TargetWords < 0 {
+		d = append(d, ref+": target_words cannot be negative")
+	}
+	if sp.Duration < 0 {
+		d = append(d, ref+": duration cannot be negative")
+	}
+	if sp.MinWords < 0 {
+		d = append(d, ref+": min_words cannot be negative")
+	}
+
+	return d
 }
 
 func validateAudioMode(item GenerationItemV2, ref string) []string {

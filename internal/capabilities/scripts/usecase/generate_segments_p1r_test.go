@@ -449,15 +449,16 @@ func TestSegments_PayloadValidator_RejectsNegativeTargetWords(t *testing.T) {
 	if err == nil {
 		t.Fatal("DoD #8.d MUST reject negative TargetWords (no Segments); got nil")
 	}
-	var pve *scriptpkg.PayloadValidationError
-	if !errAs(err, &pve) {
-		t.Fatalf("DoD #8.d should surface as PayloadValidationError (config-aware); got %T: %v", err, err)
+	// Universal invariant now lives in the kernel
+	// (GenerationEnvelopeV2.Validate → validateGenerationScriptParams),
+	// so it surfaces as *PlanInvalidError — not the application-layer
+	// *PayloadValidationError (INVALID_TARGET_WORDS).
+	var pie *scriptpkg.PlanInvalidError
+	if !errAs(err, &pie) {
+		t.Fatalf("DoD #8.d should surface as PlanInvalidError (kernel universal invariant); got %T: %v", err, err)
 	}
-	if pve.Code != "INVALID_TARGET_WORDS" {
-		t.Fatalf("DoD #8.d code MUST be INVALID_TARGET_WORDS; got %s", pve.Code)
-	}
-	if pve.Extra.ActualTargetWords != -5 {
-		t.Errorf("DoD #8.d extra MUST surface actual value; got %v", pve.Extra.ActualTargetWords)
+	if !containsAny(pie.Details, "target_words") {
+		t.Fatalf("DoD #8.d detail MUST mention target_words; got %v", pie.Details)
 	}
 }
 

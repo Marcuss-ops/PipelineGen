@@ -14,7 +14,7 @@ import (
 // (AudioOutputConfig.UnmarshalJSON wire normalization included). An empty
 // block means the audio key is omitted entirely.
 func audioValidationEnvelope(audioJSON string) *GenerationEnvelopeV2 {
-	raw := `{"version":2,"items":[{"title":"audio-validation","source":{"type":"text","topic":"topic"}`
+	raw := `{"version":2,"items":[{"title":"audio-validation","source":{"type":"text","topic":"topic"},"script_params":{"target_words":100}`
 	if audioJSON != "" {
 		raw += `,"audio":` + audioJSON
 	}
@@ -30,7 +30,7 @@ func audioValidationEnvelope(audioJSON string) *GenerationEnvelopeV2 {
 // a target timeline duration (script_params.duration, seconds) so the
 // timeline-coherence checks of the BGM window can be exercised.
 func audioValidationEnvelopeWithDuration(audioJSON string, durationSec int) *GenerationEnvelopeV2 {
-	raw := `{"version":2,"items":[{"title":"audio-validation","source":{"type":"text","topic":"topic"},"script_params":{"duration":` + strconv.Itoa(durationSec) + `}`
+	raw := `{"version":2,"items":[{"title":"audio-validation","source":{"type":"text","topic":"topic"},"script_params":{"target_words":100,"duration":` + strconv.Itoa(durationSec) + `}`
 	if audioJSON != "" {
 		raw += `,"audio":` + audioJSON
 	}

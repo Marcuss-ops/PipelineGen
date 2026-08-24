@@ -16,12 +16,14 @@ func stockOnlyItem() GenerationItemV2 {
 		Output: OutputSpec{StockEnabled: ToggleEnabled, StockBindings: []StockBindingInput{{
 			Index: 0, FolderID: testFolderID, FolderLink: testFolderLink, StartMs: 0, EndMs: 5000,
 		}}},
+		ScriptParams: ScriptSpec{TargetWords: 100},
 	}
 }
 
 func clipOnlyItem() GenerationItemV2 {
 	return GenerationItemV2{ID: "clip", MediaMode: MediaModeClipOnly,
-		Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-1"}}}
+		Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-1"}},
+		ScriptParams: ScriptSpec{TargetWords: 100}}
 }
 
 func validateMediaItem(t *testing.T, item GenerationItemV2) *PayloadValidationError {

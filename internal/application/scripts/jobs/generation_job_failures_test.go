@@ -161,6 +161,7 @@ func TestGenerateJobHandler_SingleFailureReturnsError(t *testing.T) {
 					Type:  domainScript.SourceText,
 					Topic: "test topic single-1",
 				},
+				ScriptParams: domainScript.ScriptSpec{TargetWords: 100},
 			},
 		},
 	}
@@ -226,9 +227,9 @@ func TestGenerateJobHandler_BatchAllItemsFailedReturnsError(t *testing.T) {
 	handler, tools := newTestHandler(t, 2)
 
 	items := []domainScript.GenerationItemV2{
-		{ID: "f1", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t1"}},
-		{ID: "f2", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t2"}},
-		{ID: "f3", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t3"}},
+		{ID: "f1", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t1"}, ScriptParams: domainScript.ScriptSpec{TargetWords: 100}},
+		{ID: "f2", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t2"}, ScriptParams: domainScript.ScriptSpec{TargetWords: 100}},
+		{ID: "f3", Source: domainScript.SourceSpec{Type: domainScript.SourceText, Topic: "t3"}, ScriptParams: domainScript.ScriptSpec{TargetWords: 100}},
 	}
 	payload := makeEnvelopeJSON(t, items...)
 	job := makeJob("test-batch-all-failed", payload)

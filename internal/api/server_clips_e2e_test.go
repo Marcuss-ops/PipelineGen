@@ -16,7 +16,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"

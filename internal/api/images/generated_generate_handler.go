@@ -59,6 +59,13 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		return
 	}
 
+	// Canonical pre-dispatch validation: whitespace-only prompt and
+	// negative dimensions must be rejected before the service is called.
+	if err := req.Validate(); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
 	mode := req.DeliveryMode
 	switch mode {
 	case "", deliveryModeFast:

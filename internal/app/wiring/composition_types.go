@@ -46,7 +46,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"

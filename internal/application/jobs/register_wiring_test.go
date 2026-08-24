@@ -52,7 +52,7 @@ import (
 	images "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
-	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

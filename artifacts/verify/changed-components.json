@@ -51,9 +51,9 @@
     "internal/capabilities/voiceover/service/process_voiceover_item.go",
     "internal/capabilities/youtube/ports/hash.go",
     "internal/capabilities/youtube/ports/ports.go",
-    "internal/application/youtube/usecase/cache_prewarm.go",
-    "internal/application/youtube/usecase/extraction_callbacks_iface.go",
-    "internal/application/youtube/usecase/process_segment_step3to5.go",
+    "internal/capabilities/youtube/usecase/cache_prewarm.go",
+    "internal/capabilities/youtube/usecase/extraction_callbacks_iface.go",
+    "internal/capabilities/youtube/usecase/process_segment_step3to5.go",
     "internal/capabilities/cliprender/delivery_outbox.go",
     "internal/capabilities/localization/artifact.go",
     "internal/capabilities/localization/drive_upload.go",
@@ -943,13 +943,13 @@
     "internal/capabilities/youtube/ports/ports.go": [
       "youtube"
     ],
-    "internal/application/youtube/usecase/cache_prewarm.go": [
+    "internal/capabilities/youtube/usecase/cache_prewarm.go": [
       "youtube"
     ],
-    "internal/application/youtube/usecase/extraction_callbacks_iface.go": [
+    "internal/capabilities/youtube/usecase/extraction_callbacks_iface.go": [
       "youtube"
     ],
-    "internal/application/youtube/usecase/process_segment_step3to5.go": [
+    "internal/capabilities/youtube/usecase/process_segment_step3to5.go": [
       "youtube"
     ],
     "internal/capabilities/cliprender/delivery_outbox.go": [

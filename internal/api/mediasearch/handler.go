@@ -216,6 +216,18 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 
 	limit := defaults.Int(req.Limit, search.DefaultLimit)
+
+	// Canonical required-string normalization (TrimSpace + non-empty).
+	// binding:"required" only rejects an absent key — a whitespace-only
+	// query would otherwise pass the transport and become Text=="" in the
+	// domain, producing a semantically-empty search. Fail closed here.
+	query := strings.TrimSpace(req.Query)
+	if query == "" {
+		apiutil.BadRequest(c, "query is required")
+		return
+	}
+	req.Query = query
+
 	q := searchQueryFromRequest(req, mode, limit, actor)
 
 	res, err := h.aggreg.Search(c.Request.Context(), q)

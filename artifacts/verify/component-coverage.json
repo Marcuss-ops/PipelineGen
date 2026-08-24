@@ -16430,355 +16430,355 @@
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/asset_publish_pipeline.go": {
+    "internal/capabilities/youtube/usecase/asset_publish_pipeline.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/asset_publish_pipeline_test.go": {
+    "internal/capabilities/youtube/usecase/asset_publish_pipeline_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/cache_prewarm.go": {
+    "internal/capabilities/youtube/usecase/cache_prewarm.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/callbacks.go": {
+    "internal/capabilities/youtube/usecase/callbacks.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/channel_folders.go": {
+    "internal/capabilities/youtube/usecase/channel_folders.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/doc.go": {
+    "internal/capabilities/youtube/usecase/doc.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/errors.go": {
+    "internal/capabilities/youtube/usecase/errors.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/errors_test.go": {
+    "internal/capabilities/youtube/usecase/errors_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction.go": {
+    "internal/capabilities/youtube/usecase/extraction.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_callbacks_iface.go": {
+    "internal/capabilities/youtube/usecase/extraction_callbacks_iface.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_classifier_test.go": {
+    "internal/capabilities/youtube/usecase/extraction_classifier_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_destination.go": {
+    "internal/capabilities/youtube/usecase/extraction_destination.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_fanout.go": {
+    "internal/capabilities/youtube/usecase/extraction_fanout.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_request.go": {
+    "internal/capabilities/youtube/usecase/extraction_request.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_result.go": {
+    "internal/capabilities/youtube/usecase/extraction_result.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_result_test.go": {
+    "internal/capabilities/youtube/usecase/extraction_result_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_service.go": {
+    "internal/capabilities/youtube/usecase/extraction_service.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_stubs_test.go": {
+    "internal/capabilities/youtube/usecase/extraction_stubs_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/extraction_subfolder_test.go": {
+    "internal/capabilities/youtube/usecase/extraction_subfolder_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/job_registration.go": {
+    "internal/capabilities/youtube/usecase/job_registration.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/metadata_enrich.go": {
+    "internal/capabilities/youtube/usecase/metadata_enrich.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment.go": {
+    "internal/capabilities/youtube/usecase/process_segment.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_cachehit_finalization_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_cachehit_finalization_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_correttezza_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_correttezza_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_deps.go": {
+    "internal/capabilities/youtube/usecase/process_segment_deps.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_empty_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_empty_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_failfast_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_failfast_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_fase1c_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_fase1c_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_fase2c_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_fase2c_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_helpers.go": {
+    "internal/capabilities/youtube/usecase/process_segment_helpers.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_metadata_threading_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_metadata_threading_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_require_transcript_ready_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_require_transcript_ready_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step1.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step1.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step10.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step10.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step10_metrics_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step10_metrics_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step10_partial_state_e2e_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step10_partial_state_e2e_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step2.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step2.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step3to5.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step3to5.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step5a_ffprobe.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step5a_ffprobe.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_step6to9.go": {
+    "internal/capabilities/youtube/usecase/process_segment_step6to9.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/process_segment_title_fallback_test.go": {
+    "internal/capabilities/youtube/usecase/process_segment_title_fallback_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/search_service.go": {
+    "internal/capabilities/youtube/usecase/search_service.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/search_topic.go": {
+    "internal/capabilities/youtube/usecase/search_topic.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/search_topic_test.go": {
+    "internal/capabilities/youtube/usecase/search_topic_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/segments_service.go": {
+    "internal/capabilities/youtube/usecase/segments_service.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/service.go": {
+    "internal/capabilities/youtube/usecase/service.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/service_test.go": {
+    "internal/capabilities/youtube/usecase/service_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/service_validate_test.go": {
+    "internal/capabilities/youtube/usecase/service_validate_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_database.go": {
+    "internal/capabilities/youtube/usecase/text_track_database.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_payload.go": {
+    "internal/capabilities/youtube/usecase/text_track_payload.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_persistence.go": {
+    "internal/capabilities/youtube/usecase/text_track_persistence.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_resolver.go": {
+    "internal/capabilities/youtube/usecase/text_track_resolver.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_resolver_persist.go": {
+    "internal/capabilities/youtube/usecase/text_track_resolver_persist.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_resolver_test.go": {
+    "internal/capabilities/youtube/usecase/text_track_resolver_test.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_subtitles.go": {
+    "internal/capabilities/youtube/usecase/text_track_subtitles.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/text_track_whisper.go": {
+    "internal/capabilities/youtube/usecase/text_track_whisper.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/topic_search.go": {
+    "internal/capabilities/youtube/usecase/topic_search.go": {
       "owners": [
         "youtube"
       ],
       "reason": "registry paths"
     },
-    "internal/application/youtube/usecase/video_info.go": {
+    "internal/capabilities/youtube/usecase/video_info.go": {
       "owners": [
         "youtube"
       ],
