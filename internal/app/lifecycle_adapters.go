@@ -37,7 +37,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"

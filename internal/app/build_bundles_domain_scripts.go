@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 

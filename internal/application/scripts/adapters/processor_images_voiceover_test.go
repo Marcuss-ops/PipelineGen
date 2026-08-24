@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 

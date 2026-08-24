@@ -28,7 +28,7 @@ package metadata
 import (
 	"context"
 
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
 // ClipMetadataBuilder is the typed port the application layer uses

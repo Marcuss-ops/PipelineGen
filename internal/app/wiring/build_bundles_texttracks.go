@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"

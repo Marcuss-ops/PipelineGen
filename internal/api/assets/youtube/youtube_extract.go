@@ -24,7 +24,7 @@ import (
 
 	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
