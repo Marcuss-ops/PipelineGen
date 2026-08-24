@@ -11,9 +11,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"

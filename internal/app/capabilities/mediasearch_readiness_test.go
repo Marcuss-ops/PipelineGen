@@ -1,5 +1,5 @@
 // Package app — mediasearch_readiness_test.go
-package app
+package capabilities
 
 import (
 	"context"

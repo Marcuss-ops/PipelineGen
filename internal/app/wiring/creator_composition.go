@@ -22,7 +22,7 @@
 // via compile-time orphan pin + import-allowlist AST scan. Future
 // workerruntime/run.go Creator profile (Blocco 4) will retire this shim
 // entirely once no other call site references CreatorRoot.
-package app
+package wiring
 
 // P0 Commit 8 (July 2026, C8): InitCreatorComposition is now a THIN
 // SHIM. All Creator-side wiring lives in BuildCreatorRuntime

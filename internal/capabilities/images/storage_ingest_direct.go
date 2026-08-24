@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	capimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	"go.uber.org/zap"
 )
 

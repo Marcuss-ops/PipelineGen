@@ -1,10 +1,10 @@
-package app
+package capabilities
 
 import (
 	"context"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 )
 
 type imagesSemanticAdapter struct {

@@ -1,4 +1,4 @@
-package app
+package capabilities
 
 // localized_render_enqueuer.go bridges the script-generation runner's
 // per-(scene, language) localized-render fan-out to the canonical
@@ -35,10 +35,10 @@ import (
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // localizedLocalizer is the narrow seam the adapter needs from the

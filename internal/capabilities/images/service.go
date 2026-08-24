@@ -16,10 +16,10 @@ package images
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
 // ── Compile-time satisfaction pins ──────────────────────────────────

@@ -7,7 +7,7 @@
 // a SigLIP-text encoder for the visual channel, the wiring site is
 // just `adapters[searchpkg.ChannelVisual] = newSigLIPEncoder(...)`;
 // the semantic backend's EmbedQuery call site never changes.
-package app
+package wiring
 
 import (
 	"context"

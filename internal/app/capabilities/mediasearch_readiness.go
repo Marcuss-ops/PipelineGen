@@ -14,7 +14,7 @@
 // buildReadinessReport decomposes that map into per-sub-system
 // booleans. When no sub-system fails, Ready returns nil and the report
 // renders all-green.
-package app
+package capabilities
 
 import (
 	"context"

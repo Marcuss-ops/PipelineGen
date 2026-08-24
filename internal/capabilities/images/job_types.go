@@ -1,19 +1,12 @@
 package images
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+// Canonical image job type constants.
+// Per godlike/02 capability-specific constants live in their owning domain package.
+const (
+	// TypeImagesGenerate is the canonical job type for AI image generation.
+	TypeImagesGenerate = "images.generate"
+
+	// TypeGenerateGoogle is the canonical job type for Google Slides image
+	// generation.
+	TypeGenerateGoogle = "image.generate.google"
 )
-
-const JobGenerate = image.TypeImagesGenerate
-
-type JobGenerateHandlerFunc = job.JobHandlerFunc
-
-func MustRegister(reg job.MutableJobRegistry) error {
-	def := job.CanonicalImagesGenerate
-	def.Description = "image generation (URL/components -> PNG/SVG)"
-	if err := reg.RegisterDefinition(def); err != nil {
-		return err
-	}
-	return nil
-}
