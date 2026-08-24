@@ -15,7 +15,7 @@
     "puppeteer-core": "^25.2.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "undici": "^7.29.0"
+    "undici": "^8.10.0"
   },
   "devDependencies": {
     "eslint": "^8.57.1"
