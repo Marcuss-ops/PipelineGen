@@ -122,7 +122,7 @@ err_trap() {
         echo
         echo "Canonical Recovery : see fault-to-PR table in script header."
         echo "SSOT Owner         : internal/application/youtube/usecase/process_segment.go"
-        echo "                      + internal/application/youtube/jobs/job_handler.go"
+        echo "                      + internal/capabilities/youtube/jobs/job_handler.go"
     } >&2
     exit "$exit_code"
 }
@@ -221,7 +221,7 @@ echo "  REQ_TAG           = $REQ_TAG"
 echo "================================================================="
 
 # ---- POST /api/clips/process ---------------------------------------------
-# Canonical handler per `internal/application/youtube/jobs/job_handler.go`
+# Canonical handler per `internal/capabilities/youtube/jobs/job_handler.go`
 # (the broker-side `HandleJob` unmarshals the payload into
 # youtubetypes.ExtractRequest; legacy mount via
 # `internal/api/assets/youtube/handler.go::Extract` for backwards compat).

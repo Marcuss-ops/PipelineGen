@@ -206,7 +206,7 @@ func TestExtractionIntentAdapter_CollisionNoOp(t *testing.T) {
 //   - Captured Payload is youtubetypes.ExtractRequest VALUE (NOT
 //     pointer and NOT map[string]any) — the job handler unmarshals
 //     into a value form (see
-//     internal/application/youtube/jobs/job_handler.go).
+//     internal/capabilities/youtube/jobs/job_handler.go).
 //   - Payload.URL matches intent.URL
 //   - Payload.Segments len + element field-level preservation
 //     (translateSegments field-by-field copy invariant)
