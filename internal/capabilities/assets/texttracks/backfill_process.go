@@ -19,7 +19,7 @@
 //   - backfill_acquire.go : owns tryAcquire which this method
 //     invokes when the source is missing
 //     AND the acquirer is wired.
-package assets
+package texttracks
 
 import (
 	"context"

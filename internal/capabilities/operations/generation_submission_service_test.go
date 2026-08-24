@@ -8,7 +8,7 @@
 // idempotency hit (no new DB write). The 4 canonical
 // scenarios (new/hit/conflict/supersede) are exercised in
 // Push 2.2b alongside the wire-up + handler refactor.
-package operations
+package operations_test
 
 import (
 	"context"
@@ -26,12 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // schemasFASE2 is the inline mirror of migrations/sqlite/092
@@ -220,7 +219,7 @@ func makeHashFASE2(s string) string {
 // canonicalSubmitRequest builds a valid SubmitRequest with
 // the given scope+key+hash, and a fixed payload. Used by
 // happy-path + idempotency-hit + force-refresh tests.
-func canonicalSubmitRequest(scope domainops.Scope, key, hash string) operations.SubmitRequest {
+func canonicalSubmitRequest(scope operations.Scope, key, hash string) operations.SubmitRequest {
 	return operations.SubmitRequest{
 		Scope:          scope,
 		IdempotencyKey: key,
@@ -244,13 +243,13 @@ func canonicalSubmitRequest(scope domainops.Scope, key, hash string) operations.
 // with bogus scope values.
 func TestSubmit_InvalidScope_ReturnsErrInvalidOperationScope(t *testing.T) {
 	env := newFASE2Service(t)
-	req := canonicalSubmitRequest(domainops.Scope("bogus.scope"), "key-1", makeHashFASE2("body-1"))
+	req := canonicalSubmitRequest(operations.Scope("bogus.scope"), "key-1", makeHashFASE2("body-1"))
 
 	res, err := env.Service.Submit(context.Background(), req)
 
 	require.Error(t, err)
 	assert.Nil(t, res)
-	assert.True(t, errors.Is(err, domainops.ErrInvalidOperationScope),
+	assert.True(t, errors.Is(err, operations.ErrInvalidOperationScope),
 		"out-of-set scope must surface ErrInvalidOperationScope (godlike/07 fail-closed)")
 
 	// Confirm no DB write happened.
@@ -263,13 +262,13 @@ func TestSubmit_InvalidScope_ReturnsErrInvalidOperationScope(t *testing.T) {
 // pins the same fail-closed contract for the idempotency_key.
 func TestSubmit_EmptyIdempotencyKey_ReturnsErrIdempotencyKeyInvalid(t *testing.T) {
 	env := newFASE2Service(t)
-	req := canonicalSubmitRequest(domainops.ScopeScriptGenerate, "", makeHashFASE2("body-1"))
+	req := canonicalSubmitRequest(operations.ScopeScriptGenerate, "", makeHashFASE2("body-1"))
 
 	res, err := env.Service.Submit(context.Background(), req)
 
 	require.Error(t, err)
 	assert.Nil(t, res)
-	assert.True(t, errors.Is(err, domainops.ErrIdempotencyKeyInvalid),
+	assert.True(t, errors.Is(err, operations.ErrIdempotencyKeyInvalid),
 		"empty idempotency_key must surface ErrIdempotencyKeyInvalid (godlike/07 fail-closed)")
 }
 
@@ -281,13 +280,13 @@ func TestSubmit_BadRequestHash_ReturnsErrRequestHashInvalid(t *testing.T) {
 	env := newFASE2Service(t)
 	// Uppercase hex — canonical validator requires lowercase.
 	upperHash := strings.ToUpper(makeHashFASE2("body-1"))
-	req := canonicalSubmitRequest(domainops.ScopeScriptGenerate, "key-1", upperHash)
+	req := canonicalSubmitRequest(operations.ScopeScriptGenerate, "key-1", upperHash)
 
 	res, err := env.Service.Submit(context.Background(), req)
 
 	require.Error(t, err)
 	assert.Nil(t, res)
-	assert.True(t, errors.Is(err, domainops.ErrRequestHashInvalid),
+	assert.True(t, errors.Is(err, operations.ErrRequestHashInvalid),
 		"uppercase hex request_hash must surface ErrRequestHashInvalid (godlike/07 fail-closed)")
 }
 
@@ -295,7 +294,7 @@ func TestSubmit_BadRequestHash_ReturnsErrRequestHashInvalid(t *testing.T) {
 // fail-closed contract for the JobType field.
 func TestSubmit_EmptyJobType_ReturnsError(t *testing.T) {
 	env := newFASE2Service(t)
-	req := canonicalSubmitRequest(domainops.ScopeScriptGenerate, "key-1", makeHashFASE2("body-1"))
+	req := canonicalSubmitRequest(operations.ScopeScriptGenerate, "key-1", makeHashFASE2("body-1"))
 	req.JobType = ""
 
 	res, err := env.Service.Submit(context.Background(), req)
@@ -335,7 +334,7 @@ func TestSubmit_EmptyJobType_ReturnsError(t *testing.T) {
 func TestSubmit_HappyPath_CommitsOperationJobAndOutboxAtomically(t *testing.T) {
 	env := newFASE2Service(t)
 	req := canonicalSubmitRequest(
-		domainops.ScopeScriptGenerate,
+		operations.ScopeScriptGenerate,
 		"key-happy-1",
 		makeHashFASE2("body-happy-1"),
 	)
@@ -352,7 +351,7 @@ func TestSubmit_HappyPath_CommitsOperationJobAndOutboxAtomically(t *testing.T) {
 	assert.Equal(t, "op-happy-1", res.Operation.OperationID)
 	assert.False(t, res.IsIdempotencyHit, "first-time submission must NOT be an idempotency hit")
 	assert.False(t, res.IsSupersede, "first-time submission must NOT be a supersede")
-	assert.Equal(t, domainops.StateQueued, res.Operation.State)
+	assert.Equal(t, operations.StateQueued, res.Operation.State)
 	assert.Equal(t, "job-happy-1", res.Operation.JobID)
 	assert.Empty(t, res.Operation.SupersedesOperationID, "first-time submission has no supersede link")
 	assert.Equal(t, req.IdempotencyKey, res.Operation.IdempotencyKey)
@@ -407,7 +406,7 @@ func TestSubmit_HappyPath_CommitsOperationJobAndOutboxAtomically(t *testing.T) {
 func TestSubmit_IdempotencyHit_ReturnsSameOperation_NoNewWrites(t *testing.T) {
 	env := newFASE2Service(t)
 	req := canonicalSubmitRequest(
-		domainops.ScopeScriptGenerate,
+		operations.ScopeScriptGenerate,
 		"key-hit-1",
 		makeHashFASE2("body-hit-1"),
 	)
@@ -457,7 +456,7 @@ func TestSubmit_IdempotencyHit_ReturnsSameOperation_NoNewWrites(t *testing.T) {
 func TestSubmit_IdempotencyHit_ForceRefreshSamePayloadReplays(t *testing.T) {
 	env := newFASE2Service(t)
 	req := canonicalSubmitRequest(
-		domainops.ScopeScriptGenerate,
+		operations.ScopeScriptGenerate,
 		"key-force-refresh-replay",
 		makeHashFASE2("body-force-refresh-replay"),
 	)
@@ -493,7 +492,7 @@ func TestSubmit_IdempotencyHit_ForceRefreshSamePayloadReplays(t *testing.T) {
 func TestSubmit_IdempotencyHit_ReadsCanonicalJobState(t *testing.T) {
 	env := newFASE2Service(t)
 	req := canonicalSubmitRequest(
-		domainops.ScopeScriptGenerate,
+		operations.ScopeScriptGenerate,
 		"key-canonical-1",
 		makeHashFASE2("body-canonical-1"),
 	)

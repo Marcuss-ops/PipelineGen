@@ -17,7 +17,7 @@
 // here so cluster reads + writes are atomic in one file. Read routes
 // (GET) install no idem; write routes (POST) install idem before the
 // handler per AGENTS.md Pattern 8.
-package assets
+package clips
 
 import (
 	"fmt"
@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

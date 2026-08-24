@@ -49,9 +49,10 @@ import (
 	"context"
 	"database/sql"
 
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
 // ─────────────────────────────────────────────────────────────────────

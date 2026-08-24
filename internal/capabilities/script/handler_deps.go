@@ -23,7 +23,7 @@
 // godlike/06 SSOT rationale (one canonical owner per fact):
 // the construction seam is the ScriptFlow package's re-use seam —
 // keeping it in this file alongside ScriptFlowDeps means pipeline
-// code that imports `script.ScriptFlowDeps` reaches a single
+// code that imports `ScriptFlowDeps` reaches a single
 // canonical source rather than chasing the type across files.
 
 package script
@@ -31,13 +31,14 @@ package script
 import (
 	"context"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
+
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 )
 
 // GenerateDeps groups the canonical constructor inputs for the

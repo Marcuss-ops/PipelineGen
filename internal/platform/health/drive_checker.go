@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 )
 
 // DriveAboutProbe is the canonical port for a canonical OAuth Drive client.

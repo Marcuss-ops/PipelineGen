@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

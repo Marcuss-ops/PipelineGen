@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

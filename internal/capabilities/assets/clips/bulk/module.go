@@ -13,11 +13,11 @@
 // SSOT: minimal-needed cross-package surface). The bulk sub-
 // descriptor is routing-only and has no composition-root consumers
 // other than its own route mounting.
-package assets
+package bulk
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

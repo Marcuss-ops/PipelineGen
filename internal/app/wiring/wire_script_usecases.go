@@ -59,11 +59,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/destination"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
@@ -94,7 +93,7 @@ import (
 // have now been fully removed (file + service entry + port/bundle).
 func buildScriptUseCases(
 	cfg *config.Config,
-	root *wiring.ComposeRoot,
+	root *ComposeRoot,
 	normCfg adapters.NormalizationConfig,
 	sourceReg *adapters.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,
@@ -199,7 +198,7 @@ func wireScriptChildJobAuditP04(
 	}
 
 	// 3. ScriptParentAggregator is constructed + lifecycle-owned in
-	//    startBackgroundJobs (lifecycle.go) — NOT here. The aggregator
+	//    startBackgroundJobs (go) — NOT here. The aggregator
 	//    ticker uses the server's runtime context (signal.NotifyContext),
 	//    not context.Background(). See Commit 4 (P0 #9 lifecycle ownership).
 

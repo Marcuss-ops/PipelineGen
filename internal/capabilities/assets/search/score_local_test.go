@@ -13,7 +13,7 @@
 //   - empty-signal sentinel: every-blank → 0.50 floor.
 //   - cap invariant: signal-mix > 0.95 must be clamped to 0.95; only
 //     the all-perfect-signals fixture triggers it.
-package assets
+package search
 
 import "testing"
 

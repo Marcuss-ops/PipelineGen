@@ -14,12 +14,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
 	"go.uber.org/zap"
 
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
@@ -45,8 +44,8 @@ func whisperBridgeVersion(scriptPath string) string {
 // and Drive.DriveUploader (which were constructed earlier).
 // PR4.A (June 2026): MemoryRepo is created here (dbs.DualPool.Writer), not in BuildRepoBundle,
 // so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
-// without going through wiring.RepoBundle.
-func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, drive *wiring.DriveBundle) (*wiring.AIBundle, error) {
+// without going through RepoBundle.
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
 	_ = ctx
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
@@ -121,7 +120,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// CheckGate on the read path; the finalizer uses the same instance
 	// for SaveAfterGeneration on the write path. MemoryRepo is retained
 	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
-	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
+	// gemma-memory-sweeper (internal/app/go:393).
 	//
 	// The application-layer adapters.Service depends on the typed
 	// scriptports.MemoryGate port; the concrete SQLite implementation is
@@ -143,7 +142,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// WhisperTranscriber adapter is the SOLE canonical concrete
 	// for the WhisperTranscriber interface
 	// (internal/infrastructure/youtube/ports.go). Constructed
-	// here so the wiring.AIBundle can expose it for the backfill
+	// here so the AIBundle can expose it for the backfill
 	// CLI's 5-priority chain (priority 5: Whisper fallback).
 	// The adapter spawns scripts/bridges/whisper_transcriber.py
 	// via subprocess and parses its JSON output into the
@@ -173,7 +172,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 		whisperAdapter = whisperConcrete
 		// Derived transcript cache: source bytes + Whisper processor version
 		// identify the result; local temporary paths never become cache keys.
-		if cache, cacheErr := wiring.NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
+		if cache, cacheErr := NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
 			// The Whisper bridge has its own execution contract; the Ollama
 			// chat model is unrelated and must not invalidate or alias
 			// transcription artifacts.
@@ -189,21 +188,21 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 		}
 	}
 
-	// P1 verdetto: wiring.SceneTextGenerator wraps the Engine to produce
+	// P1 verdetto: SceneTextGenerator wraps the Engine to produce
 	// AI-generated scene text (scene-by-scene) separate from the
 	// Translator. The adapter bridges scriptgeneration.GenerateRequest
 	// to the existing engine ResolvedGenerationPlan.
-	sceneTextGen := wiring.NewSceneTextGenerator(engine, log)
+	sceneTextGen := NewSceneTextGenerator(engine, log)
 	sceneTextGen.SetMemoryService(memSvc)
 	if repos != nil && repos.ClipsRepo != nil {
 		sceneTextGen.SetClipAssetResolver(repos.ClipsRepo)
-		log.Info("wiring.SceneTextGenerator canonical clip asset resolver configured")
+		log.Info("SceneTextGenerator canonical clip asset resolver configured")
 	} else {
-		log.Warn("wiring.SceneTextGenerator clip asset resolver unavailable; canonical render plans will fail closed")
+		log.Warn("SceneTextGenerator clip asset resolver unavailable; canonical render plans will fail closed")
 	}
-	log.Info("wiring.SceneTextGenerator adapter configured (P1 verdetto)")
+	log.Info("SceneTextGenerator adapter configured (P1 verdetto)")
 
-	return &wiring.AIBundle{
+	return &AIBundle{
 		OllamaClient:       ollamaClient,
 		OllamaEmbedClient:  ollamaEmbedClient,
 		Reranker:           rerankerClient,

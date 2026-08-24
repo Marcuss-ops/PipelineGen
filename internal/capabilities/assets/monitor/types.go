@@ -1,10 +1,10 @@
 // Package monitor — shared DTOs and constructor dependencies.
-package assets
+package monitor
 
 import (
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

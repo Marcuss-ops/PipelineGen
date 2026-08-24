@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"go.uber.org/zap"
 )

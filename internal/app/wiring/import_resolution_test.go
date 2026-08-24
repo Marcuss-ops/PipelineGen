@@ -204,7 +204,7 @@ func TestModuleDependencyConstraints(t *testing.T) {
 	allowlist := map[string]bool{
 		// Composition root adapters are allowed to bridge layers.
 		"internal/app":                             true,
-		"internal/app/lifecycle.go":                true,
+		"internal/app/go":                true,
 		"internal/app/adapters_infra.go":           true,
 		"internal/app/registry_adapters.go":        true,
 		"internal/app/clips_dispatcher_adapter.go": true,

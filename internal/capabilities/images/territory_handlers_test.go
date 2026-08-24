@@ -170,7 +170,7 @@ func TestErrInvalidGeneratedSearchLimit_DataHelperNeverWrites(t *testing.T) {
 // surface the typed sentinel for the default case — it should
 // only fail on malformed user input.
 //
-// Note: the underlying *imgservice.Service.ListImagesByOrigin
+// Note: the underlying *Service.ListImagesByOrigin
 // is nil-safe (returns (nil, nil) on nil receiver / nil repo per
 // the PR-GENERATED-SEARCH-FIX thin-delegate contract), so the
 // data helper returns (nil, nil) without panicking when the

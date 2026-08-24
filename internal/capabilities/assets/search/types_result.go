@@ -8,7 +8,7 @@
 // What lives in types_query.go: request-side types.
 // What moved to errors.go: ErrInvalidCursor + ErrEmptyCandidate
 // (godlike/06 SSOT — every sentinel in one place).
-package assets
+package search
 
 // ── Candidate ──────────────────────────────────────────────────────
 //

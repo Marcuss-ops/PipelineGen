@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 )
 
 // AdminMediaReader adapts the canonical Drive Reader to the narrow

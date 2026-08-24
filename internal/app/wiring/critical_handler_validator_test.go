@@ -24,12 +24,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
@@ -53,7 +52,7 @@ func makeValidatorSvcForTest(t *testing.T) *appjobs.Service {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	bundle, err := wiring.BuildJobsBundle(sqliteDB, zap.NewNop(), nil, nil, nil, nil)
+	bundle, err := BuildJobsBundle(sqliteDB, zap.NewNop(), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bundle.Service, "BuildJobsBundle must yield a non-nil jobs.Service")
 	return bundle.Service

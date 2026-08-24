@@ -68,7 +68,7 @@ func RunDriveDoctor(args []string) error {
 }
 
 func executeDoctor(ctx context.Context, cfg *config.Config, log *zap.Logger, jsonOut bool, dbPathFlag string) error {
-	path := resolveDBPath(cfg, dbPathFlag)
+	path := cli.ResolveDBPath(cfg, dbPathFlag)
 	if path == "" {
 		return ErrAdminNoDB
 	}

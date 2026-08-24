@@ -6,7 +6,7 @@
 // Post-fix wiring:
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
-//     app.InitComposition(cfg, log) to obtain *ComposeRoot. The
+//     wiring.InitComposition(cfg, log) to obtain *ComposeRoot. The
 //     Drive client and Uploader are reached through
 //     root.Drive.DriveClient / root.Drive.DriveUploader.
 //   - The Drive is reached through the canonical Pattern 0 ports
@@ -26,7 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 const videoAIFolderName = "video ai"
@@ -46,7 +46,7 @@ func RunResetVideoAI(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}

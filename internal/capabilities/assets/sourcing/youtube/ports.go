@@ -9,12 +9,12 @@
 // that wrap the legacy granular ports into these v2 surfaces — without
 // that adapter layer this package would still hit 13 deps on the YouTube
 // sub-service. P0-1 / commit 1 of the architectural plan.
-package assets
+package youtube
 
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // IndexDispatcherPort merges the historical IndexDispatcher + AssetTree surface.

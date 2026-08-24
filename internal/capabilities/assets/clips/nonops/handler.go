@@ -19,15 +19,15 @@
 // clips.NewHandler per thinker verdict Q7 — the sub-handler consumes
 // pre-built use case instances, not raw repositories. The sub-package
 // dep footprint is bound to what the 5 methods INHERENTLY invoke.
-package assets
+package nonops
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

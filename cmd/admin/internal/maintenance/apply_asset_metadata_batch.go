@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 func RunApplyAssetMetadataBatch(args []string) error {
@@ -45,7 +45,7 @@ func RunApplyAssetMetadataBatch(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -95,7 +95,7 @@ func RunApplyAssetMetadataBatch(args []string) error {
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 			return fmt.Errorf("index asset %s: %w", manifest.ClipID, err)
 		}
-		if err := waitForAssetIndexOutbox(ctx, root, before); err != nil {
+		if err := cli.WaitForAssetIndexOutbox(ctx, root, before); err != nil {
 			return err
 		}
 	}

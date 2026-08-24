@@ -28,14 +28,14 @@
 // orchestrator's HandleJob calls it byte-equivalent pre/post split.
 // The 3 stage labels are the canonical SSOT — no implicit "v1 emitted"
 // claim when the emit was skipped or failed.
-package assets
+package enrichment
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -93,8 +93,8 @@ func (h *EnrichmentHandler) emitAssetPublishedV1(ctx context.Context, row *Asset
 	// Build the canonical v1 envelope (godlike/06 SSOT one
 	// canonical owner per fact: AssetPublishedRequestV1 in
 	// internal/capabilities/jobs/outbox/asset_published.go).
-	payload := outbox.AssetPublishedRequestV1{
-		SchemaVersion:  outbox.AssetPublishedSchemaVersion,
+	payload := jobs.AssetPublishedRequestV1{
+		SchemaVersion:  jobs.AssetPublishedSchemaVersion,
 		EventID:        uuid.NewString(),
 		AssetID:        row.ID,
 		Destination:    "stock",

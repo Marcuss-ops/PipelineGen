@@ -1,4 +1,4 @@
-package assets
+package diagnostics
 
 import (
 	"context"
@@ -14,25 +14,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 )
 
 // mockDiagService implements diagnostics.Service-like behavior for handler tests.
-// We wrap a real appdiag.Service created with mock ports.
+// We wrap a real Service created with mock ports.
 // VectorStorePort + vsFn removed from this test helper surface.
 type mockIndexHealth struct {
-	checkFn func(ctx context.Context) (*appdiag.IndexHealthReport, error)
+	checkFn func(ctx context.Context) (*IndexHealthReport, error)
 }
 
-func (m *mockIndexHealth) IndexHealth(ctx context.Context) (*appdiag.IndexHealthReport, error) {
+func (m *mockIndexHealth) IndexHealth(ctx context.Context) (*IndexHealthReport, error) {
 	return m.checkFn(ctx)
 }
 
 type mockAssetStats struct {
-	statsFn func(ctx context.Context) (*appdiag.AssetStats, error)
+	statsFn func(ctx context.Context) (*AssetStats, error)
 }
 
-func (m *mockAssetStats) GetStats(ctx context.Context) (*appdiag.AssetStats, error) {
+func (m *mockAssetStats) GetStats(ctx context.Context) (*AssetStats, error) {
 	return m.statsFn(ctx)
 }
 
@@ -44,8 +43,8 @@ func (l *testLogger) Error(msg string, kv ...any) {}
 func (l *testLogger) Debug(msg string, kv ...any) {}
 
 // newTestDiagService creates a diagnostics.Service backed by mock ports.
-func newTestDiagService(ih appdiag.IndexHealthPort, as appdiag.AssetStatsPort) *appdiag.Service {
-	return appdiag.NewService(ih, as, &testLogger{zap: zap.NewNop()})
+func newTestDiagService(ih IndexHealthPort, as AssetStatsPort) *Service {
+	return NewService(ih, as, &testLogger{zap: zap.NewNop()})
 }
 
 func setupDiagRouter(h *Handler) *gin.Engine {
@@ -76,15 +75,15 @@ func doDiagJSON(t *testing.T, r *gin.Engine, method, path string, body any) *htt
 
 func TestDiagnostics_HappyPath(t *testing.T) {
 	ih := &mockIndexHealth{
-		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
-			return &appdiag.IndexHealthReport{
+		checkFn: func(ctx context.Context) (*IndexHealthReport, error) {
+			return &IndexHealthReport{
 				OK: true, SQLiteAssets: 150,
 			}, nil
 		},
 	}
 	as := &mockAssetStats{
-		statsFn: func(ctx context.Context) (*appdiag.AssetStats, error) {
-			return &appdiag.AssetStats{Total: 200, ByType: map[string]int{"video": 150}}, nil
+		statsFn: func(ctx context.Context) (*AssetStats, error) {
+			return &AssetStats{Total: 200, ByType: map[string]int{"video": 150}}, nil
 		},
 	}
 	svc := newTestDiagService(ih, as)
@@ -104,7 +103,7 @@ func TestDiagnostics_HappyPath(t *testing.T) {
 
 func TestDiagnostics_ServiceError(t *testing.T) {
 	ih := &mockIndexHealth{
-		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
+		checkFn: func(ctx context.Context) (*IndexHealthReport, error) {
 			return nil, errors.New("qdrant unreachable")
 		},
 	}
@@ -128,8 +127,8 @@ func TestDiagnostics_NilService(t *testing.T) {
 
 func TestIndexHealth_HappyPath(t *testing.T) {
 	ih := &mockIndexHealth{
-		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
-			return &appdiag.IndexHealthReport{
+		checkFn: func(ctx context.Context) (*IndexHealthReport, error) {
+			return &IndexHealthReport{
 				OK: true, SQLiteAssets: 100, SQLiteIndexed: 95,
 			}, nil
 		},

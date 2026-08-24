@@ -21,7 +21,7 @@
 // cleaner. The rename is a low-cost follow-up (no caller edits
 // required) but deferred here because it doesn't change the build
 // outcome.
-package httpserver
+package transport
 
 import (
 	"net/http"

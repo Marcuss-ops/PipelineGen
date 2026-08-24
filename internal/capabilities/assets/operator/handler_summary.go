@@ -14,7 +14,7 @@
 //
 // Cross-resource sharing: jobsToJSON lives here (used only by summary).
 // summariesToJSON, isAllowedPath, maskPath live in handler_assets.go.
-package assets
+package operator
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

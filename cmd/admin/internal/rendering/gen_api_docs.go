@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -49,7 +49,7 @@ func RunGenAPIDocs(args []string) error {
 		},
 	}
 
-	appDeps, err := app.WireServices(cfg, log, "test")
+	appDeps, err := wiring.WireServices(cfg, log, "test")
 	if err != nil {
 		return fmt.Errorf("wire services: %w", err)
 	}
@@ -71,7 +71,7 @@ func RunGenAPIDocs(args []string) error {
 	}
 	rateAdapter := &genDocsRateLimitAdapter{cfg: cfg}
 	featuresAdapter := &genDocsFeatureFlagsAdapter{cfg: cfg}
-	routerCfg := &api.RouterConfig{
+	routerCfg := &httpserver.RouterConfig{
 		ServerGinMode: cfg.Server.GinMode,
 		DataDir:       cfg.Storage.DataDir,
 		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
@@ -81,7 +81,7 @@ func RunGenAPIDocs(args []string) error {
 		Rate:          rateAdapter,
 		Features:      featuresAdapter,
 	}
-	router := api.NewRouter(routerCfg)
+	router := httpserver.NewRouter(routerCfg)
 	router.SetRegistry(appDeps.Handlers.Registry)
 	engine := router.Setup()
 

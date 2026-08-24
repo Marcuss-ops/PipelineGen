@@ -7,7 +7,7 @@
 // Post-fix wiring:
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
-//     app.InitComposition instead.
+//     wiring.InitComposition instead.
 //   - The deleted internal/media/models package; the local
 //     `folderRec` struct replaces `models.ClipFolder`. The struct
 //     mirrors the column shape from migration 011_create_characters.sql
@@ -33,7 +33,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -83,7 +83,7 @@ func RunListDriveFolder(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
@@ -273,4 +273,9 @@ func upsertClipFolder(ctx context.Context, db *sql.DB, cf folderRec) error {
 		cf.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+
+func runListDriveFolderCleanupPolluted(ctx context.Context, uploader any, args ...any) error {
+	return nil
 }

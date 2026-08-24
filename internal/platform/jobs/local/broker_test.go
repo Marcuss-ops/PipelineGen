@@ -18,7 +18,7 @@ import (
 	"errors"
 	"testing"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 func TestBroker_RegisterWorker_RejectsEmptyCapabilities(t *testing.T) {

@@ -7,7 +7,7 @@
 // Tests the AcquireService in isolation (no DB, no YouTube
 // pipeline). The BackfillService integration is tested in
 // backfill_test.go (if/when added).
-package assets
+package texttracks
 
 import (
 	"context"

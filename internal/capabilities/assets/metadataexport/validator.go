@@ -9,7 +9,7 @@
 // validation additions (e.g. new include sections, new format
 // providers) land in one reviewable place rather than scattering
 // through handler.go.
-package assets
+package metadataexport
 
 import (
 	"fmt"

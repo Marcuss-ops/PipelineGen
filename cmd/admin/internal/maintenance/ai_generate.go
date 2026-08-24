@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

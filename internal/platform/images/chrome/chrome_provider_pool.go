@@ -3,7 +3,7 @@ package chrome
 import (
 	"context"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"sync"
 	"sync/atomic"
 

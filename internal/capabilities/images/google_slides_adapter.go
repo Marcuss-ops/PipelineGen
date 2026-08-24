@@ -1,6 +1,6 @@
 // Package images — google_slides_adapter.go bridges the canonical
 // images.ImageGenerator port implemented by the infrastructure adapter
-// to the generated.ImageGeneratorPort contract that the
+// to the ImageGeneratorPort contract that the
 // generated/provider_registry.go providers consume.
 //
 // Why in the parent package (and not in generated):
@@ -23,17 +23,15 @@ package images
 import (
 	"context"
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 )
 
 // ImageGeneratorAdapter is the concrete adapter that lets an
 // arbitrary images.ImageGenerator backend (today: the Chrome infrastructure adapter;
-// future: Flux/NVIDIA adapters) be passed to generated.NewDefaultProviderRegistry
+// future: Flux/NVIDIA adapters) be passed to NewDefaultProviderRegistry
 // as the GoogleSlidesProvider delegate.
 //
-// Compile-time assertion: *ImageGeneratorAdapter satisfies generated.ImageGeneratorPort.
-var _ generated.ImageGeneratorPort = (*ImageGeneratorAdapter)(nil)
+// Compile-time assertion: *ImageGeneratorAdapter satisfies ImageGeneratorPort.
+var _ ImageGeneratorPort = (*ImageGeneratorAdapter)(nil)
 
 // ImageGeneratorAdapter translates the PortGenerateRequest shape
 // the generated providers use to the canonical images.GenerateImageRequest
@@ -43,7 +41,7 @@ type ImageGeneratorAdapter struct {
 }
 
 // NewImageGeneratorAdapter wraps any ImageGenerator as a
-// generated.ImageGeneratorPort. Pass nil to obtain an adapter that
+// ImageGeneratorPort. Pass nil to obtain an adapter that
 // returns ErrProviderUnavailable (used in tests + stub wiring).
 //
 // This is the canonical constructor for the adapter; NewService
@@ -54,13 +52,13 @@ func NewImageGeneratorAdapter(gen ImageGenerator) *ImageGeneratorAdapter {
 	return &ImageGeneratorAdapter{gen: gen}
 }
 
-// Generate satisfies generated.ImageGeneratorPort. It maps the
+// Generate satisfies ImageGeneratorPort. It maps the
 // fields of PortGenerateRequest → images.GenerateImageRequest,
 // invokes the wrapped backend, and maps images.GeneratedImage →
-// generated.PortGeneratedImage.
-func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req generated.PortGenerateRequest) (*generated.PortGeneratedImage, error) {
+// PortGeneratedImage.
+func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req PortGenerateRequest) (*PortGeneratedImage, error) {
 	if a.gen == nil {
-		return nil, fmt.Errorf("ImageGeneratorAdapter: no backend wired: %w", generated.ErrProviderUnavailable)
+		return nil, fmt.Errorf("ImageGeneratorAdapter: no backend wired: %w", ErrProviderUnavailable)
 	}
 	out, err := a.gen.Generate(ctx, GenerateImageRequest{
 		Prompt:         req.Prompt,
@@ -74,13 +72,13 @@ func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req generated.Port
 	if err != nil {
 		return nil, fmt.Errorf("ImageGeneratorAdapter: backend generate: %w", err)
 	}
-	return &generated.PortGeneratedImage{
+	return &PortGeneratedImage{
 		Data:       out.Data,
 		Format:     out.Format,
 		Width:      out.Width,
 		Height:     out.Height,
 		PromptUsed: out.PromptUsed,
-		Provider:   out.Provider,
+		Provider:   string(out.Provider),
 		SourceHash: out.SourceHash,
 		OutputPath: out.OutputPath,
 	}, nil

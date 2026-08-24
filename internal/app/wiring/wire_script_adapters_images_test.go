@@ -4,42 +4,42 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
 type imageResolverFixture struct {
-	cached       []routing.ImageSearchResult
+	cached       []images.ImageSearchResult
 	lookupErr    error
-	providerRows []routing.ImageSearchResult
+	providerRows []images.ImageSearchResult
 	lookupCalls  int
 	searchCalls  int
 }
 
-func (f *imageResolverFixture) Resolve(routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+func (f *imageResolverFixture) Resolve(images.ImageSearchTerritory) (images.ImageSearcher, error) {
 	return imageSearchFixture{owner: f}, nil
 }
 
-func (f *imageResolverFixture) ExistingImages(_ context.Context, _ string, _ int) ([]routing.ImageSearchResult, error) {
+func (f *imageResolverFixture) ExistingImages(_ context.Context, _ string, _ int) ([]images.ImageSearchResult, error) {
 	f.lookupCalls++
 	return f.cached, f.lookupErr
 }
 
-func (f *imageResolverFixture) ResolveProvider(string) (routing.ImageSearcher, error) {
+func (f *imageResolverFixture) ResolveProvider(string) (images.ImageSearcher, error) {
 	return imageSearchFixture{owner: f}, nil
 }
 
 type imageSearchFixture struct{ owner *imageResolverFixture }
 
-func (s imageSearchFixture) Search(context.Context, routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+func (s imageSearchFixture) Search(context.Context, images.ImageFilter) ([]images.ImageSearchResult, error) {
 	s.owner.searchCalls++
 	return s.owner.providerRows, nil
 }
 
 func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *testing.T) {
-	fixture := &imageResolverFixture{cached: []routing.ImageSearchResult{{
+	fixture := &imageResolverFixture{cached: []images.ImageSearchResult{{
 		AssetID: "db-cena", Name: "John Cena", DriveLink: "https://drive.google.com/file/d/db-cena/view", LegacyFileMD5: "hash-cena",
 		PreviewURL: "https://images.example/cena.jpg", License: "unknown",
 	}}}
@@ -62,8 +62,8 @@ func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *
 
 func TestInternetImageSearchAdapter_FallsBackWhenDatabaseHasNoDurableImage(t *testing.T) {
 	fixture := &imageResolverFixture{
-		cached:       []routing.ImageSearchResult{{AssetID: "incomplete", Name: "John Cena", PreviewURL: "https://images.example/cena.jpg"}},
-		providerRows: []routing.ImageSearchResult{{AssetID: "web-cena", Name: "John Cena", PreviewURL: "https://images.example/web-cena.jpg"}},
+		cached:       []images.ImageSearchResult{{AssetID: "incomplete", Name: "John Cena", PreviewURL: "https://images.example/cena.jpg"}},
+		providerRows: []images.ImageSearchResult{{AssetID: "web-cena", Name: "John Cena", PreviewURL: "https://images.example/web-cena.jpg"}},
 	}
 	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
 

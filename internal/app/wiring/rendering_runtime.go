@@ -8,8 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -26,7 +25,7 @@ type RenderingRuntime struct {
 	Log       *zap.Logger
 }
 
-func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRuntime, wiring.CleanupFunc, error) {
+func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRuntime, CleanupFunc, error) {
 	if cfg == nil || log == nil {
 		return nil, nil, fmt.Errorf("rendering runtime: config and logger are required")
 	}
@@ -60,7 +59,7 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	// probe port (rustexec.VideoProcessor.Probe → ffprobe) + content hash.
 	// The renderer's exit code alone is never a validity criterion.
 	prober := infraoverlays.NewMediaContractProber(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
-	handlers, err := wiring.NewHandlerSet(cache, renderer, gate, prober, os.Getenv("RENDERINGGEN_VERSION"))
+	handlers, err := NewHandlerSet(cache, renderer, gate, prober, os.Getenv("RENDERINGGEN_VERSION"))
 	if err != nil {
 		return nil, nil, err
 	}

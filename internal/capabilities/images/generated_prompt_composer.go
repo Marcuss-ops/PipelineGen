@@ -29,8 +29,6 @@ package images
 import (
 	"context"
 	"regexp"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 )
 
 // trimRegex matches any leading or trailing run of Unicode whitespace.
@@ -64,7 +62,7 @@ type GenerateCommand struct {
 
 // PromptComposer is the port every gateway wraps.
 type PromptComposer interface {
-	Compose(ctx context.Context, cmd GenerateCommand, style generation.ResolvedStyle) (ResolvedGenerationRequest, error)
+	Compose(ctx context.Context, cmd GenerateCommand, style ResolvedStyle) (ResolvedGenerationRequest, error)
 }
 
 // Compile-time assertion: promptComposerImpl satisfies PromptComposer.
@@ -79,7 +77,7 @@ func NewPromptComposer() PromptComposer {
 }
 
 // Compose applies the canonical composition rules.
-func (*promptComposerImpl) Compose(ctx context.Context, cmd GenerateCommand, style generation.ResolvedStyle) (ResolvedGenerationRequest, error) {
+func (*promptComposerImpl) Compose(ctx context.Context, cmd GenerateCommand, style ResolvedStyle) (ResolvedGenerationRequest, error) {
 	if err := ctx.Err(); err != nil {
 		return ResolvedGenerationRequest{}, err
 	}

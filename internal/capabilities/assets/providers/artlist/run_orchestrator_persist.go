@@ -1,11 +1,11 @@
 // Single canonical owner of artlist persistence methods stagePersistResults/buildPublishedArtifact + fileSizeFromPath. Receiver *RunOrchestratorService remains in service.go (godlike/06 SSOT Commit C).
-package assets
+package artlist
 
 import (
 	"context"
 	"os"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 

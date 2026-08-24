@@ -14,4 +14,4 @@
 // This package is pure domain — no infrastructure imports, no Qdrant client,
 // no database access. It is consumed by the application-layer search backend
 // and the composition root.
-package assets
+package search

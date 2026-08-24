@@ -9,11 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
@@ -117,8 +116,8 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
 		},
 	}
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -126,7 +125,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
 		zap.NewNop(),
 	)))
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -183,7 +182,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		},
 	}
 
-	mockClips := api.NewRouteModule(
+	mockClips := NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -195,8 +194,8 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -204,7 +203,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		zap.NewNop(),
 	)))
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -261,7 +260,7 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		},
 	}
 
-	mockClips := api.NewRouteModule(
+	mockClips := NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -273,8 +272,8 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -282,7 +281,7 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		zap.NewNop(),
 	)))
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -327,8 +326,8 @@ func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(
 		},
 	}
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"youtube",
 		func() bool { return true },
 		"/clips",
@@ -336,7 +335,7 @@ func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(
 		zap.NewNop(),
 	)))
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -399,7 +398,7 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 		},
 	}
 
-	mockClips := api.NewRouteModule(
+	mockClips := NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -411,8 +410,8 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -428,7 +427,7 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 	})
 	readyChecker := systemhealth.NewReadyChecker(healthSvc)
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 		Health:   healthSvc,
@@ -476,9 +475,9 @@ func TestNewServerWithHealth_NoClipsModuleReportsClipsCapabilityNotMounted(t *te
 		},
 	}
 
-	registry := api.NewRegistry()
+	registry := NewRegistry()
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -537,8 +536,8 @@ func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testi
 		nil,
 	)
 
-	registry := api.NewRegistry()
-	require.NoError(t, registry.Register(api.NewRouteModule(
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -546,7 +545,7 @@ func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testi
 		zap.NewNop(),
 	)))
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})

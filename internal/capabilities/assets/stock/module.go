@@ -21,12 +21,12 @@
 // Pattern parity with the artlist / youtube / clips Blocco C1-Step
 // modules: Descriptor does NOT embed Module; the explicit field form
 // does not promote Name / Enabled / RegisterRoutes via embedding.
-package assets
+package stock
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 
 	"github.com/gin-gonic/gin"

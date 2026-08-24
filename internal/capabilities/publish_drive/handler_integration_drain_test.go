@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
@@ -71,7 +70,7 @@ func TestHandlerIntegration_Drain_HappyPath_RealSQLite(t *testing.T) {
 	_, evt := validEnvelopeForTest(stageID, "job-integ-1")
 
 	core, logs := observer.New(zapcore.InfoLevel)
-	h, err := publishdrive.NewHandler(repo, pub, zap.New(core))
+	h, err := NewHandler(repo, pub, zap.New(core))
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
@@ -175,7 +174,7 @@ func TestHandlerIntegration_Drain_TerminalStateFenceIsNoOp(t *testing.T) {
 	}
 	_, evt := validEnvelopeForTest(stageID, "job-integ-1")
 	core, logs := observer.New(zapcore.InfoLevel)
-	h, err := publishdrive.NewHandler(repo, pub, zap.New(core))
+	h, err := NewHandler(repo, pub, zap.New(core))
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
@@ -266,7 +265,7 @@ func TestHandlerIntegration_Drain_IdempotencyKeyStableAcrossTwoCycles(t *testing
 	}
 	_, evt := validEnvelopeForTest(stageID, "job-cycle-1")
 	core, _ := observer.New(zapcore.InfoLevel)
-	h, err := publishdrive.NewHandler(repo, pub, zap.New(core))
+	h, err := NewHandler(repo, pub, zap.New(core))
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}

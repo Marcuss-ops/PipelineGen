@@ -21,15 +21,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	destinationapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	destinationapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
 // assetTreeVoiceoverResolver is the production resolver for voiceover
-// destinations. wiring.DriveBundle no longer owns a generic destination resolver;
+// destinations. DriveBundle no longer owns a generic destination resolver;
 // voiceover routing is rooted in the configured voiceover folder and the
 // canonical SQLite-backed asset tree.
 type assetTreeVoiceoverResolver struct {

@@ -20,7 +20,7 @@
 // Contract: GET /models → JSON array of per-model probe results.
 // This runs at request time (not cached) so operators see the live state
 // of the Python sidecar.
-package httpserver
+package transport
 
 import (
 	"bytes"

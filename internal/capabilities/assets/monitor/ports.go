@@ -9,4 +9,4 @@
 //   - ports_channels.go: CategoryChannelsPort
 //   - ports_discoveries.go: YoutubeDiscoveriesPort
 //   - types.go: shared DTOs, constants, CompositionDeps
-package assets
+package monitor

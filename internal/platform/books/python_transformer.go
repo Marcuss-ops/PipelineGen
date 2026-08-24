@@ -29,7 +29,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
 )
 
 // Config is the canonical pythontransformer configuration

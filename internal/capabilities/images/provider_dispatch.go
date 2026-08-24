@@ -15,8 +15,6 @@ package images
 import (
 	"context"
 	"errors"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 )
 
 // ErrNoGenerationProviderWired is the typed sentinel returned when
@@ -33,13 +31,13 @@ var ErrNoGenerationProviderWired = errors.New(
 // applied — NO silent fall-through to imageGen.Generate).
 func dispatchToRegistry(
 	ctx context.Context,
-	registry *generated.GenerationProviderRegistry,
+	registry *GenerationProviderRegistry,
 	req GenerateImageRequest,
 ) (*GeneratedImage, error) {
 	if registry == nil {
 		return nil, ErrNoGenerationProviderWired
 	}
-	out, err := registry.Generate(ctx, generated.GenerateRequest{
+	out, err := registry.Generate(ctx, GenerateRequest{
 		Prompt:         req.Prompt,
 		Style:          req.Style,
 		Width:          req.Width,
@@ -47,7 +45,7 @@ func dispatchToRegistry(
 		Tags:           req.Tags,
 		NegativePrompt: req.NegativePrompt,
 		OutputPath:     req.OutputPath,
-	}, generated.GenerateOptions{})
+	}, GenerateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +55,7 @@ func dispatchToRegistry(
 		Width:      out.Width,
 		Height:     out.Height,
 		PromptUsed: out.PromptUsed,
-		Provider:   string(out.Provider),
+		Provider:   out.Provider,
 		SourceHash: out.SourceHash,
 		OutputPath: out.OutputPath,
 	}, nil

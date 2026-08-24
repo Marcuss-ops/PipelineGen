@@ -20,13 +20,13 @@
 // is owned by GET /api/capabilities, while this descriptor's only
 // composition-time effect is publishing the ScriptAssetsProvider into
 // the canonical providers.Registry.
-package assets
+package scriptassets
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scriptassets"
 	"go.uber.org/zap"
 )
 

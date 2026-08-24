@@ -7,10 +7,10 @@
 // fake implementing the corresponding port. These fakes stay local
 // to the test package so the production api/middleware build tree
 // keeps zero infra dependencies.
-package httpserver
+package middleware
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 )
 
 // testSecurity is a 3-method fake implementing middleware.AuthSecurityPort.

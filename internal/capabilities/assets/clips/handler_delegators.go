@@ -1,7 +1,7 @@
 // Package clips contains compatibility delegators from the aggregate Handler
 // to the focused HTTP handlers. Business dependencies remain on those focused
 // handlers, never on the aggregate.
-package assets
+package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

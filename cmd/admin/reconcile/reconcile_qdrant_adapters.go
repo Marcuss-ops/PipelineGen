@@ -20,7 +20,7 @@ package reconcile
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation"
+	reconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )

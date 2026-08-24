@@ -5,7 +5,7 @@
 //
 // FASE 7 (July 2026, image-territories action plan): the resolver
 // is the canonical routing singleton. We use a pure-Go stub mock
-// that implements routing.ImageSearchResolver directly (no
+// that implements ImageSearchResolver directly (no
 // testify/mock dependency drift, minimal blast radius per AGENTS.md).
 //
 // Fix-up note (post FASE 7 commit 98dd3849): removed the
@@ -25,24 +25,23 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Pure-Go stub mock ──────────────────────────────────────────────────
 
 // mockImageSearchResolver is the pure-Go stub implementing
-// routing.ImageSearchResolver for the FASE 7 composition contract
+// ImageSearchResolver for the FASE 7 composition contract
 // test. Mirrors the canonical ErrUnknownTerritory contract so
 // downstream handlers can rely on errors.Is.
 type mockImageSearchResolver struct {
-	searchByTerritory map[routing.ImageSearchTerritory]routing.ImageSearcher
+	searchByTerritory map[ImageSearchTerritory]ImageSearcher
 	resolveErr        error
 }
 
-var _ routing.ImageSearchResolver = (*mockImageSearchResolver)(nil)
+var _ ImageSearchResolver = (*mockImageSearchResolver)(nil)
 
-func (m *mockImageSearchResolver) Resolve(territory routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+func (m *mockImageSearchResolver) Resolve(territory ImageSearchTerritory) (ImageSearcher, error) {
 	if m == nil {
 		return nil, routing.ErrUnknownTerritory
 	}
@@ -60,13 +59,13 @@ func (m *mockImageSearchResolver) Resolve(territory routing.ImageSearchTerritory
 // Used to assert that the per-territory searcher is dispatched
 // correctly by the resolver path.
 type stubSearcher struct {
-	rows []routing.ImageSearchResult
+	rows []ImageSearchResult
 	err  error
 }
 
-var _ routing.ImageSearcher = (*stubSearcher)(nil)
+var _ ImageSearcher = (*stubSearcher)(nil)
 
-func (s *stubSearcher) Search(_ context.Context, _ routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+func (s *stubSearcher) Search(_ context.Context, _ ImageFilter) ([]ImageSearchResult, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -85,7 +84,7 @@ func (s *stubSearcher) Search(_ context.Context, _ routing.ImageFilter) ([]routi
 // guard; the mock mirrors it so handlers can rely on the contract.
 func TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory(t *testing.T) {
 	var mock *mockImageSearchResolver // typed-nil concrete
-	var resolver routing.ImageSearchResolver = mock
+	var resolver ImageSearchResolver = mock
 	got, err := resolver.Resolve(routing.TerritoryAll)
 	if !errors.Is(err, routing.ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory from typed-nil resolver, got %v", err)
@@ -100,7 +99,7 @@ func TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory(t *testing.T) 
 // can rely on errors.Is(err, routing.ErrUnknownTerritory).
 func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T) {
 	mock := &mockImageSearchResolver{
-		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{},
+		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{},
 	}
 	got, err := mock.Resolve(routing.TerritoryAll)
 	if !errors.Is(err, routing.ErrUnknownTerritory) {
@@ -116,10 +115,10 @@ func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T)
 // territory key. Mirrors the routing.image_search_resolver_test.go
 // strong invariant in mock form.
 func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
-	stubRetr := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "r1", Origin: asset.ImageOriginRetrieved}}}
-	stubGen := &stubSearcher{rows: []routing.ImageSearchResult{{AssetID: "g1", Origin: asset.ImageOriginGenerated}}}
+	stubRetr := &stubSearcher{rows: []ImageSearchResult{{AssetID: "r1", Origin: asset.ImageOriginRetrieved}}}
+	stubGen := &stubSearcher{rows: []ImageSearchResult{{AssetID: "g1", Origin: asset.ImageOriginGenerated}}}
 	mock := &mockImageSearchResolver{
-		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{
+		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
 			routing.TerritoryRetrieved: stubRetr,
 			routing.TerritoryGenerated: stubGen,
 		},
@@ -140,12 +139,12 @@ func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
 // is exercised by the routing package's own tests (this test only
 // verifies the *type-system* contract is reachable from this package).
 func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
-	stubAll := &stubSearcher{rows: []routing.ImageSearchResult{
+	stubAll := &stubSearcher{rows: []ImageSearchResult{
 		{AssetID: "r1", Origin: asset.ImageOriginRetrieved, Provider: "wikipedia"},
 		{AssetID: "g1", Origin: asset.ImageOriginGenerated, Provider: "flux"},
 	}}
 	mock := &mockImageSearchResolver{
-		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{
+		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
 			routing.TerritoryAll: stubAll,
 		},
 	}
@@ -153,7 +152,7 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(all): %v", err)
 	}
-	rows, err := searcher.Search(context.Background(), routing.ImageFilter{SubjectID: "albert_einstein"})
+	rows, err := searcher.Search(context.Background(), ImageFilter{SubjectID: "albert_einstein"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -171,7 +170,7 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 // ── Test: composition contract surface ─────────────────────────────────
 
 // TestCompose_ServerSingleton_HoldsResolverType — locks the
-// composition invariant: any routing.ImageSearchResolver can be
+// composition invariant: any ImageSearchResolver can be
 // assigned to the canonical singleton surface (api.ServerDeps.ImageSearchResolver
 // and indirectly api.Server.imageSearchResolver). Defends against
 // future refactors that might tighten the type or rename the field.
@@ -184,17 +183,17 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 // way the production wiring does.
 func TestCompose_ServerSingleton_HoldsResolverType(t *testing.T) {
 	// Compile-time: api.ServerDeps is the canonical grouping struct;
-	// its ImageSearchResolver field accepts any routing.ImageSearchResolver.
+	// its ImageSearchResolver field accepts any ImageSearchResolver.
 	// The type-level lock below is the actual contract surface — the
 	// runtime round-trip below verifies the actual contract reach.
 	var _ api.ServerDeps
 
 	mock := &mockImageSearchResolver{
-		searchByTerritory: map[routing.ImageSearchTerritory]routing.ImageSearcher{},
+		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{},
 	}
-	var resolver routing.ImageSearchResolver = mock
+	var resolver ImageSearchResolver = mock
 	if resolver == nil {
-		t.Fatal("mock resolver must be assignable to routing.ImageSearchResolver")
+		t.Fatal("mock resolver must be assignable to ImageSearchResolver")
 	}
 	if _, err := resolver.Resolve(routing.TerritoryAll); !errors.Is(err, routing.ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory through resolver path, got %v", err)

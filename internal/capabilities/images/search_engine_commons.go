@@ -19,26 +19,25 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
 // searchWikimediaCommons is the explicit-license fallback for retrieval.
 // Unlike a generic image search result, Commons imageinfo contains the
 // license, author and dimensions needed by the VidRush rights gate.
-func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query string) routing.RetrievalSearchResult {
+func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query string) retrieved.RetrievalSearchResult {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return routing.RetrievalSearchResult{}
+		return retrieved.RetrievalSearchResult{}
 	}
 	if err := s.waitForCommonsRequest(ctx); err != nil {
 		if s.log != nil {
 			s.log.Warn("Wikimedia Commons request cancelled before rate-limit slot", zap.String("query", query), zap.Error(err))
 		}
-		return routing.RetrievalSearchResult{}
+		return retrieved.RetrievalSearchResult{}
 	}
 	searchURL := "https://api.wikimedia.org/core/v1/commons/search/page?q=" + url.QueryEscape(query) + "&limit=8"
 	commonsOptions := &httpjson.Options{
@@ -79,7 +78,7 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 		if s.log != nil {
 			s.log.Warn("Wikimedia Commons search failed", zap.String("query", query), zap.Error(err))
 		}
-		return routing.RetrievalSearchResult{}
+		return retrieved.RetrievalSearchResult{}
 	}
 	for _, page := range searchPayload.Pages {
 		if !strings.HasPrefix(page.Key, "File:") {
@@ -106,7 +105,7 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 		if width <= 0 || height <= 0 {
 			width, height = filePayload.Original.Width, filePayload.Original.Height
 		}
-		return routing.RetrievalSearchResult{
+		return retrieved.RetrievalSearchResult{
 			Provider: asset.ProviderWikimediaCommons, Origin: asset.ImageOriginRetrieved,
 			PreviewURL: imageURL, PageURL: pageURL, Title: page.Title,
 			Width: width, Height: height, License: licensePayload.License.Title,
@@ -116,7 +115,7 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 	if s.log != nil {
 		s.log.Info("Wikimedia Commons returned no explicit-license image", zap.String("query", query))
 	}
-	return routing.RetrievalSearchResult{}
+	return retrieved.RetrievalSearchResult{}
 }
 
 type commonsRESTSearchPayload struct {

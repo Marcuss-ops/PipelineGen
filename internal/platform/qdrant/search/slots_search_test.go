@@ -29,7 +29,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"

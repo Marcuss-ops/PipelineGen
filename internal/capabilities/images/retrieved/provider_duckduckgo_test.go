@@ -1,10 +1,8 @@
-package images
+package retrieved
 
 import (
 	"context"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -18,13 +16,13 @@ func (b *duckDuckGoBridgeStub) SearchWikipedia(context.Context, string, string) 
 	return "", ""
 }
 
-func (b *duckDuckGoBridgeStub) SearchWikimediaCommons(context.Context, string) routing.RetrievalSearchResult {
-	return routing.RetrievalSearchResult{}
+func (b *duckDuckGoBridgeStub) SearchWikimediaCommons(context.Context, string) RetrievalSearchResult {
+	return RetrievalSearchResult{}
 }
 
 func (b *duckDuckGoBridgeStub) SearchSearXNGImages(context.Context, string) string { return "" }
 
-func (b *duckDuckGoBridgeStub) SearchSearXNGImagesMany(context.Context, string, int) []routing.RetrievalSearchResult {
+func (b *duckDuckGoBridgeStub) SearchSearXNGImagesMany(context.Context, string, int) []RetrievalSearchResult {
 	return nil
 }
 
@@ -39,7 +37,7 @@ func TestDuckDuckGoProviderEmptyQueryDoesNotCallBridge(t *testing.T) {
 	bridge := &duckDuckGoBridgeStub{url: "https://images.example/fox.jpg"}
 	provider := NewDuckDuckGoProvider(bridge, nil, zap.NewNop())
 
-	results, err := provider.Search(context.Background(), "  ", routing.RetrievalSearchOptions{Lang: "en"})
+	results, err := provider.Search(context.Background(), "  ", RetrievalSearchOptions{Lang: "en"})
 	if err != nil {
 		t.Fatalf("Search(empty): %v", err)
 	}
@@ -55,7 +53,7 @@ func TestDuckDuckGoProviderReturnsRetrievedCandidate(t *testing.T) {
 	bridge := &duckDuckGoBridgeStub{url: "https://images.example/fox.jpg"}
 	provider := NewDuckDuckGoProvider(bridge, nil, zap.NewNop())
 
-	results, err := provider.Search(context.Background(), "red fox in snow", routing.RetrievalSearchOptions{Lang: "en"})
+	results, err := provider.Search(context.Background(), "red fox in snow", RetrievalSearchOptions{Lang: "en"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -79,7 +77,7 @@ func TestDuckDuckGoProviderReturnsRetrievedCandidate(t *testing.T) {
 
 func TestDuckDuckGoProviderEmptyBackendResponseIsControlled(t *testing.T) {
 	provider := NewDuckDuckGoProvider(&duckDuckGoBridgeStub{}, nil, zap.NewNop())
-	results, err := provider.Search(context.Background(), "valid query", routing.RetrievalSearchOptions{})
+	results, err := provider.Search(context.Background(), "valid query", RetrievalSearchOptions{})
 	if err != nil {
 		t.Fatalf("Search(empty backend response): %v", err)
 	}

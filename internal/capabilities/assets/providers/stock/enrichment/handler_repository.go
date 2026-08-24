@@ -29,7 +29,7 @@
 // + file_hash) required for the v1 envelope; COALESCE-wrapped to
 // NULL → "" mappings so legacy rows return empty strings (no
 // nil-pointer panics).
-package assets
+package enrichment
 
 import (
 	"context"
@@ -155,10 +155,10 @@ func (r *SQLiteAssetRepository) UpdateEnrichedMetadata(ctx context.Context, id s
 // per AGENTS.md Pattern 0 / godlike/06 SSOT.
 //
 // Note: there is no compile-time pin for *EnrichmentHandler →
-// appjobs.Handler because the appjobs surface uses a HandlerFunc
+// jobs.Handler because the appjobs surface uses a HandlerFunc
 // adapter (not a named interface) for broker registration. The
 // adapter handles the signature conversion from
-// `func(ctx, *appjobs.Job, *appjobs.JobTools) (map[string]any, error)`
+// `func(ctx, *jobs.Job, *jobs.JobTools) (map[string]any, error)`
 // to the domain Handler type. The RegisterHandler call site
 // validates the signature at registration time.
 var _ AssetRepository = (*SQLiteAssetRepository)(nil)

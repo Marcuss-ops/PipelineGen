@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -136,10 +136,10 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 //
 //   - restore: production code must use
 //     AssetMutationDispatcher.EnqueueAndRestore (outbox-driven); admin
-//     tooling uses txmutation.RestoreTx (caller-owned tx).
+//     tooling uses RestoreTx (caller-owned tx).
 //   - delete: production code must use
 //     AssetMutationDispatcher.EnqueueAndDelete (outbox-driven). Admin
-//     physical-purge flows use txmutation.HardDeleteTx (caller-owned
+//     physical-purge flows use HardDeleteTx (caller-owned
 //     tx); the regular SoftDelete route lives at deletion.DeletionService.
 //
 // Exhaustive-enum invariant: an Action whose IsImplemented()=true MUST
@@ -181,7 +181,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 // mutations.AssetMutationCommand type from
 // internal/application/assets/mutations/. This is the same cross-layer
 // pattern documented for the existing `jobsoutbox
-// "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"`
+// "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"`
 // import above — the application layer owns the canonical SSOT type
 // definition, and the canonical writer infrastructure consumes it
 // without inverting the general layering direction (composition root
@@ -200,17 +200,17 @@ func (r *ClipsRepository) Mutate(ctx context.Context, cmd mutations.AssetMutatio
 	case mutations.AssetMutationRestore:
 		// Not implemented at this layer. Production must use
 		// AssetMutationDispatcher.EnqueueAndRestore; admin must use
-		// txmutation.RestoreTx (caller-owned tx). Documented intent:
+		// RestoreTx (caller-owned tx). Documented intent:
 		// never silently fall through to plain UPSERT.
 		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndRestore (production) or txmutation.RestoreTx (admin)", cmd.Action))
+			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndRestore (production) or RestoreTx (admin)", cmd.Action))
 	case mutations.AssetMutationDelete:
 		// Not implemented at this layer. Production must use
 		// AssetMutationDispatcher.EnqueueAndDelete; admin must use
-		// txmutation.HardDeleteTx. Documented intent: never fall
+		// HardDeleteTx. Documented intent: never fall
 		// through silently.
 		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndDelete (production) or txmutation.HardDeleteTx (admin)", cmd.Action))
+			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndDelete (production) or HardDeleteTx (admin)", cmd.Action))
 	default:
 		// Defensive: IsKnown() returned true but a switch arm is
 		// missing (someone added a new AssetMutationAction constant

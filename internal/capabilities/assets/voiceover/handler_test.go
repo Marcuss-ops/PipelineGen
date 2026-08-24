@@ -10,7 +10,7 @@
 //   - EnqueueRequest.Payload cast to *GenerateVoiceoversCommand
 //     and field-by-field field assertions
 //   - HTTP response status + body shape
-package assets
+package voiceover
 
 import (
 	"bytes"

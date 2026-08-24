@@ -9,14 +9,14 @@
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per
 // file): the LocalImporter owns the enqueue flow as a focused service
 // with 2 narrow deps (JobsPort + Logger).
-package assets
+package localimport
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // Service is the LocalImporter implementation. 2-port budget per

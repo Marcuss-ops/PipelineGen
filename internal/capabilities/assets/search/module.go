@@ -33,7 +33,7 @@
 // YouTube /search, clips /search/advanced, scraper /search,
 // /api/assets/search) have been absorbed into the single
 // POST /api/media/search endpoint that delegates to the canonical
-// search.Aggregator. The Build contract simply wraps the existing
+// Aggregator. The Build contract simply wraps the existing
 // thin transport with the canonical Build/Descriptor surface.
 //
 // UNIQUE TO SEARCH (vs clips): the Descriptor surface is the smallest
@@ -41,34 +41,33 @@
 // register / diagnostics) — only `Module` field, no `Handler` /
 // `Service` field. The search capability has no non-HTTP consumer in
 // the codebase that needs the raw Handler (the cross-provider search
-// surface reaches the canonical search.Aggregator directly, not via
+// surface reaches the canonical Aggregator directly, not via
 // the api/search Handler). The Handler stays the internal worker
 // captured by the Module closure; no caller (composition root,
 // tests, internal services) reads a raw *Handler from outside the
 // package.
 //
-// The *search.Aggregator is constructed at the composition root in
+// The *Aggregator is constructed at the composition root in
 // `internal/app/module_media.go::WireAssets` from the SearchBackends
 // + ZapLogAdapter. The Build contract does NOT move this construction
 // into the api/ layer (per AGENTS.md Pattern 0 — the api/ layer must
 // stay thin; the composition root owns the typed-port adapter chain).
 // The Aggregator flows through Build as a flat Dependencies field
 // (canonical pattern: composition root builds, api layer consumes).
-package assets
+package search
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/application/assets/resolver"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // Dependencies is the typed narrow input to Build. The Handler depends
-// on a *search.Aggregator (constructed at the composition root), an
+// on a *Aggregator (constructed at the composition root), an
 // EnabledFunc, an optional list of route-module decorators, and a
 // logger.
 //
@@ -78,7 +77,7 @@ import (
 // never NPE). Logger nil → zap.NewNop() (composition-root-friendly
 // default).
 type Dependencies struct {
-	// Aggregator is the canonical *search.Aggregator built by
+	// Aggregator is the canonical *Aggregator built by
 	// the composition root in
 	// `internal/app/module_media.go::WireAssets` from the
 	// pre-built SearchBackends + ZapLogAdapter. MANDATORY —
@@ -86,7 +85,7 @@ type Dependencies struct {
 	// h.aggreg and the single route /search calls
 	// aggreg.Search unconditionally. A nil Aggregator would
 	// NPE at first request; fail at startup instead.
-	Aggregator *search.Aggregator
+	Aggregator *Aggregator
 	Resolver   *assetresolver.Service
 
 	// EnabledFunc is the closure that decides whether the
@@ -165,10 +164,10 @@ func (d *SearchDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 func Build(deps Dependencies) (api.Descriptor, error) {
 	// Mandatory-shape validation.
 	if deps.Aggregator == nil {
-		return nil, fmt.Errorf("search.Build: Aggregator is required (composition root must pre-construct *search.Aggregator from the SearchBackends + ZapLogAdapter; the api/ layer never builds it)")
+		return nil, fmt.Errorf("Build: Aggregator is required (composition root must pre-construct *Aggregator from the SearchBackends + ZapLogAdapter; the api/ layer never builds it)")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, fmt.Errorf("search.Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")
+		return nil, fmt.Errorf("Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")
 	}
 
 	// Logger: nil → zap.NewNop() (composition-root-friendly default).

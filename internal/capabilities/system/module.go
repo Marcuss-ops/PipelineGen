@@ -25,10 +25,11 @@
 package system
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 )
 
 // Module handles system diagnostic routes plus Drive admin ops.
@@ -99,4 +100,18 @@ func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		m.driveHandler.RegisterRoutes(driveGroup)
 	}
+}
+
+type Dependencies struct {
+	Config        DoctorConfig
+	Logger        *zap.Logger
+	ToolChecker   appassets.ToolChecker
+	ProcessRunner appassets.ProcessRunner
+	DBHealth      appassets.DBHealthChecker
+	DriveOps      DriveAdminOps
+	Reconciler    Reconciler
+}
+
+func (m *Module) Build(ctx httpserver.BuildContext) (httpserver.RuntimeModule, error) {
+	return httpserver.RuntimeModuleFor("system", "/api/system", m)
 }

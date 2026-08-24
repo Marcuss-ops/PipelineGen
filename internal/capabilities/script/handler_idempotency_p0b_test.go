@@ -49,6 +49,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 )
 
 // TestGenerate_P0B_Scenario1_SameKeySamePayload pins canonical

@@ -82,7 +82,7 @@ func RunDriveReconcile(args []string) error {
 		fmt.Printf("Root: %s (max depth: %d)\n\n", *rootID, *maxDepth)
 
 		// Quick listing: just show immediate children.
-		uploader, err := buildDriveAdminForCLI(cli.CmdContext(), cfg, log)
+		uploader, err := cli.BuildDriveAdminForCLI(cli.CmdContext(), cfg, log)
 		if err != nil {
 			return fmt.Errorf("drive-reconcile: init Drive client: %w", err)
 		}
@@ -107,7 +107,7 @@ func RunDriveReconcile(args []string) error {
 }
 
 func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, rootID string, maxDepth int, syncAssets bool, dbPathFlag string) error {
-	path := resolveDBPath(cfg, dbPathFlag)
+	path := cli.ResolveDBPath(cfg, dbPathFlag)
 	if path == "" {
 		return ErrAdminNoDB
 	}
@@ -120,7 +120,7 @@ func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 
 	catalogRepo := sqlitedelivery.NewRepository(sqliteDB.DB)
 
-	uploader, err := buildDriveAdminForCLI(ctx, cfg, log)
+	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
 		return fmt.Errorf("drive-reconcile: init Drive client: %w", err)
 	}

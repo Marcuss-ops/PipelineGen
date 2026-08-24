@@ -1,4 +1,4 @@
-package assets
+package ingest
 
 type Kind string
 

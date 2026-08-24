@@ -10,7 +10,7 @@
 // via errors.Is() so a future port evolution that wraps the error in
 // additional context (e.g. fmt.Errorf("...: %w", ErrStepAlreadyCompleted))
 // does not break the audit-pin surface.
-package execution
+package steps
 
 import (
 	"context"
@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 )
 
 // ── FakeStore ────────────────────────────────────────────────────
@@ -41,7 +40,7 @@ type fakeStep struct {
 	JobID        string
 	StepKey      string
 	Fingerprint  string
-	Status       steps.StepStatus
+	Status       StepStatus
 	Attempt      int
 	Result       json.RawMessage
 	ArtifactRefs json.RawMessage
@@ -58,7 +57,7 @@ type FakeStore struct {
 }
 
 // Compile-time assertion: FakeStore satisfies the canonical Store port.
-var _ steps.Store = (*FakeStore)(nil)
+var _ Store = (*FakeStore)(nil)
 
 func (f *FakeStore) snapshot() []fakeStep {
 	out := make([]fakeStep, len(f.rows))
@@ -68,7 +67,7 @@ func (f *FakeStore) snapshot() []fakeStep {
 	return out
 }
 
-func (f *FakeStore) findLatestByTriple(key steps.StepKey) *fakeStep {
+func (f *FakeStore) findLatestByTriple(key StepKey) *fakeStep {
 	for i := len(f.rows) - 1; i >= 0; i-- {
 		r := f.rows[i]
 		if r.JobID == key.JobID && r.StepKey == key.StepKey && r.Fingerprint == key.InputFingerprint {
@@ -78,7 +77,7 @@ func (f *FakeStore) findLatestByTriple(key steps.StepKey) *fakeStep {
 	return nil
 }
 
-func (f *FakeStore) MarkStarted(ctx context.Context, key steps.StepKey) error {
+func (f *FakeStore) MarkStarted(ctx context.Context, key StepKey) error {
 	if err := key.Validated(); err != nil {
 		return err
 	}
@@ -90,12 +89,12 @@ func (f *FakeStore) MarkStarted(ctx context.Context, key steps.StepKey) error {
 	// caller uses the same fingerprint. The port's contract is to
 	// return ErrStepAlreadyCompleted in that case.
 	if existing := f.findLatestByTriple(key); existing != nil {
-		if existing.Status == steps.StatusCompleted {
-			return steps.ErrStepAlreadyCompleted
+		if existing.Status == StatusCompleted {
+			return ErrStepAlreadyCompleted
 		}
 		// Otherwise: bump attempt + reset status (non-completed idempotent reentry).
 		existing.Attempt++
-		existing.Status = steps.StatusPending
+		existing.Status = StatusPending
 		existing.StartedAt = time.Now().UTC()
 		existing.LastError = ""
 		return nil
@@ -108,7 +107,7 @@ func (f *FakeStore) MarkStarted(ctx context.Context, key steps.StepKey) error {
 		JobID:        key.JobID,
 		StepKey:      key.StepKey,
 		Fingerprint:  key.InputFingerprint,
-		Status:       steps.StatusPending,
+		Status:       StatusPending,
 		Attempt:      1,
 		StartedAt:    time.Now().UTC(),
 		Result:       json.RawMessage("{}"),
@@ -117,7 +116,7 @@ func (f *FakeStore) MarkStarted(ctx context.Context, key steps.StepKey) error {
 	return nil
 }
 
-func (f *FakeStore) MarkCompleted(ctx context.Context, key steps.StepKey, result, artifactRefs json.RawMessage) error {
+func (f *FakeStore) MarkCompleted(ctx context.Context, key StepKey, result, artifactRefs json.RawMessage) error {
 	if err := key.Validated(); err != nil {
 		return err
 	}
@@ -126,17 +125,17 @@ func (f *FakeStore) MarkCompleted(ctx context.Context, key steps.StepKey, result
 
 	existing := f.findLatestByTriple(key)
 	if existing == nil {
-		return steps.ErrStepNotFound
+		return ErrStepNotFound
 	}
-	if existing.Status == steps.StatusCompleted {
+	if existing.Status == StatusCompleted {
 		// Idempotent re-completion ONLY if the result + artifact_refs
 		// match byte-for-byte; otherwise terminal-immutability error.
 		if string(existing.Result) == string(result) && string(existing.ArtifactRefs) == string(artifactRefs) {
 			return nil
 		}
-		return steps.ErrStepAlreadyCompleted
+		return ErrStepAlreadyCompleted
 	}
-	existing.Status = steps.StatusCompleted
+	existing.Status = StatusCompleted
 	existing.Result = result
 	existing.ArtifactRefs = artifactRefs
 	existing.CompletedAt = time.Now().UTC()
@@ -144,7 +143,7 @@ func (f *FakeStore) MarkCompleted(ctx context.Context, key steps.StepKey, result
 	return nil
 }
 
-func (f *FakeStore) MarkFailed(ctx context.Context, key steps.StepKey, errMessage string) error {
+func (f *FakeStore) MarkFailed(ctx context.Context, key StepKey, errMessage string) error {
 	if err := key.Validated(); err != nil {
 		return err
 	}
@@ -153,18 +152,18 @@ func (f *FakeStore) MarkFailed(ctx context.Context, key steps.StepKey, errMessag
 
 	existing := f.findLatestByTriple(key)
 	if existing == nil {
-		return steps.ErrStepNotFound
+		return ErrStepNotFound
 	}
-	if existing.Status == steps.StatusCompleted {
-		return steps.ErrStepAlreadyCompleted
+	if existing.Status == StatusCompleted {
+		return ErrStepAlreadyCompleted
 	}
-	existing.Status = steps.StatusFailed
+	existing.Status = StatusFailed
 	existing.LastError = errMessage
 	existing.CompletedAt = time.Now().UTC()
 	return nil
 }
 
-func (f *FakeStore) FirstNonCompleted(ctx context.Context, jobID string) (*steps.StepState, error) {
+func (f *FakeStore) FirstNonCompleted(ctx context.Context, jobID string) (*StepState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -193,17 +192,17 @@ func (f *FakeStore) FirstNonCompleted(ctx context.Context, jobID string) (*steps
 	for _, k := range keys {
 		i := mapper[k].Idx
 		r := f.rows[i]
-		if r.Status != steps.StatusCompleted {
+		if r.Status != StatusCompleted {
 			return r.toStepState(), nil
 		}
 	}
 	return nil, nil
 }
 
-func (f *FakeStore) ListByJob(ctx context.Context, jobID string) ([]steps.StepState, error) {
+func (f *FakeStore) ListByJob(ctx context.Context, jobID string) ([]StepState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []steps.StepState
+	var out []StepState
 	for _, r := range f.rows {
 		if r.JobID == jobID {
 			out = append(out, *r.toStepState())
@@ -215,8 +214,8 @@ func (f *FakeStore) ListByJob(ctx context.Context, jobID string) ([]steps.StepSt
 	return out, nil
 }
 
-func (r *fakeStep) toStepState() *steps.StepState {
-	return &steps.StepState{
+func (r *fakeStep) toStepState() *StepState {
+	return &StepState{
 		ID:           r.id,
 		JobID:        r.JobID,
 		StepKey:      r.StepKey,
@@ -234,7 +233,7 @@ func (r *fakeStep) toStepState() *steps.StepState {
 // sortStepsByKeyThenID sorts in place by (StepKey ASC, ID ASC). Stable
 // insertion keeps tie-breaks by id (since rows are appended in id-asc),
 // matching the SQLite concrete's ORDER BY step_key ASC, id ASC clause.
-func sortStepsByKeyThenID(steps []steps.StepState) {
+func sortStepsByKeyThenID(steps []StepState) {
 	for i := 1; i < len(steps); i++ {
 		for j := i; j > 0; j-- {
 			prev, cur := steps[j-1], steps[j]
@@ -251,20 +250,20 @@ func sortStepsByKeyThenID(steps []steps.StepState) {
 
 func TestStepKey_Validated(t *testing.T) {
 	t.Run("all fields set → nil", func(t *testing.T) {
-		require.NoError(t, steps.StepKey{
+		require.NoError(t, StepKey{
 			JobID: "j-1", StepKey: "01_stage", InputFingerprint: "abc",
 		}.Validated())
 	})
 	t.Run("missing JobID names ALL missing fields in one diagnostic", func(t *testing.T) {
-		err := steps.StepKey{StepKey: "01_stage", InputFingerprint: "abc"}.Validated()
+		err := StepKey{StepKey: "01_stage", InputFingerprint: "abc"}.Validated()
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, steps.ErrInvalidStepKey))
+		assert.True(t, errors.Is(err, ErrInvalidStepKey))
 		assert.Contains(t, err.Error(), "JobID")
 	})
 	t.Run("all 3 missing lists all 3", func(t *testing.T) {
-		err := steps.StepKey{}.Validated()
+		err := StepKey{}.Validated()
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, steps.ErrInvalidStepKey))
+		assert.True(t, errors.Is(err, ErrInvalidStepKey))
 		for _, want := range []string{"JobID", "StepKey", "InputFingerprint"} {
 			assert.Contains(t, err.Error(), want)
 		}
@@ -272,34 +271,34 @@ func TestStepKey_Validated(t *testing.T) {
 }
 
 func TestCanonicalStepStatusValues(t *testing.T) {
-	values := steps.CanonicalStepStatusValues()
-	require.Equal(t, []steps.StepStatus{
-		steps.StatusPending, steps.StatusRunning,
-		steps.StatusCompleted, steps.StatusFailed,
+	values := CanonicalStepStatusValues()
+	require.Equal(t, []StepStatus{
+		StatusPending, StatusRunning,
+		StatusCompleted, StatusFailed,
 	}, values)
 	for _, v := range values {
 		assert.True(t, v.IsValid(), "closed set value %q must be IsValid", v)
 	}
 	// non-closed values must fail.
-	for _, bogus := range []steps.StepStatus{"", "PENDING", "DONE", "aborted"} {
+	for _, bogus := range []StepStatus{"", "PENDING", "DONE", "aborted"} {
 		assert.False(t, bogus.IsValid(), "non-closed value %q must fail IsValid", bogus)
 	}
 }
 
 func TestFakeStore_MarkStarted_HappyPath(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 
 	rows := s.snapshot()
 	require.Len(t, rows, 1)
-	assert.Equal(t, steps.StatusPending, rows[0].Status)
+	assert.Equal(t, StatusPending, rows[0].Status)
 	assert.Equal(t, 1, rows[0].Attempt)
 }
 
 func TestFakeStore_MarkStarted_ReEntryBumpsAttempt(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 
@@ -310,8 +309,8 @@ func TestFakeStore_MarkStarted_ReEntryBumpsAttempt(t *testing.T) {
 
 func TestFakeStore_MarkStarted_NewFingerprintInserts(t *testing.T) {
 	s := &FakeStore{}
-	keyA := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
-	keyB := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
+	keyA := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	keyB := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
 	require.NoError(t, s.MarkStarted(context.Background(), keyA))
 	require.NoError(t, s.MarkStarted(context.Background(), keyB))
 
@@ -324,37 +323,37 @@ func TestFakeStore_MarkStarted_NewFingerprintInserts(t *testing.T) {
 
 func TestFakeStore_MarkStarted_CompletedIsTerminal(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 	require.NoError(t, s.MarkCompleted(context.Background(), key, []byte(`{"drive_link":"x"}`), []byte(`[]`)))
 
 	// Try re-MarkStarted on the COMPLETED triple → ErrStepAlreadyCompleted.
 	err := s.MarkStarted(context.Background(), key)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrStepAlreadyCompleted))
+	assert.True(t, errors.Is(err, ErrStepAlreadyCompleted))
 
 	// But MarkStarted with NEW fingerprint on the same step_key should
 	// still INSERT a new row (the prior completed row stays as audit).
-	keyNew := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
+	keyNew := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
 	require.NoError(t, s.MarkStarted(context.Background(), keyNew))
 
 	rows := s.snapshot()
 	require.Len(t, rows, 2, "new fingerprint inserts a fresh row alongside the completed audit row")
-	assert.Equal(t, steps.StatusCompleted, rows[0].Status)
-	assert.Equal(t, steps.StatusPending, rows[1].Status)
+	assert.Equal(t, StatusCompleted, rows[0].Status)
+	assert.Equal(t, StatusPending, rows[1].Status)
 }
 
 func TestFakeStore_MarkCompleted_PreStartReturnsNotFound(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	err := s.MarkCompleted(context.Background(), key, []byte(`{}`), []byte(`[]`))
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrStepNotFound))
+	assert.True(t, errors.Is(err, ErrStepNotFound))
 }
 
 func TestFakeStore_MarkCompleted_IdempotentOnSamePayload(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 	before := time.Now().UTC()
 	require.NoError(t, s.MarkCompleted(context.Background(), key, []byte(`{"x":1}`), []byte(`[]`)))
@@ -381,29 +380,29 @@ func TestFakeStore_MarkCompleted_IdempotentOnSamePayload(t *testing.T) {
 
 func TestFakeStore_MarkCompleted_DifferentPayloadReturnsAlreadyCompleted(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 	require.NoError(t, s.MarkCompleted(context.Background(), key, []byte(`{"x":1}`), []byte(`[]`)))
 
 	err := s.MarkCompleted(context.Background(), key, []byte(`{"x":2}`), []byte(`[]`))
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrStepAlreadyCompleted))
+	assert.True(t, errors.Is(err, ErrStepAlreadyCompleted))
 }
 
 func TestFakeStore_MarkFailed_OnCompletedReturnsAlreadyCompleted(t *testing.T) {
 	s := &FakeStore{}
-	key := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	key := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
 	require.NoError(t, s.MarkStarted(context.Background(), key))
 	require.NoError(t, s.MarkCompleted(context.Background(), key, []byte(`{}`), []byte(`[]`)))
 
 	err := s.MarkFailed(context.Background(), key, "should not be allowed")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrStepAlreadyCompleted))
+	assert.True(t, errors.Is(err, ErrStepAlreadyCompleted))
 }
 
 func TestFakeStore_FirstNonCompleted_AllCompleteReturnsNil(t *testing.T) {
 	s := &FakeStore{}
-	for _, key := range []steps.StepKey{
+	for _, key := range []StepKey{
 		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"},
 		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-A"},
 		{JobID: "j-1", StepKey: "03_upload", InputFingerprint: "fp-A"},
@@ -420,7 +419,7 @@ func TestFakeStore_FirstNonCompleted_AllCompleteReturnsNil(t *testing.T) {
 func TestFakeStore_FirstNonCompleted_PicksLexicallySmallest(t *testing.T) {
 	s := &FakeStore{}
 	// Insert in REVERSE lexical order to verify sort, not insertion-order.
-	stages := []steps.StepKey{
+	stages := []StepKey{
 		{JobID: "j-1", StepKey: "03_upload", InputFingerprint: "fp-A"},
 		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-A"},
 		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"},
@@ -437,14 +436,14 @@ func TestFakeStore_FirstNonCompleted_PicksLexicallySmallest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "01_stage", got.StepKey, "lexically smallest pending step is 01_stage")
-	assert.Equal(t, steps.StatusPending, got.Status)
+	assert.Equal(t, StatusPending, got.Status)
 }
 
 func TestFakeStore_FirstNonCompleted_PicksLatestFingerprint(t *testing.T) {
 	s := &FakeStore{}
 	// 01_stage with fp-A was COMPLETED earlier; fp-B is now FAILED.
-	keyA := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
-	keyB := steps.StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
+	keyA := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-A"}
+	keyB := StepKey{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"}
 	require.NoError(t, s.MarkStarted(context.Background(), keyA))
 	require.NoError(t, s.MarkCompleted(context.Background(), keyA, []byte(`{"v":"A"}`), []byte(`[]`)))
 	require.NoError(t, s.MarkStarted(context.Background(), keyB))
@@ -454,7 +453,7 @@ func TestFakeStore_FirstNonCompleted_PicksLatestFingerprint(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "01_stage", got.StepKey)
-	assert.Equal(t, steps.StatusFailed, got.Status, "LATEST fingerprint (fp-B = failed) wins over older completed fp-A")
+	assert.Equal(t, StatusFailed, got.Status, "LATEST fingerprint (fp-B = failed) wins over older completed fp-A")
 	assert.Equal(t, "fp-B", got.Fingerprint)
 }
 
@@ -463,7 +462,7 @@ func TestFakeStore_ListByJob_OrdersByStepKeyThenID(t *testing.T) {
 	// Insert deliberately out of lexical order with multiple fingerprints.
 	// IDs (in insertion order): 1=02_render/fp-A, 2=01_stage/fp-B, 3=02_render/fp-C,
 	// 4=01_stage/fp-A, 5=j-other/01_stage/fp-A (different job → filtered).
-	for _, k := range []steps.StepKey{
+	for _, k := range []StepKey{
 		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-A"},    // id 1
 		{JobID: "j-1", StepKey: "01_stage", InputFingerprint: "fp-B"},     // id 2
 		{JobID: "j-1", StepKey: "02_render", InputFingerprint: "fp-C"},    // id 3
@@ -511,15 +510,15 @@ func TestFakeStore_EmptyState_ListByJob(t *testing.T) {
 
 func TestFakeStore_ValidatedErrorPropagation(t *testing.T) {
 	s := &FakeStore{}
-	err := s.MarkStarted(context.Background(), steps.StepKey{})
+	err := s.MarkStarted(context.Background(), StepKey{})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrInvalidStepKey))
+	assert.True(t, errors.Is(err, ErrInvalidStepKey))
 
-	err = s.MarkCompleted(context.Background(), steps.StepKey{}, []byte(`{}`), []byte(`[]`))
+	err = s.MarkCompleted(context.Background(), StepKey{}, []byte(`{}`), []byte(`[]`))
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrInvalidStepKey))
+	assert.True(t, errors.Is(err, ErrInvalidStepKey))
 
-	err = s.MarkFailed(context.Background(), steps.StepKey{}, "x")
+	err = s.MarkFailed(context.Background(), StepKey{}, "x")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, steps.ErrInvalidStepKey))
+	assert.True(t, errors.Is(err, ErrInvalidStepKey))
 }

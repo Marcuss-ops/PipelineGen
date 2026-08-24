@@ -1,4 +1,4 @@
-package assets
+package texttracks
 
 // cue_translate.go — CueTranslator translates each source cue's text
 // individually so every translated cue maps 1:1 to its source cue's timing.
@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"

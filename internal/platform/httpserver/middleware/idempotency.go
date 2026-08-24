@@ -34,7 +34,7 @@
 // Reference: migration 095_create_idempotency_keys.sql,
 // internal/application/middleware/idempotency_store.go (port),
 // internal/platform/sqlite/idempotency (concrete).
-package httpserver
+package middleware
 
 import (
 	"bytes"
@@ -51,7 +51,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 )
 
 // idempotencyHeader is the canonical header name (RFC draft + Stripe convention).

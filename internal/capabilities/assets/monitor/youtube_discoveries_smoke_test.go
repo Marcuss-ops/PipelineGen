@@ -16,7 +16,7 @@
 // reuse them via Go's same-package scope (one canonical declaration,
 // multiple consumers).
 
-package assets
+package monitor
 
 import (
 	"context"

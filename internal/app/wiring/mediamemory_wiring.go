@@ -28,14 +28,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	brainCore "github.com/Marcuss-ops/PipelineGen/internal/application/brain/core"
-	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
-	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
-	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
+	brainCore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/core"
+	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/intent"
+	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
+	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory/adapters"
+	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantmm"
 	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
@@ -147,7 +146,7 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 		brainNormalizer.NewDefaultNormalizer(),
 		brainIntent.NewDefaultResolver(),
 		cascade,
-		wiring.NewMediaMemoryRankerAdapter(mmRanker),
+		NewMediaMemoryRankerAdapter(mmRanker),
 		brainPlanner.NewDefaultPlanner(),
 	)
 

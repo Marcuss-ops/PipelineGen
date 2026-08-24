@@ -1,4 +1,4 @@
-package assets
+package clips
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

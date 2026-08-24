@@ -41,7 +41,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
-	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	_ "github.com/mattn/go-sqlite3"
 )

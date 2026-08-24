@@ -425,7 +425,7 @@ func snapshotDriveInventory(ctx context.Context, cfg *config.Config, outDir stri
 	}
 	sec.Roots = roots
 
-	uploader, err := buildDriveAdminForCLI(ctx, cfg, log)
+	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
 		sec.Status = "error"
 		sec.Error = fmt.Sprintf("init Drive client: %v", err)

@@ -57,7 +57,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
@@ -119,7 +119,7 @@ func TestScanHandlerGenerateFields_AcceptsApplicationPortPointer(t *testing.T) {
 	root := t.TempDir()
 	writeHFFixture(t, root, handlerGenerateFieldScanScope, `package script
 
-import opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+import opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 
 type appPort struct{ x int }
 

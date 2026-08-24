@@ -26,7 +26,7 @@
 // from this package; the testSecurity stub from port_fakes_test.go
 // (a 3-method AuthSecurityPort fake) replaces them.
 
-package httpserver
+package middleware
 
 import (
 	"net/http"

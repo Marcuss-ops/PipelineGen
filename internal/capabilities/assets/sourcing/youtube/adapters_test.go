@@ -7,14 +7,13 @@
 //
 // godlike/06 SSOT: these tests are the canonical SOLE regression guard
 // for the fetcherAdapter NoAudio forwarding invariant.
-package assets
+package youtube
 
 import (
 	"context"
 	"testing"
 
-	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
+	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // stubSourcingFetcher implements sourcing.FetchProviderPort for adapter

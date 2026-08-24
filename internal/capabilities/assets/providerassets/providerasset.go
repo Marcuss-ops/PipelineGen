@@ -5,7 +5,7 @@
 // The types here are intentionally plain structs with no infrastructure
 // dependencies so they can be shared across application and infrastructure
 // packages without import cycles.
-package assets
+package providerassets
 
 import (
 	"context"

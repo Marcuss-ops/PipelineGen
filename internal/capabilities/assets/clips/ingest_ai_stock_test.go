@@ -1,4 +1,4 @@
-package assets
+package clips
 
 import (
 	"bytes"
@@ -15,11 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
-	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

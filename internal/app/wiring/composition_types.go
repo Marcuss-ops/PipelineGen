@@ -8,37 +8,38 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
-	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
+	apiMw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 
-	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/application/artifact_finalize"
+	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifact_finalize"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
-	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/application/staging"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
+	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/reconciliation/voiceover"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/books"
+	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
+	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -62,12 +63,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
-	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/catalog"
@@ -166,7 +167,7 @@ type RepoBundle struct {
 	VoiceoverRepo      *assets.VoiceoversRepository
 	CatalogRepo        *catalog.Repository
 	EntityImageCatalog entitycatalog.Repository
-	SQRepo             *assets.SearchQueriesRepository
+	SQRepo             *imagesregistry.SearchQueriesRepository
 	IdempotencyStore   mwidem.IdempotencyStore
 	// TextTrackRepo is the canonical Fase 2.a / Fase 4
 	// TextTrackRepository used by the video pipeline
@@ -296,7 +297,7 @@ type DomainBundle struct {
 	VoiceoverPublishPool         interface{ Wait() } // P0.4 async publish drainer for the runner
 	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
 	ArtifactService              *artifacts.Service
-	ImageSearchResolver          routing.ImageSearchResolver
+	ImageSearchResolver          images.ImageSearchResolver
 	AudioProcessor               *audioasset.Processor
 }
 
@@ -359,7 +360,7 @@ type UtilityBundle struct {
 	ReadyChecker  *systemhealth.ReadyChecker
 }
 
-// AssetsWiring holds the Assets module wiring.
+// AssetsWiring holds the Assets module 
 type AssetsWiring struct {
 	Module               module.Module
 	DeletionSvc          *deletion.DeletionService

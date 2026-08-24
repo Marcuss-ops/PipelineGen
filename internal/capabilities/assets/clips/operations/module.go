@@ -14,11 +14,11 @@
 // not the concrete *clips.OpsHandler. The composition root wires
 // it via the parent's per-cluster handler pointer:
 // opts.Ops = (*clips.Handler).ops.
-package assets
+package operations
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

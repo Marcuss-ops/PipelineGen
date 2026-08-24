@@ -1,4 +1,4 @@
-package assets
+package catalogsync
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // HandleJob processes a catalog.sync job.

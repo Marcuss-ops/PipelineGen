@@ -18,7 +18,7 @@
 // Infrastructure owns the implementation. Infra importing app = OK
 // (dependency injection of port types). App importing infra = NOT OK
 // (would couple the orchestration layer to a specific adapter shape).
-package assets
+package monitor
 
 // assetsdb is the canonical monitor-package alias for
 // `internal/platform/sqlite/assets` — matches the

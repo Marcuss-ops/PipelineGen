@@ -40,7 +40,7 @@ func (s *retrievedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 		// the row is exact-match of the upstream-sourced candidate.
 		out = append(out, ImageSearchResult{
 			AssetID:       "",
-			Origin:        asset.ImageOriginRetrieved,
+			Origin:        string(asset.ImageOriginRetrieved),
 			Provider:      string(h.Provider),
 			Name:          h.Title,
 			PreviewURL:    h.PreviewURL,

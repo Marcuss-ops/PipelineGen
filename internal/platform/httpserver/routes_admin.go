@@ -9,8 +9,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/web"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // registerAdminUIRoutes serves the embedded admin SPA on /admin and

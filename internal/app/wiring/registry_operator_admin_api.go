@@ -2,11 +2,10 @@ package wiring
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/operator"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/operatorverify"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/operatorread"
@@ -16,7 +15,7 @@ import (
 // registerOperatorAdminAPI wires and registers the operator admin API module.
 // This module provides admin-facing read-only endpoints consumed by the
 // React admin UI under /admin/. Routes are mounted under /api/assets/operator/.
-func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root.Repos == nil || root.Repos.Assets == nil {
 		return fmt.Errorf("wire registry: operator-admin-api: asset service not available")
 	}

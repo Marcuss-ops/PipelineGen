@@ -1,12 +1,12 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
@@ -23,9 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
@@ -35,7 +33,7 @@ import (
 )
 
 // buildDomainMediaServices constructs the YouTube clip pipeline service
-// and populates the wiring.DomainBundle with it. Returns intermediate deps
+// and populates the DomainBundle with it. Returns intermediate deps
 // consumed by other domain sections.
 //
 // godlike/06 SSOT: the YouTube Service and its adapters are the SOLE
@@ -43,20 +41,20 @@ import (
 func buildDomainMediaServices(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *wiring.Databases,
+	dbs *Databases,
 	log *zap.Logger,
-	drive *wiring.DriveBundle,
-	repos *wiring.RepoBundle,
-	search *wiring.SearchBundle,
-	process *wiring.ProcessBundle,
-	ai *wiring.AIBundle,
-	outbox *wiring.OutboxBundle,
+	drive *DriveBundle,
+	repos *RepoBundle,
+	search *SearchBundle,
+	process *ProcessBundle,
+	ai *AIBundle,
+	outbox *OutboxBundle,
 	committer persistence.AssetCommitter,
-	bundle *wiring.DomainBundle,
+	bundle *DomainBundle,
 	mediaConfig mediaexec.ExecutionConfig,
 ) (
 	voMetaWriter semantic.MetadataWriterPort,
-	clipWriter *assets.ClipAtomicWriterAdapter,
+	clipWriter *imagesregistry.ClipAtomicWriterAdapter,
 	err error,
 ) {
 	// P0-#2 (July 2026): the composition root no longer constructs
@@ -98,7 +96,7 @@ func buildDomainMediaServices(
 		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
-	hashAdapter := youtube.NewHashAdapter()
+	hashAdapter := ytinfra.NewHashAdapter()
 
 	// Use the canonical resolved cookie path for subtitle acquisition; the
 	// shared BaseArgs builder still gates --cookies to YouTube URLs.
@@ -109,8 +107,8 @@ func buildDomainMediaServices(
 	// acquisition chain consumes this list as the PreferredLanguages
 	// fan-out order and as the SubtitleFetcherAdapter --sub-langs CSV
 	// (yt-dlp probes them top-to-bottom).
-	mlCfg := wiring.ActiveMultilingualConfig(cfg)
-	subtitleLanguagesCSV, err := wiring.BuildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
+	mlCfg := ActiveMultilingualConfig(cfg)
+	subtitleLanguagesCSV, err := BuildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
 		return spec.TranslateClips
 	})
 	if err != nil {
@@ -126,14 +124,14 @@ func buildDomainMediaServices(
 		ytdlp.NewCommandBuilder(cfg),
 		cfg.External.ResolveYouTubeCookiesPath() != "",
 	)
-	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
-	clipWriter = assets.NewClipAtomicWriterAdapterWithCommitter(
+	clipCache := imagesregistry.NewClipCacheAdapter(repos.ClipsRepo, log)
+	clipWriter = imagesregistry.NewClipAtomicWriterAdapterWithCommitter(
 		dbs.DualPool.Writer,
 		outbox.EventsRepo,
 		newCanonicalAssetCommitter(dbs.DualPool.Writer, outbox.EventsRepo, log),
 		log,
 	)
-	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
+	clipMetadataWriter := imagesregistry.NewClipMetadataWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
@@ -158,9 +156,9 @@ func buildDomainMediaServices(
 	// by checking the API payload and the DB before falling through.
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// TextTrackRepository is now sourced from the canonical
-	// wiring.RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
+	// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
 	// pre-PR local construction is removed so every consumer
-	// (wiring.BuildTextTrackBundle, BuildRepoBundle, the Qdrant
+	// (BuildTextTrackBundle, BuildRepoBundle, the Qdrant
 	// PayloadMapper, the TextTrackResolver here) shares the SAME
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
@@ -173,7 +171,7 @@ func buildDomainMediaServices(
 	//
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// SubtitleFetcherAdapter is ALSO exposed on the
-	// wiring.DomainBundle so composition.go can wire it into the
+	// DomainBundle so composition.go can wire it into the
 	// AcquireService (backfill CLI 5-priority chain —
 	// priorities 3+4: YouTube subtitles). The narrow
 	// texttracks.SubtitlesPort interface is a structural

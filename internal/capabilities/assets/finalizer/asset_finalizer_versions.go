@@ -38,7 +38,7 @@
 // change. The receiver (s *AssetTxFinalizer) is unchanged so the
 // orchestrator can call this helper as `s.insertAssetVersion(...)`
 // without any wiring change.
-package assets
+package finalizer
 
 import (
 	"context"

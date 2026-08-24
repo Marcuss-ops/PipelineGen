@@ -16,7 +16,6 @@ package mediamemory
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
@@ -41,20 +40,20 @@ type bindingCreateRequest struct {
 }
 
 // toMediaBinding translates the wire DTO into the canonical
-// mediamemory.MediaBinding. Empty origin/approval are left empty
+// MediaBinding. Empty origin/approval are left empty
 // so the service applyDefaults() (which mirrors godlike/06 SSOT)
 // fills them in at the canonical defaults.
 //
 // pointer-valued scores are dereferenced; nil → 0.
-func (r bindingCreateRequest) toMediaBinding() mediamemory.MediaBinding {
-	out := mediamemory.MediaBinding{
+func (r bindingCreateRequest) toMediaBinding() MediaBinding {
+	out := MediaBinding{
 		ConceptID:      r.ConceptID,
 		AssetID:        r.AssetID,
 		SlotKind:       media.SlotKind(r.SlotKind),
 		StartMs:        r.StartMs,
 		EndMs:          r.EndMs,
-		Origin:         mediamemory.Origin(r.Origin),
-		ApprovalStatus: mediamemory.ApprovalStatus(r.ApprovalStatus),
+		Origin:         Origin(r.Origin),
+		ApprovalStatus: ApprovalStatus(r.ApprovalStatus),
 	}
 	if r.ManualScore != nil {
 		out.ManualScore = *r.ManualScore
@@ -99,7 +98,7 @@ type bindingDTO struct {
 }
 
 // toBindingDTO projects a canonical MediaBinding to its wire shape.
-func toBindingDTO(b mediamemory.MediaBinding) bindingDTO {
+func toBindingDTO(b MediaBinding) bindingDTO {
 	out := bindingDTO{
 		ID:             b.ID,
 		ConceptID:      b.ConceptID,
@@ -182,11 +181,11 @@ type resolvePolicyRequest struct {
 }
 
 // toResolveRequest projects the wire DTO into the canonical
-// mediamemory.ResolveRequest. Policy defaults are NOT applied
+// ResolveRequest. Policy defaults are NOT applied
 // here; the handler passes the optional policy to
 // ResolutionPolicyResolver.Resolve() in the application layer.
-func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy) mediamemory.ResolveRequest {
-	scenes := make([]mediamemory.SceneSpec, 0, len(r.Scenes))
+func (r resolveCreateRequest) toResolveRequest(policy ResolvePolicy) ResolveRequest {
+	scenes := make([]SceneSpec, 0, len(r.Scenes))
 	for _, s := range r.Scenes {
 		lang := s.Language
 		if lang == "" {
@@ -199,7 +198,7 @@ func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy)
 			}
 			slotKinds = append(slotKinds, media.SlotKind(slotStr))
 		}
-		scenes = append(scenes, mediamemory.SceneSpec{
+		scenes = append(scenes, SceneSpec{
 			ID:         s.ID,
 			Text:       s.Text,
 			DurationMs: s.DurationMs,
@@ -207,7 +206,7 @@ func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy)
 			Language:   lang,
 		})
 	}
-	return mediamemory.ResolveRequest{
+	return ResolveRequest{
 		ProjectID: r.ProjectID,
 		Language:  r.Language,
 		Scenes:    scenes,
@@ -218,11 +217,11 @@ func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy)
 // toOptionalPolicy projects the optional wire policy fields into
 // the application-layer OptionalResolvePolicy. It performs no
 // defaulting — defaults are owned by ResolutionPolicyResolver.
-func (r resolveCreateRequest) toOptionalPolicy() mediamemory.OptionalResolvePolicy {
+func (r resolveCreateRequest) toOptionalPolicy() OptionalResolvePolicy {
 	if r.Policy == nil {
-		return mediamemory.OptionalResolvePolicy{}
+		return OptionalResolvePolicy{}
 	}
-	return mediamemory.OptionalResolvePolicy{
+	return OptionalResolvePolicy{
 		PreferApprovedBindings: r.Policy.PreferApprovedBindings,
 		AllowExternalSearch:    r.Policy.AllowExternalSearch,
 		MaxCandidatesPerSlot:   r.Policy.MaxCandidatesPerSlot,
@@ -293,7 +292,7 @@ type resolveResponse struct {
 // wire shape. godlike/06 SSOT: empty Layers is a legitimate
 // "fall-through exhausted" response — clients can branch on
 // len(Layers) == 0 to render an "asset unavailable" notice.
-func toResolvePlanDTO(p mediamemory.SceneVisualPlan) resolvePlanDTO {
+func toResolvePlanDTO(p SceneVisualPlan) resolvePlanDTO {
 	layers := make([]resolveLayerDTO, 0, len(p.Layers))
 	for _, l := range p.Layers {
 		layers = append(layers, resolveLayerDTO{
@@ -324,7 +323,7 @@ func toResolvePlanDTO(p mediamemory.SceneVisualPlan) resolvePlanDTO {
 // intentToDTO returns a pointer only when the intent carries
 // information. This keeps the JSON response backward-compatible:
 // legacy callers see no `intent` key when the brain left it empty.
-func intentToDTO(in mediamemory.SceneIntent) *resolveIntentDTO {
+func intentToDTO(in SceneIntent) *resolveIntentDTO {
 	if len(in.Entities) == 0 && len(in.Concepts) == 0 &&
 		len(in.Actions) == 0 && len(in.Keywords) == 0 {
 		return nil
@@ -340,7 +339,7 @@ func intentToDTO(in mediamemory.SceneIntent) *resolveIntentDTO {
 // traceToDTO returns a pointer only when the trace carries
 // information. This keeps the JSON response backward-compatible:
 // legacy callers see no `trace` key when the brain left it empty.
-func traceToDTO(in mediamemory.SceneResolutionTrace) *resolveTraceDTO {
+func traceToDTO(in SceneResolutionTrace) *resolveTraceDTO {
 	hasBackendCall := len(in.BackendCalls) > 0
 	hasReasons := len(in.Reasons) > 0
 	if in.NormalizedText == "" && !hasBackendCall && !hasReasons {

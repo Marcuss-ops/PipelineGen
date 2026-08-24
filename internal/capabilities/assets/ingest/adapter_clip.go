@@ -1,4 +1,4 @@
-package assets
+package ingest
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -21,7 +21,7 @@ type clipStoreAdapter struct {
 	// Phase 2 PR-3 — the original name collided with the
 	// `internal/domain/asset` package alias after the sed
 	// migration (sed's `\bassets\.` pattern matched the receiver
-	// field `a.assets.Upsert`, producing broken `a.asset.Upsert`
+	// field `a.ports.Upsert`, producing broken `a.asset.Upsert`
 	// references).
 	//
 	// repo is retained for the post-dispatch SoftDelete path

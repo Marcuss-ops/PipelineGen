@@ -4,9 +4,9 @@
 // Split rationale, see wire_services.go header.
 //
 // This file owns the COMPOSITION stage: the chain that:
-//  1. Opens wiring.Databases
+//  1. Opens Databases
 //  2. Runs migrations
-//  3. Calls NewComposition (builds *wiring.ComposeRoot with 12 bundles)
+//  3. Calls NewComposition (builds *ComposeRoot with 12 bundles)
 //  4. Constructs the local broker (PR-WORKER-RUNNER-INPROCESS-MIGRATION,
 //     July 2026)
 //  5. Wires JobFinalizer for Path B artifact-producing jobs
@@ -18,7 +18,7 @@
 // Cross-file deps (same package `app`, accessed without explicit imports):
 //   - WireRegistry (in orchestration file + registry.go)
 //   - NewComposition (composition.go)
-//   - startBackgroundJobs (lifecycle.go)
+//   - startBackgroundJobs (go)
 //   - buildCleanup (shutdown.go)
 //   - security.SetAllowedHosts (infra/security)
 //   - workernodes.NewWorkerNodesRepository + localbroker.New +
@@ -26,27 +26,26 @@
 //   - jobsfinalizer.New
 //
 // The composition-buildable assets (broker, finalizer, textTracks.FanOut
-// wiring) are stored on *wiring.ComposeRoot bundles so the orchestration stage
+// wiring) are stored on *ComposeRoot bundles so the orchestration stage
 // (wire_services_orchestration.go) can re-cast them as typed ports.
 //
 // Why NOT extend the split inside WireServices for assetSvc +
 // workerHandler construction: those two are built FROM root.* fields +
 // broker AFTER initCompositionMinimal has returned, and they live
-// exclusively in AppDeps.Handlers.WorkerHandler (not on wiring.ComposeRoot).
+// exclusively in AppDeps.Handlers.WorkerHandler (not on ComposeRoot).
 // Promoting them to composition would require adding fields to
-// wiring.ComposeRoot, which violates the godlike/06 SSOT contract for this
-// refactor (wiring.ComposeRoot contract must stay unchanged).
+// ComposeRoot, which violates the godlike/06 SSOT contract for this
+// refactor (ComposeRoot contract must stay unchanged).
 package wiring
 
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/policy"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
@@ -58,18 +57,18 @@ import (
 
 // initCompositionMinimal is the public-name entry for servers and tests
 // that do NOT need a parent ctx (defaults to context.Background()).
-func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
+func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
 	return initCompositionMinimalWithContext(context.Background(), cfg, log, mode, context.Background())
 }
 
-func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
+func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
 	ctx, cancel := context.WithCancel(parent)
 
 	hosts := append(cfg.Security.AllowedDownloadHosts, "youtube.com", "youtu.be", "www.youtube.com")
 	security.SetAllowedHosts(hosts)
 	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(hosts)))
 
-	dbs, err := wiring.InitDatabases(ctx, cfg, log)
+	dbs, err := InitDatabases(ctx, cfg, log)
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -84,7 +83,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		}
 	}
 
-	if err := wiring.RunAllMigrations(dbs, log); err != nil {
+	if err := RunAllMigrations(dbs, log); err != nil {
 		partialCleanup()
 		return nil, nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}

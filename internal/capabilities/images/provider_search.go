@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"golang.org/x/sync/singleflight"
 )
@@ -18,14 +17,14 @@ import (
 // provider search contract. It is search-only: it returns metadata and never
 // calls the image download/ingest path.
 type resolverSearchProvider struct {
-	resolver routing.ImageSearchResolver
+	resolver ImageSearchResolver
 	flight   singleflight.Group
 }
 
 // NewResolverSearchProvider constructs the application-owned image search
 // provider. The composition root supplies only the resolver port and receives
 // the common provider port back.
-func NewResolverSearchProvider(resolver routing.ImageSearchResolver) providers.SearchProvider {
+func NewResolverSearchProvider(resolver ImageSearchResolver) providers.SearchProvider {
 	return &resolverSearchProvider{resolver: resolver}
 }
 
@@ -54,14 +53,14 @@ func (p *resolverSearchProvider) Search(ctx context.Context, req providers.Searc
 }
 
 func (p *resolverSearchProvider) searchUncached(ctx context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
-	searcher, err := p.resolver.Resolve(routing.TerritoryRetrieved)
+	searcher, err := p.resolver.Resolve(TerritoryRetrieved)
 	if err != nil {
 		return providers.SearchResult{}, err
 	}
 	if searcher == nil {
 		return providers.SearchResult{}, errors.New("image search provider: retrieved searcher not wired")
 	}
-	hits, err := searcher.Search(ctx, routing.ImageFilter{
+	hits, err := searcher.Search(ctx, ImageFilter{
 		SubjectID: strings.TrimSpace(req.Query),
 		Origins:   []asset.ImageOrigin{asset.ImageOriginRetrieved},
 		Tags:      append([]string(nil), req.Filters.Tags...),

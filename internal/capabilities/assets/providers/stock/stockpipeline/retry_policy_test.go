@@ -51,7 +51,7 @@
 // pins the classifier + orchestrator invariants so any Qdrant
 // regression in those two layers is observable without the pool
 // infra being wired.
-package assets
+package stockpipeline
 
 import (
 	"context"
@@ -64,7 +64,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	pkgretry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 

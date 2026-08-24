@@ -14,9 +14,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/enrichment"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/google/uuid"
 )
 
@@ -107,7 +107,7 @@ func (c *RecoveryCommitter) CommitRecoveredText(ctx context.Context, assetID, la
 			return fmt.Errorf("registry event: %w", err)
 		}
 	}
-	if _, err := sqassets.CommitIndexRequestTx(ctx, tx, c.outbox, sqassets.IndexRequest{
+	if _, err := imagesregistry.CommitIndexRequestTx(ctx, tx, c.outbox, imagesregistry.IndexRequest{
 		AssetID: assetID, Source: "qdrant-recovery", MediaType: "video",
 		SourceVersion: sourceVersion, RequestedAt: time.Now().UTC(),
 	}); err != nil {

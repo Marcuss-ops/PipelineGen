@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

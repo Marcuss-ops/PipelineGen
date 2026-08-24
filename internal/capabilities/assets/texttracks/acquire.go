@@ -32,7 +32,7 @@
 // BackfillService surfaces this as a typed per-clip error;
 // operators can run a separate `text-tracks acquire` subcommand
 // (future Fase) to manually fill the gap.
-package assets
+package texttracks
 
 import (
 	"context"

@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -47,7 +47,7 @@ func RunMultilingualRender(args []string) error {
 		return err
 	}
 
-	assetIDs := splitCSV(*ids)
+	assetIDs := cli.SplitCSV(*ids)
 	if len(assetIDs) == 0 {
 		return fmt.Errorf("multilingual-render: --asset-ids is required")
 	}
@@ -64,7 +64,7 @@ func RunMultilingualRender(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return err
 	}

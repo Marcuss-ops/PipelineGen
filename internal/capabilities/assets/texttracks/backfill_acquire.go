@@ -22,7 +22,7 @@
 //     source is missing AND the acquirer
 //     is wired); consumes acquiredFromLabel
 //     to populate the AcquiredFrom field.
-package assets
+package texttracks
 
 import (
 	"context"

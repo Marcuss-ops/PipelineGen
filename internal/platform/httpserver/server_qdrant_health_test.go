@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 
 // TestNewServerWithHealth_CfgBranch_RegistersQdrantHealthRoutes gates

@@ -1,5 +1,5 @@
 // build_stock_enrichment.go — Gate 3b of BuildStockBundle: the
-// PR-011A/B/C RLM/LLM enrichment pass wiring. Extracted so the
+// PR-011A/B/C RLM/LLM enrichment pass  Extracted so the
 // BuildStockBundle orchestrator stays a thin gate dispatcher.
 package wiring
 

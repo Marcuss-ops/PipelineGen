@@ -39,14 +39,14 @@
 // spine behavior at runtime; this contract test is COMPLEMENTARY
 // (locks the registry contract + the struct field + the method
 // existence, while the existing tests lock the orchestrator behavior).
-package assets
+package stockpipeline
 
 import (
 	"strings"
 	"testing"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // SAFE compile-time pins (no nil-deref panic at package init).

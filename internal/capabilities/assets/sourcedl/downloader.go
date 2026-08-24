@@ -40,7 +40,7 @@
 // while mutable URLs may serve stale bytes. Provider flows (Drive file ID,
 // Artlist asset ID) that CAN observe versions should record them via their
 // own source types.
-package assets
+package sourcedl
 
 import (
 	"context"

@@ -23,7 +23,7 @@
 // sortable naming convention (e.g., "01_stage", "02_render", "03_upload",
 // "04_index"); a plain alphabetical name would sort incorrectly
 // ("cut", "publish", "render" instead of "cut", "render", "publish").
-package execution
+package steps
 
 import (
 	"context"

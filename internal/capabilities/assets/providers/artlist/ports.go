@@ -14,13 +14,13 @@
 //   - Errors are application-shaped: ErrEmpty, ErrUnavailable, ErrTimeout,
 //     ErrInvalidResponse, ErrEmptyResult let callers branch on intent, not on
 //     on the underlying transport.
-package assets
+package artlist
 
 import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -10,13 +10,10 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
@@ -32,7 +29,7 @@ type ImagesDeps struct {
 	GenAI     ImagesGenAIDeps
 	External  ImagesExternalDeps
 	Retrieval *retrieved.RetrievalProviderRegistry
-	Generated *generated.GenerationProviderRegistry
+	Generated *GenerationProviderRegistry
 }
 
 // ImagesCoreDeps holds platform-level dependencies (config + logger).
@@ -49,13 +46,13 @@ type ImagesStorageDeps struct {
 	ImageRepo    ImageRepository
 	DriveReader  DriveReader
 	Publisher    delivery.Publisher
-	DestResolver destinations.DestinationResolver
+	DestResolver DestinationResolver
 }
 
 // ImagesGenAIDeps holds AI-generation dependencies (LLM, metadata, styles, image gen).
 type ImagesGenAIDeps struct {
 	MetaWriter    SemanticPort
-	StyleRegistry *generation.StyleRegistry
+	StyleRegistry *StyleRegistry
 	ImageGen      ImageGenerator
 }
 

@@ -3,8 +3,8 @@ package wiring
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/duplicates"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // clipsRepoDuplicateSource adapts *assets.ClipsRepository to the

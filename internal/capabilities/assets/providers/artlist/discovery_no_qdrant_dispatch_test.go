@@ -13,7 +13,7 @@
 // The test exercises the discovery path via a stub Searcher that
 // returns a single canned candidate, and uses a recordingDispatcher
 // to count EnqueueAndIndex + SaveDiscoveredAsset invocations.
-package assets
+package artlist
 
 import (
 	"context"

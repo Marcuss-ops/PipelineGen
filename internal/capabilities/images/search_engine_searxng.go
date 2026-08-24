@@ -16,9 +16,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
 func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query string) string {
@@ -29,7 +28,7 @@ func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query str
 	return results[0].PreviewURL
 }
 
-func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query string, limit int) []routing.RetrievalSearchResult {
+func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query string, limit int) []retrieved.RetrievalSearchResult {
 	if s.cfg == nil || s.cfg.External.SearxngURL == "" {
 		s.log.Info("SearXNG not configured, skipping image search")
 		return nil
@@ -76,7 +75,7 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 	if limit <= 0 {
 		limit = 10
 	}
-	results := make([]routing.RetrievalSearchResult, 0, min(limit, len(data.Results)))
+	results := make([]retrieved.RetrievalSearchResult, 0, min(limit, len(data.Results)))
 	seen := make(map[string]struct{}, cap(results))
 	for _, r := range data.Results {
 		img := r.ImgSrc
@@ -93,7 +92,7 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 			continue
 		}
 		seen[img] = struct{}{}
-		results = append(results, routing.RetrievalSearchResult{
+		results = append(results, retrieved.RetrievalSearchResult{
 			PreviewURL: img, PageURL: firstNonEmptyImageURL(r.URL, img),
 			Width: r.Width, Height: r.Height,
 			License: "Unknown", Author: "Unknown",

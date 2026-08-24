@@ -1,4 +1,4 @@
-package assets
+package stockpipeline
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 

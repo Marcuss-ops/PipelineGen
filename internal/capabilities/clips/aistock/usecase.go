@@ -1,5 +1,5 @@
 // Package aistock — use case for AI-generated stock clip ingestion.
-package clips
+package aistock
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/visualanalysis"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/visualanalysis"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )

@@ -6,7 +6,7 @@
 // godlike/06 SSOT: this file is the SOLE canonical owner of the
 // "where is the source track for this (asset, kind)?" +
 // "which target languages should we materialize?" decisions.
-package assets
+package texttracks
 
 import (
 	"context"

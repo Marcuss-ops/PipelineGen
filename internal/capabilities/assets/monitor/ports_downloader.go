@@ -8,7 +8,7 @@
 // `monitor.ListChannelVideosQuery` ↔ `downloader.ListChannelVideosRequest`
 // at wire-up time, so the application-layer orchestration only sees
 // the monitor-canonical types.
-package assets
+package monitor
 
 import (
 	"context"

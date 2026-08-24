@@ -4,7 +4,7 @@
 // internal/application/middleware/requestlog keeps the dependency
 // direction canonical per AGENTS.md Pattern 0 (infrastructure
 // implements ports declared in application, never the reverse).
-package middleware
+package requestlog
 
 import (
 	"context"

@@ -1,10 +1,10 @@
 // Package clips composes the clip HTTP handlers. Application use cases are
 // constructed by internal/app and injected here through handler-specific deps.
-package assets
+package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/nonops"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"go.uber.org/zap"
 )
 

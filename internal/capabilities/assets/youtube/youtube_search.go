@@ -5,7 +5,7 @@
 // GET /api/clips/stats payload was merged here).
 // SearchCatalog searches the local catalog with structured filters.
 
-package assets
+package youtube
 
 import (
 	"fmt"

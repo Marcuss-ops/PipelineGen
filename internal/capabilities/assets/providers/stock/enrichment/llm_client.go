@@ -14,7 +14,7 @@
 // call. PR-011B migrates the composition root from stub → ollama
 // without touching this file (the typed contract is byte-stable
 // across the migration).
-package assets
+package enrichment
 
 import (
 	"context"

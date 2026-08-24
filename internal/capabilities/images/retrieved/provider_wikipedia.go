@@ -6,7 +6,7 @@
 // match and returns the page-image URL (original preferred, thumbnail
 // fallback). License defaults to CC-BY-SA-4.0 with "Wikipedia
 // Contributors" as author.
-package images
+package retrieved
 
 import (
 	"context"
@@ -15,8 +15,6 @@ import (
 	"time"
 
 	nethttp "net/http"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -63,7 +61,7 @@ func (p *WikipediaProvider) Healthy(ctx context.Context) error {
 	return nil
 }
 
-func (p *WikipediaProvider) Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+func (p *WikipediaProvider) Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
@@ -79,7 +77,7 @@ func (p *WikipediaProvider) Search(ctx context.Context, query string, opts routi
 		if wikiTitle != "" {
 			pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
 		}
-		return []routing.RetrievalSearchResult{{
+		return []RetrievalSearchResult{{
 			Provider: asset.ProviderWikipedia, Origin: asset.ImageOriginRetrieved,
 			PreviewURL: imgURL, PageURL: pageURL, Title: wikiTitle,
 			License: "CC-BY-SA-4.0", Author: "Wikipedia Contributors",

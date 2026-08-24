@@ -12,7 +12,6 @@ package images
 import (
 	"strconv"
 
-	applicationimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -41,13 +40,13 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 		slug = textutil.Slugify(query)
 	}
 
-	var searchResult *applicationimages.SearchResult
+	var searchResult *SearchResult
 	var err error
 	provider := asset.ImageProvider(c.Query("provider"))
 	limit := 1
 	if rawLimit := c.Query("limit"); rawLimit != "" {
 		parsed, parseErr := strconv.Atoi(rawLimit)
-		if parseErr != nil || parsed < 1 || parsed > applicationimages.MaxRetrievedImageBatch {
+		if parseErr != nil || parsed < 1 || parsed > MaxRetrievedImageBatch {
 			apiutil.BadRequest(c, "limit must be an integer between 1 and 100")
 			return
 		}

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/stretchr/testify/require"
 )

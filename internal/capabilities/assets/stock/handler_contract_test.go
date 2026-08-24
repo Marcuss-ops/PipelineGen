@@ -2,7 +2,7 @@
 //
 // Tests the HTTP contract of POST /api/stock-pipeline/run. No real
 // database, Drive, or yt-dlp — all dependencies are stubbed.
-package assets
+package stock
 
 import (
 	"bytes"

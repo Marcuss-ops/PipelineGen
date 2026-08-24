@@ -4,15 +4,15 @@
 // stage-root) live in server config; the transport ONLY validates the 4-field
 // payload and enqueues. Per godlike/07, drive_folder_id is mandatory (no
 // "delegate to publisher" fallback).
-package assets
+package clips
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 

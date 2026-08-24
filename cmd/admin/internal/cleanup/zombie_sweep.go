@@ -147,7 +147,7 @@ func formatDryRunReport(cutoff time.Time, reason string) string {
 // canonical helper now propagates to zombie_sweep automatically;
 // before the refactor, the hand-rolled concat would silently
 // drift if cfg adds a new override knob.
-func resolveDBPath(cfg *config.Config, dbPathFlag string) string {
+func ResolveDBPath(cfg *config.Config, dbPathFlag string) string {
 	if dbPathFlag != "" {
 		return dbPathFlag
 	}
@@ -188,7 +188,7 @@ func RunZombieSweep(args []string) error {
 	}
 	defer cleanup()
 
-	path := resolveDBPath(cfg, *dbPath)
+	path := cli.ResolveDBPath(cfg, *dbPath)
 	if path == "" {
 		return ErrZombieSweepNoDB
 	}

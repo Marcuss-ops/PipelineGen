@@ -109,3 +109,7 @@ func printControlPlaneReport(r capcontrol.Report) {
 	}
 	fmt.Printf("\nFINAL STATUS       %s\n", r.Status)
 }
+
+func runControlPlaneVerify(args []string) error {
+	return nil
+}

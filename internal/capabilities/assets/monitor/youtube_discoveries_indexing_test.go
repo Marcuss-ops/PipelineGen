@@ -4,7 +4,7 @@
 // + youtube_discoveries_test_scoring.go + youtube_discoveries_test_recovery.go
 // in package monitor.
 
-package assets
+package monitor
 
 import (
 	"context"

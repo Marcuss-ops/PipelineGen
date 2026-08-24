@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 )
 
 // AuditStore is the SQLite-backed adminconsole.AuditLogger.

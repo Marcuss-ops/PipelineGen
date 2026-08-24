@@ -23,7 +23,7 @@
 //   - Each invalid-URL test below exercises a distinct branch of
 //     pkg/urlutil/urlutil.go::ExtractVideoID that IS reachable when the
 //     URL field is non-empty but malformed.
-package assets
+package register
 
 import (
 	"net/http"
@@ -31,7 +31,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

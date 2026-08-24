@@ -1,6 +1,6 @@
 // Package app — build_bundles_artlist_publishers.go
 //
-// Artlist delivery-side wiring. The repo bundle below groups the
+// Artlist delivery-side  The repo bundle below groups the
 // SQLite-backed asset lifecycle repos (Processing/Version) + the
 // composition-root adapters that wrap the artlist-pkg port concretes
 // (Runs / DownloadAudit) + the license/release/rendition compliance
@@ -18,17 +18,17 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	"go.uber.org/zap"
 )
 
 // constructArtlistRepositories returns the publisher-side bundle built
-// from the wiring.ArtlistBundle's DB handle. Each error is wrapped with the
+// from the ArtlistBundle's DB handle. Each error is wrapped with the
 // canonical "WireArtlist: " prefix so existing log-grep pipelines and
 // e2e test assertions (tests/e2e/artlist_full_run_test.go) continue to
 // match verbatim.
@@ -53,10 +53,10 @@ import (
 // handle and bridged to the artlist port via the composition-root
 // adapter (internal/app/artlist_download_audit_adapter.go).
 func constructArtlistRepositories(
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	log *zap.Logger,
 ) (artlistRepositories, error) {
-	assetSQLiteStore := assets.NewAssetStoreSQLite(bundle.DB.DB, log)
+	assetSQLiteStore := imagesregistry.NewAssetStoreSQLite(bundle.DB.DB, log)
 
 	artlistRunsRepo, err := artlistsql.NewArtlistRunsRepository(bundle.DB.DB, log)
 	if err != nil {

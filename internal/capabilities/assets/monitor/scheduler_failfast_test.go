@@ -18,7 +18,7 @@
 // canonical ctor payload (per AGENTS.md Pattern 0); a separate
 // "production mode" bool would couple the package to a runtime
 // concept it does not own.
-package assets
+package monitor
 
 import (
 	"context"

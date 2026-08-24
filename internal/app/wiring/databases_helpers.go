@@ -83,7 +83,7 @@ type Databases struct {
 	Set      *storage.DatabaseSet
 	Main     *storage.SQLiteDB
 	Logs     *storage.SQLiteDB
-	DualPool *sqlite.DualPool
+	DualPool *storage.DualPool
 
 	// jobs is the EXPAND CANONICAL queue DB. nil when SplitDBEnabled is
 	// false (today's default); non-nil when the EXPAND flag is on. Both
@@ -119,7 +119,7 @@ func (d *Databases) Close() {
 //
 // Cut 6.2 sibling (July 2026): after the storage set opens, the
 // composition root constructs an additional DualPool via
-// sqlite.NewDualPool on the SAME primary file. The dual pool holds the
+// storage.NewDualPool on the SAME primary file. The dual pool holds the
 // writer (MaxOpenConns=1) + reader (MaxOpenConns=runtime.NumCPU())
 // per the canonical Cut 6.2 design. Repositories consumed by Build*
 // Bundle()s migrate to dbs.DualPool.Writer (default canonical writer
@@ -159,7 +159,7 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 	// tx_duration_seconds + sqlite_busy_total instrumentation; legacy
 	// dbs.Main.DB remains for health-check consumers that need the
 	// storage.SQLiteDB wrapper (infrahealth.NewSQLiteChecker).
-	dualPool, dErr := sqlite.NewDualPool(ctx, setCfg.PrimaryDBPath, runtime.NumCPU())
+	dualPool, dErr := storage.NewDualPool(ctx, setCfg.PrimaryDBPath, runtime.NumCPU())
 	if dErr != nil {
 		dbs.Close()
 		return nil, fmt.Errorf("init databases: NewDualPool: %w", dErr)

@@ -31,14 +31,14 @@
 //	POST /:source/cleanup                         -> Cleanup              (write+idem)
 //	POST /:source/folders/:id/manifest            -> RegenerateManifest   (write+idem)
 //	DELETE /:source/folders/:id                   -> TrashFolder          (delete+idem)
-package assets
+package clips
 
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 
 	"go.uber.org/zap"
 )

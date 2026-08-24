@@ -42,7 +42,7 @@
 // exported `SetJobTimeout(t, d)` + a `jobTimeout(t)` helper
 // protected by a `sync.RWMutex`. HC-1 removes the global in favour
 // of a typed Registry on the Worker: composition root calls
-// `WithRegistry(jobs.Compose())` (or any TimeoutResolver port) and
+// `WithRegistry(Compose())` (or any TimeoutResolver port) and
 // the runJob path looks up `j.Type` in the snapshot `timeouts
 // TimeoutMap`.
 //
@@ -66,6 +66,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+
 )
 
 var workerIDPrefix string
@@ -80,7 +81,7 @@ func init() {
 
 // Worker polls the domain Repository for queued jobs and dispatches
 // them to registered handlers. It depends on the domain Repository
-// interface, NOT on the concrete *jobs.Repository.
+// interface, NOT on the concrete *Repository.
 //
 // Polling surface (PR-Polling / ADR §D6.5):
 //   - BaseInterval is the canonical PollEvery (the first-claim cadence
@@ -168,7 +169,7 @@ type WorkerDeps struct {
 // arg — callers must use `WithRegistry(reg *Registry) *Worker` to
 // attach the typed config-port. This keeps NewWorker under the PR-D
 // 8-arg cap. Composition root (internal/app/registry.go::WireRegistry)
-// is required to call WithRegistry(jobs.Compose()) AFTER NewWorker.
+// is required to call WithRegistry(Compose()) AFTER NewWorker.
 //
 // Callers MUST pass a non-nil notifier; the worker pulls a fresh
 // channel each iteration. Today the production wiring passes the
@@ -198,12 +199,12 @@ func NewWorker(deps WorkerDeps) *Worker {
 //
 // Composition root pattern:
 //
-//	w := jobs.NewWorker(...).WithRegistry(jobs.Compose())
+//	w := NewWorker(...).WithRegistry(Compose())
 //
 // Nil-tolerant: if reg is nil, the worker falls back to the canonical
 // 10-minute default for every job type. This preserves the legacy
 // "no timeouts configured" behaviour that test fixtures used to rely
-// on; production wiring ALWAYS supplies jobs.Compose().
+// on; production wiring ALWAYS supplies Compose().
 //
 // Returns the receiver to allow builder-style chaining at the
 // composition site.
@@ -234,7 +235,7 @@ func (w *Worker) WithRegistry(reg *Registry) *Worker {
 // Mirrors the WithRegistry fluent-setter precedent (HC-1 June 2026)
 // so the composition root uses an idiomatic builder-style chain:
 //
-//	jobs.NewWorker(...).WithRegistry(reg).WithBroker(cp)
+//	NewWorker(...).WithRegistry(reg).WithBroker(cp)
 //
 // Nil-tolerant: a nil broker means the worker falls through to the
 // legacy w.repo.Complete path inside runJob (worker_execution.go).
@@ -268,7 +269,7 @@ func (w *Worker) WithJobRegistry(reg capjobregistry.Registry) *Worker {
 // fluent-setter precedent so the composition root uses builder-style
 // chaining:
 //
-//	jobs.NewWorker(...).WithRegistry(reg).WithBroker(cp).WithObserver(obs)
+//	NewWorker(...).WithRegistry(reg).WithBroker(cp).WithObserver(obs)
 //
 // Nil-tolerant: a nil observer means runJob skips instrumentation
 // entirely (legacy behaviour preserved for fixtures that don't build

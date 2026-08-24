@@ -34,7 +34,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/destination"
 )
 
 // VoiceoverGroupResolver is the canonical port that the script

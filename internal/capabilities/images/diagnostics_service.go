@@ -1,7 +1,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"go.uber.org/zap"
 )
 

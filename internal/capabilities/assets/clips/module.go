@@ -1,18 +1,18 @@
 // Package clips exposes the canonical Clips HTTP module.
-package assets
+package clips
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/processing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/bulk"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/bulk"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/processing"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/publication"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/publication"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/gin-gonic/gin"
@@ -107,16 +107,16 @@ func (m *ClipsModule) JobHandlers() []api.JobHandlerDescriptor {
 // cases. No repository, processing or delivery orchestration occurs here.
 func Build(deps Dependencies) (*ClipsModule, error) {
 	if deps.Handlers.Search.ClipsRepo == nil {
-		return nil, fmt.Errorf("clips.Build: Search.ClipsRepo is required")
+		return nil, fmt.Errorf("Build: Search.ClipsRepo is required")
 	}
 	if deps.Handlers.NonOps.JobsSvc == nil {
-		return nil, fmt.Errorf("clips.Build: NonOps.JobsSvc is required")
+		return nil, fmt.Errorf("Build: NonOps.JobsSvc is required")
 	}
 	if deps.Transport.EnabledFunc == nil {
-		return nil, fmt.Errorf("clips.Build: Transport.EnabledFunc is required")
+		return nil, fmt.Errorf("Build: Transport.EnabledFunc is required")
 	}
 	if deps.Handlers.Ingest.EnrichUC == nil {
-		return nil, fmt.Errorf("clips.Build: Ingest.EnrichUC is required")
+		return nil, fmt.Errorf("Build: Ingest.EnrichUC is required")
 	}
 
 	log := deps.Transport.Logger
@@ -130,7 +130,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 
 	handler, err := NewHandlerStrict(deps.Handlers)
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: %w", err)
+		return nil, fmt.Errorf("Build: %w", err)
 	}
 
 	catalogDesc, err := catalog.Build(catalog.Dependencies{
@@ -143,7 +143,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:     deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: catalog sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: catalog sub-descriptor: %w", err)
 	}
 	ingestDesc, err := ingest.Build(ingest.Dependencies{
 		Ingest:      handler.ingest,
@@ -153,7 +153,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:  deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: ingest sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: ingest sub-descriptor: %w", err)
 	}
 	processingDesc, err := processing.Build(processing.Dependencies{
 		Processing:  handler.nonops,
@@ -163,7 +163,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:  deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: processing sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: processing sub-descriptor: %w", err)
 	}
 	publicationDesc, err := publication.Build(publication.Dependencies{
 		Publication: handler.actions,
@@ -173,7 +173,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:  deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: publication sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: publication sub-descriptor: %w", err)
 	}
 	operationsDesc, err := operations.Build(operations.Dependencies{
 		Ops:         handler.ops,
@@ -183,7 +183,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:  deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: operations sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: operations sub-descriptor: %w", err)
 	}
 	bulkDesc, err := bulk.Build(bulk.Dependencies{
 		Transport:   handler.bulkTransport,
@@ -193,7 +193,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		ModuleOpts:  deps.Transport.ModuleOpts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips.Build: bulk sub-descriptor: %w", err)
+		return nil, fmt.Errorf("Build: bulk sub-descriptor: %w", err)
 	}
 
 	mod := api.NewRouteModule(

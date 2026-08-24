@@ -4,14 +4,13 @@ package wiring
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // wireYoutubeCatalogJobBindings registers catalog sync + youtube clip extract
 // handlers into jobs.Service. Extracted from NewComposition per PG-028.
-func wireYoutubeCatalogJobBindings(sync *wiring.SyncBundle, domains *wiring.DomainBundle, jobs *wiring.JobsBundle) error {
+func wireYoutubeCatalogJobBindings(sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle) error {
 	if sync.CatalogSync != nil && jobs.Service != nil {
 		if err := sync.CatalogSync.RegisterHandler(jobs.Service); err != nil {
 			return fmt.Errorf("catalogsync.catalog_sync: %w", err)
@@ -31,7 +30,7 @@ func wireYoutubeCatalogJobBindings(sync *wiring.SyncBundle, domains *wiring.Doma
 // appendYoutubeCatalogCriticalValidators populates the critical-handler
 // validators slice with catalog sync + youtube clip extract bindings.
 // Extracted from NewComposition per PG-028.
-func appendYoutubeCatalogCriticalValidators(sync *wiring.SyncBundle, domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
+func appendYoutubeCatalogCriticalValidators(sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
 	if sync.CatalogSync != nil && jobs.Service != nil && jobs != nil {
 		catSync := sync.CatalogSync
 		*validators = append(*validators,

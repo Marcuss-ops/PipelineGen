@@ -1,6 +1,6 @@
 //go:build integration
 
-package httpserver
+package transport
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
-	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/platform/health"
 )

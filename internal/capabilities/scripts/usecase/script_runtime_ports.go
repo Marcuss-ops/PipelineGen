@@ -32,7 +32,7 @@ package usecase
 import (
 	"context"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

@@ -48,7 +48,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -72,7 +71,7 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -171,7 +170,7 @@ func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -203,7 +202,7 @@ func TestComposition_NilObligatory_BuildSearchBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -245,7 +244,7 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 	// handle directly. Underlying *sql.DB is reached via the
 	// embedded `.DB` accessor only for callers (e.g.
 	// clipindexer.NewService) that have not yet been migrated.
-	bundle, err := wiring.BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
+	bundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.Repo)

@@ -39,7 +39,7 @@
 //  4. If source is missing AND acquirer is nil → surface
 //     ErrNoSourceTrack; the operator can run a future
 //     `acquire` subcommand to fill the gap.
-package assets
+package texttracks
 
 import (
 	"context"

@@ -317,17 +317,6 @@ func scanQdrantImportBanFile(path, relPath string, r *report.Report) {
 	}
 }
 
-// hasAnyPathPrefix returns true if relPath starts with any of
-// the given prefix strings. Mirrors a family-wide idiom in the
-// scan package.
-func hasAnyPathPrefix(relPath string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(relPath, p) {
-			return true
-		}
-	}
-	return false
-}
 
 // truncateQdrantImportBan bounds the snippet surface at 120 chars
 // to keep report JSON size stable. Mirrors truncateForReport in

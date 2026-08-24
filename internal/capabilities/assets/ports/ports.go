@@ -2,7 +2,7 @@
 // application/assets/ and capabilities/assets/ without creating circular
 // imports. Per godlike/06 SSOT: one canonical owner per fact — these types
 // live here so capabilities never imports application.
-package assets
+package ports
 
 import (
 	"context"
@@ -67,4 +67,32 @@ type (
 
 type MediaDownloader interface {
 	Download(ctx context.Context, url string) (io.ReadCloser, error)
+}
+
+// ── MaintenanceRepository ───────────────────────────────────────────
+
+type MaintenanceRepository interface {
+	DeleteOldAPIRequests(ctx context.Context, retentionDays int) (int64, error)
+	WALCheckpoint(ctx context.Context, mode string) error
+	IncrementalVacuum(ctx context.Context, pages int) error
+	FullVacuum(ctx context.Context) error
+	ScanLocalOrphans(ctx context.Context, batch int) ([]LocalOrphanCandidate, error)
+	ScanDriveOrphans(ctx context.Context, batch int) ([]DriveOrphanCandidate, error)
+	MarkLocalOrphan(ctx context.Context, id string, detectedAt time.Time) error
+	MarkDriveOrphan(ctx context.Context, id string, detectedAt time.Time) error
+}
+
+type LocalOrphanCandidate struct {
+	ID             string
+	LocalPath      string
+	Size           int64
+	AlreadyOrphan  string
+	PrevDetectedAt string
+}
+
+type DriveOrphanCandidate struct {
+	ID             string
+	DriveLink      string
+	AlreadyOrphan  string
+	PrevDetectedAt string
 }

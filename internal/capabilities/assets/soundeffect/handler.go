@@ -5,7 +5,7 @@
 // semantic.MetadataWriterPort, *drive.Resolver. Composition root (in
 // internal/app/module_assets.go) injects the adapters — see
 // internal/app/adapters_soundeffect.go for the concrete implementations.
-package assets
+package soundeffect
 
 import (
 	"errors"
@@ -18,17 +18,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // errSfxDispatcherUnavailable is the fail-closed sentinel surfaced in the
-// HTTP body when the canonical sfxports.DispatcherPort is not wired at
+// HTTP body when the canonical DispatcherPort is not wired at
 // composition time. The 503 status + this message together mark the
 // regression shape the operator checks for when investigating
 // "Generate returned empty clip_id" — see
@@ -38,18 +37,18 @@ const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMut
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
-	clipsRepo  sfxports.ClipRepositoryPort
-	metaWriter sfxports.SemanticMetadataWriterPort
-	resolver   sfxports.DestinationResolverPort
+	clipsRepo  ClipRepositoryPort
+	metaWriter SemanticMetadataWriterPort
+	resolver   DestinationResolverPort
 	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
-	// the canonical narrow port sfxports.DispatcherPort wrapping the
+	// the canonical narrow port DispatcherPort wrapping the
 	// production *outbox.Dispatcher. Required for the Generate write
 	// path; nil causes Generate to return HTTP 503 (fail-closed) — this
 	// is the documented contract replacement for the legacy
 	// "if h.clipsRepo != nil { h.clipsRepo.Upsert }" soft-fallback that
 	// the Wave 22 task-2 handler migration removes.
-	dispatcher             sfxports.DispatcherPort
-	publisher              sfxports.PublisherPort // F2.10: legacy driveUploader field RETIRED (override brutal) — Publisher is the single canonical Drive-write canal
+	dispatcher             DispatcherPort
+	publisher              PublisherPort // F2.10: legacy driveUploader field RETIRED (override brutal) — Publisher is the single canonical Drive-write canal
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
 	log                    *zap.Logger
@@ -59,11 +58,11 @@ type Handler struct {
 // keeps the constructor under the archcheck 8-parameter cap while
 // making the call sites self-documenting.
 type HandlerDeps struct {
-	ClipsRepo              sfxports.ClipRepositoryPort
-	MetaWriter             sfxports.SemanticMetadataWriterPort
-	Resolver               sfxports.DestinationResolverPort
-	Dispatcher             sfxports.DispatcherPort
-	Publisher              sfxports.PublisherPort
+	ClipsRepo              ClipRepositoryPort
+	MetaWriter             SemanticMetadataWriterPort
+	Resolver               DestinationResolverPort
+	Dispatcher             DispatcherPort
+	Publisher              PublisherPort
 	SoundEffectsRootFolder string
 	ProcessRunner          appassets.ProcessRunner
 	Log                    *zap.Logger
@@ -97,7 +96,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 }
 
 // SetMetaWriter updates the metadata writer (late-binding support).
-func (h *Handler) SetMetaWriter(mw sfxports.SemanticMetadataWriterPort) {
+func (h *Handler) SetMetaWriter(mw SemanticMetadataWriterPort) {
 	h.metaWriter = mw
 }
 
@@ -171,7 +170,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	}
 
 	// 3. Resolve destination paths (typed-port adapter around drive.Resolver).
-	destReq := sfxports.AssetDestinationRequest{
+	destReq := AssetDestinationRequest{
 		Source:    "sound_effect",
 		MediaType: "sound_effect",
 		Group:     name,
@@ -207,7 +206,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	searchText := name + " sound effect sfx audio"
 
 	if h.metaWriter != nil {
-		writeReq := sfxports.MetadataWriteRequest{
+		writeReq := MetadataWriteRequest{
 			AssetID:   "sfx_" + hashStr[:12],
 			AssetType: "audio",
 			MediaType: "sound_effect",

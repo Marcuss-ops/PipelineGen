@@ -17,7 +17,7 @@ import (
 	"errors"
 	"testing"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )

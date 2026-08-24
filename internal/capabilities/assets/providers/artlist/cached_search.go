@@ -1,4 +1,4 @@
-package assets
+package artlist
 
 // cached_search.go is the split-by-capability (Phase 7) CAPABILITY
 // DECLARATION file for the "cached search" bucket.

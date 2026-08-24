@@ -21,7 +21,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/projectionreconciler"
+	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation/projection"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 

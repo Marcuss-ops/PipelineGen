@@ -1,4 +1,4 @@
-package assets
+package monitor
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // ── processVideo: per-video dispatch (cheap lexical + AI gate + ledger) ─

@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // LifecycleManager is the minimal lifecycle contract the server needs.
@@ -47,7 +47,7 @@ type Server struct {
 	appRouter           *Router // reference to the Router for cleanup
 	httpServer          *http.Server
 	lifecycle           LifecycleManager
-	imageSearchResolver routing.ImageSearchResolver // FASE 7 singleton (server-side)
+	imageSearchResolver any // FASE 7 singleton (server-side)
 }
 
 // NewServer creates a new HTTP server with module registry support.
@@ -89,7 +89,7 @@ type ServerDeps struct {
 	Handlers  InternalHandlers
 	Lifecycle LifecycleManager
 	Health    any
-	Ready     *systemhealth.ReadyChecker
+	Ready     any
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
 	QdrantHealth any
@@ -99,11 +99,7 @@ type ServerDeps struct {
 	ModelsSidecarURL string
 	// ImageSearchResolver (FASE 7, July 2026): the canonical routing
 	// singleton reached from app.DomainBundle.ImageSearchResolver.
-	// Server holds it for downstream handler injection (the
-	// /api/images/search?territory=&subject= handler is a follow-up
-	// commit that consumes this field; today it is exposed for
-	// composition-side consumers and lifecycle Stop()).
-	ImageSearchResolver routing.ImageSearchResolver
+	ImageSearchResolver any
 }
 
 // NewServerWithHealth creates a new HTTP server from grouped dependency bundles.

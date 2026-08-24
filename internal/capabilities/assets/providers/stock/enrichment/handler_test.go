@@ -43,7 +43,7 @@
 // (no real SQLite, no real ollama). The test surface is
 // hermetic and idempotent — `go test -short -count=1` passes
 // deterministically on any Go toolchain.
-package assets
+package enrichment
 
 import (
 	"context"
@@ -53,8 +53,8 @@ import (
 
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // errorAssetPublishedEmitter is a hermetic test double that
@@ -65,7 +65,7 @@ type errorAssetPublishedEmitter struct {
 	err error
 }
 
-func (e *errorAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload outbox.AssetPublishedRequestV1) error {
+func (e *errorAssetPublishedEmitter) EmitAssetPublished(ctx context.Context, payload jobs.AssetPublishedRequestV1) error {
 	return e.err
 }
 
@@ -216,7 +216,7 @@ func TestEnrichmentHandler_HandleJob_EmptyChunkID_ReturnsTerminalSentinel(t *tes
 	}
 
 	// Job with empty payload (chunk_id not parseable).
-	job := &appjobs.Job{ID: "job-1", Payload: []byte(`{}`)}
+	job := &jobs.Job{ID: "job-1", Payload: []byte(`{}`)}
 
 	_, err = h.HandleJob(context.Background(), job, nil)
 	if !errors.Is(err, ErrEnrichmentChunkNotFound) {
@@ -243,7 +243,7 @@ func TestEnrichmentHandler_HandleJob_LLMUnavailable_ReturnsRetryableSentinel(t *
 	}
 
 	payload, _ := json.Marshal(map[string]string{"chunk_id": "asset-1"})
-	job := &appjobs.Job{ID: "job-1", Payload: payload}
+	job := &jobs.Job{ID: "job-1", Payload: payload}
 
 	_, err = h.HandleJob(context.Background(), job, nil)
 	if !errors.Is(err, ErrEnrichmentLLMUnavailable) {
@@ -301,7 +301,7 @@ func TestEnrichmentHandler_HandleJob_ValidChunkID_InvokesLLMClient(t *testing.T)
 	}
 
 	payload, _ := json.Marshal(map[string]string{"chunk_id": "asset-1"})
-	job := &appjobs.Job{ID: "job-1", Payload: payload}
+	job := &jobs.Job{ID: "job-1", Payload: payload}
 
 	result, err := h.HandleJob(context.Background(), job, nil)
 	if err != nil {
@@ -350,7 +350,7 @@ func TestEnrichmentHandler_HandleJob_ValidChunkID_InvokesLLMClient(t *testing.T)
 	if result["destination"] != "stock" {
 		t.Errorf("result.destination mismatch: got %v", result["destination"])
 	}
-	if result["schema_version"] != outbox.AssetPublishedSchemaVersion {
+	if result["schema_version"] != jobs.AssetPublishedSchemaVersion {
 		t.Errorf("result.schema_version mismatch: got %v", result["schema_version"])
 	}
 }
@@ -367,7 +367,7 @@ func TestEnrichmentHandler_HandleJob_MalformedPayload_ReturnsTypedSentinel(t *te
 	}
 
 	// Non-JSON payload (invalid syntax).
-	job := &appjobs.Job{ID: "job-1", Payload: []byte(`{not valid json`)}
+	job := &jobs.Job{ID: "job-1", Payload: []byte(`{not valid json`)}
 
 	_, err = h.HandleJob(context.Background(), job, nil)
 	if !errors.Is(err, ErrEnrichmentPayloadInvalid) {
@@ -468,7 +468,7 @@ func TestEnrichmentHandler_HandleJob_HappyPath_EmitsV1Envelope(t *testing.T) {
 	}
 
 	payload, _ := json.Marshal(map[string]string{"chunk_id": "stock:abc:chunk:0"})
-	job := &appjobs.Job{ID: "job-1", Payload: payload}
+	job := &jobs.Job{ID: "job-1", Payload: payload}
 
 	result, err := h.HandleJob(context.Background(), job, nil)
 	if err != nil {
@@ -485,8 +485,8 @@ func TestEnrichmentHandler_HandleJob_HappyPath_EmitsV1Envelope(t *testing.T) {
 
 	// Assert the canonical v1 envelope wire-shape.
 	got := emitter.LastPayload
-	if got.SchemaVersion != outbox.AssetPublishedSchemaVersion {
-		t.Errorf("SchemaVersion mismatch: got %q, want %q", got.SchemaVersion, outbox.AssetPublishedSchemaVersion)
+	if got.SchemaVersion != jobs.AssetPublishedSchemaVersion {
+		t.Errorf("SchemaVersion mismatch: got %q, want %q", got.SchemaVersion, jobs.AssetPublishedSchemaVersion)
 	}
 	if got.AssetID != "stock:abc:chunk:0" {
 		t.Errorf("AssetID mismatch: got %q", got.AssetID)
@@ -564,7 +564,7 @@ func TestEnrichmentHandler_HandleJob_IdempotencyKeyStable(t *testing.T) {
 			t.Fatalf("iteration %d: NewEnrichmentHandler: %v", i, err)
 		}
 		payload, _ := json.Marshal(map[string]string{"chunk_id": "stock:abc:chunk:0"})
-		job := &appjobs.Job{ID: "job-1", Payload: payload}
+		job := &jobs.Job{ID: "job-1", Payload: payload}
 		if _, err := h.HandleJob(context.Background(), job, nil); err != nil {
 			t.Fatalf("iteration %d: HandleJob: %v", i, err)
 		}
@@ -608,7 +608,7 @@ func TestEnrichmentHandler_HandleJob_EmitterError_ReturnsRetryableSentinel(t *te
 		t.Fatalf("NewEnrichmentHandler: %v", err)
 	}
 	payload, _ := json.Marshal(map[string]string{"chunk_id": "stock:abc:chunk:0"})
-	job := &appjobs.Job{ID: "job-1", Payload: payload}
+	job := &jobs.Job{ID: "job-1", Payload: payload}
 
 	_, err = h.HandleJob(context.Background(), job, nil)
 	if !errors.Is(err, ErrEnrichmentEmitFailed) {

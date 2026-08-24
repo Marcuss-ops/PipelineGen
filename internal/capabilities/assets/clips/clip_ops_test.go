@@ -11,7 +11,7 @@
 //     TestHandler_VerifyClip_NoService_503)
 //   - test voiceover                 (TestHandler_Cleanup_VoiceoverSource_ReportsOrphan)
 //   - test Drive non disponibile     (Stub Drive returned empty MD5 + orphan path)
-package assets
+package clips
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

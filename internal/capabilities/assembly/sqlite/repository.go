@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	assembly "github.com/Marcuss-ops/PipelineGen/internal/application/assembly"
+	assembly "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assembly"
 	contract "github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 )
 

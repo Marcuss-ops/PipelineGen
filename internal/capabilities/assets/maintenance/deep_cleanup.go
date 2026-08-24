@@ -1,4 +1,4 @@
-package assets
+package maintenance
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 

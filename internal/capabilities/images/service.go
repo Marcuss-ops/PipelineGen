@@ -15,22 +15,10 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 )
 
-// ── Compile-time satisfaction pins ──────────────────────────────────
 
-var (
-	_ retrieved.SearchServicePort = (*ImageStorageService)(nil)
-	_ retrieved.IngestServicePort = (*ImageStorageService)(nil)
-	_ routing.Service             = (*retrieved.SearchServiceAdapter)(nil)
-	_ routing.Service             = (*generated.GeneratedSearchServiceAdapter)(nil)
-	_ catalog.CatalogSearch       = (*catalog.InMemoryCatalogSearch)(nil)
-)
 
 // userAgent identifies the service to upstream Wikimedia and image providers.
 // A stable, descriptive agent is required for provider rate-limit handling;
@@ -50,11 +38,11 @@ type Service struct {
 	Store      *ImageStorageService
 	Meta       *MetadataService
 	Diag       *DiagnosticsService
-	Styles     *generation.StyleRegistry
+	Styles     *StyleRegistry
 }
 
-// StylesRegistry returns the held generation.StyleRegistry, or nil.
-func (s *Service) StylesRegistry() *generation.StyleRegistry {
+// StylesRegistry returns the held StyleRegistry, or nil.
+func (s *Service) StylesRegistry() *StyleRegistry {
 	if s == nil {
 		return nil
 	}
@@ -133,7 +121,7 @@ func NewService(deps ImagesDeps) *Service {
 
 	generatedRegistry := deps.Generated
 	if generatedRegistry == nil {
-		generatedRegistry = generated.NewDefaultProviderRegistry(log, NewImageGeneratorAdapter(deps.GenAI.ImageGen))
+		generatedRegistry = NewDefaultProviderRegistry(log, NewImageGeneratorAdapter(deps.GenAI.ImageGen))
 	}
 
 	gen := NewGenerationService(generatedRegistry, deps.GenAI.StyleRegistry, log, store)

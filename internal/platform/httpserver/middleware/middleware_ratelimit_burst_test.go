@@ -1,4 +1,4 @@
-package httpserver
+package middleware
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	mwapp "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	mwapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/gin-gonic/gin"
 )
 

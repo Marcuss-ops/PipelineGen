@@ -8,12 +8,12 @@
 // The concrete implementation is the MediaMemory-backed adapter wired
 // in the composition root (internal/app); the previous toy
 // defaultRanker has been removed.
-package brain
+package ranker
 
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
 )
 
 // CandidateRanker is the canonical port that orders a pool of

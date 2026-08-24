@@ -16,9 +16,10 @@ import (
 	"context"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // ErrImageGenNotImplemented is the typed sentinel returned when the
@@ -59,21 +60,21 @@ func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
 // NewService time per PR-IMAGES-SHIM-REMOVAL, 2026-07-04). The
 // pre-removal pattern of constructing a fresh NewJobHandler(...)
 // per call is RETIRED — composition root owns the canonical wiring.
-func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	if s == nil || s.JobHandler == nil {
-		return nil, fmt.Errorf("images.Service.HandleJob: JobHandler not wired (composition must call NewService): %w", appjobs.ErrMissingDeps)
+		return nil, fmt.Errorf("images.Service.HandleJob: JobHandler not wired (composition must call NewService): %w", jobs.ErrMissingDeps)
 	}
 	return s.JobHandler.HandleJob(ctx, j, tools)
 }
 
 // RegisterHandler registers the image generation job handler with the
 // async job system.
-func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
+func (s *Service) RegisterHandler(jobsSvc *jobs.Service) error {
 	if jobsSvc == nil {
-		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil: %w", appjobs.ErrMissingDeps)
+		return fmt.Errorf("images.Service.RegisterHandler: jobsSvc is nil: %w", jobs.ErrMissingDeps)
 	}
 	if s.JobHandler == nil {
-		return fmt.Errorf("images.Service.RegisterHandler: JobHandler not wired (composition must call NewService): %w", appjobs.ErrMissingDeps)
+		return fmt.Errorf("images.Service.RegisterHandler: JobHandler not wired (composition must call NewService): %w", jobs.ErrMissingDeps)
 	}
 	if err := s.JobHandler.RegisterHandler(jobsSvc); err != nil {
 		return fmt.Errorf("images.Service.RegisterHandler: %w", err)

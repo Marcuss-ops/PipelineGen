@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -20,8 +19,8 @@ import (
 // domain's composition glue. The orchestrator owns ONLY the shared
 // deps (mutations dispatcher) and the bundle assembly.
 //
-// Requires outbox.Dispatcher (injected via wiring.OutboxBundle, last arg).
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle, mediaConfig mediaexec.ExecutionConfig) (*wiring.DomainBundle, error) {
+// Requires outbox.Dispatcher (injected via OutboxBundle, last arg).
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig) (*DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
@@ -36,7 +35,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
-	bundle := &wiring.DomainBundle{}
+	bundle := &DomainBundle{}
 
 	// ── Media domain: YouTube clip pipeline ──────────────────
 	voMetaWriter, clipWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)

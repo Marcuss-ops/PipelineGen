@@ -20,7 +20,7 @@ package wiring
 import (
 	"testing"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/stretchr/testify/require"
 )
 

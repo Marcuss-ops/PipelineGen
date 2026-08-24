@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -88,7 +88,7 @@ func TestFetchEmbeddingCandidates_EligibleOnly(t *testing.T) {
 	// Legacy row with empty taxonomy → never a candidate.
 	seedEmbeddingCandidate(t, db, "a4", "youtube", "clip", "", "", "", "", "", "", "")
 
-	cands, err := fetchEmbeddingCandidates(context.Background(), db, backfill.Deps{OnlyMissing: true}, nil)
+	cands, err := fetchEmbeddingCandidates(context.Background(), db, indexing.Deps{OnlyMissing: true}, nil)
 	if err != nil {
 		t.Fatalf("fetchEmbeddingCandidates: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestFetchEmbeddingCandidates_AllModeIncludesComplete(t *testing.T) {
 	seedEmbeddingCandidate(t, db, "a1", "stock", "video", "stock_video", "stock", "stock", "[1]", "[1]", "[1]", "[1]")
 	seedEmbeddingCandidate(t, db, "a2", "stock", "video", "stock_video", "stock", "stock", "", "", "", "")
 
-	cands, err := fetchEmbeddingCandidates(context.Background(), db, backfill.Deps{OnlyMissing: false}, nil)
+	cands, err := fetchEmbeddingCandidates(context.Background(), db, indexing.Deps{OnlyMissing: false}, nil)
 	if err != nil {
 		t.Fatalf("fetchEmbeddingCandidates: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestFetchEmbeddingCandidates_SourceFilterAndResume(t *testing.T) {
 	seedEmbeddingCandidate(t, db, "b2", "youtube", "video", "clip", "stock", "youtube", "", "", "", "")
 
 	// Source filter: only stock.
-	cands, err := fetchEmbeddingCandidates(context.Background(), db, backfill.Deps{OnlyMissing: true, Source: "stock"}, nil)
+	cands, err := fetchEmbeddingCandidates(context.Background(), db, indexing.Deps{OnlyMissing: true, Source: "stock"}, nil)
 	if err != nil {
 		t.Fatalf("fetchEmbeddingCandidates: %v", err)
 	}
@@ -138,8 +138,8 @@ func TestFetchEmbeddingCandidates_SourceFilterAndResume(t *testing.T) {
 	}
 
 	// Resume: continue after b1 → only b2.
-	cp := &backfill.Checkpoint{LastProcessedID: "b1"}
-	cands, err = fetchEmbeddingCandidates(context.Background(), db, backfill.Deps{OnlyMissing: true, Resume: true}, cp)
+	cp := &indexing.Checkpoint{LastProcessedID: "b1"}
+	cands, err = fetchEmbeddingCandidates(context.Background(), db, indexing.Deps{OnlyMissing: true, Resume: true}, cp)
 	if err != nil {
 		t.Fatalf("fetchEmbeddingCandidates resume: %v", err)
 	}

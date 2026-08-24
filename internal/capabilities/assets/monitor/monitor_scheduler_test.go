@@ -1,4 +1,4 @@
-package assets
+package monitor
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 	"go.uber.org/zap"

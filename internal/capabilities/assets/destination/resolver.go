@@ -1,7 +1,7 @@
 // Package destination provides a DB-backed resolver that maps topic names
 // to Drive folder IDs via the asset-tree service. Extracted from
 // voiceover/groups_resolver.go (PR 6, June 2026).
-package assets
+package destination
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 )
 
 // Resolver is a thin DB-backed category resolver for mapping topic names

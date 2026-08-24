@@ -15,7 +15,7 @@
 // BulkUploadTransport.RegisterRoutes) is now covered by the
 // composition-root E2E + archcheck gate; this transport-level test
 // verifies the route is mounted and the handler non-404 forwards.
-package assets
+package clips
 
 import (
 	"fmt"

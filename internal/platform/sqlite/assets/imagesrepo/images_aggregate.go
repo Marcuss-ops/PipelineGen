@@ -11,38 +11,23 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // FASE 6 (July 2026, image-territories action plan): ListImages is the
 // FASE 6 canonical replacement for ListImagesBySubject. Takes a
-// routing.RepositoryListFilter and returns routing.RepositoryImageRow
-// rows (FASE 8: renamed from routing.ImageFilter/routing.ImageSearchResult
-// to disambiguate from the canonical routing-layer DTOs that the
-// ImageSearcher interface returns — the SQLite adapter needs the
-// underlying Subject/Slug/Description columns to populate the join
-// projection, so the read-model shape carries extra fields).
-// See deprecation record PR-IMAGE-LISTIMAGESBYSUBJECT for the migration
-// narrative; the physical removal of ListImagesBySubject is queued at
-// the Wave 14 mega-package split gate, NOT in this commit.
-//
-// Implementation: routes against media_assets LEFT OUTER JOIN
-// generated_image_details (gid) so StyleID/StyleVersion are populated
-// for generated rows. Filter.Origins filtering hard-filters by
-// media_assets.origin — when called from the generated-territory
-// searcher (searcher_generated.go), Origins is pre-narrowed to
-// [OriginGenerated], so no retrieved rows leak into the result.
-func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.RepositoryListFilter) ([]routing.RepositoryImageRow, error) {
+// asset.RepositoryListFilter and returns asset.RepositoryImageRow
+// rows.
+func (r *ImagesRepository) ListImages(ctx context.Context, filter asset.RepositoryListFilter) ([]asset.RepositoryImageRow, error) {
 	if r == nil {
 		return nil, nil
 	}
 	limit := filter.Limit
-	if limit <= 0 || limit > routing.MaxListImagesLimit {
-		if limit > routing.MaxListImagesLimit {
-			limit = routing.MaxListImagesLimit
+	if limit <= 0 || limit > asset.MaxListImagesLimit {
+		if limit > asset.MaxListImagesLimit {
+			limit = asset.MaxListImagesLimit
 		} else {
-			limit = routing.DefaultResolvedLimit
+			limit = asset.DefaultResolvedLimit
 		}
 	}
 
@@ -98,7 +83,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 	}
 	defer rows.Close()
 
-	out := make([]routing.RepositoryImageRow, 0, limit)
+	out := make([]asset.RepositoryImageRow, 0, limit)
 	for rows.Next() {
 		var (
 			id, originStr, providerID, subjectID, previewURL, driveLink, fileHash sql.NullString
@@ -126,7 +111,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 		if height.Valid {
 			h = int(height.Int64)
 		}
-		out = append(out, routing.RepositoryImageRow{
+		out = append(out, asset.RepositoryImageRow{
 			AssetID:       id.String,
 			Origin:        asset.ImageOrigin(originStr.String),
 			Provider:      providerID.String,

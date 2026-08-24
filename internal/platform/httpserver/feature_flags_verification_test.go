@@ -29,9 +29,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"go.uber.org/zap"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // ─── ArtlistEnabled: module-level gate ─────────────────────────────
@@ -39,7 +40,7 @@ import (
 // TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue asserts that
 // a RouteModule with EnabledFunc returning true reports Enabled().
 func TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue(t *testing.T) {
-	mod := module.NewRouteModule(
+	mod := NewRouteModule(
 		"artlist",
 		func() bool { return true },
 		"/artlist",
@@ -53,7 +54,7 @@ func TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue(t *testing.T) {
 // TestFeatureFlag_Artlist_ModuleDisabled_WhenFlagFalse asserts that
 // a RouteModule with EnabledFunc returning false reports !Enabled().
 func TestFeatureFlag_Artlist_ModuleDisabled_WhenFlagFalse(t *testing.T) {
-	mod := module.NewRouteModule(
+	mod := NewRouteModule(
 		"artlist",
 		func() bool { return false },
 		"/artlist",
@@ -73,7 +74,7 @@ func TestFeatureFlag_Artlist_ModuleDisabled_RegisterRoutesStillMounts(t *testing
 	r := gin.New()
 	apiGroup := r.Group("/api")
 
-	mod := module.NewRouteModule(
+	mod := NewRouteModule(
 		"artlist",
 		func() bool { return false },
 		"/artlist",
@@ -217,10 +218,10 @@ func TestFeatureFlag_GenericChecker_Passes_WhenEnabled(t *testing.T) {
 // module registry's GetEnabled() only returns modules whose Enabled()
 // closure returns true.
 func TestFeatureFlag_Registry_GetEnabled_FiltersByFlag(t *testing.T) {
-	registry := module.NewRegistry()
+	registry := NewRegistry()
 
-	enabled := module.NewRouteModule("enabled-mod", func() bool { return true }, "/enabled", &noopHandler{}, zap.NewNop())
-	disabled := module.NewRouteModule("disabled-mod", func() bool { return false }, "/disabled", &noopHandler{}, zap.NewNop())
+	enabled := NewRouteModule("enabled-mod", func() bool { return true }, "/enabled", &noopHandler{}, zap.NewNop())
+	disabled := NewRouteModule("disabled-mod", func() bool { return false }, "/disabled", &noopHandler{}, zap.NewNop())
 
 	require.NoError(t, registry.Register(enabled))
 	require.NoError(t, registry.Register(disabled))
@@ -235,10 +236,10 @@ func TestFeatureFlag_Registry_GetEnabled_FiltersByFlag(t *testing.T) {
 func TestFeatureFlag_Registry_RegisterAllRoutes_SkipsDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registry := module.NewRegistry()
+	registry := NewRegistry()
 
-	enabledMod := module.NewRouteModule("enabled-mod", func() bool { return true }, "/enabled", &noopHandler{}, zap.NewNop())
-	disabledMod := module.NewRouteModule("disabled-mod", func() bool { return false }, "/disabled", &noopHandler{}, zap.NewNop())
+	enabledMod := NewRouteModule("enabled-mod", func() bool { return true }, "/enabled", &noopHandler{}, zap.NewNop())
+	disabledMod := NewRouteModule("disabled-mod", func() bool { return false }, "/disabled", &noopHandler{}, zap.NewNop())
 
 	require.NoError(t, registry.Register(enabledMod))
 	require.NoError(t, registry.Register(disabledMod))
@@ -267,11 +268,11 @@ func TestFeatureFlag_Registry_RegisterAllRoutes_SkipsDisabled(t *testing.T) {
 // TestFeatureFlag_Module_NilEnabledFunc_FallsBackToHandler asserts that
 // when EnabledFunc is nil, Enabled() returns handler != nil.
 func TestFeatureFlag_Module_NilEnabledFunc_FallsBackToHandler(t *testing.T) {
-	withHandler := module.NewRouteModule("with-handler", nil, "/test", &noopHandler{}, zap.NewNop())
+	withHandler := NewRouteModule("with-handler", nil, "/test", &noopHandler{}, zap.NewNop())
 	assert.True(t, withHandler.Enabled(),
 		"nil EnabledFunc + non-nil handler → Enabled()=true")
 
-	withoutHandler := module.NewRouteModule("without-handler", nil, "/test", nil, zap.NewNop())
+	withoutHandler := NewRouteModule("without-handler", nil, "/test", nil, zap.NewNop())
 	assert.False(t, withoutHandler.Enabled(),
 		"nil EnabledFunc + nil handler → Enabled()=false")
 }

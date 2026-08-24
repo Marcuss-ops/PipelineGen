@@ -25,7 +25,7 @@ func RunDriveCreateFolder(args []string) error {
 		return err
 	}
 	defer cleanup()
-	admin, err := buildDriveAdminForCLI(cli.CmdContext(), cfg, log)
+	admin, err := cli.BuildDriveAdminForCLI(cli.CmdContext(), cfg, log)
 	if err != nil {
 		return fmt.Errorf("drive-create-folder: build Drive admin: %w", err)
 	}

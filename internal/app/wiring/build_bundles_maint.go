@@ -8,25 +8,24 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle, sourceCatalog *artifacts.SourceCatalog) (*wiring.MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle, sourceCatalog *artifacts.SourceCatalog) (*MaintBundle, error) {
 	_ = ctx
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
 	// REMOVED from the canonical ctor — the field has been retired
@@ -49,7 +48,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 		Dispatcher: outboxBundle.Dispatcher,
 		Log:        log,
 	})
-	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.DualPool.Writer, log)
+	maintRepo := imagesregistry.NewMaintenanceRepository(dbs.DualPool.Writer, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
 		jobs.Service, maintRepo,
@@ -81,7 +80,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 		return nil, fmt.Errorf("compose: register maintenance job handler (BuildMaintBundle): %w", err)
 	}
 
-	return &wiring.MaintBundle{
+	return &MaintBundle{
 		MaintenanceSvc:             maintenanceSvc,
 		DeletionSvc:                deletionSvc,
 		EntityImageRecertification: entityImageRecertification,

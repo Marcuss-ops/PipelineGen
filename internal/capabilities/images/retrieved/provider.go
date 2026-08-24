@@ -7,13 +7,11 @@
 // FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
 // RetrievalSearchResult) moved to internal/capabilities/images/workflow/routing
 // to break the routing↔retrieved import cycle.
-package images
+package retrieved
 
 import (
 	"context"
 	nethttp "net/http"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -22,14 +20,14 @@ import (
 // DuckDuckGoProvider, DriveImageProvider) and are wired via
 // NewDefaultProviderRegistry at composition time.
 //
-// FASE 8: Search takes routing.RetrievalSearchOptions + returns
-// []routing.RetrievalSearchResult (the canonical home of those types
+// FASE 8: Search takes RetrievalSearchOptions + returns
+// []RetrievalSearchResult (the canonical home of those types
 // after the routing↔retrieved cycle break).
 type RetrievalProvider interface {
 	// Search runs the provider-specific query and returns the
 	// candidates for ingestion. Returns nil + nil when the source
 	// is unconfigured or produces no hits (NOT an error).
-	Search(ctx context.Context, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error)
+	Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error)
 	// Name returns the ImageProvider taxonomy constant for this provider.
 	Name() asset.ImageProvider
 	// Healthy reports whether the provider is reachable in the current

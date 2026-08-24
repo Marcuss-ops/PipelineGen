@@ -1,4 +1,4 @@
-package assets
+package ingest
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -29,7 +29,7 @@ type Pipeline struct {
 type Service struct {
 	cfg        *config.Config
 	log        *zap.Logger
-	downloader assets.MediaDownloader
+	downloader ports.MediaDownloader
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `driveAdmin
 	// drive.Admin` field is RETIRED. Confirmed unused by every
 	// public method (Ingest, the post-resolution branches, the
@@ -70,7 +70,7 @@ type Service struct {
 // was unused by every method (Ingest / branches / commit never read
 // `s.driveAdmin`). Composition-root wire sites updated to drop the
 // argument.
-func NewService(cfg *config.Config, log *zap.Logger, downloader assets.MediaDownloader, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
+func NewService(cfg *config.Config, log *zap.Logger, downloader ports.MediaDownloader, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
 	return &Service{
 		cfg:         cfg,
 		log:         log,

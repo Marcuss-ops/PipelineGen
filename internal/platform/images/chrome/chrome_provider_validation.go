@@ -29,11 +29,11 @@ package chrome
 import (
 	"bytes"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome/visual_validate"
 	"image"
 	"math"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome/visual_validate"
 	"go.uber.org/zap"
 )
 

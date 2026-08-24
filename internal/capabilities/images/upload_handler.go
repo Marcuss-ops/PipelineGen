@@ -29,7 +29,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -51,7 +51,7 @@ import (
 //
 // godlike/06 SSOT: ingest.Service is the SOLE canonical owner of
 // image-asset URL ingestion on this package. The /upload route does
-// NOT delegate to imgservice.Service.SearchAndDownload under any
+// NOT delegate to Service.SearchAndDownload under any
 // condition (the two services are distinct bounded contexts).
 func (h *ImagesHandler) Upload(c *gin.Context) {
 	var req UploadRequest

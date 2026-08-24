@@ -1,11 +1,11 @@
-package assets
+package ingest
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 )
 
 func buildAssetID(kind Kind, hash string) string {

@@ -1,11 +1,11 @@
-package assets
+package ingest
 
 import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 )
 
 func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *assetop.AssetRecord {

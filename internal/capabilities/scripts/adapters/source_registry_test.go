@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

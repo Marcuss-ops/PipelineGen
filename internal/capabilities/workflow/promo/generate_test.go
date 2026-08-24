@@ -23,7 +23,7 @@
 //     Tests assert via errors.Is so refactors of the wrapping machine
 //     cannot silently break the contract.
 
-package workflow
+package promo
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	domainvo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )
 

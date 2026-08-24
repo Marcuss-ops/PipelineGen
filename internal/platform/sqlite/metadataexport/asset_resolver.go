@@ -27,7 +27,7 @@ import (
 	"context"
 	"database/sql"
 
-	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
+	appexport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 )
 
 // Compile-time assertion: the concrete must satisfy the typed port.

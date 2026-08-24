@@ -1,4 +1,4 @@
-package assets
+package stockpipeline
 
 import (
 	"encoding/json"

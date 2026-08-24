@@ -4,14 +4,14 @@
 // godlike/06 SSOT: the VisualIntentResolver is the single owner
 // of the (text -> VisualIntent) transformation. It performs no IO
 // and depends only on the brain types and stdlib.
-package brain
+package intent
 
 import (
 	"context"
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
 )
 
 // VisualIntentResolver is the canonical port that turns a phrase into

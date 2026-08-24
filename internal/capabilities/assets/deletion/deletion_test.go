@@ -16,7 +16,7 @@
 //   - Asset-tree cleanup errors PROPAGATE in DeleteClip
 //     (godlike/07 NO_FAKE_AVAILABILITY; the silent `_ =` anti-pattern
 //     listed in the user spec for this commit)
-package assets
+package deletion
 
 import (
 	"context"
@@ -29,14 +29,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Fakes & Mocks ────────────────────────────────────────────────────
 
-// recordingDispatcher satisfies deletion.DispatcherPort (structurally)
+// recordingDispatcher satisfies DispatcherPort (structurally)
 // and records each EnqueueDriveDelete call so tests can assert
 // (a) the call was made, (b) the (assetID, permanently) tuple is what
 // the service decided.
@@ -58,7 +57,7 @@ func (r *recordingDispatcher) EnqueueDriveDelete(_ context.Context, assetID stri
 	return r.err
 }
 
-// recordingDriveGoneChecker satisfies deletion.DriveGoneChecker and
+// recordingDriveGoneChecker satisfies DriveGoneChecker and
 // records each CheckDriveGone call so the audit tests can verify the
 // guard fires BEFORE any SQLite side-effect.
 type recordingDriveGoneChecker struct {
@@ -93,7 +92,7 @@ func (r *recordingDriveGoneChecker) CheckDriveGone(_ context.Context, fileID str
 	return r.isGone, r.goneErr
 }
 
-// recordingCompletionTxRunner satisfies deletion.CompletionTxRunner
+// recordingCompletionTxRunner satisfies CompletionTxRunner
 // and records each RunCompletionTx call so the audit tests can
 // verify the SQLite TX runs ONLY on the happy path (no partial
 // side-effects on Drive-check failure paths).
@@ -249,11 +248,11 @@ func seedClipRowWithDriveFileID(t *testing.T, db *sql.DB, id, lifecycleState, fi
 // CompleteAsset). Tests that exercise CompleteAsset build their own
 // service via newTestServiceForComplete (which wires the COMPLETED
 // step's recorder-mocks).
-func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort) *deletion.DeletionService {
+func newTestService(t *testing.T, db *sql.DB, dispatcher DispatcherPort) *DeletionService {
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		Repos: deletion.DeletionRepoDeps{
+	return NewDeletionService(DeletionServiceDeps{
+		Repos: DeletionRepoDeps{
 			ClipsRepo: clipsRepo,
 		},
 		Dispatcher: dispatcher,
@@ -269,18 +268,18 @@ func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort
 func newTestServiceForComplete(
 	t *testing.T,
 	db *sql.DB,
-	dispatcher deletion.DispatcherPort,
-	driveGoneChecker deletion.DriveGoneChecker,
-	completionTx deletion.CompletionTxRunner,
-) *deletion.DeletionService {
+	dispatcher DispatcherPort,
+	driveGoneChecker DriveGoneChecker,
+	completionTx CompletionTxRunner,
+) *DeletionService {
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		Repos: deletion.DeletionRepoDeps{
+	return NewDeletionService(DeletionServiceDeps{
+		Repos: DeletionRepoDeps{
 			ClipsRepo: clipsRepo,
 		},
 		Dispatcher: dispatcher,
-		Finalize: deletion.DeletionFinalizeDeps{
+		Finalize: DeletionFinalizeDeps{
 			DriveGoneChecker:   driveGoneChecker,
 			CompletionTxRunner: completionTx,
 		},
@@ -364,8 +363,8 @@ func TestDeletionService_DeleteClip_NilDispatcherFailsFast(t *testing.T) {
 	minimalMediaAssetsFixture(t, db)
 	seedClipRow(t, db, "clip-nil-disp", "ACTIVE")
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	svc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		Repos: deletion.DeletionRepoDeps{
+	svc := NewDeletionService(DeletionServiceDeps{
+		Repos: DeletionRepoDeps{
 			ClipsRepo: clipsRepo,
 		},
 		Log: zap.NewNop(),

@@ -3,8 +3,10 @@ package httpserver
 import (
 	"github.com/gin-gonic/gin"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"go.uber.org/zap"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // registerAPIRoutes wires the public /api surface: the admin-auth login

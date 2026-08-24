@@ -7,10 +7,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
@@ -47,10 +46,10 @@ type ImageStorageService struct {
 	gaDownloadDir string
 	vidsProjectID string
 	meta          *MetadataService
-	destResolver  destinations.DestinationResolver
+	destResolver  DestinationResolver
 
 	// retrievalRegistry composes Wikipedia/SearXNG/DuckDuckGo/Drive providers
-	// for finding existing images. It is separate from AI generation.
+	// for finding existing images. It is separate from AI 
 	retrievalRegistry *retrieved.RetrievalProviderRegistry
 	// Pace the shared Commons API across concurrent VidRush segment queries.
 	// Without this process-wide gate, the bounded fan-out still produces a

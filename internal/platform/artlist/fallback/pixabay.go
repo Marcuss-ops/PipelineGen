@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )

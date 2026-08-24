@@ -95,7 +95,7 @@ func minimalConfig(dataDir string) *config.Config {
 // Frozen counts (June 2026, PR4.C). A growing count means someone added
 // a new spawn to a Build*Bundle body — that is the bug this test catches.
 // When a future PR4.E+ wave moves inline goroutine spawns out of
-// Build*Bundle into lifecycle.go, decrement the constants in lockstep.
+// Build*Bundle into go, decrement the constants in lockstep.
 const (
 	// Wave A Item 15 (June 2026): the legacy drive-style-folders SafeGo
 	// goroutine was REMOVED (not moved) — BuildDriveBundle body has zero
@@ -159,7 +159,7 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
 		"BuildDriveBundle spawn count drifted (expected 0 after Wave A Item 15, June 2026 — the drive-style-folders SafeGo goroutine was REMOVED, not just moved).")
 	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
-		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to lifecycle.go is documented in lifecycle.go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
+		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to go is documented in go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
 
 	for _, name := range frozenZeroSpawnBuilders {
 		require.Equal(t, 0, counts[name],

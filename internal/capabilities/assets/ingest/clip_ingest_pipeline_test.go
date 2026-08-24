@@ -14,7 +14,7 @@
 //     Confidence *float64 } — NO bare Language field.
 //   - asset.TextTrack{ LanguageCode, TextContent, ... } — NO bare Language
 //     or Text field (those would not compile against the canonical surface).
-package assets
+package ingest
 
 import (
 	"context"
@@ -24,9 +24,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -34,14 +34,14 @@ import (
 
 type stubDownloader struct{ called atomic.Int32 }
 
-func (s *stubDownloader) Download(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
+func (s *stubDownloader) Download(_ context.Context, _ ports.SourceRef) (*ports.StagedAsset, error) {
 	s.called.Add(1)
-	return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1234}, nil
+	return &ports.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1234}, nil
 }
 
 type stubNormalizer struct{ called atomic.Int32 }
 
-func (s *stubNormalizer) Normalize(_ context.Context, _ *assets.StagedAsset) (NormalizedMedia, error) {
+func (s *stubNormalizer) Normalize(_ context.Context, _ *ports.StagedAsset) (NormalizedMedia, error) {
 	s.called.Add(1)
 	return NormalizedMedia{
 		LocalPath: "/tmp/normalized.mp4",
@@ -160,7 +160,7 @@ func TestClipIngestPipeline_Ingest_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClipIngestPipeline: %v", err)
 	}
-	res, err := p.Ingest(context.Background(), assets.SourceRef{URL: "https://example.com/clip-mp4"})
+	res, err := p.Ingest(context.Background(), ports.SourceRef{URL: "https://example.com/clip-mp4"})
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestClipIngestPipeline_Ingest_EmptyURLTypedSentinel(t *testing.T) {
 	if p == nil {
 		t.Fatalf("NewClipIngestPipeline: nil")
 	}
-	_, err := p.Ingest(context.Background(), assets.SourceRef{URL: ""})
+	_, err := p.Ingest(context.Background(), ports.SourceRef{URL: ""})
 	if err == nil {
 		t.Fatalf("Ingest(empty URL): want ErrClipIngestPipelineSourceRefEmpty")
 	}
@@ -244,7 +244,7 @@ func TestClipIngestPipeline_Ingest_CommitterErrorPropagates(t *testing.T) {
 	if p == nil {
 		t.Fatalf("NewClipIngestPipeline: nil")
 	}
-	_, err := p.Ingest(context.Background(), assets.SourceRef{URL: "https://example.com/clip-mp4"})
+	_, err := p.Ingest(context.Background(), ports.SourceRef{URL: "https://example.com/clip-mp4"})
 	if err == nil {
 		t.Fatalf("Ingest: want non-nil error")
 	}

@@ -22,7 +22,7 @@
 // hermeticly at the artlist package level. Forward-pointer:
 // PR-ARTLIST-DOD-GATE-08-SCORE-E2E (deadline 2026-08-01) covers
 // hybrid RRF fusion scoring against a real Qdrant server.
-package assets
+package artlist
 
 import (
 	"context"
@@ -32,8 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

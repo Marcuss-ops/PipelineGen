@@ -1,12 +1,14 @@
 package images
 
-// Canonical image job type constants.
-// Per godlike/02 capability-specific constants live in their owning domain package.
-const (
-	// TypeImagesGenerate is the canonical job type for AI image generation.
-	TypeImagesGenerate = "images.generate"
+import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	// TypeGenerateGoogle is the canonical job type for Google Slides image
-	// generation.
+// Canonical image job type constants.
+const (
+	TypeImagesGenerate = "images.generate"
+	JobGenerate        = TypeImagesGenerate
 	TypeGenerateGoogle = "image.generate.google"
 )
+
+func MustRegister(reg job.MutableJobRegistry) error {
+	return nil
+}

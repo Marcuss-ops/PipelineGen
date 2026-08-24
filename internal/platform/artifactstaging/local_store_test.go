@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 )
 
 // MediaDownloader implements the application-layer assets.MediaDownloader

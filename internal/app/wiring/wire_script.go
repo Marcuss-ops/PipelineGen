@@ -67,14 +67,13 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -112,7 +111,7 @@ import (
 // ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
 // depended on sectionRegen + cacheEviction (RegenerateSection +
 // EvictCache) are RETIRED in lockstep.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot, registry *module.Registry, artlistWiring *wiring.ArtlistWiring) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, artlistWiring *ArtlistWiring) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -166,7 +165,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// ── Wire wiring.ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
+	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
 	// Constructs the VoiceoverGenerator adapter from the canonical per-item
 	// voiceover pipeline (VoiceoverProcessItem → ProcessVoiceoverItemUseCase →
 	// ProcessSegmentUseCase) when available. Routing through the canonical
@@ -176,9 +175,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// (GENERATING_VOICEOVERS).
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		voiceGenerator := wiring.NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
+		voiceGenerator := NewScriptVoiceoverGenerator(root.Domains.VoiceoverProcessItem, voPath, log)
 		voiceMap := make(map[string]string)
-		if registry, registryErr := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg)); registryErr == nil {
+		if registry, registryErr := BuildLanguageRegistry(ActiveMultilingualConfig(cfg)); registryErr == nil {
 			for _, spec := range registry.EnabledLanguages() {
 				if spec.EdgeTTSVoice != "" {
 					voiceMap[spec.Code] = spec.EdgeTTSVoice
@@ -187,23 +186,23 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 		voiceGenerator.ConfigureVoices(voiceMap)
 		root.AI.ScriptVoiceoverGenerator = voiceGenerator
-		log.Info("wireScriptFlow: wiring.ScriptVoiceoverGenerator wired",
+		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired",
 			zap.String("output_dir", voPath))
 	} else {
-		log.Warn("wireScriptFlow: wiring.ScriptVoiceoverGenerator NOT wired (no voiceover pipeline) — voiceover stage will be skipped")
+		log.Warn("wireScriptFlow: ScriptVoiceoverGenerator NOT wired (no voiceover pipeline) — voiceover stage will be skipped")
 	}
 
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
 	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
 
-	// Wire the source registry into the wiring.SceneTextGenerator so the
+	// Wire the source registry into the SceneTextGenerator so the
 	// durable pipeline can resolve clip/catalog/search/curate sources.
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
 		if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
 			prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 			root.AI.SceneTextGenerator.SetClipProber(prober)
-			log.Info("wireScriptFlow: wiring.SceneTextGenerator clip prober wired")
+			log.Info("wireScriptFlow: SceneTextGenerator clip prober wired")
 		} else {
 			log.Warn("wireScriptFlow: Rust media executor path empty; SceneTextGenerator duration probe unavailable")
 		}
@@ -308,7 +307,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		if root.DB != nil && root.DB.DB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
 			finalAudioCommitter = newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
 		}
-		durableRunner, runtimeErr := wiring.BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
+		durableRunner, runtimeErr := BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
@@ -389,7 +388,7 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 // scriptGenerationEnabled is the dedicated gate for the canonical
 // POST /api/script/generate capability. Script generation must not depend on
 // optional clips, docs, or image feature flags; those flags control their own
-// sub-capabilities.
+// sub-
 func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
@@ -398,7 +397,7 @@ func scriptGenerationEnabled(cfg *config.Config) bool {
 // Moved from registry_script.go (Phase 5 consolidation, June 2026).
 // Calls wireScriptFlow for the canonical use-case delegation and
 // registerScriptHistory for the script-history route module.
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, artlistWiring *wiring.ArtlistWiring) error {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring) error {
 	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring); err != nil {
 		return err
 	}

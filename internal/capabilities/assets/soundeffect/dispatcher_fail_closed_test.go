@@ -4,7 +4,7 @@
 // Scope
 // -----
 // The Generate handler routes the sfx asset write through
-// sfxports.DispatcherPort.EnqueueAndIndex (canonical AssetMutationDispatcher
+// DispatcherPort.EnqueueAndIndex (canonical AssetMutationDispatcher
 // SSOT) instead of the legacy h.clipsRepo.Upsert path. This test file
 // pins the handler-side contract:
 //
@@ -23,7 +23,7 @@
 // Python interpreter, the test stubs processRunner.Run to write the
 // expected empty mp3 to the temp paths the handler pre-determines.
 
-package assets
+package soundeffect
 
 import (
 	"bytes"
@@ -42,9 +42,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -64,7 +63,7 @@ func (r *recordingDispatcher) EnqueueAndIndex(_ context.Context, clip *asset.Ass
 	return r.injectErr
 }
 
-var _ sfxports.DispatcherPort = (*recordingDispatcher)(nil)
+var _ DispatcherPort = (*recordingDispatcher)(nil)
 
 // stubProcessRunner creates empty output files in place of python3 + ffmpeg.
 // The handler passes the temp output path as a CLI arg (`--output` for
@@ -110,15 +109,15 @@ func (stubProcessRunner) RunSimple(_ context.Context, _ string, _ ...string) (*a
 // to operate on.
 type stubResolver struct{ finalDir string }
 
-func (r stubResolver) Resolve(_ sfxports.AssetDestinationRequest) (sfxports.ResolvedDest, error) {
-	return sfxports.ResolvedDest{LocalPath: filepath.Join(r.finalDir, "sfx-final.mp3")}, nil
+func (r stubResolver) Resolve(_ AssetDestinationRequest) (ResolvedDest, error) {
+	return ResolvedDest{LocalPath: filepath.Join(r.finalDir, "sfx-final.mp3")}, nil
 }
 
-var _ sfxports.DestinationResolverPort = (*stubResolver)(nil)
+var _ DestinationResolverPort = (*stubResolver)(nil)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func newTestHandler(t *testing.T, disp sfxports.DispatcherPort, finalDir string) *Handler {
+func newTestHandler(t *testing.T, disp DispatcherPort, finalDir string) *Handler {
 	t.Helper()
 	return &Handler{
 		clipsRepo:              nil, // replaced by dispatcher — see PR 6 fail-closed comment

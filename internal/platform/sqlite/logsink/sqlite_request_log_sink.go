@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appmw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
+	appmw "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware/requestlog"
 )
 
 // SQLiteRequestLogSink implements requestlog.RequestLogSink over a

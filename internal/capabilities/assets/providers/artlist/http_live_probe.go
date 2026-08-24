@@ -13,7 +13,7 @@
 // failure (DNS/TCP/timeout/connection-refused) to distinguish from
 // semantic 4xx/5xx. Probe never caches across calls — compositional
 // callers wrap with their own LRU if desired (godlike/07 audit-pinning).
-package assets
+package artlist
 
 import (
 	"context"

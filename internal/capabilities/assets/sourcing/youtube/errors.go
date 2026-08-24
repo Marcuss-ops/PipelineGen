@@ -9,7 +9,7 @@
 //
 // godlike/07 typed-error contract: callers can probe via errors.Is
 // without unwrapping parse-fragments (no string matching).
-package assets
+package youtube
 
 import "errors"
 

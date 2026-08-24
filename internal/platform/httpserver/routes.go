@@ -11,11 +11,13 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // Router holds the API router configuration.
@@ -62,7 +64,7 @@ type Router struct {
 	mediasearchHandler InternalMediaSearchRouter
 	ctx                context.Context
 	healthSvc          any // *systemhealth.Service; any keeps the router infra-clean.
-	readyChecker       *systemhealth.ReadyChecker
+	readyChecker       any // *systemhealth.ReadyChecker; any keeps the router infra-clean.
 	qdrantHealth       any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
 	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
@@ -169,7 +171,7 @@ func (r *Router) SetHealthService(svc any) {
 // SetReadyChecker wires the application-layer ReadyChecker into the router.
 // codex/health-ready-contract (June 2026): previously ReadyChecker was silently
 // nil in Setup(), making /ready always return 503.
-func (r *Router) SetReadyChecker(rc *systemhealth.ReadyChecker) {
+func (r *Router) SetReadyChecker(rc any) {
 	r.readyChecker = rc
 }
 
@@ -311,7 +313,9 @@ func (r *Router) Setup() *gin.Engine {
 	// checker so the script_generate check can fail closed when the
 	// /api/script capability is not mounted.
 	if r.readyChecker != nil {
-		r.readyChecker.SetScriptRouteMounted(func() bool { return wireReg.IsMounted("script") })
+		if rc, ok := r.readyChecker.(*systemhealth.ReadyChecker); ok {
+			rc.SetScriptRouteMounted(func() bool { return wireReg.IsMounted("script") })
+		}
 	}
 
 	// GET /api/capabilities — expose mounted capabilities and version.

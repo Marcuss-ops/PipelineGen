@@ -14,7 +14,7 @@
 // owner of YouTube-clip download + hash + clipID derivation for the
 // sourcing/youtube registration pipeline. The clipID format
 // yt_<videoID>_<hash8> is owned here.
-package assets
+package usecase
 
 import (
 	"context"

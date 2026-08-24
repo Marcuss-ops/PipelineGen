@@ -25,10 +25,9 @@ package wiring
 import (
 	"context"
 	"fmt"
-	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
@@ -41,17 +40,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
-	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"go.uber.org/zap"
 )
 
 // WireArtlist constructs *artlist.Service + *ArtlistDescriptor from the canonical
-// wiring.ArtlistBundle populated by registerArtlist + the 5 wiring.ComposeRoot receiver-fields
+// ArtlistBundle populated by registerArtlist + the 5 ComposeRoot receiver-fields
 // (Dispatcher / Drive.Reader / Drive.Lifecycle / MetaWriter / DestResolver) that
-// were not pre-exposed on wiring.ArtlistBundle by PR4d-chunk2 convention. Each of the
-// 5 is a DIRECT receiver from wiring.ComposeRoot — not an adapter shim (godlike/06 SSOT).
+// were not pre-exposed on ArtlistBundle by PR4d-chunk2 convention. Each of the
+// 5 is a DIRECT receiver from ComposeRoot — not an adapter shim (godlike/06 SSOT).
 //
 // godlike/07: 7 mandatory gates checked UPFRONT. The first 4 are
 // runtime-wiring gates (Publisher / Dispatcher / ClipsRepo / Jobs.Service);
@@ -66,14 +65,14 @@ func WireArtlist(
 	ctx context.Context,
 	log *zap.Logger,
 	cfg *config.Config,
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	dispatcher *outbox.Dispatcher,
 	reader drivepkg.Reader,
 	lifecycle drivepkg.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
 	textTrackFanOut ...*texttracks.MaterializeFanOut,
-) (*wiring.ArtlistWiring, error) {
+) (*ArtlistWiring, error) {
 	_ = ctx
 
 	// godlike/07 fail-closed: 5 mandatory UPFRONT gates (4 wiring + 1 cfg).
@@ -306,7 +305,7 @@ func WireArtlist(
 	// canonical would yield a nil adapter; the handler's nil-
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
-	bundle.ClipResolver = wiring.NewClipResolverRecommendAdapter(
+	bundle.ClipResolver = NewClipResolverRecommendAdapter(
 		scripts_adapters.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
@@ -352,7 +351,7 @@ func WireArtlist(
 		zap.Strings("provider_assets", providerAssetsRegistry.Names()),
 		zap.Bool("godlike_06_ssot", true),
 	)
-	return &wiring.ArtlistWiring{
+	return &ArtlistWiring{
 		Module:            ad.Module,
 		Service:           ad.Service,
 		ProviderAssets:    providerAssetsRegistry,
@@ -422,7 +421,7 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 // to dead-letter forever without a consumer). The composition-time
 // fail-closed contract is the user-spec literal:
 // "fallisci l'avvio con un typed error (no warning silenzioso)".
-func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.JobsBundle) error {
+func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle) error {
 	if artlistSvc == nil {
 		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
 	}

@@ -8,7 +8,7 @@
 // The scheduler never touches os/exec, OllamaClient, or VTT regex
 // directly — those concerns cross the package boundary through the
 // typed ports on ChannelMonitor.
-package assets
+package monitor
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // Start begins the channel monitoring process.

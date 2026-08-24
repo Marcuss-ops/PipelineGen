@@ -23,7 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -11,7 +11,7 @@
 // only enqueues the request; it never runs a second download/upload/hash/
 // commit pipeline.
 
-package assets
+package youtube
 
 import (
 	"encoding/json"
@@ -22,8 +22,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"

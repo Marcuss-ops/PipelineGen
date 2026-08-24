@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 )
 
 func RunFolderPathBackfill(args []string) error {
@@ -25,7 +25,7 @@ func RunFolderPathBackfill(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func RunFolderPathBackfill(args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, id := range splitCSV(*ids) {
+	for _, id := range cli.SplitCSV(*ids) {
 		if err := svc.Repair(cli.CmdContext(), id, *path); err != nil {
 			return err
 		}

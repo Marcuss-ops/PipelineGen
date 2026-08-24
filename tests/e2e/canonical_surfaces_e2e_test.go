@@ -48,7 +48,7 @@ import (
 
 	// PR-CANONICAL-E2E-MULTICLIP: import the real persistence port
 	// type to catch compile-time field drift (godlike/06 SSOT).
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 )
 
 // ── Test entry point ──────────────────────────────────────────────────

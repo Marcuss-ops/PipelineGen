@@ -7,7 +7,7 @@
 // Pattern 0 (typed ports). These ports replace those reach-throughs.
 // Concrete adapters live in internal/app/adapters_soundeffect.go and
 // implement compile-time `var _ <Port> = (*<Adapter>)(nil)` assertions.
-package assets
+package soundeffect
 
 import (
 	"context"

@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -14,12 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -27,20 +27,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"go.uber.org/zap"
 )
 
-func buildVidRushCache(root *wiring.ComposeRoot, log *zap.Logger) scriptports.VidRushCachePort {
+func buildVidRushCache(root *ComposeRoot, log *zap.Logger) scriptports.VidRushCachePort {
 	if root == nil || root.DB == nil || root.DB.DB == nil {
 		return nil
 	}
-	return sqliteinfra.NewSQLiteVidRushCacheAdapter(root.DB.DB, log)
+	return sqlitescripts.NewSQLiteVidRushCacheAdapter(root.DB.DB, log)
 }
 
 // vidRushProviderWiring is composition-root-only. It creates one closed
 // registry and one common finalizer; providers never write canonical tables.
-func buildVidRushMaterialization(cfg *config.Config, root *wiring.ComposeRoot, artlistWiring *wiring.ArtlistWiring, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
+func buildVidRushMaterialization(cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
 	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, nil
 	}

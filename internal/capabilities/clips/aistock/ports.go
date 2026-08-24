@@ -1,5 +1,5 @@
 // Package aistock — typed ports for AI-generated stock clip ingestion.
-package clips
+package aistock
 
 import (
 	"context"

@@ -16,7 +16,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -42,7 +41,7 @@ func TestBuildOutboxBundle_WiresDriveDeleteHandler(t *testing.T) {
 	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -56,7 +55,7 @@ func TestBuildOutboxBundle_WiresDriveDeleteHandler(t *testing.T) {
 	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.NoError(t, err)
 
-	jobsBundle, err := wiring.BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
 	outbox, _, err := BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, dummyDriveDeleter{})

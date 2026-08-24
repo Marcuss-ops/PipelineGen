@@ -55,8 +55,7 @@ import (
 
 	"go.uber.org/zap"
 
-	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/policy"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -84,7 +83,7 @@ type Finalizer struct {
 	outbox          *outboxevents.Repository
 	assetTx         finalization.AssetFinalizerTx
 	log             *zap.Logger
-	bus             completion.JobCompletionBus
+	bus             JobCompletionBus
 	postCommitHooks interface {
 		FirePostCommitHooks(context.Context, finalization.PublishedArtifact)
 	}
@@ -128,7 +127,7 @@ func New(db *sql.DB, outbox *outboxevents.Repository, assetTx finalization.Asset
 // Return value: the receiver, for fluent composition-root chaining
 // (godlike/07 minimum-blast-radius: one-shot setters that don't
 // require capturing the result variable).
-func (f *Finalizer) WithBus(bus completion.JobCompletionBus) *Finalizer {
+func (f *Finalizer) WithBus(bus JobCompletionBus) *Finalizer {
 	f.bus = bus
 	return f
 }
@@ -329,7 +328,7 @@ func (f *Finalizer) CompleteWithArtifacts(
 					// infra-layer wiring, the log.Warn is sufficient.
 				}
 			}()
-			f.bus.Publish(completion.JobCompletionEvent{
+			f.bus.Publish(JobCompletionEvent{
 				JobID:       req.Result.JobID,
 				Attempt:     req.Result.Attempt,
 				FinalStatus: jobs.StatusSucceeded,

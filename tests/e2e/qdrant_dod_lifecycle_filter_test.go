@@ -57,7 +57,7 @@ import (
 	"strings"
 	"testing"
 
-	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 

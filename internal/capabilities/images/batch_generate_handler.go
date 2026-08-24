@@ -15,13 +15,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/fullimages"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
+
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // batchJobResponse is the per-job entry in the 202 response.
@@ -47,7 +46,7 @@ func generateBatchID() string {
 // resolveBatchItems normalizes the request into the flat item list that
 // GenerateBatch enqueues. mode "" | "items" consumes req.Items verbatim;
 // mode "sections" composes one item per section from the canonical
-// section→prompt composer (fullimages.BuildPrimaryPrompt) using the
+// section→prompt composer (BuildPrimaryPrompt) using the
 // section-image dimensions (1344×768).
 func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 	switch req.Mode {
@@ -62,7 +61,7 @@ func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 		}
 		items := make([]GenerateBatchItem, 0, len(req.Sections))
 		for i, sec := range req.Sections {
-			prompt := fullimages.BuildPrimaryPrompt(sec, req.Topic)
+			prompt := BuildPrimaryPrompt(sec, req.Topic)
 			if prompt == "" {
 				return nil, fmt.Errorf("section[%d] has no title, text, or topic — cannot build a prompt", i)
 			}
@@ -74,8 +73,8 @@ func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 			items = append(items, GenerateBatchItem{
 				Prompt: prompt,
 				Style:  style,
-				Width:  fullimages.SectionImageWidth,
-				Height: fullimages.SectionImageHeight,
+				Width:  SectionImageWidth,
+				Height: SectionImageHeight,
 				Tags:   []string{subject, "style:" + style},
 			})
 		}
@@ -86,7 +85,7 @@ func resolveBatchItems(req GenerateBatchRequest) ([]GenerateBatchItem, error) {
 }
 
 // GenerateBatch handles POST /api/images/batch-generate — async
-// batch image generation. Accepts a list of prompts (mode empty or
+// batch image  Accepts a list of prompts (mode empty or
 // "items") or a list of text sections (mode "sections", the retired
 // fullimages shape) and enqueues each as an independent
 // image.generate.google job. Returns 202 Accepted with batch_id and
@@ -139,7 +138,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 		}
 	}
 
-	jobs := make([]batchJobResponse, len(items))
+	jobRespList := make([]batchJobResponse, len(items))
 	for i, item := range items {
 		position := i
 		correlationID := fmt.Sprintf("%s_%d", batchID, position)
@@ -155,7 +154,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 		}
 
 		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-			Type:          appjobs.TypeImageGenerateGoogle,
+			Type:          jobs.TypeImageGenerateGoogle,
 			CorrelationID: correlationID,
 			Payload:       payload,
 			MaxRetries:    2,
@@ -165,7 +164,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 			return
 		}
 
-		jobs[i] = batchJobResponse{
+		jobRespList[i] = batchJobResponse{
 			JobID:    primitives.NewJobID(enqueued.ID),
 			Position: position,
 			Status:   string(enqueued.Status),
@@ -174,7 +173,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"batch_id": batchID,
-		"accepted": len(jobs),
-		"jobs":     jobs,
+		"accepted": len(jobRespList),
+		"jobs":     jobRespList,
 	})
 }

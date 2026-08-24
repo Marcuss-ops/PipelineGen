@@ -40,16 +40,24 @@ package images
 // separated search. Same shape for retrieved, generated, and
 // the aggregated /search?territory=all endpoints.
 type ImageSearchResult struct {
-	AssetID           string `json:"asset_id"`
-	Origin            string `json:"origin"`
-	Provider          string `json:"provider"`
-	PreviewURL        string `json:"preview_url"`
-	StyleID           string `json:"style_id,omitempty"`
-	License           string `json:"license,omitempty"`
-	Author            string `json:"author,omitempty"`
-	CacheHit          *bool  `json:"cache_hit,omitempty"`
-	CacheSource       string `json:"cache_source,omitempty"`
-	RetrievalProvider string `json:"retrieval_provider,omitempty"`
+	AssetID           string  `json:"asset_id"`
+	Origin            string  `json:"origin"`
+	Provider          string  `json:"provider"`
+	Name              string  `json:"name,omitempty"`
+	PreviewURL        string  `json:"preview_url"`
+	DriveLink         string  `json:"drive_link,omitempty"`
+	LegacyFileMD5     string  `json:"legacy_file_md5,omitempty"`
+	SourcePageURL     string  `json:"source_page_url,omitempty"`
+	Width             int     `json:"width,omitempty"`
+	Height            int     `json:"height,omitempty"`
+	Score             float64 `json:"score,omitempty"`
+	StyleID           string  `json:"style_id,omitempty"`
+	StyleVersion      string  `json:"style_version,omitempty"`
+	License           string  `json:"license,omitempty"`
+	Author            string  `json:"author,omitempty"`
+	CacheHit          *bool   `json:"cache_hit,omitempty"`
+	CacheSource       string  `json:"cache_source,omitempty"`
+	RetrievalProvider string  `json:"retrieval_provider,omitempty"`
 }
 
 // ImageSearchResults is the canonical response envelope — an
@@ -61,7 +69,7 @@ type ImageSearchResults struct {
 }
 
 // StyleInfo is the unified DTO for GET /api/images/generated/styles.
-// Mirrors generation.GenerationStyle fields the admin UI needs.
+// Mirrors GenerationStyle fields the admin UI needs.
 type StyleInfo struct {
 	StyleID        string `json:"style_id"`
 	Name           string `json:"name"`

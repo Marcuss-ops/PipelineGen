@@ -44,7 +44,7 @@ import (
 
 // canonicalClipIngestPipelineFile is the SOLE canonical owner of the
 // `ClipIngestPipeline` struct + literal surface (godlike/06 SSOT).
-const canonicalClipIngestPipelineFile = "internal/application/assets/ingest/clip_ingest_pipeline.go"
+const canonicalClipIngestPipelineFile = "internal/capabilities/assets/ingest/clip_ingest_pipeline.go"
 
 // exemptedDirPrefixes are project-root-relative dirs that contain no
 // production Go code the scanner should be walking for the struct +

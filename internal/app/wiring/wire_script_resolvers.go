@@ -39,7 +39,6 @@ import "time"
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -48,7 +47,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
@@ -78,7 +76,7 @@ import (
 // after freeze.
 func buildScriptSourceResolvers(
 	cfg *config.Config,
-	root *wiring.ComposeRoot,
+	root *ComposeRoot,
 	log *zap.Logger,
 ) (
 	adapters.NormalizationConfig,
@@ -169,13 +167,13 @@ func buildScriptSourceResolvers(
 		var providers []scriptports.WebSearchProvider
 		providers = append(providers, searxngProvider)
 		if cfg.External.ResearchFallbackProvider == "duckduckgo" {
-			providers = append(providers, webresearch.NewDuckDuckGoSearchProvider(log))
+			providers = append(providers, research.NewDuckDuckGoSearchProvider(log))
 		}
-		multiSearcher := webresearch.NewMultiWebSearcher(log, providers...)
+		multiSearcher := research.NewMultiWebSearcher(log, providers...)
 
 		researchResolver := usecase.NewWebResearchResolver(
 			multiSearcher,
-			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
+			research.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
 		)
 		if err := researchResolver.SetResearchRanker(research.NewResearchRanker(gen.GetClient(), cfg.External.OllamaModel, log)); err != nil {
 			panic(fmt.Sprintf("script research ranker: %v", err))

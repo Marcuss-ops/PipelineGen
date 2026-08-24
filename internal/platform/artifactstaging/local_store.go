@@ -43,7 +43,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
 )
 
 // Default values (audit-aligned; all overridable via Config).

@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -29,7 +29,7 @@ func RunTextTracksAlignCues(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	assetIDs := splitCSV(*ids)
+	assetIDs := cli.SplitCSV(*ids)
 	if len(assetIDs) == 0 {
 		return fmt.Errorf("text-tracks-align-cues: --asset-ids is required")
 	}
@@ -43,7 +43,7 @@ func RunTextTracksAlignCues(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,7 @@
 // through the old AssetPersistenceWriter port.
 //
 // New code MUST use AssetCommitter and CommitRequest.
-package assets
+package persistence
 
 import "time"
 

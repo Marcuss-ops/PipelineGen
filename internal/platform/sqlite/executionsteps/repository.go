@@ -44,7 +44,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 )
 
 // Compile-time assertion: *Repository satisfies the canonical Store port.

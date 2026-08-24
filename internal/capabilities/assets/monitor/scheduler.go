@@ -19,4 +19,4 @@
 //
 // The scheduler never touches os/exec, OllamaClient, or VTT regex
 // directly — those concerns cross the package boundary through typed ports.
-package assets
+package monitor

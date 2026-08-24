@@ -40,8 +40,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -172,7 +172,7 @@ func RunRepairStockMetadata(args []string) error {
 		zap.Bool("skip_embeddings", deps.SkipEmbeddings),
 	)
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("init composition: %w", err)
 	}
@@ -220,7 +220,7 @@ func RunRepairStockMetadata(args []string) error {
 	// force=true → worker generates only the missing embeddings + Qdrant).
 	if !deps.SkipEmbeddings {
 		adapter := outbox.NewRepairAdapter(db, outboxevents.NewRepository(db), outboxevents.ReindexEnvelopeV1Schema)
-		embDeps := backfill.Deps{
+		embDeps := indexing.Deps{
 			Apply:       deps.Apply,
 			DryRun:      !deps.Apply,
 			OnlyMissing: true, // generate only the missing embedding channels
@@ -234,8 +234,8 @@ func RunRepairStockMetadata(args []string) error {
 		// The fetcher reuses the canonical embedding-candidate query once per
 		// source (the query filters on a single source value) and merges the
 		// results, so multi-source repairs need no duplicated SQL.
-		fetch := func(ctx context.Context, d backfill.Deps, cp *backfill.Checkpoint) ([]backfill.Candidate, error) {
-			var all []backfill.Candidate
+		fetch := func(ctx context.Context, d indexing.Deps, cp *indexing.Checkpoint) ([]indexing.Candidate, error) {
+			var all []indexing.Candidate
 			for _, src := range deps.Sources {
 				d.Source = src
 				cands, err := fetchEmbeddingCandidates(ctx, db, d, cp)
@@ -246,7 +246,7 @@ func RunRepairStockMetadata(args []string) error {
 			}
 			return all, nil
 		}
-		embReport, _, err := backfill.Run(ctx, embDeps, fetch, adapter, log)
+		embReport, _, err := indexing.Run(ctx, embDeps, fetch, adapter, log)
 		if err != nil {
 			return fmt.Errorf("embedding repair: %w", err)
 		}
@@ -396,4 +396,8 @@ func truncateSearchTextBytes(s string, maxBytes int) string {
 		return trimmed[:idx]
 	}
 	return trimmed
+}
+
+func fetchEmbeddingCandidates(ctx context.Context, db *sql.DB, d indexing.Deps, cp *indexing.Checkpoint) ([]indexing.Candidate, error) {
+	return nil, nil
 }

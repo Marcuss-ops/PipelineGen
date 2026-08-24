@@ -20,9 +20,7 @@ package images
 
 import (
 	"context"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 )
 
 // SearchBySlug returns up to `limit` ImageAsset preview URLs that
@@ -69,9 +67,9 @@ func (s *ImageStorageService) SearchWikipedia(ctx context.Context, query, lang s
 // by the retrieved provider. Commons imageinfo carries the actual source
 // license and dimensions, so it is safe to classify these candidates as
 // verified only when that metadata is present.
-func (s *ImageStorageService) SearchWikimediaCommons(ctx context.Context, query string) routing.RetrievalSearchResult {
+func (s *ImageStorageService) SearchWikimediaCommons(ctx context.Context, query string) retrieved.RetrievalSearchResult {
 	if s == nil {
-		return routing.RetrievalSearchResult{}
+		return retrieved.RetrievalSearchResult{}
 	}
 	return s.searchWikimediaCommons(ctx, query)
 }
@@ -89,7 +87,7 @@ func (s *ImageStorageService) SearchSearXNGImages(ctx context.Context, query str
 // SearchSearXNGImagesMany exposes the bounded multi-result form used by the
 // VidRush image provider. The legacy singular method above remains the
 // compatibility surface for callers that intentionally want one best URL.
-func (s *ImageStorageService) SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []routing.RetrievalSearchResult {
+func (s *ImageStorageService) SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []retrieved.RetrievalSearchResult {
 	if s == nil {
 		return nil
 	}

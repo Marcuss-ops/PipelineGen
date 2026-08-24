@@ -1,4 +1,4 @@
-package assets
+package finalizer
 
 import (
 	"context"
@@ -10,9 +10,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -173,9 +172,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func newTestFinalizer(t *testing.T, db *sql.DB) *finalizer.AssetTxFinalizer {
+func newTestFinalizer(t *testing.T, db *sql.DB) *AssetTxFinalizer {
 	t.Helper()
-	return finalizer.NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+	return NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 }
 
 func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArtifact {
@@ -219,7 +218,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	domainTx := finalizer.WrapTx(tx)
+	domainTx := WrapTx(tx)
 	ref, events, err := fx.FinalizeAsset(ctx, domainTx, artifact)
 	if err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
@@ -365,7 +364,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), finalizer.WrapTx(tx), artifact); err != nil {
+	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), WrapTx(tx), artifact); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}
 
@@ -437,7 +436,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), finalizer.WrapTx(tx), artifact); err != nil {
+	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), WrapTx(tx), artifact); err != nil {
 		tx.Rollback()
 		t.Fatalf("FinalizeAsset with rendition: %v", err)
 	}
@@ -479,7 +478,7 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 
 	// First finalization.
 	tx1, _ := db.BeginTx(ctx, nil)
-	ref1, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx1),
+	ref1, _, err := fx.FinalizeAsset(ctx, WrapTx(tx1),
 		publishedArtifact("asset-002", "hash-v1", "file-v1"))
 	if err != nil {
 		tx1.Rollback()
@@ -492,7 +491,7 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 
 	// Second finalization (new content hash, new file).
 	tx2, _ := db.BeginTx(ctx, nil)
-	ref2, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2),
+	ref2, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2),
 		publishedArtifact("asset-002", "hash-v2", "file-v2"))
 	if err != nil {
 		tx2.Rollback()
@@ -550,7 +549,7 @@ func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 
 			tx, _ := db.BeginTx(ctx, nil)
 			defer tx.Rollback()
-			_, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), pa)
+			_, _, err := fx.FinalizeAsset(ctx, WrapTx(tx), pa)
 			if err != nil {
 				t.Fatalf("FinalizeAsset(%s): %v", c.kind, err)
 			}
@@ -581,7 +580,7 @@ func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 	tx, _ := db.BeginTx(ctx, nil)
 	defer tx.Rollback()
 
-	_, events, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), artifact)
+	_, events, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact)
 	if err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}
@@ -625,7 +624,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	// Insert a row that will cause a UNIQUE constraint violation on
 	// asset_versions (same asset_id + version_number = 1).
 	tx, _ := db.BeginTx(ctx, nil)
-	_, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx),
+	_, _, err := fx.FinalizeAsset(ctx, WrapTx(tx),
 		publishedArtifact("asset-rollback", "h1", "f1"))
 	if err != nil {
 		t.Fatalf("first finalize: %v", err)
@@ -640,7 +639,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	// but if someone manually inserted 999, the unique constraint should
 	// still hold since MAX+1 = 1000 which doesn't conflict.
 	tx2, _ := db.BeginTx(ctx, nil)
-	ref2, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2),
+	ref2, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2),
 		publishedArtifact("asset-rollback", "h2", "f2"))
 	if err != nil {
 		t.Fatalf("second finalize with manual version 999: %v", err)
@@ -680,7 +679,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	defer tx.Rollback()
 
 	artifact := publishedArtifact("asset-e2e-finale", "hash-e2e", "file-e2e")
-	if _, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), artifact); err != nil {
+	if _, _, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
 	}
 
@@ -717,7 +716,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	tx2, _ := db.BeginTx(ctx, nil)
 	defer tx2.Rollback()
 	artifact2 := publishedArtifact("asset-e2e-finale", "hash-e2e-v2", "file-e2e-v2")
-	if _, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2), artifact2); err != nil {
+	if _, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2), artifact2); err != nil {
 		t.Fatalf("re-FinalizeAsset: %v", err)
 	}
 
@@ -757,7 +756,7 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 	// First ingest: asset with hash "old-hash".
 	tx1, _ := db.BeginTx(ctx, nil)
-	_, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx1),
+	_, _, err := fx.FinalizeAsset(ctx, WrapTx(tx1),
 		publishedArtifact("asset-content-hash", "old-hash", "file-old"))
 	if err != nil {
 		tx1.Rollback()
@@ -794,7 +793,7 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 	// Second ingest: republish with new hash (the bug scenario).
 	tx2, _ := db.BeginTx(ctx, nil)
-	ref2, events2, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2),
+	ref2, events2, err := fx.FinalizeAsset(ctx, WrapTx(tx2),
 		publishedArtifact("asset-content-hash", "new-hash", "file-new"))
 	if err != nil {
 		tx2.Rollback()
@@ -870,7 +869,7 @@ func TestTxAdapter_SatisfiesInterface(t *testing.T) {
 	tx, _ := db.BeginTx(context.Background(), nil)
 	defer tx.Rollback()
 
-	domainTx := finalizer.WrapTx(tx)
+	domainTx := WrapTx(tx)
 	// Use ExecContext to verify the adapter forwards correctly.
 	result, err := domainTx.ExecContext(context.Background(),
 		`INSERT INTO media_assets (id, name, filename, created_at, updated_at) VALUES (?, ?, ?, '', '')`,

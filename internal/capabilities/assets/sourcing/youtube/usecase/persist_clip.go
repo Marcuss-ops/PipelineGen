@@ -17,7 +17,7 @@
 //
 // The existing ClipRecord type (persist_index.go) is reused as the canonical
 // wire shape — godlike/06 SSOT one-canonical-owner-per-fact.
-package assets
+package usecase
 
 import (
 	"context"

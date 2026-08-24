@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"

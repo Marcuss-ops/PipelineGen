@@ -34,7 +34,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/staging"
 )
 
 // Stage implements staging.Stager.Stage. See file header for the

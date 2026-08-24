@@ -5,14 +5,14 @@
 // modules/content.go, modules/images.go"). The "modules/" path in the
 // pending item is a forward reference; the canonical current target for
 // per-capability helpers is `internal/app/build_bundles_<capability>.go`,
-// matching the buildIngestService / buildHealthService / wiring.BuildSyncTargets
+// matching the buildIngestService / buildHealthService / BuildSyncTargets
 // pattern already established by build_bundles_core.go / build_bundles_process.go
 // / build_bundles_domain.go.
 //
 // Private-helper convention (lowercase `build*`) — these helpers are NOT
 // standalone composable bundles; they are internal to BuildDomainBundle
 // (build_bundles_domain.go) which aggregates their output into
-// wiring.ComposeRoot.Domains.
+// ComposeRoot.Domains.
 //
 // File layout (domain split, July 2026):
 //   - this file: buildVoiceoverService orchestrator
@@ -24,13 +24,13 @@
 package wiring
 
 import (
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -43,7 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
 
@@ -72,7 +72,7 @@ import (
 func buildVoiceoverPipeline(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *wiring.Databases,
+	dbs *Databases,
 	log *zap.Logger,
 
 	driveUploader *drive.Uploader,
@@ -86,7 +86,7 @@ func buildVoiceoverPipeline(
 	mediaConfig mediaexec.ExecutionConfig,
 ) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, voiceover.AsyncPublishPool, error) {
 	voDir := cfg.Storage.VoiceoversPath()
-	voRepo := assets.NewVoiceoversRepository(dbs.DualPool.Writer)
+	voRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 
 	// P1-2 (June 2026): persistence.Repository adapter — wraps the
 	// production *sqassets.VoiceoversRepository + *sql.DB so the
@@ -108,7 +108,7 @@ func buildVoiceoverPipeline(
 	publishPool := NewVoiceoverPublishPool(cfg.Voiceover.MaxConcurrentTTS, log)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
-	// lifecycle.Registry so NewLifecycleFromDeps accepts it.
+	// Registry so NewLifecycleFromDeps accepts it.
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
 
 	voLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{
@@ -130,7 +130,7 @@ func buildVoiceoverPipeline(
 	//                       DeleteByIDTx, CountByDriveFileIDTx)
 	//   - outboxEnqueuer:  TxOutboxEnqueuer (EnqueueIndexEvent,
 	//                       EnqueueCleanupEvent) — nil-safe
-	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
+	//   - voLifecycle:     *Service → LifecycleProjectionUpserter
 	//                       via voiceoverProjectionAdapter
 	//   - log:             *zap.Logger
 	// PR-VO-A3: outbox enqueuer. Production wiring supplies

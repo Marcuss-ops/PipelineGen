@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
 // ProcessSegmentCommand is the canonical input for one voiceover segment.

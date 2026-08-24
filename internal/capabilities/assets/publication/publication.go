@@ -17,13 +17,13 @@
 // Phase 2 (next commit) will relocate the PublishClipToDrive +
 // DrivePublisher + Publish{Request,Result} types into this
 // package's godlike/06 SSOT owner files.
-package assets
+package publication
 
 import (
 	"context"
 	"fmt"
 
-	pubUC "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
+	pubUC "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 )
 
 // Publisher is the canonical godlike/06 SSOT narrow port for

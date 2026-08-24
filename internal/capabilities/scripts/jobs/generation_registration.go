@@ -30,7 +30,7 @@ package jobs
 import (
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 
 	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

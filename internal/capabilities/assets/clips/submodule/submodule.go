@@ -15,12 +15,12 @@
 // against the typed concrete — godlike/06 SSOT one-canonical-owner
 // per fact: the typed contract IS the per-sub-module contract, no
 // generic bridge allocation.
-package assets
+package submodule
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

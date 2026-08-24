@@ -11,8 +11,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // cleanupRequestV1 is the canonical envelope the VoiceoverCleanupHandler
@@ -85,13 +86,13 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 	oldLocalPaths []string,
 ) error {
 	if d == nil {
-		return errors.New("outbox.Dispatcher is nil")
+		return errors.New("Dispatcher is nil")
 	}
 	if d.outboxEventsRepo == nil {
-		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+		return errors.New("Dispatcher: outbox events repo not configured")
 	}
 	if voiceoverID == "" {
-		return errors.New("outbox.Dispatcher.EnqueueCleanupEvent: voiceoverID is required")
+		return errors.New("Dispatcher.EnqueueCleanupEvent: voiceoverID is required")
 	}
 
 	eventID := uuid.NewString()
@@ -108,7 +109,7 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueCleanupEvent: marshal v1 cleanup payload %s: %w", voiceoverID, err)
+		return fmt.Errorf("Dispatcher.EnqueueCleanupEvent: marshal v1 cleanup payload %s: %w", voiceoverID, err)
 	}
 
 	if _, err := d.outboxEventsRepo.Enqueue(
@@ -119,11 +120,11 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 		string(payloadJSON),
 		eventKey,
 	); err != nil {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueCleanupEvent: enqueue outbox event %s: %w", voiceoverID, err)
+		return fmt.Errorf("Dispatcher.EnqueueCleanupEvent: enqueue outbox event %s: %w", voiceoverID, err)
 	}
 
 	if d.log != nil {
-		d.log.Debug("outbox.Dispatcher.EnqueueCleanupEvent: enqueued voiceover.cleanup.requested (v1 envelope, caller-owned tx)",
+		d.log.Debug("Dispatcher.EnqueueCleanupEvent: enqueued voiceover.cleanup.requested (v1 envelope, caller-owned tx)",
 			zap.String("voiceover_id", voiceoverID),
 			zap.String("outbox_event_id", eventID),
 			zap.String("old_drive_file_id", oldDriveFileID),

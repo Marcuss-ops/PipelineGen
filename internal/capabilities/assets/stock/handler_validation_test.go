@@ -8,7 +8,7 @@
 //
 // All tests share the same testRunResponse struct + newStockHandler
 // helper from handler_contract_test.go (same package, same test binary).
-package assets
+package stock
 
 import (
 	"bytes"

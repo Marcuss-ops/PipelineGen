@@ -9,7 +9,7 @@
 //
 // registers via the private registerOperationsRoutes method, called from
 // handler.go::RegisterRoutes.
-package assets
+package operator
 
 import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

@@ -12,15 +12,14 @@
 // godlike/07 fail-closed: NewEnrichmentHandler errors on nil LLMClient
 // or AssetRepo; HandleJob returns typed sentinels on every failure;
 // the handler respects ctx cancellation.
-package assets
+package enrichment
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"go.uber.org/zap"
 )
 
@@ -159,21 +158,21 @@ func NewEnrichmentHandler(llmClient EnrichmentLLMClient, assetRepo AssetReposito
 
 // RegisterHandler binds the EnrichmentHandler.HandleJob to the
 // canonical job type string ("media.stock_rlm_enrich") on the
-// appjobs.Service dispatcher. Returns error on registration
+// jobs.Service dispatcher. Returns error on registration
 // failure (duplicate handler, frozen registry). Composition root
 // MUST propagate the error (NOT silently default to a no-op
 // registration).
-func (h *EnrichmentHandler) RegisterHandler(jobsSvc *appjobs.Service) error {
+func (h *EnrichmentHandler) RegisterHandler(jobsSvc *jobs.Service) error {
 	if h == nil {
 		return WrapHandlerNotConfigured("handler")
 	}
 	if jobsSvc == nil {
 		return WrapHandlerNotConfigured("jobsSvc")
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeMediaStockRLMEnrich, appjobs.HandlerFunc(h.HandleJob)); err != nil {
-		return fmt.Errorf("enrichment.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeMediaStockRLMEnrich, err)
+	if err := jobsSvc.RegisterHandler(jobs.TypeMediaStockRLMEnrich, jobs.HandlerFunc(h.HandleJob)); err != nil {
+		return fmt.Errorf("enrichment.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeMediaStockRLMEnrich, err)
 	}
-	h.Log.Info("registered media.stock_rlm_enrich job handler", zap.String("type", appjobs.TypeMediaStockRLMEnrich))
+	h.Log.Info("registered media.stock_rlm_enrich job handler", zap.String("type", jobs.TypeMediaStockRLMEnrich))
 	return nil
 }
 
@@ -192,7 +191,7 @@ func (h *EnrichmentHandler) RegisterHandler(jobsSvc *appjobs.Service) error {
 // typed sentinel from the 5-sentinel taxonomy. Dual-%w wraps
 // (Go 1.20+) preserve the chain for both errors.Is (sentinel)
 // and errors.As (typed envelope) probes.
-func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
 	if h == nil {
 		return nil, ErrEnrichmentHandlerNotConfigured
 	}
@@ -319,6 +318,6 @@ func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *appjobs.Job, too
 		"handler_stage":  emitStage,
 		"model":          h.LLMClient.Model(),
 		"destination":    "stock",
-		"schema_version": outbox.AssetPublishedSchemaVersion,
+		"schema_version": jobs.AssetPublishedSchemaVersion,
 	}, nil
 }

@@ -3,7 +3,7 @@
 // PR-CLIPS-NONOPS-EXTRACT (July 2026). The method bodies are
 // byte-equivalent with the pre-extraction versions — only the
 // receiver type changed from *Handler to *NonOpsHandler.
-package assets
+package nonops
 
 import (
 	"context"

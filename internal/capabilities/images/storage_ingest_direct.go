@@ -8,13 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
-	capimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/destinations"
 	"go.uber.org/zap"
 )
 
@@ -56,14 +54,14 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-	// Local path is computed inline via destinations.LocalPathFor.
+	// Local path is computed inline via LocalPathFor.
 	// The path computation has migrated into the destinations
-	// package as destinations.LocalPathFor (PR-IMAGES-REMOVE-DRIVE-STORE
+	// package as LocalPathFor (PR-IMAGES-REMOVE-DRIVE-STORE
 	// follow-up, July 2026) so the destinationResolver package
 	// owns the canonical image-path shape (source-prefixed
 	// `<source>/<slug>.<ext>`). The images package imports it
 	// without taking a destination-resolver interface change.
-	localPath, relativePath := destinations.LocalPathFor(s.imagesDir, slug, source, ext)
+	localPath, relativePath := LocalPathFor(s.imagesDir, slug, source, ext)
 	if err := persistImageBytes(localPath, content); err != nil {
 		return nil, err
 	}
@@ -246,7 +244,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		EmitIndexEvent: true,
 	}
 	if !skipDrive {
-		payload, marshalErr := json.Marshal(capimages.ImageDriveDeliveryPayload{
+		payload, marshalErr := json.Marshal(ImageDriveDeliveryPayload{
 			AssetID: hash, ContentHash: hash, LocalPath: localPath,
 			Filename: filepath.Base(localPath), DestinationFolderID: overrideRoot,
 			Style: style, Subject: slug, Group: slug, SourceVersion: 1,
@@ -255,7 +253,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			return nil, fmt.Errorf("image ingest: build Drive delivery outbox payload: %w", marshalErr)
 		}
 		commitReq.AdditionalOutboxEvents = []persistence.OutboxEvent{{
-			EventType:   capimages.EventTypeImageDriveDeliveryRequested,
+			EventType:   EventTypeImageDriveDeliveryRequested,
 			AggregateID: hash, AggregateType: "media_asset", PayloadJSON: string(payload),
 			EventKey: "image-drive-delivery:" + hash + ":" + style + ":" + overrideRoot,
 		}}

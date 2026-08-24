@@ -1,11 +1,11 @@
-package assets
+package assettree
 
 import (
 	"context"
 	"path"
 	"strings"
 
-	repo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	repo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"go.uber.org/zap"
 )

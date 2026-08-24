@@ -51,7 +51,7 @@
 // What is NOT a consumer:
 //   - cmd/admin/ — admin tooling uses the lower-level CLI-driven flows
 //     (reindex_qdrant, dr-qdrant).
-package assets
+package mutations
 
 import (
 	"context"

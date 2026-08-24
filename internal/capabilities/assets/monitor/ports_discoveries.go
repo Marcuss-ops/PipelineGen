@@ -8,7 +8,7 @@
 // (`internal/app/lifecycle.go::monitorDiscoveriesAdapter`) translates
 // at wire-up time, so the application-layer orchestration only sees
 // the monitor-canonical types. Zero infra import in this file.
-package assets
+package monitor
 
 import (
 	"context"

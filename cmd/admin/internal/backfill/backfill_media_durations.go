@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -59,7 +58,7 @@ func RunBackfillMediaDurations(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -102,7 +101,7 @@ func RunBackfillMediaDurations(args []string) error {
 		fmt.Printf("%-22s id=%s duration_ms=%d width=%d height=%d\n",
 			outcome.Kind, row.ID, outcome.DurationMS, outcome.Width, outcome.Height)
 	}
-	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
 	fmt.Println(report.String())
@@ -134,7 +133,7 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 		where = append(where, "COALESCE(duration_ms, 0) <= 0")
 	}
 	args := make([]any, 0)
-	if ids := splitBackfillCSV(rawIDs); len(ids) > 0 {
+	if ids := cli.SplitBackfillCSV(rawIDs); len(ids) > 0 {
 		marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
 		where = append(where, "id IN ("+marks+")")
 		for _, id := range ids {
@@ -379,7 +378,7 @@ negative_duration        = %d`,
 		r.ProviderMetadata, r.StillUnknown, r.InvalidZeroDuration, r.NegativeDuration)
 }
 
-func splitBackfillCSV(raw string) []string {
+func SplitBackfillCSV(raw string) []string {
 	parts := strings.Split(raw, ",")
 	result := make([]string, 0, len(parts))
 	seen := make(map[string]struct{}, len(parts))

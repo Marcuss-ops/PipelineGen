@@ -18,7 +18,7 @@
 // godlike/07 fail-closed: a malformed file returns a typed
 // error. The AcquireService logs + skips it (the chain falls
 // through to the next priority).
-package assets
+package texttracks
 
 import (
 	"bufio"

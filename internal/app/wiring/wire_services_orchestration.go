@@ -4,7 +4,7 @@
 // Split rationale, see wire_services.go header.
 //
 // This file owns the RUNTIME ORCHESTRATION stage: the chain that runs
-// AFTER composition has produced the *wiring.ComposeRoot:
+// AFTER composition has produced the *ComposeRoot:
 //
 //  1. Set the log sink (request-middleware observability) — logsink +
 //     middleware.SetLogSink.
@@ -25,7 +25,7 @@
 //
 // Cross-file deps (same package `app`, accessed without explicit import):
 //   - WireRegistry (registry.go)
-//   - NewServerLifecycleWithProbes (lifecycle.go)
+//   - NewServerLifecycleWithProbes (go)
 //   - buildStartupPlan (startup_plan sibling — wire_services_startup_plan.go)
 //   - validateQdrantIndexerCompatibility (build_bundles_qdrant_gates.go,
 //     invoked from buildStartupPlan — orchestrator does NOT call it
@@ -46,12 +46,11 @@ import (
 	"strings"
 	"time"
 
-	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
-	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/assets"
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
@@ -69,7 +68,7 @@ import (
 
 // WireServices initializes the full server composition root.
 //
-// PR4d-final flow (June 2026): initCompositionMinimal builds the *wiring.ComposeRoot
+// PR4d-final flow (June 2026): initCompositionMinimal builds the *ComposeRoot
 // via NewComposition, starts background jobs (the StartupStep plan —
 // including the job runner — is captured in jobs.startupPlan), builds
 // cleanup. WireRegistry takes ONLY root + ctx — there is no *CoreDeps
@@ -143,7 +142,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// Reuse the broker constructed in initCompositionMinimalWithContext
 	// (must be set before startBackgroundJobs so the job-runner sees
 	// a non-nil CompletionPort). The local broker satisfies both
-	// appjobs.CompletionPort (stored in wiring.JobsBundle) and appjobs.Broker
+	// appjobs.CompletionPort (stored in JobsBundle) and appjobs.Broker
 	// (needed here for the full worker-handler surface).
 	lb, ok := root.Jobs.Broker.(*localbroker.Broker)
 	if !ok {
@@ -151,7 +150,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 	broker := lb // *localbroker.Broker satisfies appjobs.Broker
 
-	assetSvc := assetsjobs.NewService(
+	assetSvc := jobsapi.NewAssetTransferService(
 		root.Search.AssetIndexService,
 		root.Repos.Assets,
 		root.Repos.ImageRepo,
@@ -243,7 +242,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// relying solely on DB+Drive. Constructed only when Qdrant is
 	// enabled; nil-safe when disabled.
 	//
-	// PR 4 typed wiring.ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
+	// PR 4 typed ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
 	// (was `any` pre-PR4). The concrete type satisfies the probe
 	// contract via the compile-time assertion in
 	// internal/platform/qdrant/health.go (`_ interface{ Probe(...) error }
@@ -271,7 +270,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	)
 
 	// (chrome-pool-prewarm now lives in startupPlan; the prior
-	//  lifecycle.AddProbe("chrome-pool", ...) is gone, so HTTP traffic
+	//  AddProbe("chrome-pool", ...) is gone, so HTTP traffic
 	//  never reaches a cold pool.)
 
 	var healthSvc any
@@ -319,7 +318,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// handling above; nil root or nil root.Domains keeps
 	// AppImage.ImageSearchResolver as a nil-typed-port so BuildServer’s
 	// pass-through carries nil to api.ServerDeps.ImageSearchResolver.
-	var imageRouting routing.ImageSearchResolver
+	var imageRouting images.ImageSearchResolver
 	if root != nil && root.Domains != nil {
 		imageRouting = root.Domains.ImageSearchResolver
 	}

@@ -23,7 +23,7 @@
 //
 // Neither surface uses gRPC, Protobuf, or Cap'n Proto — the project
 // keeps the JSON sidecars for human- and grep-friendliness.
-package assets
+package metadataexport
 
 import (
 	"errors"

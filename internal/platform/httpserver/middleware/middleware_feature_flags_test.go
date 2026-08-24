@@ -6,7 +6,7 @@
 // imports `internal/platform/config` — the testFlags stub from
 // port_fakes_test.go (a 3-method FeatureFlagsPort fake) replaces the
 // config literal.
-package httpserver
+package middleware
 
 import (
 	"net/http"

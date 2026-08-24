@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type resolverSearchFake struct{ searcher *resolverSearcherFake }
 
-func (f *resolverSearchFake) Resolve(routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+func (f *resolverSearchFake) Resolve(ImageSearchTerritory) (ImageSearcher, error) {
 	return f.searcher, nil
 }
 
@@ -23,7 +22,7 @@ type resolverSearcherFake struct {
 	block <-chan struct{}
 }
 
-func (f *resolverSearcherFake) Search(ctx context.Context, _ routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+func (f *resolverSearcherFake) Search(ctx context.Context, _ ImageFilter) ([]ImageSearchResult, error) {
 	f.calls.Add(1)
 	if f.block != nil {
 		select {
@@ -32,7 +31,7 @@ func (f *resolverSearcherFake) Search(ctx context.Context, _ routing.ImageFilter
 			return nil, ctx.Err()
 		}
 	}
-	return []routing.ImageSearchResult{{
+	return []ImageSearchResult{{
 		AssetID: "img-1", Origin: asset.ImageOriginRetrieved, Provider: "wikipedia",
 		Name: "Elon Musk", PreviewURL: "https://img.example/elon.jpg", SourcePageURL: "https://source.example/elon",
 		Width: 1200, Height: 800, Score: 1,
@@ -149,11 +148,11 @@ type resolverSearchErrorFake struct {
 	calls atomic.Int32
 }
 
-func (f *resolverSearchErrorFake) Resolve(routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+func (f *resolverSearchErrorFake) Resolve(ImageSearchTerritory) (ImageSearcher, error) {
 	return f.searcher(), nil
 }
 
-func (f *resolverSearchErrorFake) searcher() routing.ImageSearcher {
+func (f *resolverSearchErrorFake) searcher() ImageSearcher {
 	return &resolverErrorSearcherFake{calls: &f.calls}
 }
 
@@ -161,7 +160,7 @@ type resolverErrorSearcherFake struct {
 	calls *atomic.Int32
 }
 
-func (f *resolverErrorSearcherFake) Search(context.Context, routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+func (f *resolverErrorSearcherFake) Search(context.Context, ImageFilter) ([]ImageSearchResult, error) {
 	f.calls.Add(1)
 	return nil, context.DeadlineExceeded
 }

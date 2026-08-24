@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // assetMetadataManifest is the reusable, data-only input for
@@ -62,7 +62,7 @@ func RunApplyAssetMetadata(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -112,7 +112,7 @@ func RunApplyAssetMetadata(args []string) error {
 	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
 		return fmt.Errorf("apply asset metadata: %w", err)
 	}
-	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
 		return err
 	}
 	fmt.Printf("Asset metadata applied: asset=%s keys=%d manifest=%s\n", clip.ID, len(manifest.Metadata), *manifestPath)

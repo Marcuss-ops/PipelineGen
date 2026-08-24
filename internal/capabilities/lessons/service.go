@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"

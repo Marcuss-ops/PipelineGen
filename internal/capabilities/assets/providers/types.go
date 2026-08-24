@@ -18,12 +18,12 @@
 //   - registry.go         one-shot Registry (deterministic All/ByCapability)
 //   - registry_test.go    unit tests covering nil/empty/duplicate/concurrent/freeze
 //   - adapters/<source>/  Provider implementations per source
-package assets
+package providers
 
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

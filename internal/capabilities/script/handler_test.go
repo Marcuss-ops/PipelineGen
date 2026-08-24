@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // ── Route compatibility ────────────────────────────────────────

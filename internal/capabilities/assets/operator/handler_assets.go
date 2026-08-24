@@ -19,7 +19,7 @@
 // BOTH summary and assets; it stays in the assets file because its
 // semantic owner is asset.Summary → JSON conversion). It also owns
 // isAllowedPath + maskPath (only used by preview).
-package assets
+package operator
 
 import (
 	"fmt"
@@ -30,8 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -59,7 +58,7 @@ func (h *Handler) handleListAssets(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	query := operator.AssetInventoryQuery{
+	query := AssetInventoryQuery{
 		Source:         c.Query("source"),
 		Provider:       c.Query("provider"),
 		MediaType:      c.Query("media_type"),

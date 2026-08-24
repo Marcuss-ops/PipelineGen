@@ -1,5 +1,5 @@
 // Package monitor — semantic analyzer port.
-package assets
+package monitor
 
 import (
 	"context"

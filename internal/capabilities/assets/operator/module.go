@@ -1,10 +1,10 @@
-package assets
+package operator
 
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // OperatorDescriptor is the api.Descriptor for the operator console API module.

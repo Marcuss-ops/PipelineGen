@@ -1,6 +1,6 @@
 // ── Parity between the canonical Status constants and their wire strings ──
 
-package assets
+package artifacts
 
 import "testing"
 

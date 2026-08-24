@@ -3,14 +3,13 @@
 // Extracted from build_bundles_process.go (July 2026 sub-section
 // split) per the documented layout in build_process_qdrant.go:
 // this file owns ONLY wireMediaProcessor (canonical
-// mutations.AssetMutationDispatcher adapter + wiring.InitMediaProcessor
+// mutations.AssetMutationDispatcher adapter + InitMediaProcessor
 // FFmpeg-backed wiring) + newVLMClient (cfg.VLM → *vlm.Client).
 package wiring
 
 import (
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
@@ -28,9 +27,9 @@ import (
 // internal/infrastructure/drive/publisher.go (already pinned there)
 // so this wiring is type-safe.
 func wireMediaProcessor(
-	outbox *wiring.OutboxBundle,
-	repos *wiring.RepoBundle,
-	dbs *wiring.Databases,
+	outbox *OutboxBundle,
+	repos *RepoBundle,
+	dbs *Databases,
 	cfg *config.Config,
 	publisher delivery.Publisher,
 	log *zap.Logger,
@@ -41,7 +40,7 @@ func wireMediaProcessor(
 		return nil, nil
 	}
 	committer := newCanonicalAssetCommitter(dbs.Main.DB, outbox.EventsRepo, log)
-	mp := wiring.InitMediaProcessor(
+	mp := InitMediaProcessor(
 		cfg,
 		dbs.Main,
 		repos.Assets.Repository(),

@@ -36,19 +36,19 @@
 // the canonical /api/jobs/* URL set.
 //
 // UNIQUE TO JOBS (PR-0, June 2026): the Handler depends on TWO
-// narrow ports — `jobs.Service` (the orchestrator, exposes
+// narrow ports — `Service` (the orchestrator, exposes
 // Enqueue/Cancel/Retry/Get/List/ListEvents) AND
-// `appjobs.JobStatsReader` (the stats reader, exposes GetStats
+// `JobStatsReader` (the stats reader, exposes GetStats
 // only). The split is intentional (per the PR-0 commit comment):
 // a future Postgres migration can wire a different stats reader
 // (e.g. one that aggregates across shards) without touching the
-// orchestrator's mutation surface. *appjobs.Service satisfies both
+// orchestrator's mutation surface. *Service satisfies both
 // interfaces via compile-time assertion in
 // internal/capabilities/jobs/queue/stats.go — production wiring passes the
 // same concrete pointer to both fields.
 //
 // The two deps flow through Build as flat Dependencies fields. The
-// composition root owns the *appjobs.Service construction
+// composition root owns the *Service construction
 // (via BuildJobsBundle in module_media.go); the api/ layer never
 // builds it (per AGENTS.md Pattern 0).
 //
@@ -57,7 +57,7 @@
 // register / diagnostics / search) — only `Module` field, no
 // `Handler` / `Service` field. The jobs HTTP capability has no
 // non-HTTP consumer in the codebase that needs the raw JobsHandler
-// (the `jobs.Service` is consumed via the JobsBundle which is
+// (the `Service` is consumed via the JobsBundle which is
 // the canonical facade for non-HTTP consumers like the clips
 // orchestrator's EnrichUseCase). The Handler stays the internal
 // worker captured by the Module closure; no caller (composition
@@ -75,44 +75,41 @@ package jobs
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // Dependencies is the typed narrow input to Build. The JobsHandler
-// depends on a jobs.Service (orchestrator) + an
-// appjobs.JobStatsReader (narrow stats port) + a logger.
+// depends on a Service (orchestrator) + an
+// JobStatsReader (narrow stats port) + a logger.
 //
 // Mandatory fields return an error when nil; optional fields fall
 // through to the handler's existing nil-tolerance. Logger nil →
 // zap.NewNop() (composition-root-friendly default).
 type Dependencies struct {
-	// Service is the canonical jobs.Service orchestrator
+	// Service is the canonical Service orchestrator
 	// (Enqueue/Cancel/Retry/Get/List/ListEvents). In production,
-	// the JobsBundle constructs the *appjobs.Service and
+	// the JobsBundle constructs the *Service and
 	// exposes it as root.Jobs.Service. MANDATORY — Build
 	// returns an error when nil. The Handler stores h.service
 	// and 6 of the 7 routes call service methods
 	// unconditionally. A nil Service would NPE at first
-	// request; fail at startup instead.
-	Service jobs.Service
+	Service *Service
 
-	// Stats is the canonical appjobs.JobStatsReader port
+	// Stats is the canonical JobStatsReader port
 	// (PR-0, June 2026). In production, the
-	// sfxstatsJobStatsReaderAdapter wraps *appjobs.Service's
-	// GetStats helper. *appjobs.Service satisfies both
-	// `jobs.Service` AND `appjobs.JobStatsReader` via
+	// sfxstatsJobStatsReaderAdapter wraps *Service's
+	// GetStats helper. *Service satisfies both
+	// `Service` AND `JobStatsReader` via
 	// compile-time assertion — production wiring passes the
 	// same concrete pointer to both fields. MANDATORY —
 	// Build returns an error when nil. The Handler stores
 	// h.stats and the /stats route calls stats.GetStats
 	// unconditionally. A nil Stats would NPE at first
 	// request; fail at startup instead.
-	Stats appjobs.JobStatsReader
+	Stats JobStatsReader
 
 	// EnabledFunc is the closure that decides whether the
 	// module's routes are mounted. The jobs capability has no
@@ -132,7 +129,7 @@ type Dependencies struct {
 	// Logger is the canonical structured logger. nil →
 	// zap.NewNop() (composition-root-friendly default).
 	Logger  *zap.Logger
-	History appjobs.HistoryReader
+	History HistoryReader
 }
 
 // JobsDescriptor is the concrete capability Descriptor returned
@@ -199,13 +196,13 @@ func (h historyRoute) RegisterRoutes(rg *gin.RouterGroup) { rg.GET("", h.handler
 func Build(deps Dependencies) (api.Descriptor, error) {
 	// Mandatory-shape validation.
 	if deps.Service == nil {
-		return nil, fmt.Errorf("jobs.Build: Service is required (composition root must pre-construct the *appjobs.Service via BuildJobsBundle; the api/ layer never builds it)")
+		return nil, fmt.Errorf("Build: Service is required (composition root must pre-construct the *Service via BuildJobsBundle; the api/ layer never builds it)")
 	}
 	if deps.Stats == nil {
-		return nil, fmt.Errorf("jobs.Build: Stats is required (PR-0 split — the /stats route calls stats.GetStats unconditionally; a nil port would NPE at first request)")
+		return nil, fmt.Errorf("Build: Stats is required (PR-0 split — the /stats route calls stats.GetStats unconditionally; a nil port would NPE at first request)")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, fmt.Errorf("jobs.Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")
+		return nil, fmt.Errorf("Build: EnabledFunc is required (composition root must wire a closure — typically func() bool { return true } — so this package stays free of platform/config imports)")
 	}
 
 	// Logger: nil → zap.NewNop() (composition-root-friendly default).

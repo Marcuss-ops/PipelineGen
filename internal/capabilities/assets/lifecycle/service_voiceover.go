@@ -4,7 +4,7 @@
 // UploadOnly (Phase 1 of the 2-phase split) and
 // UpsertVoiceoverProjectionTx (Phase 2) are the canonical Drive-upload
 // + SQLite-projection surfaces for the voiceover pipeline.
-package assets
+package lifecycle
 
 import (
 	"context"

@@ -11,13 +11,13 @@
 // FirePostCommitHooks delegation is DEFERRED to phase 2 until
 // the finalization.RenditionOutput field type + artifact
 // projection are fully verified.
-package assets
+package commit
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
 

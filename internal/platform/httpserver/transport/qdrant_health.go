@@ -20,14 +20,14 @@
 // place allowed to wire disasterrecovery.HealthProbe +
 // collections.CollectionManager + search.Searcher +
 // search.TextEmbedder into the port.
-package httpserver
+package transport
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 )
 
 // QdrantHealthHandler exposes /qdrant/live and /qdrant/ready.

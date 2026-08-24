@@ -10,16 +10,16 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
-type Service struct {
+type AssetTransferServiceImpl struct {
 	assetIndex    *assetindex.Service
 	querySvc      *asset.Service
 	imagesRepo    *imagesrepo.ImagesRepository
@@ -49,15 +49,15 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *Service {
-	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
+func NewAssetTransferService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
+	return NewAssetTransferServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
+func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
-	return &Service{
+	return &AssetTransferServiceImpl{
 		assetIndex:    assetIndex,
 		querySvc:      querySvc,
 		imagesRepo:    imagesRepo,
@@ -73,12 +73,12 @@ func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Se
 // constructor arg) to keep the NewServiceWithUploadRoot signature
 // stable for existing call sites. A nil stager keeps fetch failing
 // closed with a typed error per godlike/07.
-func (s *Service) WithSourceStager(stager acquisition.SourceStager) *Service {
+func (s *AssetTransferServiceImpl) WithSourceStager(stager acquisition.SourceStager) *AssetTransferServiceImpl {
 	s.sourceStager = stager
 	return s
 }
 
-func (s *Service) Download(ctx context.Context, assetID string) (io.ReadCloser, string, error) {
+func (s *AssetTransferServiceImpl) Download(ctx context.Context, assetID string) (io.ReadCloser, string, error) {
 	rec, err := s.resolve(ctx, assetID)
 	if err != nil {
 		return nil, "", err
@@ -118,7 +118,7 @@ func (s *Service) Download(ctx context.Context, assetID string) (io.ReadCloser, 
 	return nil, "", fmt.Errorf("asset %s has no downloadable source", assetID)
 }
 
-func (s *Service) InitiateUpload(ctx context.Context, assetID string) (*UploadResponse, error) {
+func (s *AssetTransferServiceImpl) InitiateUpload(ctx context.Context, assetID string) (*UploadResponse, error) {
 	if s.assetIndex == nil {
 		return nil, fmt.Errorf("asset index service not configured")
 	}
@@ -156,7 +156,7 @@ func (s *Service) InitiateUpload(ctx context.Context, assetID string) (*UploadRe
 	}, nil
 }
 
-func (s *Service) Upload(ctx context.Context, assetID, filename string, content io.Reader) error {
+func (s *AssetTransferServiceImpl) Upload(ctx context.Context, assetID, filename string, content io.Reader) error {
 	if s.assetIndex == nil {
 		return fmt.Errorf("asset index service not configured")
 	}
@@ -212,7 +212,7 @@ func (s *Service) Upload(ctx context.Context, assetID, filename string, content 
 	return s.assetIndex.Upsert(ctx, rec)
 }
 
-func (s *Service) FinalizeUpload(ctx context.Context, assetID string) error {
+func (s *AssetTransferServiceImpl) FinalizeUpload(ctx context.Context, assetID string) error {
 	if s.assetIndex == nil {
 		return fmt.Errorf("asset index service not configured")
 	}
@@ -241,7 +241,7 @@ func (s *Service) FinalizeUpload(ctx context.Context, assetID string) error {
 	return s.assetIndex.Upsert(ctx, rec)
 }
 
-func (s *Service) resolve(ctx context.Context, assetID string) (*resolvedAsset, error) {
+func (s *AssetTransferServiceImpl) resolve(ctx context.Context, assetID string) (*resolvedAsset, error) {
 	if s.assetIndex != nil {
 		if rec, err := s.assetIndex.GetByID(ctx, assetID); err != nil {
 			if s.log != nil {
@@ -300,7 +300,7 @@ func (s *Service) resolve(ctx context.Context, assetID string) (*resolvedAsset, 
 // typed error rather than silently falling back to inline http.
 // Cleanup of the staged file happens deterministically when the
 // returned ReadCloser is closed (via stagedSourceReadCloser.Close).
-func (s *Service) fetch(ctx context.Context, rawURL, filename string) (io.ReadCloser, string, error) {
+func (s *AssetTransferServiceImpl) fetch(ctx context.Context, rawURL, filename string) (io.ReadCloser, string, error) {
 	if s.sourceStager == nil {
 		return nil, "", fmt.Errorf("jobs/assets.fetch: source stager is nil (PR-SOURCESTAGER-CONSOLIDATE: composition root must wire acquisition.SourceStager)")
 	}
@@ -399,12 +399,16 @@ func convertMediaAsset(details *asset.Details) *resolvedAsset {
 	if filename == "" {
 		filename = assetItem.ID
 	}
+	dl := downloadLink
+	if dl == "" {
+		dl = assetItem.ExternalURL()
+	}
 	return &resolvedAsset{
 		AssetID:      assetItem.ID,
 		Filename:     filename,
 		LocalPath:    localPath,
 		DriveLink:    driveLink,
-		DownloadLink: firstNonEmpty(downloadLink, assetItem.ExternalURL()),
+		DownloadLink: dl,
 	}
 }
 
@@ -421,11 +425,4 @@ func normalizeDownloadURL(rawURL string) string {
 	return rawURL
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
+

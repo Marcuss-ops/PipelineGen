@@ -21,7 +21,7 @@
 // successful no-op. Stager.Stage returns the typed error; the
 // caller (a future StageService in FASE 3-B) decides whether to
 // retry, dead-letter, or fail the job.
-package assets
+package staging
 
 import (
 	"errors"

@@ -2,7 +2,7 @@
 // `asset.text.materialize` jobs.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
-package assets
+package texttracks
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -54,19 +54,27 @@ func (h *MaterializeJobHandler) WithBackfill(backfill *BackfillService) *Materia
 	return h
 }
 
-func (h *MaterializeJobHandler) Register(jobsSvc *appjobs.Service) error {
+type JobRegistrar interface {
+	RegisterHandler(jobType string, h any) error
+}
+
+func (h *MaterializeJobHandler) Register(jobsSvc JobRegistrar) error {
 	if jobsSvc == nil {
 		return errors.New("texttracks.MaterializeJobHandler.Register: jobsSvc is nil")
 	}
-	return jobsSvc.RegisterHandler(asset.TypeTextMaterialize, appjobs.HandlerFunc(h.HandleJob))
+	return jobsSvc.RegisterHandler(asset.TypeTextMaterialize, h.HandleJob)
 }
 
 func (h *MaterializeJobHandler) HandleJob(
 	ctx context.Context,
-	j *appjobs.Job,
-	tools *appjobs.JobTools,
+	j *job.Job,
+	tools *job.JobExecutionTools,
 ) (map[string]any, error) {
-	pf := appjobs.SafeProgressFn(tools)
+	pf := func(pct int, msg string) {
+		if tools != nil && tools.Progress != nil {
+			tools.Progress(pct, msg)
+		}
+	}
 	pf(0, "starting asset.text.materialize")
 	defer pf(100, "asset.text.materialize done")
 

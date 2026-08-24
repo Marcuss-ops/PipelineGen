@@ -16,7 +16,7 @@
 // half-wired Service silently no-op'd the entire dispatch phase
 // pre-Blocco 2.0 PR 10 lessons — see qdrant/reconciler/ports.go
 // comment on noopOutboxEnqueuer vs nil-check panic).
-package assets
+package reconciler
 
 import (
 	"context"

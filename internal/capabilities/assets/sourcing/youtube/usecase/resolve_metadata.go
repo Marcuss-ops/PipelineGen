@@ -14,7 +14,7 @@
 // duration fallback logic for the sourcing/youtube registration pipeline.
 // The parent youtube package's helpers.go duplicates ExtractVideoIDFromURL and
 // ExtractURLParam for backward compat until the CUTOVER phase (Wave B).
-package assets
+package usecase
 
 import (
 	"fmt"

@@ -46,7 +46,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -83,7 +83,7 @@ func RunRemoveDriveFolderRecursive(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
@@ -469,7 +469,7 @@ func collectUniqueAssets(ctx context.Context, db *sql.DB, folders []folderInfo, 
 // from delete_clip_by_drive_file.go.
 func waitForAllAssetDeletions(ctx context.Context, db *sql.DB, assetIDs []string) error {
 	for i, id := range assetIDs {
-		if err := waitForAssetDeletion(ctx, db, id); err != nil {
+		if err := cli.WaitForAssetDeletion(ctx, db, id); err != nil {
 			return fmt.Errorf("asset %d/%d (%s): %w", i+1, len(assetIDs), id, err)
 		}
 		fmt.Printf("  [%d/%d] asset %s reached terminal deletion\n", i+1, len(assetIDs), id)

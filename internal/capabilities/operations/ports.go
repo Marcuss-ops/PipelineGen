@@ -19,9 +19,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // JobEnqueuer is the canonical narrow port for inserting a job
@@ -94,16 +93,16 @@ type OutboxEmitter interface {
 // since the service uses it directly).
 type OperationsRepository interface {
 	// Insert atomically writes a new operation row.
-	Insert(ctx context.Context, op *operations.Operation, tx *sql.Tx) error
+	Insert(ctx context.Context, op *Operation, tx *sql.Tx) error
 	// GetLatestForKey returns the most recent operation for
 	// the (scope, idempotency_key) pair, or (nil, nil) when
 	// no row matches.
-	GetLatestForKey(ctx context.Context, scope operations.Scope, idempotencyKey string, tx *sql.Tx) (*operations.Operation, error)
+	GetLatestForKey(ctx context.Context, scope Scope, idempotencyKey string, tx *sql.Tx) (*Operation, error)
 	// UpdateState transitions the operation to newState.
 	// Used by the force_refresh path to flip the prior
 	// operation to SUPERSEDED in the same atomic TX as the
 	// new operation's INSERT.
-	UpdateState(ctx context.Context, id string, newState operations.State, tx *sql.Tx) error
+	UpdateState(ctx context.Context, id string, newState State, tx *sql.Tx) error
 }
 
 // TxManager is the canonical narrow port for opening a

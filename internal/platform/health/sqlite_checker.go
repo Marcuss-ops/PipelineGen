@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 

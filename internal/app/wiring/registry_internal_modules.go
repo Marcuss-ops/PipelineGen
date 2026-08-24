@@ -8,16 +8,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
-	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
+	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
@@ -28,7 +27,7 @@ import (
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -42,7 +41,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) (registryCrossStepState, error) {
+func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring) (registryCrossStepState, error) {
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
 
@@ -86,7 +85,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 			log.Warn("registerInternalModules: delivery signer construction failed; semantic backend delivery disabled",
 				zap.Error(err))
 		} else {
-			deliveryPort = signer
+			deliveryPort = &deliverySignerAdapter{signer: signer}
 		}
 	}
 
@@ -235,7 +234,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	return crossStep, nil
 }
 
-func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
+func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring) error {
 	if !cfg.Features.ArtlistEnabled {
 		log.Info("registerArtlist: feature disabled (cfg.Features.ArtlistEnabled=false); skipping route registration")
 		regWiring.ArtlistSvc = nil
@@ -246,7 +245,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		ctx,
 		log,
 		cfg,
-		&wiring.ArtlistBundle{
+		&ArtlistBundle{
 			MediaExec:          root.MediaExec,
 			Committer:          newCanonicalAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
 			DB:                 root.DB,
@@ -304,7 +303,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 	return nil
 }
 
-func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut, idempotencyHandler gin.HandlerFunc) error {
+func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.YouTubeEnabled {
 		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
 		regWiring.YouTubeClip = nil
@@ -339,7 +338,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	if !ok || yd == nil {
 		return fmt.Errorf("registerYouTubeClip: youtube.Build returned unexpected descriptor type %T (want *youtubeapi.YouTubeDescriptor)", descriptor)
 	}
-	regWiring.YouTubeClip = &wiring.YouTubeClipWiring{
+	regWiring.YouTubeClip = &YouTubeClipWiring{
 		Module:  yd.Module,
 		Service: yd.Service,
 	}
@@ -347,7 +346,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
 }
 
-func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
+func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.ClipRenderEnabled {
 		log.Info("registerClipRender: ClipRender feature is disabled; skipping HTTP route registration + job binding")
 		return nil
@@ -440,7 +439,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 			}
 		}
 	}
-	chrononRenderer := wiring.NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
+	chrononRenderer := NewChrononClipRenderExecutor(chrononBin, cfg.External.FfmpegPath, log)
 	worker.WithRenderExecutor(clipadapters.NewClipRenderExecutorAdapter(clipRenderer, chrononRenderer, backendResolver, backendProbe))
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
@@ -513,7 +512,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
 }
 
-func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
+func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
 	capability := capjobs.NewBundleWithHistory(
 		root.Jobs.Service,
 		root.Jobs.Service,
@@ -531,7 +530,7 @@ func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.
 // applyLateBindings is retained as an orchestration name for a pure handler
 // preparation phase. Provider adapters and descriptor-owned providers have
 // already been registered and frozen before this function is called.
-func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
+func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
 	prepared := PreparedCapabilities{}
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
 		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
@@ -547,3 +546,21 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 	}
 	return prepared, nil
 }
+
+type deliverySignerAdapter struct {
+	signer *delivery.Signer
+}
+
+func (a *deliverySignerAdapter) BuildAuthorizedURL(ctx context.Context, workspace search.Actor, assetID string) (string, error) {
+	if a == nil || a.signer == nil {
+		return "", errors.New("delivery signer is nil")
+	}
+	return a.signer.BuildAuthorizedURL(ctx, delivery.WorkspaceContext{
+		WorkspaceID: workspace.WorkspaceID,
+		UserID:      workspace.UserID,
+		IsAdmin:     workspace.IsAdmin,
+		IsSystem:    workspace.IsSystem,
+	}, assetID)
+}
+
+var _ search.AssetDeliveryService = (*deliverySignerAdapter)(nil)

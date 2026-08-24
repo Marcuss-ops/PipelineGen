@@ -1,4 +1,4 @@
-package assets
+package search
 
 // Wave 19 cross-capability rule: this package (search — canonical
 // SSOT for the Search capability) must NOT import any other

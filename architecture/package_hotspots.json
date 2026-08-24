@@ -158,7 +158,11 @@
         "files": 12,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure\u2192platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry."
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure\u2192platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry.",
+      "target_packages": [
+        "internal/platform/delivery/signing",
+        "internal/platform/delivery/registry"
+      ]
     },
     {
       "path": "internal/platform/embeddings",

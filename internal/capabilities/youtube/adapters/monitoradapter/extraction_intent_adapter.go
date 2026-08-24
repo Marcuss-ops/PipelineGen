@@ -50,9 +50,9 @@ import (
 
 	"go.uber.org/zap"
 
-	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	monitor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

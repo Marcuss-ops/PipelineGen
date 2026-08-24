@@ -5,7 +5,7 @@
 // scheduler.go per the action-plan split topology. This file owns:
 //   - checkDueChannels: bounded goroutine fan-out with per-channel timeout.
 //   - safeCheckChannel: panic-recovery wrapper that converts panics to errors.
-package assets
+package monitor
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // checkDueChannels spawns bounded goroutines (one per channel), each of

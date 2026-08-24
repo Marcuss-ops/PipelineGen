@@ -29,7 +29,7 @@
 // a thin in-memory stub; a SQLite-backed implementation is the
 // forward-pointer target (architecture/current.yaml#DUPLICATES-
 // SQLITE-PERSISTENCE, owner = assets, deadline 2026-08-31).
-package assets
+package duplicates
 
 // DuplicateMatch is one matched-duplicate row returned from the
 // duplicates capability.

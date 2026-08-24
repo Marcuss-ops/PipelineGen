@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"

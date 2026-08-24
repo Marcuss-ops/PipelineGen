@@ -1,12 +1,12 @@
 // Package youtube exposes the canonical Build entrypoint for the YouTube HTTP
 // capability.
-package assets
+package youtube
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"

@@ -29,9 +29,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -95,8 +94,8 @@ func (a *assetServiceLookupAdapter) GetAsset(
 // silently skipped (graceful-degradation per spec).
 func registerScriptPostProcessors(
 	ppReg *adapters.PostProcessorRegistry,
-	root *wiring.ComposeRoot,
-	artlistWiring *wiring.ArtlistWiring,
+	root *ComposeRoot,
+	artlistWiring *ArtlistWiring,
 	cfg *config.Config,
 	log *zap.Logger,
 	scriptsRepoAdapter adapters.ScriptRepository,
@@ -166,7 +165,7 @@ func registerScriptPostProcessors(
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverProcessItem, log)
 		voiceMap := make(map[string]string)
-		if registry, registryErr := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg)); registryErr == nil {
+		if registry, registryErr := BuildLanguageRegistry(ActiveMultilingualConfig(cfg)); registryErr == nil {
 			for _, spec := range registry.EnabledLanguages() {
 				if spec.EdgeTTSVoice != "" {
 					voiceMap[spec.Code] = spec.EdgeTTSVoice

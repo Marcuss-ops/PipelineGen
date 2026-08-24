@@ -21,8 +21,8 @@ import (
 
 	"go.uber.org/zap"
 
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	txmutation "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/txmutation"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	txmutation "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // ErrAssetNotReadyForPurge is the canonical typed sentinel returned

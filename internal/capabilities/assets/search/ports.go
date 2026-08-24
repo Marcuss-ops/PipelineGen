@@ -4,13 +4,44 @@
 // Semantic search (vector/hybrid) has been consolidated into
 // internal/application/mediasearch. This package retains the vector-store
 // port types used by mediasearch (VectorStorePort, VectorSearchRequest, etc.).
-package assets
+package search
 
 import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
+
+// ── SearchBackend & Logger ports ──────────────────────────────────────
+
+type SearchBackend interface {
+	Name() string
+	Capabilities() []Capability
+	Universe() SearchUniverse
+	Search(ctx context.Context, q Query) ([]Candidate, error)
+}
+
+type Logger interface {
+	Info(msg string, keysAndValues ...any)
+	Warn(msg string, keysAndValues ...any)
+	Debug(msg string, keysAndValues ...any)
+	Error(msg string, keysAndValues ...any)
+}
+
+type noopLogger struct{}
+
+func (noopLogger) Info(string, ...any)  {}
+func (noopLogger) Warn(string, ...any)  {}
+func (noopLogger) Debug(string, ...any) {}
+func (noopLogger) Error(string, ...any) {}
+
+type ChannelEncoder interface {
+	EmbedTextQuery(ctx context.Context, text string) ([]float32, error)
+}
+
+type EmbeddingChannelRegistry interface {
+	EmbedQuery(ctx context.Context, channel string, text string) ([]float32, error)
+}
 
 // ── Provider search ports ─────────────────────────────────────────────
 
@@ -211,4 +242,45 @@ type VectorConfig struct {
 // ConfigPort provides vector search configuration.
 type ConfigPort interface {
 	VectorConfig() VectorConfig
+}
+
+// ── Canonical channel names ──────────────────────────────────────────
+
+const (
+	ChannelText       = "text"
+	ChannelTranscript = "transcript"
+	ChannelVisual     = "visual"
+	ChannelAudio      = "audio"
+	ChannelSparse     = "bm25_text"
+)
+
+// CanonicalChannelNames returns the closed set of canonical vector channel names.
+func CanonicalChannelNames() []string {
+	return []string{ChannelText, ChannelTranscript, ChannelVisual, ChannelAudio, ChannelSparse}
+}
+
+// QueryEmbedder embeds search queries.
+type QueryEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+
+
+type MediaReadRepository interface {
+	GetMany(ctx context.Context, actor Actor, assetIDs []string) ([]MediaAsset, error)
+}
+
+type AssetDeliveryService interface {
+	BuildAuthorizedURL(ctx context.Context, workspace Actor, assetID string) (string, error)
+}
+
+var SearchableLifecycleStates = []string{"ACTIVE", "INDEXED", "READY"}
+
+func IsKnownChannel(ch string) bool {
+	for _, c := range CanonicalChannelNames() {
+		if c == ch {
+			return true
+		}
+	}
+	return false
 }

@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -54,7 +55,7 @@ func resolveLanguages(cfg *config.Config, sourceLangFlag, langsFlag string) (str
 		srcDefault = cfg.Media.Multilingual.SourceLanguage
 	}
 	if langsFlag != "" {
-		parts := splitCSV(langsFlag)
+		parts := cli.SplitCSV(langsFlag)
 		if len(parts) == 0 {
 			return srcDefault, nil
 		}

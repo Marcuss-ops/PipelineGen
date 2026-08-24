@@ -16,7 +16,7 @@
 //   - TestEvaluateRunState_ZeroAssetRunCannotSucceed (Processed>0 + RealPersisted==0)
 //   - TestEvaluateRunState_ZeroProcessedAllFailed (Processed==0 + Failed>0)
 //   - TestEvaluateRunState_AllZeroNoWorkDone (all-zero, falls to Rule 5)
-package assets
+package artlist
 
 import (
 	"testing"

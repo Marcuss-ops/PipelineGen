@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/platform/remote/shared"
 )

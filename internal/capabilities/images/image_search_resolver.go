@@ -134,7 +134,7 @@ func (r *ImageSearchResolverImpl) ExistingImages(ctx context.Context, subject st
 	}
 	return r.repo.ListImages(ctx, ImageFilter{
 		SubjectID: subjectID,
-		Origins:   []ImageOrigin{asset.ImageOriginRetrieved},
+		Origins:   []asset.ImageOrigin{asset.ImageOriginRetrieved},
 		Limit:     ResolvedLimit(limit),
 	})
 }
@@ -155,7 +155,7 @@ func (s *retrievedProviderSearcher) Search(ctx context.Context, filter ImageFilt
 	out := make([]ImageSearchResult, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, ImageSearchResult{
-			Origin:        asset.ImageOriginRetrieved,
+			Origin:        string(asset.ImageOriginRetrieved),
 			Provider:      string(h.Provider),
 			Name:          h.Title,
 			PreviewURL:    h.PreviewURL,

@@ -4,7 +4,7 @@
 // from the same WireRegistry used by /ready), the server version, and
 // the canonical API version. It is intended for client discovery and
 // health pre-flight checks.
-package httpserver
+package transport
 
 import (
 	"net/http"

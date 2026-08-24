@@ -10,14 +10,14 @@
 // as keyword-less and the channel ran the full video scan without
 // any filter — a small misconfiguration in one column could
 // amplify processing 100× per cycle.
-package assets
+package monitor
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 )
 
 // validateChannelConfig checks that the channel's JSON-encoded fields

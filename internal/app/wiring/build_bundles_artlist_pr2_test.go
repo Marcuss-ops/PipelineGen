@@ -33,7 +33,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 )
 
@@ -63,8 +62,8 @@ func TestWireArtlistJobBindings_NilJobsBundleService_AbortsBoot(t *testing.T) {
 	// NewService is heavyweight; we want to skip its gates — easier
 	// to test with literal nil pointers that the typed signature
 	// rejects immediately.
-	bundleNil := &wiring.JobsBundle{Service: nil}
-	bundleOK := &wiring.JobsBundle{Service: nil} // Service field kept nil deliberately
+	bundleNil := &JobsBundle{Service: nil}
+	bundleOK := &JobsBundle{Service: nil} // Service field kept nil deliberately
 
 	err1 := WireArtlistJobBindings(nil, bundleNil)
 	require.Error(t, err1)

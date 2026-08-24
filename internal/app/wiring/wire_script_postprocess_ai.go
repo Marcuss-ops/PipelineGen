@@ -27,10 +27,9 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -72,8 +71,8 @@ var _ scriptgen.SegmentMaterializer = (*adapters.VidRushMaterializationProcessor
 // in their canonical positions after ClipBindings.
 func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
-	root *wiring.ComposeRoot,
-	artlistWiring *wiring.ArtlistWiring,
+	root *ComposeRoot,
+	artlistWiring *ArtlistWiring,
 	vidRushProviders *adapters.VidRushAssetProviderRegistry,
 	vidRushCache ports.VidRushCachePort,
 	cfg *config.Config,

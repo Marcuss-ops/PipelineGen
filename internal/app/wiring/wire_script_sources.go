@@ -41,13 +41,13 @@ import (
 	"fmt"
 	"strings"
 
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
 )
 

@@ -5,7 +5,7 @@
 // same fingerprint. The canonical algorithm lives here and nowhere
 // else. No package in the brain imports Qdrant, SQLite, Drive,
 // FFmpeg, or any other nervous-system adapter.
-package brain
+package normalizer
 
 import (
 	"context"

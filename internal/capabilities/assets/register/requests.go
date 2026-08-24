@@ -15,10 +15,10 @@
 //   - module.go (unchanged) — composition-root wiring.
 //   - handler_test.go (unchanged) — test surface.
 //   - gate_test.go (unchanged) — preflight gate tests.
-package assets
+package register
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 )
 

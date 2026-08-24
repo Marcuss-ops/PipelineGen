@@ -34,9 +34,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
@@ -45,8 +42,8 @@ import (
 // Composition wires these from the canonical ports (PR-GODOBJ-3 KILL
 // LIST a: NO imageGen field per the kill-list — only registry).
 type UsecaseDeps struct {
-	Registry *generated.GenerationProviderRegistry
-	Styles   generation.StyleResolver
+	Registry *GenerationProviderRegistry
+	Styles   StyleResolver
 	Log      *zap.Logger
 }
 
@@ -147,7 +144,7 @@ func RunUsage(ctx context.Context, deps UsecaseDeps, cmd UsecaseCommand) (*Useca
 		deps.Log.Info("image generation usecase completed",
 			zap.String("job_id", cmd.JobID),
 			zap.String("output_path", manifestPath),
-			zap.String("provider", result.Provider),
+			zap.String("provider", string(result.Provider)),
 			zap.Int("width", result.Width),
 			zap.Int("height", result.Height),
 		)
@@ -162,9 +159,9 @@ func RunUsage(ctx context.Context, deps UsecaseDeps, cmd UsecaseCommand) (*Useca
 
 // resolveStyle is the internal helper that calls StyleResolver.Resolve
 // with safe defaults (nil = no style resolution).
-func resolveStyle(resolver generation.StyleResolver, style, model string) (generation.ResolvedStyle, error) {
+func resolveStyle(resolver StyleResolver, style, model string) (ResolvedStyle, error) {
 	if resolver == nil {
-		return generation.ResolvedStyle{}, nil
+		return ResolvedStyle{}, nil
 	}
 	return resolver.Resolve(style, "", model)
 }

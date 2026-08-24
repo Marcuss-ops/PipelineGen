@@ -1,6 +1,6 @@
 // Package sourcing provides application-layer use cases for sourcing media
 // from external origins: YouTube clips, Drive folder sync, and local-to-Drive uploads.
-package assets
+package sourcing
 
 import (
 	"context"

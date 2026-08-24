@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 )
 
 // Truncation limits for long text fields. Transcripts and descriptions

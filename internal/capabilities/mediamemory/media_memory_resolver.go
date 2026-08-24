@@ -19,7 +19,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	assembly "github.com/Marcuss-ops/PipelineGen/internal/application/assembly"
+	assembly "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assembly"
 	contract "github.com/Marcuss-ops/PipelineGen/internal/kernel/assembly"
 	_ "github.com/mattn/go-sqlite3"
 )

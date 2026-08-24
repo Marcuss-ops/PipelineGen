@@ -11,7 +11,7 @@
 // the AssetResolver port. Zero `database/sql` or `os` imports in this
 // file — the compile-time boundary is enforced by the package
 // signature and pinned by `scripts/ci-architectural-checks.sh`.
-package assets
+package metadataexport
 
 import (
 	"context"

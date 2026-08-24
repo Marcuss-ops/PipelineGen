@@ -52,7 +52,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -86,13 +85,13 @@ func (f *fakeFrameSampler) ExtractFrames(_ context.Context, _ string, _ float64,
 // fakeVLMClient returns a pre-canned response per request OR a
 // canned error. Used to bypass the Python /vlm/visual-tag sidecar.
 type fakeVLMClient struct {
-	resp   *indexing.VLMInferenceResponse
+	resp   *VLMInferenceResponse
 	err    error
 	calls  int32
 	lastFP string
 }
 
-func (v *fakeVLMClient) Infer(_ context.Context, imagePath string) (*indexing.VLMInferenceResponse, error) {
+func (v *fakeVLMClient) Infer(_ context.Context, imagePath string) (*VLMInferenceResponse, error) {
 	atomic.AddInt32(&v.calls, 1)
 	v.lastFP = imagePath
 	if v.err != nil {
@@ -103,7 +102,7 @@ func (v *fakeVLMClient) Infer(_ context.Context, imagePath string) (*indexing.VL
 
 // ── Fake VisualSummaryRepositoryWriter ──────────────────────────
 
-// fakeRepoWriter implements indexing.VisualSummaryRepositoryWriter
+// fakeRepoWriter implements VisualSummaryRepositoryWriter
 // (the narrowed Upsert+Get port). Tracks every Get/Upsert call.
 type fakeRepoWriter struct {
 	mu          sync.Mutex
@@ -152,11 +151,11 @@ func (r *fakeRepoWriter) Upsert(_ context.Context, summary asset.VisualSummary) 
 // (godlike/06 SSOT: the SourceHash substrate is the SORTED union).
 func TestAggregateVLMResponses_DeterministicDedup_SortedActions(t *testing.T) {
 	t.Parallel()
-	in := []*indexing.VLMInferenceResponse{
+	in := []*VLMInferenceResponse{
 		{VisualObjects: []string{"throw_punch", "circle_ring"}},
 		{VisualObjects: []string{"throw_punch", "celebrate"}}, // throw_punch duplicate
 	}
-	_, actions, _ := indexing.AggregateVLMResponses(in)
+	_, actions, _ := AggregateVLMResponses(in)
 	want := []string{"celebrate", "circle_ring", "throw_punch"}
 	require.Equal(t, want, actions, "actions must be sorted union; duplicates collapsed")
 }
@@ -165,11 +164,11 @@ func TestAggregateVLMResponses_DeterministicDedup_SortedActions(t *testing.T) {
 // symmetric test for entities (TextOnScreen).
 func TestAggregateVLMResponses_DeterministicDedup_SortedEntities(t *testing.T) {
 	t.Parallel()
-	in := []*indexing.VLMInferenceResponse{
+	in := []*VLMInferenceResponse{
 		{TextOnScreen: []string{"ROUND_7", "PACQUIAO"}},
 		{TextOnScreen: []string{"BRONER", "ROUND_7"}},
 	}
-	_, _, entities := indexing.AggregateVLMResponses(in)
+	_, _, entities := AggregateVLMResponses(in)
 	want := []string{"BRONER", "PACQUIAO", "ROUND_7"}
 	require.Equal(t, want, entities)
 }
@@ -190,8 +189,8 @@ func TestAggregateVLMResponses_CapAtMaxVisibleItems(t *testing.T) {
 	sort.Strings(objs) // expected output: first 32 alphabetically
 	wantPrefix := objs[:asset.MaxVisibleItems]
 
-	in := []*indexing.VLMInferenceResponse{{VisualObjects: objs}}
-	_, actions, _ := indexing.AggregateVLMResponses(in)
+	in := []*VLMInferenceResponse{{VisualObjects: objs}}
+	_, actions, _ := AggregateVLMResponses(in)
 
 	require.Len(t, actions, asset.MaxVisibleItems,
 		"actions must cap at asset.MaxVisibleItems (got %d)", len(actions))
@@ -208,8 +207,8 @@ func TestAggregateVLMResponses_CapAtMaxVisibleItems(t *testing.T) {
 func TestAggregateVLMResponses_TruncatesVisualSummaryAtMaxChars(t *testing.T) {
 	t.Parallel()
 	long := strings.Repeat("x", asset.MaxVisualSummaryChars+100)
-	in := []*indexing.VLMInferenceResponse{{RawDescription: long}}
-	text, _, _ := indexing.AggregateVLMResponses(in)
+	in := []*VLMInferenceResponse{{RawDescription: long}}
+	text, _, _ := AggregateVLMResponses(in)
 	require.Len(t, text, asset.MaxVisualSummaryChars,
 		"VisualSummaryText must cap at asset.MaxVisualSummaryChars")
 }
@@ -218,12 +217,12 @@ func TestAggregateVLMResponses_TruncatesVisualSummaryAtMaxChars(t *testing.T) {
 // "longest wins" aggregation rule.
 func TestAggregateVLMResponses_PrefersLongestRawDescription(t *testing.T) {
 	t.Parallel()
-	in := []*indexing.VLMInferenceResponse{
+	in := []*VLMInferenceResponse{
 		{RawDescription: "short"},
 		{RawDescription: "this is the longest description in the batch"},
 		{RawDescription: "medium length"},
 	}
-	text, _, _ := indexing.AggregateVLMResponses(in)
+	text, _, _ := AggregateVLMResponses(in)
 	require.Equal(t, "this is the longest description in the batch", text,
 		"aggregator must prefer the longest RawDescription")
 }
@@ -238,12 +237,12 @@ func TestAggregateVLMResponses_PrefersLongestRawDescription(t *testing.T) {
 // not nil" contract on the AggregateVLMResponses surface.
 func TestAggregateVLMResponses_NilInputsSafe(t *testing.T) {
 	t.Parallel()
-	text, actions, entities := indexing.AggregateVLMResponses(nil)
+	text, actions, entities := AggregateVLMResponses(nil)
 	require.Equal(t, "", text)
 	require.Empty(t, actions, "empty aggregator input returns empty slice, NOT nil (godlike/06 SSOT)")
 	require.Empty(t, entities, "empty aggregator input returns empty slice, NOT nil")
 	// nil entries inside a non-nil slice: silently skipped.
-	text, actions, entities = indexing.AggregateVLMResponses([]*indexing.VLMInferenceResponse{nil, nil})
+	text, actions, entities = AggregateVLMResponses([]*VLMInferenceResponse{nil, nil})
 	require.Equal(t, "", text)
 	require.Empty(t, actions)
 	require.Empty(t, entities)
@@ -257,25 +256,25 @@ func TestAggregateVLMResponses_NilInputsSafe(t *testing.T) {
 func TestVisualSummaryService_NewVisualSummaryService_NilArgsFailClosed(t *testing.T) {
 	t.Parallel()
 	goodSamp := &fakeFrameSampler{frames: []string{"/tmp/frame_0.png"}}
-	goodVLM := &fakeVLMClient{resp: &indexing.VLMInferenceResponse{}}
+	goodVLM := &fakeVLMClient{resp: &VLMInferenceResponse{}}
 	goodRepo := &fakeRepoWriter{}
 	tempDir := t.TempDir()
 
 	cases := []struct {
 		name string
-		pass func() (*indexing.VisualSummaryService, error)
+		pass func() (*VisualSummaryService, error)
 	}{
-		{"nil sampler", func() (*indexing.VisualSummaryService, error) {
-			return indexing.NewVisualSummaryService(nil, goodVLM, goodRepo, tempDir, zap.NewNop())
+		{"nil sampler", func() (*VisualSummaryService, error) {
+			return NewVisualSummaryService(nil, goodVLM, goodRepo, tempDir, zap.NewNop())
 		}},
-		{"nil VLM client", func() (*indexing.VisualSummaryService, error) {
-			return indexing.NewVisualSummaryService(goodSamp, nil, goodRepo, tempDir, zap.NewNop())
+		{"nil VLM client", func() (*VisualSummaryService, error) {
+			return NewVisualSummaryService(goodSamp, nil, goodRepo, tempDir, zap.NewNop())
 		}},
-		{"nil repo", func() (*indexing.VisualSummaryService, error) {
-			return indexing.NewVisualSummaryService(goodSamp, goodVLM, nil, tempDir, zap.NewNop())
+		{"nil repo", func() (*VisualSummaryService, error) {
+			return NewVisualSummaryService(goodSamp, goodVLM, nil, tempDir, zap.NewNop())
 		}},
-		{"empty tempDir", func() (*indexing.VisualSummaryService, error) {
-			return indexing.NewVisualSummaryService(goodSamp, goodVLM, goodRepo, "", zap.NewNop())
+		{"empty tempDir", func() (*VisualSummaryService, error) {
+			return NewVisualSummaryService(goodSamp, goodVLM, goodRepo, "", zap.NewNop())
 		}},
 	}
 	for _, tc := range cases {
@@ -289,7 +288,7 @@ func TestVisualSummaryService_NewVisualSummaryService_NilArgsFailClosed(t *testi
 	}
 
 	// Positive control: all non-nil args → success.
-	svc, err := indexing.NewVisualSummaryService(goodSamp, goodVLM, goodRepo, tempDir, zap.NewNop())
+	svc, err := NewVisualSummaryService(goodSamp, goodVLM, goodRepo, tempDir, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 }
@@ -304,16 +303,16 @@ func TestVisualSummaryService_RunJob_HappyPath_UpsertsRow(t *testing.T) {
 	// Pre-existing row is nil (new asset); upsert path fires.
 	repo := &fakeRepoWriter{} // existing == nil → supersede gate inactive
 	sampler := &fakeFrameSampler{frames: []string{"/tmp/frame_0.png", "/tmp/frame_1.png"}}
-	vlm := &fakeVLMClient{resp: &indexing.VLMInferenceResponse{
+	vlm := &fakeVLMClient{resp: &VLMInferenceResponse{
 		SceneType:      "boxing_match",
 		VisualObjects:  []string{"throw_punch"},
 		TextOnScreen:   []string{"ROUND_1"},
 		RawDescription: strings.Repeat("a", 100),
 	}}
-	svc, err := indexing.NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
+	svc, err := NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
 	require.NoError(t, err)
 
-	result, err := svc.RunJob(context.Background(), indexing.VLMJobConfig{
+	result, err := svc.RunJob(context.Background(), VLMJobConfig{
 		AssetID:              "ast-test-001",
 		LocalPath:            "/tmp/fake.mp4",
 		IntervalSeconds:      5.0,
@@ -378,15 +377,15 @@ func TestVisualSummaryService_RunJob_SupersedeGateActive_ReturnsExisting(t *test
 	}
 	repo := &fakeRepoWriter{existing: existing}
 	sampler := &fakeFrameSampler{frames: []string{"/tmp/frame_0.png"}}
-	vlm := &fakeVLMClient{resp: &indexing.VLMInferenceResponse{
+	vlm := &fakeVLMClient{resp: &VLMInferenceResponse{
 		VisualObjects:  []string{"throw_punch"},
 		TextOnScreen:   []string{"ROUND_7"},
 		RawDescription: strings.Repeat("x", 50),
 	}}
-	svc, err := indexing.NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
+	svc, err := NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
 	require.NoError(t, err)
 
-	result, err := svc.RunJob(context.Background(), indexing.VLMJobConfig{
+	result, err := svc.RunJob(context.Background(), VLMJobConfig{
 		AssetID:              "ast-supersede",
 		LocalPath:            "/tmp/fake.mp4",
 		IntervalSeconds:      5.0,
@@ -418,28 +417,28 @@ func TestVisualSummaryService_RunJob_EmptyAssetID_ErrVLMJobConfig(t *testing.T) 
 	repo := &fakeRepoWriter{}
 	sampler := &fakeFrameSampler{}
 	vlm := &fakeVLMClient{}
-	svc, err := indexing.NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
+	svc, err := NewVisualSummaryService(sampler, vlm, repo, t.TempDir(), zap.NewNop())
 	require.NoError(t, err)
 
 	t.Run("empty AssetID", func(t *testing.T) {
 		t.Parallel()
-		_, err := svc.RunJob(context.Background(), indexing.VLMJobConfig{
+		_, err := svc.RunJob(context.Background(), VLMJobConfig{
 			AssetID:   "",
 			LocalPath: "/tmp/fake.mp4",
 		})
-		require.ErrorIs(t, err, indexing.ErrVLMJobConfigAssetIDRequired)
+		require.ErrorIs(t, err, ErrVLMJobConfigAssetIDRequired)
 	})
 	t.Run("empty LocalPath", func(t *testing.T) {
 		t.Parallel()
-		_, err := svc.RunJob(context.Background(), indexing.VLMJobConfig{
+		_, err := svc.RunJob(context.Background(), VLMJobConfig{
 			AssetID:   "ast-test",
 			LocalPath: "",
 		})
-		require.ErrorIs(t, err, indexing.ErrVLMJobConfigLocalPathRequired)
+		require.ErrorIs(t, err, ErrVLMJobConfigLocalPathRequired)
 	})
 	t.Run("explicit negative interval rejected", func(t *testing.T) {
 		t.Parallel()
-		_, err := svc.RunJob(context.Background(), indexing.VLMJobConfig{
+		_, err := svc.RunJob(context.Background(), VLMJobConfig{
 			AssetID:         "ast-test",
 			LocalPath:       "/tmp/fake.mp4",
 			IntervalSeconds: -1.0,
@@ -449,7 +448,7 @@ func TestVisualSummaryService_RunJob_EmptyAssetID_ErrVLMJobConfig(t *testing.T) 
 		// behaviour. The belt-and-braces ErrVLMJobIntervalSecondsInvalid
 		// fires only when the default itself is invalid (constant == 0).
 		// So we expect either no error or the sentinel.
-		if err != nil && !errors.Is(err, indexing.ErrVLMJobIntervalSecondsInvalid) {
+		if err != nil && !errors.Is(err, ErrVLMJobIntervalSecondsInvalid) {
 			t.Errorf("unexpected error: %v (expected either nil or ErrVLMJobIntervalSecondsInvalid)", err)
 		}
 	})
@@ -474,7 +473,7 @@ func TestHTTPVLMClient_HappyPath(t *testing.T) {
 			t.Errorf("expected image_path /tmp/fake_frame.png, got %q", req["image_path"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(indexing.VLMInferenceResponse{
+		_ = json.NewEncoder(w).Encode(VLMInferenceResponse{
 			SceneType:      "boxing_match",
 			VisualObjects:  []string{"punch"},
 			TextOnScreen:   []string{"ROUND_7"},
@@ -482,7 +481,7 @@ func TestHTTPVLMClient_HappyPath(t *testing.T) {
 		})
 	}))
 	defer srv.Close()
-	client := indexing.NewHTTPVLMClient(srv.URL, 0)
+	client := NewHTTPVLMClient(srv.URL, 0)
 	resp, err := client.Infer(context.Background(), "/tmp/fake_frame.png")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -500,7 +499,7 @@ func TestHTTPVLMClient_Non2xx_SurfacesTypedError(t *testing.T) {
 		http.Error(w, "VLM inference failed", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	client := indexing.NewHTTPVLMClient(srv.URL, 0)
+	client := NewHTTPVLMClient(srv.URL, 0)
 	resp, err := client.Infer(context.Background(), "/tmp/fake.png")
 	require.Error(t, err, "non-2xx MUST surface typed error")
 	assert.Nil(t, resp, "non-2xx MUST return nil result")

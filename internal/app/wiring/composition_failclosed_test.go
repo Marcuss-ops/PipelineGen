@@ -29,8 +29,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/stretchr/testify/require"
@@ -99,7 +98,7 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	cfg.ClipIndexer.Enabled = false // sidecar OFF (the RED-POINT under test)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -110,7 +109,7 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
 
-	var qd *wiring.QdrantDeps
+	var qd *QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.NoError(t, err)
 	require.NotNil(t, qd)
@@ -135,7 +134,7 @@ func TestComposition_ClipIndexerEnabledNoQdrant_UsesDisabledProjectionMode(t *te
 	cfg.Qdrant.Enabled = false     // Qdrant OFF — the BLOCKER #3 trigger
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -146,7 +145,7 @@ func TestComposition_ClipIndexerEnabledNoQdrant_UsesDisabledProjectionMode(t *te
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
 
-	var qd *wiring.QdrantDeps
+	var qd *QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.NoError(t, err)
 	require.NotNil(t, qd)
@@ -171,7 +170,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -186,7 +185,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, qd.QdrantDeleter)
 
-	jobsBundle, err := wiring.BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
 	// Force a nil AssetDeleter dep at the BuildOutboxBundle call site

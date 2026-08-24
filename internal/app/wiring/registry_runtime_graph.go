@@ -9,11 +9,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/image"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -141,7 +140,7 @@ func c3ValidateRuntimeGraph() error {
 	}
 	workflowRefs := []string{
 		script.TypeGenerate,
-		image.TypeImagesGenerate,
+		images.TypeImagesGenerate,
 		document.TypeGenerate,
 		asset.TypeResolve,
 		media.TypeClipRegister,

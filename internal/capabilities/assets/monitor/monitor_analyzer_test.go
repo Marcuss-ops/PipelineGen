@@ -1,4 +1,4 @@
-package assets
+package monitor
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	ytdomain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"go.uber.org/zap"
 )

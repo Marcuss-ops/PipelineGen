@@ -3,7 +3,7 @@
 //
 // QDRANT-005 Fase 1 (June 2026): Qdrant fields restored — vector-store
 // capability reintroduced via QDRANT-001..004.
-package assets
+package diagnostics
 
 import "context"
 

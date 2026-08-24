@@ -17,7 +17,7 @@
 // `scripts/ci-architectural-checks.sh Check 42`; this file is
 // the post-migration SSOT marker so a future agent looking at
 // git blame finds the port surface here.
-package assets
+package artlist
 
 import (
 	"context"

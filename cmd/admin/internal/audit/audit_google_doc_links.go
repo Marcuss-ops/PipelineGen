@@ -98,7 +98,7 @@ func RunAuditGoogleDocLinks(args []string) error {
 		return fmt.Errorf("audit-google-doc-links: retrieve document %s: %w", *docID, err)
 	}
 
-	uploader, err := buildDriveAdminForCLI(ctx, cfg, log)
+	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
 	if err != nil {
 		return fmt.Errorf("audit-google-doc-links: initialize Drive reader: %w", err)
 	}

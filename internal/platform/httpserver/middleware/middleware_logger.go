@@ -1,11 +1,11 @@
-package httpserver
+package middleware
 
 import (
 	"context"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware/requestlog"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

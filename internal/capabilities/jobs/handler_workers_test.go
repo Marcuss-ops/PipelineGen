@@ -13,8 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 
@@ -83,7 +81,7 @@ type stubAssetTransfer struct{}
 func (s *stubAssetTransfer) Download(_ context.Context, _ string) (io.ReadCloser, string, error) {
 	return nil, "", errors.New("stubAssetTransfer: Download not implemented")
 }
-func (s *stubAssetTransfer) InitiateUpload(_ context.Context, _ string) (*assets.UploadResponse, error) {
+func (s *stubAssetTransfer) InitiateUpload(_ context.Context, _ string) (*UploadResponse, error) {
 	return nil, errors.New("stubAssetTransfer: InitiateUpload not implemented")
 }
 func (s *stubAssetTransfer) Upload(_ context.Context, _, _ string, _ io.Reader) error {

@@ -52,7 +52,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 )
 
 // FetchFn is the byte-source closure the FilesystemStager calls to

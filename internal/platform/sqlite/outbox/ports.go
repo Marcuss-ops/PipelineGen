@@ -7,8 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // ── Ports ──────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ var _ outboxEnqueuer = (*outboxevents.Repository)(nil)
 // ── MultiClipsUpserter ────────────────────────────────────────────────
 
 // MultiClipsUpserter routes UpsertClipTx calls to one of several underlying
-// repositories based on `clip.Source`. Useful when a single outbox.Dispatcher
+// repositories based on `clip.Source`. Useful when a single Dispatcher
 // must ingest across many per-source assets.ClipsRepository instances.
 type MultiClipsUpserter struct {
 	repos       map[string]ClipsUpserter
@@ -65,10 +66,10 @@ func NewMultiClipsUpserter(repos map[string]ClipsUpserter, defaultRepo ClipsUpse
 // UpsertClipTx routes the call based on clip.Source.
 func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
 	if m == nil {
-		return fmt.Errorf("outbox.MultiClipsUpserter is nil")
+		return fmt.Errorf("MultiClipsUpserter is nil")
 	}
 	if clip == nil {
-		return fmt.Errorf("outbox.MultiClipsUpserter: clip is nil")
+		return fmt.Errorf("MultiClipsUpserter: clip is nil")
 	}
 	var repo ClipsUpserter
 	var matched bool
@@ -86,7 +87,7 @@ func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip 
 		repo = m.defaultRepo
 	}
 	if repo == nil {
-		return fmt.Errorf("outbox.MultiClipsUpserter: no repository for source %q and no default configured", string(clip.Source))
+		return fmt.Errorf("MultiClipsUpserter: no repository for source %q and no default configured", string(clip.Source))
 	}
 	return repo.UpsertClipTx(ctx, tx, clip)
 }

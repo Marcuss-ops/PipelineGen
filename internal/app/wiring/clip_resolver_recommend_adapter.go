@@ -68,7 +68,7 @@ import (
 	"sort"
 	"strings"
 
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 	"go.uber.org/zap"

@@ -19,7 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
+	appexport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 )
 
 // Compile-time assertion reuses the same FileWriter struct as the JSON

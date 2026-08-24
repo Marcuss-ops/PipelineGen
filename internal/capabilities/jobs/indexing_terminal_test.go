@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

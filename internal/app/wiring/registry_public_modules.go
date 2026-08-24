@@ -16,15 +16,14 @@ package wiring
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
-	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/admin"
+	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
@@ -43,21 +42,22 @@ import (
 // either is nil the corresponding handler returns 503). The real Drive
 // reconciler is not wired yet; keep this dependency nil so the API fails
 // closed instead of returning a false empty success.
-func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	// FASE 9 Step 2: use root.Drive.DriveUploader directly instead of
 	// constructing a redundant *drive.Uploader from DriveClient.
 	var driveUploaderAdapter *drive.Uploader
 	if root.Drive != nil && root.Drive.DriveUploader != nil {
 		driveUploaderAdapter = root.Drive.DriveUploader
 	}
-	capability := capsystem.NewModule(capsystem.Dependencies{
-		Config:        doctorConfigFrom(cfg),
-		Logger:        log,
-		ToolChecker:   toolCheckerAdapter,
-		ProcessRunner: processRunnerAdapter,
-		DBHealth:      dbHealthCheckerAdapter,
-		DriveOps:      newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
-	})
+	capability := capsystem.NewModule(
+		doctorConfigFrom(cfg),
+		log,
+		toolCheckerAdapter,
+		processRunnerAdapter,
+		dbHealthCheckerAdapter,
+		newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
+		nil,
+	)
 	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
 		return fmt.Errorf("wire registry: system capability: %w", err)
 	}
@@ -65,10 +65,10 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 }
 
 // registerImages wires the /images route module. Consumes
-// wiring.MediaIngest.Service for upstream service injection.
+// MediaIngest.Service for upstream service injection.
 //
 // PR8 (June 2026): idemHandler installed on POST /api/media/ingest.
-func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
+func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
 	var ingestSvc *ingest.Service
 	if wiring.MediaIngest != nil {
 		ingestSvc = wiring.MediaIngest.Service
@@ -89,7 +89,7 @@ func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 }
 
 // registerScriptHistory wires the /scripts history module.
-func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root.Repos == nil || root.Repos.ScriptsRepo == nil {
 		return nil
 	}
@@ -118,7 +118,7 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 // canonical *config.Config as AuthSecurityPort.
 //
 // Step 3 of YouTube Clips Deploy Readiness action plan (July 2026).
-func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root.Drive == nil || root.Drive.Publisher == nil {
 		log.Warn("admin module skipped: Drive.Publisher not wired")
 		return nil
@@ -155,7 +155,7 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 // endpoint. It is registered independently of the Drive canary so cache
 // invalidation does not depend on Drive being wired: the only requirement is
 // the media DB (research_cache lives in root.DB.DB).
-func registerResearchCacheAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerResearchCacheAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root.DB == nil || root.DB.DB == nil {
 		log.Warn("research cache admin module skipped: DB not wired")
 		return nil

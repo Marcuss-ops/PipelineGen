@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // foldersToReset maps folder name → its current Drive ID (to delete).
@@ -34,7 +34,7 @@ func RunResetStockSubfolders(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, coreCleanup, err := app.InitComposition(cfg, log)
+	root, _, coreCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}

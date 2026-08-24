@@ -17,7 +17,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // MappedError is the typed-sentinel → HTTP translation product.
@@ -45,73 +44,73 @@ func MapError(err error) MappedError {
 		}
 	}
 	switch {
-	case errors.Is(err, mediamemory.ErrInvalidSlotKind):
+	case errors.Is(err, ErrInvalidSlotKind):
 		return MappedError{
 			Status:  http.StatusBadRequest,
 			Code:    "invalid_slot_kind",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrInvalidFeedbackAction):
+	case errors.Is(err, ErrInvalidFeedbackAction):
 		return MappedError{
 			Status:  http.StatusBadRequest,
 			Code:    "invalid_feedback_action",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrInvalidPhrase):
+	case errors.Is(err, ErrInvalidPhrase):
 		return MappedError{
 			Status:  http.StatusBadRequest,
 			Code:    "invalid_phrase",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrInvalidBindingInput):
+	case errors.Is(err, ErrInvalidBindingInput):
 		return MappedError{
 			Status:  http.StatusBadRequest,
 			Code:    "invalid_binding",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrConceptNotFound):
+	case errors.Is(err, ErrConceptNotFound):
 		return MappedError{
 			Status:  http.StatusBadRequest,
 			Code:    "concept_not_found",
 			Message: "concept_id does not reference an existing media_concepts row",
 		}
-	case errors.Is(err, mediamemory.ErrBindingNotFound):
+	case errors.Is(err, ErrBindingNotFound):
 		return MappedError{
 			Status:  http.StatusNotFound,
 			Code:    "binding_not_found",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrCandidateNotFound):
+	case errors.Is(err, ErrCandidateNotFound):
 		return MappedError{
 			Status:  http.StatusNotFound,
 			Code:    "candidate_not_found",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrCandidateMaterializationFailed):
+	case errors.Is(err, ErrCandidateMaterializationFailed):
 		return MappedError{
 			Status:  http.StatusUnprocessableEntity,
 			Code:    "candidate_materialization_failed",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrDuplicateBinding):
+	case errors.Is(err, ErrDuplicateBinding):
 		return MappedError{
 			Status:  http.StatusConflict,
 			Code:    "duplicate_binding",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrApprovalRequired):
+	case errors.Is(err, ErrApprovalRequired):
 		return MappedError{
 			Status:  http.StatusPreconditionRequired,
 			Code:    "approval_required",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrBatchNotFound):
+	case errors.Is(err, ErrBatchNotFound):
 		return MappedError{
 			Status:  http.StatusNotFound,
 			Code:    "batch_not_found",
 			Message: err.Error(),
 		}
-	case errors.Is(err, mediamemory.ErrBatchNotReconcilable):
+	case errors.Is(err, ErrBatchNotReconcilable):
 		return MappedError{
 			Status:  http.StatusConflict,
 			Code:    "batch_not_reconcilable",

@@ -24,13 +24,13 @@
 // (route-only Descriptor). The Handler stays internal to the Module —
 // each Descriptor's `RegisterRoutes(rg)` closure invokes it; callers
 // never touch a raw `*ArtlistHandler` from outside the package.
-package assets
+package artlist
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	artlistapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 
 	"github.com/gin-gonic/gin"

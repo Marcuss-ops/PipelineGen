@@ -7,14 +7,12 @@ package images
 import (
 	"context"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 )
 
 // fakeStyle builds a ResolvedStyle via struct literal (the generation
 // package does not expose a constructor; the StyleResolver is canonical).
-func fakeStyle(id string, suffix string) generation.ResolvedStyle {
-	return generation.ResolvedStyle{ID: id, PromptSuffix: suffix}
+func fakeStyle(id string, suffix string) ResolvedStyle {
+	return ResolvedStyle{ID: id, PromptSuffix: suffix}
 }
 
 func fakeComposer() PromptComposer {
@@ -117,7 +115,7 @@ func TestPromptComposer_EmptyPromptFallback(t *testing.T) {
 // TestPromptComposer_NegativePromptPopulated: NegativePrompt is copied
 // verbatim from the resolved style.
 func TestPromptComposer_NegativePromptPopulated(t *testing.T) {
-	style := generation.ResolvedStyle{ID: "cinematic", PromptSuffix: "cinematic lighting", NegativePrompt: "blurry, deformed hands"}
+	style := ResolvedStyle{ID: "cinematic", PromptSuffix: "cinematic lighting", NegativePrompt: "blurry, deformed hands"}
 	got, err := fakeComposer().Compose(
 		context.Background(),
 		GenerateCommand{Prompt: "castle"},
@@ -160,7 +158,7 @@ func TestPromptComposer_RegexSafeTrimSpace(t *testing.T) {
 // resolution_usecase's canonical 1920x1080 default in the dispatcher
 // pre-flight, see generation_usecase.go).
 func TestPromptComposer_DimensionPassThrough(t *testing.T) {
-	style := generation.ResolvedStyle{ID: "test-style", PromptSuffix: "test suffix"}
+	style := ResolvedStyle{ID: "test-style", PromptSuffix: "test suffix"}
 
 	got, err := fakeComposer().Compose(
 		context.Background(),
@@ -195,7 +193,7 @@ func TestPromptComposer_StyleProvenance(t *testing.T) {
 	// Step-1 typed migration (A1, July 2026): no Width/Height in the
 	// slim 8-field StyleDefinition. The fixture passes dimensions
 	// through the GenerateCommand, not the resolved style.
-	style := generation.ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Version: 2}
+	style := ResolvedStyle{ID: "cinematic-v2", PromptSuffix: "cinematic lighting", Version: 2}
 
 	got, err := fakeComposer().Compose(
 		context.Background(),

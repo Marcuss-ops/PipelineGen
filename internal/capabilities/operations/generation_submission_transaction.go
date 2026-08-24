@@ -39,7 +39,6 @@ import (
 
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -79,7 +78,7 @@ const aggregateTypeScriptGenerate = "script.generate"
 // guaranteed; we ignore the EnqueueResult for FASE 2 (a future
 // multi-process Submit would need to surface Inserted=false as
 // a typed no-op).
-func (s *Service) persistSubmit(ctx context.Context, req SubmitRequest, prior *domainops.Operation, now time.Time) (*SubmitResult, error) {
+func (s *Service) persistSubmit(ctx context.Context, req SubmitRequest, prior *Operation, now time.Time) (*SubmitResult, error) {
 	// ── Step 6: begin TX (orchestrator-owned boundary) ────────────
 	tx, err := s.txMgr.BeginTx(ctx)
 	if err != nil {
@@ -105,13 +104,13 @@ func (s *Service) persistSubmit(ctx context.Context, req SubmitRequest, prior *d
 		jobID = s.jobIDGen()
 	}
 
-	newOp := &domainops.Operation{
+	newOp := &Operation{
 		OperationID:    operationID,
 		Scope:          req.Scope,
 		IdempotencyKey: req.IdempotencyKey,
 		RequestHash:    req.RequestHash,
 		JobID:          jobID,
-		State:          domainops.StateQueued,
+		State:          StateQueued,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -128,7 +127,7 @@ func (s *Service) persistSubmit(ctx context.Context, req SubmitRequest, prior *d
 
 	// ── Step 8: flip prior op to SUPERSEDED (if supersede) ──────────
 	if newOp.SupersedesOperationID != "" {
-		if err := s.ops.UpdateState(ctx, newOp.SupersedesOperationID, domainops.StateSuperseded, tx); err != nil {
+		if err := s.ops.UpdateState(ctx, newOp.SupersedesOperationID, StateSuperseded, tx); err != nil {
 			return nil, fmt.Errorf("operations.Submit: supersede prior: %w", err)
 		}
 	}

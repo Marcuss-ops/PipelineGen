@@ -40,7 +40,7 @@
 // Since both IndexDelete and the gap between Drive and Index are
 // lease-fenced at the outbox layer, the reconciler can safely re-
 // invoke without coordinating with a running worker.
-package assets
+package reconciler
 
 import "time"
 

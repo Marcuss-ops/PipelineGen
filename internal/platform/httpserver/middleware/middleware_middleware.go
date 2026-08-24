@@ -1,4 +1,4 @@
-package httpserver
+package middleware
 
 import (
 	"crypto/rand"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

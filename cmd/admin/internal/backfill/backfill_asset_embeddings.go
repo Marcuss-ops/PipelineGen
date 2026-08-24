@@ -63,8 +63,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -95,7 +95,7 @@ func RunBackfillAssetEmbeddings(args []string) error {
 		zap.Bool("retry_failed", deps.RetryFailed))
 
 	// Init the full composition root so we have canonical services.
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("init composition: %w", err)
 	}
@@ -109,14 +109,14 @@ func RunBackfillAssetEmbeddings(args []string) error {
 
 	// SQL-backed candidate source: retry mode only re-processes
 	// previously-failed assets; otherwise the forward resume-anchored query.
-	fetch := func(ctx context.Context, d backfill.Deps, cp *backfill.Checkpoint) ([]backfill.Candidate, error) {
+	fetch := func(ctx context.Context, d indexing.Deps, cp *indexing.Checkpoint) ([]indexing.Candidate, error) {
 		if d.RetryFailed && cp != nil && len(cp.FailedIDs) > 0 {
 			return fetchFailedCandidates(ctx, root.DB.DB, cp.FailedIDs)
 		}
 		return fetchEmbeddingCandidates(ctx, root.DB.DB, d, cp)
 	}
 
-	report, cp, err := backfill.Run(ctx, deps, fetch, adapter, log)
+	report, cp, err := indexing.Run(ctx, deps, fetch, adapter, log)
 	if err != nil {
 		return err
 	}
@@ -169,8 +169,8 @@ func RunBackfillAssetEmbeddings(args []string) error {
 
 // ── Arg parsing ───────────────────────────────────────────────────────
 
-func parseBackfillEmbeddingsArgs(args []string) (backfill.Deps, error) {
-	deps := backfill.Deps{
+func parseBackfillEmbeddingsArgs(args []string) (indexing.Deps, error) {
+	deps := indexing.Deps{
 		Progress:    50,   // log + checkpoint flush every 50 assets
 		OnlyMissing: true, // default: skip already-complete assets
 	}

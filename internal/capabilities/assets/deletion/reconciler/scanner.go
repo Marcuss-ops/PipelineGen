@@ -21,7 +21,7 @@
 // attention; it's deliberately NOT re-emitted through the
 // outbox layer (operating on an unknown state could produce
 // outbox rows with mismatched event_key shapes).
-package assets
+package reconciler
 
 // Classify decides the RepairAction for a single StuckRow. Pure
 // function — no IO, no time.Now — test-friendly. The Skip field is

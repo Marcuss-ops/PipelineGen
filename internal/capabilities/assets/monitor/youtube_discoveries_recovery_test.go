@@ -14,7 +14,7 @@
 //     TranslateLedgerSentinel helper wraps the chain via multi-%w fmt.Errorf
 //     so errors.Is probes resolve BOTH sentinel identities.
 
-package assets
+package monitor
 
 import (
 	"context"

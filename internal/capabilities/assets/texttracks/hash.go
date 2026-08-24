@@ -2,7 +2,7 @@
 // ComputeSourceTextHash in policy.go.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
-package assets
+package texttracks
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"

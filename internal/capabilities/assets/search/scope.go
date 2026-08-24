@@ -16,7 +16,7 @@
 // by `infra/qdrant/`. The infra layer is allowed to import
 // application-layer types (per AGENTS.md layer rules); the reverse
 // is not.
-package assets
+package search
 
 // SearchScope is the per-request authorisation envelope that
 // CompileQdrantFilter applies as a server-side workspace must-clause.

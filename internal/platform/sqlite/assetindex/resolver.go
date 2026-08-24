@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -15,17 +15,17 @@ import (
 // It queries asset_index first (fast), then falls back to specific DBs if needed.
 type Resolver struct {
 	svc           *Service
-	clipsRepos    map[string]*assets.ClipsRepository // source -> repo (youtube, stock, artlist)
+	clipsRepos    map[string]*imagesregistry.ClipsRepository // source -> repo (youtube, stock, artlist)
 	imageRepo     *imagesrepo.ImagesRepository
-	voiceoverRepo *assets.VoiceoversRepository
+	voiceoverRepo *imagesregistry.VoiceoversRepository
 	log           *zap.Logger
 }
 
 // ResolverConfig holds the configuration for the AssetResolver
 type ResolverConfig struct {
-	ClipsRepos    map[string]*assets.ClipsRepository
+	ClipsRepos    map[string]*imagesregistry.ClipsRepository
 	ImageRepo     *imagesrepo.ImagesRepository
-	VoiceoverRepo *assets.VoiceoversRepository
+	VoiceoverRepo *imagesregistry.VoiceoversRepository
 }
 
 // NewResolver creates a new AssetResolver
@@ -185,8 +185,8 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 	return rec
 }
 
-// voiceoverToAssetRecord converts a assets.Record to an AssetRecord
-func voiceoverToAssetRecord(rec *assets.Record) *AssetRecord {
+// voiceoverToAssetRecord converts a imagesregistry.Record to an AssetRecord
+func voiceoverToAssetRecord(rec *imagesregistry.Record) *AssetRecord {
 	return &AssetRecord{
 		AssetID:       "voiceover_" + rec.ID,
 		AssetType:     "voiceover",

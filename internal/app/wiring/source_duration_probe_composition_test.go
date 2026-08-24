@@ -1,15 +1,15 @@
 package wiring
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
 )
@@ -85,10 +84,10 @@ func TestBuildStockBundle_WiresSourceDurationProbeIntoProductionService(t *testi
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	jobsBundle, err := wiring.BuildJobsBundle(db, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(db, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
-	clipsRepo := sqassets.NewClipsRepository(db.DB, log)
+	clipsRepo := imagesregistry.NewClipsRepository(db.DB, log)
 	assetIndexService := assetindex.NewService(assetindex.NewRepository(db.DB))
 	batchRepo := stockbatches.NewRepository(db.DB)
 	probe := &compositionSourceProbe{}

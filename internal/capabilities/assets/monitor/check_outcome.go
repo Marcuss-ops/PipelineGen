@@ -8,7 +8,7 @@
 //   - parseCheckInterval: duration string parser (lives here because
 //     it's a time-utility with no VTT / Ollama / exec coupling).
 //   - extractChannelHandle: @-prefix handle extraction from YouTube URL.
-package assets
+package monitor
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 

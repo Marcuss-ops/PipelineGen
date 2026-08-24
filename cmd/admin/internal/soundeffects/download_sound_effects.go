@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
@@ -36,7 +36,7 @@ func RunDownloadSoundEffects(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -104,7 +104,7 @@ func RunDownloadSoundEffects(args []string) error {
 			log.Warn("downloaded sound effect but asset row is unavailable", zap.String("asset_id", id), zap.Error(err))
 			continue
 		}
-		hash, err := sha256File(dest)
+		hash, err := cli.Sha256File(dest)
 		if err != nil {
 			failed++
 			return fmt.Errorf("hash downloaded sound effect %s: %w", id, err)
@@ -171,7 +171,7 @@ func downloadSoundEffect(ctx context.Context, reader interface {
 	return os.Rename(tmpName, dest)
 }
 
-func sha256File(path string) (string, error) {
+func Sha256File(path string) (string, error) {
 	h, _, err := digest.SHA256File(path)
 	if err != nil {
 		return "", err
@@ -212,7 +212,7 @@ func RunRenameSoundEffects(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -284,7 +284,7 @@ func RunUpdateSoundEffectMetadata(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -331,7 +331,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 		return err
 	}
 	defer cleanup()
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
@@ -382,7 +382,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 				localPath = newLocalPath
 			}
 			clip.SetLocalPath(localPath)
-			if duration, err := probeSoundEffectDuration(ctx, prober, localPath); err == nil && duration > 0 {
+			if duration, err := cli.ProbeSoundEffectDuration(ctx, prober, localPath); err == nil && duration > 0 {
 				clip.Duration = duration
 			}
 		}
@@ -401,7 +401,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 // probeSoundEffectDuration measures a local audio file through the canonical
 // Rust media probe port (never a raw ffprobe exec). An empty path is a
 // legitimate "no local source" signal and returns (0, nil).
-func probeSoundEffectDuration(ctx context.Context, prober *rustexec.VideoProcessor, path string) (time.Duration, error) {
+func ProbeSoundEffectDuration(ctx context.Context, prober *rustexec.VideoProcessor, path string) (time.Duration, error) {
 	if strings.TrimSpace(path) == "" {
 		return 0, nil
 	}

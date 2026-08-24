@@ -3,7 +3,7 @@ package wiring
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 )
 
 func TestIsAIImageIngestSource(t *testing.T) {

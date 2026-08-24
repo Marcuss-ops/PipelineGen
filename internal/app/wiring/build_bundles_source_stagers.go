@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	infacq "github.com/Marcuss-ops/PipelineGen/internal/platform/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

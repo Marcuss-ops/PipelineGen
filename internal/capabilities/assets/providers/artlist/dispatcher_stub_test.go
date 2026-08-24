@@ -21,13 +21,13 @@
 // AssetMutationDispatcher interface lands, retire this stub in favour of
 // a typed Dispatcher port test double that lives in
 // internal/application/assets/mutations/testdouble.
-package assets
+package artlist
 
 import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

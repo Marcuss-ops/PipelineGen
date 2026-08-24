@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	promo "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	promo "github.com/Marcuss-ops/PipelineGen/internal/capabilities/workflow/promo"
 	"go.uber.org/zap"
 )
 

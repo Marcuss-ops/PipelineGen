@@ -25,7 +25,7 @@
 // sono reali").
 //
 // Banned import paths (the canonical banned literals):
-//   - "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
+//   - "github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation"
 //   - "github.com/Marcuss-ops/PipelineGen/internal/domain/generation"
 //
 // Scan scope is `internal/**` + `cmd/**` (external CLI surfaces
@@ -98,9 +98,9 @@ var generationFacadeScanScopes = []string{
 // generationFacadeBannedPathApp is the application-zone facade
 // import path the gate detects. The regex anchors on this fully-
 // qualified package path so an import like
-// `"github.com/Marcuss-ops/PipelineGen/internal/application/generation/response"`
+// `"github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation/response"`
 // is matched at the literal line carrying the import statement.
-const generationFacadeBannedPathApp = "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
+const generationFacadeBannedPathApp = "github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation"
 
 // generationFacadeBannedPathDomain is the domain-zone facade
 // import path the gate detects. Same shape as the application-
@@ -126,7 +126,7 @@ const generationFacadeRule = "percheck_no_generic_generation_facade"
 // references the canonical replacement surfaces (the proprietary
 // books/lessons/scripts packages per their canonical pipelines)
 // so the operator sees the migration path inline.
-const generationFacadeNote = "forbidden import of the retired generic generation facade (commit 7, PR-GENERATION-FACADE-REMOVE, July 2026). The application-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/application/generation') + the domain-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/domain/generation') were git-rm'd in commit 7 because zero production callers remained. The canonical proprietary APIs (book/lesson/script/batch) — if they exist in a future commit — live at the per-domain packages (internal/application/books/, internal/application/lessons/, internal/application/scripts/) and consume the runtime-driver interfaces directly without an interposed 'generation' facade. Per godlike/06 SSOT, the per-domain packages own their handler wiring; re-introducing the generic facade creates a godlike/07 NO-FAKE-AVAILABILITY regression. The forward-prevention gate is percheck_no_generic_generation_facade"
+const generationFacadeNote = "forbidden import of the retired generic generation facade (commit 7, PR-GENERATION-FACADE-REMOVE, July 2026). The application-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation') + the domain-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/domain/generation') were git-rm'd in commit 7 because zero production callers remained. The canonical proprietary APIs (book/lesson/script/batch) — if they exist in a future commit — live at the per-domain packages (internal/application/books/, internal/application/lessons/, internal/application/scripts/) and consume the runtime-driver interfaces directly without an interposed 'generation' facade. Per godlike/06 SSOT, the per-domain packages own their handler wiring; re-introducing the generic facade creates a godlike/07 NO-FAKE-AVAILABILITY regression. The forward-prevention gate is percheck_no_generic_generation_facade"
 
 // generationFacadeWarnBucket is the centralized residue-emitter.
 // Mirrors qdrantImportBanWarnBucket + indexedStateWriterSSOTWarnBucket.

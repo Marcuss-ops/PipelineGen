@@ -14,7 +14,7 @@
 // Wave 19 invariant: this file is stdlib-only. No new imports are
 // added to the search package — the alias table is a package-level
 // map literal + a constructor for tests to extend (RegisterSourceAlias).
-package assets
+package search
 
 import (
 	"strings"

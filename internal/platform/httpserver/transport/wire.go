@@ -1,4 +1,4 @@
-package httpserver
+package transport
 
 import (
 	"strings"

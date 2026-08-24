@@ -33,4 +33,4 @@
 //	provider_duckduckgo.go   — DuckDuckGoProvider
 //	provider_drive.go        — DriveImageProvider
 //	provider_registry.go     — RetrievalProviderRegistry
-package images
+package retrieved

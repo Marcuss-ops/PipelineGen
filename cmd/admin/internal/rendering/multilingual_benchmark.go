@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	sqtexttracks "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	"go.uber.org/zap"
 )
@@ -57,7 +57,7 @@ func RunMultilingualBenchmark(args []string) error {
 		return err
 	}
 
-	assetIDs := splitCSV(*ids)
+	assetIDs := cli.SplitCSV(*ids)
 	if len(assetIDs) == 0 {
 		return fmt.Errorf("multilingual-benchmark: --asset-ids is required")
 	}
@@ -80,7 +80,7 @@ func RunMultilingualBenchmark(args []string) error {
 	}
 	defer cleanup()
 
-	root, _, rootCleanup, err := app.InitComposition(cfg, log)
+	root, _, rootCleanup, err := wiring.InitComposition(cfg, log)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func printBenchmarkTable(samples []multilingual.BenchmarkSample) {
 // aborts the benchmark. Callers validate that the result is non-empty.
 func parseIntList(csv string) []int {
 	var out []int
-	for _, part := range splitCSV(csv) {
+	for _, part := range cli.SplitCSV(csv) {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue

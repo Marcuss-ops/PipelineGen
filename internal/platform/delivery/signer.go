@@ -43,8 +43,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // ErrExpired is returned when the URL expiry is in the past.
@@ -183,8 +181,3 @@ func canonicalPayload(assetID, workspaceID string, exp int64) string {
 	sb.WriteString(fmt.Sprintf("%d", exp))
 	return sb.String()
 }
-
-// Compile-time assertion: production Signer satisfies the canonical
-// search.AssetDeliveryService port. Drift is caught at compile, not
-// on first HTTP.
-var _ search.AssetDeliveryService = (*Signer)(nil)

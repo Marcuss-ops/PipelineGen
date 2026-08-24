@@ -43,17 +43,17 @@ func RunDB(args []string) error {
 
 	switch sub {
 	case "status":
-		return runDBStatus(ctx, rest)
+		return RunDBStatus(ctx, rest)
 	case "check":
-		return runDBCheck(ctx, rest)
+		return RunDBCheck(ctx, rest)
 	case "migrations":
-		return runDBMigrations(ctx, rest)
+		return RunDBMigrations(ctx, rest)
 	case "backup":
-		return runDBBackup(ctx, rest)
+		return RunDBBackup(ctx, rest)
 	case "restore":
-		return runDBRestore(ctx, rest)
+		return RunDBRestore(ctx, rest)
 	case "rotate":
-		return runDBRotate(ctx, rest)
+		return RunDBRotate(ctx, rest)
 	default:
 		return fmt.Errorf("unknown db subcommand: %s (expected: status, check, migrations, backup, restore, rotate)", sub)
 	}

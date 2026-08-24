@@ -27,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
@@ -228,11 +227,11 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 }
 
 // BuildLocalizationService is the composition-root factory: it wires the
-// concrete adapters from the *wiring.ComposeRoot into the localization
+// concrete adapters from the *ComposeRoot into the localization
 // capability. Fail-closed: a missing dependency (asset registry, text-track
 // store, Drive publisher, Doc client, Rust render boundary, or media config)
 // is a typed error, never a silently degraded fan-out.
-func BuildLocalizationService(cfg *config.Config, root *wiring.ComposeRoot, log *zap.Logger) (*LocalizationService, error) {
+func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*LocalizationService, error) {
 	if root == nil {
 		return nil, fmt.Errorf("localization service: composition root is nil")
 	}
@@ -316,7 +315,7 @@ func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
 		sourceLanguage = cfg.Media.Multilingual.SourceLanguage
 	}
 
-	mediaConfig := wiring.MediaexecConfig(cfg)
+	mediaConfig := MediaexecConfig(cfg)
 	profile := mediaConfig.Profile.WithDefaults()
 	policy := mediaConfig.Policy
 

@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 func RunTestYouTube(args []string) error {
@@ -19,7 +19,7 @@ func RunTestYouTube(args []string) error {
 	}
 	defer cleanup()
 
-	deps, err := app.WireServices(cfg, log, "")
+	deps, err := wiring.WireServices(cfg, log, "")
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		return err

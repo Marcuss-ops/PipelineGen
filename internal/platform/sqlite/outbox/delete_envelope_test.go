@@ -16,7 +16,8 @@ import (
 
 	"go.uber.org/zap"
 
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // txMgrCapture is a TxManager that captures the fn passed to

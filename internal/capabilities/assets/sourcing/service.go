@@ -14,7 +14,7 @@
 //
 // Per AGENTS.md Pattern 8 (API package: thin transport only) the façade
 // has no business logic; delegation is one line per method.
-package assets
+package sourcing
 
 import (
 	"context"

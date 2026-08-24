@@ -1,4 +1,4 @@
-package httpserver
+package middleware
 
 import (
 	"math"
@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/gin-gonic/gin"
 )
 

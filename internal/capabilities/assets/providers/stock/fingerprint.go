@@ -22,7 +22,7 @@
 // the planner thus produces the same cut plan (piano di taglio) for
 // the same inputs across retries. Verified by fingerprint_test.go
 // (1000-iteration byte-stability).
-package assets
+package stock
 
 import (
 	"errors"

@@ -15,15 +15,15 @@ import (
 	"fmt"
 	"path/filepath"
 
-	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
-	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	systemapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
+	sfxports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"go.uber.org/zap"
 )

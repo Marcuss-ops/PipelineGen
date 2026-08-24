@@ -5,15 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/api/adminconsole"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/adminconsole"
@@ -23,7 +22,7 @@ import (
 // registerAdminConsoleAPI wires the schema-driven admin console API.
 // It registers entities backed by the existing application services
 // without duplicating business logic.
-func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
+func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root == nil || root.Repos == nil || root.Repos.Assets == nil {
 		return fmt.Errorf("wire registry: adminconsole-api: asset service not available")
 	}

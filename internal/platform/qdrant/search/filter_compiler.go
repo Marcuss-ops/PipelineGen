@@ -29,7 +29,7 @@ package search
 import (
 	"fmt"
 
-	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // CompileQdrantFilter builds the canonical Qdrant filter body for

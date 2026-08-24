@@ -10,7 +10,7 @@
 //   - youtube_handlers.go — types + struct + ctor + RegisterRoutes + GetVideoInfo
 //   - youtube_extract.go  — Extract + normalizeExtractionDestination
 //   - youtube_search.go   — Diagnostics (incl. search stats) + SearchCatalog
-package assets
+package youtube
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"

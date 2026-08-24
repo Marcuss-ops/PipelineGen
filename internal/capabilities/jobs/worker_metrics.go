@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// MetricRefresher is satisfied by the concrete jobs.Repository.
+// MetricRefresher is satisfied by the concrete Repository.
 type MetricRefresher interface {
 	RefreshMetrics(ctx context.Context) error
 }

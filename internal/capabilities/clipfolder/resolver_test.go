@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 )
 
 // sampleYAML is the canonical fixture for resolver tests. It seeds
@@ -36,7 +35,7 @@ folder_aliases:
 // ── constructor ────────────────────────────────────────────────
 
 func TestNewFolderAliasResolverFromBytes_OK(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(sampleYAML))
+	r, err := NewFolderAliasResolverFromBytes([]byte(sampleYAML))
 	if err != nil {
 		t.Fatalf("NewFolderAliasResolverFromBytes: %v", err)
 	}
@@ -48,7 +47,7 @@ func TestNewFolderAliasResolverFromBytes_OK(t *testing.T) {
 // ── known-lookup pins (case + whitespace insensitive) ──────────
 
 func TestResolve_KnownAliases_CaseAndWhitespaceInsensitive(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(sampleYAML))
+	r, err := NewFolderAliasResolverFromBytes([]byte(sampleYAML))
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -93,7 +92,7 @@ func TestResolve_KnownAliases_CaseAndWhitespaceInsensitive(t *testing.T) {
 // ── unknown lookup pins (NO-FAKE-AVAILABILITY) ─────────────────
 
 func TestResolve_Unknown(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(sampleYAML))
+	r, err := NewFolderAliasResolverFromBytes([]byte(sampleYAML))
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -113,7 +112,7 @@ func TestResolve_Unknown(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Resolve(%q) succeeded (ref=%+v), want error", tt.input, ref)
 			}
-			if !errors.Is(err, clipfolder.ErrUnknownFolderAlias) {
+			if !errors.Is(err, ErrUnknownFolderAlias) {
 				t.Errorf("Resolve(%q) err = %v, want errors.Is(ErrUnknownFolderAlias)",
 					tt.input, err)
 			}
@@ -129,7 +128,7 @@ func TestResolve_Unknown(t *testing.T) {
 }
 
 func TestResolve_Empty(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(sampleYAML))
+	r, err := NewFolderAliasResolverFromBytes([]byte(sampleYAML))
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -148,7 +147,7 @@ func TestResolve_Empty(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Resolve(%q) succeeded (ref=%+v), want error", tt.input, ref)
 			}
-			if !errors.Is(err, clipfolder.ErrUnknownFolderAlias) {
+			if !errors.Is(err, ErrUnknownFolderAlias) {
 				t.Errorf("Resolve(%q) err = %v, want errors.Is(ErrUnknownFolderAlias)",
 					tt.input, err)
 			}
@@ -163,7 +162,7 @@ func TestResolve_Empty(t *testing.T) {
 // ── nil-safety ───────────────────────────────────────────────
 
 func TestResolve_NilResolver(t *testing.T) {
-	var r *clipfolder.FolderAliasResolver
+	var r *FolderAliasResolver
 	_, err := r.Resolve("boxe")
 	if err == nil {
 		t.Fatal("nil resolver should error rather than panic")
@@ -179,7 +178,7 @@ folder_aliases:
     path: ""
     normalized_group: boxe
 `
-	_, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(badYAML))
+	_, err := NewFolderAliasResolverFromBytes([]byte(badYAML))
 	if err == nil {
 		t.Fatal("expected error for empty path")
 	}
@@ -192,7 +191,7 @@ folder_aliases:
     path: Boxe
     normalized_group: ""
 `
-	_, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(badYAML))
+	_, err := NewFolderAliasResolverFromBytes([]byte(badYAML))
 	if err == nil {
 		t.Fatal("expected error for empty normalized_group")
 	}
@@ -205,7 +204,7 @@ folder_aliases:
     path: Boxe
     normalized_group: boxe
 `
-	_, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(badYAML))
+	_, err := NewFolderAliasResolverFromBytes([]byte(badYAML))
 	if err == nil {
 		t.Fatal("expected error for empty alias key")
 	}
@@ -221,21 +220,21 @@ folder_aliases:
     path: HipHop
     normalized_group: hiphop
 `
-	_, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(badYAML))
+	_, err := NewFolderAliasResolverFromBytes([]byte(badYAML))
 	if err == nil {
 		t.Fatal("expected error for duplicate-after-normalise alias key")
 	}
 }
 
 func TestNewFolderAliasResolverFromBytes_BadYAML(t *testing.T) {
-	_, err := clipfolder.NewFolderAliasResolverFromBytes([]byte("not valid yaml ::: ::: :::"))
+	_, err := NewFolderAliasResolverFromBytes([]byte("not valid yaml ::: ::: :::"))
 	if err == nil {
 		t.Fatal("expected error for malformed yaml")
 	}
 }
 
 func TestNewFolderAliasResolverFromBytes_AcceptsEmptyYAML(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte("folder_aliases: {}\n"))
+	r, err := NewFolderAliasResolverFromBytes([]byte("folder_aliases: {}\n"))
 	if err != nil {
 		t.Fatalf("empty yaml should not error: %v", err)
 	}
@@ -250,14 +249,14 @@ func TestNewFolderAliasResolverFromBytes_AcceptsEmptyYAML(t *testing.T) {
 // ── file-path constructor ────────────────────────────────────
 
 func TestNewFolderAliasResolverFromFile_MissingFile(t *testing.T) {
-	_, err := clipfolder.NewFolderAliasResolverFromFile("/nonexistent/path/folder_aliases.yaml")
+	_, err := NewFolderAliasResolverFromFile("/nonexistent/path/folder_aliases.yaml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
 }
 
 func TestNewFolderAliasResolverFromFile_EmptyPath(t *testing.T) {
-	_, err := clipfolder.NewFolderAliasResolverFromFile("")
+	_, err := NewFolderAliasResolverFromFile("")
 	if err == nil {
 		t.Fatal("expected error for empty filepath")
 	}
@@ -266,7 +265,7 @@ func TestNewFolderAliasResolverFromFile_EmptyPath(t *testing.T) {
 // ── Keys() ordering ──────────────────────────────────────────
 
 func TestKeys_SortedAndComplete(t *testing.T) {
-	r, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(sampleYAML))
+	r, err := NewFolderAliasResolverFromBytes([]byte(sampleYAML))
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -283,7 +282,7 @@ func TestKeys_SortedAndComplete(t *testing.T) {
 }
 
 func TestKeys_NilResolver(t *testing.T) {
-	var r *clipfolder.FolderAliasResolver
+	var r *FolderAliasResolver
 	if got := r.Keys(); got != nil {
 		t.Errorf("Keys on nil resolver = %v, want nil", got)
 	}
@@ -318,7 +317,7 @@ func productionYAMLPath(t *testing.T) string {
 // PR time rather than at first compose-root call.
 func TestProductionYAML_LoadsAndSeedsExpectedAliases(t *testing.T) {
 	path := productionYAMLPath(t)
-	r, err := clipfolder.NewFolderAliasResolverFromFile(path)
+	r, err := NewFolderAliasResolverFromFile(path)
 	if err != nil {
 		t.Fatalf("production yaml %q failed to load: %v", path, err)
 	}

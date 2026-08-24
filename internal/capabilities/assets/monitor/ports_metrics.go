@@ -25,7 +25,7 @@
 // constructor signature — a drift between the adapter fields
 // and the production CounterVec declarations is a build-time
 // failure, not a runtime panic.
-package assets
+package monitor
 
 // MetricsRecorder is the canonical Prometheus-shaped counter/histogram
 // surface for the channel monitor. The interface accepts the typed

@@ -1,4 +1,4 @@
-package clips
+package aistock
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

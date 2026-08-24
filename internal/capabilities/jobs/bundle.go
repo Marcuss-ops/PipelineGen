@@ -1,9 +1,7 @@
 package jobs
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"go.uber.org/zap"
 )
 
@@ -14,20 +12,20 @@ import (
 // existing Build/Module implementation remains the single canonical owner of
 // transport assembly and validation.
 type Bundle struct {
-	service     job.Service
-	stats       appjobs.JobStatsReader
-	history     appjobs.HistoryReader
+	service     *Service
+	stats       JobStatsReader
+	history     HistoryReader
 	enabledFunc func() bool
 	logger      *zap.Logger
 }
 
-func NewBundleWithHistory(service job.Service, stats appjobs.JobStatsReader, history appjobs.HistoryReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
+func NewBundleWithHistory(service *Service, stats JobStatsReader, history HistoryReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
 	return Bundle{service: service, stats: stats, history: history, enabledFunc: enabledFunc, logger: logger}
 }
 
 // NewBundle captures the narrow jobs capability dependencies without exposing
 // the larger application composition root to capability consumers.
-func NewBundle(service job.Service, stats appjobs.JobStatsReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
+func NewBundle(service *Service, stats JobStatsReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
 	return Bundle{
 		service:     service,
 		stats:       stats,
@@ -39,19 +37,27 @@ func NewBundle(service job.Service, stats appjobs.JobStatsReader, enabledFunc fu
 // Name implements api.CapabilityModule.
 func (b Bundle) Name() string { return "jobs" }
 
-// Build delegates to the existing canonical jobs module builder. Bundle is the
-// composition-root facade; NewModule remains the lower-level canonical builder
-// used by this delegation and by compatibility callers. Keeping this single
-// implementation path prevents duplicate transport composition or a parallel
-// migration of the jobs transport.
+// Build delegates to the existing canonical jobs module builder.
 func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {
-	return NewModule(Dependencies{
+	d, err := Build(Dependencies{
 		Service:     b.service,
 		Stats:       b.stats,
 		History:     b.history,
 		EnabledFunc: b.enabledFunc,
 		Logger:      b.logger,
-	}).Build(ctx)
+	})
+	if err != nil {
+		return api.RuntimeModule{}, err
+	}
+	return api.RuntimeModuleFor("jobs", "/api/jobs", d)
 }
 
-var _ api.CapabilityModule = Bundle{}
+func (b Bundle) buildOld(ctx api.BuildContext) (api.Descriptor, error) {
+	return Build(Dependencies{
+		Service:     b.service,
+		Stats:       b.stats,
+		History:     b.history,
+		EnabledFunc: b.enabledFunc,
+		Logger:      b.logger,
+	})
+}

@@ -9,7 +9,7 @@
 // operator-visible. The narrow-port locations.Upsert writes below the
 // dispatcher check remain unchanged (MIXED — see Phase A commit).
 
-package assets
+package artifacts
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
