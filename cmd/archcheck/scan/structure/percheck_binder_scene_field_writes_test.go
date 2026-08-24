@@ -396,7 +396,7 @@ func TestScanBinderSceneFieldWrites_CommentOnlyIsResidue(t *testing.T) {
 }
 
 // TestScanBinderSceneFieldWrites_OutOfScopeIgnored verifies the
-// scope gate: a file in internal/application/images/ that
+// scope gate: a file in internal/capabilities/images/workflow/ that
 // legitimately constructs a SpecScene literal does NOT trip
 // the binder-purity gate (the gate's scope is the scene/
 // package only — Wave 1.3 is bounded).

@@ -9,7 +9,7 @@
 // owner per fact — the IndexState enum + Valid/IsTerminal/IsRetryPending
 // predicates are owned by the asset package, not by individual
 // consumers like the outbox handler). The companion handler-level
-// tests live in internal/application/jobs/outbox/indexing_disabled_test.go.
+// tests live in internal/capabilities/jobs/outbox/indexing_disabled_test.go.
 //
 // Separate file from the canonical index_state_test.go so a future
 // PR that rotates this state out (e.g. into a "previous_state"

@@ -11,7 +11,7 @@ import (
 	"context"
 
 	"database/sql"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )

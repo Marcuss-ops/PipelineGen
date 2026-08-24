@@ -9,7 +9,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // HandleJob processes the background job for lesson generation.

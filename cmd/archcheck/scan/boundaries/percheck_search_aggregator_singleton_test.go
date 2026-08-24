@@ -114,7 +114,7 @@ func Build2() {
 // `search.` prefix) are exempt.
 func TestScanSearchAggregatorSingleton_TestFilesExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForSearchAggregatorTest(t, root, "internal/application/search/aggregator_test.go",
+	makeFileForSearchAggregatorTest(t, root, "internal/capabilities/assets/search/aggregator_test.go",
 		`package search
 func TestBuildAgg() {
 	_ = NewAggregator(nil, nil)

@@ -7,7 +7,7 @@
 //
 // Scope:
 //   - internal/application/brain/**
-//   - internal/application/mediamemory/**
+//   - internal/capabilities/mediamemory/**
 //
 // Exempt:
 //   - _test.go files
@@ -44,7 +44,7 @@ const (
 	brainInfraBanRule = "percheck_brain_infra_ban"
 
 	brainScopePrefix       = "internal/application/brain/"
-	mediaMemoryScopePrefix = "internal/application/mediamemory/"
+	mediaMemoryScopePrefix = "internal/capabilities/mediamemory/"
 )
 
 var (

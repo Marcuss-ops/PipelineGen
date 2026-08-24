@@ -46,7 +46,7 @@ func contains(values []string, want string) bool {
 func TestLoadCanonicalApplicationAreas(t *testing.T) {
 	t.Run("multiline list parses", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "policy.yaml")
-		content := "canonical_application_areas:\n  - internal/application/images\n  - internal/application/scripts\n"
+		content := "canonical_application_areas:\n  - internal/capabilities/images/workflow\n  - internal/application/scripts\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -54,14 +54,14 @@ func TestLoadCanonicalApplicationAreas(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		want := []string{"internal/application/images", "internal/application/scripts"}
+		want := []string{"internal/capabilities/images/workflow", "internal/application/scripts"}
 		if !reflect.DeepEqual(p.CanonicalApplicationAreas, want) {
 			t.Fatalf("CanonicalApplicationAreas=%v, want %v", p.CanonicalApplicationAreas, want)
 		}
 	})
 
 	for name, content := range map[string]string{
-		"duplicate":           "canonical_application_areas:\n  - internal/application/images\n  - internal/application/images\n",
+		"duplicate":           "canonical_application_areas:\n  - internal/capabilities/images/workflow\n  - internal/capabilities/images/workflow\n",
 		"traversal":           "canonical_application_areas:\n  - internal/application/../images\n",
 		"outside application": "canonical_application_areas:\n  - internal/infrastructure\n",
 	} {

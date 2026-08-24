@@ -19,8 +19,8 @@ func TestExtractGoPathTokens_NarrativeEnglishSkipped(t *testing.T) {
 	}{
 		{
 			name: "single canonical internal path",
-			in:   "internal/application/qdrant/dr",
-			want: []string{"internal/application/qdrant/dr"},
+			in:   "internal/platform/qdrant/dr",
+			want: []string{"internal/platform/qdrant/dr"},
 		},
 		{
 			name: "single canonical pkg path",

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 

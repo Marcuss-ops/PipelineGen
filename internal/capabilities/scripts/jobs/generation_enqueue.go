@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -50,7 +50,7 @@ func NewGenerateEnqueueRequest(env domainScript.GenerationEnvelopeV2) *GenerateE
 // appjobs.Registry.DefaultMaxRetries(jType) instead of the pre-Issue-4
 // hard-coded fallback of 3.
 //   - For script.generate the canonical registry value is 2 (per
-//     internal/application/jobs/registry.go::Compose DefaultMaxRetries
+//     internal/capabilities/jobs/queue/registry.go::Compose DefaultMaxRetries
 //     entry); the pre-Issue-4 behaviour overrode this to 3.
 //   - Nil-tolerant: registry==nil preserves the pre-Issue-4 hardcoded
 //     fallback path (the JobsService.Enqueue MaxRetries=3 net still

@@ -72,7 +72,7 @@ import (
 //   - *appjobs.Service satisfies stockpipeline.jobsEnqueuer structurally
 //     (the narrowed interface requires only Enqueue — *appjobs.Service
 //     has Enqueue per `var _ job.Service = (*Service)(nil)` at
-//     internal/application/jobs/service.go). No adapter shim required —
+//     internal/capabilities/jobs/queue/service.go). No adapter shim required —
 //     mirrors voiceoverjobs.FanoutDeps in build_bundles_voiceover.go's
 //     `voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{Enqueuer: jobs.Service})`
 //     precedent.

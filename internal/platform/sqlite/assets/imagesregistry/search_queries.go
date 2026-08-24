@@ -27,7 +27,7 @@ import (
 // The Qdrant path (CompileQdrantFilter) correctly restricts to
 // ACTIVE-only; this function brings the local SQLite path into
 // parity with the canonical SearchableLifecycleStates allowlist
-// declared at internal/application/search/ports.go.
+// declared at internal/capabilities/assets/search/ports.go.
 //
 // godlike/06 SSOT: SoftDeleteFilter() (lifecycle_state != 'DELETED')
 // is the correct general-purpose exclusion for CRUD operations
@@ -300,7 +300,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 	// PR-AGGREGATE-FILTER-UNIFORM (July 2026): Tags filter added.
 	// Every listed tag must be present on the `tags` JSON column
 	// (AND-semantics, matching the canonical q.Filters.Tags contract
-	// from internal/application/search/types.go::Filters.Tags). FTS5
+	// from internal/capabilities/assets/search/types.go::Filters.Tags). FTS5
 	// is banned per project policy so we route through
 	// pkg/sqlutil.BuildFallbackLikeConditions — the single-tag case
 	// reduces to a single-column LIKE which the planner can
@@ -318,7 +318,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 	// AdvancedSearchRequest for API symmetry; the SQL filter is
 	// deliberately a no-op until the column lands.
 	// godlike/07 honest-limitation: this contract is pinned by
-	// internal/application/search/cross_provider_test.go::
+	// internal/capabilities/assets/search/cross_provider_test.go::
 	// TestFilterLanguageHonestyContract so a future reader / CI
 	// gate catches a regression if the projection drifts. WITHOUT
 	// the honest test, a casual caller setting q.Filters.Language="en"

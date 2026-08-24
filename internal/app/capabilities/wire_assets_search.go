@@ -18,7 +18,7 @@ import (
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/application/assets/resolver"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"go.uber.org/zap"
 )

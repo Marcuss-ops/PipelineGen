@@ -30,7 +30,7 @@ import (
 	"time"
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"
-	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
+	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/projectionreconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

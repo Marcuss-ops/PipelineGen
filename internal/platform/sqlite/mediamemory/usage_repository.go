@@ -4,7 +4,7 @@
 // godlike/06 SSOT: the SQL ↔ Go row conversion for media_usage_events
 // lives ONLY here. DDL canonical home:
 // migrations/sqlite/167_mediamemory_usage_events.sql. Wire canonical
-// home: internal/application/mediamemory/types.go::UsageEvent.
+// home: internal/capabilities/mediamemory/types.go::UsageEvent.
 // This file is the bridge.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the table is append-only
@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

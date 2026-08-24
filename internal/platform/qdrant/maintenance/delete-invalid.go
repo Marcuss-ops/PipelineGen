@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/delete-invalid.go — delete-invalid mode handler.
+// internal/platform/qdrant/maintenance/delete-invalid.go — delete-invalid mode handler.
 //
 // Dispatches canonical outbox DELETE events for assets whose points hit
 // non-locator legacy categories (1–6, 8). Points whose ONLY finding is
@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/legacyaudit"
 )
 
 // DeleteOptions is the typed-input envelope for Service.Delete.

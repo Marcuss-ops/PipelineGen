@@ -112,7 +112,7 @@ func (i *FrameQdrantIndexer) bad() error {
 
 func TestScanFrameConceptWriter_ReadAndLifecycleNotMatched(t *testing.T) {
 	root := t.TempDir()
-	makeFrameConceptFile(t, root, "internal/application/search/read.go",
+	makeFrameConceptFile(t, root, "internal/capabilities/assets/search/read.go",
 		`package search
 
 func read(c *transport.Client) error {

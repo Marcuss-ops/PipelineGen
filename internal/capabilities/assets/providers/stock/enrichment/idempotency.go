@@ -48,7 +48,7 @@
 // single canonical idempotency-key construction for the
 // stock RLM/LLM enrichment pass. The EnrichmentHandler
 // (in this same package) is the SOLE producer; the
-// AssetPublishedHandler (in internal/application/jobs/outbox/
+// AssetPublishedHandler (in internal/capabilities/jobs/outbox/
 // asset_published.go) is the SOLE consumer. Both sides MUST
 // recompute the key from the same triple; mismatched triples
 // surface as ErrEnrichmentIdempotencyKeyConflict.

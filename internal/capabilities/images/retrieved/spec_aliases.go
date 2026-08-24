@@ -23,7 +23,7 @@ package retrieved
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 )
 
 // Provider aliases the canonical RetrievalProvider interface.

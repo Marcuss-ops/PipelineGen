@@ -5,7 +5,7 @@
 // SQL ↔ Go row conversion for media_concepts. The DDL canonical
 // home is migrations/sqlite/163_mediamemory_concepts.sql; the
 // application-layer wire canonical lives in
-// internal/application/mediamemory/types.go::MediaConcept. Both
+// internal/capabilities/mediamemory/types.go::MediaConcept. Both
 // files import the canonical ports; this file is the bridge.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: UNIQUE(language,
@@ -32,7 +32,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // conceptsRepository is the canonical concrete

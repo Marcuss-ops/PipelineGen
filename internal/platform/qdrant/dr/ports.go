@@ -9,7 +9,7 @@
 //
 // Application-layer ports listed in the canonical DR diagram:
 //
-//	internal/application/qdrant/dr/ports.go         ─► SnapshotStore,
+//	internal/platform/qdrant/dr/ports.go         ─► SnapshotStore,
 //	                                                   AliasSwitcher,
 //	                                                   CollectionCreator,
 //	                                                   Verifier,
@@ -41,7 +41,7 @@ type SnapshotStore interface {
 // AliasSwitcher performs the blue-green atomic alias rotation that
 // Production concrete: *qdrant.CollectionManager in
 // internal/platform/qdrant (manual admin path) +
-// internal/application/qdrant/reconciler::Service (programmatic).
+// internal/capabilities/reconciliation::Service (programmatic).
 type AliasSwitcher interface {
 	SwitchAlias(ctx context.Context, alias, oldTarget, newTarget string) error
 }
@@ -99,7 +99,7 @@ type CollectionAgeReader interface {
 // policy using the CollectionAgeReader for per-collection timestamps.
 // Production concrete: *qdrant.RetentionExecutor in
 // internal/platform/qdrant (registered into outbox via
-// internal/application/jobs/outbox DriveHandler).
+// internal/capabilities/jobs/outbox DriveHandler).
 type RetentionExecutor interface {
 	CleanupWithConfig(ctx context.Context, cfg qdrantdr.RetentionConfig) (*qdrantdr.RetentionResult, error)
 }

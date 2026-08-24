@@ -29,7 +29,7 @@ package chrome
 import (
 	"bytes"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"image"
 	"math"
 
@@ -38,7 +38,7 @@ import (
 )
 
 // ComposedPrompt mirrors the internal shape returned by
-// internal/application/images/prompt_composer.go::appimages.ComposePrompt.
+// internal/capabilities/images/workflow/prompt_composer.go::appimages.ComposePrompt.
 // We declare a local alias instead of importing the type because
 // this file's only use is field-access for the post-success
 // observability log; importing the concrete struct would force

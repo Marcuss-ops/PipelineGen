@@ -10,11 +10,11 @@
 //     wiring; the MediaMemory-backed adapter lives there to avoid the
 //     brain <-> mediamemory architectural import cycle)
 //   - SceneVisualPlanner       → internal/application/brain/planner
-//   - SearchFanOut             → internal/application/search
+//   - SearchFanOut             → internal/capabilities/assets/search
 //
 // The MediaMemoryResolutionPort lives in internal/application/brain
 // but is implemented by the MediaMemory cascade in
-// internal/application/mediamemory; it is therefore not listed as a
+// internal/capabilities/mediamemory; it is therefore not listed as a
 // brain-package component here.
 //
 // The gate counts production constructors in the canonical home
@@ -53,11 +53,11 @@ var brainComponents = []canonicalBrainComponent{
 	{Name: "VisualIntentResolver", PkgPath: "internal/application/brain/intent", Constructors: []string{"NewDefaultResolver"}},
 	{Name: "CandidateRanker", PkgPath: "internal/app/wiring", Constructors: []string{"NewMediaMemoryRankerAdapter"}},
 	{Name: "SceneVisualPlanner", PkgPath: "internal/application/brain/planner", Constructors: []string{"NewDefaultPlanner"}},
-	{Name: "SearchFanOut", PkgPath: "internal/application/search", Constructors: []string{"NewSearchFanOut"}},
+	{Name: "SearchFanOut", PkgPath: "internal/capabilities/assets/search", Constructors: []string{"NewSearchFanOut"}},
 	// EmbeddingChannelRegistry is canonical but its production constructor
-	// has not been extracted to internal/application/search yet. Include
+	// has not been extracted to internal/capabilities/assets/search yet. Include
 	// it as soon as a canonical NewEmbeddingChannelRegistry exists.
-	// {Name: "EmbeddingChannelRegistry", PkgPath: "internal/application/search", Constructors: []string{"NewEmbeddingChannelRegistry"}},
+	// {Name: "EmbeddingChannelRegistry", PkgPath: "internal/capabilities/assets/search", Constructors: []string{"NewEmbeddingChannelRegistry"}},
 }
 
 // ScanBrainSingleImpl walks the canonical home packages of every

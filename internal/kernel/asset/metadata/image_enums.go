@@ -55,7 +55,7 @@ const (
 
 	// TerritoryGenerated limits search to the generated territory
 	// (GoogleSlides/Flux/NVIDIA). Does NOT auto-generate new images;
-	// see internal/application/images/generated/ (FASE 5/6).
+	// see internal/capabilities/images/workflow/generated/ (FASE 5/6).
 	TerritoryGenerated ImageSearchTerritory = "generated"
 
 	// TerritoryAll fans out to both territories; ImageSearchResolver

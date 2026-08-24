@@ -37,7 +37,7 @@ import (
 	"testing"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // TestVoiceoverBatch_RoutesToLegacyComplete pins the registry contract

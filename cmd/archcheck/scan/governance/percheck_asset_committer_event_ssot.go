@@ -113,7 +113,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	"internal/application/assets/finalizer/",
 	"internal/application/assets/texttracks/",
 	"internal/capabilities/voiceover/service/",
-	"internal/application/images/",
+	"internal/capabilities/images/workflow/",
 	"internal/application/assets/soundeffect/",
 	"internal/application/assets/catalogsync/",
 	"internal/capabilities/assets/providers/",

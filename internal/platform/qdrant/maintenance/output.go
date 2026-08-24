@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/output.go — typed CLI-output
+// internal/platform/qdrant/maintenance/output.go — typed CLI-output
 // adapter for the qdrant-maintenance per-mode handlers.
 //
 // godlike/06 SSOT: this file is the SOLE canonical owner of "how the

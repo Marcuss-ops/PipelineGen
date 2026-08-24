@@ -13,8 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 )
 

@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"

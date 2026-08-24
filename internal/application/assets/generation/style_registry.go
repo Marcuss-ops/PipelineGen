@@ -1,7 +1,7 @@
 // Package generation — back-compat shim (FASE 8 image-territories, July 2026).
 //
 // The real StyleRegistry implementation was moved to
-// internal/application/images/styles/. This file provides Go type aliases
+// internal/capabilities/images/workflow/styles/. This file provides Go type aliases
 // so existing consumers of *generation.StyleRegistry, generation.StyleResolver,
 // and generation.ResolvedStyle continue to compile unchanged.
 //
@@ -25,12 +25,12 @@
 // time, so existing consumers in this shim continue to work unchanged.
 package generation
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/images/styles"
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/styles"
 
 // ── Type aliases (transparent — same type, same method set) ─────────────
 
 // StyleRegistry is the canonical YAML-backed style registry.
-// See internal/application/images/styles/ for the implementation.
+// See internal/capabilities/images/workflow/styles/ for the implementation.
 type StyleRegistry = styles.StyleRegistry
 
 // ResolvedStyle is the output of StyleResolver.Resolve.

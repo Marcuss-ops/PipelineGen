@@ -4,7 +4,7 @@
 // godlike/06 SSOT (one canonical owner per fact): the SQL ↔ Go row
 // conversion for media_candidates lives ONLY here. DDL canonical home:
 // migrations/sqlite/166_mediamemory_candidates.sql. Wire canonical
-// home: internal/application/mediamemory/types.go::MediaCandidate.
+// home: internal/capabilities/mediamemory/types.go::MediaCandidate.
 // This file is the bridge.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: UNIQUE(provider,
@@ -30,7 +30,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // candidatesRepository is the canonical concrete

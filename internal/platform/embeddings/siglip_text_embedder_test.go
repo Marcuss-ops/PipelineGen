@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // helper: build a 768d canonical fake vector (deterministic so byte-level

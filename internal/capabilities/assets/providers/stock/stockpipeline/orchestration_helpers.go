@@ -311,7 +311,7 @@ var (
 //	 5-artifact shape"
 //
 // The 5 fixed entries are the per-kind envelope the downstream
-// runner (internal/application/jobs/worker/runner.go::uploadManifest)
+// runner (internal/capabilities/jobs/worker/runner.go::uploadManifest)
 // routes on:
 //
 //	(a) metadata   — pipeline metadata.json uploaded at the end

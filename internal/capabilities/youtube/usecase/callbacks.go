@@ -189,7 +189,7 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 // unchanged signature; the contract is now "covered by the durable pipeline".
 //
 // Idempotency proof: directory_test.go commit F regression
-// (internal/application/jobs/outbox/durable_indexing_test.go) verifies that
+// (internal/capabilities/jobs/outbox/durable_indexing_test.go) verifies that
 // 2 enqueues of the SAME event_key produce 1 outbox row and 1 IndexClip
 // callback — structure-driven (UNIQUE constraint), no goroutine required.
 func (s *Service) triggerAutoIndexing(ctx context.Context, clipID string) {

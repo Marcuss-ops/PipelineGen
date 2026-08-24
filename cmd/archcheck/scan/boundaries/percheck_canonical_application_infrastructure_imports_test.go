@@ -13,18 +13,18 @@ import (
 func TestScanCanonicalApplicationInfrastructureImports(t *testing.T) {
 	t.Run("clean production area passes and ignores comments/tests", func(t *testing.T) {
 		root := t.TempDir()
-		writeCanonicalFixture(t, root, "internal/application/images/clean.go", `package images
+		writeCanonicalFixture(t, root, "internal/capabilities/images/workflow/clean.go", `package images
 
 // import "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 const example = "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 `)
-		writeCanonicalFixture(t, root, "internal/application/images/clean_test.go", `package images
+		writeCanonicalFixture(t, root, "internal/capabilities/images/workflow/clean_test.go", `package images
 import "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 `)
 
 		r := &report.Report{}
 		ScanCanonicalApplicationInfrastructureImports(root, &policy.Policy{
-			CanonicalApplicationAreas: []string{"internal/application/images"},
+			CanonicalApplicationAreas: []string{"internal/capabilities/images/workflow"},
 		}, r)
 		if len(r.Violations) != 0 {
 			t.Fatalf("clean area produced violations: %#v", r.Violations)
@@ -33,7 +33,7 @@ import "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 
 	t.Run("production infrastructure import fails", func(t *testing.T) {
 		root := t.TempDir()
-		writeCanonicalFixture(t, root, "internal/application/images/bad.go", `package images
+		writeCanonicalFixture(t, root, "internal/capabilities/images/workflow/bad.go", `package images
 
 import storage "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 
@@ -42,7 +42,7 @@ var _ storage.Reader
 
 		r := &report.Report{}
 		ScanCanonicalApplicationInfrastructureImports(root, &policy.Policy{
-			CanonicalApplicationAreas: []string{"internal/application/images"},
+			CanonicalApplicationAreas: []string{"internal/capabilities/images/workflow"},
 		}, r)
 		hits := violationsWithRule(r.Violations, canonicalApplicationInfraImportRule)
 		if len(hits) != 1 {
@@ -57,7 +57,7 @@ var _ storage.Reader
 		root := t.TempDir()
 		r := &report.Report{}
 		ScanCanonicalApplicationInfrastructureImports(root, &policy.Policy{
-			CanonicalApplicationAreas: []string{"internal/application/images"},
+			CanonicalApplicationAreas: []string{"internal/capabilities/images/workflow"},
 		}, r)
 		hits := violationsWithRule(r.Violations, canonicalApplicationMissingAreaRule)
 		if len(hits) != 1 || hits[0].Severity != string(report.SeverityError) {
@@ -79,10 +79,10 @@ var _ storage.Reader
 
 	t.Run("malformed production file fails closed", func(t *testing.T) {
 		root := t.TempDir()
-		writeCanonicalFixture(t, root, "internal/application/images/bad.go", "package images\nimport (\n")
+		writeCanonicalFixture(t, root, "internal/capabilities/images/workflow/bad.go", "package images\nimport (\n")
 		r := &report.Report{}
 		ScanCanonicalApplicationInfrastructureImports(root, &policy.Policy{
-			CanonicalApplicationAreas: []string{"internal/application/images"},
+			CanonicalApplicationAreas: []string{"internal/capabilities/images/workflow"},
 		}, r)
 		hits := violationsWithRule(r.Violations, canonicalApplicationParseErrorRule)
 		if len(hits) != 1 || !strings.Contains(hits[0].Note, "fail-closed") {

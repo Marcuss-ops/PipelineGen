@@ -4,7 +4,7 @@
 // godlike/06 SSOT: the SQL ↔ Go row conversion for media_query_cache
 // lives ONLY here. DDL canonical home:
 // migrations/sqlite/165_mediamemory_query_cache.sql. Wire canonical
-// home: internal/application/mediamemory/ports.go::QueryCacheEntry.
+// home: internal/capabilities/mediamemory/ports.go::QueryCacheEntry.
 // This file is the bridge.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: hit_count is incremented via
@@ -28,7 +28,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // queriesRepository is the canonical concrete

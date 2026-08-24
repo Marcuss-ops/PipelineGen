@@ -107,7 +107,7 @@ func NewRepairAdapter(db *sql.DB, outboxRepo *outboxevents.Repository, schemaVer
 //
 // The content_hash is PASSED BY THE CALLER (not fetched here) per
 // PR 11 (June 2026) — the canonical reconciler flow
-// (internal/application/qdrant/reconciler/service.go) already
+// (internal/capabilities/reconciliation/service.go) already
 // calls assets.SourceVersionFor(...) once per asset and threads
 // the value here. Callers MUST hand in a non-empty contentHash;
 // the adapter is fail-closed on empty (deterministic event_key

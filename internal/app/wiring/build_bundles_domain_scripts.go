@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"

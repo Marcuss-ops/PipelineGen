@@ -1,7 +1,7 @@
 // Package scan — per-check forward-prevention gate that bans
 // `spec_aliases.go` files outside the two approved territories:
-// internal/application/images/generated/ and
-// internal/application/images/retrieved/.
+// internal/capabilities/images/workflow/generated/ and
+// internal/capabilities/images/workflow/retrieved/.
 //
 // scan/percheck_spec_aliases.go is the canonical Go scanner for
 // PR-AUDIT-8 (July 2026, P2). The gate codifies the godlike/06
@@ -10,9 +10,9 @@
 // assertions on top of the canonical implementation package.
 // The ONLY two approved homes are:
 //
-//   - internal/application/images/generated/spec_aliases.go
+//   - internal/capabilities/images/workflow/generated/spec_aliases.go
 //     (Google Slides generation provider spec surface)
-//   - internal/application/images/retrieved/spec_aliases.go
+//   - internal/capabilities/images/workflow/retrieved/spec_aliases.go
 //     (Wikipedia / SearXNG / DuckDuckGo / Drive retrieval spec surface)
 //
 // Any other `spec_aliases.go` file is a godlike/06 SSOT violation:
@@ -34,9 +34,9 @@
 //
 // Excluded paths (godlike/06 SSOT):
 //
-//   - internal/application/images/generated/** — the canonical
+//   - internal/capabilities/images/workflow/generated/** — the canonical
 //     generated/ spec surface.
-//   - internal/application/images/retrieved/** — the canonical
+//   - internal/capabilities/images/workflow/retrieved/** — the canonical
 //     retrieved/ spec surface.
 //   - All *_test.go files — naturally excluded by the basename
 //     gate ("spec_aliases_test.go" ≠ "spec_aliases.go"). No
@@ -77,8 +77,8 @@ const specAliasesFilename = "spec_aliases.go"
 // and must add the directory here — which forces the operator
 // to review the mapping contract before the new surface lands.
 var specAliasesApprovedDirs = []string{
-	"internal/application/images/generated",
-	"internal/application/images/retrieved",
+	"internal/capabilities/images/workflow/generated",
+	"internal/capabilities/images/workflow/retrieved",
 }
 
 // specAliasesSkipDirs is the standard skip-list for whole-repo
@@ -99,7 +99,7 @@ var specAliasesSkipDirs = map[string]bool{
 // godlike/06 SSOT rationale + the PR-AUDIT-8 forward-prevention
 // anchor so future agents reading the CI failure have the full
 // context inline.
-const specAliasesScanNote = "forbidden `spec_aliases.go` outside approved territories (internal/application/images/generated/ + internal/application/images/retrieved/); godlike/06 SSOT requires spec_aliases.go to live ONLY in these two canonical directories (PR-AUDIT-8 forward-prevention gate, July 2026)"
+const specAliasesScanNote = "forbidden `spec_aliases.go` outside approved territories (internal/capabilities/images/workflow/generated/ + internal/capabilities/images/workflow/retrieved/); godlike/06 SSOT requires spec_aliases.go to live ONLY in these two canonical directories (PR-AUDIT-8 forward-prevention gate, July 2026)"
 
 // ScanSpecAliasesTerritory walks every file under <root>/ and emits
 // an error-severity violation for any file named `spec_aliases.go`

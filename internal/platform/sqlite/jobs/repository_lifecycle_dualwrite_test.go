@@ -220,7 +220,7 @@ func TestFinalizeAggregateParent_DualWrite_FailClosedMalformedJSON(t *testing.T)
 // file creates an import cycle (this package → application/voiceover/
 // jobs → application/jobs → internal/platform/sqlite/
 // jobs). The cycle is fundamental to the application→infrastructure
-// layering (internal/application/jobs/errors.go imports this package
+// layering (internal/capabilities/jobs/queue/errors.go imports this package
 // for the typed sentinels).
 //
 // SSOT enforcement strategy (godlike/06 one-canonical-owner-per-fact):

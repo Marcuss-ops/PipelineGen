@@ -40,7 +40,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/legacyaudit"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 

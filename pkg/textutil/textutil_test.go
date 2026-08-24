@@ -3,7 +3,7 @@ package textutil
 import "testing"
 
 // These cases were previously colocated in the (now retired)
-// internal/application/images/fullimages/service_test.go — they exercise
+// internal/capabilities/images/workflow/fullimages/service_test.go — they exercise
 // textutil.SafeName, so they live here with the implementation they cover.
 
 func TestSafeName_RemovesSpecialChars(t *testing.T) {

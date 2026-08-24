@@ -27,8 +27,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/assets"
 	completiontransport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -41,7 +41,7 @@ import (
 //
 // Issue 15e (June 2026): type alias to appjobs.Broker — single source
 // of truth. The 8-method interface lives canonically in
-// internal/application/jobs/broker.go.
+// internal/capabilities/jobs/queue/broker.go.
 type Broker = appjobs.Broker
 
 // AssetTransferService is the narrow port for the worker binary's
@@ -215,7 +215,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 // converting StagedArtifactReference → PublishedArtifact (canonical
 // 7-field envelope with Drive FileID/link/checksum) post-publish,
 // per the PublishAndCompleteUseCase surface at
-// internal/application/jobs/completion/publish_and_complete_use_case.go
+// internal/capabilities/jobs/policy/publish_and_complete_use_case.go
 // (the EXPAND-phase canonical; handler-wiring to the use case is
 // the BACKFILL phase, forward-pointer P0-COMPL-5-HANDLER-WIRE).
 //

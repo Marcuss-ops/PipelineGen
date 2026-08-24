@@ -246,7 +246,7 @@ func findRepoRoot(t *testing.T) string {
 //
 // KNOWN GAP (godlike/07 NO-FAKE-AVAILABILITY): this test does NOT
 // assert that the canonical registry binding is in place. Specifically,
-// `internal/application/jobs/registry_voiceover.go` must register a
+// `internal/capabilities/jobs/queue/registry_voiceover.go` must register a
 // handler for `job.TypeVoiceoverGenerate`. A future agent could rename
 // the const literal, unregister the job type, or have a stale
 // registration without surfacing here. Forward-pointer `PR-REF-REG-VO`

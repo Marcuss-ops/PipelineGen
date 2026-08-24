@@ -33,7 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/stockbuild"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue/stockbuild"
 	subjectsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/subjectsrepo"
 )
 

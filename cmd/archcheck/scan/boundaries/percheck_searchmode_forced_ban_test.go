@@ -49,8 +49,8 @@ func searchModeForcedViolations(r *report.Report) []report.Violation {
 func TestSearchModeForced_AdapterAssignmentFails(t *testing.T) {
 	dir := t.TempDir()
 	searchModeForcedWriteTree(t, dir, map[string]string{
-		"internal/application/mediamemory/adapters/search.go": `package adapters
-import "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+		"internal/capabilities/mediamemory/adapters/search.go": `package adapters
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 func buildQuery() search.Query {
 	return search.Query{Mode: search.SearchModeANN}
 }
@@ -89,8 +89,8 @@ const SearchModeANN SearchMode = "ann"
 func TestSearchModeForced_ExemptTestFiles(t *testing.T) {
 	dir := t.TempDir()
 	searchModeForcedWriteTree(t, dir, map[string]string{
-		"internal/application/mediamemory/adapters/search_test.go": `package adapters
-import "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+		"internal/capabilities/mediamemory/adapters/search_test.go": `package adapters
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 var q = search.Query{Mode: search.SearchModeANN}
 `,
 	})
@@ -106,8 +106,8 @@ var q = search.Query{Mode: search.SearchModeANN}
 func TestSearchModeForced_EqualityComparisonIgnored(t *testing.T) {
 	dir := t.TempDir()
 	searchModeForcedWriteTree(t, dir, map[string]string{
-		"internal/application/mediamemory/resolver.go": `package mediamemory
-import "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+		"internal/capabilities/mediamemory/resolver.go": `package mediamemory
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 func isANN(mode search.SearchMode) bool { return mode == search.SearchModeANN }
 `,
 	})

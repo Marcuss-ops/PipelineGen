@@ -11,7 +11,7 @@ package ports
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // MaterializedAsset is the result of materializing a candidate.

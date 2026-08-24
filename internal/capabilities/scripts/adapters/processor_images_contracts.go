@@ -68,7 +68,7 @@ type ImageResult struct {
 }
 
 // ImageGenService is the canonical port for image generation.
-// Production implementations live in internal/application/images/
+// Production implementations live in internal/capabilities/images/workflow/
 // (concrete *images.Service); stub implementations live in adapters/.
 type ImageGenService interface {
 	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string) (*ImageResult, error)

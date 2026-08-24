@@ -16,7 +16,7 @@
 //     internal/app/build_bundles_stock.go::BuildStockBundle.
 //   - The wire-shape of the v1 envelope is the canonical
 //     outbox.AssetPublishedRequestV1 (in
-//     internal/application/jobs/outbox/asset_published.go).
+//     internal/capabilities/jobs/outbox/asset_published.go).
 //
 // godlike/07 fail-closed contracts:
 //   - EmitAssetPublished returns a typed sentinel (ErrEnrichmentEmitFailed)
@@ -41,7 +41,7 @@ package enrichment
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 )
 
 // AssetPublishedEmitter is the narrow Pattern-0 typed port for

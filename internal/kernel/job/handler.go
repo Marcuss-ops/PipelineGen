@@ -1,8 +1,8 @@
 // Package job — handler.go (PR-KERNEL-JOB-POPULATE, commit 9, July 2026).
 //
 // Canonical job-handler contract surface. Both
-// internal/application/jobs.Dispatcher.Register AND
-// internal/application/jobs/worker.Registry.Register consume the
+// internal/capabilities/jobs/queue.Dispatcher.Register AND
+// internal/capabilities/jobs/worker.Registry.Register consume the
 // SAME Handler type — declared here in the kernel subzone
 // (godlike/06 SSOT: cross-cutting contracts owned by the layer
 // dependency-free of every consumer).
@@ -33,7 +33,7 @@ import (
 // JobExecutionTools provides the callbacks a handler invokes to
 // report progress and emit typed events. Both callbacks are
 // nil-tolerant at the handler site via the SafeProgressFn /
-// SafeEventFn helpers in internal/application/jobs (godlike/07
+// SafeEventFn helpers in internal/capabilities/jobs/queue (godlike/07
 // no-nil-panic contract).
 //
 // FASE 4(b) (July 2026) — IsCancelled field REMOVED: the
@@ -72,15 +72,15 @@ type JobExecutionTools struct {
 // type alias of map[string]any here so the kernel subzone has no
 // typed-envelope shape that downstream handlers must migrate to.
 // When the typed envelope lands in BACKFILL, it lives in a
-// separate package (e.g. internal/application/jobs/result_types.go)
+// separate package (e.g. internal/capabilities/jobs/queue/result_types.go)
 // so the kernel keeps a stable typed-alias surface.
 type Result = map[string]any
 
 // ── Handler (canonical, kernel-level) ──────────────────────────────────
 
 // Handler is the canonical job-handler signature consumed by BOTH
-// internal/application/jobs.Dispatcher.Register AND
-// internal/application/jobs/worker.Registry.Register.
+// internal/capabilities/jobs/queue.Dispatcher.Register AND
+// internal/capabilities/jobs/worker.Registry.Register.
 //
 // Adopted in P1 #13 (July 2026) to unify the previously-divergent
 // surfaces (Dispatcher.HandlerFunc + worker.Handler). The

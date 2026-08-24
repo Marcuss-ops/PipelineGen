@@ -181,7 +181,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 // mutations.AssetMutationCommand type from
 // internal/application/assets/mutations/. This is the same cross-layer
 // pattern documented for the existing `jobsoutbox
-// "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"`
+// "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"`
 // import above — the application layer owns the canonical SSOT type
 // definition, and the canonical writer infrastructure consumes it
 // without inverting the general layering direction (composition root

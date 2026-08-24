@@ -23,7 +23,7 @@ package chrome
 
 import (
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"os"
 
 	"go.uber.org/zap"

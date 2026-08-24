@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/service.go — Service struct +
+// internal/platform/qdrant/maintenance/service.go — Service struct +
 // ports + NewService constructor + Run dispatcher.
 //
 // FASE 1.2 PR-GODOBJ-12 closure (2026-07-04): the application-layer
@@ -57,7 +57,7 @@ type QdrantCleaner interface {
 // Per godlike/07 minimum-blast-radius (post-review fixup): this interface
 // lives in the maintenance package so the Service struct can hold a
 // typed dispatcher field without forcing Service to import
-// internal/application/jobs or any other concrete type. The composition root
+// internal/capabilities/jobs/queue or any other concrete type. The composition root
 // (internal/app.ComposeRoot.Outbox.Dispatcher) provides a concrete value at
 // Service.initHeavy time that structurally satisfies this interface via
 // Go's implicit interface satisfaction.

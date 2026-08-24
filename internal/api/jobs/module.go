@@ -44,7 +44,7 @@
 // (e.g. one that aggregates across shards) without touching the
 // orchestrator's mutation surface. *appjobs.Service satisfies both
 // interfaces via compile-time assertion in
-// internal/application/jobs/stats.go — production wiring passes the
+// internal/capabilities/jobs/queue/stats.go — production wiring passes the
 // same concrete pointer to both fields.
 //
 // The two deps flow through Build as flat Dependencies fields. The
@@ -76,7 +76,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"

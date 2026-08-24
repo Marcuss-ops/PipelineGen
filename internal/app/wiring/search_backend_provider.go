@@ -8,7 +8,7 @@ import (
 	"context"
 	"strings"
 
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 

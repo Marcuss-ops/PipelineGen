@@ -7,7 +7,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - emitAssetPublishedV1 lives ONLY in this file.
 //   - The AssetPublishedRequestV1 envelope + AssetPublishedSchemaVersion
-//     const live ONLY in internal/application/jobs/outbox/asset_published.go
+//     const live ONLY in internal/capabilities/jobs/outbox/asset_published.go
 //     (the canonical typed contract — DO NOT re-declare here).
 //   - EnrichmentIdempotencyKey + EnrichmentVersionV1 helpers live ONLY
 //     in idem_key.go (canonical idempotency-key derivation seam).
@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -92,7 +92,7 @@ func (h *EnrichmentHandler) emitAssetPublishedV1(ctx context.Context, row *Asset
 
 	// Build the canonical v1 envelope (godlike/06 SSOT one
 	// canonical owner per fact: AssetPublishedRequestV1 in
-	// internal/application/jobs/outbox/asset_published.go).
+	// internal/capabilities/jobs/outbox/asset_published.go).
 	payload := outbox.AssetPublishedRequestV1{
 		SchemaVersion:  outbox.AssetPublishedSchemaVersion,
 		EventID:        uuid.NewString(),

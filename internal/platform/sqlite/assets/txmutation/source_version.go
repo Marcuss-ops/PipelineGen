@@ -6,7 +6,7 @@
 //	The producer-side path
 //	(cmd/admin/reconcile_qdrant.go::outboxRepairAdapter.EnqueueReindex)
 //	and the consumer-side path
-//	(internal/application/jobs/outbox/indexing.go::readSourceVersion)
+//	(internal/capabilities/jobs/outbox/indexing.go::readSourceVersion)
 //	both walked the same JSON/column priority chain in parallel.
 //	The producer used an inline SQLite COALESCE over
 //	metadata_json.$.content_hash → metadata_json.$.file_hash →

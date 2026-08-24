@@ -1,4 +1,4 @@
-// internal/application/qdrant/maintenance/output_test.go — godlike/06
+// internal/platform/qdrant/maintenance/output_test.go — godlike/06
 // SSOT proof-of-correctness tests for the CLIOutput adapter.
 //
 // godlike/07 minimum-blast-radius: this file establishes the typed

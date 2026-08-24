@@ -47,7 +47,7 @@ func caller(ctx context.Context) {
 // allowlist path: a call to .UpdateJobToSucceededCAS inside the
 // canonical completion service package MUST NOT surface as a
 // violation. The path match is
-// internal/application/jobs/completion/...
+// internal/capabilities/jobs/policy/...
 func TestScanTxContextBan_AllowlistCompletionService(t *testing.T) {
 	root := t.TempDir()
 	src := `package completion
@@ -58,7 +58,7 @@ func Service_Complete(ctx context.Context) error {
 	return svc.UpdateJobToSucceededCAS(ctx, "job-1", "lease-1")
 }
 `
-	writeFileFixture(t, root, "internal/application/jobs/completion/service.go", src)
+	writeFileFixture(t, root, "internal/capabilities/jobs/policy/service.go", src)
 	r := &report.Report{}
 	ScanTxContextBan(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {

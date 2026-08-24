@@ -15,7 +15,7 @@
 // Capability seam. The duplicates capability is intentionally
 // narrow: it exposes ONLY the typed DTO + the canonical Port
 // (FindDuplicates). The legacy local-search-backend hash-
-// match path (internal/application/search/dedup.go +
+// match path (internal/capabilities/assets/search/dedup.go +
 // localBackend.searchByHash) and the historical
 // internal/application/assets/assetop/dedupe.go "asset-level
 // dedupe-by-policy" are independent concerns and remain in their

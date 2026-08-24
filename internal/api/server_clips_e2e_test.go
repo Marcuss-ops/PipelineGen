@@ -12,7 +12,7 @@ import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"

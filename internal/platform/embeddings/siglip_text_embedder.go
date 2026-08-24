@@ -8,7 +8,7 @@
 //
 // godlike/06 SSOT: SigLIPTextEmbedder satisfies the canonical
 // `search.ChannelEncoder` port declared in
-// `internal/application/search/ports.go`. The port's single-method
+// `internal/capabilities/assets/search/ports.go`. The port's single-method
 // shape (`EmbedTextQuery(ctx, text) []float32`) keeps the cross-modal
 // adapter narrow: the EmbeddingResult envelope (model/version
 // provenance) is intentionally NOT surfaced here because the
@@ -60,7 +60,7 @@ import (
 	"strings"
 	"time"
 
-	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 )
 
 // Canonical SigLIP text-encoder dimension. Mirrors the Qdrant v3

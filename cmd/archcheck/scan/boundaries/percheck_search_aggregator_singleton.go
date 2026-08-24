@@ -7,7 +7,7 @@
 // is constructed at EXACTLY ONE place: the composition root
 // `internal/app/registry_search.go`. The canonical constructor
 // is `search.NewAggregator(backends, log)` (declared at
-// `internal/application/search/aggregator.go::NewAggregator`).
+// `internal/capabilities/assets/search/aggregator.go::NewAggregator`).
 //
 // Why singleton: the SearchAggregator owns the per-backend
 // fan-out + per-scope routing policy (semantic, local, youtube-

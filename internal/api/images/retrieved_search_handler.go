@@ -12,7 +12,7 @@ package images
 import (
 	"strconv"
 
-	applicationimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	applicationimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"

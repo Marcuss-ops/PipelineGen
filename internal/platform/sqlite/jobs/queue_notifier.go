@@ -6,7 +6,7 @@
 // pattern per AGENTS.md Pattern 0 (typed-port abstraction). The previous struct
 // shape would force every consumer to depend on the concrete type which blocks
 // future Postgres LISTEN/NOTIFY adapters and prevents the type-alias plumbing
-// in internal/application/jobs/notifier.go from satisfying its
+// in internal/capabilities/jobs/queue/notifier.go from satisfying its
 // compile-time assertion `var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)`.
 //
 // Resolution: QueueNotifier is now an interface with exactly two methods

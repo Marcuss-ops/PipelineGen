@@ -49,7 +49,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -101,7 +101,7 @@ func leaseTTLDefault(cfg *config.Config) time.Duration {
 // PollJitterFraction / PollConsecutiveEmptyBeforeBackoff, plus a
 // Notifier pointer (the in-process *SQLiteStore satisfies the
 // application-side QueueNotifier port via the compile-time assertion
-// at internal/application/jobs/notifier.go).
+// at internal/capabilities/jobs/queue/notifier.go).
 //
 // Returns nil when the jobs bundle's Service / Dispatcher / Repo is
 // missing — the caller (lifecycle.go) gates the StartupStep append on
@@ -150,7 +150,7 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		},
 		// The in-process *SQLiteStore's Subscribe/Broadcast methods
 		// satisfy the application-side QueueNotifier port; the
-		// compile-time assertion at internal/application/jobs/
+		// compile-time assertion at internal/capabilities/jobs/queue/
 		// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
 		// is the seam marker.
 		Notifier: deps.root.Jobs.Repo,

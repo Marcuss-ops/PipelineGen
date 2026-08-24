@@ -1,6 +1,6 @@
 // Package app — search_backends.go is the Wave 21 canonical
 // composition-only bridge between the canonical Search capability
-// (internal/application/search/) and the two concrete backend
+// (internal/capabilities/assets/search/) and the two concrete backend
 // domains:
 //
 //   - providers.SearchProvider — exposed by every source integration
@@ -44,7 +44,7 @@ import (
 	"go.uber.org/zap"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"

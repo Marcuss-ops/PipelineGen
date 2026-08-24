@@ -50,7 +50,7 @@
 //     concrete post-2026-07-22 PR-VOICEOVER-GROUPSRESOLVER-RETIRE;
 //     retired the legacy type-alias shim at
 //     internal/application/voiceover/groups_resolver.go).
-//   - internal/application/jobs: appjobs.Service (Enqueue surface).
+//   - internal/capabilities/jobs/queue: appjobs.Service (Enqueue surface).
 //   - internal/domain/job: EnqueueRequest, TypeScriptGenerateItem.
 //   - internal/kernel/script: GenerationItemV2, Preset.
 package wiring
@@ -63,7 +63,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"

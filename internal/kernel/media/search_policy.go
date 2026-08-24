@@ -1,7 +1,7 @@
 package media
 
 // SearchMode selects the search strategy. It mirrors the values in
-// internal/application/search but is defined at the domain level so
+// internal/capabilities/assets/search but is defined at the domain level so
 // capability types can depend on it without pulling in the search
 // application package.
 type SearchMode string

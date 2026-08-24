@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -42,7 +42,7 @@ type JobsHandler struct {
 // PR-0 (June 2026): signature expanded to (job.Service,
 // JobStatsReader). Canonical composition root passes `jobs.Service`
 // for both fields (it satisfies both via compile-time assertion in
-// internal/application/jobs/stats.go). A reader-only binding (e.g.
+// internal/capabilities/jobs/queue/stats.go). A reader-only binding (e.g.
 // a Postgres-backed aggregator without the mutation surface) passes
 // an implementation that satisfies only JobStatsReader.
 func NewJobsHandler(service job.Service, stats appjobs.JobStatsReader, log *zap.Logger) *JobsHandler {

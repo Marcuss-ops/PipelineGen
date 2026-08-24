@@ -17,7 +17,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 )
 
 // MappedError is the typed-sentinel → HTTP translation product.

@@ -76,7 +76,7 @@ import (
 // 30-day trash retention).
 //
 // The pre-existing outbox.DriveDeleter port (declared in
-// internal/application/jobs/outbox/ports.go:126) satisfies this
+// internal/capabilities/jobs/outbox/ports.go:126) satisfies this
 // interface via Go's structural conformance:
 // *drive.FileLifecycleAdapter has both Trash + Delete methods,
 // satisfying this narrower's single method.

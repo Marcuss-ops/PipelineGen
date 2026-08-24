@@ -7,7 +7,7 @@
 //
 // godlike/06 SSOT: this is the canonical read seam for the
 // reconciliation dry-run; the result feeds the reconciler service
-// (`internal/application/qdrant/reconciler`) which in turn batches
+// (`internal/capabilities/reconciliation`) which in turn batches
 // against Qdrant. AssetStore is NOT the orchestration seam — it
 // ships the minimum scan payload and lets the reconciler do
 // in-memory batching.

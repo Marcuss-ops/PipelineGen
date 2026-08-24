@@ -26,7 +26,7 @@
 // scraper.Provider (P2.1 confirmed); the mock publisher mirrors
 // the delivery.Publisher port shape so the upload seam matches
 // production wiring. The test does NOT import internal/app or
-// internal/application/jobs (those have pre-existing build
+// internal/capabilities/jobs/queue (those have pre-existing build
 // issues per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04).
 package e2e
 

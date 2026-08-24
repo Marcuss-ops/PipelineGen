@@ -7,7 +7,7 @@
 //
 // Wave 14 PR5 (June 2026): the handler now depends on
 // outbox.MonitorPort (declared in
-// internal/application/jobs/outbox/ports.go) instead of the concrete
+// internal/capabilities/jobs/outbox/ports.go) instead of the concrete
 // *outboxevents.Repository. Per AGENTS.md Pattern 8 ("API package:
 // thin transport only, no concrete infrastructure imports") the
 // adapter wrapping the concrete repo lives in
@@ -19,7 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

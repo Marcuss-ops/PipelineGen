@@ -21,10 +21,10 @@
 //  1. Append the literal here (this file).
 //  2. Append the entry to CanonicalJobDefinitions (this file).
 //  3. Append the corresponding typed payload/result structs in
-//     internal/application/jobs/codec.go (C2 surface).
+//     internal/capabilities/jobs/queue/codec.go (C2 surface).
 //  4. Append the type string constant in internal/domain/job/job.go.
-//  5. Append the registry.go re-export alias in internal/application/jobs/registry_types.go.
-//  6. Append the per-family round-trip test in internal/application/jobs/registry_codec_completeness_test.go.
+//  5. Append the registry.go re-export alias in internal/capabilities/jobs/queue/registry_types.go.
+//  6. Append the per-family round-trip test in internal/capabilities/jobs/queue/registry_codec_completeness_test.go.
 //  7. Append the job type to workflowRefs in c3ValidateRuntimeGraph (internal/app/registry.go).
 //
 // Handler binding is the responsibility of the composition root

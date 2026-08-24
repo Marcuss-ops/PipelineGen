@@ -32,7 +32,7 @@ import (
 	"sort"
 	"strings"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // ParseAndValidateCaps parses raw (the JSON body of

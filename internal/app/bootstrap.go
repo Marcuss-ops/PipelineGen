@@ -10,7 +10,7 @@ import (
 	"context"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
 	"github.com/gin-gonic/gin"

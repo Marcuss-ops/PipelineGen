@@ -5,7 +5,7 @@
 // file, separate from concrete implementations and the registry.
 //
 // FASE 8 (July 2026): the per-call DTOs (RetrievalSearchOptions +
-// RetrievalSearchResult) moved to internal/application/images/routing
+// RetrievalSearchResult) moved to internal/capabilities/images/workflow/routing
 // to break the routing↔retrieved import cycle.
 package retrieved
 
@@ -13,7 +13,7 @@ import (
 	"context"
 	nethttp "net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

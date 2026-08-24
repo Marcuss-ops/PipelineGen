@@ -7,7 +7,7 @@
 //     to verify the worker is alive after startup.
 //   - Health() — public health probe for diagnostics.
 //
-// Mirrors the precedent in internal/application/images/slide_worker_
+// Mirrors the precedent in internal/capabilities/images/workflow/slide_worker_
 // health.go (PR-CHROME-PROVIDER-SPLIT, 2026-07-04).
 package audioasset
 

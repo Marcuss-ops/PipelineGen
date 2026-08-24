@@ -3,7 +3,7 @@ package search
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 

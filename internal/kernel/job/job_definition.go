@@ -29,7 +29,7 @@
 //     `type JobDefinition = kerneljob.JobDefinition` and the
 //     accompanying ExecutionClass / Capability / ArtifactPolicy
 //     aliases for back-compat with the C1-C2 registry migration
-//     wire-up in internal/application/jobs/registry*.
+//     wire-up in internal/capabilities/jobs/queue/registry*.
 package job
 
 import (

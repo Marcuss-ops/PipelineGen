@@ -3,7 +3,7 @@
 // Domain-level tests for the CompleteJob surface. These exercise the
 // pure validation + idempotency-key derivation logic; the
 // application-level single-TX orchestration is exercised in
-// internal/application/jobs/completion/complete_job_service_test.go.
+// internal/capabilities/jobs/policy/complete_job_service_test.go.
 //
 // godlike/06 one canonical owner per fact: the typed envelopes
 // here are the SSOT wire-shape contract; tests probe the validator

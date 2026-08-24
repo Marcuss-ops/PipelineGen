@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 // IsLocalFolderAllowed returns true if abs lives under any of the configured

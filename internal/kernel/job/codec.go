@@ -36,7 +36,7 @@ import "encoding/json"
 //
 // A valid implementation is the application-layer
 // TypedCodecAdapter[T,R] decorator (defined in
-// internal/application/jobs/codec.go) which adapts the existing
+// internal/capabilities/jobs/queue/codec.go) which adapts the existing
 // Codec[T,R] infrastructure to satisfy both
 // kernel/job.PayloadCodec and kernel/job.ResultCodec via two
 // type-instantiated adapters (one per T/R pair).
@@ -48,7 +48,7 @@ type PayloadCodec interface {
 	// site via reflection) and produces the wire-format
 	// representation. The returned RawMessage MUST round-trip
 	// via DecodePayload — the codec round-trip test in
-	// internal/application/jobs/registry_codec_completeness_test.go
+	// internal/capabilities/jobs/queue/registry_codec_completeness_test.go
 	// pins this contract per JobDefinition.
 	EncodePayload(req any) (json.RawMessage, error)
 

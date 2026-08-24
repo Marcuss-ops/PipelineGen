@@ -11,7 +11,7 @@ package clips
 import (
 	"sync/atomic"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 )
 
 func finalizeJobResult(

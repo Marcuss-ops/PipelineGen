@@ -96,7 +96,7 @@ func (m *memoEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 		// (type, correlation_id) UNIQUE collapse — returns the same
 		// job_id as the first caller with this pair. This is the
 		// EXACT production behavior of FindByTypeAndCorrelation
-		// (internal/application/jobs/enqueue_service.go:81-89 +
+		// (internal/capabilities/jobs/queue/enqueue_service.go:81-89 +
 		// repository.go::FindByTypeAndCorrelation).
 		return &job.Job{ID: existing, Type: req.Type, CorrelationID: req.CorrelationID, ActiveKey: req.ActiveKey}, nil
 	}

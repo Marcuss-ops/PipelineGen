@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/projectionreconciler"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/projectionreconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"

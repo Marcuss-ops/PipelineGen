@@ -26,7 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
@@ -64,7 +64,7 @@ type IndexWriter struct {
 // PR 4 consolidated the previously-duplicated `QdrantDeleter`
 // interfaces (one in infra, one in outbox) into the single
 // outbox.VectorPointDeleter port that lives in
-// internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.
+// internal/capabilities/jobs/outbox/ports.go per AGENTS.md Pattern 0.
 var (
 	_ schema.IndexWriterPort        = (*IndexWriter)(nil)
 	_ jobsoutbox.VectorPointDeleter = (*IndexWriter)(nil)

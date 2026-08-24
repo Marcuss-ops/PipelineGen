@@ -69,7 +69,7 @@
 //   - TestFallbackPolicy_P0G — KNOWN GAP
 //   - Pre-existing infra build errors in
 //     internal/platform/sqlite/assets/text_track_repository.go +
-//     internal/application/jobs/registry_texttracks.go +
+//     internal/capabilities/jobs/queue/registry_texttracks.go +
 //     internal/platform/sqlite/jobs/repository.go (orthogonal)
 package jobs
 

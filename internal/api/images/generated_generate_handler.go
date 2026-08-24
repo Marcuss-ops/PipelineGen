@@ -12,8 +12,8 @@ import (
 	"errors"
 	"net/http"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"

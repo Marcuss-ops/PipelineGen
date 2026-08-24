@@ -2,7 +2,7 @@
 //
 // MutableJobRegistry + CompiledJobRegistry — the canonical
 // definition-vs-binding dual registry, post-Freeze. Additive to
-// the existing operational Registry in internal/application/jobs
+// the existing operational Registry in internal/capabilities/jobs/queue
 // (which manages timeouts/retries/queues via JobPolicy).
 //
 // ── Two-stage shape ─────────────────────────────────────────────────
@@ -94,7 +94,7 @@ var (
 // C3 MutableJobRegistry binds to each JobDefinition. Function
 // type (not interface) keeps the domain surface minimal — the
 // application-layer adapter wraps the existing
-// internal/application/jobs/types.go::HandlerFunc at the
+// internal/capabilities/jobs/queue/types.go::HandlerFunc at the
 // composition-root boundary (internal/app/registry.go::WireRegistry).
 //
 // Parameters:

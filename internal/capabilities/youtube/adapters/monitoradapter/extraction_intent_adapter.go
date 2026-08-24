@@ -52,7 +52,7 @@ import (
 
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

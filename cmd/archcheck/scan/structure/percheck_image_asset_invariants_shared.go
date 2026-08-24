@@ -97,7 +97,7 @@ const imageAssetCanonicalOwnerPath = "internal/kernel/asset/canonical_metadata.g
 //
 // Currently only consumed by Rule A (image_asset_literal_ban).
 // Lives in shared for the same reason as imageAssetCanonicalOwnerPath.
-const imageAssetCanonicalBuilderPath = "internal/application/images/storage_ingest_direct.go"
+const imageAssetCanonicalBuilderPath = "internal/capabilities/images/workflow/storage_ingest_direct.go"
 
 // pkgFromImageAssetRel extracts the package identifier from a
 // repo-relative file path. Mirrors

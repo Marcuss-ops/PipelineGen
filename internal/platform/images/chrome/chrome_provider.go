@@ -64,13 +64,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow"
 	"io"
 	"os/exec"
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/workflow/generated"
 	"go.uber.org/zap"
 )
 

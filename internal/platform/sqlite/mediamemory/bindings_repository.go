@@ -4,7 +4,7 @@
 // godlike/06 SSOT (one canonical owner per fact): the SQL ↔ Go row
 // conversion for media_bindings lives ONLY here. DDL SSOT:
 // migrations/sqlite/164_mediamemory_bindings.sql. Application-layer
-// wire SSOT: internal/application/mediamemory/types.go::MediaBinding.
+// wire SSOT: internal/capabilities/mediamemory/types.go::MediaBinding.
 // This file is the bridge.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: UNIQUE(concept_id, asset_id,
@@ -27,7 +27,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 

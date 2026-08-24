@@ -20,7 +20,7 @@ package api
 import (
 	"context"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 )
 
@@ -148,7 +148,7 @@ func (descriptorAdapter) Lifecycle() LifecycleHooks { return LifecycleHooks{} }
 //
 // The api package imports appjobs (not the other way around): api
 // declares JobRegistrar; appjobs.Service satisfies it. There is no
-// cycle because internal/application/jobs does not import
+// cycle because internal/capabilities/jobs/queue does not import
 // internal/api (verified by the project's layering — see ARCHITECTURE.md
 // §13 "pkg/ is leaf-only"; api lives at the transport layer, jobs
 // lives at the application layer).

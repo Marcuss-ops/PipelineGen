@@ -54,7 +54,7 @@ type jobs struct{}
 // Service is the fixture-side marker type that satisfies the
 // `*jobs.Service` reference in the BrokenJobHandler.Register
 // signature above. The actual `*jobs.Service` lives in
-// `internal/application/jobs/service.go` and is imported by the
+// `internal/capabilities/jobs/queue/service.go` and is imported by the
 // canonical handlers; this fixture-side shadow type lets the
 // compilation succeed without creating a circular import with
 // the test file's `_test.go` package.
