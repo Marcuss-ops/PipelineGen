@@ -18,10 +18,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	searchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

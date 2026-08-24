@@ -1,4 +1,4 @@
-// internal/infrastructure/database/sqlite/artifact_stages/repository_stages.go —
+// internal/platform/sqlite/artifact_stages/repository_stages.go —
 // saga state machine transitions (MarkPublished / MarkSucceeded /
 // MarkFailedPermanent / IncrementAttemptCount + fenced CAS helper).
 // Extracted from repository.go; no behavior change.

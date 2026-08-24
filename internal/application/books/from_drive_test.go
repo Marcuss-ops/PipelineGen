@@ -40,7 +40,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // stubReader is a hand-rolled Reader surface for the F2.10 audit-pin

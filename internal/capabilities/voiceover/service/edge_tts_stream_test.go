@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // TestEdgeTTS_WordBoundariesComeFromSameSynthesisStream pins the single-pass

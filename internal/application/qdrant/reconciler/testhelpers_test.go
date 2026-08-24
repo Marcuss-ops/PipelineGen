@@ -14,7 +14,7 @@ package reconciler
 //
 // Task 3 (July 2026): explicitly documented as TEST-ONLY. The ONLY
 // production declaration of AssetIDToQdrantPointID lives in
-// internal/infrastructure/qdrant/schema/pointid.go (UUID v5 SHA-1).
+// internal/platform/qdrant/schema/pointid.go (UUID v5 SHA-1).
 // This stub MUST NOT be used in production code — the composition_test
 // gate "TestComposition_AssetIDToQdrantPointID_SingleDeclaration"
 // enforces exactly 1 production declaration.

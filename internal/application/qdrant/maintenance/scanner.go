@@ -7,7 +7,7 @@
 // mechanical split was authored via PR-GODOBJ-12; godlike/06 SSOT
 // boundary: this package owns use-case orchestration (which mode to run,
 // how to format the report, how to wire the dispatcher for delete-invalid);
-// internal/infrastructure/qdrant/maintenance/ continues to own the wire
+// internal/platform/qdrant/maintenance/ continues to own the wire
 // adapters (dr_adapter.go + locator_cleaner.go + reaper.go) per the
 // existing PR-QDRANT-FINAL-DECISION disposition (Qdrant is LIVE on
 // origin/main).
@@ -21,7 +21,7 @@
 //   - delete-invalid.go       — Service.Delete (outbox-delete non-locator assets)
 //   - scanner.go              — QdrantScannerAdapter (canonical godlike/06
 //     translation bridge between legacyaudit.ScrollPoint
-//     and infrastructure/qdrant.ScrollResult) +
+//     and platform/qdrant.ScrollResult) +
 //     classifyForMaintenance shared helper
 //
 // Mode set is locked at 3 (audit / repair-locators / delete-invalid) per
@@ -41,13 +41,13 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // QdrantScannerAdapter (FASE 1.2 PR-GODOBJ-12 — verbatim migration from
 // cmd/admin/qdrant_maintenance_scanner.go).
 //
-// Translates internal/infrastructure/qdrant.ScrollResult into
+// Translates internal/platform/qdrant.ScrollResult into
 // []legacyaudit.ScrollPoint so the application-layer audit package does
 // not import the infra layer (godlike/06 SSOT: one owner per fact;
 // legacyaudit owns the type, qdrant owns the wire).

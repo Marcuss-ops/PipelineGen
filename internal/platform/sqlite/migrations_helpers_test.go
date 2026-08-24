@@ -30,8 +30,8 @@ import (
 )
 
 // migrationsDirFrom is the repo-relative path from this test's working
-// directory (always `internal/infrastructure/database` when running
-// `go test ./internal/infrastructure/database/...`) to the canonical
+// directory (always `internal/platform/sqlite` when running
+// `go test ./internal/platform/sqlite/...`) to the canonical
 // SQL migrations directory. Adjusting directory layout? Update this
 // constant.
 const migrationsDirFrom = "../../../migrations/sqlite"
@@ -89,7 +89,7 @@ func applyFreshSmokeDB(t *testing.T) (*sql.DB, func()) {
 	}
 	st, err := os.Stat(targetDir)
 	if err != nil {
-		t.Fatalf("migrations dir %s not accessible (test must be invoked with cwd = internal/infrastructure/database): %v", targetDir, err)
+		t.Fatalf("migrations dir %s not accessible (test must be invoked with cwd = internal/platform/sqlite): %v", targetDir, err)
 	}
 	if !st.IsDir() {
 		t.Fatalf("migrations path %s is not a directory", targetDir)

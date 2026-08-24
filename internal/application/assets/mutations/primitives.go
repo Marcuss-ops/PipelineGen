@@ -17,7 +17,7 @@
 //	    consume the Primitives port.
 //	(3) Restore and HardDelete are GONE from this interface and from
 //	    the canonical repository concrete — they moved to the restricted
-//	    tx-scoped package `internal/infrastructure/database/sqlite/assets/txmutation/`
+//	    tx-scoped package `internal/platform/sqlite/assets/txmutation/`
 //	    as RestoreTx / HardDeleteTx. See architecture/deprecations.yaml
 //	    under PR-CLIP-RAW-MUTATIONS for the deprecation record.
 //
@@ -38,7 +38,7 @@
 //     asset.index.delete_requested event, leaving the Qdrant point
 //     orphaned. The only legitimate caller is the admin tool, which
 //     goes through the InternalAdminPurge port. See
-//     internal/infrastructure/database/sqlite/admin/purge.go::PurgeService
+//     internal/platform/sqlite/admin/purge.go::PurgeService
 //     which now uses txmutation.RestoreTx/HardDeleteTx directly
 //     (caller-owned tx).
 //
@@ -79,7 +79,7 @@ var ErrUnavailable = errors.New("mutations: asset mutation primitives unavailabl
 // against the ActionMutationDispatcher (3-method) interface, NOT Primitives.
 //
 // Method semantics mirror the canonical implementation on
-// *assets.ClipsRepository (see internal/infrastructure/database/sqlite/
+// *assets.ClipsRepository (see internal/platform/sqlite/
 // assets/clips_repository.go for the SQL + the //nolint:production
 // marker annotation that flags it as dispatcher-only production layer
 // entry point). Test fixtures are allowlisted explicitly:

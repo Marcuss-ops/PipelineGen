@@ -30,13 +30,13 @@
 // Outputs.
 //
 //   - Each subtest writes a JSON report to
-//     `internal/infrastructure/database/sqlite/jobs/testdata/bench-report-<shape>.json`
+//     `internal/platform/sqlite/jobs/testdata/bench-report-<shape>.json`
 //     with throughput / p99 / WAL growth for the gated
 //     `TestQueueDBSplit_BenchReport_AppliesADRGate` test to consume.
 //
 //   - Operators / maintainers run
 //     `go test -bench='BenchmarkQueueDBSplit' -benchtime=400x -run='^$'`
-//     ./internal/infrastructure/database/sqlite/jobs/...
+//     ./internal/platform/sqlite/jobs/...
 //     to (re)produce the numbers; then commit the updated
 //     `architecture/decisions/bench-results/queue-db-split-2026q3.md`
 //     report from the captured JSON.

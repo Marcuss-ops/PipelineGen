@@ -27,7 +27,7 @@
 --      DELETE_PENDING/DELETED) shipped with migration 094. The
 --     collection_version promotion does NOT widen that enum — it's
 --     an orthogonal dimension recorded in its own column.
---   internal/infrastructure/database/sqlite/assets/clips_repository.go
+--   internal/platform/sqlite/assets/clips_repository.go
 --     The PR6-era SetIndexStateTx method writes both
 --     index_state + index_state_updated_at. PR5 adds a thin
 --     SetCollectionVersion method to mirror the pattern, but only

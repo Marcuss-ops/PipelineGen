@@ -21,8 +21,8 @@ import (
 	"go.uber.org/zap"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

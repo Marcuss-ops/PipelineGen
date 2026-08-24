@@ -18,7 +18,7 @@ echo "=== Check 2: QDRANT-001 canonical sidecar envelope + zero-legacy search co
 failures=0
 
 # Gate (a): one canonical AssetIDToQdrantPointID declaration.
-count=$(rg -n --glob '!**/*_test.go' 'func AssetIDToQdrantPointID\(' internal/infrastructure/qdrant | wc -l)
+count=$(rg -n --glob '!**/*_test.go' 'func AssetIDToQdrantPointID\(' internal/platform/qdrant | wc -l)
 if [ "$count" -ne 1 ]; then
     echo "FAIL: expected exactly 1 AssetIDToQdrantPointID declaration, found $count"
     failures=$((failures+1))
@@ -31,8 +31,8 @@ if rg -q '^\s*(LocalPath|DriveLink)\s+string' internal/application/assets/search
 fi
 
 # Gate (c): no PointIDToAssetID (UUID v5 is one-way; the reverse helper was removed).
-if rg -n --glob '!**/*_test.go' -e 'PointIDToAssetID' internal/infrastructure/qdrant | grep -vE '^\s*(//|\*)' | grep -q .; then
-    echo "FAIL: PointIDToAssetID found in non-comment code in internal/infrastructure/qdrant (must be removed; UUID v5 is one-way)"
+if rg -n --glob '!**/*_test.go' -e 'PointIDToAssetID' internal/platform/qdrant | grep -vE '^\s*(//|\*)' | grep -q .; then
+    echo "FAIL: PointIDToAssetID found in non-comment code in internal/platform/qdrant (must be removed; UUID v5 is one-way)"
     failures=$((failures+1))
 fi
 

@@ -3,7 +3,7 @@
 -- WHY: migration/sqlite/054_asset_registry.sql creates `job_assets` with
 --   FOREIGN KEY(job_id) REFERENCES jobs(job_id)
 -- but the `jobs` PRIMARY KEY is `id` (NOT `job_id`). The broken FK is
--- surfaced by internal/infrastructure/database/migrations_test.go::
+-- surfaced by internal/platform/sqlite/migrations_test.go::
 -- TestMigrations_Smoke/ForeignKeysCheck as:
 --   PRAGMA foreign_key_check: foreign key mismatch - "job_assets" referencing "jobs"
 -- This migration corrects the FK to `jobs(id)` without touching the
@@ -24,7 +24,7 @@
 --
 -- TRANSACTION WRAPPING: intentionally omitted. RunMigrationsOnDB
 -- wraps each migration file in its own transaction (see
--- internal/infrastructure/database/migrations.go), so an explicit
+-- internal/platform/sqlite/migrations.go), so an explicit
 -- BEGIN/COMMIT here would either be redundant or — if the runner
 -- uses savepoints with nested-transaction support — produce a
 -- no-op transaction. Either way, leaving it out keeps the migration

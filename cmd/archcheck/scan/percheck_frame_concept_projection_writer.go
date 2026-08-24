@@ -7,8 +7,8 @@
 // concept is not an asset. Each has its own collection and its own canonical
 // writer:
 //
-//	media_frames   → internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go
-//	media_concepts → internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go
+//	media_frames   → internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go
+//	media_concepts → internal/platform/qdrant/qdrantmm/qdrant_indexer.go
 //
 // Point writes (UpsertProjection/DeleteProjection via the generic
 // ProjectionWriter, or UpsertPoints/DeletePoints via the raw transport client)
@@ -66,8 +66,8 @@ var frameConceptWriterSkipPathPrefixes = []string{
 // the other collection — even from within qdrantmm — is a cross-projection
 // violation.
 var frameConceptAuthorizedWriters = map[string]string{
-	"internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go": "FrameCollectionName",
-	"internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go":       "ConceptCollectionName",
+	"internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go": "FrameCollectionName",
+	"internal/platform/qdrant/qdrantmm/qdrant_indexer.go":       "ConceptCollectionName",
 }
 
 // frameConceptWriterScanScope is the prefix the gate applies to.
@@ -90,7 +90,7 @@ var frameConceptCollectionRE = regexp.MustCompile(`\b(FrameCollectionName|Concep
 
 // frameConceptWriterNote is the violation Note for a non-canonical
 // frame/concept point write.
-const frameConceptWriterNote = "forbidden point write to a frame/concept projection outside its respective projection writer (PR-HASH-SEMANTICS item 8/16, August 2026); godlike/06 SSOT requires media_frames writes to originate ONLY in internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go and media_concepts writes ONLY in internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go, through the generic ProjectionWriter. A write from any other site (including a frame writer targeting the concept collection, or vice-versa) bypasses the fail-closed envelope and risks corrupting the projection boundary."
+const frameConceptWriterNote = "forbidden point write to a frame/concept projection outside its respective projection writer (PR-HASH-SEMANTICS item 8/16, August 2026); godlike/06 SSOT requires media_frames writes to originate ONLY in internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go and media_concepts writes ONLY in internal/platform/qdrant/qdrantmm/qdrant_indexer.go, through the generic ProjectionWriter. A write from any other site (including a frame writer targeting the concept collection, or vice-versa) bypasses the fail-closed envelope and risks corrupting the projection boundary."
 
 // ScanFrameConceptProjectionWriter walks every .go file under internal/** and
 // emits a violation for any point-write call site that targets the frame or

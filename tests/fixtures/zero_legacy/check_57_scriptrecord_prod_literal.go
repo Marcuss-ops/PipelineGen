@@ -23,7 +23,7 @@ import (
 // BadLiteral is the synthetic production-shape pattern the gate MUST
 // catch. The composite literal `&ports.ScriptRecord{ID: 1}` mirrors
 // the canonical read-path translator's `return &ports.ScriptRecord{…}`
-// construction in `internal/infrastructure/database/sqlite/scripts/repository_adapter.go`,
+// construction in `internal/platform/sqlite/scripts/repository_adapter.go`,
 // but in violation of the gate's allowlist. PersistenceProcessor is the
 // SOLE canonical writer; cross-package construction of `*ports.ScriptRecord`
 // outside the allowlisted canonical sites is a godlike/06 one-owner-per-fact

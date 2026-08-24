@@ -1,6 +1,6 @@
 // Package mediaregistry — tx.go: transaction-scoped registry operations.
 //
-// The MediaCommitter (internal/infrastructure/database/sqlite/assets) needs
+// The MediaCommitter (internal/platform/sqlite/assets) needs
 // to run the registry writes (RegisterSource, LinkContent, UpsertTaxonomy,
 // AppendEvent) inside the SAME SQLite transaction as the media_assets upsert
 // and the outbox write, so the canonical commit is atomic. The plain Ledger

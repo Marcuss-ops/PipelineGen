@@ -24,7 +24,7 @@ import (
 
 // StockAssetUpsertRecord is the application-layer representation of an
 // asset index record for upsert. Defined locally so the stock pipeline
-// stays free of internal/infrastructure/database/assetindex imports
+// stays free of internal/platform/sqlite/assetindex imports
 // (godlike/06 import-boundary discipline). The composition root adapts
 // the concrete assetindex.AssetRecord to this type.
 type StockAssetUpsertRecord struct {

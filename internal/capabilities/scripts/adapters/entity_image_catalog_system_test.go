@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	_ "github.com/mattn/go-sqlite3"
 )

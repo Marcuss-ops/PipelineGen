@@ -48,7 +48,7 @@ type HTTPSelfLoopProbe struct {
 // setter, single constructor entry-point). The caller (WireArtlist
 // composition root) owns timeout-defaulting: if timeout <= 0 the
 // adapter falls back to DefaultProbeTimeout (5s — mirrors
-// internal/application/assets/delivery/startup_validator.go::ProbeTimeout
+// internal/platform/delivery/startup_validator.go::ProbeTimeout
 // per P1.4 closure).
 //
 // baseURL is the server root (e.g. http://localhost:8080 or
@@ -71,7 +71,7 @@ func NewHTTPSelfLoopProbe(baseURL string, path string, timeout time.Duration, lo
 
 // DefaultProbeTimeout is the canonical fallback when the composition
 // root passes timeout <= 0. 5s matches the precedent in
-// internal/application/assets/delivery/startup_validator.go::ProbeTimeout
+// internal/platform/delivery/startup_validator.go::ProbeTimeout
 // (drive-side validator default per P1.4 closure).
 const DefaultProbeTimeout = 5 * time.Second
 

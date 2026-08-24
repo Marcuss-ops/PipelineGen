@@ -121,7 +121,7 @@
       "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
-        "go test ./internal/infrastructure/database/..."
+        "go test ./internal/platform/sqlite/..."
       ],
       "packages": 1,
       "command_results": [
@@ -130,9 +130,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/database/...",
+          "command": "go test ./internal/platform/sqlite/...",
           "kind": "go",
-          "source": "./internal/infrastructure/database/..."
+          "source": "./internal/platform/sqlite/..."
         }
       ],
       "dependencies": [],
@@ -147,7 +147,7 @@
       "commands": [
         "go test ./internal/application/scripts/usecase/...",
         "go test ./internal/infrastructure/webresearch/...",
-        "go test ./internal/infrastructure/database/sqlite/scripts/..."
+        "go test ./internal/platform/sqlite/scripts/..."
       ],
       "packages": 3,
       "command_results": [
@@ -174,9 +174,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
+          "command": "go test ./internal/platform/sqlite/scripts/...",
           "kind": "go",
-          "source": "./internal/infrastructure/database/sqlite/scripts/..."
+          "source": "./internal/platform/sqlite/scripts/..."
         }
       ],
       "dependencies": [
@@ -302,7 +302,7 @@
       "commands": [
         "go test ./internal/domain/qdrantdr/...",
         "go test ./internal/application/qdrant/...",
-        "go test ./internal/infrastructure/qdrant/..."
+        "go test ./internal/platform/qdrant/..."
       ],
       "packages": 3,
       "command_results": [
@@ -329,9 +329,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/qdrant/...",
+          "command": "go test ./internal/platform/qdrant/...",
           "kind": "go",
-          "source": "./internal/infrastructure/qdrant/..."
+          "source": "./internal/platform/qdrant/..."
         }
       ],
       "dependencies": [
@@ -394,7 +394,7 @@
       "timeout_seconds": 300.0,
       "commands": [
         "go test ./internal/domain/drive/...",
-        "go test ./internal/infrastructure/drive/...",
+        "go test ./internal/platform/drive/...",
         "go test ./internal/application/publish_drive/..."
       ],
       "packages": 3,
@@ -413,9 +413,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/drive/...",
+          "command": "go test ./internal/platform/drive/...",
           "kind": "go",
-          "source": "./internal/infrastructure/drive/..."
+          "source": "./internal/platform/drive/..."
         },
         {
           "status": "PASS",
@@ -692,7 +692,7 @@
       "commands": [
         "go test ./internal/application/assets/storage/...",
         "go test ./internal/api/assets/storage/...",
-        "go test ./internal/infrastructure/drive/..."
+        "go test ./internal/platform/drive/..."
       ],
       "packages": 3,
       "command_results": [
@@ -719,9 +719,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/drive/...",
+          "command": "go test ./internal/platform/drive/...",
           "kind": "go",
-          "source": "./internal/infrastructure/drive/...",
+          "source": "./internal/platform/drive/...",
           "reused": true
         }
       ],
@@ -777,7 +777,7 @@
         "go test ./internal/application/jobs/...",
         "go test ./internal/api/jobs/...",
         "go test ./internal/infrastructure/jobs/...",
-        "go test ./internal/infrastructure/database/sqlite/jobs/..."
+        "go test ./internal/platform/sqlite/jobs/..."
       ],
       "packages": 4,
       "command_results": [
@@ -813,9 +813,9 @@
           "exit_code": 0,
           "duration_ms": 0,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/database/sqlite/jobs/...",
+          "command": "go test ./internal/platform/sqlite/jobs/...",
           "kind": "go",
-          "source": "./internal/infrastructure/database/sqlite/jobs/..."
+          "source": "./internal/platform/sqlite/jobs/..."
         }
       ],
       "dependencies": [

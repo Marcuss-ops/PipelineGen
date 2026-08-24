@@ -6,7 +6,7 @@
 // no longer relies on `database/sql` directly; it consumes a
 // typed ArtlistSearchCachePort (declared in cache_ports.go) whose
 // concrete SQLite adapter lives at
-// internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go.
+// internal/platform/sqlite/artlist_search_cache_adapter.go.
 // This file is now application-layer-only; SQL is owned by the
 // infrastructure layer per AGENTS.md Pattern 0.
 //

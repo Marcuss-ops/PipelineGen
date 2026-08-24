@@ -67,10 +67,10 @@ var frozenRenderingForbiddenImportSubstrings = []string{
 	"internal/infrastructure/nlp",
 
 	// Qdrant — Sender-side derived projection, not RenderingGen.
-	"internal/infrastructure/qdrant",
+	"internal/platform/qdrant",
 
 	// SQLite — RenderingGen has no DB; the Sender owns persistence.
-	"internal/infrastructure/database/sqlite",
+	"internal/platform/sqlite",
 
 	// Drive / scheduler — Sender-side concerns.
 	"internal/platform/drive",

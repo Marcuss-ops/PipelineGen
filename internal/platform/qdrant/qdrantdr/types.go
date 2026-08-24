@@ -2,7 +2,7 @@
 //
 // PR-QDRANT-WIRE-MIRROR (June 2026): unifies the previously duplicated
 // SnapshotDescription, RetentionConfig, and RetentionResult types that
-// lived as field-for-field mirrors in both internal/infrastructure/qdrant
+// lived as field-for-field mirrors in both internal/platform/qdrant
 // and internal/application/qdrant/dr. After unification, both layers
 // consume the same domain types; the dr_adapter.go translation functions
 // become no-ops.

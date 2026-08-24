@@ -3,7 +3,7 @@
 // SOLE owner of the stock batch / group / artifact domain types and
 // the StockBatchRepository port. The state-machine constants are
 // canonical here; the SQLite-backed implementation lives in
-// internal/infrastructure/database/sqlite/stockbatches.
+// internal/platform/sqlite/stockbatches.
 //
 // godlike/06 SSOT: every table row has a typed equivalent in this file;
 // the infrastructure adapter may not invent its own entity shapes.

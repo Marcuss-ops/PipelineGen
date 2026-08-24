@@ -42,7 +42,7 @@ package app
 import (
 	"fmt"
 
-	qdrant "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrant "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

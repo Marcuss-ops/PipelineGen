@@ -50,7 +50,7 @@ When the battery emits `[FAIL]`, the canonical owner file is the diagnostic targ
 | Route | STEP 1 / STEP 2 / STEP 3 | `internal/api/assets/stock/handler.go::RegisterRoutes` | `PR-STOCK-ROUTE-REGISTRATION` |
 | Validation (key shape) | STEP 3 attempts 2-4 (HTTP 400 "invalid key") | `internal/api/assets/stock/handler_run.go::RunStockPipeline` | `PR-STOCK-PREFLIGHT-VALIDATION` |
 | Composition / nil-tolerance | STEP 3 attempt 1 ⇄ HTTP 503 | `internal/app/build_bundles_stock.go::WireStock` | `PR-STOCK-COMPOSITION-WIRE` |
-| Job / broker Enqueue (hang at submit) | STEP 3 attempt-N HTTP 000 / "no job_id" — handler accepted the request but never returned a job_id | `internal/infrastructure/database/sqlite/jobs/repository.go::Create` (+ `internal/application/jobs/enqueue_service.go`) | `PR-STOCK-COMPOSITION-WIRE` (envelope) |
+| Job / broker Enqueue (hang at submit) | STEP 3 attempt-N HTTP 000 / "no job_id" — handler accepted the request but never returned a job_id | `internal/platform/sqlite/jobs/repository.go::Create` (+ `internal/application/jobs/enqueue_service.go`) | `PR-STOCK-COMPOSITION-WIRE` (envelope) |
 | Job / handler HandleJob (hang at execute) | STEP 4 polling timeout AFTER job_id was returned — terminal state (`SUCCEEDED` / `FAILED`) never reached | `internal/capabilities/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` (+ `orchestrator_run.go::RunResilient`) | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` |
 | Source staging | STEP 5 final state FAILED at `stock.stage_sources` | `internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go` | `PR-STOCK-STAGER-WIRE` |
 | Cutter / ffmpeg | STEP 7 zero-size OR STEP 8 ffprobe failed | `internal/infrastructure/media/render/cutter.go` | `PR-STOCK-CUTTER` |
@@ -58,9 +58,9 @@ When the battery emits `[FAIL]`, the canonical owner file is the diagnostic targ
 | Finalize + Publisher | STEP 5 final state FAILED at `stock.finalize` | `internal/capabilities/assets/providers/stock/stockpipeline/upload_orchestration.go` | `PR-STOCK-FINALIZER-PUBLISHER-RACE` |
 | Asset projection (DB) | STEP 10 "asset not found" | `internal/capabilities/assets/providers/stock/stockpipeline/finalizer_gates.go` | `PR-STOCK-FINALIZE-PROJECTION` |
 | Outbox / Qdrant index | STEP 11 ≥1 hit expected but empty | `internal/application/jobs/outbox/delivery.go` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
-| Unified search | STEP 11 source field != stock | `internal/infrastructure/qdrant/search/indexing.go::IndexAsset` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
+| Unified search | STEP 11 source field != stock | `internal/platform/qdrant/search/indexing.go::IndexAsset` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
 | Download handler | STEP 7 HTTP 404 | `internal/api/assets/stock/handler.go::DownloadClip` | `PR-STOCK-DOWNLOAD-ROUTE-REGISTRATION` |
-| Qdrant hits (direct) | STEP 12 `REQUIRE_QDRANT=1` ⇄ 0 hits | `internal/infrastructure/qdrant/projection/port.go` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
+| Qdrant hits (direct) | STEP 12 `REQUIRE_QDRANT=1` ⇄ 0 hits | `internal/platform/qdrant/projection/port.go` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
 
 The two distinct JOB-layer rows encode TWO separate failure modes:
 - **(hang at submit)** = broker/Enqueue never returned a job_id (downstream of STEP 3 attempt-1 with valid key shape).

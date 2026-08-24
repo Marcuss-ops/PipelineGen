@@ -24,7 +24,7 @@
 -- EXPAND phase (this migration):
 --   1. The table is created.
 --   2. Writes happen via the canonical repository at
---      internal/infrastructure/database/sqlite/delivery/repository.go.
+--      internal/platform/sqlite/delivery/repository.go.
 --   3. The admin drive bootstrap command (F4 forward-pointer) is the
 --      primary writer.
 --

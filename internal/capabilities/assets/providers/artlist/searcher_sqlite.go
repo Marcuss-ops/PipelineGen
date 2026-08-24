@@ -9,7 +9,7 @@ import (
 
 // SQLiteSearcher is a compatibility bridge for existing application-level
 // tests and callers that provide only the AssetStore port. Production wiring
-// uses infrastructure/database/sqlite.NewArtlistSQLiteSearcher instead.
+// uses platform/sqlite.NewArtlistSQLiteSearcher instead.
 type SQLiteSearcher struct {
 	store AssetStore
 }

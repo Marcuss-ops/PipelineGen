@@ -17,7 +17,7 @@
 // signature drift if either side changes shape.
 //
 // The JobStats type currently lives in
-// internal/infrastructure/database/sqlite/jobs. Moving it to
+// internal/platform/sqlite/jobs. Moving it to
 // internal/domain/job is a deferred follow-up (it would touch the
 // repository surface + JSON wire shape). PR-0 keeps the read port
 // infra-aware for minimum-churn; the godlike/06 layer-violation

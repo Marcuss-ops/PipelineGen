@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // Service is the SourcingService façade. After P0-1 / commit 5 the ctor

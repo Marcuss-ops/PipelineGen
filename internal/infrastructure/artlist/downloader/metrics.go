@@ -17,7 +17,7 @@
 // stats-disabled environment) can pass nil without guard
 // boilerplate at the call site. This mirrors the
 // DriveValidatorMetrics nil-safety contract in
-// internal/application/assets/delivery/drive_validator_metrics.go
+// internal/platform/delivery/drive_validator_metrics.go
 // (P1.4 canonical precedent).
 package downloader
 

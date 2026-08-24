@@ -19,7 +19,7 @@ import (
 
 // jobsTableDDL is the canonical SQLiteStore jobs-table schema (mirrors
 // migrations/sqlite/069_job_status_check_uppercase.sql and
-// internal/infrastructure/database/sqlite/jobs/repository_broker_roundtrip_test.go::jobsTestSchema).
+// internal/platform/sqlite/jobs/repository_broker_roundtrip_test.go::jobsTestSchema).
 //
 // CRITICAL NOTNULL DIFFERENCES vs the pre-fix DDL: lease_expiry / started_at /
 // completed_at / cancelled_at are NULLABLE because timeutil.FormatPtrRFC3339

@@ -21,7 +21,7 @@
 // Production code paths in internal/application/** and internal/api/**
 // MUST NOT import this package. The CI lint
 // scripts/ci-architectural-checks.sh enforces that boundary — a hit
-// on `internal/infrastructure/database/sqlite/admin` from
+// on `internal/platform/sqlite/admin` from
 // `internal/application/**` or `internal/api/**` fails the gate.
 //
 // Bifurcation rationale:
@@ -55,14 +55,14 @@ var ErrUnavailable = errors.New("admin: purge primitive unavailable")
 //   - cmd/admin/**/*                                : the canonical
 //     CLI-driven admin.
 //   - scripts/diagnostics/marker_audit.sh           : offline DR drill.
-//   - internal/infrastructure/database/sqlite/admin/*_test.go
+//   - internal/platform/sqlite/admin/*_test.go
 //     : unit tests for
 //     the adapter that
 //     satisfies this
 //     interface.
 //
 // Implementation MUST live at
-// `internal/infrastructure/database/sqlite/admin/purge.go` and call
+// `internal/platform/sqlite/admin/purge.go` and call
 // the lower-level *assets.ClipsRepository mutation primitives (the
 // ones marked `//nolint:production` in clips_repository.go) — there
 // is intentionally NO other implementation site.

@@ -318,7 +318,7 @@ type RunRecord struct {
 // godlike/07 no-fake-availability: NewService fails closed
 // (ErrRunRepositoryUnavailable) when this port is nil at composition;
 // production composition MUST wire a concrete from
-// internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go.
+// internal/platform/sqlite/assets/artlist_runs_repository.go.
 //
 // Record MUST upsert on RunID (UNIQUE-by-RunID key) so concurrent
 // retry of the same logical run collapses into ONE row rather than

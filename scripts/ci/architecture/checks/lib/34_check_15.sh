@@ -38,7 +38,7 @@
 # Allowlist:
 #   - *_test.go                  : test stubs may construct unauthenticated clients.
 #   - tests/fixtures/zero_legacy/** : self-check fixtures.
-#   - internal/infrastructure/qdrant/** : the Config TYPE lives here;
+#   - internal/platform/qdrant/** : the Config TYPE lives here;
 #                                     test files in this package are
 #                                     excluded by the *_test.go rule,
 #                                     and production code in this

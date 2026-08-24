@@ -65,10 +65,10 @@ type Artifact struct {
 //
 // Package embedding defines the canonical contract for text-embedding
 // generators consumed by the application layer. Concrete implementations
-// live in internal/infrastructure/embeddings/ (PR-D.5.1 split:
+// live in internal/platform/embeddings/ (PR-D.5.1 split:
 //
 //   - application/<X>/ holds business logic and depends on Embedder
-//   - infrastructure/embeddings/ holds concrete PythonScriptEmbedder
+//   - platform/embeddings/ holds concrete PythonScriptEmbedder
 //     (subprocess) and HTTPEmbedder (sidecar client) implementations.
 //
 // This separation enforces AGENTS.md architectural split: the

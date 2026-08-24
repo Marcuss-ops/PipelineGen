@@ -6,99 +6,99 @@ application_capabilities:
       - { symbol: "appjobs.Compose()", file_line: "types.go:192 (composition-root only)", is_test: false }
       - { symbol: "appjobs.NewService(...).WithRegistry(appjobs.Compose())", file_line: "module_media.go:573 (composition-root only)", is_test: false }
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "service.go:36", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "stats.go:31", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "notifier.go:51", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "worker_execution.go:44", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "service_test.go:17", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "assets/service.go:17", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/delivery.go:63", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing.go:55", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/index_delete.go:44", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/registry.go:31", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_completed.go:10", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_failed.go:10", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/provider_sync.go:58", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/metadataexport/handler.go:26", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing_terminal_test.go:11", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/indexing_v1_test.go:14", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/provider_sync.go: TBD", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/workflow_step_completed_test.go:10", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/metadataexport/handl<TBD>:10", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/index_delete_test.go:14", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD5", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD6", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD7", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD8", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD9", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD10", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD11", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD12", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD13", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD14", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/outboxevents", file_line: "outbox/TBD15", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/drive", file_line: "assets/service.go:19", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "outbox/ports.go:15 (comment ref only)", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "outbox/index_delete.go:44", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "outbox/registry.go: TBD", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "outbox/ports.go TBD", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "outbox/ports.go TBD2", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "service.go:36", is_test: false }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "stats.go:31", is_test: false }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "notifier.go:51", is_test: false }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "worker_execution.go:44", is_test: false }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "service_test.go:17", is_test: true }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "assets/service.go:17", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/delivery.go:63", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/indexing.go:55", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/index_delete.go:44", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/registry.go:31", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/workflow_step_completed.go:10", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/workflow_step_failed.go:10", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/provider_sync.go:58", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/metadataexport/handler.go:26", is_test: false }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/indexing_terminal_test.go:11", is_test: true }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/indexing_v1_test.go:14", is_test: true }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/provider_sync.go: TBD", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/workflow_step_completed_test.go:10", is_test: true }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/metadataexport/handl<TBD>:10", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/index_delete_test.go:14", is_test: true }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD5", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD6", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD7", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD8", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD9", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD10", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD11", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD12", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD13", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD14", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/outboxevents", file_line: "outbox/TBD15", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/drive", file_line: "assets/service.go:19", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "outbox/ports.go:15 (comment ref only)", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "outbox/index_delete.go:44", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "outbox/registry.go: TBD", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/qdrant", file_line: "outbox/ports.go TBD", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/qdrant", file_line: "outbox/ports.go TBD2", is_test: false, note: "refresh required" }
   - name: lessons
     path: internal/application/lessons
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/drive", file_line: "service.go:15", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "generator.go:12", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "service.go:15", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "generator.go:12", is_test: false }
   - name: mediasearch
     path: internal/application/mediasearch
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/qdrant", file_line: "service.go:30 (comment ref; no actual import)", is_test: false, note: "exclude at gate" }
+      - { symbol: "internal/platform/qdrant", file_line: "service.go:30 (comment ref; no actual import)", is_test: false, note: "exclude at gate" }
   - name: middleware
     path: internal/application/middleware
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required second site" }
+      - { symbol: "internal/platform/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required second site" }
   - name: qdrant
     path: internal/application/qdrant
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:20 (collocated adapter)", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:32", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:43", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:59", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:73", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:84", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "dr/ports.go:101", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:95", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:100 (comment)", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/legacyaudit.go:526 (comment)", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "reconciler/ports.go:83", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "reconciler/ports.go:123", is_test: false }
-      - { symbol: "internal/infrastructure/qdrant", file_line: "legacyaudit/seed_uuid_test.go:11", is_test: true }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:20 (collocated adapter)", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:32", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:43", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:59", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:73", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:84", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "dr/ports.go:101", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "legacyaudit/legacyaudit.go:95", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "legacyaudit/legacyaudit.go:100 (comment)", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "legacyaudit/legacyaudit.go:526 (comment)", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "reconciler/ports.go:83", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "reconciler/ports.go:123", is_test: false }
+      - { symbol: "internal/platform/qdrant", file_line: "legacyaudit/seed_uuid_test.go:11", is_test: true }
   - name: scriptassets
     path: internal/application/scriptassets
     has_build_signature: true
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite (module_test.go imports)", file_line: "module_test.go:14", is_test: true }
+      - { symbol: "internal/platform/sqlite (module_test.go imports)", file_line: "module_test.go:14", is_test: true }
   - name: scripts
     path: internal/application/scripts
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "usecase/clip_resolver.go:33", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "jobs/voiceover_destination_test.go:15", is_test: true }
-      - { symbol: "internal/infrastructure/database/sqlite/scripts", file_line: "adapters/repository.go:22", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/scripts", file_line: "ports/repository.go:24", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "usecase/documents_usecase.go:14", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "usecase/documents_usecase_test.go:12", is_test: true }
-      - { symbol: "internal/infrastructure/drive", file_line: "usecase/flow_helpers.go:19", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "usecase/clip_resolver.go:33", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "jobs/voiceover_destination_test.go:15", is_test: true }
+      - { symbol: "internal/platform/sqlite/scripts", file_line: "adapters/repository.go:22", is_test: false }
+      - { symbol: "internal/platform/sqlite/scripts", file_line: "ports/repository.go:24", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "usecase/documents_usecase.go:14", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "usecase/documents_usecase_test.go:12", is_test: true }
+      - { symbol: "internal/platform/drive", file_line: "usecase/flow_helpers.go:19", is_test: false }
   - name: search
     path: internal/application/search
     has_build_signature: false
@@ -119,10 +119,10 @@ application_capabilities:
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "registry_adapter.go:8", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "persistence/repository.go:43", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "jobs/<X>: TBD", is_test: false, note: "refresh required" }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "groups_resolver_test.go:14", is_test: true }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "registry_adapter.go:8", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "persistence/repository.go:43", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "jobs/<X>: TBD", is_test: false, note: "refresh required" }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "groups_resolver_test.go:14", is_test: true }
   - name: workerdoctor
     path: internal/application/workerdoctor
     has_build_signature: false
@@ -138,4 +138,4 @@ application_capabilities:
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "adapters/assetrepo_integration_test.go:12 (comment) / 27 (alias)", is_test: true }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "adapters/assetrepo_integration_test.go:12 (comment) / 27 (alias)", is_test: true }

@@ -65,11 +65,11 @@ var frozenForbiddenImportSubstrings = []string{
 	// SQLite impl — Creator has no DB. The Sender-side SQLite
 	// layer (media.db.sqlite) is the canonical metadata store
 	// (godlike/06 "one canonical owner per fact").
-	"internal/infrastructure/database/sqlite",
+	"internal/platform/sqlite",
 
 	// Qdrant impl — Creator has no vector projection. Qdrant is
 	// a Sender-side derived projection (godlike/06 SemanticIndex).
-	"internal/infrastructure/qdrant",
+	"internal/platform/qdrant",
 
 	// Scheduler — Creator awaits HTTP-poll / gRPC-pull jobs;
 	// it does not own a background scheduler.

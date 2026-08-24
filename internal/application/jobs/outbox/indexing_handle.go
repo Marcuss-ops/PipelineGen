@@ -79,7 +79,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 	// legacy source_version alias falls back at parse time) against the
 	// CURRENT canonical index_revision read via the SourceVersionQuerier
 	// port (PR 11 follow-up: replaced the AssetSourceChecker.GetClip pattern
-	// — see internal/infrastructure/database/sqlite/assets/source_version.go
+	// — see internal/platform/sqlite/assets/source_version.go
 	// for the canonical priority list, which reads metadata_json.$.index_revision
 	// FIRST and only falls back to content_hash/file_hash for legacy rows).
 	// The gate NEVER compares byte identity (content_sha256) — the index

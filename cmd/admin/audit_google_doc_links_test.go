@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/api/docs/v1"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 type auditFileMetaReaderStub struct {

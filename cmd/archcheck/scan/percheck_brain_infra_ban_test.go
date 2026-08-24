@@ -38,7 +38,7 @@ func TestScanBrainInfraBan_BannedImportViolates(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/application/brain/core/core.go",
 		`package core
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 `)
 
 	r := &report.Report{}
@@ -84,7 +84,7 @@ func TestScanBrainInfraBan_TestFilesExempt(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/application/brain/normalizer/normalizer_test.go",
 		`package normalizer
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 `)
 
 	r := &report.Report{}
@@ -101,7 +101,7 @@ func TestScanBrainInfraBan_CommentOnlyWarns(t *testing.T) {
 		`package core
 
 // NOTE: the brain must not import
-// "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite".
+// "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite".
 `)
 
 	r := &report.Report{}
@@ -120,7 +120,7 @@ func TestScanBrainInfraBan_OtherPackageIgnored(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/application/assets/service.go",
 		`package assets
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 `)
 
 	r := &report.Report{}
@@ -162,11 +162,11 @@ func TestScanBrainInfraBan_AdaptersSubdirExempt(t *testing.T) {
 	root := t.TempDir()
 	// The adapters/ subdir is the canonical deliberate infrastructure
 	// bridge zone; a file there must remain exempt even if the real
-	// qdrant adapter now lives in infrastructure/qdrant/qdrantmm.
+	// qdrant adapter now lives in platform/qdrant/qdrantmm.
 	makeBrainInfraFile(t, root, "internal/application/mediamemory/adapters/generic_bridge.go",
 		`package adapters
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 `)
 
 	r := &report.Report{}

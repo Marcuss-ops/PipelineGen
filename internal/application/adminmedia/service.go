@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // DriveAudioFile is the infrastructure-neutral file projection needed by

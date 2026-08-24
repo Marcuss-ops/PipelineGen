@@ -20,14 +20,14 @@ import (
 // aliases formerly aliased here (Store, StartJob, RequeueResult). Callers
 // must now import the canonical home directly:
 //   • jobs.Store                 → domain/jobs.Store
-//   • jobs.StartJob              → internal/infrastructure/database/sqlite/jobs.StartJob
-//   • jobs.RequeueResult         → internal/infrastructure/database/sqlite/jobs.RequeueResult
+//   • jobs.StartJob              → internal/platform/sqlite/jobs.StartJob
+//   • jobs.RequeueResult         → internal/platform/sqlite/jobs.RequeueResult
 // The single in-tree consumer that switched to direct imports is
 // internal/infrastructure/jobs/local/broker.go. The application-layer
 // Runner/NewRunner are now typed against the canonical jobs.Store interface.
 // PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
 // aliases (formerly this package's store.go). Callers now import
-// internal/infrastructure/database/sqlite/jobs directly as `sqljobs`.
+// internal/platform/sqlite/jobs directly as `sqljobs`.
 
 // Sentinel errors raised by Broker implementations and the in-process runner.
 // Workers use ErrNoWorkerCapabilities to fail closed when their advertised

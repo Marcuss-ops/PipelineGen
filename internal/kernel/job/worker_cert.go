@@ -12,7 +12,7 @@
 // from *WorkerSession, but WorkerSession never declared them — a
 // pre-existing compile break on main. The canonical cert identity
 // lives in this type; adapter implementations (e.g. the worker-nodes
-// repository in internal/infrastructure/database/sqlite/assets/) read
+// repository in internal/platform/sqlite/assets/) read
 // the cert row independently from the session row and pass both into
 // FromSessionCertIdentity (the API-helper builder in
 // internal/api/admin/handler_workers_cert.go).

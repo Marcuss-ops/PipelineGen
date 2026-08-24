@@ -13,7 +13,7 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"

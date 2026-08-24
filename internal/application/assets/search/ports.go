@@ -70,7 +70,7 @@ type ProviderResult struct {
 // ── Vector store ports (used by mediasearch) ──────────────────────────
 
 // VectorStorePort is the canonical vector store interface consumed by
-// mediasearch. Implementations live in infrastructure/qdrant.
+// mediasearch. Implementations live in platform/qdrant.
 type VectorStorePort interface {
 	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
 	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)

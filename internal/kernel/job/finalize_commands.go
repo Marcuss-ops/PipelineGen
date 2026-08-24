@@ -130,7 +130,7 @@ type ArtifactStatePatch struct {
 // OutboxEventSpec is the typed-in-kernel surface for a single outbox
 // event emitted by FinalizeAttempt in the SAME tx as the job status
 // transition. The canonical outbox is at
-// internal/infrastructure/database/sqlite/outboxevents and its
+// internal/platform/sqlite/outboxevents and its
 // domain mirror at internal/domain/outboxevents; this struct is the
 // typed-narrow kernel surface that bridges the two namespaces without
 // the kernel importing either.

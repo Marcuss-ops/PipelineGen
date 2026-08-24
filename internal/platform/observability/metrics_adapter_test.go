@@ -21,7 +21,7 @@
 //
 //	observability test → monitor (from metrics_adapter_test.go)
 //	                  → channels (analyzer.go)
-//	                  → assets (internal/infrastructure/database/sqlite/assets)
+//	                  → assets (internal/platform/sqlite/assets)
 //	                  → outbox (clips_repository.go)
 //	                  → observability (indexing.go)
 //

@@ -70,7 +70,7 @@ import (
 func BuildStagingBundle(dbs *wiring.Databases, cfg *config.Config, log *zap.Logger) (*wiring.StagingBundle, error) {
 	// Step 1: construct the artifact_stages SQLite Repository.
 	// artifactstages.NewRepository is the canonical concrete
-	// (internal/infrastructure/database/sqlite/artifact_stages).
+	// (internal/platform/sqlite/artifact_stages).
 	// A nil *sql.DB surfaces as a wrapped error from the
 	// SQLite driver on the first call; we pre-validate here to
 	// fail loud at boot, not mid-job.
@@ -80,7 +80,7 @@ func BuildStagingBundle(dbs *wiring.Databases, cfg *config.Config, log *zap.Logg
 	repo := artifactstages.NewRepository(dbs.DualPool.Writer)
 	// Conformance with artifact.ArtifactStageRepository is pinned at the
 	// wiring.StagingBundle.Repository field type + the canonical anchor
-	// at internal/infrastructure/database/sqlite/artifact_stages/repository.go:51
+	// at internal/platform/sqlite/artifact_stages/repository.go:51
 	// (`var _ artifact.Repository = (*Repository)(nil)`). The
 	// compiler checks the port conformance at the
 	// &wiring.StagingBundle{...} literal in this function's return.

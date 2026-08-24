@@ -9,7 +9,7 @@
 # Go cannot distinguish file-level types from package-level types — two .go files
 # in the same package declaring `type X struct{...}` produces a build error:
 # "<X> redeclared in this block". Historically observed as the SnapshotDescription
-# duplicate in internal/infrastructure/qdrant/types.go + types_dr.go on origin/main
+# duplicate in internal/platform/qdrant/types.go + types_dr.go on origin/main
 # (fixed by commits 2b67d701 + 38187ded — see docs/operations/05 ticket
 # QDRANT-RECOVERY-001). This lint catches the same pattern at pre-CI time so a new
 # type declaration cannot land with a colliding same-package symbol.

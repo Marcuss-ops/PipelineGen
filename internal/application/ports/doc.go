@@ -31,9 +31,9 @@
 // # Phase 5(b) — caller-migration commitments (NOT this push)
 //
 //   - internal/application/jobs/worker_execution.go imports nothing
-//     from internal/infrastructure/database/sqlite/*.
+//     from internal/platform/sqlite/*.
 //   - internal/application/assets/persistence/writer.go imports
-//     nothing from internal/infrastructure/database/sqlite/*,
+//     nothing from internal/platform/sqlite/*,
 //     nothing from github.com/prometheus/client_golang,
 //     nothing from os.*/hashing-FS utilities.
 //   - The symlink import path `internal/application/ports.X` is the

@@ -12,7 +12,7 @@
 //     addition; narrow single-method port consumed by IndexDeleteHandler
 //     for the Qdrant side of the asset.index.delete_requested.v1 flow.
 //     Production concrete: *qdrant.IndexWriter via the compile-time
-//     assertion at internal/infrastructure/qdrant/index_writer.go.
+//     assertion at internal/platform/qdrant/index_writer.go.
 //     Replaces the previous pair of duplicated `QdrantDeleter`
 //     interfaces (one in infra/qdrant/types.go, one local to
 //     outbox/index_delete.go) — there is now ONE VectorPointDeleter
@@ -82,14 +82,14 @@ type EventDTO struct {
 // VectorPointDeleter is the canonical application-layer port consumed
 // by the outbox IndexDeleteHandler (asset.index.delete_requested.v1
 // events). The production concrete is *qdrant.IndexWriter — see
-// internal/infrastructure/qdrant/index_writer.go for the compile-time
+// internal/platform/qdrant/index_writer.go for the compile-time
 // assertion `var _ outbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`.
 //
 // PR 4 (June 2026, refactor/single-qdrant-runtime) — section #6 of the
 // verdict Qdrant consolidates the previous pair of duplicated
 // `QdrantDeleter` interfaces into this single port:
 //
-//   - Removed: internal/infrastructure/qdrant/types.go::QdrantDeleter
+//   - Removed: internal/platform/qdrant/types.go::QdrantDeleter
 //     (was used by infra-side writers and tests, but the application
 //     layer never imports infra — duplication was unidirectional drift).
 //

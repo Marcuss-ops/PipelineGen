@@ -8,7 +8,7 @@ import "github.com/google/uuid"
 
 // testNamespace is a project-local UUID v5 namespace used solely by
 // the test helpers in this package. Production canonicalisation uses
-// internal/infrastructure/qdrant.PipelineGenQdrantNamespace; this
+// internal/platform/qdrant.PipelineGenQdrantNamespace; this
 // helper is for test fixtures only.
 var testNamespace = uuid.MustParse("9c1f4b2a-1111-4ddd-9c63-1a2b3c4d5e6f")
 

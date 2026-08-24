@@ -11,11 +11,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )

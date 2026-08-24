@@ -34,7 +34,7 @@
 //     WITHOUT bringing any concrete SQLite impl into the package. The
 //     pinned import is `database/sql` (the stdlib interface package).
 //
-//   - The forbidden reach into `internal/infrastructure/database/sqlite`
+//   - The forbidden reach into `internal/platform/sqlite`
 //     is enforced by TestCreatorRuntime_FrozenImportAllowlist (see
 //     creator_runtime_test.go): every `creator_*.go` file under
 //     internal/app/ is AST-scanned; any of the four forbidden substrings
@@ -43,9 +43,9 @@
 //   - Forbidden-import substrings (source of truth — update in lockstep
 //     with the package doc contract above):
 //
-//   - internal/infrastructure/database/sqlite
+//   - internal/platform/sqlite
 //
-//   - internal/infrastructure/qdrant
+//   - internal/platform/qdrant
 //
 //   - scheduler
 //
@@ -166,8 +166,8 @@ type CreatorRuntime struct {
 //     implementation into the package.
 //
 //  2. Import-allowlist AST scan (creator_runtime_test.go::TestCreatorRuntime_FrozenImportAllowlist)
-//     — forbids any of internal/infrastructure/database/sqlite,
-//     internal/infrastructure/qdrant, `scheduler`, or
+//     — forbids any of internal/platform/sqlite,
+//     internal/platform/qdrant, `scheduler`, or
 //     `catalogsync` from any creator_*.go under internal/app/.
 //
 // Fail-closed precondition: cfg and log MUST be non-nil. A nil
@@ -375,7 +375,7 @@ func (b brokerAdapter) RegisterHandler(jobType string, handler any) error {
 //	NEGATIVE side: paired with
 //	  TestCreatorRuntime_FrozenImportAllowlist (creator_runtime_test.go),
 //	  no creator_*.go under internal/app/ can reach into
-//	  internal/infrastructure/database/sqlite (or any of the other
+//	  internal/platform/sqlite (or any of the other
 //	  forbidden substrings) — the import-allowlist AST scan rejects
 //	  such a pull at CI build time.
 //

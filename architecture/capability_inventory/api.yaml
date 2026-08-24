@@ -4,33 +4,33 @@ api_capabilities:
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets (workernodes_repository)", file_line: "handler_workers_cert.go:31", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets (workernodes_repository)", file_line: "handler_workers_cert.go:31", is_test: false }
   - name: assets
     path: internal/api/assets
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/handler.go:39", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/ingest.go:46", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/ops.go:75", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "clips/search.go:31", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "clips/bulk_upload_transport.go:61", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "clips/handler.go:46", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "clips/ops.go:76", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "clips/ingest.go:47", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "clips/handler.go:39", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "clips/ingest.go:46", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "clips/ops.go:75", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "clips/search.go:31", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "clips/bulk_upload_transport.go:61", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "clips/handler.go:46", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "clips/ops.go:76", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "clips/ingest.go:47", is_test: false }
   - name: assets/clips
     path: internal/api/assets/clips
     has_build_signature: true
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "handler.go:39", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ingest.go:46", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "ops.go:75", is_test: false }
-      - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "search.go:31", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "bulk_upload_transport.go:61", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "handler.go:46", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "ops.go:76", is_test: false }
-      - { symbol: "internal/infrastructure/drive", file_line: "ingest.go:47", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "handler.go:39", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "ingest.go:46", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "ops.go:75", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "search.go:31", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "bulk_upload_transport.go:61", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "handler.go:46", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "ops.go:76", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "ingest.go:47", is_test: false }
   - name: assets/artlist
     path: internal/api/assets/artlist
     has_build_signature: true
@@ -113,7 +113,7 @@ api_capabilities:
     has_build_signature: true
     direct_register_calls: []
     concrete_constructors:
-      - { symbol: "internal/infrastructure/database/sqlite/jobs", file_line: "handler_test.go:17 (sqljobs import alias)", is_test: true }
+      - { symbol: "internal/platform/sqlite/jobs", file_line: "handler_test.go:17 (sqljobs import alias)", is_test: true }
   - name: system
     path: internal/api/system
     has_build_signature: true

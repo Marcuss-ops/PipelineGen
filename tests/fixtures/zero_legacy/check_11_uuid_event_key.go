@@ -41,7 +41,7 @@ import "github.com/google/uuid"
 
 // Forbidden: `eventKey` constructed with a random UUID suffix on the
 // same line. The canonical pattern is `eventKey := "delete:" + assetID`
-// (see internal/infrastructure/database/sqlite/outbox/delete_envelope.go)
+// (see internal/platform/sqlite/outbox/delete_envelope.go)
 // or the index envelope in outboxevents/repository.go.
 func badUuidEventKeyInline(assetID string) string {
 	eventKey := "reconcile:delete:" + assetID + ":" + uuid.NewString() // anti-pattern: random UUID in key

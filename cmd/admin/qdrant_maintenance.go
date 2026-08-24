@@ -6,7 +6,7 @@
 // internal/application/qdrant/maintenance/Service.{Audit,Repair,Delete}
 // (the canonical godlike/06 SSOT home; godlike/07 minimum-blast-radius
 // on the cmd/admin → application boundary; cmd/admin no longer
-// imports internal/infrastructure/qdrant directly except for the
+// imports internal/platform/qdrant directly except for the
 // QdrantCleaner port adapter).
 //
 // Per the canonical Issue 12 policy (June 2026), the qdrant-maintenance
@@ -43,9 +43,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/maintenance"
-	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // qdrantMaintenanceModes are the valid first-positional-arg values.
@@ -126,12 +126,12 @@ func runQdrantMaintenance(args []string) error {
 // declaration (godlike/06 SSOT one-canonical-owner-per-fact).
 //
 // FASE 1.2 PR-GODOBJ-12 + PR4 qdrant refactor (July 2026): cmd/admin
-// no longer imports the top-level internal/infrastructure/qdrant
+// no longer imports the top-level internal/platform/qdrant
 // package. All concrete qdrant types now route through the PR4
 // sub-packages (transport, schema, maintenance).
 //
 // FASE 1.2 honest mapping note: the canonical concrete LocatorCleaner
-// produces an internal/infrastructure/qdrant-defined report type. We
+// produces an internal/platform/qdrant-defined report type. We
 // translate that report into the application-layer maintenance.LocatorCleanupReport
 // projection so cmd/admin can render the report without importing
 // the concrete infra type. The translation is byte-stable (no field

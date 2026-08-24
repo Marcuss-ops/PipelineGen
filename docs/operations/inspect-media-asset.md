@@ -69,7 +69,7 @@ bash scripts/operations/inspect_media_asset.sh <asset_id>
 | Code | Meaning | Suggested action |
 |---|---|---|
 | 0 | All 4 invariants PASS | None. |
-| 1 | ≥1 invariant FAIL | Re-run, capture `FAIL_LINES`. For dim failures, check the SigLIP sidecar; for `embedding_version_visual` failures, check the embedding-version constant in `internal/infrastructure/qdrant/schema/schema.go`. |
+| 1 | ≥1 invariant FAIL | Re-run, capture `FAIL_LINES`. For dim failures, check the SigLIP sidecar; for `embedding_version_visual` failures, check the embedding-version constant in `internal/platform/qdrant/schema/schema.go`. |
 | 2 | `asset_id` not found in `media_assets` | Verify the id — typos are common; `media_assets.id` is a `TEXT PRIMARY KEY` (no auto-increment). |
 | 3 | SQLite DB not found or unreadable | Set `$VELOX_DB` or pass `--db` explicitly. |
 | 4 | `sqlite3` not on PATH | `apt install sqlite3` (Debian/Ubuntu) or `brew install sqlite` (macOS). |
@@ -127,9 +127,9 @@ db=/srv/velox/data/media/media.db.sqlite
 
 ## Forward pointers
 
-- **Schema SSOT**: `internal/infrastructure/qdrant/schema/schema.go::VisualEmbeddingDim` + `internal/infrastructure/qdrant/schema/schema.go::VisualEmbeddingModelVersion`.
+- **Schema SSOT**: `internal/platform/qdrant/schema/schema.go::VisualEmbeddingDim` + `internal/platform/qdrant/schema/schema.go::VisualEmbeddingModelVersion`.
 - **Write-back code**: `internal/application/images/storage_ingest_direct.go` (lines 110-… for the canonical 10-key metadata map).
-- **Dim guard**: `internal/infrastructure/qdrant/search/embedders.go::validateVisualEmbeddingDim` + `ErrInvalidVisualEmbeddingDim`.
+- **Dim guard**: `internal/platform/qdrant/search/embedders.go::validateVisualEmbeddingDim` + `ErrInvalidVisualEmbeddingDim`.
 - **Outbox DDL**: `migrations/sqlite/092_create_outbox_events.sql`.
 - **media_assets DDL**: `migrations/sqlite/033_media_assets_youtube_video_id_index.sql` (table declared for the partial-index purpose; full schema accumulates incrementally).
 - **Stock E2E battery runbook**: [`docs/operations/stock-e2e-runbook.md#§10.9`](./stock-e2e-runbook.md#109--post-run-inspection-forward-pointer). Bidirectional forward-pointer — this runbook IS the SSOT for post-run inspection of any battery that emits an `asset_id`.

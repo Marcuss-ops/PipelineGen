@@ -27,7 +27,7 @@
 //     aliases (type X = AssetSearchPort) for canonical surface
 //     deduplication.
 //
-// Production adapters (Qdrant side, internal/infrastructure/qdrant/search/):
+// Production adapters (Qdrant side, internal/platform/qdrant/search/):
 //   - *ClipSearchAdapter satisfies AssetSearchPort (PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2)
 //   - *StockSearchAdapter satisfies AssetSearchPort (PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 3)
 //

@@ -387,7 +387,7 @@ archcheck_cli:
 
 http_transport:
   owner: internal/api
-  rule: api imports ONLY application + domain. Never infrastructure/database/sql, never os/exec, never google.golang.org/api/drive/v3.
+  rule: api imports ONLY application + domain. Never platform/sqlite/sql, never os/exec, never google.golang.org/api/drive/v3.
   target_subdirs:
     - api/assets
     - api/content
@@ -554,17 +554,32 @@ application_lessons:
 # ── Infrastructure (adapters to external systems) ────────────────────────────
 
 infrastructure_db:
-  owner: internal/infrastructure/database/sqlite
+  owner: internal/platform/sqlite
   rule: ONLY place where Go SQL drivers / SQLite schema live.
 
 infrastructure_drive:
-  owner: internal/infrastructure/drive
+  owner: internal/platform/drive
   rationale: Google Drive uploader + DocClient.
   migrated_from: internal/upload/drive
 
+infrastructure_delivery:
+  owner: internal/platform/delivery
+  rationale: Asset-delivery URL signing + destination registry + startup validation.
+  migrated_from: internal/infrastructure/delivery
+
+infrastructure_embeddings:
+  owner: internal/platform/embeddings
+  rationale: Text-embedding adapters (HTTP sidecar, Ollama, Python subprocess, SigLIP cross-modal).
+  migrated_from: internal/infrastructure/embeddings
+
 infrastructure_files:
   owner: internal/infrastructure/files
-  rationale: Filesystem utilities (path, hash, JSON I/O).
+  rationale: Filesystem utilities remaining after the 2026-08-24 split (JSON I/O, folder-name normalization, foldermemory, metadataexport).
+  note: copy/cache/pathutil/scanner/hashutil moved to internal/platform/filesystem.
+
+platform_filesystem:
+  owner: internal/platform/filesystem
+  rationale: Filesystem path/hash/copy/cache/scanner primitives plus the kernel workspace I/O adapters (OS, HTTPFetcher, NewManager).
 
 infrastructure_process:
   owner: internal/infrastructure/process
@@ -596,7 +611,8 @@ infrastructure_jobs:
 
 infrastructure_observability:
   owner: internal/platform/observability
-  rationale: metrics, tracing, health checks.
+  rationale: metrics, tracing, health checks. Fully migrated to platform/observability (28 files).
+  migrated_from: internal/infrastructure/observability
 
 infrastructure_config:
   owner: internal/platform/config

@@ -29,7 +29,7 @@
 --
 -- Companion code:
 --   internal/application/middleware/idempotency_store.go — store port
---   internal/infrastructure/database/sqlite/idempotency/repository.go —
+--   internal/platform/sqlite/idempotency/repository.go —
 --     concrete Repository using this table (TryInsert / Complete /
 --     Get / DeleteExpired)
 --   internal/api/middleware/idempotency.go — Gin middleware; reads

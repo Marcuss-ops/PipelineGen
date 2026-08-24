@@ -12,7 +12,7 @@
 //	internal/capabilities/assets/providers/stock/stockpipeline/. Both
 //	pipelines independently write metadata that eventually lands in
 //	Qdrant's AssetData (60+ fields) at
-//	internal/infrastructure/qdrant/indexing/index_writer_types.go.
+//	internal/platform/qdrant/indexing/index_writer_types.go.
 //
 // This type unifies the two source-of-truth representations so:
 //   - Qdrant PayloadMapper reads from ClipSemanticMetadata (via infra adapter)
@@ -22,7 +22,7 @@
 // Adapters:
 //   - FromCanonicalClipMetadata (application layer, follow-up PR)
 //   - FromStockRunMetadata + FromChunkState (application layer, follow-up PR)
-//   - AsAssetData (infra layer, follow-up PR in internal/infrastructure/qdrant/)
+//   - AsAssetData (infra layer, follow-up PR in internal/platform/qdrant/)
 //
 // godlike/07 minimum-blast-radius: additive-only. Existing per-pipeline
 // metadata types continue working; callers that adopt ClipSemanticMetadata

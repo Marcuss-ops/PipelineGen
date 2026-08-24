@@ -4,7 +4,7 @@
 // godlike/06 SSOT: this file is the SOLE canonical owner of
 // the 4 typed-port interfaces the service depends on. The
 // concrete SQLite adapters in
-// `internal/infrastructure/database/sqlite/{jobs,outboxevents,operations}`
+// `internal/platform/sqlite/{jobs,outboxevents,operations}`
 // already exist; `internal/app` constructs the typed adapters
 // that wrap the concrete repositories and feed the service via
 // the port surface declared here.
@@ -27,7 +27,7 @@ import (
 // JobEnqueuer is the canonical narrow port for inserting a job
 // row inside a caller-owned transaction. The canonical concrete
 // adapter is the `CreateInTx` method on
-// `internal/infrastructure/database/sqlite/jobs.SQLiteStore`.
+// `internal/platform/sqlite/jobs.SQLiteStore`.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the port is intentionally
 // NOT exposed as a "Enqueue" interface (which would carry the
@@ -54,7 +54,7 @@ type JobEnqueuer interface {
 // OutboxEmitter is the canonical narrow port for emitting a
 // single outbox event inside a caller-owned transaction. The
 // canonical concrete adapter is
-// `internal/infrastructure/database/sqlite/outboxevents.Repository`
+// `internal/platform/sqlite/outboxevents.Repository`
 // (the existing typed Repository satisfies the port natively
 // — no adapter wrap is needed at the composition root).
 //
@@ -79,12 +79,12 @@ type OutboxEmitter interface {
 }
 
 // OperationsRepository is the canonical port for the operations
-// table (canonical owner: `internal/infrastructure/database/sqlite/operations`).
+// table (canonical owner: `internal/platform/sqlite/operations`).
 // The submission service consumes only the 3 methods needed
 // for the Submit flow: lookup-prior, insert-new, supersede-prior.
 //
 // godlike/06 SSOT: this port IS the `operations.Repository`
-// interface from the `internal/infrastructure/database/sqlite/operations`
+// interface from the `internal/platform/sqlite/operations`
 // package — but redefined here as a narrow consumer-side view
 // (the SQLite-side `Repository` has 4 methods; the service
 // only needs 3). The composition root in `internal/app` adapts

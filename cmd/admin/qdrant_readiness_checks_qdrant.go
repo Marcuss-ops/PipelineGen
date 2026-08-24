@@ -14,10 +14,10 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 

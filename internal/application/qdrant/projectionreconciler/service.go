@@ -77,7 +77,7 @@ func (p ProjectionParity) CoverageRatio() float64 {
 
 // ParityChecker is the port that computes one parity sample. The
 // production concrete is
-// internal/infrastructure/qdrant/verification.ProjectionParityCheckerAdapter
+// internal/platform/qdrant/verification.ProjectionParityCheckerAdapter
 // (wrapping the ProjectionVerifier — the same verifier used by the
 // verify-projection admin command, so the periodic signal and the
 // operator-facing gate share one boundary).
@@ -87,7 +87,7 @@ type ParityChecker interface {
 
 // Metrics is the port for the per-tick metric emission. The production
 // concrete is
-// internal/infrastructure/qdrant/verification.ParityMetricsAdapter
+// internal/platform/qdrant/verification.ParityMetricsAdapter
 // (Prometheus gauges declared in
 // internal/platform/observability/metrics_media.go).
 type Metrics interface {

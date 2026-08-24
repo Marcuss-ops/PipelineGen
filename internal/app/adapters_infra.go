@@ -22,7 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -133,7 +133,7 @@ func (a *sfxResolverAdapter) Resolve(req sfxports.AssetDestinationRequest) (sfxp
 // sfxDispatcherAdapter wraps the canonical *outbox.Dispatcher to satisfy
 // sfxports.DispatcherPort. Outbox.Dispatcher.EnqueueAndIndex (the production
 // implementation audited per the SSOT assertion at
-// internal/infrastructure/database/sqlite/outbox/repository.go:720) accepts
+// internal/platform/sqlite/outbox/repository.go:720) accepts
 // *asset.Asset + contentHash and atomically UPSERTs media_assets + emits the
 // matching asset.index.requested outbox event in a single transaction.
 //

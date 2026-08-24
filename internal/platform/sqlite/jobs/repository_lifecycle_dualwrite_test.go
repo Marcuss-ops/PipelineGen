@@ -15,7 +15,7 @@
 // godlike/06 SSOT (one-canonical-owner-per-fact): the cross-package
 // equality test imports internal/application/voiceover/jobs (the
 // canonical owner of JobParentStateColumn) from a test file in
-// internal/infrastructure/database/sqlite/jobs (the SQL mirror owner).
+// internal/platform/sqlite/jobs (the SQL mirror owner).
 // Per the codebase's test convention, test files can import broader
 // than production code (per Check 54 *jobs_test.go inclusive* rationale
 // in scripts/ci-architectural-checks.sh). The SSOT drift test
@@ -218,7 +218,7 @@ func TestFinalizeAggregateParent_DualWrite_FailClosedMalformedJSON(t *testing.T)
 // DROPPED-RATIONALE (godlike/07 minimum-blast-radius): a direct
 // import of internal/application/voiceover/jobs from this test
 // file creates an import cycle (this package → application/voiceover/
-// jobs → application/jobs → internal/infrastructure/database/sqlite/
+// jobs → application/jobs → internal/platform/sqlite/
 // jobs). The cycle is fundamental to the application→infrastructure
 // layering (internal/application/jobs/errors.go imports this package
 // for the typed sentinels).

@@ -42,9 +42,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // Config controls the books capability at construction time.

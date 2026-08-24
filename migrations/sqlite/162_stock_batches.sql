@@ -7,7 +7,7 @@
 --
 -- Companion code path:
 --   internal/application/assets/providers/stock/stockpipeline/batch_repository.go
---   internal/infrastructure/database/sqlite/stockbatches/repository.go
+--   internal/platform/sqlite/stockbatches/repository.go
 --
 -- Down migration: DROP TABLE IF EXISTS stock_artifacts; DROP TABLE IF EXISTS stock_batch_groups; DROP TABLE IF EXISTS stock_batches;
 

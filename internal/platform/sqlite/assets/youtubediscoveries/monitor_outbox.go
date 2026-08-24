@@ -1,4 +1,4 @@
-// internal/infrastructure/database/sqlite/assets/monitor_outbox.go
+// internal/platform/sqlite/assets/monitor_outbox.go
 // ──────────────────────────────────────────────────────────────────────────────
 // Monitor enqueue outbox — Blocco 3 (July 2026, audit P0 #2).
 //

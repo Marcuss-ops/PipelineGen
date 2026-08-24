@@ -27,9 +27,9 @@
 --
 -- Consumed by:
 --   - internal/domain/asset/text_track.go (domain types)
---   - internal/infrastructure/database/sqlite/assets/text_track_repository.go
+--   - internal/platform/sqlite/assets/text_track_repository.go
 --   - internal/application/.../text_track_resolver.go
---   - internal/infrastructure/database/sqlite/assets/source_version.go
+--   - internal/platform/sqlite/assets/source_version.go
 --       (text_hash inclusion in source_version fingerprint)
 
 CREATE TABLE IF NOT EXISTS asset_text_tracks (

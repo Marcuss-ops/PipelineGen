@@ -43,7 +43,7 @@
 --
 -- Migration tracking:
 --   File is numbered 108 to follow the existing 001..107 sequence. The
---   runner (`internal/infrastructure/database/migrations.go`) indexes it
+--   runner (`internal/platform/sqlite/migrations.go`) indexes it
 --   via the schema_migrations ledger on next boot. For the MANUAL
 --   one-shot apply below, the operator MUST ALSO INSERT a row with the
 --   file's SHA256 checksum into schema_migrations AFTER the apply so

@@ -2,7 +2,7 @@
 --
 -- REDUNDANT after canonical.go update (June 2026, PR-followup):
 -- the `search_terms` column is already declared in
---   internal/infrastructure/database/canonical.go (CanonicalMediaAssetsSchema)
+--   internal/platform/sqlite/canonical.go (CanonicalMediaAssetsSchema)
 -- as `search_terms TEXT NOT NULL DEFAULT '[]'`.
 -- Any live database created via the canonical schema already has this
 -- column — the original ALTER TABLE ADD COLUMN would fail with

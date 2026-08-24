@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"strings"
 
-	legacyschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 // ProjectionKind is the logical name of a Qdrant projection. A projection is
@@ -68,7 +67,7 @@ type ProjectionContract struct {
 
 	// Schema is the canonical manifest: PhysicalName + RuntimeAlias +
 	// vector channels + payload indexes for this projection.
-	Schema *legacyschema.IndexSchema
+	Schema *IndexSchema
 
 	// RetentionPrefix is the stable physical-name prefix the retention
 	// sweep uses to identify this projection's generations. It MUST be a
@@ -102,7 +101,7 @@ func (c ProjectionContract) PhysicalName() string {
 // MediaAssetsProjection returns the dedicated contract for the canonical
 // asset projection.
 func MediaAssetsProjection() ProjectionContract {
-	s := legacyschema.DefaultV3Schema()
+	s := DefaultV3Schema()
 	return ProjectionContract{
 		Kind:            ProjectionMediaAssets,
 		Schema:          s,
@@ -114,19 +113,19 @@ func MediaAssetsProjection() ProjectionContract {
 // MediaFramesProjection returns the dedicated contract for the keyframe
 // projection.
 func MediaFramesProjection() ProjectionContract {
-	s := legacyschema.FrameIndexSchema()
+	s := FrameIndexSchema()
 	return ProjectionContract{
 		Kind:            ProjectionMediaFrames,
 		Schema:          s,
 		RetentionPrefix: s.PhysicalName,
-		PointIDPrefix:   legacyschema.FramePointIDPrefix,
+		PointIDPrefix:   FramePointIDPrefix,
 	}
 }
 
 // MediaConceptsProjection returns the dedicated contract for the concept
 // projection.
 func MediaConceptsProjection() ProjectionContract {
-	s := legacyschema.ConceptIndexSchema()
+	s := ConceptIndexSchema()
 	return ProjectionContract{
 		Kind:            ProjectionMediaConcepts,
 		Schema:          s,

@@ -47,7 +47,7 @@ import (
 type DatabaseSet struct {
 	// Primary holds the unified media database (jobs, assets, scripts,
 	// search_queries, etc.). Backs every per-feature repository in
-	// `internal/infrastructure/database/sqlite/<owner>/`.
+	// `internal/platform/sqlite/<owner>/`.
 	Primary *SQLiteDB
 
 	// Observability holds the API request log database
@@ -64,7 +64,7 @@ type DatabaseSet struct {
 
 // StorageConfig is the resolved storage layout passed to OpenSet. It
 // mirrors `config.StorageConfig` but is package-local to avoid an
-// `internal/infrastructure/database` → `internal/platform/config`
+// `internal/platform/sqlite` → `internal/platform/config`
 // import cycle when this package is consumed by `config`.
 type StorageConfig struct {
 	DataDir             string

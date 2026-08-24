@@ -9,7 +9,7 @@
 // persist (returns an explicit error) rather than silently degrading.
 //
 // Schema matches the production `media_assets` columns written by
-// `internal/infrastructure/database/sqlite/asset.Upsert` (40 columns)
+// `internal/platform/sqlite/asset.Upsert` (40 columns)
 // plus `outbox_events` so the canonical upsert's outbox emit succeeds
 // inside the test transaction.
 package adapters

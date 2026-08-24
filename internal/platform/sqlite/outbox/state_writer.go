@@ -29,7 +29,7 @@ import (
 // Declared as an interface so unit tests can substitute a fake
 // without pulling the full assets state-machine plus PR6's
 // SetIndexState. Production concrete is *assets.ClipsRepository from
-// internal/infrastructure/database/sqlite/assets.
+// internal/platform/sqlite/assets.
 type ClipsStateWriter interface {
 	SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, state asset.IndexState) error
 }

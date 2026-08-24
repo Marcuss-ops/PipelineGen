@@ -67,7 +67,7 @@ const (
 
 // Scanner is the application-layer port for reading stuck rows
 // from the media_assets table. The production concrete adapter is
-// at internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go.
+// at internal/platform/sqlite/deletion/stuck_row_scanner.go.
 type Scanner interface {
 	// ListStuckRows returns media_assets rows in any of the 3 deletion-
 	// chain states {DELETE_REQUESTED, DRIVE_DELETE_PENDING,

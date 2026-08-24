@@ -1,7 +1,7 @@
 package collections
 
 import (
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 

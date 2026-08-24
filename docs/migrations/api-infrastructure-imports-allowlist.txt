@@ -118,7 +118,7 @@
 # `*config.Config` live in internal/app/middleware_security_adapter.go.
 # The Logger middleware now holds the typed RequestLogSink port (defined
 # in internal/application/middleware/requestlog) instead of *sql.DB; the
-# SQLite implementation lives in internal/infrastructure/database/sqlite/logsink
+# SQLite implementation lives in internal/platform/sqlite/logsink
 # and never crosses the api/middleware import boundary.
 # Bootstrap entry-point: internal/app/bootstrap.go no longer imports
 # internal/infrastructure/* (concrete wiring moved to databases_helpers.go,

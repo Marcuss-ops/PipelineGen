@@ -12,7 +12,7 @@ import (
 
 // SetLogSink installs the persistent logger sink. The middleware no
 // longer holds *sql.DB — the SQLite-backed implementation lives in
-// internal/infrastructure/database/sqlite/logsink and is injected
+// internal/platform/sqlite/logsink and is injected
 // from the composition root. A nil sink is treated as a no-op.
 func SetLogSink(sink requestlog.RequestLogSink) {
 	logSink = sink

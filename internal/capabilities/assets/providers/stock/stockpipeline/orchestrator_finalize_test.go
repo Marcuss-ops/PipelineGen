@@ -386,7 +386,7 @@ func payloadFor(t *testing.T, db *sql.DB, assetID string) string {
 // (stock.finalize) emits one outbox_events row per PublishedChunkState
 // with the canonical v1 envelope required by the IndexingHandler.
 //
-// Canonical v1 envelope assertion set (per internal/infrastructure/database/sqlite/outboxevents/envelope.go
+// Canonical v1 envelope assertion set (per internal/platform/sqlite/outboxevents/envelope.go
 // + internal/application/jobs/outbox/indexing.go::indexRequestV1):
 //
 //  1. schema_version   — MUST equal outboxevents.ReindexEnvelopeV1Schema ("asset.index.requested.v1")
@@ -711,7 +711,7 @@ func TestStockFinalize_SupersedeOnChunk_NewSourceVersionMarksPriorAsSuperseded(t
 	}
 
 	// Supersede envelope gate-firing invariants (godlike/06 SSOT: the typed
-	// SupersedeError struct lives ONLY in internal/infrastructure/database/sqlite/outboxevents/supersede.go
+	// SupersedeError struct lives ONLY in internal/platform/sqlite/outboxevents/supersede.go
 	// — fields: AssetID + Current + Expected + Reason). The gate fires ONLY
 	// when Current != Expected; both MUST be non-empty (an empty field would
 	// mean the IndexingHandler.Handle didn't populate the typed envelope,

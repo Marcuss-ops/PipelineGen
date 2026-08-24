@@ -99,7 +99,7 @@ internal/application/images/images:GenerateImageRequest            # port-patter
 internal/application/system/health/health:DriveChecker               # port-pattern canonical-vs-impl mirror — application/system/health/ports.go (interface DriveChecker) — owner: @system-health-team, deadline: 2026-09-01
 internal/infrastructure/health/health:DriveChecker                  # port-pattern canonical-vs-impl mirror — infrastructure/health/drive_checker.go (struct impl DriveChecker) — owner: @system-health-team, deadline: 2026-09-01
 internal/application/jobs/jobs:QueueNotifier                        # type-alias port-pattern — application/jobs/notifier.go declares `type QueueNotifier = sqljobs.QueueNotifier` (Go type ALIAS, not redeclaration) — owner: @jobs-core, deadline: 2026-09-01
-internal/infrastructure/database/sqlite/jobs/jobs:QueueNotifier      # type-alias port-pattern — infrastructure/database/sqlite/jobs/queue_notifier.go (canonical interface) — owner: @jobs-core, deadline: 2026-09-01
+internal/platform/sqlite/jobs/jobs:QueueNotifier      # type-alias port-pattern — platform/sqlite/jobs/queue_notifier.go (canonical interface) — owner: @jobs-core, deadline: 2026-09-01
 #
 # ◷ PR-CHECK-5-FOLLOWUP (July 2026, post-LENS migration) ◷
 # 10 cross-package-NAME false positives (each split into 2 lines = 20 lines).

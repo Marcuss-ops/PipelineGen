@@ -70,7 +70,7 @@ import (
 	"strings"
 	"testing"
 
-	deliverypkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	deliverypkg "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )

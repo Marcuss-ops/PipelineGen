@@ -49,7 +49,7 @@ func writeFakeAdminCanonical(t *testing.T, tempDir string) string {
 	body := "package main\n\n" +
 		"// ad_hoc_admin.go: admin tool legitimately reads qdrant\n" +
 		"// for data correction. cmd/admin/** is in the exempt set.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write admin file: %v", err)
 	}
@@ -71,7 +71,7 @@ func writeFakeOutboxCanonical(t *testing.T, tempDir string) string {
 		"// indexing_handle.go: the canonical IndexingHandler\n" +
 		"// consumes asset.index.requested events and routes them\n" +
 		"// to the qdrant adapter. Exempt per user directive.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write outbox file: %v", err)
 	}
@@ -94,7 +94,7 @@ func writeFakeLegacyAuditExempt(t *testing.T, tempDir string) string {
 		"// Reads schema.DefaultV3Schema() for the per-channel\n" +
 		"// dimension spec. Operator/audit tooling — exempt\n" +
 		"// per the percheck's widened exempt set.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write legacyaudit file: %v", err)
 	}
@@ -119,7 +119,7 @@ func writeFakeMaintenanceExempt(t *testing.T, tempDir string) string {
 		"// mode dispatches via the canonical outbox. Operator\n" +
 		"// maintenance tooling — exempt per the percheck's widened\n" +
 		"// exempt set.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write maintenance file: %v", err)
 	}
@@ -145,7 +145,7 @@ func writeFakeApplicationViolation(t *testing.T, tempDir, fixturePath string) st
 		"// importing the qdrant infrastructure directly from\n" +
 		"// internal/application/clips/ is FORBIDDEN. The\n" +
 		"// canonical path is CommitAsset → outbox → IndexingHandler.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write violation file: %v", err)
 	}
@@ -167,7 +167,7 @@ func writeFakeApplicationTestExempt(t *testing.T, tempDir string) string {
 		"// Test fixture: the regression-guard allowlist imports\n" +
 		"// the qdrant infrastructure for fixture setup. _test.go\n" +
 		"// suffix is exempt from the percheck gate.\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write test-exempt file: %v", err)
 	}
@@ -192,7 +192,7 @@ func writeFakeApplicationCommentOnly(t *testing.T, tempDir string) string {
 		"// MUST be flagged as a WARN.\n" +
 		"//\n" +
 		"// NOTE: the bulk image ingest MUST NOT import\n" +
-		"// \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n" +
+		"// \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n" +
 		"// directly. The canonical path is CommitAsset → outbox.\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write comment-only file: %v", err)
@@ -216,7 +216,7 @@ func writeFakeCompositionRootIgnores(t *testing.T, tempDir string) string {
 		"// canonical qdrant wiring site. Out of scope for the\n" +
 		"// percheck (composition root is the SSE instantiation\n" +
 		"// surface, NOT an internal/application/** package).\n" +
-		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write composition-root file: %v", err)
 	}

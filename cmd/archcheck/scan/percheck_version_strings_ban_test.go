@@ -85,7 +85,7 @@ const VersionBrain = "brain-v1"
 func TestVersionStrings_NonPipelineVersionIgnored(t *testing.T) {
 	dir := t.TempDir()
 	versionStringsWriteTree(t, dir, map[string]string{
-		"internal/infrastructure/qdrant/schema/concept_schema.go": `package schema
+		"internal/platform/qdrant/schema/concept_schema.go": `package schema
 const ModelVersion = "2026-06-16-v1"
 `,
 	})

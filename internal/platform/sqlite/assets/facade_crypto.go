@@ -2,7 +2,7 @@
 // over the assets/crypto subzone so the 162 external consumers
 // (cmd/*, internal/api/*, internal/app/*, internal/application/*,
 // internal/domain/*, internal/infrastructure/*, tests/*) of
-// `internal/infrastructure/database/sqlite/assets` continue to
+// `internal/platform/sqlite/assets` continue to
 // resolve the formerly-flat-package symbols unchanged.
 //
 // Source of truth for the implementations lives in:

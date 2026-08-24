@@ -15,7 +15,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
@@ -24,7 +24,7 @@ import (
 // the gate test — we don't need a real Drive write canal; we just
 // need a non-nil value to flip the gate into the asymmetric branch.
 // Per the canonical interface at
-// internal/application/assets/delivery/publisher.go:40, Publisher has
+// internal/platform/delivery/publisher.go:40, Publisher has
 // TWO methods: Publish (returns *PublishResult) + ResolveFolder
 // (returns folder ID). BOTH must be present to satisfy the
 // interface at compile time.

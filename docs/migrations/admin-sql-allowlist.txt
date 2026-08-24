@@ -49,11 +49,11 @@
 # surface. Their rg hits are the dispatcher-context tail of the surface,
 # NOT bypass callers. They are allowlisted in perpetuity (no migration
 # planned; they are the canonical implementation).
-internal/infrastructure/database/sqlite/assets/clips_repository.go
-internal/infrastructure/database/sqlite/outbox/repository.go
-internal/infrastructure/database/sqlite/admin/purge.go
+internal/platform/sqlite/assets/clips_repository.go
+internal/platform/sqlite/outbox/repository.go
+internal/platform/sqlite/admin/purge.go
 internal/application/assets/mutations/primitives.go
-internal/infrastructure/database/assetindex/service.go
+internal/platform/sqlite/assetindex/service.go
 
 # ── Bucket 1: Composition-root adapter wiring (tx primitive — internal only OK) ──
 # `internal/app/*` is the only place that constructs adapter wrappers
@@ -263,7 +263,7 @@ internal/application/assets/sourcing/youtube/usecase/persist_clip.go
 # entries are kept here purely for audit completeness. They are NOT
 # allowlisted for safety reasons (test fixtures may freely call mutated
 # methods); the `<>_test.go` glob is the actual exemption.
-internal/infrastructure/database/assetindex/service_test.go
+internal/platform/sqlite/assetindex/service_test.go
 internal/application/assets/searchqueries/usecase_test.go
 internal/application/channels/module_test.go
 internal/application/jobs/assets/service_test.go
@@ -291,7 +291,7 @@ internal/application/assets/providers/stock/stockpipeline/stager_cache.go
 # owner=@texttracks-team; deadline=2026-09-15; task=texttracks ASS materializer
 internal/application/assets/texttracks/ass_materializer.go
 # owner=@drive-team; deadline=2026-09-15; task=drive delivery catalog adapter
-internal/infrastructure/drive/catalog_adapter.go
+internal/platform/drive/catalog_adapter.go
 # owner=@app-team; deadline=2026-09-15; task=assetindex composition-root adapter
 internal/app/build_stock_adapters.go
 # owner=@arch-team; deadline=n/a; task=archcheck scanner self-reference

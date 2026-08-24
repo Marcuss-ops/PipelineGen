@@ -49,7 +49,7 @@ Google Drive access is configured through OAuth2 credentials stored in two files
 
 Both files must be present at server startup. The Drive reader uses `drive.DriveScope`. Ensure the account that generated `token.json` has at least **read** access to the source folders/files and **write** access to the configured destination folder.
 
-To generate or refresh the token, use the existing Google auth flow helpers in `internal/infrastructure/drive/auth.go` or the project-specific tooling.
+To generate or refresh the token, use the existing Google auth flow helpers in `internal/platform/drive/auth.go` or the project-specific tooling.
 
 ### Example payload: Google Drive folder with explicit clips
 

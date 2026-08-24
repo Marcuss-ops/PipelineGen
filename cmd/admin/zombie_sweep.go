@@ -27,7 +27,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): the
 // (*jobs.SQLiteStore).MarkRunningJobsOlderThanFailed method
-// (internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go)
+// (internal/platform/sqlite/jobs/repository_lifecycle.go)
 // is the SOLE canonical writer of this transition. This CLI is a
 // thin operator wrapper that opens the canonical DB path via
 // storage.OpenSQLiteDB, computes the cutoff, and delegates.

@@ -16,7 +16,7 @@
 // jobCompletedPerformanceAdapter, and the real platform projection +
 // capability projector. The Pool's panic-recovery / backoff / terminal
 // classification wrappers are intentionally not re-exercised here — they are
-// covered by internal/infrastructure/database/sqlite/outboxevents/
+// covered by internal/platform/sqlite/outboxevents/
 // pool_resiliency_test.go.
 //
 // godlike/07 no-fake-availability: every stage is a real SQL round-trip; no

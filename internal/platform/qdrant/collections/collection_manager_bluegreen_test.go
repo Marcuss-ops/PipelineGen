@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
+	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 )
 
 // TestPromoteCandidate_FailsWithoutVerify pins PR 6 §#6.3: calling

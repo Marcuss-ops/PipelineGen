@@ -6,10 +6,10 @@
 // `qdrant-maintenance` admin command. Per godlike/06 SSOT (one canonical
 // owner per fact): the application layer owns the dispatch + per-mode
 // string-formatting + JSON serialization + outbox-enqueue loop semantics;
-// internal/infrastructure/qdrant/maintenance/ continues to own the wire
+// internal/platform/qdrant/maintenance/ continues to own the wire
 // adapters (dr_adapter.go + locator_cleaner.go + reaper.go) per
 // PR-QDRANT-FINAL-DECISION. cmd/admin imports ONLY this package
-// (no internal/infrastructure/qdrant direct import — godlike/07
+// (no internal/platform/qdrant direct import — godlike/07
 // minimum-blast-radius on the boundary).
 //
 // Ports (typed interfaces defined here per AGENTS.md Pattern 0):
@@ -39,13 +39,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // QdrantCleaner is the godlike/06 SSOT port for the drive_link/local_path
-// key stripping pipeline. Concrete: internal/infrastructure/qdrant.LocatorCleaner.
+// key stripping pipeline. Concrete: internal/platform/qdrant.LocatorCleaner.
 type QdrantCleaner interface {
 	CleanLocators(ctx context.Context, apply bool) (*LocatorCleanupReport, error)
 }
@@ -65,7 +65,7 @@ type DispatcherPort interface {
 	EnqueueAndDelete(ctx context.Context, assetID string) error
 }
 
-// qdrantClient is the internal/infrastructure/qdrant.Client structural
+// qdrantClient is the internal/platform/qdrant.Client structural
 // surface that the Service needs (GetAliasTarget). The concrete adapter
 // is injected at NewService time.
 type qdrantClient interface {

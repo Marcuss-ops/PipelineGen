@@ -8,11 +8,11 @@
 // buildSummaryQuery/scanSummary SQL builders were relocated to
 // Local infra:
 //
-//   - Get/Save/Delete/List methods        → internal/infrastructure/database/sqlite/assets/asset_store.go
-//   - assetRepositoryAdapter + 8 methods  → internal/infrastructure/database/sqlite/assets/repo_queries.go
-//   - listAssetsByFilter + FindByExternalRef → internal/infrastructure/database/sqlite/assets/repo_queries.go
+//   - Get/Save/Delete/List methods        → internal/platform/sqlite/assets/asset_store.go
+//   - assetRepositoryAdapter + 8 methods  → internal/platform/sqlite/assets/repo_queries.go
+//   - listAssetsByFilter + FindByExternalRef → internal/platform/sqlite/assets/repo_queries.go
 //   - buildSummaryQuery + scanSummary + getAssetByID
-//     → internal/infrastructure/database/sqlite/assets/clip_list_queries.go + asset_store.go
+//     → internal/platform/sqlite/assets/clip_list_queries.go + asset_store.go
 //
 // This file now hosts ONLY:
 //
@@ -39,7 +39,7 @@ package asset
 // in domain keeps the direction-of-import graph acyclic:
 //
 //	internal/kernel/asset/Service → assetStoreAdapter (here)
-//	internal/infrastructure/database/sqlite/assets
+//	internal/platform/sqlite/assets
 //	                              → satisfies assetStoreAdapter
 //	                                (declarations live next to it)
 //

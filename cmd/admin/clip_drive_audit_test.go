@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // fakeDriveTree is a canned ListFiles responder keyed by folder ID.

@@ -9,10 +9,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

@@ -118,7 +118,7 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilCache(t *testing.T) {
 	core, media, metadata, observability := validProcessSegmentDeps()
 	core.Cache = nil
 	require.PanicsWithValue(t,
-		"usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)",
+		"usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/platform/sqlite/assets/clip_cache_adapter.go)",
 		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil Cache MUST panic at ctor (P0 #3 silent-'processed' regression) ")
 }

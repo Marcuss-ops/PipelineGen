@@ -2,7 +2,7 @@ package asset
 
 // text_track_repository.go defines the canonical port for persisting
 // and querying TextTrack records. The concrete SQLite implementation
-// lives in internal/infrastructure/database/sqlite/assets/.
+// lives in internal/platform/sqlite/assets/.
 //
 // This port is consumed by:
 //   - The YouTube writer path (atomic save of media_assets + text tracks + outbox)
@@ -67,7 +67,7 @@ type TextTrackRepository interface {
 	// pipeline (ClipSourceBuilder) and the backfill CLI (Fase 5)
 	// can share one canonical sub-surface (TextTrackReader). The
 	// concrete SQLite implementation lives in
-	// `internal/infrastructure/database/sqlite/assets/`.
+	// `internal/platform/sqlite/assets/`.
 	ListReadyLanguages(ctx context.Context, assetID string, kind TextTrackKind) ([]string, error)
 
 	// FindCurrentForTranslation is the dedicated READY+is_current=1

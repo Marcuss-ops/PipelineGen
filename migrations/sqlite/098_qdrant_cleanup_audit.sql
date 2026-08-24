@@ -13,7 +13,7 @@
 --   2. Migration runner is the canonical schema owner. Schema
 --      declared in a migration is contractually bound to the
 --      companion code in the same PR; declarations split between
---      migrations/ and internal/infrastructure/database/<pkg>/
+--      migrations/ and internal/platform/sqlite/<pkg>/
 --      drift silently.
 --   3. Tests that construct synthetic DBs (CI fixtures, replay
 --      tooling) include this table by default when running

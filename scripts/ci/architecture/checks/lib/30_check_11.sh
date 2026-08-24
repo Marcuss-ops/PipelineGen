@@ -34,14 +34,14 @@
 # correctly accept it without an explicit allowlist entry.
 #
 # Category B — reindex is intentionally uuid-suffixed per canonical design:
-#   - internal/infrastructure/database/sqlite/outboxevents/envelope.go::
+#   - internal/platform/sqlite/outboxevents/envelope.go::
 #     BuildReindexEnvelopeV1: the eventKey IS uuid-suffixed by design
 #     ("reconcile:reindex:<assetID>:<eventID>"). Idempotency is enforced
 #     DOWNSTREAM by the worker's supersede gate on source_version
 #     (from media_assets.metadata_json.$.content_hash), not at the
 #     outbox-enqueue layer. Every --apply run enqueues a fresh reindex
 #     event; redundant fix-up work is collapsed at execution time.
-#   - internal/infrastructure/database/sqlite/outbox/delete_envelope.go::
+#   - internal/platform/sqlite/outbox/delete_envelope.go::
 #     buildDeleteRequestV1: pre-existing canonical pattern.
 #
 # Pattern shapes (3 tightened patterns):
@@ -72,9 +72,9 @@
 # in practice.
 #
 # Allowlist:
-#   - internal/infrastructure/database/sqlite/outbox/**       : canonical envelope builders
+#   - internal/platform/sqlite/outbox/**       : canonical envelope builders
 #                                                              (Category B pattern).
-#   - internal/infrastructure/database/sqlite/outboxevents/** : canonical reindex envelope
+#   - internal/platform/sqlite/outboxevents/** : canonical reindex envelope
 #                                                              (Category B pattern).
 #   - *_test.go                                               : test fixtures may use
 #                                                              uuid.NewString for distinct keys.
@@ -84,8 +84,8 @@ uuidEventKeys=$(rg -nU --type go \
     -e 'eventKey[^\n]*uuid\.NewString' \
     -e 'eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventID[^\n]*=\s*uuid\.NewString' \
     -e 'eventID[^\n]*=\s*uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventKey[^\n]*=[^\n]*\beventID\b' \
-    --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/outboxevents/**' \
+    --glob '!**/internal/platform/sqlite/outbox/**' \
+    --glob '!**/internal/platform/sqlite/outboxevents/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \

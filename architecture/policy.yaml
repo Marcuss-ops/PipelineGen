@@ -337,7 +337,7 @@ hard_gates:
   - percheck_speech_timing_ssot
   # Digest SSOT (August 2026): crypto/sha256 is owned by internal/kernel/digest.
   # Any production import outside the SSOT root, the TLS/protocol exemptions
-  # (pkg/hmacsign, pkg/tlsload, internal/infrastructure/delivery) or the
+  # (pkg/hmacsign, pkg/tlsload, internal/platform/delivery) or the
   # transitional allowlist fails closed. The allowlist ratchets to zero as
   # files migrate to digest; each entry is removed in the same change.
   - percheck_digest_sha256_ban

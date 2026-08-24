@@ -39,7 +39,7 @@ import (
 // EventTypeArtifactPublishRequested is the canonical outbox
 // event_type drained by this handler. The naming convention
 // is `<aggregate>.<action>.<version>` (semver), as documented
-// at internal/infrastructure/database/sqlite/outboxevents/repository.go.
+// at internal/platform/sqlite/outboxevents/repository.go.
 const EventTypeArtifactPublishRequested = "artifact.publish_requested.v1"
 
 // ── Typed-error sentinel chain (godlike/07) ────────────────────────────

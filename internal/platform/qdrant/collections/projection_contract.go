@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // ProjectionPopulateFunc fills a prepared physical collection. The manager

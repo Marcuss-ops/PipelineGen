@@ -57,7 +57,7 @@ type Summary struct {
 //
 // Wave G (June 2026) DECOUPLING — three legacy fields removed:
 //   - AssetIndex  : writeAssetIndex was the sole reader of
-//     internal/infrastructure/database/assetindex.Service and a
+//     internal/platform/sqlite/assetindex.Service and a
 //     post-commit best-effort writer of an `asset_index` row. The
 //     media_assets + outbox_events commit in upsertPreservingExisting
 //     is now the single source of truth; asset_index is a derived
@@ -144,7 +144,7 @@ type Service struct {
 	// an explicit "dispatcher is nil" runtime check as defence-in-depth.
 	//
 	// Wired at composition time via Deps.Dispatcher (PR-D, June 2026).
-	// See internal/infrastructure/database/sqlite/outbox (package) for
+	// See internal/platform/sqlite/outbox (package) for
 	// the integration contract; BuildSyncBundle is the canonical owner.
 	//
 	// Wave G (June 2026) DECOUPLING — the legacy `assetIndex` and

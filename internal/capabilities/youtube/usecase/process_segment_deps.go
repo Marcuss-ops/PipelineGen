@@ -301,7 +301,7 @@ func ValidateProcessSegmentSubBundles(
 	_ ProcessSegmentObservabilityDeps,
 ) {
 	if core.Cache == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)")
+		panic("usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/platform/sqlite/assets/clip_cache_adapter.go)")
 	}
 	if core.VideoPipeline == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: VideoPipeline port is required (composition must wire the YouTube pipeline adapter)")

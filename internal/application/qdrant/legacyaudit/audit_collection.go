@@ -23,12 +23,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // QdrantScanner is the read-side port the AuditService needs from the
 // Qdrant collection surface. Production wires
-// internal/infrastructure/qdrant.Client.ScrollPoints behind this port;
+// internal/platform/qdrant.Client.ScrollPoints behind this port;
 // tests inject a stub that yields synthetic ScrollPoint slices without
 // HTTP.
 //

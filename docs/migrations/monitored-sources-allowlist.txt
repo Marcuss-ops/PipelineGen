@@ -9,7 +9,7 @@
 # the canonical monitor-state source-of-truth moved from `monitored_sources`
 # to `category_channels` via channels.Service (ListEnabled, ClaimDue,
 # MarkChecked, UpdateCursor). Two source files in
-# `internal/infrastructure/database/sqlite/assets/` still reach the
+# `internal/platform/sqlite/assets/` still reach the
 # `monitored_sources` table for a SEPARATE purpose (per-video discovery
 # state, used by the YouTube-side MonitorsStoreAdapter), and they're
 # tagged with `// ARCH-ALLOWLIST: monitored-sources-readonly` to mark
@@ -44,7 +44,7 @@
 #
 # CURRENT ENTRIES
 # ───────────────
-# Two files in `internal/infrastructure/database/sqlite/assets/` carry the
+# Two files in `internal/platform/sqlite/assets/` carry the
 # marker:
 #
 #   - monitors_repository.go   ← 5 public methods (UpsertSource,
@@ -117,5 +117,5 @@
 # Tracking: architecture/current.yaml # id-24 follow_up_tickets
 # ──────────────────────────────────────────────────────────────────────────────
 
-internal/infrastructure/database/sqlite/assets/monitors_repository.go
-internal/infrastructure/database/sqlite/assets/monitors_types.go
+internal/platform/sqlite/assets/monitors_repository.go
+internal/platform/sqlite/assets/monitors_types.go

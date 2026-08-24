@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )

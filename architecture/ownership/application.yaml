@@ -207,7 +207,7 @@ archcheck_cli:
 
 http_transport:
   owner: internal/api
-  rule: api imports ONLY application + domain. Never infrastructure/database/sql, never os/exec, never google.golang.org/api/drive/v3.
+  rule: api imports ONLY application + domain. Never platform/sqlite/sql, never os/exec, never google.golang.org/api/drive/v3.
   target_subdirs:
     - api/assets
     - api/content

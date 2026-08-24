@@ -8,7 +8,7 @@
 -- The application-level canonical is in
 -- internal/application/mediamemory/types.go::UsageEvent.
 -- The SQL ↔ Go row-scan lives in
--- internal/infrastructure/database/sqlite/mediamemory/usage_repository.go.
+-- internal/platform/sqlite/mediamemory/usage_repository.go.
 --
 -- godlike/06 SSOT (Phase 2.3 wire-shape contract): channel_id and
 -- video_id are TEXT NOT NULL DEFAULT '' (empty string sentinel —

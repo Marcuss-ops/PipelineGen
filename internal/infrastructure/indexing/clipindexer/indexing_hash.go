@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // bm25SchemaVersion is the hash-stamp field for the BM25 lexical-index

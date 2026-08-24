@@ -71,9 +71,9 @@
 // concern, gated on the dry-run output.
 //
 // Cross-reference:
-//   - Internal/infrastructure/qdrant/locator_cleaner.go cleanup
+//   - Internal/platform/qdrant/locator_cleaner.go cleanup
 //     contract for category 7.
-//   - Internal/infrastructure/qdrant/pointid.go canonical UUID v5
+//   - Internal/platform/qdrant/pointid.go canonical UUID v5
 //     boundary for category 8.
 //   - architecture/ownership.yaml ::target_readiness for the
 //     downstream consumer.

@@ -52,7 +52,7 @@ const JobParentStateColumn = "parent_state_typed"
 //     the JSON result column. This preserves back-compat for
 //     existing readers.
 //  2. The SQL layer implementation of FinalizeAggregateParent
-//     (in internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go)
+//     (in internal/platform/sqlite/jobs/repository_lifecycle.go)
 //     reads resultMap["parent_state"] and writes the same value to
 //     the JobParentStateColumn typed column in the SAME transaction.
 //     A mid-txn crash rolls back BOTH writes (atomicity preserved).

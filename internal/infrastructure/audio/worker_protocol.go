@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"go.uber.org/zap"
 )
 

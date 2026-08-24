@@ -13,7 +13,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): the SupersedeError
 // type, NewSupersede constructor, and IsSupersede classifier live ONLY at
-// internal/infrastructure/database/sqlite/outboxevents/supersede.go. This
+// internal/platform/sqlite/outboxevents/supersede.go. This
 // test is the canonical hermetic probe of the surface; it does NOT redefine
 // the type or duplicate the constructor.
 //

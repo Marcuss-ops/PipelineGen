@@ -20397,1900 +20397,1900 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/database/assetindex/repository.go": {
+    "internal/platform/sqlite/assetindex/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/assetindex/resolver.go": {
+    "internal/platform/sqlite/assetindex/resolver.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/assetindex/service.go": {
+    "internal/platform/sqlite/assetindex/service.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/assetindex/service_test.go": {
+    "internal/platform/sqlite/assetindex/service_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/assetindex/types.go": {
+    "internal/platform/sqlite/assetindex/types.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/backup.go": {
+    "internal/platform/sqlite/backup.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/boot_test.go": {
+    "internal/platform/sqlite/boot_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/canonical.go": {
+    "internal/platform/sqlite/canonical.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/control_plane_identity_test.go": {
+    "internal/platform/sqlite/control_plane_identity_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/doctor.go": {
+    "internal/platform/sqlite/doctor.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations.go": {
+    "internal/platform/sqlite/migrations.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_092_093_test.go": {
+    "internal/platform/sqlite/migrations_092_093_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_099_test.go": {
+    "internal/platform/sqlite/migrations_099_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_152_test.go": {
+    "internal/platform/sqlite/migrations_152_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_153_test.go": {
+    "internal/platform/sqlite/migrations_153_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_154_test.go": {
+    "internal/platform/sqlite/migrations_154_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_155_test.go": {
+    "internal/platform/sqlite/migrations_155_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_156_test.go": {
+    "internal/platform/sqlite/migrations_156_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_157_test.go": {
+    "internal/platform/sqlite/migrations_157_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_158_test.go": {
+    "internal/platform/sqlite/migrations_158_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_189_test.go": {
+    "internal/platform/sqlite/migrations_189_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_194_test.go": {
+    "internal/platform/sqlite/migrations_194_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_197_test.go": {
+    "internal/platform/sqlite/migrations_197_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_198_test.go": {
+    "internal/platform/sqlite/migrations_198_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_199_test.go": {
+    "internal/platform/sqlite/migrations_199_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_200_test.go": {
+    "internal/platform/sqlite/migrations_200_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_203_test.go": {
+    "internal/platform/sqlite/migrations_203_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_204_test.go": {
+    "internal/platform/sqlite/migrations_204_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_205_test.go": {
+    "internal/platform/sqlite/migrations_205_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_223_test.go": {
+    "internal/platform/sqlite/migrations_223_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_226_test.go": {
+    "internal/platform/sqlite/migrations_226_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_228_test.go": {
+    "internal/platform/sqlite/migrations_228_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_discovery.go": {
+    "internal/platform/sqlite/migrations_discovery.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_helpers_test.go": {
+    "internal/platform/sqlite/migrations_helpers_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_ledger.go": {
+    "internal/platform/sqlite/migrations_ledger.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_ledger_test.go": {
+    "internal/platform/sqlite/migrations_ledger_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_smoke_test.go": {
+    "internal/platform/sqlite/migrations_smoke_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_splitter.go": {
+    "internal/platform/sqlite/migrations_splitter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_status.go": {
+    "internal/platform/sqlite/migrations_status.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/migrations_test.go": {
+    "internal/platform/sqlite/migrations_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/rotation.go": {
+    "internal/platform/sqlite/rotation.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/schema_contract_test.go": {
+    "internal/platform/sqlite/schema_contract_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/set.go": {
+    "internal/platform/sqlite/set.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/set_identity_integration_test.go": {
+    "internal/platform/sqlite/set_identity_integration_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/set_identity_test.go": {
+    "internal/platform/sqlite/set_identity_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite.go": {
+    "internal/platform/sqlite.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/admin/purge.go": {
+    "internal/platform/sqlite/admin/purge.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/admin/purge_ports.go": {
+    "internal/platform/sqlite/admin/purge_ports.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/admin/purge_test.go": {
+    "internal/platform/sqlite/admin/purge_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/adminconsole/audit_store.go": {
+    "internal/platform/sqlite/adminconsole/audit_store.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/adminconsole/version_store.go": {
+    "internal/platform/sqlite/adminconsole/version_store.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifact_stages/repository.go": {
+    "internal/platform/sqlite/artifact_stages/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifact_stages/repository_artifacts.go": {
+    "internal/platform/sqlite/artifact_stages/repository_artifacts.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifact_stages/repository_outbox.go": {
+    "internal/platform/sqlite/artifact_stages/repository_outbox.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifact_stages/repository_stages.go": {
+    "internal/platform/sqlite/artifact_stages/repository_stages.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifact_stages/repository_test.go": {
+    "internal/platform/sqlite/artifact_stages/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artifacts/source_catalog.go": {
+    "internal/platform/sqlite/artifacts/source_catalog.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go": {
+    "internal/platform/sqlite/artlist_search_cache_adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter_test.go": {
+    "internal/platform/sqlite/artlist_search_cache_adapter_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artlist_searcher.go": {
+    "internal/platform/sqlite/artlist_searcher.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/artlist_searcher_test.go": {
+    "internal/platform/sqlite/artlist_searcher_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/adminmedia_source.go": {
+    "internal/platform/sqlite/assets/adminmedia_source.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist/artlist_atomic_writer.go": {
+    "internal/platform/sqlite/assets/artlist/artlist_atomic_writer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist/artlist_atomic_writer_test.go": {
+    "internal/platform/sqlite/assets/artlist/artlist_atomic_writer_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist/artlist_download_audit_repository.go": {
+    "internal/platform/sqlite/assets/artlist/artlist_download_audit_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist/artlist_runs_repository.go": {
+    "internal/platform/sqlite/assets/artlist/artlist_runs_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist/artlist_runs_repository_test.go": {
+    "internal/platform/sqlite/assets/artlist/artlist_runs_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/artlist_download_audit_repository.go": {
+    "internal/platform/sqlite/assets/artlist_download_audit_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_committer.go": {
+    "internal/platform/sqlite/assets/asset_committer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_committer_tags_test.go": {
+    "internal/platform/sqlite/assets/asset_committer_tags_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_committer_taxonomy_test.go": {
+    "internal/platform/sqlite/assets/asset_committer_taxonomy_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_license_release_repository_test.go": {
+    "internal/platform/sqlite/assets/asset_license_release_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_license_repository.go": {
+    "internal/platform/sqlite/assets/asset_license_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_location_committer.go": {
+    "internal/platform/sqlite/assets/asset_location_committer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_location_committer_test.go": {
+    "internal/platform/sqlite/assets/asset_location_committer_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_release_repository.go": {
+    "internal/platform/sqlite/assets/asset_release_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_rendition_repository.go": {
+    "internal/platform/sqlite/assets/asset_rendition_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_rendition_repository_test.go": {
+    "internal/platform/sqlite/assets/asset_rendition_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/asset_store.go": {
+    "internal/platform/sqlite/assets/asset_store.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/assettree_repository.go": {
+    "internal/platform/sqlite/assets/assettree_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/channels/channels_repository.go": {
+    "internal/platform/sqlite/assets/channels/channels_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/channels/channels_repository_test.go": {
+    "internal/platform/sqlite/assets/channels/channels_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_asset.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_asset.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_cue_repair.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_cue_repair.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_cues.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_cues.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_localized_test.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_localized_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_outbox.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_outbox.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_test.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_text.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_text.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_tracks.go": {
+    "internal/platform/sqlite/assets/clip_atomic_writer_tracks.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go": {
+    "internal/platform/sqlite/assets/clip_cache_adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_cache_adapter_test.go": {
+    "internal/platform/sqlite/assets/clip_cache_adapter_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_list_queries.go": {
+    "internal/platform/sqlite/assets/clip_list_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go": {
+    "internal/platform/sqlite/assets/clip_metadata_writer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_payload.go": {
+    "internal/platform/sqlite/assets/clip_metadata_writer_payload.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_test.go": {
+    "internal/platform/sqlite/assets/clip_metadata_writer_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clip_queries.go": {
+    "internal/platform/sqlite/assets/clip_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_crud.go": {
+    "internal/platform/sqlite/assets/clips_crud.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_crud_test.go": {
+    "internal/platform/sqlite/assets/clips_crud_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_enrich_state.go": {
+    "internal/platform/sqlite/assets/clips_enrich_state.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_index_state.go": {
+    "internal/platform/sqlite/assets/clips_index_state.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_lifecycle_state.go": {
+    "internal/platform/sqlite/assets/clips_lifecycle_state.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_queries.go": {
+    "internal/platform/sqlite/assets/clips_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_repository.go": {
+    "internal/platform/sqlite/assets/clips_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_repository_folders.go": {
+    "internal/platform/sqlite/assets/clips_repository_folders.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_repository_mutate_test.go": {
+    "internal/platform/sqlite/assets/clips_repository_mutate_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go": {
+    "internal/platform/sqlite/assets/clips_repository_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_resolution.go": {
+    "internal/platform/sqlite/assets/clips_resolution.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_statistics.go": {
+    "internal/platform/sqlite/assets/clips_statistics.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_statistics_test.go": {
+    "internal/platform/sqlite/assets/clips_statistics_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/clips_transactions.go": {
+    "internal/platform/sqlite/assets/clips_transactions.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/content_hash_index_revision_test.go": {
+    "internal/platform/sqlite/assets/content_hash_index_revision_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/crypto/clip_metadata_writer_hashes.go": {
+    "internal/platform/sqlite/assets/crypto/clip_metadata_writer_hashes.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/dedup_queries.go": {
+    "internal/platform/sqlite/assets/dedup_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/facade_crypto.go": {
+    "internal/platform/sqlite/assets/facade_crypto.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/folder_queries.go": {
+    "internal/platform/sqlite/assets/folder_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesregistry/adapter.go": {
+    "internal/platform/sqlite/assets/imagesregistry/adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_aggregate.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_aggregate.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_generated.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_generated.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_insert_update.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_insert_update.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_repository.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_repository_test.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/imagesrepo/images_search.go": {
+    "internal/platform/sqlite/assets/imagesrepo/images_search.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/index_request_committer.go": {
+    "internal/platform/sqlite/assets/index_request_committer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/index_request_committer_test.go": {
+    "internal/platform/sqlite/assets/index_request_committer_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/location_queries.go": {
+    "internal/platform/sqlite/assets/location_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/maintenance_repository.go": {
+    "internal/platform/sqlite/assets/maintenance_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/media_assets_stock_integrity_test.go": {
+    "internal/platform/sqlite/assets/media_assets_stock_integrity_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/monitors/monitors_repository.go": {
+    "internal/platform/sqlite/assets/monitors/monitors_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/monitors/monitors_types.go": {
+    "internal/platform/sqlite/assets/monitors/monitors_types.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/detail_query.go": {
+    "internal/platform/sqlite/assets/operatorread/detail_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/facets_query.go": {
+    "internal/platform/sqlite/assets/operatorread/facets_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/list_query.go": {
+    "internal/platform/sqlite/assets/operatorread/list_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/repository.go": {
+    "internal/platform/sqlite/assets/operatorread/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/repository_test.go": {
+    "internal/platform/sqlite/assets/operatorread/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/operatorread/state_projection.go": {
+    "internal/platform/sqlite/assets/operatorread/state_projection.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/processing_queries.go": {
+    "internal/platform/sqlite/assets/processing_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/providermetadata/provider_metadata_repository.go": {
+    "internal/platform/sqlite/assets/providermetadata/provider_metadata_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/providermetadata/provider_metadata_repository_test.go": {
+    "internal/platform/sqlite/assets/providermetadata/provider_metadata_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/repo_queries.go": {
+    "internal/platform/sqlite/assets/repo_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/scan_helpers.go": {
+    "internal/platform/sqlite/assets/scan_helpers.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/search_queries.go": {
+    "internal/platform/sqlite/assets/search_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/search_queries_lifecycle_test.go": {
+    "internal/platform/sqlite/assets/search_queries_lifecycle_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/search_terms_queries.go": {
+    "internal/platform/sqlite/assets/search_terms_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/searchqueries_repository.go": {
+    "internal/platform/sqlite/assets/searchqueries_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/segment_embedding_queries.go": {
+    "internal/platform/sqlite/assets/segment_embedding_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/source_version.go": {
+    "internal/platform/sqlite/assets/source_version.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/source_version_test.go": {
+    "internal/platform/sqlite/assets/source_version_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/store_helpers.go": {
+    "internal/platform/sqlite/assets/store_helpers.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/subjectsrepo/resolver.go": {
+    "internal/platform/sqlite/assets/subjectsrepo/resolver.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/subjectsrepo/resolver_test.go": {
+    "internal/platform/sqlite/assets/subjectsrepo/resolver_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/subjectsrepo/slug_bridge.go": {
+    "internal/platform/sqlite/assets/subjectsrepo/slug_bridge.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/render_variant_repository.go": {
+    "internal/platform/sqlite/assets/texttracks/render_variant_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/subtitle_artifact_repository.go": {
+    "internal/platform/sqlite/assets/texttracks/subtitle_artifact_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_lookup.go": {
+    "internal/platform/sqlite/assets/texttracks/text_track_repository_lookup.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_lookup_test.go": {
+    "internal/platform/sqlite/assets/texttracks/text_track_repository_lookup_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_mapping.go": {
+    "internal/platform/sqlite/assets/texttracks/text_track_repository_mapping.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_queries.go": {
+    "internal/platform/sqlite/assets/texttracks/text_track_repository_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_schema.go": {
+    "internal/platform/sqlite/assets/texttracks/text_track_repository_schema.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/txmutation/doc.go": {
+    "internal/platform/sqlite/assets/txmutation/doc.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/txmutation/primitives.go": {
+    "internal/platform/sqlite/assets/txmutation/primitives.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/txmutation/primitives_test.go": {
+    "internal/platform/sqlite/assets/txmutation/primitives_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/version_queries.go": {
+    "internal/platform/sqlite/assets/version_queries.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/voiceover_artifact_converter.go": {
+    "internal/platform/sqlite/assets/voiceover_artifact_converter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/voiceovers_repository.go": {
+    "internal/platform/sqlite/assets/voiceovers_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/workernodes/workernodes_repository.go": {
+    "internal/platform/sqlite/assets/workernodes/workernodes_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/workernodes/workernodes_repository_test.go": {
+    "internal/platform/sqlite/assets/workernodes/workernodes_repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/youtubediscoveries/monitor_outbox.go": {
+    "internal/platform/sqlite/assets/youtubediscoveries/monitor_outbox.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/youtubediscoveries/youtube_discoveries_helpers.go": {
+    "internal/platform/sqlite/assets/youtubediscoveries/youtube_discoveries_helpers.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/youtubediscoveries/youtube_discoveries_repository.go": {
+    "internal/platform/sqlite/assets/youtubediscoveries/youtube_discoveries_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/assets/youtubediscoveries/youtube_discoveries_transitions.go": {
+    "internal/platform/sqlite/assets/youtubediscoveries/youtube_discoveries_transitions.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/artlist_query.go": {
+    "internal/platform/sqlite/catalog/artlist_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/clips_query.go": {
+    "internal/platform/sqlite/catalog/clips_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/repository.go": {
+    "internal/platform/sqlite/catalog/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/stock_query.go": {
+    "internal/platform/sqlite/catalog/stock_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/tags.go": {
+    "internal/platform/sqlite/catalog/tags.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/catalog/types.go": {
+    "internal/platform/sqlite/catalog/types.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/deletion/metrics_adapter.go": {
+    "internal/platform/sqlite/deletion/metrics_adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go": {
+    "internal/platform/sqlite/deletion/stuck_row_scanner.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/deletion/stuck_row_scanner_test.go": {
+    "internal/platform/sqlite/deletion/stuck_row_scanner_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/delivery/errors.go": {
+    "internal/platform/sqlite/delivery/errors.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/delivery/repository.go": {
+    "internal/platform/sqlite/delivery/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter.go": {
+    "internal/platform/sqlite/entity_image_catalog_adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter_test.go": {
+    "internal/platform/sqlite/entity_image_catalog_adapter_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/entity_image_catalog_recertification_test.go": {
+    "internal/platform/sqlite/entity_image_catalog_recertification_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/entity_image_catalog_state_test.go": {
+    "internal/platform/sqlite/entity_image_catalog_state_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/executionsteps/repository.go": {
+    "internal/platform/sqlite/executionsteps/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/executionsteps/repository_test.go": {
+    "internal/platform/sqlite/executionsteps/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/explain.go": {
+    "internal/platform/sqlite/explain.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/explain_test.go": {
+    "internal/platform/sqlite/explain_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/idempotency/repository.go": {
+    "internal/platform/sqlite/idempotency/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/idempotency/repository_test.go": {
+    "internal/platform/sqlite/idempotency/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/bench_db_split_test.go": {
+    "internal/platform/sqlite/jobs/bench_db_split_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/finalize_attempt.go": {
+    "internal/platform/sqlite/jobs/finalize_attempt.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/finalize_attempt_test.go": {
+    "internal/platform/sqlite/jobs/finalize_attempt_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_aggregation.go": {
+    "internal/platform/sqlite/jobs/lifecycle_aggregation.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_complete.go": {
+    "internal/platform/sqlite/jobs/lifecycle_complete.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go": {
+    "internal/platform/sqlite/jobs/lifecycle_finalize.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_job_completed_outbox_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_job_completed_outbox_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_fixtures_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_fixtures_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_lease_retry_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_lease_retry_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_observation_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_observation_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_payload_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_payload_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_progress_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_progress_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_recovery_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_recovery_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_p1b_state_test.go": {
+    "internal/platform/sqlite/jobs/lifecycle_p1b_state_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/lifecycle_progress.go": {
+    "internal/platform/sqlite/jobs/lifecycle_progress.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/queue_notifier.go": {
+    "internal/platform/sqlite/jobs/queue_notifier.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository.go": {
+    "internal/platform/sqlite/jobs/repository.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_broker_roundtrip_test.go": {
+    "internal/platform/sqlite/jobs/repository_broker_roundtrip_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_claims.go": {
+    "internal/platform/sqlite/jobs/repository_claims.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_commands.go": {
+    "internal/platform/sqlite/jobs/repository_commands.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_events.go": {
+    "internal/platform/sqlite/jobs/repository_events.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_events_test.go": {
+    "internal/platform/sqlite/jobs/repository_events_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_jobs_crud.go": {
+    "internal/platform/sqlite/jobs/repository_jobs_crud.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go": {
+    "internal/platform/sqlite/jobs/repository_lifecycle.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_lifecycle_dualwrite_test.go": {
+    "internal/platform/sqlite/jobs/repository_lifecycle_dualwrite_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_lifecycle_test.go": {
+    "internal/platform/sqlite/jobs/repository_lifecycle_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_read_preference_test.go": {
+    "internal/platform/sqlite/jobs/repository_read_preference_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_scanner.go": {
+    "internal/platform/sqlite/jobs/repository_scanner.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_scanner_test.go": {
+    "internal/platform/sqlite/jobs/repository_scanner_test.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/repository_stats.go": {
+    "internal/platform/sqlite/jobs/repository_stats.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/scan.go": {
+    "internal/platform/sqlite/jobs/scan.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/scanner.go": {
+    "internal/platform/sqlite/jobs/scanner.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/store.go": {
+    "internal/platform/sqlite/jobs/store.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/jobs/transition.go": {
+    "internal/platform/sqlite/jobs/transition.go": {
       "owners": [
         "database",
         "jobs"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/logsink/sqlite_request_log_sink.go": {
+    "internal/platform/sqlite/logsink/sqlite_request_log_sink.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/binding_dispatcher.go": {
+    "internal/platform/sqlite/mediamemory/binding_dispatcher.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/bindings_repository.go": {
+    "internal/platform/sqlite/mediamemory/bindings_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/candidates_repository.go": {
+    "internal/platform/sqlite/mediamemory/candidates_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/concepts_repository.go": {
+    "internal/platform/sqlite/mediamemory/concepts_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/helpers.go": {
+    "internal/platform/sqlite/mediamemory/helpers.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/queries_repository.go": {
+    "internal/platform/sqlite/mediamemory/queries_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/mediamemory/usage_repository.go": {
+    "internal/platform/sqlite/mediamemory/usage_repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/metadataexport/asset_resolver.go": {
+    "internal/platform/sqlite/metadataexport/asset_resolver.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/operations/repository.go": {
+    "internal/platform/sqlite/operations/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/operations/repository_test.go": {
+    "internal/platform/sqlite/operations/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/delete_envelope.go": {
+    "internal/platform/sqlite/outbox/delete_envelope.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/delete_envelope_test.go": {
+    "internal/platform/sqlite/outbox/delete_envelope_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher.go": {
+    "internal/platform/sqlite/outbox/dispatcher.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_advance.go": {
+    "internal/platform/sqlite/outbox/dispatcher_advance.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_cleanup.go": {
+    "internal/platform/sqlite/outbox/dispatcher_cleanup.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_delete.go": {
+    "internal/platform/sqlite/outbox/dispatcher_delete.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_delete_test.go": {
+    "internal/platform/sqlite/outbox/dispatcher_delete_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_index.go": {
+    "internal/platform/sqlite/outbox/dispatcher_index.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_index_idempotency_test.go": {
+    "internal/platform/sqlite/outbox/dispatcher_index_idempotency_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_multi_test.go": {
+    "internal/platform/sqlite/outbox/dispatcher_multi_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/dispatcher_test.go": {
+    "internal/platform/sqlite/outbox/dispatcher_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/drive_delete_envelope.go": {
+    "internal/platform/sqlite/outbox/drive_delete_envelope.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/errors.go": {
+    "internal/platform/sqlite/outbox/errors.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/payload_delete.go": {
+    "internal/platform/sqlite/outbox/payload_delete.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/ports.go": {
+    "internal/platform/sqlite/outbox/ports.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/qdrant_flow_e2e_test.go": {
+    "internal/platform/sqlite/outbox/qdrant_flow_e2e_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/repository_test.go": {
+    "internal/platform/sqlite/outbox/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/state_writer.go": {
+    "internal/platform/sqlite/outbox/state_writer.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outbox/txmanager.go": {
+    "internal/platform/sqlite/outbox/txmanager.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/envelope.go": {
+    "internal/platform/sqlite/outboxevents/envelope.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/envelope_integration_test.go": {
+    "internal/platform/sqlite/outboxevents/envelope_integration_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/envelope_test.go": {
+    "internal/platform/sqlite/outboxevents/envelope_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/errors.go": {
+    "internal/platform/sqlite/outboxevents/errors.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/errors_test.go": {
+    "internal/platform/sqlite/outboxevents/errors_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/pool.go": {
+    "internal/platform/sqlite/outboxevents/pool.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/pool_jitter_test.go": {
+    "internal/platform/sqlite/outboxevents/pool_jitter_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/pool_resiliency_test.go": {
+    "internal/platform/sqlite/outboxevents/pool_resiliency_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/pool_test.go": {
+    "internal/platform/sqlite/outboxevents/pool_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/priority_claim_test.go": {
+    "internal/platform/sqlite/outboxevents/priority_claim_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/registry.go": {
+    "internal/platform/sqlite/outboxevents/registry.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/repository.go": {
+    "internal/platform/sqlite/outboxevents/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/repository_query.go": {
+    "internal/platform/sqlite/outboxevents/repository_query.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/repository_query_test.go": {
+    "internal/platform/sqlite/outboxevents/repository_query_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/repository_write.go": {
+    "internal/platform/sqlite/outboxevents/repository_write.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/supersede.go": {
+    "internal/platform/sqlite/outboxevents/supersede.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/outboxevents/supersede_test.go": {
+    "internal/platform/sqlite/outboxevents/supersede_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/pool.go": {
+    "internal/platform/sqlite/pool.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/pool_test.go": {
+    "internal/platform/sqlite/pool_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/qdrantprojection/batch_reader.go": {
+    "internal/platform/sqlite/qdrantprojection/batch_reader.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/qdrantprojection/batch_reader_test.go": {
+    "internal/platform/sqlite/qdrantprojection/batch_reader_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/qdrantprojection/checkpoint.go": {
+    "internal/platform/sqlite/qdrantprojection/checkpoint.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/registry_retry_classifier.go": {
+    "internal/platform/sqlite/registry_retry_classifier.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/memory.go": {
+    "internal/platform/sqlite/scripts/memory.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/memory_test.go": {
+    "internal/platform/sqlite/scripts/memory_test.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/memory_testhelpers.go": {
+    "internal/platform/sqlite/scripts/memory_testhelpers.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/repository_adapter.go": {
+    "internal/platform/sqlite/scripts/repository_adapter.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/repository_types.go": {
+    "internal/platform/sqlite/scripts/repository_types.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/research_cache.go": {
+    "internal/platform/sqlite/scripts/research_cache.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/research_sources.go": {
+    "internal/platform/sqlite/scripts/research_sources.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/scripts.go": {
+    "internal/platform/sqlite/scripts/scripts.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/scripts_test.go": {
+    "internal/platform/sqlite/scripts/scripts_test.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/search.go": {
+    "internal/platform/sqlite/scripts/search.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/search_test.go": {
+    "internal/platform/sqlite/scripts/search_test.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/sections.go": {
+    "internal/platform/sqlite/scripts/sections.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/translation_cache.go": {
+    "internal/platform/sqlite/scripts/translation_cache.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/types.go": {
+    "internal/platform/sqlite/scripts/types.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/upload_intents_repository.go": {
+    "internal/platform/sqlite/scripts/upload_intents_repository.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/upload_intents_repository_test.go": {
+    "internal/platform/sqlite/scripts/upload_intents_repository_test.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/scripts/versions.go": {
+    "internal/platform/sqlite/scripts/versions.go": {
       "owners": [
         "database",
         "research"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/stockbatches/repository.go": {
+    "internal/platform/sqlite/stockbatches/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/stockbatches/repository_test.go": {
+    "internal/platform/sqlite/stockbatches/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/stocksourcecache/repository.go": {
+    "internal/platform/sqlite/stocksourcecache/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/topicsourcecache/repository.go": {
+    "internal/platform/sqlite/topicsourcecache/repository.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/topicsourcecache/repository_test.go": {
+    "internal/platform/sqlite/topicsourcecache/repository_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/vidrush_cache_adapter.go": {
+    "internal/platform/sqlite/vidrush_cache_adapter.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/sqlite/vidrush_cache_adapter_test.go": {
+    "internal/platform/sqlite/vidrush_cache_adapter_test.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/database/testdb.go": {
+    "internal/platform/sqlite/testdb.go": {
       "owners": [
         "database"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/delivery/signer.go": {
+    "internal/platform/delivery/signer.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/delivery/signer_test.go": {
+    "internal/platform/delivery/signer_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/delivery/workspace.go": {
+    "internal/platform/delivery/workspace.go": {
       "owners": [
         "core-internal"
       ],
@@ -22356,568 +22356,568 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/drive/admin.go": {
+    "internal/platform/drive/admin.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/admin_internal_test.go": {
+    "internal/platform/drive/admin_internal_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/adminmedia_reader.go": {
+    "internal/platform/drive/adminmedia_reader.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/artifact_publisher_adapter.go": {
+    "internal/platform/drive/artifact_publisher_adapter.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/artifact_publisher_adapter_test.go": {
+    "internal/platform/drive/artifact_publisher_adapter_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/auth.go": {
+    "internal/platform/drive/auth.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/auth_test.go": {
+    "internal/platform/drive/auth_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/catalog_adapter.go": {
+    "internal/platform/drive/catalog_adapter.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/controlled_reconciliation_dataset_test.go": {
+    "internal/platform/drive/controlled_reconciliation_dataset_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/doc_client.go": {
+    "internal/platform/drive/doc_client.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/doc_client_create_test.go": {
+    "internal/platform/drive/doc_client_create_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/doc_client_html_test.go": {
+    "internal/platform/drive/doc_client_html_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/doc_client_test.go": {
+    "internal/platform/drive/doc_client_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/doc_publisher_assert.go": {
+    "internal/platform/drive/doc_publisher_assert.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/ensure.go": {
+    "internal/platform/drive/ensure.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/errors.go": {
+    "internal/platform/drive/errors.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/errors_test.go": {
+    "internal/platform/drive/errors_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/file_lifecycle.go": {
+    "internal/platform/drive/file_lifecycle.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/file_lifecycle_cleanup.go": {
+    "internal/platform/drive/file_lifecycle_cleanup.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/file_lifecycle_test.go": {
+    "internal/platform/drive/file_lifecycle_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/folder_find_or_create.go": {
+    "internal/platform/drive/folder_find_or_create.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/folder_lookup.go": {
+    "internal/platform/drive/folder_lookup.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/folder_manager.go": {
+    "internal/platform/drive/folder_manager.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/folder_manager_internal_test.go": {
+    "internal/platform/drive/folder_manager_internal_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/folder_manager_test.go": {
+    "internal/platform/drive/folder_manager_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/helpers.go": {
+    "internal/platform/drive/helpers.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/live_canary_test.go": {
+    "internal/platform/drive/live_canary_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/location_resolver.go": {
+    "internal/platform/drive/location_resolver.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/location_verifier.go": {
+    "internal/platform/drive/location_verifier.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/location_verifier_test.go": {
+    "internal/platform/drive/location_verifier_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/materializer.go": {
+    "internal/platform/drive/materializer.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/metadata_adapter_test.go": {
+    "internal/platform/drive/metadata_adapter_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/ping_test.go": {
+    "internal/platform/drive/ping_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/ports.go": {
+    "internal/platform/drive/ports.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher.go": {
+    "internal/platform/drive/publisher.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_catalog_test.go": {
+    "internal/platform/drive/publisher_catalog_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_error_test.go": {
+    "internal/platform/drive/publisher_error_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_fakes_test.go": {
+    "internal/platform/drive/publisher_fakes_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_folder_test.go": {
+    "internal/platform/drive/publisher_folder_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_idempotency_test.go": {
+    "internal/platform/drive/publisher_idempotency_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_init_test.go": {
+    "internal/platform/drive/publisher_init_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_outbox_test.go": {
+    "internal/platform/drive/publisher_outbox_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_policies_test.go": {
+    "internal/platform/drive/publisher_policies_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_resolve.go": {
+    "internal/platform/drive/publisher_resolve.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_result_test.go": {
+    "internal/platform/drive/publisher_result_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_retry_test.go": {
+    "internal/platform/drive/publisher_retry_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_test.go": {
+    "internal/platform/drive/publisher_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_translate_test.go": {
+    "internal/platform/drive/publisher_translate_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/publisher_types.go": {
+    "internal/platform/drive/publisher_types.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/resolver/adapter.go": {
+    "internal/platform/drive/resolver/adapter.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/resolver/adapter_test.go": {
+    "internal/platform/drive/resolver/adapter_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/resolver/errors.go": {
+    "internal/platform/drive/resolver/errors.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/resolver/logger.go": {
+    "internal/platform/drive/resolver/logger.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/resolver/mapping.go": {
+    "internal/platform/drive/resolver/mapping.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/sdk_wrap_test.go": {
+    "internal/platform/drive/sdk_wrap_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/storage_types.go": {
+    "internal/platform/drive/storage_types.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/token.go": {
+    "internal/platform/drive/token.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/tokensource.go": {
+    "internal/platform/drive/tokensource.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/tokensource_test.go": {
+    "internal/platform/drive/tokensource_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/types.go": {
+    "internal/platform/drive/types.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader.go": {
+    "internal/platform/drive/uploader.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_file.go": {
+    "internal/platform/drive/uploader_file.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_find.go": {
+    "internal/platform/drive/uploader_find.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_folder.go": {
+    "internal/platform/drive/uploader_folder.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_list.go": {
+    "internal/platform/drive/uploader_list.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_ops.go": {
+    "internal/platform/drive/uploader_ops.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_ops_test.go": {
+    "internal/platform/drive/uploader_ops_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_put.go": {
+    "internal/platform/drive/uploader_put.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_put_helpers.go": {
+    "internal/platform/drive/uploader_put_helpers.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_put_p0_6_test.go": {
+    "internal/platform/drive/uploader_put_p0_6_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_put_test.go": {
+    "internal/platform/drive/uploader_put_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/uploader_test.go": {
+    "internal/platform/drive/uploader_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/verifier.go": {
+    "internal/platform/drive/verifier.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/verifier_adapter.go": {
+    "internal/platform/drive/verifier_adapter.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/drive/verifier_test.go": {
+    "internal/platform/drive/verifier_test.go": {
       "owners": [
         "drive",
         "storage"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/embeddings/http_text_embedder.go": {
+    "internal/platform/embeddings/http_text_embedder.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/embeddings/ollama_adapter.go": {
+    "internal/platform/embeddings/ollama_adapter.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/embeddings/python.go": {
+    "internal/platform/embeddings/python.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/embeddings/siglip_text_embedder.go": {
+    "internal/platform/embeddings/siglip_text_embedder.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/embeddings/siglip_text_embedder_test.go": {
+    "internal/platform/embeddings/siglip_text_embedder_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/cache.go": {
+    "internal/platform/filesystem/cache.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/copy.go": {
+    "internal/platform/filesystem/copy.go": {
       "owners": [
         "core-internal"
       ],
@@ -22935,13 +22935,13 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/hashutil.go": {
+    "internal/platform/filesystem/hashutil.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/hashutil_test.go": {
+    "internal/platform/filesystem/hashutil_test.go": {
       "owners": [
         "core-internal"
       ],
@@ -22983,19 +22983,19 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/pathutil.go": {
+    "internal/platform/filesystem/pathutil.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/pathutil_test.go": {
+    "internal/platform/filesystem/pathutil_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/files/scanner.go": {
+    "internal/platform/filesystem/scanner.go": {
       "owners": [
         "core-internal"
       ],
@@ -23517,169 +23517,169 @@
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/observability/metrics_adapter.go": {
+    "internal/platform/observability/metrics_adapter.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_adapter_test.go": {
+    "internal/platform/observability/metrics_adapter_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_artlist.go": {
+    "internal/platform/observability/metrics_artlist.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_db.go": {
+    "internal/platform/observability/metrics_db.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_delivery.go": {
+    "internal/platform/observability/metrics_delivery.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_jobs.go": {
+    "internal/platform/observability/metrics_jobs.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_media.go": {
+    "internal/platform/observability/metrics_media.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_outbox.go": {
+    "internal/platform/observability/metrics_outbox.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_outbox_test.go": {
+    "internal/platform/observability/metrics_outbox_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_qdrant.go": {
+    "internal/platform/observability/metrics_qdrant.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_recorder.go": {
+    "internal/platform/observability/metrics_recorder.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_registry.go": {
+    "internal/platform/observability/metrics_registry.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_runreports.go": {
+    "internal/platform/observability/metrics_runreports.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_runreports_test.go": {
+    "internal/platform/observability/metrics_runreports_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_scripts.go": {
+    "internal/platform/observability/metrics_scripts.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_step10.go": {
+    "internal/platform/observability/metrics_step10.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_step10_test.go": {
+    "internal/platform/observability/metrics_step10_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_translation.go": {
+    "internal/platform/observability/metrics_translation.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_vidrush.go": {
+    "internal/platform/observability/metrics_vidrush.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_vidrush_test.go": {
+    "internal/platform/observability/metrics_vidrush_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_voiceover.go": {
+    "internal/platform/observability/metrics_voiceover.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/metrics_workers.go": {
+    "internal/platform/observability/metrics_workers.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/progress_ratio_collector.go": {
+    "internal/platform/observability/progress_ratio_collector.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/progress_ratio_collector_test.go": {
+    "internal/platform/observability/progress_ratio_collector_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/run_recorder.go": {
+    "internal/platform/observability/run_recorder.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/run_recorder_test.go": {
+    "internal/platform/observability/run_recorder_test.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/worker_metrics.go": {
+    "internal/platform/observability/worker_metrics.go": {
       "owners": [
         "core-internal"
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/observability/worker_metrics_test.go": {
+    "internal/platform/observability/worker_metrics_test.go": {
       "owners": [
         "core-internal"
       ],
@@ -23697,667 +23697,667 @@
       ],
       "reason": "coverage fallback domain core-internal (internal/)"
     },
-    "internal/infrastructure/qdrant/disasterrecovery/health.go": {
+    "internal/platform/qdrant/disasterrecovery/health.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/asset_store.go": {
+    "internal/platform/qdrant/indexing/asset_store.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/asset_store_batch.go": {
+    "internal/platform/qdrant/indexing/asset_store_batch.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/asset_store_fetch.go": {
+    "internal/platform/qdrant/indexing/asset_store_fetch.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/asset_store_migrations_test.go": {
+    "internal/platform/qdrant/indexing/asset_store_migrations_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/asset_store_reconcile.go": {
+    "internal/platform/qdrant/indexing/asset_store_reconcile.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_airlock.go": {
+    "internal/platform/qdrant/indexing/index_airlock.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_airlock_commit.go": {
+    "internal/platform/qdrant/indexing/index_airlock_commit.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_airlock_release.go": {
+    "internal/platform/qdrant/indexing/index_airlock_release.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_document.go": {
+    "internal/platform/qdrant/indexing/index_document.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_document_test.go": {
+    "internal/platform/qdrant/indexing/index_document_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_to_point.go": {
+    "internal/platform/qdrant/indexing/index_to_point.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_writer.go": {
+    "internal/platform/qdrant/indexing/index_writer.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_writer_ops.go": {
+    "internal/platform/qdrant/indexing/index_writer_ops.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_writer_test.go": {
+    "internal/platform/qdrant/indexing/index_writer_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_writer_types.go": {
+    "internal/platform/qdrant/indexing/index_writer_types.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/index_writer_validate.go": {
+    "internal/platform/qdrant/indexing/index_writer_validate.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder.go": {
+    "internal/platform/qdrant/indexing/payload_builder.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_canonical.go": {
+    "internal/platform/qdrant/indexing/payload_builder_canonical.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_content.go": {
+    "internal/platform/qdrant/indexing/payload_builder_content.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_identity.go": {
+    "internal/platform/qdrant/indexing/payload_builder_identity.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_search.go": {
+    "internal/platform/qdrant/indexing/payload_builder_search.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_semantic.go": {
+    "internal/platform/qdrant/indexing/payload_builder_semantic.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_semanticdoc_test.go": {
+    "internal/platform/qdrant/indexing/payload_builder_semanticdoc_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_tags_test.go": {
+    "internal/platform/qdrant/indexing/payload_builder_tags_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_taxonomy_test.go": {
+    "internal/platform/qdrant/indexing/payload_builder_taxonomy_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_test.go": {
+    "internal/platform/qdrant/indexing/payload_builder_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_builder_vlm.go": {
+    "internal/platform/qdrant/indexing/payload_builder_vlm.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper.go": {
+    "internal/platform/qdrant/indexing/payload_mapper.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_document.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_document.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_document_test.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_document_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_searchtext.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_searchtext.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_searchtext_test.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_searchtext_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_test.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_testhelpers_test.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_testhelpers_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_validation.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_validation.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/payload_mapper_validation_test.go": {
+    "internal/platform/qdrant/indexing/payload_mapper_validation_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/indexing/validate_point_test.go": {
+    "internal/platform/qdrant/indexing/validate_point_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/maintenance/dr_adapter.go": {
+    "internal/platform/qdrant/maintenance/dr_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/maintenance/locator_cleaner.go": {
+    "internal/platform/qdrant/maintenance/locator_cleaner.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/maintenance/locator_cleaner_test.go": {
+    "internal/platform/qdrant/maintenance/locator_cleaner_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/maintenance/reaper.go": {
+    "internal/platform/qdrant/maintenance/reaper.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/maintenance/reaper_test.go": {
+    "internal/platform/qdrant/maintenance/reaper_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/operatorverify/verifier.go": {
+    "internal/platform/qdrant/operatorverify/verifier.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/operatorverify/verifier_test.go": {
+    "internal/platform/qdrant/operatorverify/verifier_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go": {
+    "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer_test.go": {
+    "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go": {
+    "internal/platform/qdrant/qdrantmm/qdrant_indexer.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/qdrantmm/qdrant_semantic.go": {
+    "internal/platform/qdrant/qdrantmm/qdrant_semantic.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/qdrantmm/qdrant_test.go": {
+    "internal/platform/qdrant/qdrantmm/qdrant_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/runtime.go": {
+    "internal/platform/qdrant/runtime.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/collection_types.go": {
+    "internal/platform/qdrant/schema/collection_types.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/collection_wire.go": {
+    "internal/platform/qdrant/schema/collection_wire.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/concept_schema.go": {
+    "internal/platform/qdrant/schema/concept_schema.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/embedding_contract_test.go": {
+    "internal/platform/qdrant/schema/embedding_contract_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/frame_schema.go": {
+    "internal/platform/qdrant/schema/frame_schema.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/frame_schema_helpers.go": {
+    "internal/platform/qdrant/schema/frame_schema_helpers.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/pointid.go": {
+    "internal/platform/qdrant/schema/pointid.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/pointid_test.go": {
+    "internal/platform/qdrant/schema/pointid_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/schema.go": {
+    "internal/platform/qdrant/schema/schema.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/schema_types.go": {
+    "internal/platform/qdrant/schema/schema_types.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/search_types.go": {
+    "internal/platform/qdrant/schema/search_types.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/schema/types.go": {
+    "internal/platform/qdrant/schema/types.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/dead_letter_adapter.go": {
+    "internal/platform/qdrant/search/dead_letter_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/dead_letter_adapter_test.go": {
+    "internal/platform/qdrant/search/dead_letter_adapter_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/embedders.go": {
+    "internal/platform/qdrant/search/embedders.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/embedders_dim_test.go": {
+    "internal/platform/qdrant/search/embedders_dim_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/filter_compiler.go": {
+    "internal/platform/qdrant/search/filter_compiler.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/filter_compiler_test.go": {
+    "internal/platform/qdrant/search/filter_compiler_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/kind.go": {
+    "internal/platform/qdrant/search/kind.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/metrics_adapter.go": {
+    "internal/platform/qdrant/search/metrics_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/search_adapter.go": {
+    "internal/platform/qdrant/search/search_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/search_adapter_test.go": {
+    "internal/platform/qdrant/search/search_adapter_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/searcher.go": {
+    "internal/platform/qdrant/search/searcher.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/searcher_cache_test.go": {
+    "internal/platform/qdrant/search/searcher_cache_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/searcher_hybrid_test.go": {
+    "internal/platform/qdrant/search/searcher_hybrid_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter.go": {
+    "internal/platform/qdrant/search/semantic_asset_search_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter_test.go": {
+    "internal/platform/qdrant/search/semantic_asset_search_adapter_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/semantic_asset_search_convert.go": {
+    "internal/platform/qdrant/search/semantic_asset_search_convert.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/slots_search.go": {
+    "internal/platform/qdrant/search/slots_search.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/search/slots_search_test.go": {
+    "internal/platform/qdrant/search/slots_search_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client.go": {
+    "internal/platform/qdrant/transport/client.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_aliases.go": {
+    "internal/platform/qdrant/transport/client_aliases.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_collections.go": {
+    "internal/platform/qdrant/transport/client_collections.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_dr.go": {
+    "internal/platform/qdrant/transport/client_dr.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_errors.go": {
+    "internal/platform/qdrant/transport/client_errors.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_points.go": {
+    "internal/platform/qdrant/transport/client_points.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_request.go": {
+    "internal/platform/qdrant/transport/client_request.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_scroll.go": {
+    "internal/platform/qdrant/transport/client_scroll.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/client_search.go": {
+    "internal/platform/qdrant/transport/client_search.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/errors.go": {
+    "internal/platform/qdrant/transport/errors.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/pointid_test.go": {
+    "internal/platform/qdrant/transport/pointid_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/qdrant_bm25_e2e_test.go": {
+    "internal/platform/qdrant/transport/qdrant_bm25_e2e_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/qdrant_test.go": {
+    "internal/platform/qdrant/transport/qdrant_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/qdrant_wire_contracts_test.go": {
+    "internal/platform/qdrant/transport/qdrant_wire_contracts_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/transport/registry_retry_classifier.go": {
+    "internal/platform/qdrant/transport/registry_retry_classifier.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/parity_adapter.go": {
+    "internal/platform/qdrant/verification/parity_adapter.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/parity_adapter_test.go": {
+    "internal/platform/qdrant/verification/parity_adapter_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/schema_aliases.go": {
+    "internal/platform/qdrant/verification/schema_aliases.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/schema_registry.go": {
+    "internal/platform/qdrant/verification/schema_registry.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier.go": {
+    "internal/platform/qdrant/verification/verifier.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_counts.go": {
+    "internal/platform/qdrant/verification/verifier_counts.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_counts_test.go": {
+    "internal/platform/qdrant/verification/verifier_counts_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_metadata.go": {
+    "internal/platform/qdrant/verification/verifier_metadata.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_metadata_test.go": {
+    "internal/platform/qdrant/verification/verifier_metadata_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_pr12_qdrant005_test.go": {
+    "internal/platform/qdrant/verification/verifier_pr12_qdrant005_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_projection.go": {
+    "internal/platform/qdrant/verification/verifier_projection.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_projection_test.go": {
+    "internal/platform/qdrant/verification/verifier_projection_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_sample.go": {
+    "internal/platform/qdrant/verification/verifier_sample.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_sample_test.go": {
+    "internal/platform/qdrant/verification/verifier_sample_test.go": {
       "owners": [
         "qdrant"
       ],
       "reason": "registry paths"
     },
-    "internal/infrastructure/qdrant/verification/verifier_test.go": {
+    "internal/platform/qdrant/verification/verifier_test.go": {
       "owners": [
         "qdrant"
       ],

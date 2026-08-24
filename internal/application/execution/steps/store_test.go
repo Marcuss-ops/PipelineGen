@@ -4,7 +4,7 @@
 // godlike/06 SSOT: tests use FakeStore (an in-memory implementation that
 // satisfies Store via Go's duck-typing). No `database/sql` is touched in
 // this file; the SQLite concrete has its own integration tests in
-// internal/infrastructure/database/sqlite/executionsteps/repository_test.go.
+// internal/platform/sqlite/executionsteps/repository_test.go.
 //
 // godlike/07 typed-error contract: every test asserts sentinel errors
 // via errors.Is() so a future port evolution that wraps the error in

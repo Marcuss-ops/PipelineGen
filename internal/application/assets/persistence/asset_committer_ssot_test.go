@@ -93,7 +93,7 @@ func openSSOTDB(t *testing.T) *sql.DB {
 func TestCommitAsset_OnlyCanonicalProducerOfAllFourWrites(t *testing.T) {
 	db := openSSOTDB(t)
 	// The persistence.AssetCommitter SQLite impl lives in
-	// internal/infrastructure/database/sqlite/assets; we use a
+	// internal/platform/sqlite/assets; we use a
 	// thin local stub here that implements the port directly so
 	// the test exercises the port contract, not the SQL
 	// implementation details. The SQLite impl is exercised

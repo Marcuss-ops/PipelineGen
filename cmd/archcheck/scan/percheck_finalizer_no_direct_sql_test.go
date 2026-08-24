@@ -6,7 +6,7 @@
 //	    finalizer package that contains `INSERT INTO media_assets`
 //	    (or asset_locations / outbox_events) emits a violation.
 //	(b) "canonical committer is exempt" — the canonical
-//	    internal/infrastructure/database/sqlite/assets/asset_committer.go
+//	    internal/platform/sqlite/assets/asset_committer.go
 //	    is exempt (it IS the SSOT).
 //	(c) "comment-only is residue-accounted" — a comment-only line
 //	    that mentions the forbidden table names does NOT emit a
@@ -81,7 +81,7 @@ func (LegacySQLProbe) Probe() string {
 // for that file.
 func TestScanFinalizerNoDirectSQL_CanonicalCommitterExempt(t *testing.T) {
 	tmp := t.TempDir()
-	canonicalDir := filepath.Join(tmp, "internal/infrastructure/database/sqlite/assets")
+	canonicalDir := filepath.Join(tmp, "internal/platform/sqlite/assets")
 	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
 		t.Fatalf("mkdir canonical: %v", err)
 	}
@@ -105,7 +105,7 @@ func (CanonicalAssetCommitterProbe) Commit() string {
 	ScanFinalizerNoDirectSQL(tmp, &policy.Policy{}, r)
 
 	for _, v := range r.Violations {
-		if v.File == "internal/infrastructure/database/sqlite/assets/asset_committer.go" {
+		if v.File == "internal/platform/sqlite/assets/asset_committer.go" {
 			t.Errorf("canonical AssetCommitter file should be exempt; got violation=%+v", v)
 		}
 	}

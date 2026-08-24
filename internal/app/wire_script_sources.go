@@ -30,9 +30,9 @@
 //     (curate-resolver search input shape).
 //   - internal/kernel/script: SearchResultItem
 //     (typed curatior-resolver search output shape).
-//   - internal/infrastructure/qdrant: Searcher + IndexWriter +
+//   - internal/platform/qdrant: Searcher + IndexWriter +
 //     NewTextEmbedderAdapter (Qdrant-backed engine ports).
-//   - internal/infrastructure/database/sqlite/assets:
+//   - internal/platform/sqlite/assets:
 //     *ClipsRepository (SQLite-backed clip index).
 package app
 
@@ -45,8 +45,8 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )

@@ -111,7 +111,7 @@ measurements:
   - current_symbol: "processmetrics.Metric"
     current_owner: "internal/application/processmetrics"
     current_writer: "RecorderImpl.Start/Handle.End; stockpipeline phase helpers"
-    current_storage: "SQLite process_phase_metrics row via internal/infrastructure/database/sqlite/processmetrics"
+    current_storage: "SQLite process_phase_metrics row via internal/platform/sqlite/processmetrics"
     current_metric: "none directly; durable process-phase record"
     canonical_type: stage
     canonical_stage: "phase mapped from process_type and phase"
@@ -157,7 +157,7 @@ measurements:
     removal_condition: "COUNTERS_PERSISTED=PASS and no independent processmetrics counter is read by production consumers"
 
   - current_symbol: "process_phase_metrics.details_json"
-    current_owner: "internal/infrastructure/database/sqlite/processmetrics"
+    current_owner: "internal/platform/sqlite/processmetrics"
     current_writer: "SQLiteRepository.Insert/Update in repository.go:110-158"
     current_storage: "SQLite process_phase_metrics.details_json TEXT"
     current_metric: "free-form process-specific details; may contain timing-shaped values"
@@ -205,7 +205,7 @@ measurements:
     removal_condition: "The migration-only GenerateOneUseCase path no longer writes GenerationTimings audio fields and every durable/API consumer reads AudioPipelineMetrics.audio_metrics"
 
   - current_symbol: "script_generation_logs.duration_ms"
-    current_owner: "internal/infrastructure/database/sqlite/scripts"
+    current_owner: "internal/platform/sqlite/scripts"
     current_writer: "ScriptRepository.SaveGenerationLog in scripts/logs.go"
     current_storage: "SQLite script_generation_logs.duration_ms with phase, retry_count, cache_status"
     current_metric: "durable generation log duration_ms"
@@ -338,7 +338,7 @@ measurements:
 
   - current_symbol: "ConnectionWaitSeconds"
     current_owner: "internal/platform/observability/metrics_db.go"
-    current_writer: "instrumented SQLite pool acquire path in internal/infrastructure/database/sqlite/pool.go:284-294"
+    current_writer: "instrumented SQLite pool acquire path in internal/platform/sqlite/pool.go:284-294"
     current_storage: "Prometheus histogram"
     current_metric: "connection_wait_seconds{op}"
     canonical_type: infrastructure_metric
@@ -685,7 +685,7 @@ measurements:
     removal_condition: "No diagnostic consumer uses ProbeResult.ElapsedMs as pipeline timing"
 
   - current_symbol: "API transport DurationMs / request log duration_ms"
-    current_owner: "api/transport and infrastructure/database/sqlite/logsink"
+    current_owner: "api/transport and platform/sqlite/logsink"
     current_writer: "api/transport/models.go handlers and sqlite_request_log_sink.go"
     current_storage: "HTTP response DTOs and SQLite request log table"
     current_metric: "duration_ms plus bytes_in/bytes_out in request logs"
@@ -721,7 +721,7 @@ measurements:
     removal_condition: "Cache freshness checks are not mistaken for provider wait and all hit/miss events have one canonical writer"
 
   - current_symbol: "database backup/rotation DurationMs"
-    current_owner: "internal/infrastructure/database backup.go and rotation.go"
+    current_owner: "internal/platform/sqlite backup.go and rotation.go"
     current_writer: "backup/rotation service methods"
     current_storage: "Backup/rotation result structs and logs"
     current_metric: "result DurationMs"
@@ -901,7 +901,7 @@ measurements:
     removal_condition: "DRIVE_OBSERVED=PASS across every Publisher.Publish caller and static scan finds no local Drive timer outside the wrapper"
 
   - current_symbol: "Google Docs DocClient.CreateDoc/UpdateDoc timing"
-    current_owner: "internal/infrastructure/drive/doc_client.go and application/assets/delivery/doc_publisher.go"
+    current_owner: "internal/platform/drive/doc_client.go and application/assets/delivery/doc_publisher.go"
     current_writer: "DocClient and DocPublisher call sites; no direct timing writer found in the current search"
     current_storage: "No canonical durable timing; document result structs/logs"
     current_metric: "none consistently"
@@ -1010,7 +1010,7 @@ measurements:
 
   - current_symbol: "DeletionReconcilerDuration"
     current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "internal/infrastructure/database/sqlite/deletion/metrics_adapter.go RecordRunComplete"
+    current_writer: "internal/platform/sqlite/deletion/metrics_adapter.go RecordRunComplete"
     current_storage: "Prometheus histogram"
     current_metric: "deletion_reconciler_duration_seconds"
     canonical_type: infrastructure_metric

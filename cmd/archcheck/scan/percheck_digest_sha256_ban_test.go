@@ -77,7 +77,7 @@ func TestScanDigestSHA256Ban_TLSProtocolExempt(t *testing.T) {
 	cases := []string{
 		"pkg/hmacsign/signer.go",
 		"pkg/tlsload/tlsload.go",
-		"internal/infrastructure/delivery/signer.go",
+		"internal/platform/delivery/signer.go",
 	}
 	for _, rel := range cases {
 		root := t.TempDir()

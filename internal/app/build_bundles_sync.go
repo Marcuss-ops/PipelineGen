@@ -18,7 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

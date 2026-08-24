@@ -7,11 +7,11 @@
       "deadline": "2026-09-30",
       "baseline_files": 125,
       "baseline": {
-        "files": 117,
+        "files": 125,
         "max_loc": 17092
       },
       "current": {
-        "files": 117,
+        "files": 125,
         "max_loc": 14618
       },
       "target_packages": [
@@ -144,30 +144,56 @@
       ]
     },
     {
-      "path": "internal/infrastructure/database/sqlite/assets",
-      "owner": "internal/infrastructure/database/sqlite/assets",
-      "deadline": "2026-09-30",
-      "baseline_files": 50,
+      "path": "internal/platform/delivery",
+      "owner": "Asset-delivery URL signing + destination registry (migrated from infrastructure)",
+      "deadline": "2026-12-31",
+      "baseline_files": 9,
       "baseline": {
-        "files": 50,
+        "files": 9,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 9,
+        "max_loc": 0
+      },
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure→platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry."
+    },
+    {
+      "path": "internal/platform/embeddings",
+      "owner": "Text-embedding adapters (migrated from infrastructure)",
+      "deadline": "2026-12-31",
+      "baseline_files": 5,
+      "baseline": {
+        "files": 5,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 5,
+        "max_loc": 0
+      },
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure→platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe)."
+    },
+    {
+      "path": "internal/platform/sqlite/assets",
+      "owner": "SQLite asset persistence (migrated from infrastructure)",
+      "deadline": "2026-09-30",
+      "baseline_files": 51,
+      "baseline": {
+        "files": 51,
         "max_loc": 9659
       },
       "current": {
-        "files": 50,
+        "files": 51,
         "max_loc": 9659
       },
       "target_packages": [
-        "internal/infrastructure/database/sqlite/assets/clips",
-        "internal/infrastructure/database/sqlite/assets/catalog",
-        "internal/infrastructure/database/sqlite/assets/artifacts",
-        "internal/infrastructure/database/sqlite/assets/delivery",
-        "internal/infrastructure/database/sqlite/assets/maintenance"
+        "internal/platform/sqlite/assets/artlist",
+        "internal/platform/sqlite/assets/channels",
+        "internal/platform/sqlite/assets/crypto",
+        "internal/platform/sqlite/assets/imagesregistry",
+        "internal/platform/sqlite/assets/txmutation"
       ],
-      "completed_packages": [
-        "internal/infrastructure/database/sqlite/assets/clips"
-      ],
-      "note": "ClipsRepository migration completed: the parent assets package is the sole owner of ClipsRepository business logic; assets/clips remains only for the independent idempotency adapter and is guarded against duplicate implementations/imports.",
-      "remaining_files": 47
+      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure→platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
     }
   ],
   "root_migrations": [
@@ -191,11 +217,8 @@
       "targets": [
         "internal/capabilities"
       ],
-      "note": "Correctness fixes for multi-provider research fallback (August 2026): identity_resolver.go, query_planner.go added to scripts/usecase as active-development zone for research pipeline.",
-      "new_files_approved": [
-        "internal/application/scripts/usecase/identity_resolver.go",
-        "internal/application/scripts/usecase/query_planner.go"
-      ]
+      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. Approved additions for multi-provider research fallback remain in place.",
+      "new_files_approved": []
     },
     {
       "path": "internal/infrastructure",
@@ -256,6 +279,36 @@
       "targets": [
         "internal/kernel",
         "internal/capabilities"
+      ]
+    },
+    {
+      "path": "internal/infrastructure/delivery",
+      "owner": "delivery migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Directory deleted. 3 files migrated to internal/platform/delivery (signer.go, signer_test.go, workspace.go). Archcheck digest-sha256-ban exemption updated. Asset-delivery URL signing + WorkspaceContext alias under single canonical owner.",
+      "targets": [
+        "internal/platform/delivery"
+      ]
+    },
+    {
+      "path": "internal/infrastructure/embeddings",
+      "owner": "embeddings migration owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "Directory deleted. 5 files migrated to internal/platform/embeddings (http_text_embedder.go, ollama_adapter.go, python.go, siglip_text_embedder.go + test). 7 Go imports updated, 5 comment references synced.",
+      "targets": [
+        "internal/platform/embeddings"
+      ]
+    },
+    {
+      "path": "internal/platform/sqlite",
+      "owner": "sqlite canonical platform owner",
+      "completed_at": "2026-08-24",
+      "status": "COMPLETED",
+      "resolution": "SQLite fully migrated from internal/infrastructure/database/sqlite to canonical internal/platform/sqlite. 7 import statements updated across 7 files. Archcheck gates updated (percheck_brain_infra_ban, percheck_asset_committer_event_ssot, percheck_control_plane_sql_writes, percheck_finalizer_no_direct_sql, percheck_sqlite_assets_clips_duplicate, percheck_legacy_root_ban). config/verify-components.json test paths corrected. docs/operations runbooks updated.",
+      "targets": [
+        "internal/platform/sqlite"
       ]
     }
   ]

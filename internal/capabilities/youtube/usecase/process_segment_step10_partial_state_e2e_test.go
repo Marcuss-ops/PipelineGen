@@ -18,10 +18,10 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //   - media_assets table schema is inlined in openPartialStateDB; it
 //     mirrors the canonical 17-column shape in
-//     internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go::upsertClipInTx.
+//     internal/platform/sqlite/assets/clip_atomic_writer.go::upsertClipInTx.
 //   - outbox_events table schema is inlined in openPartialStateDB; it
 //     mirrors the canonical shape in
-//     internal/infrastructure/database/sqlite/outboxevents/repository.go::Enqueue.
+//     internal/platform/sqlite/outboxevents/repository.go::Enqueue.
 //   - future schema changes that break this test are the canonical
 //     signal that the E2E companion needs to be updated in lockstep
 //     (the test is the regression guard, not the source of truth).

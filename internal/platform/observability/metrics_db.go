@@ -96,7 +96,7 @@ var (
 	// SqliteBusyTotal counts SQLITE_BUSY / SQLITE_LOCKED errors
 	// returned from the driver surface, classified by the
 	// canonical classifySQLiteError at
-	// internal/infrastructure/database/sqlite/registry_retry_classifier.go.
+	// internal/platform/sqlite/registry_retry_classifier.go.
 	//
 	// Operator reads:
 	//   - rising op=writer busy_total → writer contention: a

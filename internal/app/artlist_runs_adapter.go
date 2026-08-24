@@ -3,7 +3,7 @@
 // Composition-root adapter that bridges
 //
 //	artlist.RunRepository (port in internal/capabilities/assets/providers/artlist/ports.go)
-//	sqlite/assets.RunRepository (infra side: internal/infrastructure/database/sqlite/assets/artlist_runs_repository.go)
+//	sqlite/assets.RunRepository (infra side: internal/platform/sqlite/assets/artlist_runs_repository.go)
 //
 // Without this adapter, the import cycle would be: artlist pkg imports
 // sqlite/assets pkg (for ClipsRepository) AND sqlite/assets pkg's

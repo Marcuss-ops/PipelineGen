@@ -15,7 +15,7 @@
 // godlike/06 SSOT (one canonical owner per fact): the schema version
 // constant AssetPublishedSchemaVersion is re-declared as the parallel
 // canonical constant outboxevents.SchemaVersionAssetPublished at
-// internal/infrastructure/database/sqlite/outboxevents/registry.go
+// internal/platform/sqlite/outboxevents/registry.go
 // (the registry is the sole owner of the wire-shape string). Both
 // constants MUST resolve to the same string literal — any drift
 // surfaces as a build failure during the Compilation contract check.

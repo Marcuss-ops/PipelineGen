@@ -231,7 +231,7 @@ func TestBindingServiceCreateRejectsUnknownConcept(t *testing.T) {
 // ErrDuplicateBinding surfaces ONLY from
 // CandidateRepository.UpsertInsert (raw INSERT path), not from
 // this binding surface — verified via the SQLite concrete in
-// internal/infrastructure/database/sqlite/mediamemory/bindings_repository.go.
+// internal/platform/sqlite/mediamemory/bindings_repository.go.
 // The corresponding architecture-doc clause is documented as an
 // aspirational contract that the redesign will emit (Phase 3.x).
 

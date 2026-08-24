@@ -8,7 +8,7 @@ import (
 	"time"
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -20,7 +20,7 @@ import (
 // architecture/current.yaml#PR-VO-PARENT-STATE-COLUMN).
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): the SQL layer
-// (infrastructure/database/sqlite/jobs) cannot import the voiceover
+// (platform/sqlite/jobs) cannot import the voiceover
 // application package due to canonical layering (application →
 // infrastructure is the only legal direction). So this package-private
 // constant is the SQL-side mirror of

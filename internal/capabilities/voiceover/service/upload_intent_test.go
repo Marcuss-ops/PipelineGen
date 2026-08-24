@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )

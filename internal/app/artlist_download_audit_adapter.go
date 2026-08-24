@@ -1,7 +1,7 @@
 // Package app — artlist_download_audit_adapter.go
 //
 // Bridges the application-layer artlist.DownloadAuditRepository port to the
-// SQLite concrete in internal/infrastructure/database/sqlite/assets.
+// SQLite concrete in internal/platform/sqlite/assets.
 package app
 
 import (

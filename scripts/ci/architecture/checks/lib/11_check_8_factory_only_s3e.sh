@@ -14,7 +14,7 @@
 # tests, etc.).
 #
 # Canonical factory sites (explicitly allowlisted):
-#   - internal/infrastructure/database/assetindex/resolver.go
+#   - internal/platform/sqlite/assetindex/resolver.go
 #   - internal/app/build_bundles_core.go
 #
 # Both canonical sites are composition-root concerns: they construct the
@@ -45,7 +45,7 @@ echo "=== Check 8 (factory-only, S3e): forbid literal map[string]*assets.ClipsRe
 all_hits=$(rg -n --type go \
     -e 'map\[string\]\*assets\.ClipsRepository\{' \
     --glob '!**/*_test.go' \
-    --glob '!**/infrastructure/database/assetindex/resolver.go' \
+    --glob '!**/platform/sqlite/assetindex/resolver.go' \
     --glob '!**/app/build_bundles_core.go' \
     internal/application internal/api 2>/dev/null \
     || true)

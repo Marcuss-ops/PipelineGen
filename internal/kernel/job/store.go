@@ -135,7 +135,7 @@ type Store interface {
 // Phase A.2 (June 2026): canonical home is internal/kernel/job/.
 //
 // Today the in-tree adapter is *SQLiteStore
-// (internal/infrastructure/database/sqlite/jobs/repository.go).
+// (internal/platform/sqlite/jobs/repository.go).
 // A future PostgreSQL adapter (post-godlike/06 multi-node) declares
 // the same assertion in its own repository file; the assertion + the
 // shared Store interface are the seam that lets the application

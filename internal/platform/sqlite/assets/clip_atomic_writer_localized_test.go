@@ -73,7 +73,7 @@ import (
 // match the produced migration 144 (the writer itself does not
 // read segments). The partial unique index
 // idx_asset_text_tracks_current (WHERE is_current = 1) matches the
-// canonical schema from internal/infrastructure/database/canonical.go.
+// canonical schema from internal/platform/sqlite/canonical.go.
 const localizedClipWriterSchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,

@@ -6,7 +6,7 @@
 // to implement the Idempotency-Key + body-hash + 24h-replay
 // pattern across all write handlers. Per AGENTS.md Pattern 0 the
 // port is defined here and the concrete SQLite adapter lives in
-// internal/infrastructure/database/sqlite/idempotency. The Gin
+// internal/platform/sqlite/idempotency. The Gin
 // middleware in internal/api/middleware/idempotency.go consumes
 // only this port, never a concrete repo (compile-time assertion
 // below pins the contract).
@@ -60,7 +60,7 @@ type IdempotencyRecord struct {
 // IdempotencyStore is the canonical port consumed by the Gin
 // idempotency middleware. The middleware imports only this port;
 // the concrete SQLite-backed implementation lives in
-// internal/infrastructure/database/sqlite/idempotency.
+// internal/platform/sqlite/idempotency.
 //
 // Implementations MUST:
 //   - atomic TryInsert with PRIMARY KEY constraint (SQLite "INSERT

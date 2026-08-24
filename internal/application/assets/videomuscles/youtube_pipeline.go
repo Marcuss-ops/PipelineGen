@@ -12,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )

@@ -2,7 +2,7 @@
 // bulk YouTube uploader + image ingest drift-fix, July 2026).
 //
 // Forward-prevention per-check that BANS the import of
-// `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant`
+// `github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant`
 // from `internal/application/**` packages. The literal symbols
 // `qdrant.IndexClip` / `qdrant.UpsertPoints` / `qdrant.WriteQdrant`
 // are the canonical qdrant-write operations; per godlike/06
@@ -128,11 +128,11 @@ const qdrantImportBanScope = "internal/application/"
 // qdrantImportPath is the literal import path the gate detects.
 // The regex anchors on this fully-qualified package path + the
 // closing quote (so an import like
-// `"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport/client"`
+// `"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport/client"`
 // is matched at the literal line carrying the import statement
 // — the `(/|\")` terminator handles both the bare-package form
 // and path-subpackage forms, e.g. x/foo or x/foo/bar).
-const qdrantImportPath = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+const qdrantImportPath = "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 
 // qdrantImportBanRe matches the import line shape. The pattern
 // is an isolated string-literal test — only lines carrying the
@@ -180,7 +180,7 @@ const qdrantImportBanRule = "percheck_qdrant_index_import_ban"
 // because the canonical surface is outbox-mediated. godlike/06
 // SSOT forbids direct apply-layer → infra-layer writes except via
 // the canonical outbox consumer.
-const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/application/assets/finalizer/asset_finalizer_outbox.go::(*AssetTxFinalizer).insertOutboxEvent) THEN the canonical consumer at internal/application/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/application/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
+const qdrantImportBanNote = "forbidden import of github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant from a non-exempt application package; the canonical write surface is CommitAsset (call site emits via internal/application/assets/finalizer/asset_finalizer_outbox.go::(*AssetTxFinalizer).insertOutboxEvent) THEN the canonical consumer at internal/application/jobs/outbox/indexing_handle.go routes the outbox envelope (asset.index.* / asset.points.upserted event types) to the qdrant adapter in the same SQLite TX. Exempt zones per user directive + godlike/06 SSOT: cmd/admin/** (operator tooling) + internal/application/jobs/outbox/** (canonical outbox→qdrant emitter). Note: the gate widens the user literal 'vieta import di qdrant.IndexClip' to ban ALL infra/qdrant imports from internal/application/** because any apply-layer → infra-layer write (other than via the outbox consumer) is godlike/06 SSOT-forbidden."
 
 // qdrantImportBanWarnBucket is the centralized residue-emitter.
 // Mirrors assetStateWarn + percheck_binder_scene_field_writes's
@@ -210,7 +210,7 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 // `github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr`
 // (the application-layer mirror) are out of scope — they're
 // application types and may be imported freely. Only the literal
-// `internal/infrastructure/qdrant` import is banned.
+// `internal/platform/qdrant` import is banned.
 func ScanQdrantIndexImportBan(root string, pol *policy.Policy, r *report.Report) {
 	_ = pol // reserved for future SeverityOverride plumbing.
 

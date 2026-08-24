@@ -301,7 +301,7 @@ func (m *dbTxManagerForTest) BeginTx(ctx context.Context) (*sql.Tx, error) {
 
 // schemasFASE2ForTest is the inline mirror of migrations/sqlite/092
 // (outbox_events), 145 (operations), and the canonical jobs
-// table from `internal/infrastructure/database/sqlite/jobs`. Kept
+// table from `internal/platform/sqlite/jobs`. Kept
 // in lockstep with the production migrations.
 const schemasFASE2ForTest = `
 CREATE TABLE operations (

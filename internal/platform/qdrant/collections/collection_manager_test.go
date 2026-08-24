@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +29,7 @@ func TestCollectionManager_SwitchAlias_RequiresRegisteredProjection(t *testing.T
 // (TestCollectionManager_RollbackAlias retired — PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE 2026-07-10;
 //  the wrapper it tested was also retired — see collection_rollback.go. The
 //  canonical typed-port contract is RollbackCandidate, tested via the
-//  integration surface at internal/infrastructure/qdrant/collections/collection_manager_bluegreen_test.go.)
+//  integration surface at internal/platform/qdrant/collections/collection_manager_bluegreen_test.go.)
 
 func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 	t.Parallel()

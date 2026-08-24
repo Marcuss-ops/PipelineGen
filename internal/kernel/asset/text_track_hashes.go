@@ -18,7 +18,7 @@ package asset
 //
 // godlike/07 honest lock: the SQLite repository accepts TextHash and
 // SourceVersion VERBATIM (it does not compute them — see
-// internal/infrastructure/database/sqlite/assets/text_track_repository.go
+// internal/platform/sqlite/assets/text_track_repository.go
 // and the schema DDL in migration 137). If a caller recomputes these
 // values inline they will silently drift from the canonical formula
 // here → split-brain idempotency keys → unbounded re-translation.

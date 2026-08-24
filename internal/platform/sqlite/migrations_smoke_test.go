@@ -60,7 +60,7 @@ func TestMigrations_Smoke_Baseline(t *testing.T) {
 		t.Fatalf("resolve migrations dir from %s: %v", migrationsDirFrom, err)
 	}
 	if _, err := os.Stat(targetDir); err != nil {
-		t.Fatalf("migrations dir %s not accessible (test must be invoked with cwd = internal/infrastructure/database): %v", targetDir, err)
+		t.Fatalf("migrations dir %s not accessible (test must be invoked with cwd = internal/platform/sqlite): %v", targetDir, err)
 	}
 	log := zaptest.NewLogger(t)
 

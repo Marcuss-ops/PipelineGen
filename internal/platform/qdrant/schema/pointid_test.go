@@ -21,7 +21,7 @@
 //
 // godlike/06 SSOT: this test co-locates with the implementation
 // (pointid.go) under the canonical schema package. Companion
-// tests at internal/infrastructure/qdrant/transport/pointid_test.go
+// tests at internal/platform/qdrant/transport/pointid_test.go
 // pin the function's binary-level invariants for the transport
 // adapter; tests above pin the NEW sha256-era wire shape for the
 // boundary function itself.

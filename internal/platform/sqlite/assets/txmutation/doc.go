@@ -81,7 +81,7 @@
 //     (uses outbox.Dispatcher, which routes via the safe path).
 //   - internal/api/**             — MUST NOT import this package
 //     (admin tooling runs offline via cmd/admin/**).
-//   - internal/infrastructure/database/sqlite/admin/ purge.go — the
+//   - internal/platform/sqlite/admin/ purge.go — the
 //     only legitimate caller (QDRANT-asset-mutation isolation, June
 //     2026).
 //

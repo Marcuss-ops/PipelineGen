@@ -14,7 +14,7 @@
 -- SQLite schema validation which references the orphan view and fails
 -- with: `error in view media_index_outbox_pending: no such table:
 -- main.media_index_outbox`. This was surfaced by
--- internal/infrastructure/database/migrations_test.go::
+-- internal/platform/sqlite/migrations_test.go::
 -- TestMigrations_Smoke/ForeignKeysCheck when migration 090's
 -- ALTER TABLE job_assets RENAME TO job_assets_v090_tmp ran against
 -- a fresh schema.

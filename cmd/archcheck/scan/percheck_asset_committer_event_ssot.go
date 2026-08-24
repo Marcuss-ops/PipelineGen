@@ -42,7 +42,7 @@
 //   - skip the canonical AssetCommitter files (the SOLE
 //     authority on the event_type string).
 //   - skip the canonical outboxevents package
-//     (internal/infrastructure/database/sqlite/outboxevents)
+//     (internal/platform/sqlite/outboxevents)
 //     — the constants `EventAssetIndexRequested` are the
 //     single source of truth for the literal value; the
 //     package IS the SSOT definition site.
@@ -100,7 +100,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	// 2. The canonical outboxevents package — the constants
 	//    that define EventAssetIndexRequested as the literal
 	//    value (single source of truth for the literal value).
-	"internal/infrastructure/database/sqlite/outboxevents/",
+	"internal/platform/sqlite/outboxevents/",
 	// 3. Mutations.AssetMutationDispatcher — the canonical
 	//    envelope surface (EnqueueAndIndex emits the canonical
 	//    envelope inside the commit pipeline).
@@ -139,7 +139,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	// 10. Qdrant search dead-letter adapter — references the
 	//     literal event_type for classification (NOT for
 	//     emission).
-	"internal/infrastructure/qdrant/search/",
+	"internal/platform/qdrant/search/",
 	// 11. Tests folder — regression-guard fixtures that
 	//     legitimately reference the literal.
 	"tests/",

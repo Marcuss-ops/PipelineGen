@@ -7,7 +7,7 @@
 //
 // Production wiring (composition root):
 //
-//	Scanner         ← internal/infrastructure/database/sqlite/deletion/stuck_row_scanner.go
+//	Scanner         ← internal/platform/sqlite/deletion/stuck_row_scanner.go
 //	                   (ListStuckRows against media_assets)
 //	OutboxEnqueuer  ← *outbox.Dispatcher (EnqueueDriveDelete + EnqueueIndexDelete)
 //

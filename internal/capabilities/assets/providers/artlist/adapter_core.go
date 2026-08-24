@@ -8,5 +8,5 @@
 //	searcher_mapping.go shared candidate mapping helpers
 //
 // Production SQLite construction lives in
-// infrastructure/database/sqlite/artlist_searcher.go.
+// platform/sqlite/artlist_searcher.go.
 package artlist

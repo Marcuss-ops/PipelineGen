@@ -19,7 +19,7 @@
 // godlike/06 SSOT: the typed column name lives ONLY in
 // internal/application/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn
 // (canonical) + the SQL mirror
-// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go::parentStateTypedColumn
+// internal/platform/sqlite/jobs/repository_lifecycle.go::parentStateTypedColumn
 // (package-private). Both constants MUST equal "parent_state_typed"
 // (the cross-package drift test was DROPPED per godlike/07 minimum-
 // blast-radius — see repository_lifecycle_dualwrite_test.go header).

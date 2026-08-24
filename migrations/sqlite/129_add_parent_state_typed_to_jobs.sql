@@ -14,7 +14,7 @@
 --   2. Writers CONTINUE to write resultMap["parent_state"] in the
 --      JSON result column (back-compat with existing readers).
 --   3. The SQL layer implementation of FinalizeAggregateParent
---      (in internal/infrastructure/database/sqlite/jobs/aggregate_parent.go)
+--      (in internal/platform/sqlite/jobs/aggregate_parent.go)
 --      is a forward-pointer: PR-P1.2-SQL-DUAL-WRITE, deadline 2026-08-15.
 --      The follow-up PR will read resultMap["parent_state"] and write
 --      the same value to parent_state_typed in the SAME transaction.

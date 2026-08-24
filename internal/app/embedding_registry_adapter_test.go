@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 )
 
 // stubTextEmbedder is the canonical test double for qdrant.TextEmbedder.

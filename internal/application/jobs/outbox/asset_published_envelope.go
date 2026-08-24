@@ -6,7 +6,7 @@
 //
 //   - AssetPublishedSchemaVersion lives ONLY in this file. The
 //     PARALLEL canonical constant outboxevents.SchemaVersionAssetPublished
-//     at internal/infrastructure/database/sqlite/outboxevents/registry.go
+//     at internal/platform/sqlite/outboxevents/registry.go
 //     is the registry's sole owner of the wire-shape string; this
 //     local re-export lets the handler's body reference the constant
 //     by an ergonomic short name without importing the registry's

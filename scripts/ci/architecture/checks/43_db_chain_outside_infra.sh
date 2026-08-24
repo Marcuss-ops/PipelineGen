@@ -4,12 +4,12 @@
 # calls outside internal/infrastructure/.
 #
 # The canonical SQL surface is *sql.DB directly, owned by
-# internal/infrastructure/database/sqlite/** only. Any production code
+# internal/platform/sqlite/** only. Any production code
 # outside infrastructure that chains .DB().QueryContext( (or .DB().ExecContext,
 # .DB().Query, .DB().Exec, .DB().QueryRow, .DB().QueryRowContext, .DB().Prepare,
 # .DB().PrepareContext) is a layering leak — SQL access must flow through
 # typed ports declared in the application layer (internal/application/*/ports/)
-# and implemented by infrastructure adapters (internal/infrastructure/database/**).
+# and implemented by infrastructure adapters (internal/platform/sqlite/**).
 #
 # Allowlist:
 #   - internal/infrastructure/** : canonical owner of SQL
@@ -42,7 +42,7 @@ if [ -n "$hits" ]; then
     echo ""
     echo "Fix: SQL must flow through typed ports in"
     echo "      internal/application/<consumer>/ports/ with the adapter in"
-    echo "      internal/infrastructure/database/<feature>/, wired at the"
+    echo "      internal/platform/sqlite/<feature>/, wired at the"
     echo "      composition root (internal/app/)."
     exit 1
 fi

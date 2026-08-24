@@ -4,7 +4,7 @@
 // P0-3 (godlike/07 zero-legacy): the persistent cache no longer
 // inflates *sql.DB into the application layer; consumers pass a
 // typed port that the concrete SQLite adapter at
-// internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go
+// internal/platform/sqlite/artlist_search_cache_adapter.go
 // satisfies. Pattern A from the verdict (Tier-A migration) lands
 // here; the deadline-15-luglio-2026 allowlist entry for
 // internal/capabilities/assets/providers/artlist/search_cache.go

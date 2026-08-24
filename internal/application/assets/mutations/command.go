@@ -21,7 +21,7 @@
 // steps are STRUCTURALLY-BLOCKED at the time of writing:
 //
 //  1. upsertClipTx MUST stay public because the canonical
-//     outbox.Dispatcher (internal/infrastructure/database/sqlite/outbox/
+//     outbox.Dispatcher (internal/platform/sqlite/outbox/
 //     repository.go) calls it cross-package inside the dispatcher's tx.
 //     Lowercasing it would break the build.
 //  2. hardDeleteTx / restoreTx are ALREADY removed from *ClipsRepository

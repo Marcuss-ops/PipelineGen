@@ -129,7 +129,7 @@ echo "OK: no SetOutboxHandler / SetMediasearchHandler calls outside the canonica
 #
 # Allowlist:
 #   - internal/app/**                : composition root (Build*Bundle constructors).
-#   - internal/infrastructure/database/sqlite/outbox/** : canonical dispatcher impl.
+#   - internal/platform/sqlite/outbox/** : canonical dispatcher impl.
 #   - *_test.go                      : test fixtures may stub nil dispatcher.
 #   - cmd/admin/**                   : one-shot operator tooling.
 #   - tests/fixtures/zero_legacy/**  : self-check fixtures.
@@ -139,7 +139,7 @@ nilDispatcher=$(rg -nU --type go \
     --glob '!**/*_test.go' \
     --glob '!**/cmd/admin/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/app/|internal/infrastructure/database/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
+    | grep -Ev '^\./(internal/app/|internal/platform/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -166,7 +166,7 @@ echo "OK: no nil-dispatcher silent fallback patterns outside composition/test/al
 # dispatcher) risks silently writing to media_assets without an outbox event,
 # leaving the Qdrant vector stale.
 #
-# Allowlist: cmd/admin/**, internal/infrastructure/database/sqlite/**,
+# Allowlist: cmd/admin/**, internal/platform/sqlite/**,
 # internal/application/{assets/{ingest,jobs/assets,artifacts,providers,searchqueries,catalogsync},
 # voiceover,channels,images,youtube,clips}/**, internal/api/assets/**,
 # internal/app/**, internal/infrastructure/{ai/autotag,database/assetindex}/**,
@@ -175,7 +175,7 @@ echo "=== Check 10: forbid asset-repo Upsert outside canonical allowlist (TODO 1
 assetUpserts=$(rg -n --type go \
     -e '\.Upsert\(ctx,' \
     --glob '!**/cmd/admin/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/**' \
+    --glob '!**/internal/platform/sqlite/**' \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
@@ -190,11 +190,11 @@ assetUpserts=$(rg -n --type go \
     --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
     --glob '!**/internal/infrastructure/ai/autotag/**' \
-    --glob '!**/internal/infrastructure/database/assetindex/**' \
+    --glob '!**/internal/platform/sqlite/assetindex/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/application/mediamemory/|internal/application/indexing/|internal/application/assets/reconciliation/voiceover/|internal/application/assets/texttracks/|internal/application/assets/sourcing/youtube/|internal/infrastructure/drive/)' \
+    | grep -Ev '^\./(internal/application/mediamemory/|internal/application/indexing/|internal/application/assets/reconciliation/voiceover/|internal/application/assets/texttracks/|internal/application/assets/sourcing/youtube/|internal/platform/drive/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -248,7 +248,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     --glob '!**/cmd/admin/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/**' \
+    --glob '!**/internal/platform/sqlite/**' \
     --glob '!**/internal/application/assets/ingest/**' \
     --glob '!**/internal/application/jobs/assets/**' \
     --glob '!**/internal/application/assets/artifacts/**' \
@@ -263,7 +263,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
     --glob '!**/internal/infrastructure/ai/autotag/**' \
-    --glob '!**/internal/infrastructure/database/assetindex/**' \
+    --glob '!**/internal/platform/sqlite/assetindex/**' \
     . 2>/dev/null \
     | grep -Ev '^\./internal/infrastructure/files/foldermemory/' \
     || true)
@@ -334,14 +334,14 @@ echo "OK: no dispatcher-only primitive calls from production paths"
 # correctly accept it without an explicit allowlist entry.
 #
 # Category B — reindex is intentionally uuid-suffixed per canonical design:
-#   - internal/infrastructure/database/sqlite/outboxevents/envelope.go::
+#   - internal/platform/sqlite/outboxevents/envelope.go::
 #     BuildReindexEnvelopeV1: the eventKey IS uuid-suffixed by design
 #     ("reconcile:reindex:<assetID>:<eventID>"). Idempotency is enforced
 #     DOWNSTREAM by the worker's supersede gate on source_version
 #     (from media_assets.metadata_json.$.content_hash), not at the
 #     outbox-enqueue layer. Every --apply run enqueues a fresh reindex
 #     event; redundant fix-up work is collapsed at execution time.
-#   - internal/infrastructure/database/sqlite/outbox/delete_envelope.go::
+#   - internal/platform/sqlite/outbox/delete_envelope.go::
 #     buildDeleteRequestV1: pre-existing canonical pattern.
 #
 # Pattern shapes (3 tightened patterns):
@@ -372,9 +372,9 @@ echo "OK: no dispatcher-only primitive calls from production paths"
 # in practice.
 #
 # Allowlist:
-#   - internal/infrastructure/database/sqlite/outbox/**       : canonical envelope builders
+#   - internal/platform/sqlite/outbox/**       : canonical envelope builders
 #                                                              (Category B pattern).
-#   - internal/infrastructure/database/sqlite/outboxevents/** : canonical reindex envelope
+#   - internal/platform/sqlite/outboxevents/** : canonical reindex envelope
 #                                                              (Category B pattern).
 #   - *_test.go                                               : test fixtures may use
 #                                                              uuid.NewString for distinct keys.
@@ -384,8 +384,8 @@ uuidEventKeys=$(rg -nU --type go \
     -e 'eventKey[^\n]*uuid\.NewString' \
     -e 'eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventID[^\n]*=\s*uuid\.NewString' \
     -e 'eventID[^\n]*=\s*uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventKey[^\n]*=[^\n]*\beventID\b' \
-    --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/outboxevents/**' \
+    --glob '!**/internal/platform/sqlite/outbox/**' \
+    --glob '!**/internal/platform/sqlite/outboxevents/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
@@ -499,7 +499,7 @@ legacyStatusKey=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/api/|internal/capabilities/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/infrastructure/database/sqlite/assets/)' \
+    | grep -Ev '^\./(internal/api/|internal/capabilities/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/platform/sqlite/assets/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -551,7 +551,7 @@ echo "OK: no legacy \"status\" payload key in BuildPayload"
 # Allowlist:
 #   - *_test.go                  : test stubs may construct unauthenticated clients.
 #   - tests/fixtures/zero_legacy/** : self-check fixtures.
-#   - internal/infrastructure/qdrant/** : the Config TYPE lives here;
+#   - internal/platform/qdrant/** : the Config TYPE lives here;
 #                                     test files in this package are
 #                                     excluded by the *_test.go rule,
 #                                     and production code in this

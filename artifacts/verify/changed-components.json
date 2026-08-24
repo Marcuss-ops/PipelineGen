@@ -1214,36 +1214,36 @@
     "internal/infrastructure/artlist/fallback/pixabay.go",
     "internal/infrastructure/artlist/scraper/scraper.go",
     "internal/infrastructure/artlist/scraper/scraper_test.go",
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go",
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter_test.go",
-    "internal/infrastructure/database/sqlite/artlist_searcher.go",
-    "internal/infrastructure/database/sqlite/artlist_searcher_test.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_asset.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_localized_test.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_outbox.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_test.go",
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_tracks.go",
-    "internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go",
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go",
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_payload.go",
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_test.go",
-    "internal/infrastructure/database/sqlite/assets/clips_repository_mutate_test.go",
-    "internal/infrastructure/database/sqlite/assets/content_hash_index_revision_test.go",
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter.go",
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter_test.go",
-    "internal/infrastructure/database/sqlite/entity_image_catalog_recertification_test.go",
-    "internal/infrastructure/database/sqlite/entity_image_catalog_state_test.go",
-    "internal/infrastructure/database/sqlite/outbox/qdrant_flow_e2e_test.go",
-    "internal/infrastructure/database/sqlite/scripts/repository_adapter.go",
-    "internal/infrastructure/database/sqlite/scripts/scripts.go",
-    "internal/infrastructure/database/sqlite/stockbatches/repository.go",
-    "internal/infrastructure/database/sqlite/stockbatches/repository_test.go",
-    "internal/infrastructure/database/sqlite/stocksourcecache/repository.go",
-    "internal/infrastructure/database/sqlite/vidrush_cache_adapter.go",
+    "internal/platform/sqlite/artlist_search_cache_adapter.go",
+    "internal/platform/sqlite/artlist_search_cache_adapter_test.go",
+    "internal/platform/sqlite/artlist_searcher.go",
+    "internal/platform/sqlite/artlist_searcher_test.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer_asset.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer_localized_test.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer_outbox.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer_test.go",
+    "internal/platform/sqlite/assets/clip_atomic_writer_tracks.go",
+    "internal/platform/sqlite/assets/clip_cache_adapter.go",
+    "internal/platform/sqlite/assets/clip_metadata_writer.go",
+    "internal/platform/sqlite/assets/clip_metadata_writer_payload.go",
+    "internal/platform/sqlite/assets/clip_metadata_writer_test.go",
+    "internal/platform/sqlite/assets/clips_repository_mutate_test.go",
+    "internal/platform/sqlite/assets/content_hash_index_revision_test.go",
+    "internal/platform/sqlite/entity_image_catalog_adapter.go",
+    "internal/platform/sqlite/entity_image_catalog_adapter_test.go",
+    "internal/platform/sqlite/entity_image_catalog_recertification_test.go",
+    "internal/platform/sqlite/entity_image_catalog_state_test.go",
+    "internal/platform/sqlite/outbox/qdrant_flow_e2e_test.go",
+    "internal/platform/sqlite/scripts/repository_adapter.go",
+    "internal/platform/sqlite/scripts/scripts.go",
+    "internal/platform/sqlite/stockbatches/repository.go",
+    "internal/platform/sqlite/stockbatches/repository_test.go",
+    "internal/platform/sqlite/stocksourcecache/repository.go",
+    "internal/platform/sqlite/vidrush_cache_adapter.go",
     "internal/infrastructure/downloader/stock_adapter.go",
-    "internal/infrastructure/drive/artifact_publisher_adapter.go",
-    "internal/infrastructure/drive/controlled_reconciliation_dataset_test.go",
+    "internal/platform/drive/artifact_publisher_adapter.go",
+    "internal/platform/drive/controlled_reconciliation_dataset_test.go",
     "internal/infrastructure/hashutil/adapter.go",
     "internal/infrastructure/httpclient/client.go",
     "internal/infrastructure/imagery/pexels/provider.go",
@@ -1251,13 +1251,13 @@
     "internal/infrastructure/indexing/searchtext/strategies.go",
     "internal/infrastructure/media/render/cutter_factory.go",
     "internal/infrastructure/media/render/probe_adapter.go",
-    "internal/infrastructure/observability/metrics_step10_test.go",
-    "internal/infrastructure/observability/metrics_translation.go",
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter.go",
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter_test.go",
-    "internal/infrastructure/qdrant/search/semantic_asset_search_convert.go",
-    "internal/infrastructure/qdrant/search/slots_search.go",
-    "internal/infrastructure/qdrant/search/slots_search_test.go",
+    "internal/platform/observability/metrics_step10_test.go",
+    "internal/platform/observability/metrics_translation.go",
+    "internal/platform/qdrant/search/semantic_asset_search_adapter.go",
+    "internal/platform/qdrant/search/semantic_asset_search_adapter_test.go",
+    "internal/platform/qdrant/search/semantic_asset_search_convert.go",
+    "internal/platform/qdrant/search/slots_search.go",
+    "internal/platform/qdrant/search/slots_search_test.go",
     "internal/infrastructure/webresearch/dedup.go",
     "internal/infrastructure/webresearch/dedup_test.go",
     "internal/infrastructure/webresearch/multi_provider.go",
@@ -10763,87 +10763,87 @@
       "stock",
       "artlist"
     ],
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go": [
+    "internal/platform/sqlite/artlist_search_cache_adapter.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/artlist_search_cache_adapter_test.go": [
+    "internal/platform/sqlite/artlist_search_cache_adapter_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/artlist_searcher.go": [
+    "internal/platform/sqlite/artlist_searcher.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/artlist_searcher_test.go": [
+    "internal/platform/sqlite/artlist_searcher_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_asset.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer_asset.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_localized_test.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer_localized_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_outbox.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer_outbox.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_test.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_atomic_writer_tracks.go": [
+    "internal/platform/sqlite/assets/clip_atomic_writer_tracks.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go": [
+    "internal/platform/sqlite/assets/clip_cache_adapter.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go": [
+    "internal/platform/sqlite/assets/clip_metadata_writer.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_payload.go": [
+    "internal/platform/sqlite/assets/clip_metadata_writer_payload.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clip_metadata_writer_test.go": [
+    "internal/platform/sqlite/assets/clip_metadata_writer_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/clips_repository_mutate_test.go": [
+    "internal/platform/sqlite/assets/clips_repository_mutate_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/assets/content_hash_index_revision_test.go": [
+    "internal/platform/sqlite/assets/content_hash_index_revision_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter.go": [
+    "internal/platform/sqlite/entity_image_catalog_adapter.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/entity_image_catalog_adapter_test.go": [
+    "internal/platform/sqlite/entity_image_catalog_adapter_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/entity_image_catalog_recertification_test.go": [
+    "internal/platform/sqlite/entity_image_catalog_recertification_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/entity_image_catalog_state_test.go": [
+    "internal/platform/sqlite/entity_image_catalog_state_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/outbox/qdrant_flow_e2e_test.go": [
+    "internal/platform/sqlite/outbox/qdrant_flow_e2e_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/scripts/repository_adapter.go": [
+    "internal/platform/sqlite/scripts/repository_adapter.go": [
       "research",
       "database"
     ],
-    "internal/infrastructure/database/sqlite/scripts/scripts.go": [
+    "internal/platform/sqlite/scripts/scripts.go": [
       "research",
       "database"
     ],
-    "internal/infrastructure/database/sqlite/stockbatches/repository.go": [
+    "internal/platform/sqlite/stockbatches/repository.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/stockbatches/repository_test.go": [
+    "internal/platform/sqlite/stockbatches/repository_test.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/stocksourcecache/repository.go": [
+    "internal/platform/sqlite/stocksourcecache/repository.go": [
       "database"
     ],
-    "internal/infrastructure/database/sqlite/vidrush_cache_adapter.go": [
+    "internal/platform/sqlite/vidrush_cache_adapter.go": [
       "database"
     ],
     "internal/infrastructure/downloader/stock_adapter.go": [
@@ -10871,11 +10871,11 @@
       "rust-muscles",
       "web"
     ],
-    "internal/infrastructure/drive/artifact_publisher_adapter.go": [
+    "internal/platform/drive/artifact_publisher_adapter.go": [
       "drive",
       "storage"
     ],
-    "internal/infrastructure/drive/controlled_reconciliation_dataset_test.go": [
+    "internal/platform/drive/controlled_reconciliation_dataset_test.go": [
       "drive",
       "storage"
     ],
@@ -10988,7 +10988,7 @@
     "internal/infrastructure/media/render/probe_adapter.go": [
       "timeline"
     ],
-    "internal/infrastructure/observability/metrics_step10_test.go": [
+    "internal/platform/observability/metrics_step10_test.go": [
       "script",
       "research",
       "clips",
@@ -11013,7 +11013,7 @@
       "rust-muscles",
       "web"
     ],
-    "internal/infrastructure/observability/metrics_translation.go": [
+    "internal/platform/observability/metrics_translation.go": [
       "script",
       "research",
       "clips",
@@ -11038,19 +11038,19 @@
       "rust-muscles",
       "web"
     ],
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter.go": [
+    "internal/platform/qdrant/search/semantic_asset_search_adapter.go": [
       "qdrant"
     ],
-    "internal/infrastructure/qdrant/search/semantic_asset_search_adapter_test.go": [
+    "internal/platform/qdrant/search/semantic_asset_search_adapter_test.go": [
       "qdrant"
     ],
-    "internal/infrastructure/qdrant/search/semantic_asset_search_convert.go": [
+    "internal/platform/qdrant/search/semantic_asset_search_convert.go": [
       "qdrant"
     ],
-    "internal/infrastructure/qdrant/search/slots_search.go": [
+    "internal/platform/qdrant/search/slots_search.go": [
       "qdrant"
     ],
-    "internal/infrastructure/qdrant/search/slots_search_test.go": [
+    "internal/platform/qdrant/search/slots_search_test.go": [
       "qdrant"
     ],
     "internal/infrastructure/webresearch/dedup.go": [
@@ -12730,7 +12730,7 @@
       "duration_ms": 0,
       "timeout_seconds": 600.0,
       "commands": [
-        "go test ./internal/infrastructure/database/..."
+        "go test ./internal/platform/sqlite/..."
       ],
       "packages": 1,
       "command_results": [],
@@ -12749,7 +12749,7 @@
       "commands": [
         "go test ./internal/capabilities/scripts/usecase/...",
         "go test ./internal/infrastructure/webresearch/...",
-        "go test ./internal/infrastructure/database/sqlite/scripts/..."
+        "go test ./internal/platform/sqlite/scripts/..."
       ],
       "packages": 3,
       "command_results": [
@@ -12776,9 +12776,9 @@
           "exit_code": 0,
           "duration_ms": 2474,
           "timed_out": false,
-          "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
+          "command": "go test ./internal/platform/sqlite/scripts/...",
           "kind": "go",
-          "source": "./internal/infrastructure/database/sqlite/scripts/..."
+          "source": "./internal/platform/sqlite/scripts/..."
         }
       ],
       "dependencies": [
@@ -12883,7 +12883,7 @@
       "timeout_seconds": 600.0,
       "commands": [
         "go test ./internal/application/qdrant/...",
-        "go test ./internal/infrastructure/qdrant/..."
+        "go test ./internal/platform/qdrant/..."
       ],
       "packages": 2,
       "command_results": [],
@@ -12923,7 +12923,7 @@
       "duration_ms": 0,
       "timeout_seconds": 300.0,
       "commands": [
-        "go test ./internal/infrastructure/drive/...",
+        "go test ./internal/platform/drive/...",
         "go test ./internal/application/publish_drive/..."
       ],
       "packages": 2,
@@ -13082,7 +13082,7 @@
       "commands": [
         "go test ./internal/application/assets/storage/...",
         "go test ./internal/api/assets/storage/...",
-        "go test ./internal/infrastructure/drive/..."
+        "go test ./internal/platform/drive/..."
       ],
       "packages": 3,
       "command_results": [],
@@ -13124,7 +13124,7 @@
         "go test ./internal/application/jobs/...",
         "go test ./internal/api/jobs/...",
         "go test ./internal/infrastructure/jobs/...",
-        "go test ./internal/infrastructure/database/sqlite/jobs/..."
+        "go test ./internal/platform/sqlite/jobs/..."
       ],
       "packages": 4,
       "command_results": [],
@@ -13423,7 +13423,7 @@
         "duration_ms": 0,
         "timeout_seconds": 600.0,
         "commands": [
-          "go test ./internal/infrastructure/database/..."
+          "go test ./internal/platform/sqlite/..."
         ],
         "packages": 1,
         "command_results": [],
@@ -13442,7 +13442,7 @@
         "commands": [
           "go test ./internal/capabilities/scripts/usecase/...",
           "go test ./internal/infrastructure/webresearch/...",
-          "go test ./internal/infrastructure/database/sqlite/scripts/..."
+          "go test ./internal/platform/sqlite/scripts/..."
         ],
         "packages": 3,
         "command_results": [
@@ -13469,9 +13469,9 @@
             "exit_code": 0,
             "duration_ms": 2474,
             "timed_out": false,
-            "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
+            "command": "go test ./internal/platform/sqlite/scripts/...",
             "kind": "go",
-            "source": "./internal/infrastructure/database/sqlite/scripts/..."
+            "source": "./internal/platform/sqlite/scripts/..."
           }
         ],
         "dependencies": [
@@ -13576,7 +13576,7 @@
         "timeout_seconds": 600.0,
         "commands": [
           "go test ./internal/application/qdrant/...",
-          "go test ./internal/infrastructure/qdrant/..."
+          "go test ./internal/platform/qdrant/..."
         ],
         "packages": 2,
         "command_results": [],
@@ -13616,7 +13616,7 @@
         "duration_ms": 0,
         "timeout_seconds": 300.0,
         "commands": [
-          "go test ./internal/infrastructure/drive/...",
+          "go test ./internal/platform/drive/...",
           "go test ./internal/application/publish_drive/..."
         ],
         "packages": 2,
@@ -13775,7 +13775,7 @@
         "commands": [
           "go test ./internal/application/assets/storage/...",
           "go test ./internal/api/assets/storage/...",
-          "go test ./internal/infrastructure/drive/..."
+          "go test ./internal/platform/drive/..."
         ],
         "packages": 3,
         "command_results": [],
@@ -13817,7 +13817,7 @@
           "go test ./internal/application/jobs/...",
           "go test ./internal/api/jobs/...",
           "go test ./internal/infrastructure/jobs/...",
-          "go test ./internal/infrastructure/database/sqlite/jobs/..."
+          "go test ./internal/platform/sqlite/jobs/..."
         ],
         "packages": 4,
         "command_results": [],

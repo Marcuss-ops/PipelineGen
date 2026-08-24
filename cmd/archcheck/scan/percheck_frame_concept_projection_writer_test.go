@@ -84,8 +84,8 @@ func write(c *transport.Client) error {
 
 func TestScanFrameConceptWriter_RespectiveWriterExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFrameConceptFile(t, root, "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go", frameWriterBody)
-	makeFrameConceptFile(t, root, "internal/infrastructure/qdrant/qdrantmm/qdrant_indexer.go", conceptWriterBody)
+	makeFrameConceptFile(t, root, "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go", frameWriterBody)
+	makeFrameConceptFile(t, root, "internal/platform/qdrant/qdrantmm/qdrant_indexer.go", conceptWriterBody)
 	rep := &report.Report{}
 	ScanFrameConceptProjectionWriter(root, nil, rep, true)
 	if got := len(rep.Violations); got != 0 {
@@ -96,7 +96,7 @@ func TestScanFrameConceptWriter_RespectiveWriterExempt(t *testing.T) {
 func TestScanFrameConceptWriter_CrossWriteTrips(t *testing.T) {
 	// The frame writer writing the concept collection is a violation.
 	root := t.TempDir()
-	makeFrameConceptFile(t, root, "internal/infrastructure/qdrant/qdrantmm/qdrant_frame_indexer.go",
+	makeFrameConceptFile(t, root, "internal/platform/qdrant/qdrantmm/qdrant_frame_indexer.go",
 		`package qdrantmm
 
 func (i *FrameQdrantIndexer) bad() error {

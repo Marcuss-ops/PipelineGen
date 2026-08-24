@@ -57,7 +57,7 @@ func mutate() {
 
 func TestScanControlPlaneSQLWritesDoesNotAllowNearMatchCanonicalFile(t *testing.T) {
 	root := t.TempDir()
-	writeControlPlaneScanFixture(t, root, "internal/infrastructure/database/clipcatalog/repository.go.bak.go", `package clipcatalog
+	writeControlPlaneScanFixture(t, root, "internal/application/jobs/finalizer/job_completion_writer.go.bak.go", `package finalizer
 
 func mutate(db interface{ ExecContext(any, string, ...any) (any, error) }) {
 	query := "UPDATE media_assets SET name = ?"

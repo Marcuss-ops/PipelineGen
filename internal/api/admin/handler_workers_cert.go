@@ -28,7 +28,7 @@ import (
 
 // WorkerStore is the narrow port for reading the current worker
 // session row. Satisfied by an adapter over
-// internal/infrastructure/database/sqlite/assets/workernodes_repository.go
+// internal/platform/sqlite/assets/workernodes_repository.go
 // in production; tests stub it.
 type WorkerStore interface {
 	GetCurrentCertIdentity(ctx context.Context, workerID string) (*CertReport, error)

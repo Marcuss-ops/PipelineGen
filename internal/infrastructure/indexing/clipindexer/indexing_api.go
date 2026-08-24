@@ -33,7 +33,7 @@ import (
 //
 // PR-AUDIO-CHANNEL-EXTENSION (July 2026): Step 4 was added to pop the
 // CLAP-HTSAT 512-dim vector into the Qdrant audio channel. The
-// Qdrant schema (internal/infrastructure/qdrant/schema/schema.go
+// Qdrant schema (internal/platform/qdrant/schema/schema.go
 // ::DefaultV3Schema) already declares the audio channel; the DB
 // column media_assets.audio_embedding already exists (migration 099);
 // the AssetStore + PayloadMapper already read AudioVector (drift-safe

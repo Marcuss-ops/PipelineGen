@@ -15,11 +15,11 @@ func TestScanCanonicalApplicationInfrastructureImports(t *testing.T) {
 		root := t.TempDir()
 		writeCanonicalFixture(t, root, "internal/application/images/clean.go", `package images
 
-// import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-const example = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+// import "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+const example = "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 `)
 		writeCanonicalFixture(t, root, "internal/application/images/clean_test.go", `package images
-import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 `)
 
 		r := &report.Report{}
@@ -35,7 +35,7 @@ import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 		root := t.TempDir()
 		writeCanonicalFixture(t, root, "internal/application/images/bad.go", `package images
 
-import storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+import storage "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 
 var _ storage.Reader
 `)

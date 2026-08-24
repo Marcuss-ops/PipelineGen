@@ -45,10 +45,10 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)

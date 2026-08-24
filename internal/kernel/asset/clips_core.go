@@ -5,7 +5,7 @@
 // (UpsertFolder/DeleteFolder/GetFolder/GetFolderByVideoID/ListByFolderID/
 // ListByFolderPath/CountByFolderID/ListFolders/SearchFolders) are now
 // canonical on the LOCAL infra sqlite asset store
-// (internal/infrastructure/database/sqlite/assets/folder_queries.go)
+// (internal/platform/sqlite/assets/folder_queries.go)
 // and reached via HYBRID-embed promotion through the legacy struct.
 //
 // This file now carries ONLY the canonical domain types

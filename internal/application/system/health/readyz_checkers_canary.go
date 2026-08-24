@@ -24,7 +24,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // DriveCanaryPort performs a real Drive canary upload and returns

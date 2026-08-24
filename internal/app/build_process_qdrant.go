@@ -34,19 +34,19 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
-	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
-	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
@@ -281,7 +281,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 		ClipIndexerService: clipIndexerService,
 	}
 	// PR 4: VectorPointDeleter port satisfied directly by runtime.Writer
-	// (compile-time assertion in internal/infrastructure/qdrant/index_writer.go
+	// (compile-time assertion in internal/platform/qdrant/index_writer.go
 	// pins the conformance: `_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`).
 	// No runtime `any` cast needed.
 	if runtime != nil {

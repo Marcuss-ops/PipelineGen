@@ -740,7 +740,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 // no-fake-availability contract for the source_version supersede-gate
 // fix: metadata_json MUST include content_hash = artifact.SHA256 so
 // that SourceVersionFor() (Tier 1, see
-// internal/infrastructure/database/sqlite/assets/source_version.go)
+// internal/platform/sqlite/assets/source_version.go)
 // reads the correct fingerprint from the same write boundary as the
 // outbox event.
 //

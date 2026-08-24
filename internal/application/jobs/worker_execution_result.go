@@ -138,7 +138,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 	// producing jobs MUST be completed via the typed CompletionPort
 	// (broker.CompleteWithArtifacts) — NOT the legacy w.repo.Complete
 	// path. The SQL-layer gate at
-	// internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
+	// internal/platform/sqlite/jobs/repository_lifecycle.go:115
 	// returns the typed sentinel domainremote.ErrCompleteJobPathViolation
 	// for artifact-producing jobs that attempt the legacy path.
 	// godlike/06 SSOT: ProducesArtifacts lookup lives ONLY on the typed

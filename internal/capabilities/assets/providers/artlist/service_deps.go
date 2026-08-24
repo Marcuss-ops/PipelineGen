@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
@@ -75,7 +75,7 @@ type ServicePorts struct {
 	// at composition: NewService rejects nil with
 	// ErrRunRepositoryUnavailable (fail-closed discipline; mirrors
 	// Publisher + Dispatcher). Production wires the SQLite-backed
-	// concrete from internal/infrastructure/database/sqlite/assets.
+	// concrete from internal/platform/sqlite/assets.
 	RunRepository RunRepository
 	// SystemProber is the canonical godlike/06 port (Fase 2, July 2026)
 	// that fans out the 10 wire-by-wire diagnostic probes

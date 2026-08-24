@@ -27,7 +27,7 @@
 // narrow ports (defined in ports.go) so a hand-rolled fake
 // can replace every dependency in unit tests. The canonical
 // concrete adapters live in
-// `internal/infrastructure/database/sqlite/{jobs,outboxevents,operations}`
+// `internal/platform/sqlite/{jobs,outboxevents,operations}`
 // and the composition root in `internal/app` wires them up.
 //
 // Thread safety: a single `submitMu sync.Mutex` serialises all

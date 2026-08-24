@@ -18,6 +18,12 @@ type PublicationReceipt = capdelivery.PublicationReceipt
 type UploadOutcome = capdelivery.UploadOutcome
 type PublishAction = capdelivery.PublishAction
 
+type Operation = capdelivery.Operation
+type RemoteReferenceRequest = capdelivery.RemoteReferenceRequest
+type RemoteReferenceRegistrar = capdelivery.RemoteReferenceRegistrar
+type MaterializationRequest = capdelivery.MaterializationRequest
+type Materializer = capdelivery.Materializer
+
 const (
 	DestinationYouTubeClip        = capdelivery.DestinationYouTubeClip
 	DestinationYouTubeAsset       = capdelivery.DestinationYouTubeAsset
@@ -47,6 +53,9 @@ const (
 	PublishActionUpdated          = capdelivery.PublishActionUpdated
 	PublishActionSkipped          = capdelivery.PublishActionSkipped
 	PublishActionRenamed          = capdelivery.PublishActionRenamed
+
+	OperationRegisterRemoteReference = capdelivery.OperationRegisterRemoteReference
+	OperationMaterializeLocal        = capdelivery.OperationMaterializeLocal
 )
 
 var ErrDestinationParentMismatch = capdelivery.ErrDestinationParentMismatch

@@ -5,7 +5,7 @@
 // Each function operates on a *sql.DB handle so callers pass the
 // DatabaseSet-opened handle directly without recompiling pragmas.
 //
-// ALL helper functions live in `internal/infrastructure/database/`
+// ALL helper functions live in `internal/platform/sqlite/`
 // (the only package allowed to import `database/sql` per Check 17).
 // Callers in `cmd/admin/` invoke these helpers; they never touch
 // `database/sql` themselves. This is the canonical pattern for the
@@ -222,7 +222,7 @@ func DBSizeBytes(dbPath string) (int64, error) {
 
 // OpenReadOnly opens a read-only *sql.DB for diagnostic commands.
 // This is the ONLY place where diagnostic code opens a fresh sqlite
-// handle — it's intentionally inside `internal/infrastructure/database/`
+// handle — it's intentionally inside `internal/platform/sqlite/`
 // so the api/app/domain gate (Check 17) is never violated. Callers
 // in cmd/admin/ use this helper, never sql.Open directly.
 func OpenReadOnly(path string) (*sql.DB, error) {

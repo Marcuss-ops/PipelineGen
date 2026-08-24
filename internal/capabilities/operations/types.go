@@ -5,7 +5,7 @@
 // godlike/06 SSOT: this package is the SOLE canonical owner of
 // the per-request Operation record shape, the Scope + State enums,
 // and the typed error sentinels. Repository implementations in
-// `internal/infrastructure/database/sqlite/operations` and the
+// `internal/platform/sqlite/operations` and the
 // application service in
 // `internal/application/operations/generation_submission_service.go`
 // consume ONLY the types declared here.

@@ -1,7 +1,7 @@
 // Package sqlite — pool_test.go (FASE 6 Cut 6.2, July 2026).
 //
 // Minimal regression tests for the canonical DualPool surface
-// (internal/infrastructure/database/sqlite/pool.go) + walPragmas
+// (internal/platform/sqlite/pool.go) + walPragmas
 // enrichment + classifyTxError busy-counter surface.
 
 package sqlite

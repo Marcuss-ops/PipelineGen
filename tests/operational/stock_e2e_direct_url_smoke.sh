@@ -63,7 +63,7 @@ AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 # 9 Drive folder fixtures from architecture/action-plans/
 # 2026-07-05-stock-e2e-battery.md §1 (canonical test scope-limit).
 # NOTE: authoritative folder registry lives at
-# internal/infrastructure/drive/folders/registry.go — these are
+# internal/platform/drive/folders/registry.go — these are
 # operator-supplied test fixtures, NOT production SSOT.
 FOLDERS=(
     "1lSp-s8mNJOUOxIZbuZ0NjvzbXVMB1Y3I"

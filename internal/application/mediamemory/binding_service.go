@@ -106,7 +106,7 @@ var _ BindingService = (*defaultBindingService)(nil)
 // godlike/06 SSOT (ID mint location): the canonical ID mint is at
 // the SQLite concrete repository (uuid.NewString in the Upsert
 // INSERT statement, see
-// internal/infrastructure/database/sqlite/mediamemory/bindings_repository.go).
+// internal/platform/sqlite/mediamemory/bindings_repository.go).
 // The service deliberately leaves b.ID empty on Create so the repo
 // can mint with full context; a pre-mint in the service splits that
 // responsibility and risks a drift between service-minted and

@@ -8,7 +8,7 @@
 -- download completes.
 --
 -- Companion code path:
---   internal/infrastructure/database/sqlite/stocksourcecache/repository.go
+--   internal/platform/sqlite/stocksourcecache/repository.go
 --   internal/application/assets/providers/stock/stockpipeline/stager_adapter.go
 --
 -- Down migration: DROP TABLE IF EXISTS stock_source_cache;

@@ -1,7 +1,7 @@
 -- 092_create_outbox_events.sql
 --
 -- CREATES the canonical outbox_events table for the event-dispatch
--- pipeline (canonical owner: internal/infrastructure/database/sqlite/outboxevents/).
+-- pipeline (canonical owner: internal/platform/sqlite/outboxevents/).
 --
 -- This migration is FORMER OBLIGATION. The table was previously bootstrapped
 -- ad-hoc via `sqlite3 data/media/media.db.sqlite < ...sql` on the production
@@ -27,10 +27,10 @@
 -- creation, no schema drift). Verified by reading it back via `PRAGMA table_info`.
 --
 -- Companion code:
---   internal/infrastructure/database/sqlite/outboxevents/repository.go
+--   internal/platform/sqlite/outboxevents/repository.go
 --     Enqueue, ClaimNext (CTE), RenewLease, MarkCompleted, MarkFailed,
 --     RequeueExpiredLeases, CountByStatus, ListPending.
---   internal/infrastructure/database/sqlite/outboxevents/pool.go
+--   internal/platform/sqlite/outboxevents/pool.go
 --     Drains the table via ClaimNext lease-and-fence pattern.
 --
 -- Order rationale: PRIMARY KEY first (SQLite convention) → identity columns

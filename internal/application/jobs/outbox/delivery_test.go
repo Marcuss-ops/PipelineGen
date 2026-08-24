@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"

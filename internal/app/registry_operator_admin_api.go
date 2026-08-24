@@ -8,7 +8,7 @@ import (
 	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/operatorread"
-	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/operatorverify"
+	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/operatorverify"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )

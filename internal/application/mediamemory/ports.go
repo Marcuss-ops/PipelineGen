@@ -60,7 +60,7 @@ type MetricsSink interface {
 // ConceptRepository owns the canonical read/write surface for
 // media_concepts. UNIQUE(language, phrase_fingerprint) is enforced at
 // the SQL layer (forward-pointer to Phase 1.2). Concrete impl in
-// internal/infrastructure/database/sqlite/mediamemory/concepts_repository.go.
+// internal/platform/sqlite/mediamemory/concepts_repository.go.
 type ConceptRepository interface {
 	// Upsert inserts or updates a concept keyed by
 	// (language, phrase_fingerprint). On conflict the existing row is

@@ -40,7 +40,7 @@ func TestScanRootOverrideBan_InfrastructureFileNotFlagged(t *testing.T) {
 	root := t.TempDir()
 	infraContent := `package drive
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 func buildRequest() delivery.PublishRequest {
 	return delivery.PublishRequest{
@@ -68,7 +68,7 @@ func TestScanRootOverrideBan_AdminCLIFileNotFlagged(t *testing.T) {
 	root := t.TempDir()
 	adminContent := `package main
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 func reconcileFolder() {
 	_ = delivery.PublishRequest{
@@ -93,7 +93,7 @@ func TestScanRootOverrideBan_ApplicationFileFlagged(t *testing.T) {
 	root := t.TempDir()
 	appContent := `package clips
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 func uploadClip() {
 	_ = delivery.PublishRequest{
@@ -138,7 +138,7 @@ func TestScanRootOverrideBan_APIFileFlagged(t *testing.T) {
 	root := t.TempDir()
 	apiContent := `package clips
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 func handleUpload() {
 	_ = delivery.PublishRequest{
@@ -333,7 +333,7 @@ func TestScanRootOverrideBan_ProductionOnly_DriftFile_OneViolation(t *testing.T)
 	root := t.TempDir()
 	driftContent := `package clips
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 func uploadClip() {
 	_ = delivery.PublishRequest{

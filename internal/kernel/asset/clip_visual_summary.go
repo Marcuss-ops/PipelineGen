@@ -19,7 +19,7 @@
 // payload is rebuildable from SQLite by re-running the VLM pass on the
 // same frames + same model version - i.e. ReindexVerifier is the
 // canonical post-reindex consistency gate. See
-// internal/infrastructure/qdrant/verification/verifier.go for the
+// internal/platform/qdrant/verification/verifier.go for the
 // verifier extension that cross-checks the SQLite row vs the
 // Qdrant payload.
 package asset

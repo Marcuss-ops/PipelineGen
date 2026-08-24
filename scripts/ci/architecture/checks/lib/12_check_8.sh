@@ -16,7 +16,7 @@
 #   ListClipsPaged by cap-of-10000 specifically:
 #       ListClipsPaged\([^,]+,\s*(10000|5000|1000|100000)\b
 # Tests and the canonical callers upstream of the outbox dispatcher
-# (internal/infrastructure/database/sqlite/assets/clips_repository.go) are
+# (internal/platform/sqlite/assets/clips_repository.go) are
 # allowlisted because the SQL layer legitimately uses large batches for
 # snapshots / bulk maintenance; the lint targets the production-API+App layer
 # where the legacy inline fallback lived.
@@ -27,7 +27,7 @@ echo "=== Check 8: forbid inline ListClipsPaged(>=1000) in production paths (S1b
 all_hits=$(rg -n --type go \
     -e "ListClipsPaged\([^,]+,\s*[1-9][0-9]{3,}\b" \
     --glob '!**/*_test.go' \
-    --glob '!**/infrastructure/database/sqlite/**' \
+    --glob '!**/platform/sqlite/**' \
     internal/application internal/api 2>/dev/null \
     || true)
 literal_calls=$(printf '%s\n' "$all_hits" \
