@@ -120,7 +120,7 @@ func finalizationRequestWithArtifact(lease finalization.Lease, data json.RawMess
 }
 
 // noopAssetTx satisfies finalization.AssetFinalizerTx with a value-type
-// method (production concrete uses pointer-receiver, but finalizer.New
+// method (production concrete uses pointer-receiver, but New
 // now accepts the interface — value-receiver works because Go's
 // interface satisfaction is value-vs-pointer agnostic at the
 // implementation site).
@@ -147,7 +147,7 @@ func TestE2E_FingerprintPersistedInResultJSON(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 
@@ -191,7 +191,7 @@ func TestE2E_DoubleCompleteSameFingerprintIsIdempotent(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 
@@ -230,7 +230,7 @@ func TestE2E_DoubleCompleteDifferentResultReturnsConflict(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req1 := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 	if _, err := f.CompleteWithArtifacts(context.Background(), req1); err != nil {
@@ -254,7 +254,7 @@ func TestE2E_DoubleCompleteDifferentArtifactsReturnsConflict(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req1 := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 	if _, err := f.CompleteWithArtifacts(context.Background(), req1); err != nil {
@@ -280,7 +280,7 @@ func TestE2E_LeaseExpiryFenceSQLGated(t *testing.T) {
 	pastExpiry := time.Now().Add(-10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, pastExpiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, pastExpiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 
@@ -307,7 +307,7 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 	futureExpiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, futureExpiry)
 
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop())
+	f := New(db, nil, noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, futureExpiry),
 		json.RawMessage(`{"status":"ok"}`), "abc")
 
@@ -335,7 +335,7 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 
 // TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision
 // pins the FASE 6 Cut 6.5 contract: when JobFinalizer.CompleteWithArtifacts
-// flips a job row to SUCCEEDED, the canonical completion.JobCompletionBus
+// flips a job row to SUCCEEDED, the canonical JobCompletionBus
 // MUST publish a typed JobCompletionEvent whose Revision field equals
 // the post-flip optimistic-concurrency counter (jobRow.revision + 1).
 //
@@ -386,8 +386,8 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 	}
 
 	// ── Cut 6.5 fluent composition-root pattern: NewBus() → WithBus().
-	bus := completion.NewBus()
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
+	bus := NewBus()
+	f := New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
 
 	// ── Subscribe BEFORE the SUCCEEDED commit so the post-commit
 	// Publish reaches a live subscriber (canonical migration template).
@@ -425,9 +425,9 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 	if evt.JobID != jobID {
 		t.Errorf("evt.JobID = %q, want %q", evt.JobID, jobID)
 	}
-	if evt.FinalStatus != StatusSucceeded {
+	if evt.FinalStatus != jobs.StatusSucceeded {
 		t.Errorf("evt.FinalStatus = %q, want %q (StatusSucceeded)",
-			evt.FinalStatus, StatusSucceeded)
+			evt.FinalStatus, jobs.StatusSucceeded)
 	}
 	if err := evt.Err; err != nil {
 		t.Errorf("evt.Err = %v, want nil on SUCCEEDED event", err)
@@ -484,7 +484,7 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 	_, err = sub2.Await(awaitCtx2)
 	if err == nil {
 		t.Errorf("idempotent re-call MUST NOT re-publish a JobCompletionEvent (a phantom event was received on a fresh subscriber)")
-	} else if !errors.Is(err, completion.ErrWaitTimedOut) {
+	} else if !errors.Is(err, ErrWaitTimedOut) {
 		t.Errorf("idempotent re-call Await err = %v, want ErrWaitTimedOut (no phantom event on fresh subscriber)", err)
 	}
 }
@@ -494,7 +494,7 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 // returns a typed error (e.g., ErrLeaseExpired via past-expiry
 // lease), the bus MUST NOT publish a phantom SUCCEEDED event. A
 // waiter awaiting job completion MUST observe
-// completion.ErrWaitTimedOut (subscribed but no Publish fired).
+// ErrWaitTimedOut (subscribed but no Publish fired).
 //
 // This is the canonical "bus does not lie about success" guard
 // (godlike/07 fail-closed: a misfire here would fool downstream
@@ -514,8 +514,8 @@ func TestFinalizer_NoPublishOnFailure(t *testing.T) {
 	pastExpiry := time.Now().Add(-10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, pastExpiry)
 
-	bus := completion.NewBus()
-	f := finalizer.New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
+	bus := NewBus()
+	f := New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
 
 	sub, err := bus.Subscribe(jobID)
 	if err != nil {
@@ -546,7 +546,7 @@ func TestFinalizer_NoPublishOnFailure(t *testing.T) {
 	_, err = sub.Await(awaitCtx)
 	if err == nil {
 		t.Errorf("a phantom SUCCEEDED event was published on the failure path — the bus MUST NOT lie about success")
-	} else if !errors.Is(err, completion.ErrWaitTimedOut) {
+	} else if !errors.Is(err, ErrWaitTimedOut) {
 		t.Errorf("Await err = %v, want ErrWaitTimedOut (no phantom event on failure path)", err)
 	}
 

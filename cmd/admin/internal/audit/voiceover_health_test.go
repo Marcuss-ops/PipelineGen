@@ -95,8 +95,8 @@ func TestRunVoiceoverHealth_PrintsJSON_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := runVoiceoverHealth([]string{"--base-url", srv.URL}); err != nil {
-		t.Fatalf("runVoiceoverHealth err=%v", err)
+	if err := RunVoiceoverHealth([]string{"--base-url", srv.URL}); err != nil {
+		t.Fatalf("RunVoiceoverHealth err=%v", err)
 	}
 }
 
@@ -109,8 +109,8 @@ func TestRunVoiceoverHealth_FlagsParsed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := runVoiceoverHealth([]string{"--base-url", srv.URL, "/generate"}); err != nil {
-		t.Fatalf("runVoiceoverHealth err=%v", err)
+	if err := RunVoiceoverHealth([]string{"--base-url", srv.URL, "/generate"}); err != nil {
+		t.Fatalf("RunVoiceoverHealth err=%v", err)
 	}
 	if !called {
 		t.Fatalf("httptest server was not hit; --base-url override did not propagate")
@@ -126,7 +126,7 @@ func TestRunVoiceoverHealth_FailsOnUnreachable_WhenFlagSet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // immediate close triggers connection refused on next dial
 
-	err := runVoiceoverHealth([]string{"--base-url", srv.URL, "--fail-on-unreachable"})
+	err := RunVoiceoverHealth([]string{"--base-url", srv.URL, "--fail-on-unreachable"})
 	if err == nil {
 		t.Fatalf("expected non-nil error from --fail-on-unreachable on closed listener")
 	}
@@ -144,7 +144,7 @@ func TestRunVoiceoverHealth_FailOnUnreachable_HealthyOK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := runVoiceoverHealth([]string{"--base-url", srv.URL, "--fail-on-unreachable"}); err != nil {
+	if err := RunVoiceoverHealth([]string{"--base-url", srv.URL, "--fail-on-unreachable"}); err != nil {
 		t.Fatalf("expected nil error on healthy worker, got %v", err)
 	}
 }

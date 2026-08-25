@@ -333,11 +333,11 @@ func (u *PublishAndCompleteUseCase) Execute(
 // StagedArtifactReference -> media_assets lookup is canonicalized in
 // P0-COMPL-5-WIRE-NAMING followups (forward-pointer P0-COMPL-5-RESOLVER, deadline 2026-08-15, owner: completion).
 func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) (finalization.VerifiedArtifact, error) {
-	kind, err := kindFromDestination(ref.Destination)
+	kind, err := KindFromDestination(ref.Destination)
 	if err != nil {
 		return finalization.VerifiedArtifact{}, fmt.Errorf("%w: artifact_id=%q destination=%q", err, ref.ArtifactID, ref.Destination)
 	}
-	source, err := sourceFromDestination(ref.Destination)
+	source, err := SourceFromDestination(ref.Destination)
 	if err != nil {
 		return finalization.VerifiedArtifact{}, fmt.Errorf("%w: artifact_id=%q destination=%q", err, ref.ArtifactID, ref.Destination)
 	}
@@ -415,7 +415,7 @@ var (
 	}
 )
 
-func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
+func KindFromDestination(dest string) (finalization.ArtifactKind, error) {
 	if kind, ok := kindByDestination[dest]; ok {
 		return kind, nil
 	}
@@ -432,7 +432,7 @@ func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
 // sound_effect). The IndexingHandler's Qdrant payload builder reads
 // media_assets.source as the semantic `origin` slot — a stash value
 // like "drives" produces off-spec downstream behaviour.
-func sourceFromDestination(dest string) (string, error) {
+func SourceFromDestination(dest string) (string, error) {
 	if src, ok := sourceByDestination[dest]; ok {
 		return src, nil
 	}

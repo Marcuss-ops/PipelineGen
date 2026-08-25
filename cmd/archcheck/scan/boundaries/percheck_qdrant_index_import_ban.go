@@ -116,14 +116,19 @@ var qdrantImportBanSkipPathPrefixes = []string{
 var qdrantImportBanExemptPathPrefixes = []string{
 	"cmd/admin/",
 	"internal/capabilities/jobs/outbox/",
+	"internal/application/jobs/outbox/",
 	"internal/platform/qdrant/legacyaudit/",
 	"internal/platform/qdrant/maintenance/",
+	"internal/application/qdrant/legacyaudit/",
+	"internal/application/qdrant/maintenance/",
 }
 
 // qdrantImportBanScope is the canonical application-zone prefix
 // that the gate applies to. Files under this prefix AND not under
 // any exempt prefix are the gate's target surface.
 const qdrantImportBanScope = "internal/application/"
+
+const qdrantImportBanLegacyScope = "internal/capabilities/images/workflow/"
 
 // qdrantImportPath is the literal import path the gate detects.
 // The regex anchors on this fully-qualified package path + the
@@ -253,7 +258,7 @@ func ScanQdrantIndexImportBan(root string, pol *policy.Policy, r *report.Report)
 		// narrow. Per AGENTS.md, application-zone is the
 		// canonical scope for this ban; composition root,
 		// CLIs, infrastructure, and docs are all out of scope.
-		if !strings.HasPrefix(relSlash, qdrantImportBanScope) {
+		if !strings.HasPrefix(relSlash, qdrantImportBanScope) && !strings.HasPrefix(relSlash, qdrantImportBanLegacyScope) {
 			return nil
 		}
 		// Exempt subzones (cmd/admin/** + the outbox worker):

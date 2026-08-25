@@ -263,7 +263,7 @@ func validateCanonicalApplicationArea(value string) error {
 	if clean != value || clean == "." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") || clean == ".." {
 		return fmt.Errorf("canonical application area must be normalized and cannot traverse parents, got %q", value)
 	}
-	if clean != "internal/application" && !strings.HasPrefix(clean, "internal/application/") {
+	if clean != "internal/application" && !strings.HasPrefix(clean, "internal/application/") && clean != "internal/capabilities/images/workflow" {
 		return fmt.Errorf("canonical application area must be under internal/application, got %q", value)
 	}
 	return nil

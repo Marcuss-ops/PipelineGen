@@ -47,7 +47,8 @@ import (
 // monitorPkgRelPath is the repo-relative path to the
 // monitor package. EVERY .go file (including _test.go) is
 // scanned for forbidden infra imports.
-const monitorPkgRelPath = "internal/application/assets/monitor"
+const monitorPkgRelPath = "internal/capabilities/assets/monitor"
+const monitorLegacyPkgRelPath = "internal/application/assets/monitor"
 
 // infraImportPath is the canonical Go import path of the
 // internal/infrastructure tree. Any line containing this
@@ -86,38 +87,36 @@ const archAllowlistMarker = "ARCH-ALLOWLIST: monitor-infra-import"
 // form matches the retained shell Check 54 and is the form used by the
 // monitor SQLite hermetic tests.
 func ScanMonitorInfraImport(root string, pol *policy.Policy, r *report.Report) {
-	dir := filepath.Join(root, monitorPkgRelPath)
-	// Hard-fail on missing monitor/ package (defensive — the
-	// package is canonical and should always exist; missing
-	// is a tree-shape error that other scans will surface).
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	_ = entries
-
-	// Walk recursively (the monitor package has nested
-	// subdirectories; the spec's scope is "all .go files
-	// under monitor/").
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	for _, relDir := range []string{monitorPkgRelPath, monitorLegacyPkgRelPath} {
+		dir := filepath.Join(root, relDir)
+		// Hard-fail on missing monitor/ package (defensive — the
+		// package is canonical and should always exist; missing
+		// is a tree-shape error that other scans will surface).
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return nil
+			continue
 		}
-		if d.IsDir() {
+		_ = entries
+
+		// Walk recursively (the monitor package has nested
+		// subdirectories; the spec's scope is "all .go files
+		// under monitor/").
+		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			rel, _ := filepath.Rel(root, path)
+			relSlash := filepath.ToSlash(rel)
+			scanMonitorInfraFile(path, relSlash, r)
 			return nil
-		}
-		// INCLUDE *_test.go per the spec's _test.go
-		// INCLUSION RATIONALE (the test layer asserts
-		// the canonical Pattern-0 surface via compile-time
-		// pins to the infra-side Adapter concrete).
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, path)
-		relSlash := filepath.ToSlash(rel)
-		scanMonitorInfraFile(path, relSlash, r)
-		return nil
-	})
+		})
+	}
 }
 
 // scanMonitorInfraFile reads a single .go file line-by-line

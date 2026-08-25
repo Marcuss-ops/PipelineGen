@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

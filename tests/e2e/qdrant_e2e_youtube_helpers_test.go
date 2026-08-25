@@ -22,7 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 
-	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

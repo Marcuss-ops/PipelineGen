@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Get returns the provider with the given Name, or (nil, false) if
@@ -146,7 +148,7 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 			continue
 		}
 		wg.Add(1)
-		go func(entry *ProviderEntry) {
+		concurrent.SafeGoFunc("provider-health-probe", e, func(entry *ProviderEntry) {
 			defer wg.Done()
 			// Acquire a semaphore slot before any blocking work so
 			// the parallel budget is honoured even when probes take
@@ -166,7 +168,7 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 			outMu.Lock()
 			out[entry.Name] = err
 			outMu.Unlock()
-		}(e)
+		})
 	}
 	wg.Wait()
 	return out

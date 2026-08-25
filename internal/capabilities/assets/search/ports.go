@@ -272,7 +272,7 @@ type AssetDeliveryService interface {
 	BuildAuthorizedURL(ctx context.Context, workspace Actor, assetID string) (string, error)
 }
 
-var SearchableLifecycleStates = []string{"ACTIVE", "INDEXED", "READY"}
+var SearchableLifecycleStates = []string{"ACTIVE", "INDEXED", "READY", "PUBLISHED"}
 
 func IsKnownChannel(ch string) bool {
 	for _, c := range CanonicalChannelNames() {

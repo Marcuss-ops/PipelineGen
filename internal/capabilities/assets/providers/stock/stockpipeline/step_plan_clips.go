@@ -279,10 +279,15 @@ func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec
 			child.StartSec = cursor
 			child.EndSec = next
 			if clip.Slug != "" {
-				child.Slug = fmt.Sprintf("%s-%02d_to_%02d", clip.Slug, int(cursor), int(next))
+				child.Slug = fmt.Sprintf("%s-%s_to_%s", clip.Slug, clipTimestamp(cursor), clipTimestamp(next))
 			}
 			expanded = append(expanded, child)
 		}
 	}
 	return expanded
+}
+
+func clipTimestamp(seconds float64) string {
+	total := int(seconds)
+	return fmt.Sprintf("%d-%d-%d", total/3600, (total%3600)/60, total%60)
 }

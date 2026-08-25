@@ -58,7 +58,7 @@ func writeFakeIndexedStateWriterViolation(t *testing.T, tempDir, fixturePath str
 // must NOT trip.
 func writeFakeIndexedStateWriterCanonical(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "infrastructure", "indexing", "clipindexer")
+	dir := filepath.Join(tempDir, "internal", "platform", "qdrant", "indexing", "clipindexer")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir canonical dir: %v", err)
 	}

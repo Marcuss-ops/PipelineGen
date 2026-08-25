@@ -62,7 +62,7 @@ func (h *MaterializeJobHandler) Register(jobsSvc JobRegistrar) error {
 	if jobsSvc == nil {
 		return errors.New("texttracks.MaterializeJobHandler.Register: jobsSvc is nil")
 	}
-	return jobsSvc.RegisterHandler(asset.TypeTextMaterialize, h.HandleJob)
+	return jobsSvc.RegisterHandler(asset.TypeTextMaterialize, job.Handler(h.HandleJob))
 }
 
 func (h *MaterializeJobHandler) HandleJob(

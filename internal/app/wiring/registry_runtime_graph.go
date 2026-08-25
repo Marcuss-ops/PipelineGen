@@ -68,20 +68,11 @@ func c3ValidateRuntimeGraph() error {
 	// satisfy the HasHandler invariant for the 6 owner types just
 	// like the existing CanonicalJobDefinitions entries.
 	additionalOwnerTypes := []string{
-		images.JobGenerate,
 		domainyoutube.TypeClipExtract,
 		script.TypeGenerate,
 		documents.JobGenerate,
 		domainvoiceover.TypeGenerate,
 		media.TypeBulkUploadYouTubeClips,
-	}
-	ownerTypeSet := map[string]bool{
-		images.JobGenerate:               true,
-		domainyoutube.TypeClipExtract:    true,
-		script.TypeGenerate:              true,
-		documents.JobGenerate:            true,
-		domainvoiceover.TypeGenerate:     true,
-		media.TypeBulkUploadYouTubeClips: true,
 	}
 	for _, registerOwner := range []func(job.MutableJobRegistry) error{
 		images.MustRegister,
@@ -95,6 +86,13 @@ func c3ValidateRuntimeGraph() error {
 			return fmt.Errorf("c3: owner must-register: %w", err)
 		}
 	}
+	ownerRegisteredTypes := map[string]bool{
+		domainyoutube.TypeClipExtract:    true,
+		script.TypeGenerate:              true,
+		documents.JobGenerate:            true,
+		domainvoiceover.TypeGenerate:     true,
+		media.TypeBulkUploadYouTubeClips: true,
+	}
 
 	for _, def := range job.CanonicalJobDefinitions {
 		// PR-JOB-TYPE-OWNER-LOCKS (July 2026, godlike/06 SSOT): skip
@@ -107,7 +105,7 @@ func c3ValidateRuntimeGraph() error {
 		// The placeholder BindHandler for those 3 overlaps lands in
 		// the additionalOwnerTypes loop below — owner-side authority
 		// extends uniformly to definition + handler binding.
-		if ownerTypeSet[def.Type] {
+		if ownerRegisteredTypes[def.Type] {
 			continue
 		}
 		if err := mutableReg.RegisterDefinition(def); err != nil {

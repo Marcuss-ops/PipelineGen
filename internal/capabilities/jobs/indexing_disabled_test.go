@@ -117,7 +117,7 @@ func TestIndexingHandler_HappyPath_WithStateUpdater(t *testing.T) {
 	src := &mockSourceVersionQuerier{getResult: "h-OK"}
 	stateUpd := newMockIndexerStateUpdater()
 
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop()).
+	h := NewIndexingHandler(indexer, src, zap.NewNop()).
 		WithStateUpdater(stateUpd)
 
 	err := h.Handle(context.Background(),
@@ -159,7 +159,7 @@ func TestIndexingHandler_SkipOnDisabled_RoutesToRetryPending(t *testing.T) {
 	src := &mockSourceVersionQuerier{getResult: "h-SKIP"}
 	stateUpd := newMockIndexerStateUpdater()
 
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop()).
+	h := NewIndexingHandler(indexer, src, zap.NewNop()).
 		WithStateUpdater(stateUpd)
 
 	err := h.Handle(context.Background(),
@@ -218,7 +218,7 @@ func TestIndexingHandler_RetryOnFlapping_RecoversOnReEnable(t *testing.T) {
 	src := &mockSourceVersionQuerier{getResult: "h-FLAP"}
 	stateUpd := newMockIndexerStateUpdater()
 
-	h := outboxhandlers.NewIndexingHandler(flippable, src, zap.NewNop()).
+	h := NewIndexingHandler(flippable, src, zap.NewNop()).
 		WithStateUpdater(stateUpd)
 
 	// t=0: disabled → sentinel branch.

@@ -45,7 +45,7 @@ func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex
 	db := database.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	svc := assetindex.NewService(repo)
-	workerSvc := NewService(svc, nil, nil, nil, zap.NewNop())
+	workerSvc := NewAssetTransferService(svc, nil, nil, nil, zap.NewNop())
 	// PR-SOURCESTAGER-CONSOLIDATE (July 2026): wire the canonical
 	// HTTPSourceStager so the URL download path in fetch routes
 	// through the port instead of the retired inline

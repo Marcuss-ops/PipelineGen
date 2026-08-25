@@ -92,7 +92,10 @@
 // `errors.Is(err, kerneljob.ErrLeaseLost)`.
 package jobs
 
-import "errors"
+import (
+	"errors"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
 
 // ErrRegistryRequired is returned by NewService(repo, dispatcher, log, reg)
 // when reg is nil. Composition-root contract — fail-closed at startup.
@@ -224,4 +227,4 @@ var ErrJobsSvcRequiredAtRegistration = errors.New("appjobs: JobsSvc is required 
 // context with dependency nil — a future cue "register before nil" would
 // silently miscategorise on a future refactor. The typed sentinel
 // preserves the canonical contract for `errors.Is` across all callers.
-var ErrMissingDeps = errors.New("appjobs: required dependency is nil (composition root must wire the dependency before calling Register)")
+var ErrMissingDeps = kerneljob.ErrMissingDeps

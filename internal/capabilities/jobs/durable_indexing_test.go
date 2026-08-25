@@ -40,7 +40,7 @@
 //     source_version supersede gate; without it the canonical pipeline
 //     would double-write Qdrant with stale embeddings.
 //
-// Scope decision: the test BYPASSES the Dispatcher (`sqliteoutbox.Dispatcher`)
+// Scope decision: the test BYPASSES the Dispatcher (`sqliteDispatcher`)
 // and inserts outbox_events rows directly via SQL on a :memory: SQLite.
 // Reasons:
 //   - The Dispatcher plumbing (medias_assets.upsert + clips-port interfaces
@@ -80,7 +80,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -204,10 +204,10 @@ func openInMemDB_CF(t *testing.T) *sql.DB {
 func insertOutboxEventCF(t *testing.T, db *sql.DB, assetID, sourceVersion, idempotencyKey string) {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
-		"schema_version":  outbox.IndexRequestSchemaVersion, // "asset.index.requested.v1"
+		"schema_version":  IndexRequestSchemaVersion, // "asset.index.requested.v1"
 		"event_id":        idempotencyKey,
 		"asset_id":        assetID,
-		"operation":       outbox.IndexRequestOperationUPSERT,
+		"operation":       IndexRequestOperationUPSERT,
 		"source_version":  sourceVersion,
 		"idempotency_key": idempotencyKey,
 		"requested_at":    time.Now().UTC().Format(time.RFC3339),
@@ -274,7 +274,7 @@ func TestDurableIndexing_AtomicWrite_CallbackOnce(t *testing.T) {
 	// sourceQuerier=nil → supersede gate bypassed, IndexClip is invoked
 	// unconditionally. Production wires SourceVersionQuerier; the gate is
 	// separately pinned by Scenario 3 below.
-	handler := outbox.NewIndexingHandler(clipper, nil, zap.NewNop())
+	handler := NewIndexingHandler(clipper, nil, zap.NewNop())
 
 	ctx := context.Background()
 	assetID := "yt_commitF_atomic_001"
@@ -359,7 +359,7 @@ func TestDurableIndexing_IdempotentReplay_CallbackOnce(t *testing.T) {
 	repo := outboxevents.NewRepository(db)
 
 	clipper := newFakeIndexClipper()
-	handler := outbox.NewIndexingHandler(clipper, nil, zap.NewNop())
+	handler := NewIndexingHandler(clipper, nil, zap.NewNop())
 
 	ctx := context.Background()
 	assetID := "yt_commitF_idempotent_001"
@@ -439,7 +439,7 @@ func TestDurableIndexing_SupersededEvent_NoCallback(t *testing.T) {
 	srcQuerier := &fakeSourceQuerier{versions: map[string]string{
 		"yt_supersede_001": "sha256:newerversionsha",
 	}}
-	handler := outbox.NewIndexingHandler(clipper, srcQuerier, zap.NewNop())
+	handler := NewIndexingHandler(clipper, srcQuerier, zap.NewNop())
 
 	ctx := context.Background()
 	assetID := "yt_supersede_001"
@@ -697,7 +697,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 	// ── Stage 2: wire IndexingHandler with REAL SourceVersionFor ──
 	clipper := newFakeIndexClipper()
 	srcQuerier := &dbSourceQuerier{db: db}
-	handler := outbox.NewIndexingHandler(clipper, srcQuerier, zap.NewNop())
+	handler := NewIndexingHandler(clipper, srcQuerier, zap.NewNop())
 
 	// ── Stage 3: claim + handle — MUST NOT supersede ──
 	claim1, err := repo.ClaimNext(ctx, "worker-integration-1", 30*time.Second)

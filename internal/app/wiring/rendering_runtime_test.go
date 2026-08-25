@@ -83,7 +83,7 @@ var frozenRenderingForbiddenImportSubstrings = []string{
 // imports, alias renames, and varied formatting.
 func TestRenderingRuntime_FrozenImportAllowlist(t *testing.T) {
 	chdirToProjectRoot(t)
-	pattern := filepath.Join("internal", "app", "rendering_*.go")
+	pattern := filepath.Join("internal", "app", "wiring", "rendering_*.go")
 	files, err := filepath.Glob(pattern)
 	require.NoError(t, err, "glob rendering_*.go")
 	require.NotEmpty(t, files, "no rendering_*.go matched — chdir to project root failed or no rendering files exist")

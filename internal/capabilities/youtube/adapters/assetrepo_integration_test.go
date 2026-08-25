@@ -24,7 +24,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema

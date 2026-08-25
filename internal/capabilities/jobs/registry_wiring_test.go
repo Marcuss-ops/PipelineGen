@@ -191,8 +191,8 @@ func TestRunner_WithRegistry_NilIsTolerant(t *testing.T) {
 		},
 	).WithRegistry(nil)
 
-	if runner.registry != nil {
-		t.Errorf("Runner.WithRegistry(nil) should leave registry=nil, got %v", runner.registry)
+	if runner.reg != nil {
+		t.Errorf("Runner.WithRegistry(nil) should leave registry=nil, got %v", runner.reg)
 	}
 	workers := runner.buildWorkers()
 	if len(workers) != 1 {

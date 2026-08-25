@@ -35,6 +35,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"sync/atomic"
 	"time"
 
@@ -192,7 +194,7 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 		}
 		sem <- struct{}{}
 		wg.Add(1)
-		go func() {
+		concurrent.SafeGo("monitor-video-discovery", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 			defer func() {
@@ -206,7 +208,7 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Chan
 				return
 			}
 			m.processVideo(ctx, video, channel, &outcomes, cycleNow)
-		}()
+		})
 	}
 	wg.Wait()
 

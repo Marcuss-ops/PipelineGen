@@ -54,7 +54,12 @@ func (r *Runner) WithObserver(obs *kernobs.RunObserver) *Runner {
 	return r
 }
 
-func (r *Runner) Start(ctx context.Context) {
+// buildWorkers constructs the worker pool and attaches every wired
+// dependency (registry, broker, job ledger, observer) to each Worker.
+// Start() runs these workers; the helper exists so tests can assert
+// the attachment contract deterministically without goroutines.
+func (r *Runner) buildWorkers() []*Worker {
+	workers := make([]*Worker, 0, r.cfg.Workers)
 	for i := 0; i < r.cfg.Workers; i++ {
 		workerID := fmt.Sprintf("%s_%d", workerIDPrefix, i+1)
 		w := NewWorker(WorkerDeps{
@@ -80,7 +85,14 @@ func (r *Runner) Start(ctx context.Context) {
 		if r.observer != nil {
 			w.WithObserver(r.observer)
 		}
-		concurrent.SafeGo(fmt.Sprintf("worker-%d", i+1), func() {
+		workers = append(workers, w)
+	}
+	return workers
+}
+
+func (r *Runner) Start(ctx context.Context) {
+	for _, w := range r.buildWorkers() {
+		concurrent.SafeGo(fmt.Sprintf("worker-%s", w.id), func() {
 			w.Start(ctx)
 		})
 	}

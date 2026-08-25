@@ -1,4 +1,4 @@
-package httpserver
+package httpserver_test
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	httpserver "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -116,8 +117,8 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
 		},
 	}
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -125,7 +126,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
 		zap.NewNop(),
 	)))
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -182,7 +183,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		},
 	}
 
-	mockClips := NewRouteModule(
+	mockClips := httpserver.NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -194,8 +195,8 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -203,7 +204,7 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 		zap.NewNop(),
 	)))
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -260,7 +261,7 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		},
 	}
 
-	mockClips := NewRouteModule(
+	mockClips := httpserver.NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -272,8 +273,8 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -281,7 +282,7 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 		zap.NewNop(),
 	)))
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -326,8 +327,8 @@ func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(
 		},
 	}
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"youtube",
 		func() bool { return true },
 		"/clips",
@@ -335,7 +336,7 @@ func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(
 		zap.NewNop(),
 	)))
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -398,7 +399,7 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 		},
 	}
 
-	mockClips := NewRouteModule(
+	mockClips := httpserver.NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -410,8 +411,8 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 		Clips: mockClips,
 	}, zap.NewNop())
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"assets",
 		func() bool { return true },
 		"/media",
@@ -427,7 +428,7 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 	})
 	readyChecker := systemhealth.NewReadyChecker(healthSvc)
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 		Health:   healthSvc,
@@ -475,9 +476,9 @@ func TestNewServerWithHealth_NoClipsModuleReportsClipsCapabilityNotMounted(t *te
 		},
 	}
 
-	registry := NewRegistry()
+	registry := httpserver.NewRegistry()
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})
@@ -536,8 +537,8 @@ func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testi
 		nil,
 	)
 
-	registry := NewRegistry()
-	require.NoError(t, registry.Register(NewRouteModule(
+	registry := httpserver.NewRegistry()
+	require.NoError(t, registry.Register(httpserver.NewRouteModule(
 		"clips",
 		func() bool { return true },
 		"/clips",
@@ -545,7 +546,7 @@ func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testi
 		zap.NewNop(),
 	)))
 
-	server := NewServerWithHealth(ServerDeps{
+	server := httpserver.NewServerWithHealth(httpserver.ServerDeps{
 		Config:   cfg,
 		Registry: registry,
 	})

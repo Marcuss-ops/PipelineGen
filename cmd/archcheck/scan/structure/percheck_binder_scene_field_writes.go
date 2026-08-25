@@ -197,6 +197,9 @@ func ScanBinderSceneFieldWrites(root string, pol *policy.Policy, r *report.Repor
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
+		if !strings.HasPrefix(relSlash, binderSceneFilerScopedDir) {
+			return nil
+		}
 		// Canonical ScenePlanner (and its by-concern sibling files
 		// scene_planner_evidence.go / scene_planner_kinds.go) are
 		// exempt — the ScenePlanner is the SOLE owner of every

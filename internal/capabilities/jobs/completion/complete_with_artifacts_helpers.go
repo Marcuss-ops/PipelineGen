@@ -189,17 +189,17 @@ func (s *WithArtifactsService) deriveAssetLocationEntries(
 		}
 		kind := locationKindFromProvider(pa.Location.Provider)
 		out = append(out, AssetLocationEntry{
-			ArtifactID:  pa.ArtifactID,
-			AssetID:     assetID,
-			Kind:        kind,
-			Provider:    pa.Location.Provider,
-			ExternalID:  pa.Location.FileID,
-			AccessURL:   pa.Location.WebViewLink,
-			DownloadURL: pa.Location.DownloadLink,
-			MIMEType:    pa.MIMEType,
-			SizeBytes:   pa.SizeBytes,
-			FileHash:    pa.SHA256,
-			IsPrimary:   i == 0,
+			ArtifactID:    pa.ArtifactID,
+			AssetID:       assetID,
+			Kind:          kind,
+			Provider:      pa.Location.Provider,
+			ExternalID:    pa.Location.FileID,
+			AccessURL:     pa.Location.WebViewLink,
+			DownloadURL:   pa.Location.DownloadLink,
+			MIMEType:      pa.MIMEType,
+			SizeBytes:     pa.SizeBytes,
+			LegacyFileMD5: pa.SHA256,
+			IsPrimary:     i == 0,
 		})
 	}
 	return out, nil

@@ -99,8 +99,7 @@ func TestIndexingStatus_TypedAliasRoundTrip(t *testing.T) {
 
 // TestSourcingNoLegacyIndexingStrings verifies zero references to the
 // pre-§12-5 placeholder strings "enqueued" or "not_configured" in
-// production code under internal/application/assets/sourcing/ and
-// internal/api/assets/register/.
+// production code under the canonical capabilities sourcing package.
 //
 // Spec pin (3): residue grep test in sourcing/ verifies zero references
 // to IndexingStatus standalone (alias call-sites via TYPE only). Alias
@@ -111,8 +110,8 @@ func TestSourcingNoLegacyIndexingStrings(t *testing.T) {
 
 	root := repoRoot(t)
 	subtrees := []string{
-		filepath.Join(root, "internal/application/assets/sourcing/"),
-		filepath.Join(root, "internal/api/assets/register/"),
+		filepath.Join(root, "internal/capabilities/assets/sourcing/"),
+		filepath.Join(root, "internal/capabilities/assets/register/"),
 	}
 
 	for _, root := range subtrees {
@@ -171,7 +170,7 @@ func TestSourcingNoLegacyIndexingStrings(t *testing.T) {
 // was retired in favour of direct consumption of domain.SourcingIndexStatus.
 func TestSourcingAliasCohesion(t *testing.T) {
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "internal/application/assets/sourcing/types.go"))
+	data, err := os.ReadFile(filepath.Join(root, "internal/capabilities/assets/sourcing/types.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,7 +102,7 @@ func TestMaintenancePruning(t *testing.T) {
 	cfg.Jobs.RetentionDays = 30
 
 	// Set up simple asset tree service
-	treeRepo, err := assets.NewAssetTreeRepository(db, logger)
+	treeRepo, err := channels.NewAssetTreeRepository(db, logger)
 	require.NoError(t, err)
 	treeSvc := assettree.NewService(treeRepo, logger)
 

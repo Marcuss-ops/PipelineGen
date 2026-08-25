@@ -74,12 +74,12 @@ func TestScanAssetStateNoShadowEnum_ShadowInOtherFileFails(t *testing.T) {
 	ScanAssetStateNoShadowEnum(tempDir, &policy.Policy{}, r)
 	found := 0
 	for _, v := range r.Violations {
-		if v.Rule == assetStateShadowRule && v.File == "internal/capabilities/images/workflow/shadow_states.go" {
+		if v.Rule == assetStateShadowRule && v.File == "internal/application/images/shadow_states.go" {
 			found++
 		}
 	}
 	if found < 1 {
-		t.Errorf("expected at least 1 shadow-enum violation on internal/capabilities/images/workflow/shadow_states.go; got %d (all violations: %d)",
+		t.Errorf("expected at least 1 shadow-enum violation on internal/application/images/shadow_states.go; got %d (all violations: %d)",
 			found, len(r.Violations))
 	}
 }
@@ -108,7 +108,7 @@ func TestScanAssetStateNoShadowEnum_TestFileExempted(t *testing.T) {
 	}
 	ScanAssetStateNoShadowEnum(tempDir, &policy.Policy{}, r)
 	for _, v := range r.Violations {
-		if v.Rule == assetStateShadowRule && v.File == "internal/capabilities/images/workflow/shadow_states_test.go" {
+		if v.Rule == assetStateShadowRule && v.File == "internal/application/images/shadow_states_test.go" {
 			t.Errorf("test file MUST be exempt from shadow-enum scan; got violation: %s", v.Note)
 		}
 	}
@@ -141,13 +141,13 @@ func TestScanAssetStateNoShadowEnum_CommentOnlyIsResidue(t *testing.T) {
 	}
 	ScanAssetStateNoShadowEnum(tempDir, &policy.Policy{}, r)
 	for _, v := range r.Violations {
-		if v.Rule == assetStateShadowRule && v.File == "internal/capabilities/images/workflow/narrative_doc.go" {
+		if v.Rule == assetStateShadowRule && v.File == "internal/application/images/narrative_doc.go" {
 			t.Errorf("comment-only references must NOT trip shadow-enum violation; got: %s", v.Note)
 		}
 	}
 	foundWarn := false
 	for _, w := range r.Warnings {
-		if containsSubstring(w, "shadow-enum") && containsSubstring(w, "internal/capabilities/images/workflow/narrative_doc.go") {
+		if containsSubstring(w, "shadow-enum") && containsSubstring(w, "internal/application/images/narrative_doc.go") {
 			foundWarn = true
 			break
 		}
@@ -168,7 +168,10 @@ func writeFakeAssetStateValues(t *testing.T, dir string, n int, extra string) {
 		fmt.Fprintf(&b, "const StateAssetFake%d asset.AssetState = \"fake-%d\"\n", i, i)
 	}
 	b.WriteString(extra)
-	path := filepath.Join(dir, "fake_asset_state.go")
+	path := filepath.Join(dir, assetStateCanonical14Path)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir canonical asset state dir: %v", err)
+	}
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		t.Fatalf("writeFakeAssetStateValues: %v", err)
 	}

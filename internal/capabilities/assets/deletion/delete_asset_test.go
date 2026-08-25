@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // seedAssetRowWithSource writes a minimal media_assets row with id +
@@ -262,7 +263,7 @@ func TestCompleteAsset_AssetTreeCleanupRunsInTerminalPath(t *testing.T) {
 	seedAssetRowState(t, db, "asset-tree", "artlist", string(asset.StateIndexDeleted))
 	seedAssetTreeNode(t, db, "node-1", "artlist", "asset-tree")
 
-	treeRepo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
+	treeRepo, err := channels.NewAssetTreeRepository(db, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewAssetTreeRepository: %v", err)
 	}
@@ -298,7 +299,7 @@ func TestCompleteAsset_AssetTreeCleanupFailurePropagates(t *testing.T) {
 	// Deliberately do NOT create asset_tree_nodes: DeleteByAssetID fails.
 	seedAssetRowState(t, db, "asset-tree-fail", "artlist", string(asset.StateIndexDeleted))
 
-	treeRepo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
+	treeRepo, err := channels.NewAssetTreeRepository(db, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewAssetTreeRepository: %v", err)
 	}

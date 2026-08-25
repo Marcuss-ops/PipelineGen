@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 )
 
 // stubSourcingFetcher implements sourcing.FetchProviderPort for adapter

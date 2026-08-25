@@ -50,8 +50,8 @@ func projectRootForMigration157Test(t *testing.T) string {
 		t.Fatal("runtime.Caller(0) failed; cannot resolve project root")
 	}
 	thisDir := filepath.Dir(thisFile)
-	// thisDir = <repo>/cmd/archcheck/scan; go up 3 to reach repo root.
-	return filepath.Clean(filepath.Join(thisDir, "..", "..", ".."))
+	// thisDir = <repo>/cmd/archcheck/scan/migrations; go up 4 to reach repo root.
+	return filepath.Clean(filepath.Join(thisDir, "..", "..", "..", ".."))
 }
 
 // writeFakeMigration157 writes a synthetic

@@ -58,7 +58,7 @@ func (m *mockSourceVersionQuerier) SourceVersionFor(ctx context.Context, id stri
 // ── Helpers ───────────────────────────────────────────────────────────
 //
 // validIndexRequestPayload builds a v1 envelope. The schema_version
-// literal is sourced from outboxhandlers.IndexRequestSchemaVersion so
+// literal is sourced from IndexRequestSchemaVersion so
 // a future version bump automatically updates test fixtures in
 // lockstep. assetID + sourceVersion + idempotencyKey are caller's
 // choice; tests that exercise the schema-version-mismatch path build
@@ -67,7 +67,7 @@ func (m *mockSourceVersionQuerier) SourceVersionFor(ctx context.Context, id stri
 func validIndexRequestPayload(t *testing.T, assetID, sourceVersion, idemKey string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"schema_version":       outboxhandlers.IndexRequestSchemaVersion,
+		"schema_version":       IndexRequestSchemaVersion,
 		"event_id":             "evt-" + idemKey,
 		"asset_id":             assetID,
 		"operation":            "UPSERT",
@@ -117,7 +117,7 @@ func indexEvt(t *testing.T, payload string) outboxevents.Event {
 // `&IndexingHandler{}` struct-literal path; both must agree on
 // the literal.
 func TestIndexingHandler_V1EventType(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -133,7 +133,7 @@ func TestIndexingHandler_V1EventType(t *testing.T) {
 // variant; the legacy `&IndexingHandler{}` variant lives in
 // indexing_terminal_test.go for the parse-gate-only path.
 func TestIndexingHandler_V1PayloadParseIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -152,7 +152,7 @@ func TestIndexingHandler_V1PayloadParseIsTerminal(t *testing.T) {
 // is terminal — producers must upgrade rather than silently
 // retrying on what looks like a routine failure.
 func TestIndexingHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -175,7 +175,7 @@ func TestIndexingHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 // The legacy `&IndexingHandler{}` parse-gate-only variant lives in
 // indexing_terminal_test.go.
 func TestIndexingHandler_V1EmptyAssetIDIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -195,7 +195,7 @@ func TestIndexingHandler_V1EmptyAssetIDIsTerminal(t *testing.T) {
 // we cannot verify the event is current, so retrying won't fix
 // it. Terminal so producers upgrade.
 func TestIndexingHandler_EmptySourceVersionIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -217,7 +217,7 @@ func TestIndexingHandler_EmptySourceVersionIsTerminal(t *testing.T) {
 // envelope MUST carry idempotency_key so a replay of the same
 // event can be deduplicated against outbox event_key.
 func TestIndexingHandler_MissingIdempotencyKeyIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -237,7 +237,7 @@ func TestIndexingHandler_MissingIdempotencyKeyIsTerminal(t *testing.T) {
 // (e.g. future REINDEX mistakenly used) is terminal so the
 // producer upgrades its envelope version.
 func TestIndexingHandler_UnsupportedOperationIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexingHandler(
+	h := NewIndexingHandler(
 		&mockIndexClipper{},
 		&mockSourceVersionQuerier{},
 		zap.NewNop(),
@@ -264,7 +264,7 @@ func TestIndexingHandler_SourceVersionSupersede(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getResult: "hash-CURRENT",
 	}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-z", "hash-OLD", "idem-x")),
@@ -305,7 +305,7 @@ func TestIndexingHandler_SourceVersionMatchDelegatesToIndexClip(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getResult: "hash-X",
 	}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-ok", "hash-X", "idem-ok")),
@@ -336,7 +336,7 @@ func TestIndexingHandler_SourceVersionErrorIsRetryable(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getErr: errors.New("sqlite: database is locked"),
 	}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-r", "h", "i")),
@@ -364,7 +364,7 @@ func TestIndexingHandler_SourceVersionErrorIsRetryable(t *testing.T) {
 // to reflect the port rename.
 func TestIndexingHandler_NilSourceQuerierSkipsGate(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	h := outboxhandlers.NewIndexingHandler(indexer, nil, zap.NewNop())
+	h := NewIndexingHandler(indexer, nil, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-n", "h", "i")),
@@ -385,7 +385,7 @@ func TestIndexingHandler_NilIndexerReturnsTerminal(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getResult: "h",
 	}
-	h := outboxhandlers.NewIndexingHandler(nil, src, zap.NewNop())
+	h := NewIndexingHandler(nil, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-nil", "h", "i")),
@@ -410,7 +410,7 @@ func TestIndexingHandler_NilIndexerReturnsTerminal(t *testing.T) {
 func TestIndexingHandler_MissingAssetSkipsGate(t *testing.T) {
 	indexer := &mockIndexClipper{}
 	src := &mockSourceVersionQuerier{getErr: sql.ErrNoRows}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-ghost", "h", "i")),
@@ -433,7 +433,7 @@ func TestIndexingHandler_IndexClipErrorPropagatesAsRetryable(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getResult: "h",
 	}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
 		indexEvt(t, validIndexRequestPayload(t, "clip-r", "h", "i")),
@@ -453,10 +453,10 @@ func TestIndexingHandler_IndexClipErrorPropagatesAsRetryable(t *testing.T) {
 func TestIndexingHandler_IndexRevisionOnlyEventSupersedes(t *testing.T) {
 	indexer := &mockIndexClipper{}
 	src := &mockSourceVersionQuerier{getResult: "rev-CURRENT"}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	body, err := json.Marshal(map[string]any{
-		"schema_version":       outboxhandlers.IndexRequestSchemaVersion,
+		"schema_version":       IndexRequestSchemaVersion,
 		"event_id":             "evt-index-rev",
 		"asset_id":             "clip-ir",
 		"operation":            "UPSERT",
@@ -489,10 +489,10 @@ func TestIndexingHandler_IndexRevisionOnlyEventSupersedes(t *testing.T) {
 func TestIndexingHandler_IndexRevisionPreferredOverLegacySourceVersion(t *testing.T) {
 	indexer := &mockIndexClipper{}
 	src := &mockSourceVersionQuerier{getResult: "rev-CURRENT"}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	body, err := json.Marshal(map[string]any{
-		"schema_version":       outboxhandlers.IndexRequestSchemaVersion,
+		"schema_version":       IndexRequestSchemaVersion,
 		"event_id":             "evt-both",
 		"asset_id":             "clip-both",
 		"operation":            "UPSERT",
@@ -529,7 +529,7 @@ func TestIndexingHandler_MetricsEmitted(t *testing.T) {
 	src := &mockSourceVersionQuerier{
 		getResult: "h",
 	}
-	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
+	h := NewIndexingHandler(indexer, src, zap.NewNop())
 
 	// Just confirm the metric definition is reachable (compile-time
 	// pin against accidental renames) AND that we hit it. The

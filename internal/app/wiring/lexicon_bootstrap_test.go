@@ -12,7 +12,7 @@ import (
 
 func testLexiconRoot() string {
 	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../config/lexicons"))
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../config/lexicons"))
 }
 
 func TestInitLinguistics_FailsWhenRequiredLanguageMissing(t *testing.T) {

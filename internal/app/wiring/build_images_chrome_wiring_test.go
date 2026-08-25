@@ -13,7 +13,7 @@ func TestBuildImagesServiceUsesChromeInfrastructureAdapter(t *testing.T) {
 	}
 	text := string(source)
 	for _, required := range []string{
-		`chromeimages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome"`,
+		`chromeimages "github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome"`,
 		"chromeimages.NewChromeImageProviderPoolFromProfile(",
 	} {
 		if !strings.Contains(text, required) {

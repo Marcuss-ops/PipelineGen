@@ -17,7 +17,7 @@ func repoPath(parts ...string) string {
 	if !ok {
 		return filepath.Join(parts...)
 	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
 	return filepath.Join(append([]string{root}, parts...)...)
 }
 
@@ -27,8 +27,7 @@ func repoPath(parts ...string) string {
 // when they serve a documented back-compat purpose with a removal plan.
 func TestStoragePackages_NoPhantomTypes(t *testing.T) {
 	paths := []string{
-		repoPath("internal", "api", "assets", "storage"),
-		repoPath("internal", "application", "assets", "storage"),
+		repoPath("internal", "capabilities", "assets", "storage"),
 	}
 	for _, pkg := range paths {
 		entries, err := os.ReadDir(pkg)
@@ -70,8 +69,7 @@ func TestStoragePackages_NoPhantomTypes(t *testing.T) {
 // with real declarations (not empty stubs).
 func TestStoragePackages_ExistAndAreNotEmpty(t *testing.T) {
 	paths := map[string]string{
-		"api":         repoPath("internal", "api", "assets", "storage"),
-		"application": repoPath("internal", "application", "assets", "storage"),
+		"capabilities": repoPath("internal", "capabilities", "assets", "storage"),
 	}
 	for role, pkg := range paths {
 		entries, err := os.ReadDir(pkg)

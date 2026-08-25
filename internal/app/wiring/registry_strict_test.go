@@ -102,9 +102,7 @@ func TestRegisterErrorIncludesDescriptorType(t *testing.T) {
 	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-type"}))
 	err := tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-type"})
 	require.Error(t, err)
-	// fmt.Sprintf("%T", &fakeModule{...}) returns "*app.fakeModule"
-	// because fakeModule is declared in package app.
-	require.Contains(t, err.Error(), "*app.fakeModule",
+	require.Contains(t, err.Error(), "*wiring.fakeModule",
 		"wrapped error must include the descriptor type (fmt.Sprintf %%T form)")
 	require.Contains(t, err.Error(), "compose:",
 		"compose: prefix must remain")

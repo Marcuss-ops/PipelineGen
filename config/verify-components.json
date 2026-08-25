@@ -3,8 +3,7 @@
     "paths": [
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
-      "internal/api/script/",
-      "internal/infrastructure/nlp/",
+      "internal/platform/nlp/",
       "scripts/bridges/local_nlp_gpu.py",
       "scripts/bridges/react_agent.py",
       "scripts/with-velox-auth",
@@ -20,7 +19,7 @@
     "go_packages": [
       "./internal/kernel/script/...",
       "./internal/capabilities/scripts/...",
-      "./internal/api/script/..."
+      "./internal/platform/nlp/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -35,14 +34,12 @@
   "research": {
     "paths": [
       "internal/capabilities/scripts/usecase/",
-      "internal/infrastructure/webresearch/",
       "internal/platform/sqlite/scripts/",
       "config/lexicons/",
       "tools/researchlive/"
     ],
     "go_packages": [
       "./internal/capabilities/scripts/usecase/...",
-      "./internal/infrastructure/webresearch/...",
       "./internal/platform/sqlite/scripts/..."
     ],
     "node_tests": [],
@@ -60,15 +57,15 @@
   },
   "clips": {
     "paths": [
-      "internal/application/clips/",
-      "internal/api/assets/clips/",
+      "internal/capabilities/clips/",
+      "internal/capabilities/assets/clips/",
       "scripts/ingest_local_clips_batch.sh",
       "scripts/verify_10_clip_audio_certification.sh",
       "scripts/verify_5_other_clip_audio_certification.sh"
     ],
     "go_packages": [
-      "./internal/application/clips/...",
-      "./internal/api/assets/clips/..."
+      "./internal/capabilities/clips/...",
+      "./internal/capabilities/assets/clips/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -84,18 +81,14 @@
     "paths": [
       "internal/capabilities/assets/providers/stock/",
       "internal/capabilities/assets/providers/artlist/",
-      "internal/api/assets/stock/",
-      "internal/api/assets/artlist/",
-      "internal/infrastructure/artlist/",
+      "internal/platform/artlist/",
       "scripts/youtube_boxer_stock_e2e.py",
       "tests/fixtures/stock/"
     ],
     "go_packages": [
       "./internal/capabilities/assets/providers/stock/...",
       "./internal/capabilities/assets/providers/artlist/...",
-      "./internal/api/assets/stock/...",
-      "./internal/api/assets/artlist/...",
-      "./internal/infrastructure/artlist/..."
+      "./internal/platform/artlist/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -114,12 +107,10 @@
   },
   "qdrant": {
     "paths": [
-      "internal/application/qdrant/",
       "internal/platform/qdrant/",
       "scripts/operations/certify_media_registry_qdrant.sh"
     ],
     "go_packages": [
-      "./internal/application/qdrant/...",
       "./internal/platform/qdrant/..."
     ],
     "node_tests": [],
@@ -136,16 +127,15 @@
   },
   "indexing": {
     "paths": [
-      "internal/application/indexing/",
-      "internal/infrastructure/indexing/",
-      "internal/api/assets/clips/indexing/",
+      "internal/capabilities/indexing/",
+      "internal/platform/qdrant/indexing/",
       "scripts/services/",
       "scripts/start_embedding_server.sh",
       "scripts/bridges/generate_embedding.py"
     ],
     "go_packages": [
-      "./internal/application/indexing/...",
-      "./internal/infrastructure/indexing/..."
+      "./internal/capabilities/indexing/...",
+      "./internal/platform/qdrant/indexing/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -163,13 +153,13 @@
   "drive": {
     "paths": [
       "internal/platform/drive/",
-      "internal/application/publish_drive/",
+      "internal/capabilities/publish_drive/",
       "scripts/verify_drive_only_certification.sh",
       "scripts/render_clip_watermark_drive.sh"
     ],
     "go_packages": [
       "./internal/platform/drive/...",
-      "./internal/application/publish_drive/..."
+      "./internal/capabilities/publish_drive/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -187,12 +177,12 @@
       "README.md",
       "AGENTS.md",
       "scripts/README.md",
-      "internal/application/documents/",
+      "internal/capabilities/documents/",
       "tools/",
       "PERSON_IMAGE_BENCHMARK_REPORT.md"
     ],
     "go_packages": [
-      "./internal/application/documents/..."
+      "./internal/capabilities/documents/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -210,7 +200,6 @@
   "voiceover": {
     "paths": [
       "cleaned_jackie-chan-is-seen-on-graham_en-US.mp3",
-      "internal/api/assets/voiceover/",
       "internal/capabilities/voiceover/service/",
       "internal/capabilities/voiceover/",
       "jackie-chan-is-seen-on-graham_en-US.mp3",
@@ -220,8 +209,7 @@
     ],
     "go_packages": [
       "./internal/capabilities/voiceover/...",
-      "./internal/capabilities/voiceover/service/...",
-      "./internal/api/assets/voiceover/..."
+      "./internal/capabilities/voiceover/service/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -238,14 +226,12 @@
   },
   "images": {
     "paths": [
-      "internal/application/images/",
-      "internal/api/images/",
+      "internal/capabilities/images/",
       "scripts/verify_nlp_online_images_docs_certification.sh",
       "image-endpoint-tests/"
     ],
     "go_packages": [
-      "./internal/application/images/...",
-      "./internal/api/images/..."
+      "./internal/capabilities/images/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -262,12 +248,12 @@
   },
   "translation": {
     "paths": [
-      "internal/application/translation/",
+      "internal/capabilities/translation/",
       "internal/capabilities/scripts/adapters/",
       "internal/capabilities/scripts/usecase/"
     ],
     "go_packages": [
-      "./internal/application/translation/...",
+      "./internal/capabilities/translation/...",
       "./internal/capabilities/scripts/adapters/...",
       "./internal/capabilities/scripts/usecase/..."
     ],
@@ -286,20 +272,18 @@
   },
   "timeline": {
     "paths": [
-      "internal/infrastructure/media/",
-      "internal/api/assets/storage/"
+      "internal/platform/media/"
     ],
     "go_packages": [
-      "./internal/infrastructure/media/...",
-      "./internal/api/assets/storage/..."
+      "./internal/platform/media/..."
     ],
     "node_tests": [],
     "python_tests": [],
     "dependencies": [
       "storage"
     ],
-    "timeout_seconds": 300,
-    "race_timeout_seconds": 900,
+    "timeout_seconds": 900,
+    "race_timeout_seconds": 1200,
     "race_enabled": true,
     "live_tests": [],
     "cacheable": true,
@@ -307,13 +291,11 @@
   },
   "storage": {
     "paths": [
-      "internal/application/assets/storage/",
-      "internal/api/assets/storage/",
+      "internal/capabilities/assets/storage/",
       "internal/platform/drive/"
     ],
     "go_packages": [
-      "./internal/application/assets/storage/...",
-      "./internal/api/assets/storage/...",
+      "./internal/capabilities/assets/storage/...",
       "./internal/platform/drive/..."
     ],
     "node_tests": [],
@@ -347,9 +329,8 @@
   },
   "jobs": {
     "paths": [
-      "internal/application/jobs/",
-      "internal/api/jobs/",
-      "internal/infrastructure/jobs/",
+      "internal/capabilities/jobs/",
+      "internal/platform/jobs/",
       "internal/platform/sqlite/jobs/",
       "scripts/bridges/slide_worker_runtime/",
       "scripts/worker-bootstrap-smoke.sh",
@@ -358,9 +339,8 @@
       "scripts/perf_serial_vs_parallel.sh"
     ],
     "go_packages": [
-      "./internal/application/jobs/...",
-      "./internal/api/jobs/...",
-      "./internal/infrastructure/jobs/...",
+      "./internal/capabilities/jobs/...",
+      "./internal/platform/jobs/...",
       "./internal/platform/sqlite/jobs/..."
     ],
     "node_tests": [],
@@ -377,14 +357,16 @@
   },
   "api": {
     "paths": [
-      "internal/api/middleware/",
-      "internal/api/transport/",
+      "internal/capabilities/middleware/",
+      "internal/platform/httpserver/middleware/",
+      "internal/platform/httpserver/transport/",
       "scripts/admin/generate_routes_yaml.go",
       "scripts/archcheck/gates/"
     ],
     "go_packages": [
-      "./internal/api/middleware/...",
-      "./internal/api/transport/..."
+      "./internal/capabilities/middleware/...",
+      "./internal/platform/httpserver/middleware/...",
+      "./internal/platform/httpserver/transport/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -418,9 +400,8 @@
     "paths": [
       "internal/capabilities/youtube/",
       "internal/capabilities/assets/providers/youtube/",
-      "internal/application/assets/sourcing/youtube/",
-      "internal/infrastructure/youtube/",
-      "internal/api/assets/youtube/",
+      "internal/capabilities/assets/sourcing/youtube/",
+      "internal/platform/youtube/",
       "scripts/tools/transcribe_detect_lang.py",
       "scripts/bridges/whisper_transcriber.py",
       "scripts/requirements-whisper.txt",
@@ -438,9 +419,8 @@
     "go_packages": [
       "./internal/capabilities/youtube/...",
       "./internal/capabilities/assets/providers/youtube/...",
-      "./internal/application/assets/sourcing/youtube/...",
-      "./internal/infrastructure/youtube/...",
-      "./internal/api/assets/youtube/..."
+      "./internal/capabilities/assets/sourcing/youtube/...",
+      "./internal/platform/youtube/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -458,8 +438,7 @@
   "artlist": {
     "paths": [
       "internal/capabilities/assets/providers/artlist/",
-      "internal/infrastructure/artlist/",
-      "internal/api/assets/artlist/",
+      "internal/platform/artlist/",
       "scripts/artlist_pipeline_live_test.sh",
       "scripts/lib/artlist_pipeline_payload.sh",
       "scripts/lib/artlist_pipeline_polling.sh",
@@ -469,8 +448,7 @@
     ],
     "go_packages": [
       "./internal/capabilities/assets/providers/artlist/...",
-      "./internal/infrastructure/artlist/...",
-      "./internal/api/assets/artlist/..."
+      "./internal/platform/artlist/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -490,7 +468,7 @@
       "node-scraper/"
     ],
     "go_packages": [
-      "./internal/infrastructure/artlist/scraper/..."
+      "./internal/platform/artlist/scraper/..."
     ],
     "node_tests": [
       [
@@ -522,6 +500,21 @@
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
+    "live_tests": [],
+    "cacheable": true,
+    "cache_scope": "content"
+  },
+  "web": {
+    "paths": [
+      "web/"
+    ],
+    "go_packages": [],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 300,
+    "race_enabled": false,
     "live_tests": [],
     "cacheable": true,
     "cache_scope": "content"

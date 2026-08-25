@@ -33,9 +33,11 @@ type stubProviderRegistrar struct {
 	err    error
 }
 
-func (s *stubProviderRegistrar) Register(p providers.Provider) error {
+func (s *stubProviderRegistrar) Register(p any) error {
 	s.called = true
-	s.got = p
+	if p != nil {
+		s.got = p.(providers.Provider)
+	}
 	return s.err
 }
 

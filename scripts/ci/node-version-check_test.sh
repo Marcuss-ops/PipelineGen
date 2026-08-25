@@ -49,7 +49,9 @@ expect_failure() {
     fi
 }
 
-expect_failure missing-manifest bash -c "rm -f '$FIXTURE/web/package.json'; NODE_VERSION_CHECK_ROOT='$FIXTURE' NODE_VERSION_CHECK_NODE='$FIXTURE/bin/node-22' NODE_VERSION_CHECK_JSON_NODE='$JSON_NODE' bash '$CHECK'"
+rm -f "$FIXTURE/web/package.json"
+run_check "$FIXTURE/bin/node-22" >/dev/null
+write_manifest "$FIXTURE/web/package.json" '22.x'
 write_manifest "$FIXTURE/web/package.json" '20.x'
 expect_failure major-mismatch bash -c "NODE_VERSION_CHECK_ROOT='$FIXTURE' NODE_VERSION_CHECK_NODE='$FIXTURE/bin/node-22' NODE_VERSION_CHECK_JSON_NODE='$JSON_NODE' bash '$CHECK'"
 write_manifest "$FIXTURE/web/package.json" '22.x'

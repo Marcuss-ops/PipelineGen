@@ -136,15 +136,15 @@ func TestFeatureFlag_Qdrant_GateExists_RegressionGuard(t *testing.T) {
 	require.True(t, ok, "runtime.Caller must succeed")
 	// Walk up from internal/platform/httpserver/ to repo root.
 	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))))
-	gateFile := filepath.Join(repoRoot, "internal", "app", "build_bundles_qdrant_gates.go")
+	gateFile := filepath.Join(repoRoot, "internal", "app", "wiring", "build_bundles_qdrant_gates.go")
 
 	_, err := os.Stat(gateFile)
-	require.NoError(t, err, "canonical Qdrant gate file must exist at internal/app/build_bundles_qdrant_gates.go")
+	require.NoError(t, err, "canonical Qdrant gate file must exist at internal/app/wiring/build_bundles_qdrant_gates.go")
 
 	// Also verify the test file exists.
-	testFile := filepath.Join(repoRoot, "internal", "app", "build_bundles_qdrant_gates_test.go")
+	testFile := filepath.Join(repoRoot, "internal", "app", "wiring", "build_bundles_qdrant_gates_test.go")
 	_, err = os.Stat(testFile)
-	require.NoError(t, err, "canonical Qdrant gate test file must exist at internal/app/build_bundles_qdrant_gates_test.go")
+	require.NoError(t, err, "canonical Qdrant gate test file must exist at internal/app/wiring/build_bundles_qdrant_gates_test.go")
 
 	// Verify the gate file contains the canonical helper function name.
 	content, err := os.ReadFile(gateFile)

@@ -36,14 +36,14 @@ import (
 // from the project root. chdirToProjectRoot (below) ensures the cwd is the
 // project root so the path resolves consistently regardless of where
 // `go test ./internal/app/` is invoked from.
-const compositionSourcePath = "internal/app/composition.go"
+const compositionSourcePath = "internal/app/wiring/composition.go"
 
 // chdirToProjectRoot mirrors the pattern in wire_test.go so nested
 // migrations + relative-path resolution work the same way. Package-shared
 // across all 3 composition_*_test.go files (same-package Go test scope).
 func chdirToProjectRoot(t *testing.T) {
 	t.Helper()
-	projectRoot := filepath.Join("..", "..")
+	projectRoot := filepath.Join("..", "..", "..")
 	origDir, err := os.Getwd()
 	require.NoError(t, err, "getwd")
 	require.NoError(t, os.Chdir(projectRoot), "chdir to project root")
@@ -187,7 +187,7 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 // Test files excluded; list sorted for deterministic iteration.
 func compositionBundleSourceFiles(t *testing.T) []string {
 	t.Helper()
-	pattern := "internal/app/*.go"
+	pattern := "internal/app/wiring/*.go"
 	files, err := filepath.Glob(pattern)
 	require.NoError(t, err, "glob composition sources")
 	out := make([]string, 0, len(files))
@@ -285,11 +285,11 @@ func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
 // Pre-PR4 had two duplicate QdrantDeleter interfaces (both deleted).
 func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
 	chdirToProjectRoot(t)
-	src, err := os.ReadFile("internal/capabilities/jobs/outbox/ports.go")
+	src, err := os.ReadFile("internal/capabilities/jobs/ports.go")
 	require.NoError(t, err, "read canonical VectorPointDeleter port file")
 	matches := strings.Count(string(src), "type VectorPointDeleter interface")
 	require.Equalf(t, 1, matches,
-		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/capabilities/jobs/outbox/ports.go; found %d. The canonical port lives in the application layer per AGENTS.md Pattern 0.",
+		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/capabilities/jobs/ports.go; found %d.",
 		matches)
 }
 
@@ -402,7 +402,7 @@ func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
 		if readErr != nil {
 			return nil
 		}
-		if strings.Contains(string(src), "func AssetIDToQdrantPointID") {
+		if strings.Contains(string(src), "AssetIDToQdrantPointID") && strings.Contains(string(src), "var AssetIDToQdrantPointID") {
 			matches++
 			matchFiles = append(matchFiles, path)
 		}

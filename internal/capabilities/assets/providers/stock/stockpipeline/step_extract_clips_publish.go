@@ -7,6 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -158,7 +160,7 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 		var wg sync.WaitGroup
 		for w := 0; w < numWorkers; w++ {
 			wg.Add(1)
-			go func() {
+			concurrent.SafeGo("stock-publish-cut", func() {
 				defer wg.Done()
 				for taskIdx := range taskCh {
 					task := uploadTasks[taskIdx]
@@ -218,7 +220,7 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 						leafName: task.leafName,
 					}
 				}
-			}()
+			})
 		}
 		wg.Wait()
 

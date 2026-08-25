@@ -50,7 +50,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	// that defines the canonical subjects table shape). The runner
 	// takes a *zap.Logger; we use zap.NewNop() to silence the
 	// migration-by-migration chatter in the test surface.
-	migDir := "../../../../../../migrations/sqlite"
+	migDir := "../../../../../migrations/sqlite"
 	if mg := os.Getenv("PG_MIGRATIONS_DIR"); mg != "" {
 		migDir = mg
 	}

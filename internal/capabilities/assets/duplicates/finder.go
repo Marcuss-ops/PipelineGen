@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Source is the per-source hash-lookup port consumed by Finder.
@@ -75,7 +77,7 @@ func (f *Finder) Find(ctx context.Context, hash string) ([]DuplicateMatch, error
 
 	for _, s := range f.sources {
 		wg.Add(1)
-		go func(src Source) {
+		concurrent.SafeGoFunc("duplicates-find", s, func(src Source) {
 			defer wg.Done()
 			matches, err := src.FindByHash(ctx, hash)
 			mu.Lock()
@@ -85,7 +87,7 @@ func (f *Finder) Find(ctx context.Context, hash string) ([]DuplicateMatch, error
 				return
 			}
 			all = append(all, matches...)
-		}(s)
+		})
 	}
 	wg.Wait()
 

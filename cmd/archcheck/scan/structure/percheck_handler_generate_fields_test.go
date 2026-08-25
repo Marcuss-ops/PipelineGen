@@ -226,7 +226,7 @@ type HandlerGenerate struct {
 func filterByRule(violations []report.Violation, rule string) []report.Violation {
 	var out []report.Violation
 	for _, v := range violations {
-		if v.MatchedRule == rule {
+		if v.Rule == rule || v.MatchedRule == rule {
 			out = append(out, v)
 		}
 	}

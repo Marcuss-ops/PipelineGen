@@ -501,7 +501,7 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
 
-	assetClient := &stubAssetClient{}
+	assetClient := &mockAssetClient{}
 	runner := NewRunner(mock, registry, workspace, assetClient, zap.NewNop(), "worker-1", "session-1", []string{"renew-fail-test"})
 	runner.SetRenewInterval(minRenewInterval) // 50ms (the minimum)
 
