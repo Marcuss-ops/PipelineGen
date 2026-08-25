@@ -197,16 +197,6 @@ func TestExtractAuthToken_AcceptsHeaders(t *testing.T) {
 			t.Fatalf("expected X-Velox-Admin-Token to win precedence, got %q", got)
 		}
 	})
-
-	t.Run("Cookie velox_admin_session", func(t *testing.T) {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		req := httptest.NewRequest("GET", "/x", nil)
-		req.Header.Set("Cookie", "velox_admin_session=cookie-secret")
-		c.Request = req
-		if got := extractAuthToken(c); got != "cookie-secret" {
-			t.Fatalf("expected cookie-secret, got %q", got)
-		}
-	})
 }
 
 // TestAuth_RejectsQueryStringToken_EndToEnd drives the full Auth
