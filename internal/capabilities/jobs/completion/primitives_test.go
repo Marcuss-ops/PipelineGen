@@ -29,7 +29,7 @@
 //     failure if a downstream caller assumes the field shape.
 //
 //  4. TestPrimitives_AliasesResolve — pins the Go-level type
-//     alias back-compat: `completion.CompleteJobTxRunner`
+//     alias back-compat: `CompleteJobTxRunner`
 //     resolves identity-equal to `CompleteJobTxRunner`.
 //     This is the load-bearing assertion that prevents a future
 //     refactor from accidentally creating TWO competing
@@ -143,7 +143,7 @@ func TestRowTypes_IdentityStable(t *testing.T) {
 		{
 			name: "JobRow",
 			typ:  JobRow{},
-			want: []string{"JobID", "LeaseID", "Attempt", "Status"},
+			want: []string{"JobID", "JobType", "LeaseID", "Attempt", "Status"},
 		},
 		{
 			name: "PriorArtifactHash",
@@ -191,7 +191,7 @@ func TestRowTypes_IdentityStable(t *testing.T) {
 	}
 }
 
-// ── 4. type-alias back-compat: completion.X = X ──────────
+// ── 4. type-alias back-compat: X = X ──────────
 
 // TestPrimitives_AliasesResolve pins the load-bearing assertion
 // that the Go-level type aliases preserve pointer-identity across
@@ -200,7 +200,7 @@ func TestRowTypes_IdentityStable(t *testing.T) {
 // internal subpackage) is caught here at compile time / runtime.
 //
 // NOTE (July 2026): the compile-time pin for CompleteJobTxRunner
-// was removed because completion.CompleteJobTxRunner and
+// was removed because CompleteJobTxRunner and
 // CompleteJobTxRunner diverged (TxContext parameter types
 // are separate interface declarations, not a shared alias). The
 // remaining pins verify the struct types that ARE true aliases.
@@ -211,7 +211,7 @@ func TestPrimitives_AliasesResolve(t *testing.T) {
 	// AssetLocationEntry all diverged into separate struct types with
 	// different fields per GODOBJ-2026-07-03 wave — the compile-time
 	// identity assertions for those types were removed.
-	var _ IdempotencyCachePort = (completion.IdempotencyCachePort)(nil)
+	var _ IdempotencyCachePort = (IdempotencyCachePort)(nil)
 
 	cases := []struct {
 		name string

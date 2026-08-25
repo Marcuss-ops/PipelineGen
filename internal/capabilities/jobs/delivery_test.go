@@ -45,7 +45,7 @@ func deliveryEvent(operation string) outboxevents.Event {
 
 func TestDeliveryHandler_RegisterRemoteReferenceUsesDedicatedPort(t *testing.T) {
 	registrar := &deliveryRemoteRegistrarStub{}
-	h := outboxhandlers.NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, outboxhandlers.DeliveryOperation{
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{
 		RemoteRegistrar: registrar,
 	})
 
@@ -62,7 +62,7 @@ func TestDeliveryHandler_RegisterRemoteReferenceUsesDedicatedPort(t *testing.T) 
 
 func TestDeliveryHandler_MaterializeLocalUsesDedicatedPort(t *testing.T) {
 	materializer := &deliveryMaterializerStub{}
-	h := outboxhandlers.NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, outboxhandlers.DeliveryOperation{
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{
 		Materializer: materializer,
 	})
 
@@ -80,7 +80,7 @@ func TestDeliveryHandler_MaterializeLocalUsesDedicatedPort(t *testing.T) {
 func TestDeliveryHandler_RemoteRegistrarErrorPropagatesRetryable(t *testing.T) {
 	wantErr := errors.New("repository busy")
 	registrar := &deliveryRemoteRegistrarStub{err: wantErr}
-	h := outboxhandlers.NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, outboxhandlers.DeliveryOperation{RemoteRegistrar: registrar})
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{RemoteRegistrar: registrar})
 
 	err := h.Handle(context.Background(), deliveryEvent(string(assetdelivery.OperationRegisterRemoteReference)))
 	if !errors.Is(err, wantErr) {
@@ -94,7 +94,7 @@ func TestDeliveryHandler_RemoteRegistrarErrorPropagatesRetryable(t *testing.T) {
 func TestDeliveryHandler_MaterializerErrorPropagatesRetryable(t *testing.T) {
 	wantErr := errors.New("download temporarily unavailable")
 	materializer := &deliveryMaterializerStub{err: wantErr}
-	h := outboxhandlers.NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, outboxhandlers.DeliveryOperation{Materializer: materializer})
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{Materializer: materializer})
 
 	err := h.Handle(context.Background(), deliveryEvent(string(assetdelivery.OperationMaterializeLocal)))
 	if !errors.Is(err, wantErr) {
@@ -106,10 +106,10 @@ func TestDeliveryHandler_MaterializerErrorPropagatesRetryable(t *testing.T) {
 }
 
 func TestDeliveryHandler_ExplicitOperationWithoutPortFailsClosed(t *testing.T) {
-	h := outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
 
 	err := h.Handle(context.Background(), deliveryEvent(string(assetdelivery.OperationMaterializeLocal)))
-	if !errors.Is(err, outboxhandlers.ErrOperationUnavailable) {
+	if !errors.Is(err, ErrOperationUnavailable) {
 		t.Fatalf("Handle() error = %v, want ErrOperationUnavailable", err)
 	}
 	if !outboxevents.IsTerminal(err) {
@@ -118,15 +118,15 @@ func TestDeliveryHandler_ExplicitOperationWithoutPortFailsClosed(t *testing.T) {
 }
 
 func TestDeliveryHandler_RemoteURLWithoutOperationDoesNotUseLegacyAck(t *testing.T) {
-	h := outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
 	evt := deliveryEvent("")
-	if err := h.Handle(context.Background(), evt); !errors.Is(err, outboxhandlers.ErrRemoteURLRequired) {
+	if err := h.Handle(context.Background(), evt); !errors.Is(err, ErrRemoteURLRequired) {
 		t.Fatalf("Handle() error = %v, want ErrRemoteURLRequired", err)
 	}
 }
 
 func TestDeliveryHandler_LegacyDriveEnvelopeKeepsCompatibilityAck(t *testing.T) {
-	h := outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
 	evt := deliveryEvent("")
 	// The legacy envelope omits operation entirely rather than encoding an
 	// empty operation value.
@@ -138,19 +138,19 @@ func TestDeliveryHandler_LegacyDriveEnvelopeKeepsCompatibilityAck(t *testing.T) 
 }
 
 func TestDeliveryHandler_OperationOnWebhookFailsClosed(t *testing.T) {
-	h := outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
 	evt := deliveryEvent(string(assetdelivery.OperationMaterializeLocal))
 	evt.PayloadJSON = `{"schema_version":"delivery.requested.v1","event_id":"evt-1","occurred_at":"2026-08-06T12:00:00Z","job_id":"job-1","artifact":{"artifact_id":"asset-1","remote_url":"https://example.test/asset.mp4","sha256":"abc"},"destination":{"provider":"webhook","destination_id":"https://example.test/hook"},"idempotency_key":"delivery-webhook","operation":"materialize_local"}`
-	if err := h.Handle(context.Background(), evt); !errors.Is(err, outboxhandlers.ErrOperationProviderMismatch) {
+	if err := h.Handle(context.Background(), evt); !errors.Is(err, ErrOperationProviderMismatch) {
 		t.Fatalf("Handle() error = %v, want ErrOperationProviderMismatch", err)
 	}
 }
 
 func TestDeliveryHandler_UnknownOperationFailsClosed(t *testing.T) {
-	h := outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
 
 	err := h.Handle(context.Background(), deliveryEvent("fetch_and_publish"))
-	if !errors.Is(err, outboxhandlers.ErrUnsupportedOperation) {
+	if !errors.Is(err, ErrUnsupportedOperation) {
 		t.Fatalf("Handle() error = %v, want ErrUnsupportedOperation", err)
 	}
 }

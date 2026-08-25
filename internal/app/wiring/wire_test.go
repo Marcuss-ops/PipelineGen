@@ -12,7 +12,7 @@ import (
 
 func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 	// Change to project root so migration paths resolve correctly
-	projectRoot := filepath.Join("..", "..")
+	projectRoot := filepath.Join("..", "..", "..")
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get current dir: %v", err)
@@ -63,7 +63,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 
 func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 	// Change to project root so migration paths resolve correctly
-	projectRoot := filepath.Join("..", "..")
+	projectRoot := filepath.Join("..", "..", "..")
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get current dir: %v", err)
@@ -115,7 +115,7 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 
 func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	// Change to project root so migration paths resolve correctly
-	projectRoot := filepath.Join("..", "..")
+	projectRoot := filepath.Join("..", "..", "..")
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get current dir: %v", err)
@@ -168,7 +168,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 
 func TestStartupIntegration(t *testing.T) {
 	// Change to project root so migration paths resolve correctly
-	projectRoot := filepath.Join("..", "..")
+	projectRoot := filepath.Join("..", "..", "..")
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get current dir: %v", err)

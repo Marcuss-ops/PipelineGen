@@ -6,8 +6,6 @@ package worker
 
 import (
 	"testing"
-
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // TestRegistry_ProducesArtifacts_TrueAfterSet pins the canonical

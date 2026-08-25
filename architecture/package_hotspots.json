@@ -87,9 +87,9 @@
       "path": "internal/kernel/asset",
       "owner": "kernel asset model decomposition",
       "deadline": "2026-09-30",
-      "baseline_files": 70,
+      "baseline_files": 71,
       "baseline": {
-        "files": 70,
+        "files": 71,
         "max_loc": 0
       },
       "current": {

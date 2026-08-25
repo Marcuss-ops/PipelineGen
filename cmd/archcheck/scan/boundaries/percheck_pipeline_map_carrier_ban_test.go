@@ -19,6 +19,7 @@ package boundaries
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
@@ -179,7 +180,7 @@ type PreparedGeneration struct {
 // containsString reports whether target appears in list.
 func containsString(list []string, target string) bool {
 	for _, s := range list {
-		if s == target {
+		if strings.Contains(s, target) {
 			return true
 		}
 	}

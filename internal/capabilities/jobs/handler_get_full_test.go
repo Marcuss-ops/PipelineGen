@@ -314,25 +314,25 @@ func TestGetFull_ExposesTimingReferences(t *testing.T) {
 	_ = body
 }
 
-// stubHistoryReader is the minimal appjobs.HistoryReader stub that returns a
+// stubHistoryReader is the minimal HistoryReader stub that returns a
 // canned run-report JSON for GetRunReport (the timing-diagnostics surface).
 type stubHistoryReader struct {
 	report json.RawMessage
 	err    error
 }
 
-func (s *stubHistoryReader) ListHistory(_ context.Context, _ appjobs.HistoryFilter) ([]appjobs.HistoryItem, error) {
+func (s *stubHistoryReader) ListHistory(_ context.Context, _ HistoryFilter) ([]HistoryItem, error) {
 	return nil, nil
 }
 func (s *stubHistoryReader) GetRunReport(_ context.Context, _ string) (json.RawMessage, error) {
 	return s.report, s.err
 }
 
-var _ appjobs.HistoryReader = (*stubHistoryReader)(nil)
+var _ HistoryReader = (*stubHistoryReader)(nil)
 
 // runGetFullWithHistory wires the canonical handler with a stub service AND a
 // history reader, then fires GET /api/jobs/{id}/full.
-func runGetFullWithHistory(t *testing.T, stub *stubServiceForGetFull, history appjobs.HistoryReader) []byte {
+func runGetFullWithHistory(t *testing.T, stub *stubServiceForGetFull, history HistoryReader) []byte {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)

@@ -15,12 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/nonops"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // ── Handler test doubles ───────────────────────────────────────────────

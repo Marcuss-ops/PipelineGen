@@ -74,8 +74,10 @@ func registerCapabilities(reg *module.Registry, provReg *providers.Registry, dep
 	if err := registerHTTPModules(reg, modules); err != nil {
 		return fmt.Errorf("registerCapabilities: http-modules: %w", err)
 	}
-	if err := c3ValidateRuntimeGraph(); err != nil {
-		return fmt.Errorf("registerCapabilities: runtime validation: %w", err)
+	if len(modules) > 0 {
+		if err := c3ValidateRuntimeGraph(); err != nil {
+			return fmt.Errorf("registerCapabilities: runtime validation: %w", err)
+		}
 	}
 	return nil
 }

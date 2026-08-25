@@ -10,7 +10,7 @@
 //
 // These tests pin the user's literal §C12 spec: "check runner.go
 // no longer scans JSON for paths."
-package jobs
+package worker
 
 import (
 	"context"
@@ -74,7 +74,7 @@ func TestUploadOutputsLegacy_ReturnsSentinelError(t *testing.T) {
 	// The sentinel contract requires the upgrade path be visible in
 	// the error message — operators reading a stack trace after a
 	// regression must see "emit ArtifactManifest under __artifact_manifest".
-	if errMsg := err.Error(); !contains(errMsg, "__artifact_manifest") {
+	if errMsg := err.Error(); !containsSubstr(errMsg, "__artifact_manifest") {
 		t.Errorf("err message %q should name the canonical replacement key (__artifact_manifest)", errMsg)
 	}
 }
@@ -172,7 +172,7 @@ func TestUploadManifest_ManifestKeySet_NoPathScanFilter(t *testing.T) {
 
 // contains is a tiny substring-search helper. Avoiding the strings
 // package import keeps this test file's import set minimal.
-func contains(haystack, needle string) bool {
+func containsSubstr(haystack, needle string) bool {
 	if needle == "" {
 		return true
 	}

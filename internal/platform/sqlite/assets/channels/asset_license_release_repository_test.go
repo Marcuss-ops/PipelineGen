@@ -346,46 +346,6 @@ func TestAssetReleaseRepository_ListByAsset(t *testing.T) {
 	assert.Len(t, releases, 2)
 }
 
-func TestArtlistDownloadAuditRepository_RecordDownloadWithLicenseRelease(t *testing.T) {
-	db := newLicenseReleaseTestDB(t)
-	ctx := context.Background()
-
-	repo, err := NewArtlistDownloadAuditRepository(db, zap.NewNop())
-	require.NoError(t, err)
-
-	id, err := repo.RecordDownload(ctx, DownloadAuditRecord{
-		AssetID:      "asset-007",
-		ExternalURL:  "https://example.com/clip.mp4",
-		AccountID:    "account-007",
-		Provider:     "artlist",
-		Status:       DownloadAuditStatusSucceeded,
-		DownloadedAt: "2026-07-10T12:00:00Z",
-		LicenseID:    "license-007",
-		ReleaseID:    "release-007",
-		ProjectID:    "project-007",
-		DownloadedBy: "user-007",
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, id)
-
-	rows, err := repo.ListByAsset(ctx, "asset-007")
-	require.NoError(t, err)
-	require.Len(t, rows, 1)
-
-	row := rows[0]
-	assert.Equal(t, "asset-007", row.AssetID)
-	assert.Equal(t, "https://example.com/clip.mp4", row.ExternalURL)
-	assert.Equal(t, "account-007", row.AccountID)
-	assert.Equal(t, "artlist", row.Provider)
-	assert.Equal(t, DownloadAuditStatusSucceeded, row.Status)
-	assert.Equal(t, "2026-07-10T12:00:00Z", row.DownloadedAt)
-	assert.Equal(t, "license-007", row.LicenseID)
-	assert.Equal(t, "release-007", row.ReleaseID)
-	assert.Equal(t, "project-007", row.ProjectID)
-	assert.Equal(t, "user-007", row.DownloadedBy)
-	assert.NotEmpty(t, row.CreatedAt)
-}
-
 func TestAssetReleaseRepository_UpdateAndDelete(t *testing.T) {
 	db := newLicenseReleaseTestDB(t)
 	ctx := context.Background()

@@ -61,7 +61,7 @@ import (
 
 // Compile-time pin (Pattern 0): mockTxContext must remain a
 // complete TxContext implementation. The user spec called for an
-// explicit `var _ completion.TxContext` assertion; without it,
+// explicit `var _ TxContext` assertion; without it,
 // a future refactor that drops the (now-7th) InsertAssetLocations
 // method from TxContext would not surface as a build failure
 // until a downstream test mock usage breaks — latent by hours
@@ -70,7 +70,7 @@ import (
 // Azione 6 (July 2026) extended TxContext with the 7th method
 // InsertAssetLocations; this pin locks the test mock against
 // any future drift on the new or existing methods.
-var _ completion.TxContext = (*mockTxContext)(nil)
+var _ TxContext = (*mockTxContext)(nil)
 
 // newHappyPathArtifactsRequest builds the canonical-request
 // envelope for tests 2-5 (mirrors newHappyPathRequest from
@@ -149,14 +149,14 @@ func newHappyPathArtifacts() []*finalization.PublishedArtifact {
 // + an optional insertLocationsFn hook (for test 5's failure
 // path) before delegating to the raw mockTxContext.
 type seedingMockWithArtifactsRunner struct {
-	seedJob           *completion.JobRow
-	insertLocationsFn func(ctx context.Context, entries []completion.AssetLocationEntry) error
-	priorHashes       map[string]completion.PriorArtifactHash // test 5 uses for location mismatch
+	seedJob           *JobRow
+	insertLocationsFn func(ctx context.Context, entries []AssetLocationEntry) error
+	priorHashes       map[string]PriorArtifactHash // test 5 uses for location mismatch
 }
 
 func (s *seedingMockWithArtifactsRunner) RunInTx(
 	ctx context.Context,
-	fn func(ctx context.Context, tx completion.TxContext) error,
+	fn func(ctx context.Context, tx TxContext) error,
 ) error {
 	mock := newMockTxContext()
 	mock.jobs[s.seedJob.JobID] = s.seedJob
@@ -170,28 +170,28 @@ func (s *seedingMockWithArtifactsRunner) RunInTx(
 // ── Tests ─────────────────────────────────────────────────────────────
 
 func TestWithArtifactsService_NotConfigured(t *testing.T) {
-	if _, err := completion.NewWithArtifactsService(nil, newMockCache()); err == nil {
+	if _, err := NewWithArtifactsService(nil, newMockCache()); err == nil {
 		t.Fatal("expected nil-rxRunner error")
 	}
-	if _, err := completion.NewWithArtifactsService(&mockTxRunner{}, nil); err == nil {
+	if _, err := NewWithArtifactsService(&mockTxRunner{}, nil); err == nil {
 		t.Fatal("expected nil-cache error")
 	}
-	if _, err := completion.NewWithArtifactsService(nil, nil); err == nil {
+	if _, err := NewWithArtifactsService(nil, nil); err == nil {
 		t.Fatal("expected nil-both error")
 	}
 }
 
 func TestWithArtifactsService_HappyPath_FiveStepChain(t *testing.T) {
 	cache := newMockCache()
-	rxFactory := func() completion.CompleteJobTxRunner {
+	rxFactory := func() CompleteJobTxRunner {
 		return &seedingMockWithArtifactsRunner{
-			seedJob: &completion.JobRow{
-				JobRow:  JobRow{JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning},
+			seedJob: &JobRow{
+				JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
 				JobType: "test.artifact",
 			},
 		}
 	}
-	svc, err := completion.NewWithArtifactsService(rxFactory(), cache)
+	svc, err := NewWithArtifactsService(rxFactory(), cache)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestWithArtifactsService_IdempotencyReplay_ShortCircuitsTx(t *testing.T) {
 	}
 	bombed := false
 	rx := &bombingTxRunner{bomb: &bombed}
-	svc, err := completion.NewWithArtifactsService(rx, cache)
+	svc, err := NewWithArtifactsService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -280,13 +280,13 @@ func TestWithArtifactsService_IdempotencyReplay_ShortCircuitsTx(t *testing.T) {
 
 func TestWithArtifactsService_LeaseStolen_ReturnsTypedErrConcurrentLeaseRefutation(t *testing.T) {
 	rx := &seedingMockWithArtifactsRunner{
-		seedJob: &completion.JobRow{
-			JobRow:  JobRow{JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning},
+		seedJob: &JobRow{
+			JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
 			JobType: "test.artifact",
 		},
 	}
 	cache := newMockCache()
-	svc, err := completion.NewWithArtifactsService(rx, cache)
+	svc, err := NewWithArtifactsService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -307,11 +307,11 @@ func TestWithArtifactsService_AssetLocationMismatch_ReturnsTypedErrRemoteArtifac
 	// verbatim to simulate a prior SUCCEEDED state with a
 	// DIFFERENT (location_kind, external_id, ...) tuple.
 	rx := &seedingMockWithArtifactsRunner{
-		seedJob: &completion.JobRow{
-			JobRow:  JobRow{JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning},
+		seedJob: &JobRow{
+			JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
 			JobType: "test.artifact",
 		},
-		insertLocationsFn: func(ctx context.Context, entries []completion.AssetLocationEntry) error {
+		insertLocationsFn: func(ctx context.Context, entries []AssetLocationEntry) error {
 			for _, e := range entries {
 				if e.ArtifactID == "j-1:voiceover" {
 					return fmt.Errorf(
@@ -326,7 +326,7 @@ func TestWithArtifactsService_AssetLocationMismatch_ReturnsTypedErrRemoteArtifac
 			return nil
 		},
 	}
-	svc, err := completion.NewWithArtifactsService(rx, cache)
+	svc, err := NewWithArtifactsService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestWithArtifactsService_AssetLocationMismatch_ReturnsTypedErrRemoteArtifac
 // fail-closed on the WithArtifacts service. Bolts a clean
 // nil-receiver audit pin onto Azione 6 the same way C7 did.
 func TestWithArtifactsService_NilReceiver_ReturnsNotConfigured(t *testing.T) {
-	var svc *completion.WithArtifactsService
+	var svc *WithArtifactsService
 	_, err := svc.CompleteWithArtifacts(context.Background(), newHappyPathArtifactsRequest(), newHappyPathArtifacts())
 	if err == nil {
 		t.Fatal("expected nil-receiver error")

@@ -306,7 +306,7 @@ func (p ClipRenderPlanV1) Hash() (string, error) {
 		return "", fmt.Errorf("hash clip render plan: %w", err)
 	}
 	sum := digest.SHA256Bytes(b)
-	return hex.EncodeToString([]byte(sum)), nil
+	return sum, nil
 }
 
 // Validate enforces the plan contract fail-closed: identity, resolved blocks,

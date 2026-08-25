@@ -11,14 +11,14 @@ import (
 )
 
 func TestWorkflowStepCompletedHandler_EventType(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	if got := h.EventType(); got != outboxevents.EventWorkflowStepCompleted {
 		t.Errorf("expected %q got %q", outboxevents.EventWorkflowStepCompleted, got)
 	}
 }
 
 func TestWorkflowStepCompletedHandler_ValidPayload_NoError(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 
 	evt := outboxevents.Event{
 		ID:           42,
@@ -34,7 +34,7 @@ func TestWorkflowStepCompletedHandler_ValidPayload_NoError(t *testing.T) {
 }
 
 func TestWorkflowStepCompletedHandler_MinimalPayload_NoError(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepCompleted,
 		AggregateID: "workflow-min",
@@ -46,7 +46,7 @@ func TestWorkflowStepCompletedHandler_MinimalPayload_NoError(t *testing.T) {
 }
 
 func TestWorkflowStepCompletedHandler_MalformedPayload_ReturnsError(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
+	h := NewWorkflowStepCompletedHandler(zaptest.NewLogger(t))
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepCompleted,
 		AggregateID: "workflow-bad",
@@ -58,7 +58,7 @@ func TestWorkflowStepCompletedHandler_MalformedPayload_ReturnsError(t *testing.T
 }
 
 func TestWorkflowStepFailedHandler_EventType(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepFailedHandler(zaptest.NewLogger(t), nil)
+	h := NewWorkflowStepFailedHandler(zaptest.NewLogger(t), nil)
 	if got := h.EventType(); got != outboxevents.EventWorkflowStepFailed {
 		t.Errorf("expected %q got %q", outboxevents.EventWorkflowStepFailed, got)
 	}
@@ -70,7 +70,7 @@ func TestWorkflowStepFailedHandler_ValidPayload_HookFnCalled(t *testing.T) {
 	lastWF := ""
 	lastStep := ""
 	lastErr := ""
-	h := outboxhandlers.NewWorkflowStepFailedHandler(zaptest.NewLogger(t), func(wf, step, errMsg string) {
+	h := NewWorkflowStepFailedHandler(zaptest.NewLogger(t), func(wf, step, errMsg string) {
 		mu.Lock()
 		defer mu.Unlock()
 		hits++
@@ -97,7 +97,7 @@ func TestWorkflowStepFailedHandler_ValidPayload_HookFnCalled(t *testing.T) {
 }
 
 func TestWorkflowStepFailedHandler_NoHook_StillSucceeds(t *testing.T) {
-	h := outboxhandlers.NewWorkflowStepFailedHandler(zap.NewNop(), nil)
+	h := NewWorkflowStepFailedHandler(zap.NewNop(), nil)
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventWorkflowStepFailed,
 		AggregateID: "workflow-2",
@@ -124,9 +124,9 @@ func TestStubHandlers_EventType(t *testing.T) {
 		h    outboxevents.Handler
 		want string
 	}{
-		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false), outboxevents.EventDeliveryRequested},
-		{"metadata_export", outboxhandlers.NewMetadataExportHandler(outboxhandlers.MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()}), outboxevents.EventAssetMetadataExportRequested},
-		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil), outboxevents.EventProviderSyncRequested},
+		{"delivery", NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false), outboxevents.EventDeliveryRequested},
+		{"metadata_export", NewMetadataExportHandler(MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()}), outboxevents.EventAssetMetadataExportRequested},
+		{"provider_sync", NewProviderSyncHandler(zap.NewNop(), nil), outboxevents.EventProviderSyncRequested},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,9 +150,9 @@ func TestStubHandlers_ReturnError(t *testing.T) {
 		name string
 		h    outboxevents.Handler
 	}{
-		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)},
-		{"metadata_export", outboxhandlers.NewMetadataExportHandler(outboxhandlers.MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()})},
-		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil)},
+		{"delivery", NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)},
+		{"metadata_export", NewMetadataExportHandler(MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()})},
+		{"provider_sync", NewProviderSyncHandler(zap.NewNop(), nil)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,14 +171,14 @@ func TestStubHandlers_ReturnError(t *testing.T) {
 
 func TestIndexingHandler_EventType(t *testing.T) {
 	// nil indexer is OK for EventType test — Handle would panic but we only test the type
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	if got := h.EventType(); got != outboxevents.EventAssetIndexRequested {
 		t.Errorf("expected %q got %q", outboxevents.EventAssetIndexRequested, got)
 	}
 }
 
 func TestIndexingHandler_EmptyPayload_ReturnsError(t *testing.T) {
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventAssetIndexRequested,
 		AggregateID: "asset-123",
@@ -190,7 +190,7 @@ func TestIndexingHandler_EmptyPayload_ReturnsError(t *testing.T) {
 }
 
 func TestIndexingHandler_MalformedPayload_ReturnsError(t *testing.T) {
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventAssetIndexRequested,
 		AggregateID: "asset-bad",

@@ -259,8 +259,8 @@ func TestClipAtomicWriter_HappyPathInsertAndOutbox(t *testing.T) {
 	if err := row.Scan(&gotEventType, &gotAggID, &gotAggType, &gotPayloadJSON, &gotEventKey); err != nil {
 		t.Fatalf("scan outbox_events row: %v", err)
 	}
-	if gotEventType != outboxevents.EventAssettxmutation.IndexRequested {
-		t.Errorf("event_type: want %q got %q", outboxevents.EventAssettxmutation.IndexRequested, gotEventType)
+	if gotEventType != outboxevents.EventAssetIndexRequested {
+		t.Errorf("event_type: want %q got %q", outboxevents.EventAssetIndexRequested, gotEventType)
 	}
 	if gotAggID != clipID {
 		t.Errorf("aggregate_id: want %q got %q", clipID, gotAggID)

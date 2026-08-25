@@ -150,7 +150,7 @@ func TestPublishAndCompleteUseCase_RoundTrip_ThreeRefsBecomeThreePublishedWithLo
 		},
 	}
 
-	uc, err := completion.NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
+	uc, err := NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPublishAndCompleteUseCase: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestPublishAndCompleteUseCase_ConversionCorrectness(t *testing.T) {
 		},
 	}
 
-	uc, _ := completion.NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
+	uc, _ := NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
 
 	// Build the canonical request envelope (single ref for the
 	// conversion-correctness test).
@@ -345,7 +345,7 @@ func TestPublishAndCompleteUseCase_InvalidStagedFailsTypedError(t *testing.T) {
 	sender := &mockSenderWithArtifacts{
 		returnResp: &remote.CompleteWithArtifactsResponse{JobID: "x", Status: "SUCCEEDED"},
 	}
-	uc, _ := completion.NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
+	uc, _ := NewPublishAndCompleteUseCase(prep, sender, zap.NewNop())
 
 	req := &remote.CompleteWithArtifactsRequest{
 		WorkerID: "w", JobID: "j", Attempt: 1, LeaseID: "l",

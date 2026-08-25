@@ -13,7 +13,7 @@ import (
 )
 
 // TestNewServerWithHealth_CfgBranch_RegistersQdrantHealthRoutes gates
-// the cfg != nil branch of api.NewServerWithHealth — the only path
+// the cfg != nil branch of NewServerWithHealth — the only path
 // traversed by app.BuildServer at every cmd/server boot.
 //
 // Regression: the cfg != nil branch wired outbox + mediasearch +
@@ -63,7 +63,7 @@ func TestNewServerWithHealth_CfgBranch_RegistersQdrantHealthRoutes(t *testing.T)
 		},
 	}
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:       cfg,
 		QdrantHealth: transport.NewQdrantHealthHandler(nil),
 	})

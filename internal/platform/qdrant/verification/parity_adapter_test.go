@@ -83,7 +83,7 @@ func TestParityCheckerAdapter_PropagatesDrift(t *testing.T) {
 // ObserveError bumps the errors counter.
 func TestParityMetricsAdapter_SetsGauges(t *testing.T) {
 	t.Parallel()
-	parity := projectionreconciler.ProjectionParity{
+	parity := projection.ProjectionParity{
 		Collection:           "media_assets_v4_test",
 		EligibleSQLite:       527,
 		QdrantPoints:         527,
@@ -107,7 +107,7 @@ func TestParityMetricsAdapter_SetsGauges(t *testing.T) {
 	assert.Greater(t, testutil.ToFloat64(observability.ProjectionReconcileLastSuccess), 0.0)
 
 	// Drift sample: coverage drops, orphans appear, scan complete flag.
-	drift := projectionreconciler.ProjectionParity{
+	drift := projection.ProjectionParity{
 		EligibleSQLite: 527,
 		QdrantPoints:   500,
 		MissingCount:   27,

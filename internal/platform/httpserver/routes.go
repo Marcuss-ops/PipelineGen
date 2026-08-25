@@ -63,8 +63,8 @@ type Router struct {
 	outboxHandler      InternalOutboxRouter
 	mediasearchHandler InternalMediaSearchRouter
 	ctx                context.Context
-	healthSvc          any // *systemhealth.Service; any keeps the router infra-clean.
-	readyChecker       any // *systemhealth.ReadyChecker; any keeps the router infra-clean.
+	healthSvc          any                      // *systemhealth.Service; any keeps the router infra-clean.
+	readyChecker       any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
 	qdrantHealth       any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
 	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }

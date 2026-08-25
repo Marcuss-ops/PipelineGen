@@ -11,7 +11,7 @@ import (
 
 // setupReconcilerDB creates an in-memory SQLite database with the
 // publication_intents, asset_locations, and jobs tables.
-func setupReconcilerDB(t *testing.T) (*sql.DB, *finalizer.PublicationIntentReconciler) {
+func setupReconcilerDB(t *testing.T) (*sql.DB, *PublicationIntentReconciler) {
 	t.Helper()
 
 	db, err := sql.Open("sqlite3", ":memory:?_journal_mode=WAL&_foreign_keys=on")
@@ -76,7 +76,7 @@ func setupReconcilerDB(t *testing.T) (*sql.DB, *finalizer.PublicationIntentRecon
 		t.Fatalf("create jobs: %v", err)
 	}
 
-	reconciler := finalizer.NewReconciler(db, nil)
+	reconciler := NewReconciler(db, nil)
 	return db, reconciler
 }
 

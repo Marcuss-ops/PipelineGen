@@ -135,7 +135,7 @@ func ScanDriveAccessSSOT(root string, pol *policy.Policy, r *report.Report) {
 		"internal/app/",
 	}
 
-	for _, subdir := range []string{"internal/application", "internal/api"} {
+	for _, subdir := range []string{"internal/application", "internal/api", "internal/capabilities/images/workflow"} {
 		dir := filepath.Join(root, subdir)
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {

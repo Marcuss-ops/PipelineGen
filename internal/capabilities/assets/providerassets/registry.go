@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Sentinel errors for the registry.
@@ -129,14 +131,21 @@ func (r *Registry) SearchAll(ctx context.Context, req SearchRequest) (SearchResu
 
 	for i, adapter := range adapters {
 		wg.Add(1)
-		go func(idx int, a ProviderAdapter) {
+		concurrent.SafeGoFunc("provider-search", struct {
+			idx int
+			a   ProviderAdapter
+		}{i, adapter}, func(in struct {
+			idx int
+			a   ProviderAdapter
+		}) {
+			idx, a := in.idx, in.a
 			defer wg.Done()
 			res, err := a.Search(ctx, req)
 			mu.Lock()
 			results[idx] = res
 			errs[idx] = err
 			mu.Unlock()
-		}(i, adapter)
+		})
 	}
 
 	wg.Wait()

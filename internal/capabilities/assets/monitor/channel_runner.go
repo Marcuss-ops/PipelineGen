@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/capabilities/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // checkDueChannels spawns bounded goroutines (one per channel), each of
@@ -55,7 +56,7 @@ func (m *ChannelMonitor) checkDueChannels(ctx context.Context, chs []channels.Ch
 		}
 
 		m.globalSem <- struct{}{}
-		go func() {
+		concurrent.SafeGo("monitor-channel-check", func() {
 			defer func() { <-m.globalSem }()
 
 			checkCtx, cancel := context.WithTimeout(ctx, policy.PerChannelTimeout)
@@ -75,7 +76,7 @@ func (m *ChannelMonitor) checkDueChannels(ctx context.Context, chs []channels.Ch
 					zap.String("channel_id", ch.ID),
 					zap.Error(recErr))
 			}
-		}()
+		})
 	}
 }
 

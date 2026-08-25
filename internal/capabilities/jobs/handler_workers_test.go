@@ -25,7 +25,7 @@ import (
 // internal/infrastructure/drive/uploader.go: the discipline is
 // used widely to surface contract drift at build-failure rather
 // than runtime.
-var _ appjobs.Broker = (*stubBroker)(nil)
+var _ Broker = (*stubBroker)(nil)
 var _ AssetTransferService = (*stubAssetTransfer)(nil)
 
 // stubBroker is a focused stub for the new CompleteWithArtifacts
@@ -35,35 +35,35 @@ var _ AssetTransferService = (*stubAssetTransfer)(nil)
 // silently delegating to a non-existent implementation.
 type stubBroker struct {
 	called         bool
-	lastCmd        appjobs.CompleteWithArtifactsCommand
+	lastCmd        CompleteWithArtifactsCommand
 	returnErr      error
 	returnAssetIDs []string
 }
 
-func (s *stubBroker) RegisterWorker(_ context.Context, _ appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+func (s *stubBroker) RegisterWorker(_ context.Context, _ RegisterWorkerCommand) (*WorkerSession, error) {
 	return nil, errors.New("stubBroker: RegisterWorker not implemented")
 }
-func (s *stubBroker) Heartbeat(_ context.Context, _ appjobs.HeartbeatCommand) error {
+func (s *stubBroker) Heartbeat(_ context.Context, _ HeartbeatCommand) error {
 	return errors.New("stubBroker: Heartbeat not implemented")
 }
-func (s *stubBroker) Claim(_ context.Context, _ appjobs.ClaimCommand) (*appjobs.Lease, error) {
+func (s *stubBroker) Claim(_ context.Context, _ ClaimCommand) (*Lease, error) {
 	return nil, errors.New("stubBroker: Claim not implemented")
 }
-func (s *stubBroker) Renew(_ context.Context, _ appjobs.RenewCommand) (*appjobs.Lease, error) {
+func (s *stubBroker) Renew(_ context.Context, _ RenewCommand) (*Lease, error) {
 	return nil, errors.New("stubBroker: Renew not implemented")
 }
-func (s *stubBroker) Progress(_ context.Context, _ appjobs.ProgressCommand) error {
+func (s *stubBroker) Progress(_ context.Context, _ ProgressCommand) error {
 	return errors.New("stubBroker: Progress not implemented")
 }
-func (s *stubBroker) Complete(_ context.Context, _ appjobs.CompleteCommand) error {
+func (s *stubBroker) Complete(_ context.Context, _ CompleteCommand) error {
 	return errors.New("stubBroker: Complete not implemented")
 }
-func (s *stubBroker) CompleteWithArtifacts(_ context.Context, cmd appjobs.CompleteWithArtifactsCommand) ([]string, error) {
+func (s *stubBroker) CompleteWithArtifacts(_ context.Context, cmd CompleteWithArtifactsCommand) ([]string, error) {
 	s.called = true
 	s.lastCmd = cmd
 	return s.returnAssetIDs, s.returnErr
 }
-func (s *stubBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
+func (s *stubBroker) Fail(_ context.Context, _ FailCommand) error {
 	return errors.New("stubBroker: Fail not implemented")
 }
 func (s *stubBroker) IsCancelled(_ context.Context, _, _ string) (bool, error) {

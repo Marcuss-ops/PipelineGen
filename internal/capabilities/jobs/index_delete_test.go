@@ -136,7 +136,7 @@ func (m *mockAssetDeleter) lifecycleStateTransitions() []lifecycleStateCall {
 // ── Helpers ───────────────────────────────────────────────────────────
 
 // validIndexDeletePayload builds a v1 envelope. The schema_version
-// literal is sourced from outboxhandlers.DeleteRequestSchemaVersion so
+// literal is sourced from DeleteRequestSchemaVersion so
 // a future version bump automatically updates test fixtures in lockstep.
 // assetID and idemKey are the caller's choice; tests that exercise the
 // schema-version-mismatch path build the JSON inline so they can pin a
@@ -144,7 +144,7 @@ func (m *mockAssetDeleter) lifecycleStateTransitions() []lifecycleStateCall {
 func validIndexDeletePayload(t *testing.T, assetID, idemKey string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"schema_version":  outboxhandlers.DeleteRequestSchemaVersion,
+		"schema_version":  DeleteRequestSchemaVersion,
 		"event_id":        "evt-" + idemKey,
 		"asset_id":        assetID,
 		"requested_at":    "2026-06-25T12:00:00Z",
@@ -174,7 +174,7 @@ func deleteEvt(t *testing.T, payload string) outboxevents.Event {
 // tie. A drop-in refactor that flips the literal would fail this
 // test loudly — same pattern as IndexingHandler / MetadataExportHandler.
 func TestIndexDeleteHandler_EventType(t *testing.T) {
-	h := outboxhandlers.NewIndexDeleteHandler(
+	h := NewIndexDeleteHandler(
 		zap.NewNop(),
 		&mockQdrantDeleter{},
 		&mockAssetDeleter{},
@@ -187,7 +187,7 @@ func TestIndexDeleteHandler_EventType(t *testing.T) {
 // TestIndexDeleteHandler_PayloadParseIsTerminal: malformed JSON →
 // PR1's NewTerminalError so the pool dead-letters immediately.
 func TestIndexDeleteHandler_PayloadParseIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexDeleteHandler(
+	h := NewIndexDeleteHandler(
 		zap.NewNop(),
 		&mockQdrantDeleter{},
 		&mockAssetDeleter{},
@@ -205,7 +205,7 @@ func TestIndexDeleteHandler_PayloadParseIsTerminal(t *testing.T) {
 // version literal that isn't exactly DeleteRequestSchemaVersion is
 // terminal — producers must upgrade instead of retrying.
 func TestIndexDeleteHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexDeleteHandler(
+	h := NewIndexDeleteHandler(
 		zap.NewNop(),
 		&mockQdrantDeleter{},
 		&mockAssetDeleter{},
@@ -226,7 +226,7 @@ func TestIndexDeleteHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 // TestIndexDeleteHandler_EmptyAssetIDIsTerminal: empty asset_id
 // cannot appear via retry — terminal so the producer fixes it.
 func TestIndexDeleteHandler_EmptyAssetIDIsTerminal(t *testing.T) {
-	h := outboxhandlers.NewIndexDeleteHandler(
+	h := NewIndexDeleteHandler(
 		zap.NewNop(),
 		&mockQdrantDeleter{},
 		&mockAssetDeleter{},
@@ -251,7 +251,7 @@ func TestIndexDeleteHandler_EmptyAssetIDIsTerminal(t *testing.T) {
 func TestIndexDeleteHandler_MissingAssetIdempotentSuccess(t *testing.T) {
 	assets := &mockAssetDeleter{getResult: nil}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-ghost", "idem-ghost")))
 	if err != nil {
@@ -281,7 +281,7 @@ func TestIndexDeleteHandler_AlreadyDeletedCanonicalSuccess(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-already-gone", "idem-x")))
 	if err != nil {
@@ -309,7 +309,7 @@ func TestIndexDeleteHandler_AlreadyDeletedLegacySuccess(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-legacy-gone", "idem-y")))
 	if err != nil {
@@ -338,7 +338,7 @@ func TestIndexDeleteHandler_AlreadyIndexDeletedIdempotent(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-index-deleted", "idem-index-deleted")))
 	if err != nil {
@@ -375,7 +375,7 @@ func TestIndexDeleteHandler_DriveBlockGuardFires(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-drive-in-flight", "idem-blocked")))
 	if err == nil {
@@ -433,7 +433,7 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-to-delete", "idem-z")))
 	if err != nil {
@@ -500,7 +500,7 @@ func TestIndexDeleteHandler_NoOrphanQdrantPoints(t *testing.T) {
 			LifecycleState: asset.StateDriveDeleted,
 		},
 	}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), store, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), store, assets)
 
 	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-orphan-free", "idem-orphan-free"))); err != nil {
 		t.Fatalf("no-orphan happy path: %v", err)
@@ -530,7 +530,7 @@ func TestIndexDeleteHandler_StampsIndexDeletedBeforeDeleted(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-hop-order", "idem-hop-order"))); err != nil {
 		t.Fatalf("hop-order happy path should succeed; got: %v", err)
@@ -570,7 +570,7 @@ func TestIndexDeleteHandler_LifecycleStateAdvancesToDeleted(t *testing.T) {
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-terminal-hop", "idem-terminal-hop"))); err != nil {
 		t.Fatalf("terminal-hop happy path should succeed; got: %v", err)
@@ -605,7 +605,7 @@ func TestIndexDeleteHandler_LifecycleStateSetErrorIsRetryable(t *testing.T) {
 		setLifecycleStateErr: errors.New("sqlite: database is locked"),
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-setlsc-fail", "idem-setlsc-fail")))
 	if err == nil {
@@ -640,7 +640,7 @@ func TestIndexDeleteHandler_QdrantErrorPropagatesAsRetryable(t *testing.T) {
 		getResult: &asset.Asset{ID: "clip-x", LifecycleState: asset.StateDriveDeleted},
 	}
 	qdrant := &mockQdrantDeleter{err: errors.New("qdrant 503")}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-x", "idem-x")))
 	if err == nil {
@@ -665,7 +665,7 @@ func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 		softErr:   errors.New("sqlite: database is locked"),
 	}
 	qdrant := &mockQdrantDeleter{}
-	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-y", "idem-y")))
 	if err == nil {
@@ -687,7 +687,7 @@ func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 // errors.As's type-assignability check since the chain's concrete
 // type is *json.SyntaxError, not any local probe type.
 func TestIndexDeleteHandler_PreservesUnwrapChain(t *testing.T) {
-	h := outboxhandlers.NewIndexDeleteHandler(
+	h := NewIndexDeleteHandler(
 		zap.NewNop(),
 		&mockQdrantDeleter{},
 		&mockAssetDeleter{},

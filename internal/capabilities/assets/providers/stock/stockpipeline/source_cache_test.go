@@ -71,26 +71,26 @@ func TestDeriveSourceCacheKey_ForceKeyframes_DifferentKey(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────
 
 func TestNormalizeSourceURL_YouTube_WatchV(t *testing.T) {
-	got := normalizeSourceURL("https://www.youtube.com/watch?v=QdSbtEo3x_Y&list=PLxyz")
+	got := NormalizeSourceURL("https://www.youtube.com/watch?v=QdSbtEo3x_Y&list=PLxyz")
 	want := "https://www.youtube.com/watch?v=QdSbtEo3x_Y"
 	if got != want {
-		t.Errorf("normalizeSourceURL(%q) = %q, want %q", "watch?v+list", got, want)
+		t.Errorf("NormalizeSourceURL(%q) = %q, want %q", "watch?v+list", got, want)
 	}
 }
 
 func TestNormalizeSourceURL_YouTube_BareID(t *testing.T) {
-	got := normalizeSourceURL("https://youtu.be/QdSbtEo3x_Y")
+	got := NormalizeSourceURL("https://youtu.be/QdSbtEo3x_Y")
 	want := "https://www.youtube.com/watch?v=QdSbtEo3x_Y"
 	if got != want {
-		t.Errorf("normalizeSourceURL(%q) = %q, want %q", "youtu.be", got, want)
+		t.Errorf("NormalizeSourceURL(%q) = %q, want %q", "youtu.be", got, want)
 	}
 }
 
 func TestNormalizeSourceURL_NonYouTube_Unchanged(t *testing.T) {
 	raw := "https://example.com/video.mp4"
-	got := normalizeSourceURL(raw)
+	got := NormalizeSourceURL(raw)
 	if got != raw {
-		t.Errorf("normalizeSourceURL(%q) = %q, want %q (non-YouTube should be unchanged)", raw, got, raw)
+		t.Errorf("NormalizeSourceURL(%q) = %q, want %q (non-YouTube should be unchanged)", raw, got, raw)
 	}
 }
 
@@ -99,23 +99,23 @@ func TestNormalizeSourceURL_NonYouTube_Unchanged(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────
 
 func TestExtractVideoIDFromURL_WatchV(t *testing.T) {
-	got := extractVideoIDFromURL("https://www.youtube.com/watch?v=QdSbtEo3x_Y")
+	got := ExtractVideoID("https://www.youtube.com/watch?v=QdSbtEo3x_Y")
 	if got != "QdSbtEo3x_Y" {
-		t.Errorf("extractVideoIDFromURL(watch?v) = %q, want %q", got, "QdSbtEo3x_Y")
+		t.Errorf("ExtractVideoID(watch?v) = %q, want %q", got, "QdSbtEo3x_Y")
 	}
 }
 
 func TestExtractVideoIDFromURL_YoutuBe(t *testing.T) {
-	got := extractVideoIDFromURL("https://youtu.be/RRJvrDKunyA")
+	got := ExtractVideoID("https://youtu.be/RRJvrDKunyA")
 	if got != "RRJvrDKunyA" {
-		t.Errorf("extractVideoIDFromURL(youtu.be) = %q, want %q", got, "RRJvrDKunyA")
+		t.Errorf("ExtractVideoID(youtu.be) = %q, want %q", got, "RRJvrDKunyA")
 	}
 }
 
 func TestExtractVideoIDFromURL_NonYouTube_Empty(t *testing.T) {
-	got := extractVideoIDFromURL("https://example.com/video.mp4")
+	got := ExtractVideoID("https://example.com/video.mp4")
 	if got != "" {
-		t.Errorf("extractVideoIDFromURL(non-YT) = %q, want empty", got)
+		t.Errorf("ExtractVideoID(non-YT) = %q, want empty", got)
 	}
 }
 

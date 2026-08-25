@@ -7,11 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 
 	"go.uber.org/zap"
 )
@@ -373,48 +372,30 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 	t.Logf("DB save failure test: OK=%v, Error=%s", result.OK, result.Error)
 }
 
-type testAssetIndexPort struct{ service *assetindex.Service }
-
-func (p testAssetIndexPort) Upsert(ctx context.Context, rec *AssetIndexRecord) error {
-	return p.service.Upsert(ctx, &assetindex.AssetRecord{
-		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
-		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, LegacyFileMD5: rec.LegacyFileMD5,
-		ContentHash: rec.ContentHash, Status: rec.Status, Metadata: rec.Metadata,
-	})
+// memoryAssetIndex is an in-memory AssetIndexPort that records every
+// upsert by content hash so tests can assert the projection was
+// written. It replaces the SQLite-backed assetindex.Service to keep the
+// artifacts test package free of the assetindex → imagesregistry →
+// artifacts import cycle.
+type memoryAssetIndex struct {
+	mu     sync.Mutex
+	byHash map[string]*AssetIndexRecord
 }
 
-func setupTestAssetIndex(t *testing.T) *assetindex.Service {
-	t.Helper()
+func (m *memoryAssetIndex) Upsert(_ context.Context, rec *AssetIndexRecord) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.byHash == nil {
+		m.byHash = make(map[string]*AssetIndexRecord)
+	}
+	m.byHash[rec.ContentHash] = rec
+	return nil
+}
 
-	schema := `
-	CREATE TABLE IF NOT EXISTS asset_index (
-		asset_id TEXT PRIMARY KEY,
-		asset_type TEXT NOT NULL DEFAULT '',
-		source TEXT NOT NULL DEFAULT '',
-		source_id TEXT NOT NULL DEFAULT '',
-		operation_key TEXT NOT NULL DEFAULT '',
-		group_name TEXT NOT NULL DEFAULT '',
-		subfolder TEXT NOT NULL DEFAULT '',
-		local_path TEXT NOT NULL DEFAULT '',
-		drive_link TEXT NOT NULL DEFAULT '',
-		download_link TEXT NOT NULL DEFAULT '',
-		file_hash TEXT NOT NULL DEFAULT '',
-		content_hash TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'pending',
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		legacy_file_md5 TEXT NOT NULL DEFAULT ''
-	);
-	CREATE INDEX IF NOT EXISTS idx_asset_content_hash ON asset_index(content_hash);
-	CREATE INDEX IF NOT EXISTS idx_asset_source ON asset_index(source, source_id);
-	CREATE INDEX IF NOT EXISTS idx_asset_status ON asset_index(status);
-	`
-
-	db := drive.NewTestDBWithSchema(t, schema)
-	repo := assetindex.NewRepository(db)
-	return assetindex.NewService(repo)
+func (m *memoryAssetIndex) FindByContentHash(_ context.Context, hash string) (*AssetIndexRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.byHash[hash], nil
 }
 
 func TestAssetIndexStatusTracksDeliveryState(t *testing.T) {
@@ -440,9 +421,9 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 
 	driveVerifier := &mockDriveVerifier{shouldExist: true}
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
-	assetIdx := setupTestAssetIndex(t)
+	assetIdx := &memoryAssetIndex{}
 
-	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, testAssetIndexPort{service: assetIdx}, logger)
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
 
 	// Create a temp file that exists
 	tmpFile := filepath.Join(t.TempDir(), "test_asset.mp4")
@@ -507,9 +488,9 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 
 	driveVerifier := &mockDriveVerifier{shouldExist: true}
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
-	assetIdx := setupTestAssetIndex(t)
+	assetIdx := &memoryAssetIndex{}
 
-	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, testAssetIndexPort{service: assetIdx}, logger)
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
 
 	// Create a temp file that exists
 	tmpFile := filepath.Join(t.TempDir(), "test_asset2.mp4")

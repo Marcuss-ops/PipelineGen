@@ -47,7 +47,7 @@ type ClipIngestPipeline struct {
 }
 `
 
-const canonicalOwnerPath = "internal/application/assets/ingest/clip_ingest_pipeline.go"
+const canonicalOwnerPath = "internal/capabilities/assets/ingest/clip_ingest_pipeline.go"
 
 func TestScanClipIngestPipelineCanonical1_CanonicalOwnerNoViolation(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{

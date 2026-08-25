@@ -18,7 +18,7 @@ import (
 )
 
 func TestLoadIndexClipManifest_HappyPath(t *testing.T) {
-	fixture := filepath.Join("manifests", "stargazer-fish.json")
+	fixture := filepath.Join("..", "..", "manifests", "stargazer-fish.json")
 	m, err := loadIndexClipManifest(fixture)
 	if err != nil {
 		t.Fatalf("load manifest: %v", err)
@@ -68,7 +68,7 @@ func TestLoadIndexClipManifest_HappyPath(t *testing.T) {
 }
 
 func TestLoadIndexClipManifest_BelugaPreservesFallback(t *testing.T) {
-	fixture := filepath.Join("manifests", "beluga.json")
+	fixture := filepath.Join("..", "..", "manifests", "beluga.json")
 	m, err := loadIndexClipManifest(fixture)
 	if err != nil {
 		t.Fatalf("load manifest: %v", err)

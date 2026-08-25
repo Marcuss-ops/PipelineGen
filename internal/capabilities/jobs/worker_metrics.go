@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	kernjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -24,7 +26,7 @@ func StartMetricsRefresher(ctx context.Context, repo MetricRefresher, interval t
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
-	go func() {
+	concurrent.SafeGo("worker-metrics", func() {
 		if err := repo.RefreshMetrics(ctx); err != nil {
 			log.Warn("metrics refresh failed (immediate tick)", zap.Error(err))
 		}
@@ -40,7 +42,7 @@ func StartMetricsRefresher(ctx context.Context, repo MetricRefresher, interval t
 				}
 			}
 		}
-	}()
+	})
 }
 
 const jobRegistryProjectionTimeout = 2 * time.Second

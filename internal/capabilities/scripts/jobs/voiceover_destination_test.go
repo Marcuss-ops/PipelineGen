@@ -62,7 +62,7 @@ func setupVoiceoverGroupsDB(t *testing.T) *sql.DB {
 func newVoiceoverResolver(t *testing.T, db *sql.DB) scriptports.VoiceoverGroupResolver {
 	t.Helper()
 
-	repo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
+	repo, err := channels.NewAssetTreeRepository(db, zap.NewNop())
 	require.NoError(t, err)
 	svc := assettree.NewService(repo, zap.NewNop())
 	resolver, err := destination.NewResolver(svc, zap.NewNop())

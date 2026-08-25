@@ -19,7 +19,7 @@ import (
 //
 // Companion test to outboxevents/errors_test.go::TestIsTerminal_TypedError.
 func TestIndexingHandler_PayloadParseIsTerminal(t *testing.T) {
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	evt := outboxevents.Event{
 		ID:           100,
 		EventType:    outboxevents.EventAssetIndexRequested,
@@ -43,7 +43,7 @@ func TestIndexingHandler_PayloadParseIsTerminal(t *testing.T) {
 // asset_id is terminal for the same reason — retrying won't bring
 // the asset_id into existence.
 func TestIndexingHandler_EmptyAssetIDIsTerminal(t *testing.T) {
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	evt := outboxevents.Event{
 		ID:           101,
 		EventType:    outboxevents.EventAssetIndexRequested,
@@ -72,7 +72,7 @@ func TestIndexingHandler_EmptyAssetIDIsTerminal(t *testing.T) {
 // fmt.Errorf, or by replacing the typed wrap with a plain string —
 // the assertion fails.
 func TestIndexingHandler_PreservesWrappedCause(t *testing.T) {
-	h := &outboxhandlers.IndexingHandler{}
+	h := &IndexingHandler{}
 	evt := outboxevents.Event{
 		EventType:   outboxevents.EventAssetIndexRequested,
 		AggregateID: "asset-cause",

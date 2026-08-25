@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	canonicalApplicationInfraImportPrefix = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/"
-	canonicalApplicationInfraImportRule   = "percheck_canonical_application_infrastructure_imports"
-	canonicalApplicationMissingAreaRule   = "percheck_canonical_application_infrastructure_imports_missing_area"
-	canonicalApplicationParseErrorRule    = "percheck_canonical_application_infrastructure_imports_parse_error"
+	canonicalApplicationInfraImportPrefix    = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/"
+	canonicalApplicationPlatformImportPrefix = "github.com/Marcuss-ops/PipelineGen/internal/platform/"
+	canonicalApplicationInfraImportRule      = "percheck_canonical_application_infrastructure_imports"
+	canonicalApplicationMissingAreaRule      = "percheck_canonical_application_infrastructure_imports_missing_area"
+	canonicalApplicationParseErrorRule       = "percheck_canonical_application_infrastructure_imports_parse_error"
 )
 
 // ScanCanonicalApplicationInfrastructureImports enforces the zero-baseline
@@ -94,7 +95,7 @@ func scanCanonicalApplicationGoFile(root, path string, r *report.Report) error {
 	rel = filepath.ToSlash(rel)
 	for _, spec := range file.Imports {
 		importPath, err := strconv.Unquote(spec.Path.Value)
-		if err != nil || !strings.HasPrefix(importPath, canonicalApplicationInfraImportPrefix) {
+		if err != nil || (!strings.HasPrefix(importPath, canonicalApplicationInfraImportPrefix) && !strings.HasPrefix(importPath, canonicalApplicationPlatformImportPrefix)) {
 			continue
 		}
 		position := fset.Position(spec.Pos())
@@ -134,5 +135,5 @@ func isCanonicalApplicationAreaPath(area string) bool {
 	if area == "" || filepath.IsAbs(area) || filepath.ToSlash(filepath.Clean(area)) != area {
 		return false
 	}
-	return area == "internal/application" || strings.HasPrefix(area, "internal/application/")
+	return area == "internal/application" || strings.HasPrefix(area, "internal/application/") || area == "internal/capabilities/images/workflow"
 }

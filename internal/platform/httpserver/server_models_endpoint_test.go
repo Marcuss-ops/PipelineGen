@@ -8,12 +8,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 
 // TestNewServerWithHealth_CfgBranch_WiresModelsEndpoint is the
-// production-shaped gate for /models wiring in api.NewServerWithHealth
+// production-shaped gate for /models wiring in NewServerWithHealth
 // when a real *config.Config and a non-empty ModelsSidecarURL are
 // supplied — mirroring how BuildServer plumbs cfg.ClipIndexer.ServerURL
 // into ServerDeps.ModelsSidecarURL (the production call site).
@@ -73,7 +71,7 @@ func TestNewServerWithHealth_CfgBranch_WiresModelsEndpoint(t *testing.T) {
 		},
 	}
 
-	server := api.NewServerWithHealth(api.ServerDeps{
+	server := NewServerWithHealth(ServerDeps{
 		Config:           cfg,
 		ModelsSidecarURL: cfg.ClipIndexer.ServerURL,
 	})

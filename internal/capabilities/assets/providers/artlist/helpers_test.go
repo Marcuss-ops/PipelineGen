@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )

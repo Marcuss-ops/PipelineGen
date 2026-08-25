@@ -55,6 +55,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -261,11 +263,11 @@ func (f *Finalizer) CompleteWithArtifacts(
 		// fan-out and must not hold the worker in post-writer finalization.
 		hooks := f.postCommitHooks
 		artifacts := append([]finalization.PublishedArtifact(nil), req.Artifacts...)
-		go func() {
+		concurrent.SafeGo("job-finalizer-post-commit", func() {
 			for _, artifact := range artifacts {
 				hooks.FirePostCommitHooks(context.Background(), artifact)
 			}
-		}()
+		})
 	}
 
 	f.log.Info("job finalised with artifacts",

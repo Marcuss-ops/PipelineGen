@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
 	"go.uber.org/zap"
 )
 
@@ -52,7 +54,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 	var wg sync.WaitGroup
 	wg.Add(workerCount)
 	for worker := 0; worker < workerCount; worker++ {
-		go func() {
+		concurrent.SafeGo("stock-query-resolution", func() {
 			defer wg.Done()
 			for {
 				select {
@@ -74,7 +76,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 					results[index] = searchQueryResolution{sources: sources, err: err}
 				}
 			}
-		}()
+		})
 	}
 
 	dispatching := true

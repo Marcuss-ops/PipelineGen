@@ -9,7 +9,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // Resolver, multilingual search-text, source-version, and backfill cases.

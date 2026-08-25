@@ -14,26 +14,26 @@ import (
 // re-parse.
 
 func TestInferSourceProvider_YouTubeDotCom(t *testing.T) {
-	if got := inferSourceProvider("https://www.youtube.com/watch?v=abc123"); got != SourceProviderYouTube {
-		t.Fatalf("inferSourceProvider(youtube.com) = %q, want %q", got, SourceProviderYouTube)
+	if got := InferSourceProvider("https://www.youtube.com/watch?v=abc123"); got != SourceProviderYouTube {
+		t.Fatalf("InferSourceProvider(youtube.com) = %q, want %q", got, SourceProviderYouTube)
 	}
 }
 
 func TestInferSourceProvider_YouTubeBe(t *testing.T) {
-	if got := inferSourceProvider("https://youtu.be/abc123"); got != SourceProviderYouTube {
-		t.Fatalf("inferSourceProvider(youtu.be) = %q, want %q", got, SourceProviderYouTube)
+	if got := InferSourceProvider("https://youtu.be/abc123"); got != SourceProviderYouTube {
+		t.Fatalf("InferSourceProvider(youtu.be) = %q, want %q", got, SourceProviderYouTube)
 	}
 }
 
 func TestInferSourceProvider_Pexels(t *testing.T) {
-	if got := inferSourceProvider("https://www.pexels.com/video/foo-123/"); got != SourceProviderPexels {
-		t.Fatalf("inferSourceProvider(pexels.com) = %q, want %q", got, SourceProviderPexels)
+	if got := InferSourceProvider("https://www.pexels.com/video/foo-123/"); got != SourceProviderPexels {
+		t.Fatalf("InferSourceProvider(pexels.com) = %q, want %q", got, SourceProviderPexels)
 	}
 }
 
 func TestInferSourceProvider_Pixabay(t *testing.T) {
-	if got := inferSourceProvider("https://pixabay.com/videos/foo-123/"); got != SourceProviderPixabay {
-		t.Fatalf("inferSourceProvider(pixabay.com) = %q, want %q", got, SourceProviderPixabay)
+	if got := InferSourceProvider("https://pixabay.com/videos/foo-123/"); got != SourceProviderPixabay {
+		t.Fatalf("InferSourceProvider(pixabay.com) = %q, want %q", got, SourceProviderPixabay)
 	}
 }
 
@@ -45,8 +45,8 @@ func TestInferSourceProvider_UnknownForUnrecognizedDomain(t *testing.T) {
 		"blob:https://example.com/12345-67890",
 	}
 	for _, u := range cases {
-		if got := inferSourceProvider(u); got != SourceProviderUnknown {
-			t.Errorf("inferSourceProvider(%q) = %q, want %q", u, got, SourceProviderUnknown)
+		if got := InferSourceProvider(u); got != SourceProviderUnknown {
+			t.Errorf("InferSourceProvider(%q) = %q, want %q", u, got, SourceProviderUnknown)
 		}
 	}
 }
@@ -67,8 +67,8 @@ func TestInferSourceProvider_RejectsSSRFStyleSubdomainAttack(t *testing.T) {
 		"https://notyoutube.com.gc/",
 	}
 	for _, u := range cases {
-		if got := inferSourceProvider(u); got != SourceProviderUnknown {
-			t.Errorf("inferSourceProvider(%q) = %q, want %q (SSRF vector)",
+		if got := InferSourceProvider(u); got != SourceProviderUnknown {
+			t.Errorf("InferSourceProvider(%q) = %q, want %q (SSRF vector)",
 				u, got, SourceProviderUnknown)
 		}
 	}
@@ -86,41 +86,41 @@ func TestInferSourceProvider_AcceptsProviderSubdomains(t *testing.T) {
 		"https://de.pixabay.com/videos/foo/":   SourceProviderPixabay,
 	}
 	for u, want := range cases {
-		if got := inferSourceProvider(u); got != want {
-			t.Errorf("inferSourceProvider(%q) = %q, want %q", u, got, want)
+		if got := InferSourceProvider(u); got != want {
+			t.Errorf("InferSourceProvider(%q) = %q, want %q", u, got, want)
 		}
 	}
 }
 
 func TestInferSourceProvider_EmptyURLFallsToUnknown(t *testing.T) {
-	if got := inferSourceProvider(""); got != SourceProviderUnknown {
-		t.Fatalf("inferSourceProvider(empty) = %q, want %q", got, SourceProviderUnknown)
+	if got := InferSourceProvider(""); got != SourceProviderUnknown {
+		t.Fatalf("InferSourceProvider(empty) = %q, want %q", got, SourceProviderUnknown)
 	}
 }
 
 func TestInferSourceVideoID_YouTubeWatchURL(t *testing.T) {
-	if got := inferSourceVideoID("https://www.youtube.com/watch?v=abc123XYZ"); got != "abc123XYZ" {
-		t.Fatalf("inferSourceVideoID(watch URL) = %q, want %q", got, "abc123XYZ")
+	if got := InferSourceVideoID("https://www.youtube.com/watch?v=abc123XYZ"); got != "abc123XYZ" {
+		t.Fatalf("InferSourceVideoID(watch URL) = %q, want %q", got, "abc123XYZ")
 	}
 }
 
 func TestInferSourceVideoID_YouTubeShortsURL(t *testing.T) {
-	if got := inferSourceVideoID("https://www.youtube.com/shorts/shortID42"); got != "shortID42" {
-		t.Fatalf("inferSourceVideoID(shorts URL) = %q, want %q", got, "shortID42")
+	if got := InferSourceVideoID("https://www.youtube.com/shorts/shortID42"); got != "shortID42" {
+		t.Fatalf("InferSourceVideoID(shorts URL) = %q, want %q", got, "shortID42")
 	}
 }
 
 func TestInferSourceVideoID_YouTuBeShortURL(t *testing.T) {
 	// Parity with pkg/urlutil: youtu.be shortlinks extract the
 	// path-stripped slug as the canonical video ID.
-	if got := inferSourceVideoID("https://youtu.be/abc123"); got != "abc123" {
-		t.Fatalf("inferSourceVideoID(youtu.be) = %q, want %q", got, "abc123")
+	if got := InferSourceVideoID("https://youtu.be/abc123"); got != "abc123" {
+		t.Fatalf("InferSourceVideoID(youtu.be) = %q, want %q", got, "abc123")
 	}
 }
 
 func TestInferSourceVideoID_NonYouTubeEmpty(t *testing.T) {
-	if got := inferSourceVideoID("https://www.pexels.com/video/foo/"); got != "" {
-		t.Fatalf("inferSourceVideoID(pexels) = %q, want empty (provider mismatch → fail-open)", got)
+	if got := InferSourceVideoID("https://www.pexels.com/video/foo/"); got != "" {
+		t.Fatalf("InferSourceVideoID(pexels) = %q, want empty (provider mismatch → fail-open)", got)
 	}
 }
 
@@ -128,8 +128,8 @@ func TestInferSourceVideoID_YouTubeChannelPageEmpty(t *testing.T) {
 	// Channel URL is YouTube domain but pkg/urlutil::ExtractVideoID
 	// returns an error. Fail-open → SourceVideoID = "" (godlike/07
 	// observability field, not a gate).
-	if got := inferSourceVideoID("https://www.youtube.com/channel/UCabc123"); got != "" {
-		t.Fatalf("inferSourceVideoID(channel URL) = %q, want empty (fail-open)", got)
+	if got := InferSourceVideoID("https://www.youtube.com/channel/UCabc123"); got != "" {
+		t.Fatalf("InferSourceVideoID(channel URL) = %q, want empty (fail-open)", got)
 	}
 }
 

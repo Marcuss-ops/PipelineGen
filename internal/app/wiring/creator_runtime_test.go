@@ -96,7 +96,7 @@ var frozenForbiddenImportSubstrings = []string{
 // invoked first (matches composition_test.go precedent).
 func TestCreatorRuntime_FrozenImportAllowlist(t *testing.T) {
 	chdirToProjectRoot(t)
-	pattern := filepath.Join("internal", "app", "creator_*.go")
+	pattern := filepath.Join("internal", "app", "wiring", "creator_*.go")
 	files, err := filepath.Glob(pattern)
 	require.NoError(t, err, "glob creator_*.go")
 	require.NotEmpty(t, files, "no creator_*.go matched — chdir to project root failed or no creator files exist")
@@ -139,7 +139,7 @@ func TestCreatorRuntime_StddlibDatabaseSqlImported(t *testing.T) {
 	chdirToProjectRoot(t)
 	const target = "database/sql"
 
-	pattern := filepath.Join("internal", "app", "creator_runtime.go")
+	pattern := filepath.Join("internal", "app", "wiring", "creator_runtime.go")
 	files, err := filepath.Glob(pattern)
 	require.NoError(t, err, "glob creator_runtime.go")
 	require.NotEmpty(t, files, "creator_runtime.go must exist (P0 C8 canonical surface)")

@@ -253,12 +253,12 @@ type AssetLocationEntry struct {
 	// SizeBytes). Mapped to file_size_bytes SQL column.
 	SizeBytes int64
 
-	// FileHash is the SHA-256 hex digest (from PublishedArtifact.
+	// LegacyFileMD5 is the canonical content digest (from PublishedArtifact.
 	// SHA256). Distinct from any provider-returned checksum —
 	// file_hash stores the canonical content hash so the
 	// round-trip gate can verify byte-stability independent of
 	// the publication backend.
-	FileHash string
+	LegacyFileMD5 string
 
 	// IsPrimary marks the row as the primary location for the
 	// (asset_id, kind) UNIQUE. Defaults to true for the first

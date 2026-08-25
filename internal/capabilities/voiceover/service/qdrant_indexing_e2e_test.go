@@ -53,8 +53,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	sqliteverification "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/verification"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -510,7 +510,7 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	// Real outbox.Dispatcher — its EnqueueIndexEvent method writes the
 	// asset.index.requested event row inside the caller-owned tx.
 	outboxEventsRepo := outboxevents.NewRepository(db)
-	outboxDispatcher := outboxdispatcher.NewDispatcher(
+	outboxDispatcher := outbox.NewDispatcher(
 		nil, // clips — unused in EnqueueIndexEvent path
 		nil, // stateWriter — unused
 		outboxEventsRepo,
@@ -698,7 +698,7 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 
 	// ── Stage E: process the enqueued event through IndexingHandler ─
 	indexer := &e2eIndexClipper{}
-	indexHandler := outbox.NewIndexingHandler(indexer, nil /* sourceQuerier: skip supersede gate */, zap.NewNop())
+	indexHandler := jobs.NewIndexingHandler(indexer, nil /* sourceQuerier: skip supersede gate */, zap.NewNop())
 
 	claim, err := outboxEventsRepo.ClaimNext(ctx, "e2e-test-worker", 30*time.Second)
 	if err != nil {

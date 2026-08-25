@@ -63,10 +63,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-outbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

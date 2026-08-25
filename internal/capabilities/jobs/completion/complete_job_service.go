@@ -55,6 +55,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // ── Service (canonical owner of "complete a job") ────────────────────
@@ -412,7 +413,7 @@ func artifactMapEntries(in []job.RemoteArtifact) []ArtifactMapEntry {
 // the outbox_events table.
 func (s *Service) emitOutboxEvents(ctx context.Context, tx TxContext, req *remote.CompleteJobRequest, artifactIDs []string) error {
 	// One summary JOB_COMPLETED event.
-	jcKey := remote.CompleteJobIdempotencyKey(req.JobID, req.Attempt, "JOB_COMPLETED")
+	jcKey := outboxevents.JobCompletedEventKey(req.JobID)
 	if err := tx.InsertOutboxEnvelope(ctx, OutboxEnvelope{
 		IdempotencyKey: jcKey,
 		EventKind:      "job.completed",

@@ -34,7 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 )
 

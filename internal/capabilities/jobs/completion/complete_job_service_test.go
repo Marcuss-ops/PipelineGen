@@ -33,7 +33,7 @@ type mockTxRunner struct {
 	executedOperations []string
 }
 
-func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx completion.TxContext) error) error {
+func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx TxContext) error) error {
 	m.mu.Lock()
 	m.executedOperations = append(m.executedOperations, "BeginTx")
 	m.mu.Unlock()
@@ -53,28 +53,28 @@ func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context,
 
 type mockTxContext struct {
 	mu                sync.Mutex
-	jobs              map[string]*completion.JobRow
-	results           map[string]completion.ArtifactMapEntry // key: jobID+attempt+artifactID
-	outbox            []completion.OutboxEnvelope
-	priorHashesCache  map[string]map[string]completion.PriorArtifactHash
+	jobs              map[string]*JobRow
+	results           map[string]ArtifactMapEntry // key: jobID+attempt+artifactID
+	outbox            []OutboxEnvelope
+	priorHashesCache  map[string]map[string]PriorArtifactHash
 	getPriorHashCalls int
 
 	// InsertAssetLocations (Azione 6, July 2026): recorded entries
 	// (typed-writes to asset_locations). insertLocationsFn lets a
 	// test inject a typed-error return path; defaults to nil-success.
-	insertedLocations []completion.AssetLocationEntry
-	insertLocationsFn func(ctx context.Context, entries []completion.AssetLocationEntry) error
+	insertedLocations []AssetLocationEntry
+	insertLocationsFn func(ctx context.Context, entries []AssetLocationEntry) error
 }
 
 func newMockTxContext() *mockTxContext {
 	return &mockTxContext{
-		jobs:             map[string]*completion.JobRow{},
-		results:          map[string]completion.ArtifactMapEntry{},
-		priorHashesCache: map[string]map[string]completion.PriorArtifactHash{},
+		jobs:             map[string]*JobRow{},
+		results:          map[string]ArtifactMapEntry{},
+		priorHashesCache: map[string]map[string]PriorArtifactHash{},
 	}
 }
 
-func (m *mockTxContext) GetJob(ctx context.Context, jobID string) (*completion.JobRow, error) {
+func (m *mockTxContext) GetJob(ctx context.Context, jobID string) (*JobRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.jobs[jobID]
@@ -109,26 +109,26 @@ func (m *mockTxContext) InsertResultOnConflict(ctx context.Context, jobID string
 	if _, exists := m.results[key]; exists {
 		return 0, true, nil // ON CONFLICT DO NOTHING
 	}
-	m.results[key] = completion.ArtifactMapEntry{ArtifactID: key, SHA256: resultHash}
+	m.results[key] = ArtifactMapEntry{ArtifactID: key, SHA256: resultHash}
 	return 1, false, nil
 }
 
-func (m *mockTxContext) GetPriorArtifactHashes(ctx context.Context, jobID string) (map[string]completion.PriorArtifactHash, error) {
+func (m *mockTxContext) GetPriorArtifactHashes(ctx context.Context, jobID string) (map[string]PriorArtifactHash, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getPriorHashCalls++
 	r, ok := m.priorHashesCache[jobID]
 	if !ok {
-		return map[string]completion.PriorArtifactHash{}, nil
+		return map[string]PriorArtifactHash{}, nil
 	}
-	out := map[string]completion.PriorArtifactHash{}
+	out := map[string]PriorArtifactHash{}
 	for k, v := range r {
 		out[k] = v
 	}
 	return out, nil
 }
 
-func (m *mockTxContext) PersistArtifactMap(ctx context.Context, jobID string, attempt int, entries []completion.ArtifactMapEntry) error {
+func (m *mockTxContext) PersistArtifactMap(ctx context.Context, jobID string, attempt int, entries []ArtifactMapEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, e := range entries {
@@ -137,7 +137,7 @@ func (m *mockTxContext) PersistArtifactMap(ctx context.Context, jobID string, at
 	return nil
 }
 
-func (m *mockTxContext) InsertOutboxEnvelope(ctx context.Context, envelope completion.OutboxEnvelope) error {
+func (m *mockTxContext) InsertOutboxEnvelope(ctx context.Context, envelope OutboxEnvelope) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.outbox = append(m.outbox, envelope)
@@ -149,7 +149,7 @@ func (m *mockTxContext) InsertOutboxEnvelope(ctx context.Context, envelope compl
 // insertLocationsFn lets tests inject a typed-error return path
 // (e.g. for round-trip-mismatch or transient-failure scenarios);
 // default nil means a successful no-op (locations recorded only).
-func (m *mockTxContext) InsertAssetLocations(ctx context.Context, entries []completion.AssetLocationEntry) error {
+func (m *mockTxContext) InsertAssetLocations(ctx context.Context, entries []AssetLocationEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.insertedLocations = append(m.insertedLocations, entries...)
@@ -159,7 +159,7 @@ func (m *mockTxContext) InsertAssetLocations(ctx context.Context, entries []comp
 	return nil
 }
 
-func (m *mockTxContext) setPriorHashes(jobID string, hashes map[string]completion.PriorArtifactHash) {
+func (m *mockTxContext) setPriorHashes(jobID string, hashes map[string]PriorArtifactHash) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.priorHashesCache[jobID] = hashes
@@ -252,13 +252,13 @@ func newHappyPathRequest() *remote.CompleteJobRequest {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 func TestService_NotConfigured(t *testing.T) {
-	if _, err := completion.NewService(nil, newMockCache()); err == nil {
+	if _, err := NewService(nil, newMockCache()); err == nil {
 		t.Fatal("expected nil-rxRunner error")
 	}
-	if _, err := completion.NewService(&mockTxRunner{}, nil); err == nil {
+	if _, err := NewService(&mockTxRunner{}, nil); err == nil {
 		t.Fatal("expected nil-cache error")
 	}
-	if _, err := completion.NewService(nil, nil); err == nil {
+	if _, err := NewService(nil, nil); err == nil {
 		t.Fatal("expected nil-both error")
 	}
 }
@@ -267,15 +267,13 @@ func TestService_Complete_HappyPath_SingleTransaction(t *testing.T) {
 	cache := newMockCache()
 	rxFactory := func(jobID string, leaseID string, attempt int) CompletionTxRunner {
 		return &seedingMockTxRunner{
-			seedJob: &completion.JobRow{
-				JobRow: JobRow{
-					JobID: jobID, LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
-				},
+			seedJob: &JobRow{
+				JobID: jobID, LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
 				JobType: "test.non-artifact",
 			},
 		}
 	}
-	svc, err := completion.NewService(rxFactory("j-1", "lease-1", 0), cache)
+	svc, err := NewService(rxFactory("j-1", "lease-1", 0), cache)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -305,17 +303,17 @@ func TestService_Complete_HappyPath_SingleTransaction(t *testing.T) {
 
 // CompletionTxRunner is the consumer-side alias of the port to
 // keep the test helpers portable across mock implementations.
-type CompletionTxRunner = completion.CompleteJobTxRunner
+type CompletionTxRunner = CompleteJobTxRunner
 
 // seedingMockTxRunner is a TxRunner that pre-populates the mock
 // TxContext with the canonical job row before delegating to the
 // raw mockTxRunner. Used by the happy-path + idempotency replay
 // tests.
 type seedingMockTxRunner struct {
-	seedJob *completion.JobRow
+	seedJob *JobRow
 }
 
-func (s *seedingMockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx completion.TxContext) error) error {
+func (s *seedingMockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx TxContext) error) error {
 	mock := newMockTxContext()
 	mock.jobs[s.seedJob.JobID] = s.seedJob
 	if err := fn(ctx, mock); err != nil {
@@ -342,7 +340,7 @@ func TestService_Complete_IdempotencyReplay_ReturnsSameResponse(t *testing.T) {
 	// Use a TxRunner that ERRORS so we know the in-TX path did NOT run.
 	bombed := false
 	rx := &bombingTxRunner{bomb: &bombed}
-	svc, err := completion.NewService(rx, cache)
+	svc, err := NewService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -363,7 +361,7 @@ func TestService_Complete_IdempotencyReplay_ReturnsSameResponse(t *testing.T) {
 
 type bombingTxRunner struct{ bomb *bool }
 
-func (b *bombingTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx completion.TxContext) error) error {
+func (b *bombingTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx TxContext) error) error {
 	*b.bomb = true
 	return errors.New("bombing txrunner: should not have been called")
 }
@@ -371,15 +369,13 @@ func (b *bombingTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Conte
 func TestService_Complete_LeaseStolen_ReturnsTypedErrConcurrentLeaseRefutation(t *testing.T) {
 	// Seed the job with WRONG lease so CAS rejects.
 	rx := &seedingMockTxRunner{
-		seedJob: &completion.JobRow{
-			JobRow: JobRow{
-				JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
-			},
+		seedJob: &JobRow{
+			JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
 			JobType: "test.non-artifact",
 		},
 	}
 	cache := newMockCache()
-	svc, err := completion.NewService(rx, cache)
+	svc, err := NewService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -399,7 +395,7 @@ func TestService_Complete_MissingRequired_RejectedBeforeTransaction(t *testing.T
 	bombed := false
 	rx := &bombingTxRunner{bomb: &bombed}
 	cache := newMockCache()
-	svc, err := completion.NewService(rx, cache)
+	svc, err := NewService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -431,17 +427,14 @@ func TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch
 	// Custom seeding with priorHashes: the bombing approach does
 	// not work here, so the test wraps the mockTxRunner.
 	wrapped := &seedingWithPriorHashesRunner{
-		seedJob: &completion.JobRow{
-			JobRow: JobRow{
-				JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
-			},
+		seedJob: &JobRow{JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
 			JobType: "test.non-artifact",
 		},
-		priorHashes: map[string]completion.PriorArtifactHash{
+		priorHashes: map[string]PriorArtifactHash{
 			"j-1:voiceover": {SHA256: "DIFFERENT-SHA", RemoteAssetID: "ra-prior", Status: job.StatusReady},
 		},
 	}
-	svc, err := completion.NewService(wrapped, cache)
+	svc, err := NewService(wrapped, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -456,11 +449,11 @@ func TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch
 }
 
 type seedingWithPriorHashesRunner struct {
-	seedJob     *completion.JobRow
-	priorHashes map[string]completion.PriorArtifactHash
+	seedJob     *JobRow
+	priorHashes map[string]PriorArtifactHash
 }
 
-func (s *seedingWithPriorHashesRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx completion.TxContext) error) error {
+func (s *seedingWithPriorHashesRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx TxContext) error) error {
 	mock := newMockTxContext()
 	mock.jobs[s.seedJob.JobID] = s.seedJob
 	mock.setPriorHashes(s.seedJob.JobID, s.priorHashes)
@@ -470,7 +463,7 @@ func (s *seedingWithPriorHashesRunner) RunInTx(ctx context.Context, fn func(ctx 
 // TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch:
 
 func TestService_NilReceiver_ReturnsNotConfigured(t *testing.T) {
-	var svc *completion.Service
+	var svc *Service
 	_, err := svc.Complete(context.Background(), newHappyPathRequest())
 	if err == nil {
 		t.Fatal("expected nil-receiver error")
@@ -483,7 +476,7 @@ func TestService_NilReceiver_ReturnsNotConfigured(t *testing.T) {
 func TestService_Complete_NilReceiver_ReturnsMissingFields(t *testing.T) {
 	rx := &mockTxRunner{}
 	cache := newMockCache()
-	svc, err := completion.NewService(rx, cache)
+	svc, err := NewService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -498,7 +491,7 @@ func TestService_Complete_NilReceiver_ReturnsMissingFields(t *testing.T) {
 
 // ── FASE 0.1 (July 4, 2026) — JobTypeRegistry port + ErrCompleteJobPathViolation ──
 
-// mockJobTypeRegistry satisfies the completion.JobTypeRegistry port for
+// mockJobTypeRegistry satisfies the JobTypeRegistry port for
 // unit tests. The ProducesArtifacts map is set up at construction; nil-safe
 // lookups return false (godlike/06 SSOT: registry never lies about a
 // job-type-it's-never-heard-of — fail toward the more-permissive path).
@@ -526,7 +519,7 @@ func (m *mockJobTypeRegistry) Set(jobType string, produces bool) {
 // Compile-time pin (godlike/06 SSOT + Pattern 0 typed-port discipline):
 // signature drift on the JobTypeRegistry interface becomes a build
 // failure at this line rather than a runtime panic in tests.
-var _ completion.JobTypeRegistry = (*mockJobTypeRegistry)(nil)
+var _ JobTypeRegistry = (*mockJobTypeRegistry)(nil)
 
 // FASE 0.1 (July 4, 2026) honest-limitation doc on the in-TX gate tests:
 // the in-TX gate at completeInTx is structurally unreachable today
@@ -550,7 +543,7 @@ var _ completion.JobTypeRegistry = (*mockJobTypeRegistry)(nil)
 func TestService_WithJobTypeRegistry_WiresPort_FluentChain(t *testing.T) {
 	cache := newMockCache()
 	rx := &mockTxRunner{}
-	svc, err := completion.NewService(rx, cache)
+	svc, err := NewService(rx, cache)
 	if err != nil {
 		t.Fatalf("new svc: %v", err)
 	}
@@ -572,7 +565,7 @@ func TestService_WithJobTypeRegistry_WiresPort_FluentChain(t *testing.T) {
 // nil (callers can chain through a nil receiver without crashing).
 // Mirrors the same idiom as SetProgress (zero-value-make-no-op pattern).
 func TestService_WithJobTypeRegistry_NilReceiver_ReturnsNil(t *testing.T) {
-	var svc *completion.Service
+	var svc *Service
 	got := svc.WithJobTypeRegistry(newMockJobTypeRegistry())
 	if got != nil {
 		t.Errorf("WithJobTypeRegistry on nil receiver should return nil; got %p", got)

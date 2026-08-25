@@ -70,16 +70,16 @@ vet: go-version-check
 # in the core business packages so a domain test failure is immediately
 # distinguishable from an infrastructure or API failure.
 verify-go-core:
-	$(GO) test -race ./internal/kernel/... ./internal/capabilities/... ./internal/application/...
+	$(GO) test -race ./internal/kernel/... ./internal/capabilities/...
 
 # verify-go-infrastructure — concrete adapter tests. Covers everything
 # under internal/infrastructure/ (databases, clients, external SDK wraps).
 verify-go-infrastructure:
-	$(GO) test -race ./internal/infrastructure/...
+	$(GO) test -race ./internal/platform/...
 
 # verify-go-api — HTTP/API handler tests. Covers internal/api/... .
 verify-go-api:
-	$(GO) test -race ./internal/api/...
+	$(GO) test -race ./internal/platform/httpserver/...
 
 # verify-go-commands — CLI entrypoints and shared packages. Covers cmd/
 # and pkg/, which are not tied to a specific delivery layer.
@@ -120,9 +120,6 @@ VERIFY_JOBS ?= 2
 verify-unit-fast:
 	$(GO) test ./internal/kernel/... \
 		./internal/capabilities/... \
-		./internal/application/... \
-		./internal/infrastructure/... \
-		./internal/api/... \
 		./cmd/... \
 		./pkg/...
 

@@ -31,10 +31,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-// fakeSearchFanOut satisfies search.SearchFanOut (Search + Stats)
+// fakeAssetsSearchFanOut satisfies search.SearchFanOut (Search + Stats)
 // for unit tests. It records all calls so the test can assert
 // translation behaviour.
-type fakeSearchFanOut struct {
+type fakeAssetsSearchFanOut struct {
 	mu          sync.Mutex
 	calls       []search.Query
 	result      *search.Result
@@ -42,7 +42,7 @@ type fakeSearchFanOut struct {
 	statsResult map[string]search.BackendStats
 }
 
-func (f *fakeSearchFanOut) Search(_ context.Context, q search.Query) (*search.Result, error) {
+func (f *fakeAssetsSearchFanOut) Search(_ context.Context, q search.Query) (*search.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, q)
@@ -55,21 +55,21 @@ func (f *fakeSearchFanOut) Search(_ context.Context, q search.Query) (*search.Re
 	return f.result, nil
 }
 
-func (f *fakeSearchFanOut) Stats() map[string]search.BackendStats {
+func (f *fakeAssetsSearchFanOut) Stats() map[string]search.BackendStats {
 	if f.statsResult == nil {
 		return map[string]search.BackendStats{}
 	}
 	return f.statsResult
 }
 
-func (f *fakeSearchFanOut) callsCount() int {
+func (f *fakeAssetsSearchFanOut) callsCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.calls)
 }
 
 func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
-	fake := &fakeSearchFanOut{}
+	fake := &fakeAssetsSearchFanOut{}
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
@@ -96,7 +96,7 @@ func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
 }
 
 func TestSearchFanOutAdapterClampsOverMaxLimit(t *testing.T) {
-	fake := &fakeSearchFanOut{}
+	fake := &fakeAssetsSearchFanOut{}
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
@@ -111,7 +111,7 @@ func TestSearchFanOutAdapterClampsOverMaxLimit(t *testing.T) {
 }
 
 func TestSearchFanOutAdapterDefaultsZeroLimitToCanonical(t *testing.T) {
-	fake := &fakeSearchFanOut{}
+	fake := &fakeAssetsSearchFanOut{}
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
@@ -125,7 +125,7 @@ func TestSearchFanOutAdapterDefaultsZeroLimitToCanonical(t *testing.T) {
 }
 
 func TestSearchFanOutAdapterTranslatesCandidatesLosslessWithoutLeaking(t *testing.T) {
-	fake := &fakeSearchFanOut{
+	fake := &fakeAssetsSearchFanOut{
 		result: &search.Result{
 			Items: []search.Candidate{
 				{
@@ -185,7 +185,7 @@ func TestSearchFanOutAdapterTranslatesCandidatesLosslessWithoutLeaking(t *testin
 func TestSearchFanOutAdapterErrorFromInnerPropagatesTyped(t *testing.T) {
 	// godlike/07 NO-FAKE-AVAILABILITY: a real aggregator failure
 	// must surface as wrapped %w, never a silent zero-result.
-	fake := &fakeSearchFanOut{err: search.ErrAllBackendsFailed}
+	fake := &fakeAssetsSearchFanOut{err: search.ErrAllBackendsFailed}
 	adapter, err := NewSearchFanOutAdapter(fake)
 	require.NoError(t, err)
 
@@ -203,7 +203,7 @@ func TestSearchFanOutAdapterNilInnerReturnsTypedSentinel(t *testing.T) {
 }
 
 func TestSearchFanOutAdapterNilResultReturnsTypedSentinel(t *testing.T) {
-	fake := &fakeSearchFanOut{result: nil} // Search returns &Result{} explicitly below; this triggers the nil-result guard
+	fake := &fakeAssetsSearchFanOut{result: nil} // Search returns &Result{} explicitly below; this triggers the nil-result guard
 	// Override: make the fake return a literal-nil result.
 	fake.result = nil
 	fake.err = nil

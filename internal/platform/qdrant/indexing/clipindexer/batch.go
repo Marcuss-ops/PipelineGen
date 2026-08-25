@@ -3,8 +3,8 @@ package clipindexer
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,10 +26,10 @@ type JobRegistrar interface {
 
 // RegisterJobHandler registers the batch reindex job handler with the jobs service.
 func (s *Service) RegisterJobHandler(jobsSvc JobRegistrar) error {
-	if jobsSvc == nil {
-		return errors.New("clipindexer.Service.RegisterJobHandler: jobsSvc is nil")
+	if jobsSvc == nil || (reflect.ValueOf(jobsSvc).Kind() == reflect.Ptr && reflect.ValueOf(jobsSvc).IsNil()) {
+		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: %w", job.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(jobmedia.TypeReindex, s.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(jobmedia.TypeReindex, job.Handler(s.HandleJob)); err != nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", jobmedia.TypeReindex, err)
 	}
 	s.log.Info("registered media.reindex job handler")

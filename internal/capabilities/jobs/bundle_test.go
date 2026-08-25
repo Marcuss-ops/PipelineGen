@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	"go.uber.org/zap"

@@ -61,15 +61,15 @@ var hardcodedENScopeFiles = []string{
 	"internal/capabilities/youtube/usecase/text_track_resolver.go",
 	"internal/capabilities/youtube/usecase/segment_selection.go",
 	"internal/capabilities/youtube/ports/ports.go",
-	"internal/infrastructure/youtube/subtitles.go",
-	"internal/infrastructure/youtube/ports.go",
+	"internal/platform/youtube/subtitles.go",
+	"internal/platform/youtube/ports.go",
 	"internal/kernel/asset/text_track_repository.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_schema.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_queries.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_lookup.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_mapping.go",
-	"internal/application/assets/localized/port.go",
-	"internal/app/build_bundles_domain_media.go",
+	"internal/capabilities/assets/localized/port.go",
+	"internal/app/wiring/build_bundles_domain_media.go",
 }
 
 // hardcodedENPatterns is the canonical pattern set. Each pattern

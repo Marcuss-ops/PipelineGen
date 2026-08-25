@@ -104,10 +104,20 @@ func TestP0_2_Closure_TypeYouTubeChannelSyncRetired(t *testing.T) {
 	// residue in that package's build_bundles_domain.go +
 	// worker_registry_e2e_test.go does not block this test's
 	// execution).
-	regPath := filepath.Join("registry.go")
-	raw, err := os.ReadFile(regPath)
-	if err != nil {
-		t.Fatalf("read registry.go: %v (test must run from the same directory as registry.go via `go test ./internal/capabilities/jobs/queue/...`)", err)
+	paths, err := filepath.Glob("registry_*.go")
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("find canonical registry sources: %v", err)
+	}
+	var raw []byte
+	for _, regPath := range paths {
+		if filepath.Base(regPath) == filepath.Base("registry_wiring_completeness_test.go") {
+			continue
+		}
+		part, readErr := os.ReadFile(regPath)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", regPath, readErr)
+		}
+		raw = append(raw, part...)
 	}
 
 	matches := registerCallsiteTypeRegex.FindAllSubmatch(raw, -1)

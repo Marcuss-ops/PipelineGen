@@ -564,16 +564,17 @@ infrastructure_drive:
 
 infrastructure_delivery:
   owner: internal/platform/delivery
-  rationale: Asset-delivery URL signing + destination registry + startup validation.
+  rationale: Asset-delivery URL signing, destination registry, and startup validation.
   migrated_from: internal/infrastructure/delivery
 
+# ── Embeddings ──
 infrastructure_embeddings:
   owner: internal/platform/embeddings
   rationale: Text-embedding adapters (HTTP sidecar, Ollama, Python subprocess, SigLIP cross-modal).
   migrated_from: internal/infrastructure/embeddings
 
 infrastructure_files:
-  owner: internal/infrastructure/files
+  owner: internal/platform/filesystem
   rationale: Filesystem utilities remaining after the 2026-08-24 split (JSON I/O, folder-name normalization, foldermemory, metadataexport).
   note: copy/cache/pathutil/scanner/hashutil moved to internal/platform/filesystem.
 

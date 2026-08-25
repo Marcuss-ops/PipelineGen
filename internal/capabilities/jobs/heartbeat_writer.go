@@ -31,6 +31,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // HeartbeatWriter is the typed port for the broker liveness signal.
@@ -130,7 +132,7 @@ func (w *TickerHeartbeatWriter) Start(ctx context.Context) {
 		return // idempotent: already started
 	}
 	w.MarkBeat() // seed: pre-port code would have read math.MaxInt64 here instead
-	go func() {
+	concurrent.SafeGo("jobs-heartbeat", func() {
 		t := time.NewTicker(w.interval)
 		defer t.Stop()
 		for {
@@ -143,7 +145,7 @@ func (w *TickerHeartbeatWriter) Start(ctx context.Context) {
 				w.MarkBeat()
 			}
 		}
-	}()
+	})
 }
 
 // MarkBeat stamps the current Unix timestamp as the last known-good beat.
