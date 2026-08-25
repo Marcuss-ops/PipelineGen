@@ -18,9 +18,9 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // ── Handler test doubles ───────────────────────────────────────────────

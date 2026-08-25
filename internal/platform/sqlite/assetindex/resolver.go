@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Resolver provides a unified way to resolve assets across all databases.

@@ -9,8 +9,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/projectionretention"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/qdrantdr"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // ── Retention ──────────────────────────────────────────────────────────

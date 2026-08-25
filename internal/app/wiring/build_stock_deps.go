@@ -21,9 +21,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	stocksteps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	stocksteps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

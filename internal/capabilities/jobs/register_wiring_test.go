@@ -47,8 +47,8 @@ import (
 	"time"
 
 	catalogsync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
-	images "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	images "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"

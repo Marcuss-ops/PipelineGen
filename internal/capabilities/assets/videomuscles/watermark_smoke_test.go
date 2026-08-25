@@ -39,9 +39,9 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // watermarkTestBinaries resolves the Rust muscles binary and ffmpeg,

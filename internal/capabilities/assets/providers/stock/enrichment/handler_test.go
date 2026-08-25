@@ -53,8 +53,7 @@ import (
 
 	"go.uber.org/zap"
 
-jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // errorAssetPublishedEmitter is a hermetic test double that

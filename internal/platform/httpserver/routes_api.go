@@ -5,12 +5,10 @@ import (
 
 	"go.uber.org/zap"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
-// registerAPIRoutes wires the public /api surface: the admin-auth login
-// surface (registerAdminAuthRoutes) and the protected subtree
+// registerAPIRoutes wires the public /api surface: the protected subtree
 // (Auth + RateLimit + WorkspaceScope) that hosts the module registry for
 // the media, jobs and other modules. Returns the /api group so Setup()
 // can mount /api/capabilities AFTER the WireRegistry is built (the wire
@@ -19,8 +17,6 @@ func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.Rou
 	// API routes
 	api := engine.Group("/api")
 	{
-		r.registerAdminAuthRoutes(api)
-
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
 		protected.Use(middleware.Auth(r.cfg.Auth, r.cfg.Log))

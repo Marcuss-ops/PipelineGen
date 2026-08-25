@@ -26,8 +26,8 @@ package stock
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

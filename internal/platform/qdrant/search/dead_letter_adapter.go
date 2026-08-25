@@ -3,8 +3,8 @@ package search
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // OutboxEventsDeadLetterAdapter bridges the schema.DeadLetterChecker contract to

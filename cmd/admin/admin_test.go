@@ -244,3 +244,14 @@ func TestNoLegacyImports_gateStringsAreIntact(t *testing.T) {
 		}
 	}
 }
+
+// availableCommands is the sorted command-name list derived from the
+// canonical registry; help output must stay in sync with it.
+var availableCommands = func() []string {
+	names := make([]string, 0, len(commandRegistry))
+	for name := range commandRegistry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}()

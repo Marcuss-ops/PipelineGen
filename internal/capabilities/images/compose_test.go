@@ -24,8 +24,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // ── Pure-Go stub mock ──────────────────────────────────────────────────
@@ -43,14 +43,14 @@ var _ ImageSearchResolver = (*mockImageSearchResolver)(nil)
 
 func (m *mockImageSearchResolver) Resolve(territory ImageSearchTerritory) (ImageSearcher, error) {
 	if m == nil {
-		return nil, routing.ErrUnknownTerritory
+		return nil, ErrUnknownTerritory
 	}
 	if m.resolveErr != nil {
 		return nil, m.resolveErr
 	}
 	searcher, ok := m.searchByTerritory[territory]
 	if !ok {
-		return nil, routing.ErrUnknownTerritory
+		return nil, ErrUnknownTerritory
 	}
 	return searcher, nil
 }
@@ -85,8 +85,8 @@ func (s *stubSearcher) Search(_ context.Context, _ ImageFilter) ([]ImageSearchRe
 func TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory(t *testing.T) {
 	var mock *mockImageSearchResolver // typed-nil concrete
 	var resolver ImageSearchResolver = mock
-	got, err := resolver.Resolve(routing.TerritoryAll)
-	if !errors.Is(err, routing.ErrUnknownTerritory) {
+	got, err := resolver.Resolve(TerritoryAll)
+	if !errors.Is(err, ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory from typed-nil resolver, got %v", err)
 	}
 	if got != nil {
@@ -96,13 +96,13 @@ func TestCompose_MockResolver_TypedNil_ReturnsErrUnknownTerritory(t *testing.T) 
 
 // TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory —
 // locks the canonical error sentinel surface so production handlers
-// can rely on errors.Is(err, routing.ErrUnknownTerritory).
+// can rely on errors.Is(err, ErrUnknownTerritory).
 func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T) {
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{},
 	}
-	got, err := mock.Resolve(routing.TerritoryAll)
-	if !errors.Is(err, routing.ErrUnknownTerritory) {
+	got, err := mock.Resolve(TerritoryAll)
+	if !errors.Is(err, ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory, got %v", err)
 	}
 	if got != nil {
@@ -115,19 +115,19 @@ func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T)
 // territory key. Mirrors the routing.image_search_resolver_test.go
 // strong invariant in mock form.
 func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
-	stubRetr := &stubSearcher{rows: []ImageSearchResult{{AssetID: "r1", Origin: asset.ImageOriginRetrieved}}}
-	stubGen := &stubSearcher{rows: []ImageSearchResult{{AssetID: "g1", Origin: asset.ImageOriginGenerated}}}
+	stubRetr := &stubSearcher{rows: []ImageSearchResult{{AssetID: "r1", Origin: string(asset.ImageOriginRetrieved)}}}
+	stubGen := &stubSearcher{rows: []ImageSearchResult{{AssetID: "g1", Origin: string(asset.ImageOriginGenerated)}}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
-			routing.TerritoryRetrieved: stubRetr,
-			routing.TerritoryGenerated: stubGen,
+			TerritoryRetrieved: stubRetr,
+			TerritoryGenerated: stubGen,
 		},
 	}
 
-	if s, err := mock.Resolve(routing.TerritoryRetrieved); err != nil || s != stubRetr {
+	if s, err := mock.Resolve(TerritoryRetrieved); err != nil || s != stubRetr {
 		t.Fatalf("Resolve(retrieved): expected stubRetr, got %#v err=%v", s, err)
 	}
-	if s, err := mock.Resolve(routing.TerritoryGenerated); err != nil || s != stubGen {
+	if s, err := mock.Resolve(TerritoryGenerated); err != nil || s != stubGen {
 		t.Fatalf("Resolve(generated): expected stubGen, got %#v err=%v", s, err)
 	}
 }
@@ -140,15 +140,15 @@ func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
 // verifies the *type-system* contract is reachable from this package).
 func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	stubAll := &stubSearcher{rows: []ImageSearchResult{
-		{AssetID: "r1", Origin: asset.ImageOriginRetrieved, Provider: "wikipedia"},
-		{AssetID: "g1", Origin: asset.ImageOriginGenerated, Provider: "flux"},
+		{AssetID: "r1", Origin: string(asset.ImageOriginRetrieved), Provider: "wikipedia"},
+		{AssetID: "g1", Origin: string(asset.ImageOriginGenerated), Provider: "flux"},
 	}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
-			routing.TerritoryAll: stubAll,
+			TerritoryAll: stubAll,
 		},
 	}
-	searcher, err := mock.Resolve(routing.TerritoryAll)
+	searcher, err := mock.Resolve(TerritoryAll)
 	if err != nil {
 		t.Fatalf("Resolve(all): %v", err)
 	}
@@ -161,7 +161,7 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	}
 	// Hard invariant: only OriginRetrieved or OriginGenerated allowed.
 	for i, r := range rows {
-		if r.Origin != asset.ImageOriginRetrieved && r.Origin != asset.ImageOriginGenerated {
+		if r.Origin != string(asset.ImageOriginRetrieved) && r.Origin != string(asset.ImageOriginGenerated) {
 			t.Errorf("row %d: unexpected origin %q (must be retrieved or generated)", i, r.Origin)
 		}
 	}
@@ -195,7 +195,7 @@ func TestCompose_ServerSingleton_HoldsResolverType(t *testing.T) {
 	if resolver == nil {
 		t.Fatal("mock resolver must be assignable to ImageSearchResolver")
 	}
-	if _, err := resolver.Resolve(routing.TerritoryAll); !errors.Is(err, routing.ErrUnknownTerritory) {
+	if _, err := resolver.Resolve(TerritoryAll); !errors.Is(err, ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory through resolver path, got %v", err)
 	}
 }

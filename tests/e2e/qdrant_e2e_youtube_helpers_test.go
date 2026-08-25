@@ -17,10 +17,10 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 	qsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"

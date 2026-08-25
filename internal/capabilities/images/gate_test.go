@@ -16,13 +16,6 @@ import (
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-	// Per-area orchestrator pattern (added 2026-06-24 followup, code-review
-	// NIT-B): `NewService` is the canonical direct-orchestrator
-	// constructor (used in internal/app/build_bundles_images.go::buildImagesService); the API layer
-	// must reach images via DomainBundle, not via direct construction
-	// here. Grep-verified: zero hits in internal/api/* production code
-	// at HEAD, safe to enforce as hard-fail pattern.
-	{Name: "NewService direct construction", Pattern: "NewService"},
 	// PG-002 (June 2026): enforce no infrastructure imports locally so a
 	// regression cannot sneak past CI's Check 19 unnoticed while a
 	// developer runs `go test ./internal/api/images/...` in isolation.

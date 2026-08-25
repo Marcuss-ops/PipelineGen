@@ -4,15 +4,15 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
 
 // NewYoutubeIndexDispatcherAdapter wires the outbox dispatcher + asset tree.

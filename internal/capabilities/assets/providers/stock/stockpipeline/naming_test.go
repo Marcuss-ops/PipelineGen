@@ -3,7 +3,6 @@ package stockpipeline
 import (
 	"strings"
 	"testing"
-
 )
 
 func TestRootFolderNameFallbacks(t *testing.T) {

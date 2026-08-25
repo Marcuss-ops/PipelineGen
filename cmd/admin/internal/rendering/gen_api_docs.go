@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 func RunGenAPIDocs(args []string) error {

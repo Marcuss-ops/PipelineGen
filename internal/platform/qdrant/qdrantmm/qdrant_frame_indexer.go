@@ -25,9 +25,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 )
 
 // FrameVectorDim is the canonical SigLIP so400m-patch14-384

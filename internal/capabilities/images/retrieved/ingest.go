@@ -20,8 +20,8 @@ package retrieved
 
 import (
 	"context"
-	"io"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"io"
 )
 
 // IngestServicePort is the structural ingest port. Parent

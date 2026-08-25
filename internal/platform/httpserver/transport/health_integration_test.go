@@ -17,8 +17,8 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	healthapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/platform/health"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // newTestHealthHandler creates a HealthHandler wired to a health.Service

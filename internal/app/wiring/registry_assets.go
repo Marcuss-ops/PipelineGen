@@ -4,8 +4,8 @@ package wiring
 import (
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"go.uber.org/zap"
 )
 

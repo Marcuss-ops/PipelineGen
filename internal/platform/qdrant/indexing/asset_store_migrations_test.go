@@ -7,8 +7,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {

@@ -17,8 +17,8 @@
 package audit
 
 import (
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"database/sql"
 	"encoding/json"

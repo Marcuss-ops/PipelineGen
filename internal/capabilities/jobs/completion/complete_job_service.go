@@ -53,8 +53,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Service (canonical owner of "complete a job") ────────────────────

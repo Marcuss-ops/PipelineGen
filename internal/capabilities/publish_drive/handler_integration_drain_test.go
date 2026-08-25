@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

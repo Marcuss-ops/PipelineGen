@@ -35,8 +35,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── Stubs (Pattern 0 + godlike/06 SSOT) ─────────────────────────────────

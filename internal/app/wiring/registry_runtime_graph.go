@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/generation"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"

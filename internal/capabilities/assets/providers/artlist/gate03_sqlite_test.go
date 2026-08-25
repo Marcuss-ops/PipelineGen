@@ -31,11 +31,11 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 )
 
 // recordingRunRepo is a Gate 03 test double that captures every

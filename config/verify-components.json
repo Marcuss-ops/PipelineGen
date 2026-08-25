@@ -542,36 +542,5 @@
     "live_tests": [],
     "cacheable": true,
     "cache_scope": "content"
-  },
-  "web": {
-    "utility": true,
-    "paths": [
-      "web/src/",
-      "web/index.html",
-      "web/package.json",
-      "web/tsconfig.json",
-      "web/vite.config.js"
-    ],
-    "go_packages": [],
-    "node_tests": [
-      [
-        "npm",
-        "--prefix",
-        "web",
-        "run",
-        "build"
-      ]
-    ],
-    "python_tests": [],
-    "dependencies": [],
-    "timeout_seconds": 300,
-    "race_timeout_seconds": 300,
-    "race_enabled": false,
-    "live_tests": [],
-    "required_artifacts": [
-      "web/dist/index.html"
-    ],
-    "cacheable": true,
-    "cache_scope": "content"
   }
 }

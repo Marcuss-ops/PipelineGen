@@ -19,9 +19,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Percentages used for the canonical multi-frame video analysis:

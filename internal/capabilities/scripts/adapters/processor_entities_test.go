@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/stretchr/testify/require"
 )
 

@@ -655,8 +655,8 @@ def missing_required_artifacts(root: Path, definition: Mapping[str, Any]) -> lis
     """Return required output artifacts that are absent from the working tree.
 
     A cache hit must never hide a missing artifact that a later gate depends
-    on (for example the web component's ``web/dist``).  Any absent artifact
-    turns the hit into a miss so the gate re-runs and regenerates it.
+    on.  Any absent artifact turns the hit into a miss so the gate re-runs
+    and regenerates it.
     """
     missing = []
     for artifact in definition.get("required_artifacts", []):

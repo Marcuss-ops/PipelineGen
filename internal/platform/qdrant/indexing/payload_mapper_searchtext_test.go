@@ -38,8 +38,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/searchtext"
 )
 
 // ── PR2 (fix/qdrant-bm25-indexing): sparse vector wire-shape ─────────────

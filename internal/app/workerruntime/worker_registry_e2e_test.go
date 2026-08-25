@@ -25,7 +25,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"

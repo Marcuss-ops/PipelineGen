@@ -3,10 +3,10 @@ package wiring
 import (
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
+	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/operatorverify"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/operatorread"
 	"go.uber.org/zap"

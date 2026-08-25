@@ -19,10 +19,10 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
+	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
+	"go.uber.org/zap"
 )
 
 func (s *ImageStorageService) searchSearXNGImages(ctx context.Context, query string) string {

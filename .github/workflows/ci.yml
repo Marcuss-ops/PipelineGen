@@ -41,9 +41,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: |
-            node-scraper/package-lock.json
-            web/package-lock.json
+          cache-dependency-path: node-scraper/package-lock.json
 
       - name: Run `make verify-main` (fail-closed)
         # Mirror the local-mirror contract: the Makefile owns the graph
@@ -75,12 +73,7 @@ jobs:
       with:
         node-version: '22'
         cache: npm
-        cache-dependency-path: |
-          node-scraper/package-lock.json
-          web/package-lock.json
-
-    - name: Build embedded web console
-      run: make web-build
+        cache-dependency-path: node-scraper/package-lock.json
 
     - name: Verify Go toolchain contract
       # Mirrors `make go-version-check` from the local dev workflow.
@@ -309,9 +302,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: |
-            node-scraper/package-lock.json
-            web/package-lock.json
+          cache-dependency-path: node-scraper/package-lock.json
 
       - name: Build server binary
         # Make owns the frontend preparation and server build contract so

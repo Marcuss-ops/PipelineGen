@@ -29,9 +29,9 @@ import (
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"

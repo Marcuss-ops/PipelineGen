@@ -22,13 +22,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
 // ── SnapshotStoreAdapter ─────────────────────────────────────────────

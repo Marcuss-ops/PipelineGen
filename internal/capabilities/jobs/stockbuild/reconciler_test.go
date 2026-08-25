@@ -7,7 +7,6 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-
 )
 
 // setupReconcilerDB creates an in-memory SQLite database with the

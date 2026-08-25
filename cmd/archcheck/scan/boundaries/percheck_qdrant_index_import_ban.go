@@ -317,7 +317,6 @@ func scanQdrantImportBanFile(path, relPath string, r *report.Report) {
 	}
 }
 
-
 // truncateQdrantImportBan bounds the snippet surface at 120 chars
 // to keep report JSON size stable. Mirrors truncateForReport in
 // percheck_asset_state_no_shadow_enum.go.

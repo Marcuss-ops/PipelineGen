@@ -40,7 +40,7 @@ assert_graph() {
 assert_graph verify-fast "verify-foundation verify-static"
 assert_graph verify-push "verify-foundation verify-static verify-unit-fast verify-changed-components"
 assert_graph verify-main "verify-push verify-node-native verify-architecture"
-assert_graph verify-race "verify-foundation web-build verify-unit-race verify-race-components"
+assert_graph verify-race "verify-foundation verify-unit-race verify-race-components"
 assert_graph verify-full "verify-main verify-race verify-node-tests verify-clean-checkout-build"
 assert_graph verify-release "verify-full verify-integration"
 assert_graph verify-live "auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live verify-stock-live"
@@ -204,14 +204,16 @@ if [[ -n "$duplicates" ]]; then
 fi
 
 # Every executable registry component has an explicit Make alias. Stock's
-# component runner is intentionally diagnostic (`test-stock-component`) and
-# the web utility is owned by the canonical `web-build` target, so neither
-# is a second public `verify-*` component gate.
+# component runner is intentionally diagnostic (`test-stock-component`), so
+# it is not a second public `verify-*` component gate. (Web Admin removed
+# 2026-08-25 — no web utility remains.)
 registry_components=$(cd "$ROOT" && python3 - <<'PY'
 import json
 from pathlib import Path
 
 for name in sorted(json.loads(Path("config/verify-components.json").read_text())):
+    if name == "web":
+        continue
     print(name)
 PY
 )
@@ -224,11 +226,6 @@ while IFS= read -r component; do
                 fail "registry component stock has no test-stock-component Make alias"
             fi
             ;;
-        web)
-            if ! grep -qE '^web-build:' <<<"$graph"; then
-                fail "registry component web has no web-build Make alias"
-            fi
-            ;;
         *)
             if ! grep -qE "^verify-${target}:" <<<"$graph"; then
                 fail "registry component $component has no verify-${target} Make alias"
@@ -238,13 +235,6 @@ while IFS= read -r component; do
 done <<< "$registry_components"
 
 clean_checkout_script=$ROOT/scripts/ci/ci-clean-checkout-build.sh
-web_build_makefile=$ROOT/make/build.mk
-require "$web_build_makefile" 'web-build: web-install' "canonical web-build target"
-require "$web_build_makefile" 'npm ci --prefix web' "web lockfile install"
-require "$web_build_makefile" 'npm run build --prefix web' "web production build"
-require "$web_build_makefile" 'test -f web/dist/index.html' "embedded web entrypoint"
-require "$clean_checkout_script" 'make web-build' "canonical clean web build"
-require "$clean_checkout_script" 'web/dist is committed|generated frontend artifacts must remain untracked' "generated web/dist rejection"
 require "$clean_checkout_script" 'vet ./\.\.\.' "full Go vet"
 require "$clean_checkout_script" 'test ./\.\.\.' "full Go tests"
 require "$clean_checkout_script" 'build -o pipelinegen ./cmd/server' "server build"
@@ -253,9 +243,6 @@ require "$clean_checkout_script" 'build -o admin ./cmd/admin' "admin build"
 require "$clean_checkout_script" 'GO_BIN=\$\{GO:-go\}' "configurable Go binary"
 require "$clean_checkout_script" 'GO_BIN=\$\(command -v' "absolute Go binary resolution"
 require "$ROOT/make/verify.mk" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkout-build\.sh' "Make Go forwarding"
-require "$ROOT/.github/workflows/ci.yml" 'run: make web-build' "CI web build"
-require "$ROOT/.github/workflows/preflight-ci.yml" 'make web-build' "preflight web build"
-require "$ROOT/Dockerfile" 'make -f make/build\.mk web-build' "Docker web build"
 require "$ROOT/scripts/ci/ci-submodule-integrity.sh" 'git ls-files --stage -z' "index gitlink scan"
 require "$ROOT/scripts/ci/ci-submodule-integrity.sh" 'no tracked gitlinks' "orphan gitlink rejection"
 for workflow in "$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml; do

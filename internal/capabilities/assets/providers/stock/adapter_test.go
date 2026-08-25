@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 )
 
 // Compile-time interface guards: catches interface drift at build time.

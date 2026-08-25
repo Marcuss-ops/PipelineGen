@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 type lifecycleSearchProvider struct {

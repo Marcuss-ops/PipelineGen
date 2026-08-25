@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
-func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func()) {
+func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex.Service, func()) {
 	t.Helper()
 
 	schema := `

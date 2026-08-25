@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

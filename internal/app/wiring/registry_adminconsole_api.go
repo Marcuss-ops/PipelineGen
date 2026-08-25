@@ -10,11 +10,11 @@ import (
 
 	"github.com/google/uuid"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
+	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/adminconsole"
 	"go.uber.org/zap"
 )

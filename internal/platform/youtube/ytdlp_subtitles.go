@@ -9,10 +9,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/kernel/transcript"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )
 
 // Deps is the constructor payload for YTDLPSubtitleAdapter.

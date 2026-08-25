@@ -2,9 +2,9 @@ package retrieved
 
 import (
 	"context"
-	"testing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
+	"testing"
 )
 
 type duckDuckGoBridgeStub struct {

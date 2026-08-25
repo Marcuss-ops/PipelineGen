@@ -12,9 +12,9 @@ import (
 
 	"go.uber.org/zap"
 
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 type Service struct {

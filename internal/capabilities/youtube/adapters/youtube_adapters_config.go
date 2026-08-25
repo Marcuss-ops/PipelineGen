@@ -14,10 +14,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 )
 
 // ── SourcingConfigAdapter ─────────────────────────────────────────────

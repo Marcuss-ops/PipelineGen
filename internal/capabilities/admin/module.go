@@ -13,9 +13,9 @@ package admin
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

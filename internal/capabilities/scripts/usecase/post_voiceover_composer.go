@@ -18,8 +18,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // Godlike/07 NO-FAKE-AVAILABILITY: typed sentinels. Every caller can errors.Is

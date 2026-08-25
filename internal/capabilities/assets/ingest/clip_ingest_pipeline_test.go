@@ -24,9 +24,9 @@ import (
 
 	"go.uber.org/zap"
 
-	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 

@@ -10,7 +10,6 @@ import (
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )

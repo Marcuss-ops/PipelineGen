@@ -339,8 +339,6 @@ func deterministicCommitEventID(assetID, sourceType, sourceURI, sourceVersion, c
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(assetID+"|"+sourceType+"|"+sourceURI+"|"+sourceVersion+"|"+contentSHA256)).String()
 }
 
-
-
 // CanonicalAssetCommitterAdapter preserves the existing persistence port while
 // routing every asset write through the full MediaCommitter transaction.
 // CommitTx accepts the caller-owned SQLite transaction used by YouTube and

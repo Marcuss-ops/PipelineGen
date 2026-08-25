@@ -16,9 +16,9 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"

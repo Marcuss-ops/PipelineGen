@@ -67,8 +67,8 @@ package indexing
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // assetToIndexDocumentNoValidate is the unguarded AssetData →

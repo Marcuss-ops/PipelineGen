@@ -8,9 +8,9 @@ import (
 	"time"
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

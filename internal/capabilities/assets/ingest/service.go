@@ -10,12 +10,12 @@ import (
 
 	"go.uber.org/zap"
 
-	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 type Pipeline struct {

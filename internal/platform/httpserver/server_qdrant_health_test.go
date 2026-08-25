@@ -9,7 +9,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 

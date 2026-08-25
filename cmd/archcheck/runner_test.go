@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	policy "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
+	scan "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/structure"
 	"strings"
 	"testing"
-
 )
 
 // TestReportContract replaces the stale full-repository golden snapshot with

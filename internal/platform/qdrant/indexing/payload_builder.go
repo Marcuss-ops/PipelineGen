@@ -24,8 +24,8 @@ package indexing
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // ══════════════════════════════════════════════════════════════════════════

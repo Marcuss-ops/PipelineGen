@@ -11,8 +11,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 )
 
 // DriveFileChecker is the minimal interface needed by deep_cleanup.

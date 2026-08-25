@@ -29,8 +29,8 @@ package script
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

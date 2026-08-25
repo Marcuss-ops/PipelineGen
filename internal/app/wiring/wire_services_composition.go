@@ -44,8 +44,8 @@ import (
 	"time"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"

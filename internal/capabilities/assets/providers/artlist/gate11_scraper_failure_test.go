@@ -36,9 +36,9 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ErrScraperUnavailable is the canonical typed sentinel for Gate 11

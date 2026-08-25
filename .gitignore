@@ -81,7 +81,9 @@ web-admin/dist/
 /out/
 /researchlive
 /yt-clip-tests/
-/tools/
+/tools/*
+!/tools/README.md
+!/tools/regen_hotspots.py
 **/completed_videos/
 **/worker_downloads/
 **/script_assets/

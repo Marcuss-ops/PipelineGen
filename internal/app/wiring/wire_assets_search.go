@@ -16,9 +16,9 @@ package wiring
 import (
 	"fmt"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"go.uber.org/zap"
 )

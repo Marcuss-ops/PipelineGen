@@ -88,7 +88,6 @@ type SourceCacheEntry struct {
 	ForceKeyframes  bool
 }
 
-
 // validateCacheHit checks that a cached file still exists on disk and
 // has a non-zero size. Returns nil on valid hit, error on invalid.
 //

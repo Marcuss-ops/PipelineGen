@@ -35,8 +35,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
 

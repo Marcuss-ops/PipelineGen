@@ -28,14 +28,15 @@
 package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 
 	"go.uber.org/zap"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -43,7 +44,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
-	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"

@@ -15,8 +15,8 @@ package wiring
 import (
 	"fmt"
 
-	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
+	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
 )

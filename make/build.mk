@@ -65,22 +65,7 @@ node-version-check:
 node-version-check-test:
 	@bash scripts/ci/node-version-check_test.sh
 
-# Install the embedded admin console dependencies from the committed lockfile.
-web-install: node-version-check
-	npm ci --prefix web
-
-# Build the embedded admin console and fail closed if the embed entrypoint is
-# missing. Keep installation and build in one canonical dependency chain so
-# local, CI, and Docker callers do not duplicate the frontend setup.
-web-build: web-install
-	npm run build --prefix web
-	test -f web/dist/index.html
-
-# Remove frontend dependencies and generated artifacts. The regular `clean`
-# target intentionally keeps node_modules so local Go-only rebuilds remain
-# fast; use `make web-clean` for a fully fresh frontend checkout.
-web-clean:
-	rm -rf web/node_modules web/dist
+# Web Admin removed 2026-08-25 — no embedded frontend remains.
 
 # Build the entry-point binaries. Outputs land in ./bin/ to keep the project
 # root clean (see `make clean`).
@@ -99,15 +84,15 @@ build-muscles:
 	$(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
 	install -m 0755 rust/target/release/pipelinegen-muscles bin/pipelinegen-muscles
 
-build: go-version-check web-build build-muscles
+build: go-version-check build-muscles
 	@mkdir -p bin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin            ./cmd/admin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/worker           ./cmd/worker
 
-# Build only the server binary and its embedded admin console. This is the
-# canonical target for server smoke checks and lightweight container builds.
-build-server: go-version-check web-build build-muscles
+# Build only the server binary. This is the canonical target for server
+# smoke checks and lightweight container builds.
+build-server: go-version-check build-muscles
 	@mkdir -p bin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen ./cmd/server
 
@@ -115,7 +100,6 @@ build-server: go-version-check web-build build-muscles
 # for every `make test` invocation and in CI without requiring Node).
 clean:
 	rm -rf bin/
-	rm -rf web/dist
 	rm -f server admin pipelinegen worker
 	rm -f server.exe admin.exe pipelinegen.exe worker.exe
 	rm -f *.test.exe

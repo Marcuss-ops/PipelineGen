@@ -9,9 +9,9 @@ package wiring
 import (
 	"context"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 )

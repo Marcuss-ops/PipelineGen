@@ -33,9 +33,9 @@ package images
 import (
 	"context"
 	"fmt"
-	"strings"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
+	"strings"
 )
 
 // UsecaseDeps bundles the dependencies the usecase needs.

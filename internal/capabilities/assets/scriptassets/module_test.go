@@ -18,9 +18,9 @@ import (
 	"errors"
 	"testing"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scriptassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scriptassets"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // stubProviderRegistrar captures Register calls without leaking

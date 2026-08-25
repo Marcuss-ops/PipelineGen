@@ -16,7 +16,6 @@ package mediamemory
 import (
 	"errors"
 	"net/http"
-
 )
 
 // MappedError is the typed-sentinel → HTTP translation product.

@@ -22,7 +22,7 @@ import (
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────────
 
-// GenerateImageRequest is the canonical request for AI image 
+// GenerateImageRequest is the canonical request for AI image
 // It contains all parameters needed by any image generation provider
 // (Playwright/Chrome, NVIDIA Flux, remote generation, etc.).
 type GenerateImageRequest struct {
@@ -74,7 +74,7 @@ type GenerateImageRequest struct {
 
 // ── Structural port ───────────────────────────────────────────────────────
 
-// ImageGenerator is the canonical port for AI image 
+// ImageGenerator is the canonical port for AI image
 //
 // The service layer depends on this interface, not on concrete providers.
 // Concrete infrastructure implementations satisfy this port
@@ -174,7 +174,7 @@ var ErrImageGenBlankOrPlaceholder = fmt.Errorf("image generation: blank/placehol
 //
 // godlike/07 FAIL-CLOSED contract (P0.4, July 2026): the pre-fix
 // behaviour logged a screenshot and PROCEEDED with extraction,
-// potentially ingesting a stale image from a previous 
+// potentially ingesting a stale image from a previous
 // We RETIRE that path: timeout is a terminal failure for this
 // request, the worker reports ErrImageGenTimeout, and the caller
 // (and the page-recycle wiring in chrome_provider.go::resetWorker)
@@ -284,7 +284,7 @@ func ClassifyError(errMsg string) error {
 // ComputeSourceHash returns a deterministic idempotency key for a generation
 // request. SHA256(provider + "|" + normalized_prompt + "|" + style + "|" +
 // width + "|" + height + "|" + model). Same request → same hash → no
-// duplicate 
+// duplicate
 func ComputeSourceHash(provider, prompt, style string, width, height int, model string) string {
 	// Normalise: trim + lowercase for consistent hashing.
 	prompt = strings.TrimSpace(strings.ToLower(prompt))

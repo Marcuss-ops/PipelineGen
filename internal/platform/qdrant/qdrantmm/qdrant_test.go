@@ -37,11 +37,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // canonicalDenseDim is the canonical conceptIndex dense-vector dim.

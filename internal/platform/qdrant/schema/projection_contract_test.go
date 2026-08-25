@@ -3,7 +3,6 @@ package schema
 import (
 	"strings"
 	"testing"
-
 )
 
 func TestProjectionContracts_CanonicalIdentity(t *testing.T) {

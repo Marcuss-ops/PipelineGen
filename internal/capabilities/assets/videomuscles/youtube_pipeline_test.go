@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

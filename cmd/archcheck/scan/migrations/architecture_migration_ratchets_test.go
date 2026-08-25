@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	structure "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/structure"
 )
 
 const testDomainJobImport = "github.com/Marcuss-ops/PipelineGen/internal/domain/" + "job"
@@ -56,7 +57,7 @@ func TestScanPackagesRegisteredHotspotCannotGrow(t *testing.T) {
 	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/c.go", "package jobs\n")
 
 	r := &report.Report{}
-	ScanPackages(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{})
+	structure.ScanPackages(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{})
 	if len(r.Violations) != 1 {
 		t.Fatalf("expected one hotspot violation, got %#v", r.Violations)
 	}
@@ -76,7 +77,7 @@ func TestScanPackagesProductionRejectsUnregisteredHotspot(t *testing.T) {
 	writeTestGoFile(t, root, "internal/application/newcap/b.go", "package newcap\n")
 
 	r := &report.Report{}
-	ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
+	structure.ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
 	if len(r.Violations) != 1 {
 		t.Fatalf("expected one unregistered hotspot violation, got %#v", r.Violations)
 	}
@@ -102,7 +103,7 @@ func TestScanPackagesProductionRejectsExpiredHotspot(t *testing.T) {
 	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/b.go", "package jobs\n")
 
 	r := &report.Report{}
-	ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
+	structure.ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
 	if len(r.Violations) != 1 {
 		t.Fatalf("expected one expired-hotspot violation, got %#v", r.Violations)
 	}
@@ -130,7 +131,7 @@ func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
 	}
 
 	r := &report.Report{}
-	ScanUnknownInternalRoots(root, &policy.Policy{}, r)
+	structure.ScanUnknownInternalRoots(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {
 		t.Fatalf("registered migration root must be governed without unknown-root warnings, got %#v", r.Violations)
 	}
@@ -152,7 +153,7 @@ func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
 
 func writeHotspotRegistry(t *testing.T, root, content string) {
 	t.Helper()
-	path := filepath.Join(root, filepath.FromSlash(packageHotspotRegistryPath))
+	path := filepath.Join(root, filepath.FromSlash("architecture/package_hotspots.json"))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

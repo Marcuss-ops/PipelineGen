@@ -327,7 +327,7 @@ func TestBrokenReferencesCLI_SkipFlags(t *testing.T) {
 	// and the subcommand is registered. Use --report to a temp file so
 	// JSON output doesn't pollute the test log.
 	reportPath := filepath.Join(t.TempDir(), "broken-refs-report.json")
-	err := runBrokenReferences([]string{"--report", reportPath, "--skip-drive", "--skip-local", "--skip-qdrant", "--no-orphan-detail"})
+	err := RunBrokenReferences([]string{"--report", reportPath, "--skip-drive", "--skip-local", "--skip-qdrant", "--no-orphan-detail"})
 	if err != nil && strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("command not recognized: %v", err)
 	}

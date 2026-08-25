@@ -141,14 +141,13 @@ stale_prose_paths:
   - module_stock
   - module_youtube
   - subject_bindings
-# Migration-boundary application areas are explicit DoD scope. Every production
-# Go file under these paths must remain free of direct internal/infrastructure
-# imports while the root migration is in progress; the composition root owns
-# concrete adapter wiring. This is a guarded migration surface, not a second
-# target architecture.
-canonical_application_areas:
-  - internal/application/assets/artifacts
-  - internal/application/assets/catalogsync
+# Migration-boundary application areas — all legacy application roots are now
+# deleted (2026-08-25: internal/application and internal/api completed).
+# No canonical application areas remain; the DoD boundary is enforced
+# solely by the four target roots (app/kernel/capabilities/platform).
+# canonical_application_areas intentionally absent — the scanner treats an
+# absent list as “no migration-boundary areas to check” when the
+# corresponding hard gates are not enabled (see hard_gates below).
 
 # Expected capability slices (target: internal/capabilities/<x>).
 # Each owns module.go, contract.go, service.go, http.go, jobs.go,
@@ -198,13 +197,12 @@ platform_subzones: config, sqlite, drive, qdrant, process, filesystem, checksum,
 # govern the migration surface; it is not a second supported architecture.
 target_internal_roots: app, kernel, capabilities, platform
 
-# MIGRATION-ONLY ROOTS (binding): existing code is tolerated only while it is
-# being migrated or removed. These roots are forbidden homes for new
-# capabilities, public contracts, providers, routes, files, or packages. Every
-# exception must be an existing owner/deadline/target entry in
-# architecture/package_hotspots.json::root_migrations. The migration registry
-# is governance metadata, not permission to extend a legacy root.
-legacy_internal_roots: application, api
+# MIGRATION-ONLY ROOTS (binding): all legacy roots have been deleted
+# (2026-08-25: application and api completed — last two entries).
+# No migration-only roots remain; the sole target architecture is
+# internal/{app,kernel,capabilities,platform}. The key is intentionally
+# absent — an empty/absent list means “no legacy roots to govern”.
+# legacy_internal_roots intentionally absent — see architecture/package_hotspots.json::completed_migrations
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
 # entry is a free-form comment consumed by the human reviewer; the binary
@@ -314,12 +312,11 @@ hard_gates:
   # Warning residue cannot grow silently; reduce the budget as warnings are
   # removed rather than raising it to mask new architectural drift.
   - warning_budget
-  # Canonical application areas have a zero-baseline direct-infrastructure
-  # import contract. Missing declarations/paths and malformed production Go
-  # files fail closed alongside the import rule.
-  - percheck_canonical_application_infrastructure_imports
-  - percheck_canonical_application_infrastructure_imports_missing_area
-  - percheck_canonical_application_infrastructure_imports_parse_error
+  # Canonical application areas — migrated to completion (2026-08-25).
+  # No canonical application areas remain, so the three percheck_canonical_*
+  # hard gates are intentionally NOT enabled. The scanner will still run the
+  # check but an absent list is not a hard-gate violation when the gates are
+  # disabled.
   # Final legacy cutover: the four media-pipeline SSOTs and the two
   # sole-writer contracts are promoted from report-only to hard gates now
   # that every legacy caller has been migrated (each rule has zero

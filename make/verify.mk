@@ -48,16 +48,8 @@ verify-foundation: go-version-check node-version-check node-version-check-test v
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
-# verify-static — embedded web build, then Go static analysis + full build.
-# No tests or integration. Building the UI here is intentional: web/embed.go
-# requires web/dist, which is generated and ignored rather than committed.
-# This keeps verify-main reproducible from a clean checkout while preserving
-# the canonical npm ci -> Vite build chain owned by make/build.mk.
-# Complementary to verify-go (which adds the per-area race-tested suites);
-# use it as a fail-fast smoke between full builds. The Go and Node version
-# checks remain hard prerequisites so stale toolchains fail with their
-# canonical diagnostics rather than late inside the frontend or Go commands.
-verify-static: go-version-check web-build
+# verify-static — Go static analysis + full build (Web Admin removed 2026-08-25).
+verify-static: go-version-check
 
 	$(GO) vet ./...
 	$(GO) build ./...
@@ -112,7 +104,7 @@ verify-main: verify-push verify-node-native verify-architecture
 # verify-race — explicit race-detector gate. Foundation runs as a shared
 # prerequisite once, while unit and registry component suites use their
 # race-enabled commands. It is independent of verify-main for direct use.
-verify-race: verify-foundation web-build verify-unit-race verify-race-components
+verify-race: verify-foundation verify-unit-race verify-race-components
 	@echo "✅ verify-race passed"
 
 # verify-clean-checkout-build — reproducibility gate that materializes the

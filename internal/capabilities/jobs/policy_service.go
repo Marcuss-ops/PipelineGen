@@ -424,5 +424,3 @@ func normalizeDownloadURL(rawURL string) string {
 	}
 	return rawURL
 }
-
-

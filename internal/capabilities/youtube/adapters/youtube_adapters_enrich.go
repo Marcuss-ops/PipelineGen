@@ -9,8 +9,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 )
 
 // ── YoutubeEnrichmentAdapter ───────────────────────────────────────────

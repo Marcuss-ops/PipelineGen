@@ -31,7 +31,6 @@ import (
 
 	"go.uber.org/zap"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
@@ -135,9 +134,8 @@ func TestFeatureFlag_Qdrant_GateExists_RegressionGuard(t *testing.T) {
 	// runtime.Caller gives us this test file's path; walk up to go.mod.
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller must succeed")
-
-	// Walk up from internal/api/ to repo root (3 levels: api -> internal -> root).
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	// Walk up from internal/platform/httpserver/ to repo root.
+	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))))
 	gateFile := filepath.Join(repoRoot, "internal", "app", "build_bundles_qdrant_gates.go")
 
 	_, err := os.Stat(gateFile)

@@ -9,9 +9,9 @@ import (
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
 // Job-pipeline DDL, translator stub, broker/handler fixture, and

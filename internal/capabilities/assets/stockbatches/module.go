@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // Dependencies is the typed narrow input to Build.

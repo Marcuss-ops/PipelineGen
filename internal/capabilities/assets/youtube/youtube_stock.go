@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

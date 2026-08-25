@@ -12,13 +12,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/primitives"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
+	"net/http"
+	"strings"
+	"time"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )

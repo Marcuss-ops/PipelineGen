@@ -24,9 +24,8 @@
 package wiring
 
 import (
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
-
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
 	"go.uber.org/zap"
 

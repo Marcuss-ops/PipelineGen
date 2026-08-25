@@ -18,8 +18,8 @@ import (
 
 	"go.uber.org/zap"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // ServerRuntime is the constructed runtime for the cmd/server binary.

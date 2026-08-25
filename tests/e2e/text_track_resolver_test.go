@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // Resolver, multilingual search-text, source-version, and backfill cases.

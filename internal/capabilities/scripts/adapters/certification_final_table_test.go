@@ -8,9 +8,9 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 // certMediaPlan is the resolved plan for the full certification chain:

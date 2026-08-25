@@ -28,11 +28,11 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	brainCore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/core"
 	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/intent"
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"

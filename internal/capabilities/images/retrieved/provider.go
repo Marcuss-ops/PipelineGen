@@ -11,8 +11,8 @@ package retrieved
 
 import (
 	"context"
-	nethttp "net/http"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	nethttp "net/http"
 )
 
 // RetrievalProvider is one named retrieval source. Implementations

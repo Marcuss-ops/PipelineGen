@@ -2,7 +2,9 @@
 // image.generate.google (PR-GODOBJ-3-IMAGES-GENERATION, July 2026).
 //
 // godlike/06 SSOT: canonical owner of the ASYNC job adapter for image
-//  The handler is thin — it drives the usecase and emits the
+//
+//	The handler is thin — it drives the usecase and emits the
+//
 // typed *job.ArtifactManifest sidecar via handlerResult[job.ManifestKey].
 // Per PR-GODOBJ-3 KILL LIST b: the handler does NOT call IngestImage
 // (no media_assets writes, no asset.Hash / asset.PathRel in handlerResult).
@@ -32,10 +34,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
+	"os"
+	"path/filepath"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )

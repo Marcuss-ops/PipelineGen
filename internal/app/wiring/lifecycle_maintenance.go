@@ -30,12 +30,12 @@ import (
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion/reconciler"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation/projection"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
-	projectionreconciler "github.com/Marcuss-ops/PipelineGen/internal/capabilities/reconciliation/projection"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"

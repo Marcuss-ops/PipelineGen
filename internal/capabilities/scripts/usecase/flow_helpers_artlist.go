@@ -30,9 +30,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/artlist_phrase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 )
 
 // Typed sentinels (godlike/07 typed-error contract). Each sentinel

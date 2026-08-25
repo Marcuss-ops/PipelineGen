@@ -12,7 +12,6 @@ import (
 
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 

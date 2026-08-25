@@ -11,10 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // errFirstHit is the synthetic sentinel returned by the winning

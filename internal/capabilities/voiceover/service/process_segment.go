@@ -54,10 +54,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 

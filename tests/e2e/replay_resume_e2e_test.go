@@ -42,8 +42,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	capreplay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/replay"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	sqlitereplay "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/replay"
 

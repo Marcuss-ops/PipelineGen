@@ -1,13 +1,13 @@
 package wiring
 
 import (
-	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"io"
 	"net/http"
 	"os"

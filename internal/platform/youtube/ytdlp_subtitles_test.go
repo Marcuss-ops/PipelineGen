@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // newMinimalCmdBuilder constructs a *ytdlp.CommandBuilder with minimal

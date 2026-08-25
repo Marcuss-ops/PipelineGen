@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"time"
 
-jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )

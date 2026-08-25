@@ -221,3 +221,14 @@ type HandlerGenerate struct {
 			rep.Violations[0].MatchedRule)
 	}
 }
+
+// filterByRule returns only violations whose MatchedRule equals rule.
+func filterByRule(violations []report.Violation, rule string) []report.Violation {
+	var out []report.Violation
+	for _, v := range violations {
+		if v.MatchedRule == rule {
+			out = append(out, v)
+		}
+	}
+	return out
+}

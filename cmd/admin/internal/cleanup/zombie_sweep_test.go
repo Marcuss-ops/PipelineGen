@@ -25,9 +25,9 @@
 package cleanup
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"strings"
 	"testing"
 	"time"

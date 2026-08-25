@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
 func TestEnforceWarningBudgetAllowsAtOrBelowCeiling(t *testing.T) {
