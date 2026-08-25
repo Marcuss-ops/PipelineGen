@@ -78,13 +78,6 @@ func extractAuthToken(c *gin.Context) string {
 		return authHeader
 	}
 
-	// Session cookie support for the admin SPA. The cookie value is the
-	// admin token itself, so it flows through the same constant-time
-	// comparison as header-based tokens.
-	if cookie, err := c.Cookie("velox_admin_session"); err == nil && strings.TrimSpace(cookie) != "" {
-		return strings.TrimSpace(cookie)
-	}
-
 	return ""
 }
 

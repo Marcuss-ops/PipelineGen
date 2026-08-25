@@ -220,7 +220,6 @@ func buildCORSConfig(corsOrigins []string) cors.Config {
 // health endpoints, and dynamically registered module routes.
 //
 // The per-domain wiring lives in sibling files of this package:
-//   - routes_admin.go    — /admin SPA static surface + /api/admin/auth login.
 //   - routes_health.go   — /health, /ready, /models, /qdrant/* health surface.
 //   - routes_api.go      — /api module-registry surface (media, jobs, ...).
 //   - routes_internal.go — /internal/v1 WorkerAuth surface (worker/jobs,
@@ -250,9 +249,6 @@ func (r *Router) Setup() *gin.Engine {
 	engine.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/health")
 	})
-
-	// Admin SPA static surface + engine-level NoRoute SPA fallback.
-	r.registerAdminUIRoutes(engine)
 
 	registerVLMRoutes(engine)
 
