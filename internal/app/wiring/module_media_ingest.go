@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -88,7 +88,7 @@ type MediaIngestBundle struct {
 	Committer         assetspersistence.AssetCommitter
 }
 
-// MediaIngestWiring holds the Mediaingest module 
+// MediaIngestWiring holds the Mediaingest module
 type MediaIngestWiring struct {
 	Handler *assetsapi.MediaingestHandler
 	Module  module.Module

@@ -32,7 +32,7 @@ func (f *resolverSearcherFake) Search(ctx context.Context, _ ImageFilter) ([]Ima
 		}
 	}
 	return []ImageSearchResult{{
-		AssetID: "img-1", Origin: asset.ImageOriginRetrieved, Provider: "wikipedia",
+		AssetID: "img-1", Origin: string(asset.ImageOriginRetrieved), Provider: "wikipedia",
 		Name: "Elon Musk", PreviewURL: "https://img.example/elon.jpg", SourcePageURL: "https://source.example/elon",
 		Width: 1200, Height: 800, Score: 1,
 	}}, nil
@@ -99,6 +99,14 @@ func TestResolverSearchProviderCoalescesConcurrentCalls(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for the coalesced search to start")
 	}
+	// Let all callers enter the same singleflight window before releasing
+	// the leader; otherwise scheduler timing can turn this into several
+	// sequential requests.
+	deadline := time.Now().Add(time.Second)
+	for searcher.calls.Load() < 1 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(10 * time.Millisecond)
 	close(block)
 	wg.Wait()
 

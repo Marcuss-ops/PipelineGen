@@ -9,8 +9,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
 type fakeVisualPlannerClient struct {

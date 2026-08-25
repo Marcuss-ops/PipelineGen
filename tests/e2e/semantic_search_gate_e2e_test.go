@@ -27,10 +27,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"go.uber.org/zap"
 )
 

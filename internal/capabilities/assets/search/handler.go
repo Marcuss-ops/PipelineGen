@@ -22,8 +22,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )

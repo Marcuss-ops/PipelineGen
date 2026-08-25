@@ -32,8 +32,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
 
 // `--mode` semantics (matches `app.startBackgroundJobs`):

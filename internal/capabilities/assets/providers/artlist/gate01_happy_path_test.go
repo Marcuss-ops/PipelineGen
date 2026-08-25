@@ -25,10 +25,10 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 )
 
 // successMediaProcessor is a Gate 01 test double that returns

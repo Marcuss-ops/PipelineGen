@@ -97,7 +97,7 @@ type CriticalHandler struct {
 //   - svc == nil → typed error (composition-root wiring bug;
 //     the validator cannot run without a wired jobs.Service).
 //   - log == nil → swaps in zap.NewNop() so the validator remains
-//     usable from composition roots without explicit logger 
+//     usable from composition roots without explicit logger
 //   - handlers slice is the canonical authoritative list — a
 //     missing handler is a composition-shape bug, NOT a failure
 //     to log. Empty handlers slice → nil error (no bindings to

@@ -5,13 +5,13 @@ package youtube
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

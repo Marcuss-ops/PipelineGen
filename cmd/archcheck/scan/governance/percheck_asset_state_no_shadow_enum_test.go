@@ -19,8 +19,10 @@
 package governance
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
@@ -153,4 +155,26 @@ func TestScanAssetStateNoShadowEnum_CommentOnlyIsResidue(t *testing.T) {
 	if !foundWarn {
 		t.Error("expected residue warning on narrative_doc.go; r.Warnings did not contain it")
 	}
+}
+
+// writeFakeAssetStateValues writes a synthetic .go file declaring n
+// canonical StateAsset* consts (matching the SSOT declaration shape)
+// plus any extra raw source, so the shadow-enum scan has fixtures.
+func writeFakeAssetStateValues(t *testing.T, dir string, n int, extra string) {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString("package fake\n\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "const StateAssetFake%d asset.AssetState = \"fake-%d\"\n", i, i)
+	}
+	b.WriteString(extra)
+	path := filepath.Join(dir, "fake_asset_state.go")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("writeFakeAssetStateValues: %v", err)
+	}
+}
+
+// containsSubstring reports whether needle occurs in haystack.
+func containsSubstring(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
 }

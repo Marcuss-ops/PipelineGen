@@ -25,9 +25,9 @@
 package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"net/http"
 	"net/http/httptest"
 	"os"

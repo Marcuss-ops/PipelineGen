@@ -21,7 +21,6 @@ package schema
 import (
 	"fmt"
 	"strings"
-
 )
 
 // ProjectionKind is the logical name of a Qdrant projection. A projection is

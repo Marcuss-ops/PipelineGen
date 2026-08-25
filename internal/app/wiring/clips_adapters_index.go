@@ -1,13 +1,13 @@
 package wiring
 
 import (
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // PR-CLIPS-INDEXER-PORT-RETIRE (August 2026): clipsIndexerAdapter +

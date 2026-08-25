@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.

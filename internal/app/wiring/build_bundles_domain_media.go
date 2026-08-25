@@ -1,16 +1,15 @@
 package wiring
 
 import (
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
@@ -23,12 +22,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 	"go.uber.org/zap"
 )
 

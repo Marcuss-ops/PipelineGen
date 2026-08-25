@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 
 type slowSubmissionService struct {

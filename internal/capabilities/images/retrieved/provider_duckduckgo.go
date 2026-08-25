@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	nethttp "net/http"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
+	nethttp "net/http"
 )
 
 // DuckDuckGoProvider scrapes DuckDuckGo image search via the public

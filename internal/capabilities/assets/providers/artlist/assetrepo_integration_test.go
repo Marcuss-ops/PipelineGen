@@ -12,21 +12,22 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
-func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
+func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewMigratedTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
-	clipsRepo = sqassets.NewClipsRepository(db, log)
-	assetStore := sqassets.NewAssetStoreSQLite(db, log)
+	clipsRepo = assets.NewClipsRepository(db, log)
+	assetStore := assets.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return
 }

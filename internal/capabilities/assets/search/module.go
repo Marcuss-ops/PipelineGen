@@ -59,8 +59,8 @@ package search
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

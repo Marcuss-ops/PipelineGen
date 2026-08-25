@@ -1,8 +1,8 @@
 package adapters
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )
 
 // ── Segment discovery constants ──────────────────────────────────────────

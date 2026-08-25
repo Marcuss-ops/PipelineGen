@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── Fetch ports ────────────────────────────────────────────────────────

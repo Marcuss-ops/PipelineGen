@@ -168,8 +168,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecut
 	return handler(ctx, j, tools)
 }
 
-
-
 type RunnerConfig struct {
 	Workers   int
 	PollEvery time.Duration

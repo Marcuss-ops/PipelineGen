@@ -41,7 +41,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"

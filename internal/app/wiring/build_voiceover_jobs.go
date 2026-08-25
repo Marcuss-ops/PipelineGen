@@ -8,7 +8,6 @@ package wiring
 import (
 	"fmt"
 
-
 	"go.uber.org/zap"
 
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"

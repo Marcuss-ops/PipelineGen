@@ -15,8 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-
-
 // ImageFilter is the canonical filter for catalog search.
 // Composed by callers; can be partial (any field zero-value
 // means "no constraint on that dimension").

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // recordingPublisher satisfies the canonical delivery.Publisher interface.

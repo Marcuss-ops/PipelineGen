@@ -182,7 +182,7 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		runner.WithJobRegistry(deps.root.Jobs.JobLedger)
 	}
 	// Canonical observability: the collector remains a live metrics
-	// projection while the SQLite recorder owns durable run 
+	// projection while the SQLite recorder owns durable run
 	var recorder kernobs.Recorder
 	if deps.root.ObservabilityDB != nil && deps.root.ObservabilityDB.DB != nil {
 		recorder = obsmetrics.NewSQLiteRecorderWithLogger(deps.root.ObservabilityDB.DB, deps.log)

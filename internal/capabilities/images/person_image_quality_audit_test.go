@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/entitycatalog"
 )
 
 // ── Quality audit ────────────────────────────────────────────────────────

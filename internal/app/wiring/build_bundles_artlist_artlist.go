@@ -25,11 +25,11 @@ package wiring
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

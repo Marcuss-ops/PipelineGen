@@ -264,8 +264,6 @@ type QueryEmbedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-
-
 type MediaReadRepository interface {
 	GetMany(ctx context.Context, actor Actor, assetIDs []string) ([]MediaAsset, error)
 }

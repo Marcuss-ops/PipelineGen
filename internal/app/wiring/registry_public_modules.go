@@ -17,14 +17,14 @@ package wiring
 import (
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/admin"
-	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clipfolder"
+	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 

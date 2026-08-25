@@ -23,13 +23,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"

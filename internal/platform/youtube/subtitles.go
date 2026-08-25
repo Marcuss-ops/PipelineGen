@@ -47,9 +47,9 @@ import (
 	"net/url"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )
 
 // SubtitleFetcherAdapter is the concrete impl of the SubtitleFetcher

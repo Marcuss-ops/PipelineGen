@@ -44,8 +44,8 @@ package wiring
 import (
 	"fmt"
 
-	stockapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stock"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	stockapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stock"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

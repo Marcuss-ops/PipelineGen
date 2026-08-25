@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // DownloadUseCase resolves where a clip's video file lives and returns

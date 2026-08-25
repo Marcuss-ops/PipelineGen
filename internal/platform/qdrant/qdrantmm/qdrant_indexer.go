@@ -22,12 +22,12 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // Concept point IDs use schema.ConceptPointIDPrefix (SSOT in

@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,7 +37,7 @@ func TestUpload_NoIngestSvc_Returns503(t *testing.T) {
 	// never reached on the /upload 503 fast-path, but constructing
 	// them nil-safe here also pins the nil-tolerant constructor
 	// contract (NewImagesHandler accepts all-nil args).
-	h := images.NewImagesHandler(nil, nil, nil)
+	h := NewImagesHandler(nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewImagesHandler returned nil")
 	}
@@ -47,8 +46,8 @@ func TestUpload_NoIngestSvc_Returns503(t *testing.T) {
 	// composition-root wiring in internal/app/registry.go).
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	api := r.Group("/api/images")
-	h.RegisterRoutes(api)
+	group := r.Group("/api/images")
+	h.RegisterRoutes(group)
 
 	// Prepare a structurally valid UploadRequest (binding:"required"
 	// on URL means an empty URL would 400 at BindJSON before reaching
@@ -95,11 +94,11 @@ func TestUpload_NoIngestSvc_Returns503(t *testing.T) {
 // return 400 (binding catches it), not 503. This guarantees the test
 // suite doesn't accidentally regress the BindJSON contract.
 func TestUpload_EmptyURL_Returns400(t *testing.T) {
-	h := images.NewImagesHandler(nil, nil, nil)
+	h := NewImagesHandler(nil, nil, nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	api := r.Group("/api/images")
-	h.RegisterRoutes(api)
+	group := r.Group("/api/images")
+	h.RegisterRoutes(group)
 
 	// URL field is empty — binding:"required" must reject before
 	// the ingestSvc==nil check fires.
@@ -120,11 +119,11 @@ func TestUpload_EmptyURL_Returns400(t *testing.T) {
 // proceed to the ingestSvc path. binding error before composition
 // wiring check.
 func TestUpload_InvalidJSON_Returns400(t *testing.T) {
-	h := images.NewImagesHandler(nil, nil, nil)
+	h := NewImagesHandler(nil, nil, nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	api := r.Group("/api/images")
-	h.RegisterRoutes(api)
+	group := r.Group("/api/images")
+	h.RegisterRoutes(group)
 
 	body := `{"subject":"abc"` // truncated JSON
 	req := httptest.NewRequest(http.MethodPost, "/api/images/upload",

@@ -26,9 +26,12 @@
 package governance
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
@@ -532,4 +535,29 @@ func resolve() {
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("transitional ParentFolderID caller must be allowlisted; got %d: %+v", got, r.Violations)
 	}
+}
+
+// writeFixture writes content to root/relPath, creating parent dirs.
+func writeFixture(t *testing.T, root, relPath, content string) {
+	t.Helper()
+	path := filepath.Join(root, relPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("writeFixture mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writeFixture: %v", err)
+	}
+}
+
+// newEmptyReport returns a Report with initialized summary maps so
+// scanner accumulation paths never hit nil-map writes.
+func newEmptyReport() *report.Report {
+	return &report.Report{
+		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+	}
+}
+
+// newTestPolicy returns the policy shape used by root-override tests.
+func newTestPolicy() *policy.Policy {
+	return &policy.Policy{}
 }

@@ -14,8 +14,8 @@ package channels
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // Compile-time assertion: *RepositoryAdapter satisfies

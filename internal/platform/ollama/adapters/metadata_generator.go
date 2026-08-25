@@ -26,8 +26,8 @@ import (
 	"strings"
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 )
 
 // OllamaMetadataGeneratorAdapter implements scriptadapters.MetadataGenerator

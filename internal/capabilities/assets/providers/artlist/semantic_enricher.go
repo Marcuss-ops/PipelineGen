@@ -18,11 +18,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	searchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
-	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	searchtext "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // enrichMetaMu serialises access to the cumulative metadata.json file

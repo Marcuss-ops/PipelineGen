@@ -192,7 +192,7 @@ func TestFormatBootstrapDryRunOutput_StartsWithHeader(t *testing.T) {
 // ── runDriveBootstrap error case tests ────────────────────────────────
 
 func TestRunDriveBootstrap_MissingRootFlag(t *testing.T) {
-	err := runDriveBootstrap(nil)
+	err := RunDriveBootstrap(nil)
 	if err == nil {
 		t.Fatal("runDriveBootstrap: expected ErrDriveBootstrapNoRoot when --root is missing")
 	}
@@ -202,7 +202,7 @@ func TestRunDriveBootstrap_MissingRootFlag(t *testing.T) {
 }
 
 func TestRunDriveBootstrap_EmptyRootFlag(t *testing.T) {
-	err := runDriveBootstrap([]string{"--root", ""})
+	err := RunDriveBootstrap([]string{"--root", ""})
 	if err == nil {
 		t.Fatal("runDriveBootstrap: expected ErrDriveBootstrapNoRoot when --root is empty")
 	}
@@ -212,7 +212,7 @@ func TestRunDriveBootstrap_EmptyRootFlag(t *testing.T) {
 }
 
 func TestRunDriveBootstrap_WhitespaceRootFlag(t *testing.T) {
-	err := runDriveBootstrap([]string{"--root", "   "})
+	err := RunDriveBootstrap([]string{"--root", "   "})
 	if err == nil {
 		t.Fatal("runDriveBootstrap: expected ErrDriveBootstrapNoRoot when --root is whitespace-only")
 	}
@@ -222,7 +222,7 @@ func TestRunDriveBootstrap_WhitespaceRootFlag(t *testing.T) {
 }
 
 func TestRunDriveBootstrap_DryRunReturnsNil(t *testing.T) {
-	err := runDriveBootstrap([]string{"--root", "test-folder-id"})
+	err := RunDriveBootstrap([]string{"--root", "test-folder-id"})
 	if err != nil {
 		t.Errorf("runDriveBootstrap: dry-run must return nil, got %v", err)
 	}

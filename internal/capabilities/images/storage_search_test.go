@@ -38,13 +38,13 @@ import (
 
 // fakeBackend wraps a fn-shaped retrievalBackend with an optional
 // per-call counter so tests can assert "this many fn invocations".
-type fakeBackend struct {
+type retrievalFakeBackend struct {
 	name      string
 	callCount int32 // atomic
 	fn        func(ctx context.Context) (string, string)
 }
 
-func (b *fakeBackend) call() func(ctx context.Context) (string, string) {
+func (b *retrievalFakeBackend) call() func(ctx context.Context) (string, string) {
 	return func(ctx context.Context) (string, string) {
 		atomic.AddInt32(&b.callCount, 1)
 		return b.fn(ctx)
@@ -54,8 +54,8 @@ func (b *fakeBackend) call() func(ctx context.Context) (string, string) {
 // hitAfter returns (imgURL, pageURL) after `delay`, honouring
 // ctx.Done() so a cancelled fan-out returns no hit. Use this to
 // simulate slow backends.
-func hitAfter(_ *testing.T, name, img string, delay time.Duration) *fakeBackend {
-	return &fakeBackend{
+func hitAfter(_ *testing.T, name, img string, delay time.Duration) *retrievalFakeBackend {
+	return &retrievalFakeBackend{
 		name: name,
 		fn: func(ctx context.Context) (string, string) {
 			select {
@@ -70,8 +70,8 @@ func hitAfter(_ *testing.T, name, img string, delay time.Duration) *fakeBackend 
 
 // recordingBackend records a hit at the moment `gate` is closed.
 // Useful for deterministic first-writer ordering without sleeps.
-func recordingBackend(_ *testing.T, name, img string, gate <-chan struct{}) *fakeBackend {
-	return &fakeBackend{
+func recordingBackend(_ *testing.T, name, img string, gate <-chan struct{}) *retrievalFakeBackend {
+	return &retrievalFakeBackend{
 		name: name,
 		fn: func(ctx context.Context) (string, string) {
 			select {
@@ -142,7 +142,7 @@ func TestFanOutRetrieval_FirstHitWins_AbortsSlowBackends(t *testing.T) {
 // godlike/07 §"No fake availability" — a fan-out that pretends a
 // hit was found when the ctx timed out would be a regression.
 func TestFanOutRetrieval_FanOutAllTimeout_StillReturns(t *testing.T) {
-	bs := []*fakeBackend{
+	bs := []*retrievalFakeBackend{
 		hitAfter(t, "wikipedia", "http://wikipedia.example/img.png", 10*time.Second),
 		hitAfter(t, "searxng", "http://searxng.example/img.png", 10*time.Second),
 		hitAfter(t, "duckduckgo", "http://duckduckgo.example/img.png", 10*time.Second),
@@ -196,7 +196,7 @@ func TestFanOutRetrieval_FanOutAllTimeout_StillReturns(t *testing.T) {
 func TestFanOutRetrieval_PanicInOneBackend_RecoversNeighbor(t *testing.T) {
 	var survivorCalls, panickerCalls int32
 
-	survivor := &fakeBackend{
+	survivor := &retrievalFakeBackend{
 		name: "wikipedia",
 		fn: func(ctx context.Context) (string, string) {
 			atomic.AddInt32(&survivorCalls, 1)  // observable: fn entered
@@ -204,7 +204,7 @@ func TestFanOutRetrieval_PanicInOneBackend_RecoversNeighbor(t *testing.T) {
 			return "http://wikipedia.example/img.png", "http://wikipedia.example/img.png"
 		},
 	}
-	panicker := &fakeBackend{
+	panicker := &retrievalFakeBackend{
 		name: "panicker",
 		fn: func(ctx context.Context) (string, string) {
 			atomic.AddInt32(&panickerCalls, 1)  // observable: panic path entered

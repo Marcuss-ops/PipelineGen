@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 

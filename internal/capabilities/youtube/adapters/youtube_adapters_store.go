@@ -9,9 +9,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── ClipStoreAdapter ──────────────────────────────────────────────────

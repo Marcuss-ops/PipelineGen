@@ -9,7 +9,6 @@ import (
 
 	"go.uber.org/zap"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )

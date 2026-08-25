@@ -18,8 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
 
-
-
 // userAgent identifies the service to upstream Wikimedia and image providers.
 // A stable, descriptive agent is required for provider rate-limit handling;
 // browser impersonation makes upstream diagnostics and throttling worse.

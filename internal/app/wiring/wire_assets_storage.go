@@ -17,8 +17,8 @@ package wiring
 import (
 	"fmt"
 
-	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 	"go.uber.org/zap"
 )
 

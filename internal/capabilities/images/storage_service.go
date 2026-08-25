@@ -49,7 +49,7 @@ type ImageStorageService struct {
 	destResolver  DestinationResolver
 
 	// retrievalRegistry composes Wikipedia/SearXNG/DuckDuckGo/Drive providers
-	// for finding existing images. It is separate from AI 
+	// for finding existing images. It is separate from AI
 	retrievalRegistry *retrieved.RetrievalProviderRegistry
 	// Pace the shared Commons API across concurrent VidRush segment queries.
 	// Without this process-wide gate, the bounded fan-out still produces a

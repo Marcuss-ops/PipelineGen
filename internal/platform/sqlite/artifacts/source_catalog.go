@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type artifactClipsSourceAdapter struct{ inner *assets.ClipsRepository }

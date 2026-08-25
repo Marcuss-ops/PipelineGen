@@ -67,8 +67,8 @@ import (
 	"fmt"
 	"strings"
 
-	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 

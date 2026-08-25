@@ -53,8 +53,8 @@ import (
 	"testing"
 	"time"
 
-	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	_ "github.com/mattn/go-sqlite3"
 
 	"go.uber.org/zap"

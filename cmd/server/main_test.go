@@ -19,8 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	httpserver "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	httpserver "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
 // testMetricsAuthAdapter — minimal AuthSecurityPort stub for server-level tests.

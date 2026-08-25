@@ -49,7 +49,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // outboxEventsSchema is the canonical outbox_events DDL

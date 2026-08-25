@@ -43,8 +43,8 @@ import (
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"

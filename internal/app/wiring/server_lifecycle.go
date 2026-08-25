@@ -215,7 +215,7 @@ func (l *serverLifecycle) AddProbe(name string, probe func(ctx context.Context) 
 // the readiness-barrier probes and the startup plan. Probes may be nil
 // (capability opted out at composition time). The startup plan may be
 // empty (background jobs disabled). Returns nil if every argument is nil
-// so callers can default to a no-op 
+// so callers can default to a no-op
 //
 // QDRANT-005 (June 2026): the three constructor probes are now
 // registered through AddProbe so the constructor's signature stays

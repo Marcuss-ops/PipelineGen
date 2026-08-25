@@ -1,8 +1,8 @@
 package soundeffects
 
 import (
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 
 	"context"
 	"fmt"

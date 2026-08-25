@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 )
 
 // entityExtractionNumPredict is deliberately scoped to this operation. Entity

@@ -34,8 +34,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-
-
 // AssetTransferService is the narrow port for the worker binary's
 // asset push/pull. Satisfied by *AssetTransferService.
 type AssetTransferService interface {
@@ -78,10 +76,10 @@ func (h *WorkersBrokerHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 type registerWorkerRequest struct {
-	WorkerID     string                     `json:"worker_id"`
-	Name         string                     `json:"name,omitempty"`
-	Version      string                     `json:"version,omitempty"`
-	Hostname     string                     `json:"hostname,omitempty"`
+	WorkerID     string             `json:"worker_id"`
+	Name         string             `json:"name,omitempty"`
+	Version      string             `json:"version,omitempty"`
+	Hostname     string             `json:"hostname,omitempty"`
 	Capabilities WorkerCapabilities `json:"capabilities"`
 }
 

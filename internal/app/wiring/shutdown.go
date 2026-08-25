@@ -63,7 +63,7 @@ func buildCleanup(dbs *Databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// exits naturally via the parent ctx cancel in step 1 above (its
 		// Start select has `<-ctx.Done()` as one of its cases). No explicit
 		// Stop side-channel is needed — the cancellation-driven path is the
-		// canonical 
+		// canonical
 		//
 		// PR4.E-followup-2: explicit Stop for the outbox-events pool started
 		// in go. We do NOT rely on outboxevents.Pool's internal

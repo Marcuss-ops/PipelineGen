@@ -34,7 +34,6 @@
 package wiring
 
 import (
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
@@ -47,6 +46,7 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
@@ -90,7 +90,7 @@ type ArtlistBundle struct {
 	TextTrackRepo asset.TextTrackRepository
 }
 
-// ArtlistWiring holds the Artlist module 
+// ArtlistWiring holds the Artlist module
 //
 // PR4d-chunk2 (June 2026): Resolver field removed (historical: at the
 // time, the canonical clip-resolver lived in
@@ -108,7 +108,7 @@ type ArtlistBundle struct {
 // returned ArtlistDescriptor's Module closure. No caller (composition
 // root, tests, internal services) needs to read the raw `*ArtlistHandler`
 // outside the package — matches the channels precedent of dropping the
-// explicit Handler field in favor of descriptor-only 
+// explicit Handler field in favor of descriptor-only
 type ArtlistWiring struct {
 	Module  api.Module
 	Service *artlistPkg.Service
@@ -143,7 +143,7 @@ type StockBundle struct {
 	Publisher          delivery.Publisher
 }
 
-// StockPipelineWiring holds the StockPipeline module 
+// StockPipelineWiring holds the StockPipeline module
 //
 // Blocco C1-Step 6 (June 2026): Handler field removed. The HTTP Handler
 // is constructed inside `stock.Build(deps)` and captured by the
@@ -151,7 +151,9 @@ type StockBundle struct {
 // root, tests, internal services) needs to read the raw `*stock.Handler`
 // outside the package — matches the artlist / youtube / clips precedent
 // of dropping the explicit Handler field in favor of descriptor-only
-//  The pre-Step-6 `Handler` field has no non-HTTP consumer in
+//
+//	The pre-Step-6 `Handler` field has no non-HTTP consumer in
+//
 // the codebase (/run + /search-and-run are the entire public surface,
 // both reachable via HTTP).
 //
@@ -163,7 +165,7 @@ type StockPipelineWiring struct {
 	Service     *stockpipeline.Service
 }
 
-// YouTubeClipWiring holds the YouTube Clip module 
+// YouTubeClipWiring holds the YouTube Clip module
 //
 // Blocco C1-Step 4 (June 2026): Handler field removed. The HTTP Handler
 // is constructed inside `ytsources.Build(deps)` and captured by the
@@ -171,7 +173,7 @@ type StockPipelineWiring struct {
 // root, tests, internal services) needs to read the raw
 // `*YouTubeClipHandler` outside the package — matches the artlist /
 // channels precedent of dropping the explicit Handler field in favor of
-// descriptor-only 
+// descriptor-only
 type YouTubeClipWiring struct {
 	Module  api.Module
 	Service *ytService.Service

@@ -29,9 +29,9 @@ package artlist
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	artlistapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

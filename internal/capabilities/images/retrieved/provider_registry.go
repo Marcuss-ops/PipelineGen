@@ -19,9 +19,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
+	"sort"
 )
 
 // RetrievalProviderRegistry is the canonical composition of RetrievalProviders.

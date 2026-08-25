@@ -7,12 +7,11 @@ import (
 	"strings"
 	"time"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"
-
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"

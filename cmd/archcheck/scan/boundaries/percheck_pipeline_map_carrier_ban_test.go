@@ -175,3 +175,13 @@ type PreparedGeneration struct {
 			len(rep.Violations), rep.Violations[0].Note)
 	}
 }
+
+// containsString reports whether target appears in list.
+func containsString(list []string, target string) bool {
+	for _, s := range list {
+		if s == target {
+			return true
+		}
+	}
+	return false
+}

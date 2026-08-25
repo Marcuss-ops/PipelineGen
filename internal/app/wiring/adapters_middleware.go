@@ -6,8 +6,8 @@
 package wiring
 
 import (
-	systemapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	systemapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

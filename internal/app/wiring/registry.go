@@ -101,11 +101,11 @@ import (
 	"context"
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"go.uber.org/zap"
 )
 

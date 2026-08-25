@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
@@ -211,4 +212,9 @@ func TestScanAssetStateMigration157DefaultWire_ProductionCanary(t *testing.T) {
 				migration157AssetStatePath, v.Rule, v.MatchedRule, v.Note)
 		}
 	}
+}
+
+// containsSubstring reports whether needle occurs in haystack.
+func containsSubstring(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
 }

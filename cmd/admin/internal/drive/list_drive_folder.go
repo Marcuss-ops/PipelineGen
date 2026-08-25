@@ -275,7 +275,6 @@ func upsertClipFolder(ctx context.Context, db *sql.DB, cf folderRec) error {
 	return err
 }
 
-
 func runListDriveFolderCleanupPolluted(ctx context.Context, uploader any, args ...any) error {
 	return nil
 }

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
+	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
 

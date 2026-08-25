@@ -457,3 +457,8 @@ func TestScanBinderSceneFieldWrites_PermittedBindingWritesIgnored(t *testing.T) 
 		}
 	}
 }
+
+// containsSubstring reports whether needle occurs in haystack.
+func containsSubstring(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
+}

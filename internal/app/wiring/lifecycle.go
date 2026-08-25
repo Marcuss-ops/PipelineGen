@@ -55,7 +55,7 @@
 // steps listed above were removed earlier (godlike/07 no-fake-availability:
 // they no longer represented the canonical background-cleanup topology);
 // Wave 30 BACKFILL will re-introduce them with the canonical scope pinned
-// to the new ProcessBundle / wire_services.go 
+// to the new ProcessBundle / wire_services.go
 //
 // The returned *backgroundJobs handle is consumed by shutdown.go for
 // graceful teardown (channel-monitor.Stop, drive-sync-scheduler.Stop).
@@ -72,10 +72,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -112,7 +112,7 @@ type StartupStep struct {
 // server_lifecycle.go log+continues on any non-nil error) while
 // making the disabled state typed-queryable via
 // `errors.Is(step.Err(), ErrCapabilityDisabled)` from any caller
-// wanting to enumerate disabled-at-startup 
+// wanting to enumerate disabled-at-startup
 //
 // Wire shape: errors.New (godlike/07 typed-error contract —
 // composable via fmt.Errorf("%w"), reachable via errors.Is from

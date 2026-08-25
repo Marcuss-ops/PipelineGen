@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

@@ -15,24 +15,6 @@
 # binaries, and the server target does not carry media tools it will
 # never use.
 
-# ─── admin-ui-builder ─────────────────────────────────────────────
-# Build the React/Vite admin UI through the canonical web-build target so
-# Docker, local verification, and clean-checkout CI use the same lockfile,
-# Node-version guard, Vite build, and embed-entrypoint check.
-FROM --platform=$BUILDPLATFORM node:22-bookworm AS admin-ui-builder
-
-RUN apt-get update \
- && apt-get install -y --no-install-recommends make \
- && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-COPY make/build.mk ./make/build.mk
-COPY scripts/ci/node-version-check.sh ./scripts/ci/node-version-check.sh
-COPY node-scraper/package.json ./node-scraper/package.json
-COPY web/ ./web/
-RUN make -f make/build.mk web-build
-
-
 # ─── builder ─────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 ARG TARGETOS=linux
@@ -55,9 +37,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-
-# Copy the built admin UI into the tree so web/embed.go can embed it.
-COPY --from=admin-ui-builder /src/web/dist ./web/dist
 
 # Compile the three canonical binaries.
 ENV CGO_ENABLED=1

@@ -13,8 +13,8 @@
 package ingest
 
 import (
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/submodule"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

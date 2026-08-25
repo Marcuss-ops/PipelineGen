@@ -50,14 +50,14 @@ import (
 
 	"go.uber.org/zap"
 
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
+	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 

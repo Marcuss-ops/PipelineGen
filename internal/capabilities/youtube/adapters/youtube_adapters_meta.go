@@ -9,11 +9,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // ── SourcingMetadataAdapter ───────────────────────────────────────────

@@ -11,8 +11,8 @@
         "max_loc": 17092
       },
       "current": {
-        "files": 4,
-        "max_loc": 14618
+        "files": 2,
+        "max_loc": 136
       },
       "target_packages": [
         "cmd/admin/commands",
@@ -32,7 +32,7 @@
       },
       "current": {
         "files": 0,
-        "max_loc": 13718
+        "max_loc": 0
       },
       "target_packages": [
         "cmd/archcheck/scan/structure",
@@ -51,8 +51,8 @@
         "max_loc": 26637
       },
       "current": {
-        "files": 9,
-        "max_loc": 23098
+        "files": 0,
+        "max_loc": 0
       },
       "note": "Composition-root adapters for clip.render plus the current brain/media wiring split are registered under this hotspot; baseline ratcheted to the measured worktree count, owner/deadline/targets unchanged.",
       "target_packages": [
@@ -72,8 +72,8 @@
         "max_loc": 11473
       },
       "current": {
-        "files": 7,
-        "max_loc": 9396
+        "files": 63,
+        "max_loc": 579
       },
       "target_packages": [
         "internal/capabilities/assets/stock/ingest",
@@ -93,7 +93,7 @@
         "max_loc": 0
       },
       "current": {
-        "files": 15,
+        "files": 71,
         "max_loc": 0
       },
       "note": "Measured production-file baseline corrected to the scanner result (70); decomposition remains tracked as a governed hotspot with no unrecorded growth.",
@@ -122,7 +122,7 @@
         "internal/capabilities/images/delivery",
         "internal/capabilities/images/persistence"
       ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 \u2192 0); zero production imports remain."
+      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 → 0); zero production imports remain."
     },
     {
       "path": "internal/application/jobs",
@@ -143,7 +143,7 @@
         "internal/capabilities/jobs/policy",
         "internal/capabilities/jobs/outbox"
       ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 \u2192 0); outbox/policy in capabilities, persistence in platform/sqlite."
+      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 → 0); outbox/policy in capabilities, persistence in platform/sqlite."
     },
     {
       "path": "internal/platform/delivery",
@@ -158,7 +158,7 @@
         "files": 12,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure\u2192platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry.",
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure→platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry.",
       "target_packages": [
         "internal/platform/delivery/signing",
         "internal/platform/delivery/registry"
@@ -177,7 +177,7 @@
         "files": 5,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure\u2192platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure→platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
       "target_packages": [
         "internal/platform/embeddings/http",
         "internal/platform/embeddings/ollama"
@@ -193,8 +193,8 @@
         "max_loc": 9659
       },
       "current": {
-        "files": 2,
-        "max_loc": 9659
+        "files": 0,
+        "max_loc": 0
       },
       "target_packages": [
         "internal/platform/sqlite/assets/artlist",
@@ -203,34 +203,10 @@
         "internal/platform/sqlite/assets/imagesregistry",
         "internal/platform/sqlite/assets/txmutation"
       ],
-      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure\u2192platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
+      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure→platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
     }
   ],
-  "root_migrations": [
-    {
-      "path": "internal/api",
-      "owner": "API transport migration owner",
-      "deadline": "2026-12-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/capabilities",
-        "internal/platform/httpserver"
-      ]
-    },
-    {
-      "path": "internal/application",
-      "owner": "application use-case migration owner",
-      "deadline": "2026-12-31",
-      "status": "migration_only",
-      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
-      "targets": [
-        "internal/capabilities"
-      ],
-      "note": "August 2026 refresh: scripts/usecase migrated to capabilities/scripts. All previously approved webresearch additions migrated with the infrastructure\u2192platform consolidation (commit 1dcc5e4).",
-      "new_files_approved": []
-    }
-  ],
+  "root_migrations": [],
   "completed_migrations": [
     {
       "path": "internal/youtube",
@@ -320,7 +296,7 @@
       "owner": "jobs migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files \u2192 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
       "targets": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/worker",
@@ -333,7 +309,7 @@
       "owner": "images migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files \u2192 0). Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0). Zero production imports remain.",
       "targets": [
         "internal/capabilities/images/workflow",
         "internal/capabilities/images/generation",
@@ -370,6 +346,27 @@
       "targets": [
         "internal/capabilities/reconciliation",
         "internal/platform/qdrant"
+      ]
+    },
+    {
+      "path": "internal/api",
+      "owner": "API transport migration owner",
+      "completed_at": "2026-08-25",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem (2026-08-25). Transport, middleware and module registry migrated to internal/capabilities and internal/platform/httpserver. Zero production Go files under internal/api; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
+      "targets": [
+        "internal/capabilities",
+        "internal/platform/httpserver"
+      ]
+    },
+    {
+      "path": "internal/application",
+      "owner": "application use-case migration owner",
+      "completed_at": "2026-08-25",
+      "status": "COMPLETED",
+      "resolution": "Root deleted from filesystem (2026-08-25). All use-case orchestration migrated to internal/capabilities (jobs→capabilities/jobs, images→capabilities/images, mediamemory→capabilities/mediamemory, search→capabilities/assets/search, qdrant→capabilities/reconciliation+platform/qdrant, scripts→capabilities/scripts). Zero production Go files remain; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
+      "targets": [
+        "internal/capabilities"
       ]
     }
   ]

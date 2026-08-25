@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 

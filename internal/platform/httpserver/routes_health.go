@@ -6,7 +6,6 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"go.uber.org/zap"
 
-
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 

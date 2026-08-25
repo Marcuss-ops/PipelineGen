@@ -1,8 +1,8 @@
 package collections
 
 import (
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 // CollectionContract derives the Qdrant-observable portion of the embedding

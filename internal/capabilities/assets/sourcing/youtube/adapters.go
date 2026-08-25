@@ -22,10 +22,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── Adapters (use case port ← service port) ──────────────────────────────────

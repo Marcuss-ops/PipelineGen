@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
 )
 
 // sampleYAML is the canonical fixture for resolver tests. It seeds

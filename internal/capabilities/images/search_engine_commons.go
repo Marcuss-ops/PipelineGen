@@ -18,11 +18,11 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
+	"go.uber.org/zap"
 )
 
 // searchWikimediaCommons is the explicit-license fallback for retrieval.

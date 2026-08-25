@@ -13,6 +13,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	images "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -298,7 +299,7 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 
 	// 2. Construct the spine components.
 	outboxRepo := outboxevents.NewRepository(db)
-	assetTx := assetfinalizer.NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxRepo, nil))
+	assetTx := assetfinalizer.NewAssetTxFinalizer(nil, images.NewSQLiteAssetCommitter(db, outboxRepo, nil))
 	fx := New(db, outboxRepo, assetTx, nil)
 
 	// 3. Call CompleteWithArtifacts with a published PDF artifact.

@@ -69,9 +69,9 @@ import (
 	"fmt"
 	"strings"
 
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
-	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"

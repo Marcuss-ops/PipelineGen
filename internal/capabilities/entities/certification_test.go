@@ -34,8 +34,8 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 )
 
 // TestMain installs the same repository lexicon the composition root loads,

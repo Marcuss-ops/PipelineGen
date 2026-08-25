@@ -3,8 +3,8 @@ package collections
 import (
 	"testing"
 
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
 func TestCollectionContract_DerivesDimensionAndDistance(t *testing.T) {

@@ -53,10 +53,10 @@ import (
 	"testing"
 	"time"
 
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	migration "github.com/Marcuss-ops/PipelineGen/migrations/sqlite"
 
 	_ "github.com/mattn/go-sqlite3"

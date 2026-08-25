@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

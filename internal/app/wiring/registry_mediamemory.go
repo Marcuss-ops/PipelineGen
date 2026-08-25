@@ -8,10 +8,10 @@ package wiring
 import (
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	mediamemoryapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"

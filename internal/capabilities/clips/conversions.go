@@ -35,8 +35,8 @@
 package clips
 
 import (
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // ClipToAssetNode converts a canonical asset.Asset to the shared

@@ -41,7 +41,7 @@ package enrichment
 import (
 	"context"
 
-jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // AssetPublishedEmitter is the narrow Pattern-0 typed port for

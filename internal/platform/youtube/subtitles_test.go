@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

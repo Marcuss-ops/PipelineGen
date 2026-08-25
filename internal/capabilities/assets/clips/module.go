@@ -2,19 +2,19 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/processing"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/bulk"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/bulk"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/processing"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips/publication"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

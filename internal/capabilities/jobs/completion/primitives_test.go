@@ -40,7 +40,6 @@ package completion
 import (
 	"reflect"
 	"testing"
-
 )
 
 // ── 1. byte-stable codec discriminator ──────────────────────────────

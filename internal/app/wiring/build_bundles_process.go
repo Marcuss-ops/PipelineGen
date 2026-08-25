@@ -49,8 +49,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -72,7 +72,8 @@ import (
 //
 // PR9-B (June 2026): BuildOutboxBundle returns an IOpaqueStartFunc closure
 // that defers the outbox events pool goroutines (Start + shutdown) to the
-//  The bundle itself is fully populated on return.
+//
+//	The bundle itself is fully populated on return.
 //
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): the previous
 // `process *ProcessBundle` arg was replaced with `qd *QdrantDeps`, the

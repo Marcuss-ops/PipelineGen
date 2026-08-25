@@ -66,7 +66,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             node-scraper/package-lock.json
-            web/package-lock.json
 
       - name: Run `make verify-full` (fail-closed)
         # Make is the source of truth: verify-full expands to
@@ -99,7 +98,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             node-scraper/package-lock.json
-            web/package-lock.json
 
       - name: Run `make verify-race` (fail-closed)
         # This is intentionally manual and separate from verify-main.
@@ -132,7 +130,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             node-scraper/package-lock.json
-            web/package-lock.json
 
       - name: Run `make verify-release` (fail-closed)
         # Make is the source of truth: verify-release expands to
@@ -164,11 +161,9 @@ jobs:
           cache: npm
           cache-dependency-path: |
             node-scraper/package-lock.json
-            web/package-lock.json
 
-      - name: Build web console + admin binary
+      - name: Build admin binary
         run: |
-          make web-build
           go build -o ./bin/admin ./cmd/admin/
           ls -la ./bin/admin
 

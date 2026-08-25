@@ -23,8 +23,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
 // ── stub publisher (records every Publish call + feeds back result/error) ──

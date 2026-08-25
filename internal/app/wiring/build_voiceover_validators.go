@@ -6,7 +6,6 @@
 package wiring
 
 import (
-
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 )

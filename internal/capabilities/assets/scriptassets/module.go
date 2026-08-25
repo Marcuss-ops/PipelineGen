@@ -25,8 +25,8 @@ package scriptassets
 import (
 	"fmt"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scriptassets"
+	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"go.uber.org/zap"
 )
 

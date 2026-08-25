@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	nethttp "net/http"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
+	nethttp "net/http"
 )
 
 // SearXNGProvider searches the configured SearXNG instance for

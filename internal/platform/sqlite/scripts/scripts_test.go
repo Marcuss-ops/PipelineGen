@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // testSchema is a minimal subset of the production schema that covers
