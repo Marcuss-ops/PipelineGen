@@ -12,6 +12,93 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
+// buildRemoteJobPayload projects the late-bound, copy-only assembly contract
+// for the remote video computer. The generation request remains intact, but
+// the remote side receives one final audio asset, its deterministic clip
+// windows, and the requested background/sound-effect inputs.
+func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.RawMessage {
+	base, err := json.Marshal(req)
+	if err != nil {
+		return nil
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(base, &payload); err != nil {
+		return nil
+	}
+
+	remote := map[string]any{
+		"audio_mode":       "FINAL_AUDIO_COPY",
+		"audio_source":     "certified_final_audio",
+		"scenes":           remoteClipTimingScenes(result),
+		"background_music": req.BackgroundMusic,
+		"sound_effects":    req.SoundEffects,
+	}
+	if result != nil && result.FinalAudio != nil {
+		remote["final_audio"] = map[string]any{
+			"asset_id":               result.FinalAudio.AssetID,
+			"url":                    result.FinalAudio.DriveLink,
+			"duration_ms":            result.FinalAudio.DurationMS,
+			"duration_us":            result.FinalAudio.DurationUS,
+			"sha256":                 result.FinalAudio.FinalAudioSHA256,
+			"codec":                  result.FinalAudio.Codec,
+			"profile":                result.FinalAudio.Profile,
+			"sample_rate":            result.FinalAudio.SampleRate,
+			"channels":               result.FinalAudio.Channels,
+			"channel_layout":         result.FinalAudio.ChannelLayout,
+			"copy_eligible":          result.FinalAudio.CopyEligible,
+			"audio_contract_version": result.FinalAudio.AudioContractVersion,
+			"audio_plan_version":     result.FinalAudio.AudioPlanVersion,
+			"audio_plan_sha256":      result.FinalAudio.PlanSHA256,
+		}
+	}
+	if result != nil && result.CanonicalTimeline != nil {
+		remote["timeline_duration_us"] = result.CanonicalTimeline.DurationUS
+		remote["timeline_duration_ms"] = (result.CanonicalTimeline.DurationUS + 999) / 1000
+	}
+	encodedRemote, err := json.Marshal(remote)
+	if err != nil {
+		return nil
+	}
+	payload["remote_render"] = encodedRemote
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+func remoteClipTimingScenes(result *GenerateResult) []map[string]any {
+	if result == nil || result.CanonicalTimeline == nil {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
+	for _, segment := range result.CanonicalTimeline.Segments {
+		clips := segment.EffectiveVideoSegments()
+		clipRows := make([]map[string]any, 0, len(clips))
+		for _, clip := range clips {
+			clipRows = append(clipRows, map[string]any{
+				"asset_id":             clip.AssetID,
+				"source_in_ms":         clip.SourceInUS / 1000,
+				"source_duration_ms":   clip.SourceDurationUS / 1000,
+				"timeline_start_ms":    clip.TimelineOffsetUS / 1000,
+				"timeline_duration_ms": clip.TimelineDurationUS / 1000,
+				"freeze":               clip.Freeze,
+			})
+		}
+		out = append(out, map[string]any{
+			"id":             segment.ID,
+			"index":          segment.Index,
+			"start_ms":       segment.TimelineStartUS / 1000,
+			"duration_ms":    segment.DurationUS / 1000,
+			"end_ms":         (segment.TimelineStartUS + segment.DurationUS) / 1000,
+			"clips":          clipRows,
+			"audio_start_ms": segment.TimelineStartUS / 1000,
+			"audio_end_ms":   (segment.TimelineStartUS + segment.DurationUS) / 1000,
+			"audio_source":   "final_audio",
+		})
+	}
+	return out
+}
 func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult, skeletons map[Language]string) bool {
 	// ── Publish Documents after the final audio/render payload ───
 	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
@@ -77,6 +164,8 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					FullAudio:          documentAudioRef(result, lang),
 					FinalAudio:         result.FinalAudio,
 					AudioTimeline:      result.CanonicalTimeline,
+					JobPayload:         jobPayload,
+					PayloadOnly:        true,
 					SceneSpeechTimings: result.SceneSpeechTimings,
 					ClipMetadata:       clipAssetMetadataForDocument(result),
 					AudioSummary:       documentAudioSummaryFor(result),

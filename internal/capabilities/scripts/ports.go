@@ -195,6 +195,13 @@ type DocumentRenderOptions struct {
 	// renderer projects it verbatim so the video renderer consumes exactly
 	// the same asset the document certifies. Nil when no master was built.
 	FinalAudio *FinalAudioReference
+	// JobPayload is the complete JSON request body that can be submitted to
+	// the remote job endpoint. The document projects it inline so operators
+	// can copy/send the payload directly rather than following a filename.
+	JobPayload json.RawMessage
+	// PayloadOnly suppresses internal machine JSON blocks in operator Docs.
+	// The finished remote payload remains the only machine-readable section.
+	PayloadOnly bool
 	// AudioTimeline is the canonical timeline used to compile FullAudio.
 	AudioTimeline *audio.CanonicalTimeline
 	// SceneSpeechTimings is the deterministic scene-level speech timing

@@ -115,27 +115,40 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		return skeleton
 	}
 
-	var before strings.Builder
-	writeDocumentFullAudio(&before, opts)
-	writeDocumentOverlay(&before, opts)
-	skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
+	if opts.PayloadOnly {
+		// Keep the readable scene sections, but expose only one machine-readable
+		// block: the finished remote assembly payload.
+		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, "", 1)
+	} else {
+		var before strings.Builder
+		writeDocumentFullAudio(&before, opts)
+		writeDocumentOverlay(&before, opts)
+		skeleton = strings.Replace(skeleton, documentSkeletonBeforeMarker, before.String(), 1)
+	}
 
 	for i := range model.SpecScene.Scenes {
 		scene := &model.SpecScene.Scenes[i]
 		var perScene strings.Builder
-		writeDocumentSceneTiming(&perScene, scene, opts)
-		writeDocumentSceneMediaDurations(&perScene, scene, opts)
-		writeDocumentSceneLinks(&perScene, scene, opts)
-		writeDocumentPhraseTimings(&perScene, scene, opts)
+		if !opts.PayloadOnly {
+			writeDocumentSceneTiming(&perScene, scene, opts)
+			writeDocumentSceneMediaDurations(&perScene, scene, opts)
+			writeDocumentSceneLinks(&perScene, scene, opts)
+			writeDocumentPhraseTimings(&perScene, scene, opts)
+		}
 		skeleton = strings.Replace(skeleton, documentSkeletonSceneMarker(i), perScene.String(), 1)
 	}
 
 	var after strings.Builder
-	writeDocumentAudioCertificationSummary(&after, model, opts)
-	writeDocumentSpecSceneJSON(&after, model)
-	writeDocumentTimelineJSON(&after, opts)
-	writeDocumentFinalAudioJSON(&after, opts)
-	writeDocumentOverlayJSON(&after, opts)
+	if !opts.PayloadOnly {
+		writeDocumentAudioCertificationSummary(&after, model, opts)
+		writeDocumentSpecSceneJSON(&after, model)
+		writeDocumentTimelineJSON(&after, opts)
+	}
+	writeDocumentJobPayloadJSON(&after, opts)
+	if !opts.PayloadOnly {
+		writeDocumentFinalAudioJSON(&after, opts)
+		writeDocumentOverlayJSON(&after, opts)
+	}
 	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after.String(), 1)
 
 	return skeleton
