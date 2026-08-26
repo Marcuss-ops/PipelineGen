@@ -10,6 +10,7 @@ package wiring
 import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
@@ -85,7 +86,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 
 	var rerankerClient *reranker.Client
 	if cfg.Reranker.Enabled {
-		rerankerClient = reranker.NewClient(reranker.Config{
+		var rerankerErr error
+		rerankerClient, rerankerErr = reranker.NewValidatedClient(reranker.Config{
 			Enabled:   cfg.Reranker.Enabled,
 			URL:       cfg.Reranker.URL,
 			Model:     cfg.Reranker.Model,
@@ -93,11 +95,15 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 			TimeoutMs: cfg.Reranker.TimeoutMs,
 			Weight:    cfg.Reranker.Weight,
 		})
+		if rerankerErr != nil {
+			return nil, fmt.Errorf("build AI bundle: reranker configuration: %w", rerankerErr)
+		}
 		log.Info("reranker client configured",
-			zap.Bool("enabled", cfg.Reranker.Enabled),
+			zap.Bool("enabled", rerankerClient.IsEnabled()),
 			zap.String("url", cfg.Reranker.URL),
 			zap.String("model", cfg.Reranker.Model),
 			zap.Int("top_k", cfg.Reranker.TopK),
+			zap.Float64("weight", cfg.Reranker.Weight),
 		)
 	}
 

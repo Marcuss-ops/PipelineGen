@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // minHMACSecretLen guards against operators shipping a too-short HMAC
@@ -264,10 +262,8 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Keep the legacy package-level validator for unrelated defaults while
-	// the remaining domains migrate onto ResolvedConfig.
-	if err := defaults.Validate(); err != nil {
-		return fmt.Errorf("defaults SSOT validation failed: %w", err)
+	if err := c.Reranker.Validate(); err != nil {
+		return fmt.Errorf("reranker configuration is invalid: %w", err)
 	}
 
 	return nil

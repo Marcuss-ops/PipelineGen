@@ -46,6 +46,17 @@ except ImportError:
         prepare_cuda_runtime,
     )
 
+# Canonical ASR model identity comes from the registry mirror
+# (scripts/services/model_registry_generated.py, generated from
+# internal/kernel/models by cmd/model-registry-gen). Do NOT hardcode
+# the Whisper model id here. VELOX_WHISPER_MODEL remains the explicit
+# operator override (validated below), the registry value is the default.
+try:
+    from scripts.services.model_registry_generated import WHISPER_MODEL_NAME
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.services.model_registry_generated import WHISPER_MODEL_NAME  # type: ignore[no-redef]
+
 
 CORE_PACKAGES = ("faster-whisper", "ctranslate2")
 CUDA_PACKAGES = (
@@ -56,8 +67,11 @@ CUDA_PACKAGES = (
 LOCK_PACKAGES = CORE_PACKAGES + CUDA_PACKAGES
 CUDA_LIBRARIES = CUDA_LIBRARY_SONAMES
 MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# The canonical ASR model id (openai/whisper-large-v3-turbo) plus the
+# faster-whisper size aliases accepted for explicit overrides.
 KNOWN_MODEL_NAMES = frozenset(
     {
+        WHISPER_MODEL_NAME,
         "tiny",
         "base",
         "small",
@@ -85,7 +99,9 @@ def _report(ok: bool, code: int, **fields: Any) -> int:
 def _model_check() -> tuple[str | None, dict[str, Any], str | None]:
     """Validate model configuration without downloading model weights."""
     raw = os.environ.get("VELOX_WHISPER_MODEL")
-    model = "base" if raw is None else raw.strip()
+    # Default to the canonical ASR model from the registry mirror
+    # (WHISPER_MODEL_NAME) when no explicit operator override is set.
+    model = WHISPER_MODEL_NAME if raw is None else raw.strip()
     if not model:
         return None, {"configured": False}, "VELOX_WHISPER_MODEL must not be empty"
 

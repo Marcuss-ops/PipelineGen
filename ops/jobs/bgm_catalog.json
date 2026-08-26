@@ -5,7 +5,7 @@
   "assets": {
     "bgm1": {
       "asset_id": "bgm1",
-      "name": "Background Music 1",
+      "name": "type beat",
       "filename": "bgm1.mp3",
       "drive_file_id": "1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
       "url": "velox-drive://1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
@@ -13,7 +13,7 @@
     },
     "bgm2": {
       "asset_id": "bgm2",
-      "name": "Background Music 2",
+      "name": "Type Beat Rap 2",
       "filename": "bgm2.mp3",
       "drive_file_id": "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
       "url": "velox-drive://1riijLdDzpL9yXhT-RX-OrRVD67jagq8D",
@@ -21,26 +21,26 @@
     },
     "bgm3": {
       "asset_id": "bgm3",
-      "name": "Background Music 3",
+      "name": "HipHopSlowed",
       "filename": "bgm3.mp3",
       "drive_file_id": "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
       "url": "velox-drive://1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq",
       "drive_link": "https://drive.google.com/file/d/1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq/view?usp=drive_link"
     },
     "bgm4": {
-      "asset_id": "bgm4", "name": "Background Music 4", "filename": "bgm4.mp3",
+      "asset_id": "bgm4", "name": "Chilll Beat", "filename": "bgm4.mp3",
       "drive_file_id": "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke",
       "url": "velox-drive://1fi2huRNuHFzNyvie8SajoZMdw27wl5ke",
       "drive_link": "https://drive.google.com/file/d/1fi2huRNuHFzNyvie8SajoZMdw27wl5ke/view?usp=drive_link"
     },
     "bgm5": {
-      "asset_id": "bgm5", "name": "Background Music 5", "filename": "bgm5.mp3",
+      "asset_id": "bgm5", "name": "Type Beat Rap 3", "filename": "bgm5.mp3",
       "drive_file_id": "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
       "url": "velox-drive://1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2",
       "drive_link": "https://drive.google.com/file/d/1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2/view?usp=drive_link"
     },
     "bgm6": {
-      "asset_id": "bgm6", "name": "Background Music 6", "filename": "bgm6.mp3",
+      "asset_id": "bgm6", "name": "Chill Beat 2", "filename": "bgm6.mp3",
       "drive_file_id": "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
       "url": "velox-drive://1OmVstjygP2SsX7748ylyzGDdmYxcrE8C",
       "drive_link": "https://drive.google.com/file/d/1OmVstjygP2SsX7748ylyzGDdmYxcrE8C/view?usp=drive_link"

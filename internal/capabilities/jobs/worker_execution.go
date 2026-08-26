@@ -291,6 +291,20 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), finalizationTimeout)
 	defer finalCancel()
 
+	// FASE 2 observability — additive run binding: the allowlisted
+	// context.WithTimeout(context.Background(), finalizationTimeout) site
+	// above stays untouched; WithRun only layers the attempt's Run onto
+	// the detached context so MeasureOperation/RecordStage calls made
+	// inside the finalize path (artifact prepare/hash/Drive publish and
+	// the completion TX) land in the SAME RunReport as the dispatcher
+	// stages. The run is still finished by the deferred closure below,
+	// after finalizeJob returns, so these records are never written on a
+	// closed report. Jobs that never bound a run keep the pass-through
+	// behaviour (instrumentation must never change behaviour).
+	if run != nil {
+		finalizationCtx = kernobs.WithRun(finalizationCtx, run)
+	}
+
 	postWriterFinalizeStarted := time.Now().UTC()
 	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)
 	// CompleteWithArtifacts is outside the dispatcher-owned pipeline stages,

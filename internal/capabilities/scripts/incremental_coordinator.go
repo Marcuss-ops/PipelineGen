@@ -187,13 +187,13 @@ func (c *VidRushIncrementalCoordinator) RunTimings() VidRushRunTimings {
 	defer c.mu.Unlock()
 	t := VidRushRunTimings{}
 	if !c.genStart.IsZero() && !c.genEnd.IsZero() {
-		t.GenerationTotalMS = c.genEnd.Sub(c.genStart).Milliseconds()
+		t.GenerationTotalMS = durationMilliseconds(c.genEnd.Sub(c.genStart))
 	}
 	if !c.firstEnrichmentStart.IsZero() && !c.barrierEnd.IsZero() {
-		t.VidRushTotalMS = c.barrierEnd.Sub(c.firstEnrichmentStart).Milliseconds()
+		t.VidRushTotalMS = durationMilliseconds(c.barrierEnd.Sub(c.firstEnrichmentStart))
 	}
 	if !c.barrierStart.IsZero() && !c.barrierEnd.IsZero() {
-		t.BarrierWaitMS = c.barrierEnd.Sub(c.barrierStart).Milliseconds()
+		t.BarrierWaitMS = durationMilliseconds(c.barrierEnd.Sub(c.barrierStart))
 	}
 	t.OverlapMS = c.overlapMSLocked()
 	return t
@@ -209,7 +209,22 @@ func (c *VidRushIncrementalCoordinator) overlapMSLocked() int64 {
 	if !c.firstEnrichmentStart.Before(c.genEnd) {
 		return 0
 	}
-	return c.genEnd.Sub(c.firstEnrichmentStart).Milliseconds()
+	return durationMilliseconds(c.genEnd.Sub(c.firstEnrichmentStart))
+}
+
+// durationMilliseconds rounds a positive duration up to one millisecond. The
+// timing contract uses a positive value as the overlap success signal; flooring
+// sub-millisecond test and fast-path windows to zero would misreport real
+// overlap as sequential execution.
+func durationMilliseconds(d time.Duration) int64 {
+	if d <= 0 {
+		return 0
+	}
+	ms := d / time.Millisecond
+	if d%time.Millisecond != 0 {
+		ms++
+	}
+	return int64(ms)
 }
 
 // OnSceneCommitted records the stable scene and launches its enrichment

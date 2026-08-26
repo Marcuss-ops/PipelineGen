@@ -56,6 +56,7 @@ func SpecSceneSHA256(spec scriptpkg.SpecSceneOutput) string {
 type DocumentSceneText struct {
 	ID    string
 	Index int
+	Kind  scriptpkg.SceneKind
 	Text  string
 }
 
@@ -91,7 +92,14 @@ func RenderDocumentSkeleton(in DocumentSkeletonInput) string {
 	b.WriteString(documentSkeletonBeforeMarker)
 	for i, scene := range in.Scenes {
 		b.WriteString("<section>")
-		fmt.Fprintf(&b, "<h2>Scene %d</h2>", i+1)
+		heading := fmt.Sprintf("Scene %d", i+1)
+		switch scene.Kind {
+		case scriptpkg.SceneIntro:
+			heading = "Intro"
+		case scriptpkg.SceneOutro:
+			heading = "Outro"
+		}
+		fmt.Fprintf(&b, "<h2>%s</h2>", html.EscapeString(heading))
 		if text := strings.TrimSpace(scene.Text); text != "" {
 			b.WriteString("<p>")
 			b.WriteString(html.EscapeString(text))
@@ -132,9 +140,11 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		if !opts.PayloadOnly {
 			writeDocumentSceneTiming(&perScene, scene, opts)
 			writeDocumentSceneMediaDurations(&perScene, scene, opts)
-			writeDocumentSceneLinks(&perScene, scene, opts)
 			writeDocumentPhraseTimings(&perScene, scene, opts)
 		}
+		// Clip links remain visible even in payload-only documents. The payload
+		// mode hides technical timing/spec JSON, not the operator's clip inputs.
+		writeDocumentSceneLinks(&perScene, scene, opts)
 		skeleton = strings.Replace(skeleton, documentSkeletonSceneMarker(i), perScene.String(), 1)
 	}
 
@@ -172,7 +182,7 @@ func documentSkeletonInput(model *scriptpkg.ModelScriptOutputV1, title string) D
 	}
 	for i := range model.SpecScene.Scenes {
 		scene := &model.SpecScene.Scenes[i]
-		in.Scenes = append(in.Scenes, DocumentSceneText{ID: scene.ID, Index: scene.Index, Text: scene.Text})
+		in.Scenes = append(in.Scenes, DocumentSceneText{ID: scene.ID, Index: scene.Index, Kind: scene.Kind, Text: scene.Text})
 	}
 	return in
 }

@@ -47,7 +47,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
@@ -102,14 +101,11 @@ func buildScriptSourceResolvers(
 	if gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
 			clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
-			if cfg.Reranker.Enabled {
-				clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
-					Enabled:   cfg.Reranker.Enabled,
-					URL:       cfg.Reranker.URL,
-					Model:     cfg.Reranker.Model,
-					TopK:      cfg.Reranker.TopK,
-					TimeoutMs: cfg.Reranker.TimeoutMs,
-				}))
+			// Reuse the single validated client from AIBundle. Creating a
+			// second client here would split timeout/configuration state and
+			// could bypass the composition-time canonical model validation.
+			if root.AI != nil && root.AI.Reranker != nil && root.AI.Reranker.IsEnabled() {
+				clipSourceBuilder.SetReranker(root.AI.Reranker)
 			}
 			// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
 			// cut the video pipeline over to TextTrackReader.

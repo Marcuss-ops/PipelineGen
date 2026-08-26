@@ -162,6 +162,17 @@ var providedSoundEffects = []providedSoundEffect{
 }
 
 func RunIndexProvidedSoundEffects(args []string) error {
+	// Operators may narrow this repair/index pass to aliases or filenames;
+	// the default remains the complete canonical catalog.
+	only := make(map[string]struct{})
+	if raw := strings.TrimSpace(os.Getenv("PIPELINEGEN_INDEX_PROVIDED_ONLY")); raw != "" {
+		for _, value := range strings.Split(raw, ",") {
+			value = strings.TrimSpace(strings.TrimSuffix(value, filepath.Ext(value)))
+			if value != "" {
+				only[strings.ToLower(value)] = struct{}{}
+			}
+		}
+	}
 	_ = args
 	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
@@ -192,6 +203,12 @@ func RunIndexProvidedSoundEffects(args []string) error {
 	}
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	for _, spec := range providedSoundEffects {
+		if len(only) > 0 {
+			alias := strings.TrimSuffix(spec.filename, filepath.Ext(spec.filename))
+			if _, ok := only[strings.ToLower(alias)]; !ok {
+				continue
+			}
+		}
 		meta, err := root.Drive.Reader.GetFileMeta(ctx, spec.driveID)
 		if err != nil {
 			return fmt.Errorf("read Drive metadata %s: %w", spec.driveID, err)
@@ -228,9 +245,14 @@ func RunIndexProvidedSoundEffects(args []string) error {
 			return fmt.Errorf("hash %s: %w", spec.name, err)
 		}
 		now := time.Now().UTC()
-		// Sound effects are audio assets in the canonical media taxonomy. The
-		// source remains sound_effect so the resolver derives AssetSFX.
-		clip := &asset.Asset{ID: spec.driveID, Name: spec.name, Filename: spec.filename, Source: asset.Source("sound_effect"), MediaType: asset.MediaType("audio"), Category: "file", Group: spec.family, Duration: duration, LifecycleState: asset.StateActive, CreatedAt: now, UpdatedAt: now, Tags: spec.tags}
+		// Both groups are audio assets, but BGM and one-shot effects have
+		// different canonical kinds. Preserve that distinction at indexing so
+		// the resolver cannot classify a BGM as an SFX by accident.
+		sourceType := "sound_effect"
+		if spec.family == "background_music" {
+			sourceType = "bgm"
+		}
+		clip := &asset.Asset{ID: spec.driveID, Name: spec.name, Filename: spec.filename, Source: asset.Source(sourceType), MediaType: asset.MediaType("audio"), Category: "file", Group: spec.family, Duration: duration, LifecycleState: asset.StateActive, CreatedAt: now, UpdatedAt: now, Tags: spec.tags}
 		clip.SearchText = strings.Join(append([]string{spec.name, spec.family, spec.subtype, spec.mood, spec.energy}, append(spec.bestFor, spec.tags...)...), " ")
 		clip.SetDriveFileID(spec.driveID)
 		clip.SetDriveLink("https://drive.google.com/file/d/" + spec.driveID + "/view")

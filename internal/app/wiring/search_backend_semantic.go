@@ -334,9 +334,11 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, nil
 	}
 
-	if adjusted, ok := b.rerankCandidates(ctx, q, candidates, assetsByID); ok {
-		candidates = adjusted
+	adjusted, err := b.rerankCandidates(ctx, q, candidates, assetsByID)
+	if err != nil {
+		return nil, err
 	}
+	candidates = adjusted
 
 	return search.RankByScore(candidates), nil
 }
@@ -396,9 +398,13 @@ func (b *semanticSearchBackend) warn(msg string, fields ...zap.Field) {
 	b.log.Warn(msg, fields...)
 }
 
-func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Query, candidates []search.Candidate, assetsByID map[string]search.MediaAsset) ([]search.Candidate, bool) {
+func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Query, candidates []search.Candidate, assetsByID map[string]search.MediaAsset) ([]search.Candidate, error) {
+	// An explicitly disabled or absent optional capability leaves the
+	// canonical Qdrant ranking untouched. Once enabled, however, every
+	// reranker failure is returned to the caller: silently returning a
+	// successful but degraded search would misrepresent availability.
 	if b.reranker == nil || !b.reranker.IsEnabled() || len(candidates) == 0 {
-		return nil, false
+		return candidates, nil
 	}
 
 	prof := searchprofile.Resolve(q.Filters.Source)
@@ -425,18 +431,18 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		})
 	}
 	if len(requestCandidates) == 0 {
-		return nil, false
+		return candidates, nil
 	}
 
 	results, err := b.reranker.Rerank(ctx, q.Text, requestCandidates)
 	if err != nil {
-		b.warn("semantic backend: reranker failed; keeping Qdrant order",
+		b.warn("semantic backend: enabled reranker failed; search request rejected",
 			zap.Error(err),
 		)
-		return nil, false
+		return nil, fmt.Errorf("semantic backend: reranker: %w", err)
 	}
 	if len(results) == 0 {
-		return nil, false
+		return nil, fmt.Errorf("semantic backend: reranker returned no results for %d candidates", len(requestCandidates))
 	}
 
 	rawScores := make(map[string]float64, len(results))
@@ -458,7 +464,7 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		}
 	}
 
-	return updated, true
+	return updated, nil
 }
 
 func float64Ptr(v float64) *float64 {

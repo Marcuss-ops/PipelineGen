@@ -31,15 +31,10 @@ type MetadataGenerator interface {
 // BuildMetadataLanguages normalizes the requested metadata languages.
 //
 // Canonical invariants:
-//   - English ("en") is ALWAYS first in the output. Callers' payloads
-//     may or may not include "en"; the function assumes the canonical
-//     "metadata generated first in English, then translated" pipeline
-//     and prepends "en" unconditionally.
-//   - The remaining entries are the unique, lowercased, trimmed
-//     languages from the caller's payload in their original order
-//     (after the above transforms).
-//   - Duplicate "en" entries from the caller are deduped (the
-//     normalize step consumes the prepend-and-collapses pattern).
+//   - The output contains only languages explicitly supplied by the caller.
+//   - Entries are lowercased, trimmed, deduplicated, and kept in payload order.
+//   - An empty payload produces an empty list and therefore no metadata LLM
+//     work. The runtime must never invent a language from configuration.
 //
 // Phase 1c Commit 2/4 (June 2026): NormalizeLanguages (now lives in
 // the same package — dto/language_helpers.go) is the canonical
@@ -60,11 +55,7 @@ type MetadataGenerator interface {
 // Run() at usecase/postgen_usecase.go to import dto (the use case
 // is above dto in the dependency graph; no cycle risk).
 func BuildMetadataLanguages(languages []string) []string {
-	// Prepend "en" then normalize — NormalizeLanguages preserves order
-	// and dedupes, so the canonical "English always first" invariant
-	// is enforced regardless of whether the caller passed "en",
-	// an upper-case variant like "EN", or no "en" at all.
-	return NormalizeLanguages(append([]string{"en"}, languages...))
+	return NormalizeLanguages(languages)
 }
 
 // GenerateVideoMetadata generates YouTube metadata (title, description, tags)
@@ -88,6 +79,9 @@ func BuildMetadataLanguages(languages []string) []string {
 func GenerateVideoMetadata(ctx context.Context, generator MetadataGenerator, title string, languages []string, model string) []scriptpkg.VideoMetadata {
 	var mu sync.Mutex
 	metadata := make([]scriptpkg.VideoMetadata, 0, len(languages))
+	if len(languages) == 0 {
+		return metadata
+	}
 
 	if generator == nil {
 		// Nil generator short-circuits to empty result; callers must

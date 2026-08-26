@@ -75,7 +75,8 @@ func remoteBackgroundMusicCatalog() map[string]map[string]string {
 	out := make(map[string]map[string]string, len(ids))
 	for i, id := range ids {
 		alias := "bgm" + strconv.Itoa(i+1)
-		out[alias] = map[string]string{"asset_id": alias, "name": "Background Music " + strconv.Itoa(i+1), "drive_file_id": id, "url": "velox-drive://" + id, "drive_link": "https://drive.google.com/file/d/" + id + "/view?usp=drive_link"}
+		names := []string{"type beat", "Type Beat Rap 2", "HipHopSlowed", "Chilll Beat", "Type Beat Rap 3", "Chill Beat 2"}
+		out[alias] = map[string]string{"asset_id": alias, "name": names[i], "drive_file_id": id, "url": "velox-drive://" + id, "drive_link": "https://drive.google.com/file/d/" + id + "/view?usp=drive_link"}
 	}
 	return out
 }

@@ -161,16 +161,18 @@ func (a *promoVoiceoverAdapter) Generate(ctx context.Context, cmd domainvo.Gener
 		// requires non-empty ParentJobID; the dispatcher would
 		// normally populate it but the promo path bypasses the
 		// dispatcher by design).
-		ParentJobID:   requestID,
-		RequestID:     requestID,
-		Text:          normalized.Text,
-		Language:      Language(normalized.Locale),
-		Voice:         normalized.Voice,
-		Filename:      filename,
-		TextHash:      textHash,
-		Destination:   dest,
-		Strategy:      "replace", // canonical default for promo (matches pre-P0-#3 Service.GenerateWithDestination)
-		RemoveSilence: false,
+		ParentJobID: requestID,
+		RequestID:   requestID,
+		Text:        normalized.Text,
+		Language:    Language(normalized.Locale),
+		Voice:       normalized.Voice,
+		Filename:    filename,
+		TextHash:    textHash,
+		Destination: dest,
+		Strategy:    "replace", // canonical default for promo (matches pre-P0-#3 Service.GenerateWithDestination)
+		// Keep promo voiceovers on the same permanent post-TTS cleanup
+		// path as script scenes (silence threshold: 800 ms).
+		RemoveSilence: true,
 	}
 
 	out, err := a.executor.Execute(ctx, itemCmd)

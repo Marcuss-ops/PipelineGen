@@ -169,8 +169,8 @@ func TestScriptVoiceoverGenerator_NoTimingLeavesNil(t *testing.T) {
 
 // TestScriptVoiceoverGenerator_CommandShape pins the command the adapter
 // builds: deterministic filename, computed text hash, forwarded timing
-// policy, and RemoveSilence=false (raw boundaries must describe the exact
-// produced bytes — no stale pre-trim timestamps).
+// policy, and RemoveSilence=true (the canonical post-TTS cleanup removes
+// pauses longer than 800 ms before scene timing is finalized).
 func TestScriptVoiceoverGenerator_CommandShape(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
@@ -194,8 +194,8 @@ func TestScriptVoiceoverGenerator_CommandShape(t *testing.T) {
 	assert.Equal(t, "Hello world", exec.gotCmd.Text)
 	assert.Equal(t, voiceover.Language("en"), exec.gotCmd.Language)
 	assert.Equal(t, voiceover.ComputeTextHash("Hello world"), exec.gotCmd.TextHash)
-	assert.False(t, exec.gotCmd.RemoveSilence,
-		"RemoveSilence must be false so raw Edge boundaries describe the exact produced bytes")
+	assert.True(t, exec.gotCmd.RemoveSilence,
+		"RemoveSilence must be enabled for canonical Edge TTS cleanup")
 	require.NotNil(t, exec.gotCmd.Timing)
 	assert.Equal(t, capabilityaudio.TimingBestEffort, exec.gotCmd.Timing.Mode)
 	assert.Equal(t, capabilityaudio.BoundaryWord, exec.gotCmd.Timing.BoundaryMode)

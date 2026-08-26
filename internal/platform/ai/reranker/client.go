@@ -4,8 +4,8 @@
 //
 // Design principles:
 //   - Standalone module (not coupled to realtime or Qdrant)
-//   - Circuit breaker: HTTP timeout prevents pipeline blocking
-//   - Graceful degradation: returns original order on failure
+//   - Bounded failure: HTTP timeout prevents indefinite pipeline blocking
+//   - Fail-closed: transport and contract errors are returned to the search layer
 //   - Multi-media: candidate Text field handles any media type description
 package reranker
 
@@ -14,11 +14,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+	platformconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // Candidate represents a single search result to be reranked.
@@ -49,29 +51,39 @@ type Response struct {
 
 // Config holds the reranker client configuration.
 type Config struct {
-	Enabled   bool    `yaml:"enabled" default:"false"`
-	URL       string  `yaml:"url" default:"http://127.0.0.1:8091/rerank"`
-	Model     string  `yaml:"model" default:"BAAI/bge-reranker-v2-m3"`
-	TopK      int     `yaml:"top_k" default:"30"`
-	TimeoutMs int     `yaml:"timeout_ms" default:"150"`
-	Weight    float64 `yaml:"weight" default:"0.35"`
+	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"false"`
+	URL       string  `yaml:"url" env:"VELOX_RERANKER_URL" default:"http://127.0.0.1:8091/rerank"`
+	Model     string  `yaml:"model" env:"VELOX_RERANKER_MODEL" default:"BAAI/bge-reranker-v2-m3"`
+	TopK      int     `yaml:"top_k" env:"VELOX_RERANKER_TOP_K" default:"30"`
+	TimeoutMs int     `yaml:"timeout_ms" env:"VELOX_RERANKER_TIMEOUT_MS" default:"150"`
+	Weight    float64 `yaml:"weight" env:"VELOX_RERANKER_WEIGHT" default:"0.35"`
 }
 
 // WithDefaults returns a copy with sensible defaults applied.
 func (c Config) WithDefaults() Config {
+	if strings.TrimSpace(c.URL) == "" {
+		c.URL = "http://127.0.0.1:8091/rerank"
+	}
 	if strings.TrimSpace(c.Model) == "" {
 		c.Model = models.Reranker.ID
 	}
-	if c.TopK <= 0 {
+	if c.TopK == 0 {
 		c.TopK = 30
 	}
-	if c.TimeoutMs <= 0 {
+	if c.TimeoutMs == 0 {
 		c.TimeoutMs = 150
 	}
-	if c.Weight <= 0 || c.Weight > 1 {
+	if c.Weight == 0 {
 		c.Weight = 0.35
 	}
 	return c
+}
+
+// Validate enforces the same canonical contract as the top-level config
+// loader. Keeping this check at the adapter boundary prevents manually
+// assembled composition configs from bypassing validation.
+func (c Config) Validate() error {
+	return platformconfig.ValidateRerankerSettings(c.Enabled, c.URL, c.Model, c.TopK, c.TimeoutMs, c.Weight)
 }
 
 // Timeout returns the configured timeout as a time.Duration.
@@ -87,9 +99,23 @@ type Client struct {
 	enabled bool
 }
 
-// NewClient creates a new reranker client.
+// NewClient creates a new reranker client. Call NewValidatedClient from the
+// composition root when enabled configuration must fail closed at boot.
 func NewClient(cfg Config) *Client {
+	return newClient(cfg.WithDefaults())
+}
+
+// NewValidatedClient creates a client and rejects an invalid enabled
+// configuration instead of silently producing a disabled client.
+func NewValidatedClient(cfg Config) (*Client, error) {
 	resolved := cfg.WithDefaults()
+	if err := resolved.Validate(); err != nil {
+		return nil, err
+	}
+	return newClient(resolved), nil
+}
+
+func newClient(resolved Config) *Client {
 	return &Client{
 		cfg:     resolved,
 		http:    &http.Client{Timeout: resolved.Timeout()},
@@ -122,7 +148,7 @@ func (c *Client) TopK() int {
 }
 
 // Rerank sends candidates to the CrossEncoder and returns them reordered by relevance.
-// Returns nil, error on failure — caller should fall back to original Qdrant ordering.
+// Any transport or response-contract failure is returned to the caller.
 func (c *Client) Rerank(ctx context.Context, query string, candidates []Candidate) ([]Result, error) {
 	if !c.IsEnabled() {
 		return nil, fmt.Errorf("reranker disabled")
@@ -167,8 +193,47 @@ func (c *Client) Rerank(ctx context.Context, query string, candidates []Candidat
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("decode rerank response: %w", err)
 	}
+	if err := validateResults(candidates, parsed.Results); err != nil {
+		return nil, fmt.Errorf("invalid rerank response: %w", err)
+	}
 
 	return parsed.Results, nil
+}
+
+// validateResults ensures the sidecar returned a complete, one-to-one
+// reranking for the requested candidate window. Partial or fabricated output
+// is an error so the enabled search capability cannot return an unverified rank.
+func validateResults(candidates []Candidate, results []Result) error {
+	if len(results) != len(candidates) {
+		return fmt.Errorf("result count %d does not match candidate count %d", len(results), len(candidates))
+	}
+	expected := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.ID) == "" {
+			return fmt.Errorf("candidate has empty id")
+		}
+		if _, exists := expected[candidate.ID]; exists {
+			return fmt.Errorf("duplicate candidate id %q", candidate.ID)
+		}
+		expected[candidate.ID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(results))
+	for _, result := range results {
+		if _, ok := expected[result.ID]; !ok {
+			return fmt.Errorf("unknown result id %q", result.ID)
+		}
+		if _, duplicate := seen[result.ID]; duplicate {
+			return fmt.Errorf("duplicate result id %q", result.ID)
+		}
+		if math.IsNaN(result.RerankScore) || math.IsInf(result.RerankScore, 0) {
+			return fmt.Errorf("non-finite score for result %q", result.ID)
+		}
+		seen[result.ID] = struct{}{}
+	}
+	if len(seen) != len(expected) {
+		return fmt.Errorf("response omitted %d candidate(s)", len(expected)-len(seen))
+	}
+	return nil
 }
 
 // BuildCandidateText creates a rich description string for the reranker.

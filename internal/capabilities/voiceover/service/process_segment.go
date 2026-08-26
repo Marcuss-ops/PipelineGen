@@ -53,6 +53,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -208,6 +209,18 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		emitPost("completed")
 		if postOut.CleanedPath != "" {
 			out.CleanedPath = postOut.CleanedPath
+		}
+		if postOut.DurationUS > 0 {
+			// The cleaned Edge file is the canonical scene audio. Do not
+			// continue exposing the pre-clean duration to the script runner.
+			out.DurationMs = (postOut.DurationUS + 999) / 1000
+		}
+		if ttsOut.LocalPath != "" && postOut.CleanedPath != "" && ttsOut.LocalPath != postOut.CleanedPath {
+			// The raw Edge file is no longer needed after post-processing;
+			// keep only the cleaned asset that is uploaded and timed.
+			if removeErr := os.Remove(ttsOut.LocalPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				log.Warn("voiceover: raw Edge TTS cleanup failed", zap.String("path", ttsOut.LocalPath), zap.Error(removeErr))
+			}
 		}
 		post = &postOut
 		// Summarize the silence removal for observability: the original

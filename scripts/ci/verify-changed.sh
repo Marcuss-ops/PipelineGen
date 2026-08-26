@@ -155,6 +155,16 @@ if [ "$RUN_GO_PACKAGE_TESTS" = true ]; then
         )
         echo "🧪 Testing modified Go packages with $GO_BIN:"
         for pkg in "${UNIQUE_PACKAGES[@]}"; do
+            # Tag-gated command directories (e.g. scripts/archcheck/gates,
+            # where every .go file carries a c2_* build tag) have no
+            # buildable files under the default build context, so go test
+            # would fail with "build constraints exclude all Go files".
+            # Those gates are invoked with explicit -tags from verify.mk,
+            # never as a default-context test target, so skip them here.
+            if ! "$GO_BIN" list "$pkg" >/dev/null 2>&1; then
+                echo "  skipping $pkg (no buildable Go files under the default build context)"
+                continue
+            fi
             echo "  $GO_BIN test $pkg"
             "$GO_BIN" test "$pkg"
         done

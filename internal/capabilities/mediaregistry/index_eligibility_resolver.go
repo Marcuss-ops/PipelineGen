@@ -44,6 +44,7 @@ func ResolveIndexEligibility(ctx context.Context, q RowQuerier, assetID string) 
 		return IndexEligibilityRegistered, err
 	}
 	return AssetTaxonomy{
+		AssetID:   assetID,
 		AssetKind: AssetKind(assetKind),
 		MediaType: MediaType(mediaType),
 	}.IndexEligibility(), nil

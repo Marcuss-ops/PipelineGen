@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // stubPublisherPort is a deterministic finalization.PublisherPort stub.
@@ -114,6 +115,82 @@ func TestArtifactPreparation_EmptyDriveLocationDoesNotStamp(t *testing.T) {
 	for _, key := range []string{"drive_file_id", "drive_link", "download_link"} {
 		if _, ok := published.ArtifactMetadata[key]; ok {
 			t.Errorf("metadata should not contain %q when the publisher returned an empty identity", key)
+		}
+	}
+}
+
+// TestArtifactPreparation_RecordsFinalizeOperations pins the metric split of
+// the publish spine (post_writer_finalize is no longer a black box): with a
+// run + stage bound to ctx, Prepare records finalize.artifact_prepare,
+// finalize.artifact_hash and finalize.drive_publish under the CALLER's stage,
+// each carrying the artifact's byte count. artifact_prepare deliberately
+// includes the artifact_hash subtiming (the audio_render/mix nesting
+// precedent), so the operations must never be summed as wall time.
+func TestArtifactPreparation_RecordsFinalizeOperations(t *testing.T) {
+	stub := &stubPublisherPort{location: finalization.AssetLocation{
+		Provider:     "drive",
+		FileID:       "drive-file-1",
+		WebViewLink:  "https://drive.google.com/file/d/drive-file-1/view",
+		DownloadLink: "https://drive.google.com/uc?id=drive-file-1",
+		FolderID:     "folder-overlay",
+		FolderPath:   "/video/847/overlay",
+		Action:       finalization.PublishCreated,
+	}}
+	prep := NewArtifactPreparation(stub, nil)
+
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{AttemptID: "attempt-finalize-1"})
+	defer run.Finish()
+	ctx := kernobs.WithStage(kernobs.WithRun(context.Background(), run), kernobs.StageName("post_writer_finalize"))
+
+	artifact := writeVerifiedArtifact(t, "chronon overlay bytes", nil)
+	if _, err := prep.Prepare(ctx, artifact); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	got := make(map[string]kernobs.OperationReport)
+	for _, op := range run.Report().Operations {
+		if op.Component == "finalize" {
+			got[op.Operation] = op
+		}
+	}
+	for _, want := range []string{"artifact_prepare", "artifact_hash", "drive_publish"} {
+		op, ok := got[want]
+		if !ok {
+			t.Errorf("missing finalize.%s operation in RunReport", want)
+			continue
+		}
+		if op.Stage != "post_writer_finalize" {
+			t.Errorf("finalize.%s stage = %q, want post_writer_finalize", want, op.Stage)
+		}
+		if op.Status != kernobs.StageStatusCompleted {
+			t.Errorf("finalize.%s status = %q, want completed", want, op.Status)
+		}
+		if op.Bytes != artifact.SizeBytes {
+			t.Errorf("finalize.%s bytes = %d, want %d", want, op.Bytes, artifact.SizeBytes)
+		}
+	}
+}
+
+// TestArtifactPreparation_RecordsOperationsDefaultPublishStage pins the
+// neutral default: direct publishers that do not tag a stage (stock, vidrush)
+// record the publish-spine operations under the canonical publish stage,
+// never a fabricated stage.
+func TestArtifactPreparation_RecordsOperationsDefaultPublishStage(t *testing.T) {
+	stub := &stubPublisherPort{location: finalization.AssetLocation{Provider: "drive", Action: finalization.PublishCreated}}
+	prep := NewArtifactPreparation(stub, nil)
+
+	obs := kernobs.NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{AttemptID: "attempt-publish-1"})
+	defer run.Finish()
+	ctx := kernobs.WithRun(context.Background(), run)
+
+	if _, err := prep.Prepare(ctx, writeVerifiedArtifact(t, "chronon overlay bytes", nil)); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	for _, op := range run.Report().Operations {
+		if op.Component == "finalize" && op.Stage != string(kernobs.StagePublish) {
+			t.Errorf("finalize.%s stage = %q, want publish (default)", op.Operation, op.Stage)
 		}
 	}
 }

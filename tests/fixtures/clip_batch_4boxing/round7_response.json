@@ -3,7 +3,7 @@
   "_index_in_payload": 0,
   "_video_id": "9u4T_o3FxOU",
   "_policy_version": "v1",
-  "_canonical_pipeline_path": "ProcessYouTubeSegmentUseCase::Execute (internal/application/youtube/usecase/process_segment.go)",
+  "_canonical_pipeline_path": "ProcessYouTubeSegmentUseCase::Execute (internal/capabilities/youtube/usecase/process_segment.go)",
   "_drift_source_of_truth": "internal/capabilities/youtube/dto/types.go::ExtractItem + ProcessSegmentResult",
   "_segment_input_match": "matches tests/fixtures/clip_batch_4boxing/payload.json::segments[0]",
   "expected_status": "processed",

@@ -119,10 +119,14 @@ func (p *finalAudioPublisherAdapter) PublishFinalAudio(ctx context.Context, runI
 	// its fail-closed absence) still applies.
 	resolvedFolderID := strings.TrimSpace(voiceoverFolderID)
 
+	filename := strings.TrimSpace(ref.Filename)
+	if filename == "" {
+		filename = fmt.Sprintf("voiceover [%s].m4a", lang)
+	}
 	published, err := p.preparation.Prepare(ctx, finalization.VerifiedArtifact{
 		ArtifactID:         artifactID,
 		Kind:               finalization.KindVoiceover,
-		Filename:           fmt.Sprintf("final_audio_%s.m4a", lang),
+		Filename:           filename,
 		LocalPath:          ref.Path,
 		MIMEType:           "audio/mp4",
 		SizeBytes:          ref.SizeBytes,

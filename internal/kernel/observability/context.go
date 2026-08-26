@@ -33,3 +33,38 @@ func RunFromContext(ctx context.Context) (*Run, bool) {
 	run := FromContext(ctx)
 	return run, run != nil
 }
+
+type stageContextKey struct{}
+
+// WithStage binds an observability stage name to ctx so shared helpers that
+// are reused across pipeline phases (e.g. the artifact-publish spine, which
+// serves both the post_writer_finalize worker path and stock/vidrush
+// publishers) can attribute their MeasureOperation records to the CALLER's
+// stage instead of a hardcoded neutral value. Callers that do not set a
+// stage keep the helper's default (typically StagePublish).
+func WithStage(ctx context.Context, stage StageName) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, stageContextKey{}, stage)
+}
+
+// StageFrom returns the stage bound via WithStage, or "" when none is bound.
+func StageFrom(ctx context.Context) StageName {
+	if ctx == nil {
+		return ""
+	}
+	stage, _ := ctx.Value(stageContextKey{}).(StageName)
+	return stage
+}
+
+// StageOrDefault returns the stage bound via WithStage, or fallback when no
+// stage is bound. Shared helpers (e.g. the artifact-publish spine) use it to
+// attribute operations to the caller's stage while keeping a sensible default
+// (StagePublish) for callers that do not tag their context.
+func StageOrDefault(ctx context.Context, fallback StageName) StageName {
+	if stage := StageFrom(ctx); stage != "" {
+		return stage
+	}
+	return fallback
+}

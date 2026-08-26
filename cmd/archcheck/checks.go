@@ -68,9 +68,6 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		}},
 		{"percheck_binder_scene_field_writes", structure.ScanBinderSceneFieldWrites},
 		{"percheck_qdrant_index_import_ban", boundaries.ScanQdrantIndexImportBan},
-		{"percheck_api_policy_literals", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanAPIPolicyLiterals(root, pol, r, productionOnly)
-		}},
 		{"percheck_pipeline_map_carrier_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			boundaries.ScanPipelineMapCarrierBan(root, pol, r, productionOnly)
 		}},

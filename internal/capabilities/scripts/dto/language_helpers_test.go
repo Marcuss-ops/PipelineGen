@@ -6,10 +6,7 @@
 // Coverage shape:
 //   - NormalizeLanguages (6 tests): lowercase + trim + dedupe + order
 //     preservation + case-insensitive dedupe.
-//   - BuildMetadataLanguages (4 tests, BLOCKER A from code-review): the
-//     prepend-then-normalize invariant ("en" ALWAYS first; "EN" callers
-//     collapse to "en"; empty-input gives only "en"; duplicates from
-//     caller-supplied payload are deduped).
+//   - BuildMetadataLanguages: only caller-supplied languages are returned.
 package dto
 
 import (
@@ -94,24 +91,20 @@ func TestNormalizeLanguages_CaseInsensitiveDuplicates(t *testing.T) {
 	assert.Equal(t, []string{"en", "ey"}, got, "case-insensitive dedupe")
 }
 
-// TestBuildMetadataLanguages_EmptyPayloadGivesEnglishFirst pins the
-// canonical "English always first" invariant when the caller supplies
-// no languages — the output is exactly ["en"] regardless of input.
-func TestBuildMetadataLanguages_EmptyPayloadGivesEnglishFirst(t *testing.T) {
+// TestBuildMetadataLanguages_EmptyPayloadRemainsEmpty pins the fail-closed
+// contract: omitted languages must not trigger an invented English job.
+func TestBuildMetadataLanguages_EmptyPayloadRemainsEmpty(t *testing.T) {
 	t.Parallel()
 	got := BuildMetadataLanguages([]string{})
-	require.Len(t, got, 1, "empty payload must yield exactly one language (\"en\")")
-	assert.Equal(t, "en", got[0], "the single entry must be \"en\"")
+	require.Empty(t, got, "empty payload must yield no languages")
 }
 
-// TestBuildMetadataLanguages_PreservesCallerOrder pins the secondary
-// invariant — non-English caller-supplied languages appear in their
-// original input order (after normalize-lowercase) AFTER the leading
-// "en" entry.
+// TestBuildMetadataLanguages_PreservesCallerOrder pins that the output is
+// exactly the normalized caller order; no implicit English entry is added.
 func TestBuildMetadataLanguages_PreservesCallerOrder(t *testing.T) {
 	t.Parallel()
 	got := BuildMetadataLanguages([]string{"fr", "it"})
-	assert.Equal(t, []string{"en", "fr", "it"}, got, "caller order preserved after the leading \"en\"")
+	assert.Equal(t, []string{"fr", "it"}, got, "only caller languages are retained")
 }
 
 // TestBuildMetadataLanguages_CollapsesENToLowercaseEn pins the
@@ -123,7 +116,7 @@ func TestBuildMetadataLanguages_CollapsesENToLowercaseEn(t *testing.T) {
 	t.Parallel()
 	got := BuildMetadataLanguages([]string{"EN", "fr"})
 	require.Len(t, got, 2, "EN must collapse with the prepended en (no duplicate)")
-	assert.Equal(t, []string{"en", "fr"}, got, "EN → en + fr in canonical form")
+	assert.Equal(t, []string{"en", "fr"}, got, "EN → en and fr in canonical form")
 }
 
 // TestBuildMetadataLanguages_DedupesDuplicateEN pins the

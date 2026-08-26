@@ -18,6 +18,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 		return true
 	}
 	lang := req.SourceLanguage
+	result.FinalAudio.Filename = audioOutputFilename(req.OutputName, lang)
 	var published FinalAudioPublishResult
 	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 		Stage: audioCompileStage, Component: "drive", Operation: "upload", Provider: "drive",
@@ -59,4 +60,14 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 		r.log.Info("certified final audio published before documents", zap.String("run_id", runID), zap.String("language", string(lang)))
 	}
 	return true
+}
+
+func audioOutputFilename(outputName string, language Language) string {
+	name := strings.TrimSpace(outputName)
+	if name == "" {
+		name = "voiceover"
+	}
+	name = strings.NewReplacer("/", "-", "\\", "-", ":", "-", "\n", " ", "\r", " ").Replace(name)
+	name = strings.Join(strings.Fields(name), " ")
+	return fmt.Sprintf("%s [%s].m4a", name, strings.TrimSpace(string(language)))
 }

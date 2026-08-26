@@ -2,8 +2,37 @@
   "audio": {
     "mode": "COMBINED_TIMELINE",
     "mix_policy": "VOICEOVER_ONLY",
-    "background_music": [],
-    "sound_effects": []
+    "background_music": [
+      {
+        "asset_id": "bgm1",
+        "start_ms": 0,
+        "end": "video_end",
+        "loop": true,
+        "gain_db": -24
+      }
+    ],
+    "sound_effects": [
+      {"asset_id":"whop1","scene_id":"scene-0","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-1","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-2","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-3","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-4","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-5","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-6","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-7","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-8","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-9","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-10","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-11","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-12","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-13","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-14","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-15","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-16","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-17","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-18","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10},
+      {"asset_id":"whop1","scene_id":"scene-19","anchor":"end","offset_ms":-1000,"duration_ms":1000,"gain_db":-10}
+    ]
   },
   "docs": {
     "enabled": true,
@@ -29,6 +58,9 @@
   "output_name": "Matt Damon — 20 short clips with 3 intros",
   "project": "matt-damon-20-clips",
   "output": {
+    "languages": [
+      "en"
+    ],
     "extract_entities": "disabled",
     "generate_timeline": true,
     "save_to_db": true,
@@ -40,6 +72,7 @@
   "script_params": {
     "force_refresh": true,
     "segment_words": 15,
+    "target_words": 300,
     "segments": [
       {
         "clip_ids": [

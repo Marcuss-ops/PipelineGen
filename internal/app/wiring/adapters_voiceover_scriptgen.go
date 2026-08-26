@@ -115,6 +115,14 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	if input.SceneID == "" {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: empty scene ID")
 	}
+	voice := g.voiceForLanguage(input.Language)
+	// Production wiring always calls ConfigureVoices, even when the YAML
+	// registry is empty or invalid. Once configured, an empty lookup must fail
+	// closed; passing an empty voice would let the Edge bridge silently choose
+	// its emergency default instead of the YAML-selected voice.
+	if g.voices != nil && strings.TrimSpace(voice) == "" {
+		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: no configured Edge TTS voice for language %q", input.Language)
+	}
 
 	// Build a safe, JOB-UNIQUE filename:
 	// scene_{sanitizedProject}_{sanitizedSceneID}_{language}.mp3.
@@ -150,7 +158,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		Language:    voiceover.Language(input.Language),
 		Filename:    filename,
 		TextHash:    voiceover.ComputeTextHash(input.Text),
-		Voice:       g.voiceForLanguage(input.Language),
+		Voice:       voice,
 		Timing:      timing,
 		// Project is the canonical semantic project namespace resolved ONCE
 		// by BuildGenerateRequest and forwarded verbatim so the per-item
@@ -160,10 +168,10 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// is unreachable here because the runner fails the run before the
 		// voiceover phase when it is missing.
 		Project: input.Project,
-		// No silence trim here — the raw Edge boundaries describe exactly
-		// the bytes produced. Trimming without an edit map would produce
-		// stale timestamps, which the SILENCE gate forbids.
-		RemoveSilence: false,
+		// Canonical Edge cleanup: remove every silence run longer than 800 ms
+		// in the post-TTS media stage. The cleaned duration is propagated back
+		// into the scene timing before the script artifact is published.
+		RemoveSilence: true,
 		Strategy:      asset.StrategyVerify,
 	}
 	// Destination is the caller-explicit voiceover folder threaded verbatim
@@ -183,6 +191,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	g.Log.Info("voiceover scriptgen: generating TTS",
 		zap.String("scene_id", input.SceneID),
 		zap.String("language", string(input.Language)),
+		zap.String("voice", voice),
 		zap.String("filename", filename),
 		zap.String("text_preview", truncateText(input.Text, 80)),
 	)

@@ -220,8 +220,11 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	if err == nil || !errors.Is(err, scriptpkg.ErrSegmentValidationFailed) {
 		t.Fatalf("expected bounded segment failure, got %v", err)
 	}
-	if len(gen.prompts) != 2 {
-		t.Fatalf("provider calls = %d, want initial + one retry", len(gen.prompts))
+	// The workers may return the failing segment first, so the other initial
+	// request can be cancelled before it starts. The retry budget remains
+	// bounded: at least the initial request(s), at most one repair.
+	if len(gen.prompts) < 2 || len(gen.prompts) > 3 {
+		t.Fatalf("provider calls = %d, want bounded initial calls plus one retry", len(gen.prompts))
 	}
 }
 

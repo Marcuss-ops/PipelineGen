@@ -101,7 +101,7 @@
   },
   {
     "id": "Check 41",
-    "title": "forbid recreation of internal/api/common/ (Issue 10, June 2026)",
+    "title": "forbid recreation of the retired API transport common package (Issue 10, June 2026; check retired 2026-08)",
     "line_start": 1363,
     "line_end": 1392,
     "allowlist_kind": "none",

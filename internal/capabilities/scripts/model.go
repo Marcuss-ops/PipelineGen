@@ -217,7 +217,11 @@ type RenderArtifact struct {
 }
 
 type FinalAudioReference struct {
-	AssetID              string `json:"audio_asset_id"`
+	AssetID string `json:"audio_asset_id"`
+	// Filename is the caller-facing output name used when publishing the
+	// certified master. It is derived from the payload title, never a generic
+	// final_audio name.
+	Filename             string `json:"filename,omitempty"`
 	Path                 string `json:"path,omitempty"`
 	DriveLink            string `json:"drive_link,omitempty"`
 	Container            string `json:"container,omitempty"`
