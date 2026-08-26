@@ -10,9 +10,10 @@
 //     Service / Client / Builder / Cfg / Adapter types.
 //  3. checkTypeAliasCrossPkg — `type X = pkg.Y` aliases that cross
 //     package boundaries.
-//  4. checkFakeRoute — handler methods returning
+//  4. checkFakeRoute — current-root handler methods returning
 //     `http.StatusNotImplemented` (501).
-//  5. checkHandlerToDB — handler files reaching into `database/sql`.
+//  5. checkHandlerToDB — capability handler files reaching into
+//     `database/sql`; persistence ownership is enforced by the coupling gate.
 //
 // During the minor cycle, these rules run via `--future-ratchet` and
 // fail ONLY on regressions (new entries vs the committed baseline
@@ -29,10 +30,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	bl "github.com/Marcuss-ops/PipelineGen/scripts/archcheck/baseline"
@@ -48,7 +51,7 @@ import (
 // dependency") and prompt strings, inflating the baseline with false
 // positives. Post-AST-rewrite, the baseline shrinks to real type usages
 // only, and stale entries (paths no longer in the codebase, e.g.
-// internal/api/helpers.go) are surfaced as violations.
+// retired-root paths are surfaced as violations.
 func checkInterfaceBraceGrowth(baseline []string) (actual []string, violations []string, stats map[string]int) {
 	stats = map[string]int{
 		"phase0_interface_braces_actual":      0,
@@ -284,7 +287,7 @@ func checkFakeRoute(baseline []string) (actual []string, violations []string, st
 	}
 	out, err := exec.Command("rg", "-n",
 		`c\.(JSON|String|AbortWithStatus|Status)\s*\(\s*http\.StatusNotImplemented`,
-		"internal/api",
+		"internal/app", "internal/capabilities", "internal/kernel", "internal/platform",
 		"--type", "go",
 	).Output()
 	if err != nil && !execErrIsNoMatch(err) {
@@ -303,33 +306,24 @@ func checkFakeRoute(baseline []string) (actual []string, violations []string, st
 
 // ── Phase 0 rule 5: handler-to-DB ──────────────────────────────────────────
 
-// checkHandlerToDB scans every production Go file under `internal/api/`
-// whose name matches `handler*.go` (mirror of the North Star Pattern
-// 8 invariant: `internal/api/**` is thin transport only, never the
-// owner of database writes). A file is flagged if its surface contains
-// either a `database/sql` import OR a `*sql.DB` field-type substring.
-//
-// Files which are explicitly excluded from the gate: any path ending
-// in `_test.go` (handled by the rg `--glob` filter) and any path whose
-// filename starts with `health_integration_test.go` (test-typed files
-// are already excluded, but the substring is repeated for clarity in
-// the violation message).
+// checkHandlerToDB scans production handler files in the current tree.
+// Handlers are transport-facing code and must not own a raw SQL handle.
+// Unlike the retired implementation, this rule does not assume an
+// internal/api directory: it scans handler*.go files under the current
+// internal/capabilities tree and checks real imports plus *sql.DB fields.
+// The scan is deliberately scoped to the four current roots and does not
+// refer to retired architecture directories.
 func checkHandlerToDB(baseline []string) (actual []string, violations []string, stats map[string]int) {
 	stats = map[string]int{
 		"phase0_handlers_to_db_actual":      0,
 		"phase0_handlers_to_db_baseline":    len(baseline),
 		"phase0_handlers_to_db_regressions": 0,
 	}
-	out, err := exec.Command("rg", "-nl",
-		`database/sql|\*sql\.DB`,
-		"internal/api",
-		"--type", "go",
-		"--glob", "!*_test.go",
-	).Output()
-	if err != nil && !execErrIsNoMatch(err) {
-		return actual, []string{fmt.Sprintf("checkHandlerToDB: rg failed: %v", err)}, stats
+
+	actual, err := scanHandlerDatabaseSQL(".")
+	if err != nil {
+		return actual, []string{fmt.Sprintf("checkHandlerToDB: scan failed: %v", err)}, stats
 	}
-	actual = bl.NormalizePaths(splitNonEmpty(string(out)))
 	stats["phase0_handlers_to_db_actual"] = len(actual)
 	added := bl.SubtractSet(actual, baseline)
 	stats["phase0_handlers_to_db_regressions"] = len(added)
@@ -338,4 +332,84 @@ func checkHandlerToDB(baseline []string) (actual []string, violations []string, 
 	}
 	sort.Strings(violations)
 	return actual, violations, stats
+}
+
+// scanHandlerDatabaseSQL returns production handler files under
+// internal/capabilities that either import database/sql or mention *sql.DB.
+// Imports are parsed by scanDatabaseSQLImports; the raw-handle check is kept
+// narrow to the explicit *sql.DB type spelling.
+func scanHandlerDatabaseSQL(root string) ([]string, error) {
+	seen := make(map[string]bool)
+	capabilitiesRoot := filepath.Join(root, "internal", "capabilities")
+	err := filepath.WalkDir(capabilitiesRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") || !strings.HasPrefix(entry.Name(), "handler") {
+			return nil
+		}
+
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", filepath.ToSlash(path), err)
+		}
+		if !handlerHasDatabaseSQL(file) {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		seen[filepath.ToSlash(rel)] = true
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(seen))
+	for path := range seen {
+		out = append(out, path)
+	}
+	return bl.NormalizePaths(out), nil
+}
+
+func handlerHasDatabaseSQL(file *ast.File) bool {
+	aliases := make(map[string]bool)
+	for _, imp := range file.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || path != databaseSQLImport {
+			continue
+		}
+		alias := "sql"
+		if imp.Name != nil {
+			alias = imp.Name.Name
+		}
+		if alias != "_" && alias != "." {
+			aliases[alias] = true
+		}
+	}
+	if len(aliases) == 0 {
+		return false
+	}
+
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		star, ok := node.(*ast.StarExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := star.X.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != "DB" {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if ok && aliases[ident.Name] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }

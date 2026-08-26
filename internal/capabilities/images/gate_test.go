@@ -19,7 +19,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	// PG-002 (June 2026): enforce no infrastructure imports locally so a
 	// regression cannot sneak past CI's Check 19 unnoticed while a
 	// developer runs `go test ./internal/api/images/...` in isolation.
-	// Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt.
+	// Cross-ref: the retired-root anti-reintroduction gate.
 	{Name: "infrastructure imports", Pattern: "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/"},
 }
 

@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15; PR-CHECK-5-FOLLOWUP (2026-08-08); transitional hermetic-test seam (sqlassets.NewInMemoryRepo); forward-pointer PR-MONITOR-TEST-COMPOSITION
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/youtubediscoveries"
 	_ "github.com/mattn/go-sqlite3" // stdlib-only driver lock per AGENTS.md
 )

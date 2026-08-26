@@ -12,7 +12,7 @@ import (
 // Pattern parity with soundeffect/gate_test.go (C1-Step 8 PG-003):
 // baseline goroutine safety + PG-003 inline infra-import gate.
 // Bash Check 19 + the 28-entry grandfatherlist
-// (`docs/migrations/api-infrastructure-imports-allowlist.txt`) already
+// (the retired API/infrastructure import policy) already
 // enforce no infrastructure imports at the cross-cutting level; this
 // per-area prohibition is a forward-tripwire that fires BEFORE the
 // allowlist ratchet, catching regressions at the gate boundary

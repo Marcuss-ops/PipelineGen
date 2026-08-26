@@ -42,7 +42,7 @@ func TestNewChannelMonitor_PanicsWhenProductionMissingDiscoveries(t *testing.T) 
 		Ports: MonitorPorts{},
 	}
 	require.PanicsWithValue(t,
-		"monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *youtubediscoveries.YoutubeDiscoveriesRepository from internal/platform/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)",
+		"monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire the canonical platform YouTube discoveries adapter; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)",
 		func() { NewChannelMonitor(deps) },
 		"Commit 1 fail-fast: production composition MUST panic on nil Discoveries (P0 #1 silent-already_scheduled regression) ")
 }

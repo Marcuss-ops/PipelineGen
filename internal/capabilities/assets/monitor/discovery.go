@@ -93,7 +93,7 @@ func (m *ChannelMonitor) discoverChannelVideos(ctx context.Context, channel chan
 	// FASE 3.7 Commit 1b (2026-07-04): DateAfter is produced by
 	// monitor.DateAfterFromCursor (formerly `sqlassets.ResolveDateAfter`
 	// — the previous infra-supplied helper was equivalent but
-	// imported `internal/platform/sqlite/assets`,
+	// supplied by the canonical platform SQLite adapter,
 	// violating the FASE 3.7 zero-infra-import commitment in
 	// monitor/). The monitor-owned helper preserves the same
 	// precedence: LastCursor (RFC3339 truncated to YYYYMMDD) wins

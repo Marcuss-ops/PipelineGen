@@ -20,7 +20,7 @@
 # path, then `comm -13`'s the sorted rg hits against the sorted allowlist.
 # Anything left over fails the gate with `exit 1`.
 #
-# POLICY (mirrors api-infrastructure-imports-allowlist.txt)
+# POLICY (mirrors the retired API/infrastructure import policy)
 # ────────────────────────────────────────────────────────────
 # * Each entry must ship with a migration plan tracked under the
 #   corresponding `architecture/current.yaml` wave (or PR track for
@@ -37,7 +37,7 @@
 # 2/3/5 land, the corresponding file path is REMOVED from this file in
 # lockstep with the migration commit, so the gate tightens monotonically
 # across the wave. This is the same ratchet mechanic used by
-# `docs/migrations/api-infrastructure-imports-allowlist.txt` for the
+# retired API/infrastructure import policy for the
 # Wave-14 API-compaction grandfathered imports — the gate's "ZERO hits
 # after allowlist exclusion" pass condition holds NOW and shrinks as the
 # migration progresses.

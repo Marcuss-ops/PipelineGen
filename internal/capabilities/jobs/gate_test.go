@@ -12,7 +12,7 @@ import (
 // grep-verified `jobs.NewService` orchestrator (added 2026-06-24
 // followup). See architecture/current.yaml::Wave 14 grandfathered-
 // imports + scripts/ci-architectural-checks.sh::Check 19. Cross-ref:
-// docs/migrations/api-infrastructure-imports-allowlist.txt (28
+// the retired API/infrastructure import policy (28
 // grandfathered-import entries as of Wave 14-PR3).
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},

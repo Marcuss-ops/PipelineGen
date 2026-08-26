@@ -26,19 +26,6 @@ import (
 // from alias to named type closes the audit-flagged primitive-
 // obsession on Language across 14+ raw-string sites.
 
-// PR-VOICEOVER-ALIASES-RETIRE (Sub-PR A, July 2026): the canonical
-// wire-shape types moved into internal/application/voiceover/persistence/
-// in the P1-2 wave (June 2026). The legacy VoiceoverRepository +
-// VoiceoverRecord aliases have been RETIRED — all callers now reference
-// `persistence.Repository` + `persistence.VoiceoverRecord` directly
-// per godlike/06 SSOT one-canonical-owner-per-fact. Future
-// PR-VOICEOVER-ALIASES-RETIRE-C ships the canonical archcheck forward-
-// prevention gate that bans future re-introduction of these aliases
-// (canonical PR-ID in architecture/waves/wave_p1_high.yaml; the gate's
-// exact file path is at the discretion of that PR's implementer so this
-// forward-pointer cannot become a no-fake-availability liability
-// if Sub-PR C's actual path differs from any earlier speculation).
-
 // ── Enums (Status, FailureCode, CompletionState) live in types_enums.go ──
 
 type BatchRequest struct {
@@ -303,41 +290,6 @@ type ResolvedDestination struct {
 	// Typed (StyleGroup) per PR-VO-TYPED-PRIMITIVES.
 	StyleGroup StyleGroup
 }
-
-// PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (July 2026): the canonical
-// promo workflow types moved into internal/application/workflow/promo/
-// in the PR 6 wave (June 2026). The legacy voiceover.PromoRequest +
-// voiceover.PromoResult + voiceover.PromoResponse + voiceover.
-// DefaultPromoLanguages aliases have been RETIRED — all callers now
-// reference `promo.Request` / `promo.Result` / `promo.Response` /
-// `translation.DefaultPromoLanguages` directly per godlike/06 SSOT
-// one-canonical-owner-per-fact. Future PR-VOICEOVER-ALIASES-RETIRE-C
-// ships the canonical archcheck forward-prevention gate that bans
-// future re-introduction of these aliases (canonical PR-ID in
-// architecture/waves/wave_p1_high.yaml; the gate's exact file path is
-// at the discretion of that PR's implementer so this forward-pointer
-// cannot become a no-fake-availability liability if Sub-PR C's actual
-// path differs from any earlier speculation).
-//
-// Import-hygiene note: the `translation` + `promo` Go imports were
-// removed TOGETHER with the 4 retired aliases (this Sub-PR B commit).
-// Do NOT re-add them — `translation.DefaultPromoLanguages` canonical
-// owner is the `translation` subpackage (imported where needed) and
-// `PromoRequest`/`PromoResult`/`PromoResponse` canonical owner is the
-// `workflow/promo` subpackage (imported as `promo` per the natural
-// Go-idiomatic convention established by code-reviewer NIT-1 on
-// this closure — see `voiceover/job_handler.go` and `voiceover/promo.go`
-// for caller-side usage). Re-importing these packages here would
-// silently re-enable the alias surface that the canonical-home PRs
-// retired; per godlike/06 SSOT one-canonical-owner-per-fact every
-// alias is a load-bearing drift surface that the archcheck forward-
-// prevention gate in PR-VOICEOVER-ALIASES-RETIRE-C is designed to ban.
-
-// PromoRequestPayloadMap RETIRED 2026-07-10 (PR-DEADC-PROD-PROMOREQUEST-PAYLOAD-MAP-RETIRE).
-// Zero production callers (verified via rg 'PromoRequestPayloadMap' internal/ — only 2 hits
-// in types.go declaration + 4 hits in the now-deleted promopayload_test.go test file).
-// The /promo async path now threads the canonical Request struct directly via
-// promo.Generator.Generate(ctx, req) — no map serialisation intermediate.
 
 // PR-VO-AUDIT-P01 (June 2026): the canonical fail() helper. The
 // previous implementation forward-stored the literal status (e.g.

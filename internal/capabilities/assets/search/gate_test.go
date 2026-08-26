@@ -15,7 +15,7 @@ import (
 // Acceptable per current Go convention; tighten to a regex anchor via
 // a gate.Walk enhancement if false positives emerge. See
 // architecture/current.yaml::Wave 14 + arch check Check 19.
-// Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt
+// Cross-ref: retired-root anti-reintroduction gate
 // (28 grandfathered-import entries as of Wave 14-PR3).
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},

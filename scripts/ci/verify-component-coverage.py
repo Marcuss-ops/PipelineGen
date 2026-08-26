@@ -32,27 +32,15 @@ COVERAGE_FALLBACKS: tuple[tuple[str, str], ...] = (
     ("scripts/ci/", "verification"),
     ("scripts/hooks/", "verification"),
     ("config/", "verification"),
-    ("internal/", "core-internal"),
+    ("internal/app/", "app"),
+    ("internal/kernel/", "kernel"),
+    ("internal/capabilities/", "capabilities"),
+    ("internal/platform/", "platform"),
     ("cmd/", "commands"),
     ("pkg/", "packages"),
     ("tests/", "integration-tests"),
     ("migrations/", "database"),
 )
-
-# Shared application adapters are intentionally owned by more than one
-# component.  Every other overlap is a registry design error.
-ALLOWED_OVERLAP_PREFIXES: tuple[tuple[str, frozenset[str]], ...] = (
-    ("internal/application/scripts/", frozenset({"script", "research", "translation"})),
-    ("internal/application/assets/providers/artlist/", frozenset({"stock", "artlist"})),
-    ("internal/infrastructure/artlist/", frozenset({"stock", "artlist"})),
-    ("internal/api/assets/artlist/", frozenset({"stock", "artlist"})),
-    ("internal/platform/drive/", frozenset({"drive", "storage"})),
-    ("internal/api/assets/storage/", frozenset({"timeline", "storage"})),
-    ("internal/api/assets/clips/indexing/", frozenset({"clips", "indexing"})),
-    ("internal/platform/sqlite/jobs/", frozenset({"database", "jobs"})),
-    ("internal/platform/sqlite/scripts/", frozenset({"database", "research"})),
-)
-
 
 def normalize(path: str) -> str:
     value = path.replace("\\", "/").strip()
@@ -87,12 +75,30 @@ def fallback_owner(path: str) -> tuple[str, str] | None:
     return None
 
 
-def overlap_is_allowed(path: str, path_owners: list[str]) -> bool:
-    owner_set = frozenset(path_owners)
-    for prefix, allowed in ALLOWED_OVERLAP_PREFIXES:
-        if path.startswith(prefix) and owner_set <= allowed:
-            return True
-    return False
+def registered_paths(registry: Mapping[str, Mapping[str, Any]]) -> list[tuple[str, str, bool]]:
+    """Return normalized registry paths and their directory semantics."""
+    entries: list[tuple[str, str, bool]] = []
+    for component, definition in registry.items():
+        for registered in definition.get("paths", []):
+            normalized = normalize(registered)
+            if normalized:
+                is_directory = registered.replace("\\", "/").strip().endswith("/")
+                entries.append((normalized, component, is_directory))
+    return entries
+
+
+def overlap_is_allowed(
+    path: str,
+    path_owners: list[str],
+    registry: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """Allow overlaps only when the registry gives every owner the path.
+
+    This intentionally compares the normalized owner set from ``owners``
+    with the registry-derived set. No path-prefix exceptions or historical
+    allowlist entries are consulted.
+    """
+    return set(path_owners) == set(owners(path, registry))
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -188,8 +194,11 @@ def validate_registry(root: Path, registry: Mapping[str, Mapping[str, Any]]) -> 
             errors.append(f"component={name}: definition is not an object")
             continue
         paths = definition.get("paths", [])
-        if not isinstance(paths, list) or not paths:
-            errors.append(f"component={name}: paths must be a non-empty array")
+        if not isinstance(paths, list):
+            errors.append(f"component={name}: paths must be an array")
+            continue
+        if not paths and not definition.get("utility", False):
+            errors.append(f"component={name}: paths must be non-empty for executable components")
             continue
         for registered in paths:
             if not isinstance(registered, str) or not registered.strip():
@@ -236,7 +245,7 @@ def build_report(root: Path, registry_path: Path) -> dict[str, Any]:
         mapping[path] = {"owners": effective_owners, "reason": reason}
         if not effective_owners:
             unmapped.append(path)
-        elif len(path_owners) > 1 and not overlap_is_allowed(path, path_owners):
+        elif len(path_owners) > 1 and not overlap_is_allowed(path, path_owners, registry):
             unexpected_overlaps.append({"file": path, "owners": path_owners})
 
     stale_registry_paths = sorted(

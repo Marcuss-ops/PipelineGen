@@ -13,7 +13,7 @@ import (
 //
 // `internal/infrastructure` is intentionally NOT in this list: bash
 // Check 19 (`scripts/ci-architectural-checks.sh`) + the 28-entry
-// grandfatherlist in `docs/migrations/api-infrastructure-imports-allowlist.txt`
+// retired-root anti-reintroduction gate
 // already enforces it. This gate focuses on transport discipline
 // (goroutines, business orchestrators, direct service constructors)
 // that bash Check 19 cannot catch.

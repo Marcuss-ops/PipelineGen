@@ -16,7 +16,7 @@ import (
 // Drain target: Wave 14-PR5 middleware-config-drain (see
 // architecture/current.yaml#wave-14), at which point the patterns
 // can return to this list without re-breaking the gate. Cross-ref:
-// docs/migrations/api-infrastructure-imports-allowlist.txt (28
+// the retired API/infrastructure import policy (28
 // grandfathered-import entries as of Wave 14-PR3).
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},

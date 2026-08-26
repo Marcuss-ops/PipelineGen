@@ -12,7 +12,7 @@
 # exceptions): the queries `\.Upsert\( / UpsertClip\( / \.Restore\(
 # / \.HardDelete\(` are intentionally generic — `comm -13` against a
 # sorted path list is the audit-style ratchet used by
-# `docs/migrations/api-infrastructure-imports-allowlist.txt` and it
+# the retired API/infrastructure import policy and it
 # produces stable, easy-to-grep failure output.
 #
 # Wired into `scripts/ci-architectural-checks.sh` as Check 7 (last entry)
