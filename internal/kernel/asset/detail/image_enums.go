@@ -27,8 +27,6 @@
 // the same package without touching image_taxonomy.go.
 package detail
 
-import "fmt"
-
 // ════════════════════════════════════════════════════════════════════
 // ImageSearchTerritory — drives the routing of ImageSearchResolver
 // ════════════════════════════════════════════════════════════════════
@@ -79,31 +77,5 @@ func (t ImageSearchTerritory) IsValid() bool {
 	return false
 }
 
-// ════════════════════════════════════════════════════════════════════
-// String() methods on the existing typed enums (image_taxonomy.go)
-// ════════════════════════════════════════════════════════════════════
-
-// String returns the canonical, persisted string for ImageOrigin.
-// Defined here (rather than in image_taxonomy.go) so future edits
-// to the canonical serialization can be tracked in a single file.
-// The underlying type is string, so the conversion is O(1).
-func (o ImageOrigin) String() string {
-	return string(o)
-}
-
-// String returns the canonical, persisted string for ImageProvider.
-func (p ImageProvider) String() string {
-	return string(p)
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Compile-time fmt.Stringer assertions — drift detection
-// ════════════════════════════════════════════════════════════════════
-
-// These vars are never used at runtime; their only purpose is to
-// surface at build time if a String() method is renamed or changed.
-var (
-	_ fmt.Stringer = ImageOrigin("")
-	_ fmt.Stringer = ImageProvider("")
-	_ fmt.Stringer = ImageSearchTerritory("")
-)
+// String methods for ImageOrigin and ImageProvider are defined by the
+// canonical asset package. ImageSearchTerritory remains local to detail.

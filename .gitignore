@@ -189,6 +189,16 @@ scratch/
 # Ollama local model cache (large, auto-downloaded)
 .ollama/
 
+# Hugging Face model weights / cache (large, auto-downloaded — weights
+# are NEVER committed to Git; the registry carries only id/revision/
+# checksum. Default HF cache lives outside the repo (~/.cache/huggingface);
+# these entries cover a repo-local HF_HOME or model_downloader cache-dir.)
+.cache/huggingface/
+model_weights/
+models_cache/
+*.safetensors
+*.gguf
+
 # ============================================
 # PID files and numbered backups
 # ============================================

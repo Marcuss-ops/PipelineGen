@@ -88,8 +88,8 @@ async def embed_visual_from_images(req: BatchImageEmbedRequest):
           "embeddings": [[768 floats], [768 floats], ...],
           "dimensions": 768,
           "count": N,
-          "model": "google/siglip-so400m-patch14-384",
-          "model_version": "2026-06-26-v1"
+          "model": VISUAL_MODEL_NAME,
+          "model_version": VISUAL_MODEL_VERSION
         }
 
     Semi-trusted callers: trust that ALL paths succeed or we surface a

@@ -1,7 +1,6 @@
 package operatorread
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -185,7 +184,7 @@ func (r *InventoryReader) listLocations(ctx context.Context, assetID string) ([]
 	return out, nil
 }
 
-func (r *InventoryReader) listProcessing(ctx context.Context, assetID string) ([]detail.ProcessingRecord, error) {
+func (r *InventoryReader) listProcessing(ctx context.Context, assetID string) ([]asset.ProcessingRecord, error) {
 	const q = `SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 	FROM asset_processing
 	WHERE asset_id = ?
@@ -197,14 +196,14 @@ func (r *InventoryReader) listProcessing(ctx context.Context, assetID string) ([
 	}
 	defer rows.Close()
 
-	var out []detail.ProcessingRecord
+	var out []asset.ProcessingRecord
 	for rows.Next() {
-		var rec detail.ProcessingRecord
+		var rec asset.ProcessingRecord
 		var status, startedAt, completedAt, errMsg, meta string
 		if err := rows.Scan(&rec.AssetID, &rec.Step, &status, &startedAt, &completedAt, &errMsg, &rec.AttemptCount, &meta); err != nil {
 			return nil, err
 		}
-		rec.Status = detail.ProcessingStatus(status)
+		rec.Status = asset.ProcessingStatus(status)
 		if startedAt != "" {
 			t := parseTime(startedAt)
 			rec.StartedAt = &t

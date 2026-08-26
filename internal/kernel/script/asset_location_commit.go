@@ -1,7 +1,6 @@
 package script
 
-import (
-)
+import ()
 
 import "context"
 

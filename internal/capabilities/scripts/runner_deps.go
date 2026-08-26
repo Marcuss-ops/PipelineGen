@@ -337,14 +337,19 @@ func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	}
 }
 
-// SetGenerationGate wires the capacity-bounded priority gate shared with
-// VidRush entity extraction. Scene generation acquires it with high priority,
-// so when the text generator and the entity extractor share the same local
-// Ollama model, generation preempts extraction instead of queuing behind it.
-// The gate capacity should match the NLP concurrency (DefaultNLPConcurrency).
+// SetGenerationGate wires the capacity-bounded gate for scene-text
+// generation. Entity extraction uses its own gate via SetNLPGenerationGate.
 func (r *Runner) SetGenerationGate(gate *GenerationGate) {
 	if r != nil {
 		r.generationGate = gate
+	}
+}
+
+// SetNLPGenerationGate wires the independent gate used only by VidRush
+// entity extraction. It must not be reused as the script-writing gate.
+func (r *Runner) SetNLPGenerationGate(gate *GenerationGate) {
+	if r != nil {
+		r.nlpGenerationGate = gate
 	}
 }
 

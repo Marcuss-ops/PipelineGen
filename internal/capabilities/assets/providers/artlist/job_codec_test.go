@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {

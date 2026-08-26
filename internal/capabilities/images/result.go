@@ -51,10 +51,10 @@ type CatalogSearchResult struct {
 // catalog-followups in architecture/issues.yaml; this is NOT the
 // territory-split concern that PR-GENERATED-SEARCH-FIX closed).
 type AssetSummary struct {
-	Hash        string              // canonical asset hash (primary key)
-	SubjectID   string              // canonical subject ID (slug)
-	SlugID      string              // alias for SubjectID (kept by callers)
-	PathRel     string              // relative file path on disk
+	Hash        string               // canonical asset hash (primary key)
+	SubjectID   string               // canonical subject ID (slug)
+	SlugID      string               // alias for SubjectID (kept by callers)
+	PathRel     string               // relative file path on disk
 	Origin      detail.ImageOrigin   // territory classification
 	Provider    detail.ImageProvider // sub-classification (wikipedia, flux, etc.)
 	Description string

@@ -19,7 +19,6 @@ package wiring
 // is a legitimate no-op: there is nothing to burn subtitles onto.
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"fmt"

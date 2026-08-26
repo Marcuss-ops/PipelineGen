@@ -1,7 +1,6 @@
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,7 +21,7 @@ const (
 
 // ExpandRoundIndexing deterministically creates at most fifteen 4-second
 // clips per round (or the requested duration), never exceeding one minute.
-func ExpandRoundIndexing(rounds []RoundIndexSpec, clipDuration int) ([]stockpipeline.ClipSpec, error) {
+func ExpandRoundIndexing(rounds []RoundIndexSpec, clipDuration int) ([]ClipSpec, error) {
 	if len(rounds) == 0 {
 		return nil, nil
 	}
@@ -32,7 +31,7 @@ func ExpandRoundIndexing(rounds []RoundIndexSpec, clipDuration int) ([]stockpipe
 	if clipDuration > maxRoundStockDurationSec {
 		return nil, fmt.Errorf("round clip duration %d exceeds round budget %d", clipDuration, maxRoundStockDurationSec)
 	}
-	clips := make([]stockpipeline.ClipSpec, 0, len(rounds)*maxRoundStockDurationSec/clipDuration)
+	clips := make([]ClipSpec, 0, len(rounds)*maxRoundStockDurationSec/clipDuration)
 	for _, round := range rounds {
 		start, err := parseRoundTimestamp(round.TimestampStart)
 		if err != nil {
@@ -51,7 +50,7 @@ func ExpandRoundIndexing(rounds []RoundIndexSpec, clipDuration int) ([]stockpipe
 		}
 		label := roundLabel(round.Round)
 		for cursor := start; cursor+clipDuration <= stop; cursor += clipDuration {
-			clip := stockpipeline.ClipSpec{Title: label, Description: round.Description, StartSec: float64(cursor), EndSec: float64(cursor + clipDuration)}
+			clip := ClipSpec{Title: label, Description: round.Description, StartSec: float64(cursor), EndSec: float64(cursor + clipDuration)}
 			if n, ok := roundNumber(round.Round); ok {
 				clip.Round = n
 			} else {

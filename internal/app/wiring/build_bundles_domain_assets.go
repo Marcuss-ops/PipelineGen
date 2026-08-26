@@ -7,13 +7,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 

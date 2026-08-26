@@ -35,10 +35,10 @@
 package texttracks
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"os"
 	"path/filepath"
@@ -99,15 +99,15 @@ type AcquireCommand struct {
 // source-language transcript; Cues are populated when the source
 // carried per-segment timing (VTT/SRT or YouTube subs).
 type AcquireResult struct {
-	AssetID      string                `json:"asset_id"`
-	PlainText    string                `json:"plain_text"`
+	AssetID      string                 `json:"asset_id"`
+	PlainText    string                 `json:"plain_text"`
 	Cues         []detail.TimedCue      `json:"cues,omitempty"`
-	LanguageCode string                `json:"language_code"`
+	LanguageCode string                 `json:"language_code"`
 	SourceType   detail.TextTrackSource `json:"source_type"`
-	SourcePath   string                `json:"source_path,omitempty"` // for priority 2 (local file path)
-	Confidence   *float64              `json:"confidence,omitempty"`  // for priority 5 (Whisper)
-	Priority     int                   `json:"priority"`              // 2..5 — which level won
-	DurationMs   int64                 `json:"duration_ms"`
+	SourcePath   string                 `json:"source_path,omitempty"` // for priority 2 (local file path)
+	Confidence   *float64               `json:"confidence,omitempty"`  // for priority 5 (Whisper)
+	Priority     int                    `json:"priority"`              // 2..5 — which level won
+	DurationMs   int64                  `json:"duration_ms"`
 }
 
 // AcquireService is the canonical application-layer service for

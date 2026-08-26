@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -181,6 +182,10 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		sceneCounts := make(map[Language]int)
 
 		// ── DocsPrepare ──────────────────────────────────────────────
+		// The request is the source contract, but it does not contain the
+		// late-bound certified master produced by AUDIO_COMPILE. Project the
+		// actual remote assembly payload here, after final-audio publication.
+		jobPayload := buildRemoteJobPayload(req, result)
 		// Render every language's document HTML first. The render is CPU work
 		// that is fully independent of the Google Docs network publish, so it
 		// is measured as its own document.prepare stage. It still runs after

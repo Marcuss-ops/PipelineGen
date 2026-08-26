@@ -21,7 +21,6 @@
 package e2e
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"crypto/sha256"

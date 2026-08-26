@@ -13,8 +13,8 @@ import (
 
 const (
 	SourceAIGenerated    asset.Source = "ai_generated"
-	AssetRoleStock              = "stock"
-	NormalizedGroupStock        = "stock"
+	AssetRoleStock                    = "stock"
+	NormalizedGroupStock              = "stock"
 )
 
 var AIStockLanguages = []string{"it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "en", "id"}

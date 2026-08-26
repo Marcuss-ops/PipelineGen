@@ -16,7 +16,6 @@
 package usecase
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"sync"
@@ -270,7 +269,7 @@ func (s *p1fStubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ s
 // Compile-time guarantees that the stubs satisfy the ports the
 // resolver depends on.
 var (
-	_ detail.TextTrackRepository           = (*p1fStubRepo)(nil)
+	_ detail.TextTrackRepository          = (*p1fStubRepo)(nil)
 	_ youtubeports.SubtitleFetcherPort    = (*p1fStubSubtitles)(nil)
 	_ youtubeports.WhisperTranscriberPort = (*p1fStubTranscriber)(nil)
 )

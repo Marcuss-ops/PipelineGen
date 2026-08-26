@@ -9,10 +9,15 @@ import (
 )
 
 // RerankerConfig holds settings for the CrossEncoder reranking service.
-// The reranker is an optional post-Qdrant reordering layer that improves
-// semantic precision for all media types (clips, stock, artlist, images, voiceover).
+// The reranker is a post-Qdrant precision layer that improves semantic
+// relevance for all media types (clips, stock, artlist, images, voiceover).
+//
+// Enabled defaults to true (canonical recipe: Qdrant top_k window → BGE
+// re-score → top 5 results). Operators disable it explicitly with
+// VELOX_RERANKER_ENABLED=false; while disabled the Qdrant ranking is
+// returned untouched and no sidecar is required.
 type RerankerConfig struct {
-	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"false"`
+	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"true"`
 	URL       string  `yaml:"url" env:"VELOX_RERANKER_URL" default:"http://127.0.0.1:8091/rerank"`
 	Model     string  `yaml:"model" env:"VELOX_RERANKER_MODEL"`
 	TopK      int     `yaml:"top_k" env:"VELOX_RERANKER_TOP_K" default:"30"`

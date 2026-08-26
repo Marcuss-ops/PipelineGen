@@ -10,10 +10,9 @@
 //
 // must NOT import `internal/infrastructure/media/ffmpeg` OR
 // `internal/platform/process`. This file respects the invariant.
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"hash/fnv"
 	"math/rand"
 )
@@ -31,7 +30,7 @@ func hashFnv64(s string) int64 {
 //
 // FASE 2.4 (July 2026): the legacy parallel-array signature
 // ([][]string clipsBySource, [][]string titlesBySource, [][]string sourceIDsBySource)
-// is collapsed into a single [][]stockpipeline.Clip input. Each stockpipeline.Clip carries Path /
+// is collapsed into a single [][]Clip input. Each Clip carries Path /
 // Title / SourceID / Status / SizeBytes / DurationSec / Err; the caller
 // does the per-source slices verbatim and InterleaveClips no longer
 // has to reason about cross-slice index alignment (the previous
@@ -49,13 +48,13 @@ func hashFnv64(s string) int64 {
 //   - non-Succeeded Clips are filtered out of the output (Succeeded()
 //     predicate aligns with the downstream render stage)
 //   - empty input groups are silently skipped
-func InterleaveClips(clipsBySource [][]stockpipeline.Clip) []stockpipeline.Clip {
-	active := make([][]stockpipeline.Clip, 0, len(clipsBySource))
+func InterleaveClips(clipsBySource [][]Clip) []Clip {
+	active := make([][]Clip, 0, len(clipsBySource))
 	for _, list := range clipsBySource {
 		if len(list) == 0 {
 			continue
 		}
-		shuffled := make([]stockpipeline.Clip, len(list))
+		shuffled := make([]Clip, len(list))
 		copy(shuffled, list)
 		// P2 fix (July 2026): deterministic per-group shuffle replaces
 		// package-level var rng (was non-deterministic time.Now().UnixNano()).
@@ -84,7 +83,7 @@ func InterleaveClips(clipsBySource [][]stockpipeline.Clip) []stockpipeline.Clip 
 		}
 	}
 
-	var out []stockpipeline.Clip
+	var out []Clip
 	maxLen := 0
 	for _, list := range active {
 		if len(list) > maxLen {

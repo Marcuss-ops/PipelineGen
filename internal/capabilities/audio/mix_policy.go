@@ -20,6 +20,12 @@ const (
 )
 
 const (
+	// BackgroundMusicGainDB and SoundEffectGainDB are canonical absolute
+	// levels relative to the unity voiceover track. They are enforced by the
+	// canonical audio compiler; payload gain_db values cannot override them.
+	BackgroundMusicGainDB = -50.0
+	SoundEffectGainDB     = -10.0
+
 	// DuckClipBaseGainDB is the static clip-audio gain applied under the
 	// VOICEOVER_DUCKED_CLIP policy when no explicit gain is set.
 	DuckClipBaseGainDB = -18.0

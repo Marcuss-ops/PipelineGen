@@ -13,9 +13,9 @@
 package acceptance_test
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

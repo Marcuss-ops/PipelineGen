@@ -32,7 +32,6 @@
 package wiring
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
@@ -67,6 +66,13 @@ const (
 	// multi-term "0.1 collapse" noise) never surface pre-hydration.
 	// PR-MINSCORE-HYBRID (August 2026).
 	semanticHybridMinScore = 0.11
+
+	// semanticRerankTopResults is the final precision limit of the
+	// enabled reranker recipe (Qdrant top_k window → BGE re-score →
+	// top 5 results). After blending, the semantic backend returns only
+	// the semanticRerankTopResults most relevant assets; the aggregator
+	// still trims the merged page to the requested size.
+	semanticRerankTopResults = 5
 )
 
 // semanticSearchBackend is the Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY
@@ -187,6 +193,23 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		limit = search.MaxLimit
 	}
 
+	// ── 4b. Rerank fetch window ───────────────────────────────
+	// Canonical recipe (Qdrant top_k → BGE → top 5): when the reranker
+	// is enabled, Qdrant must return a wider candidate window than the
+	// final page so BGE can genuinely re-score the top_k window and the
+	// backend can return the top semanticRerankTopResults. The window
+	// is capped at MaxLimit so a pathological top_k cannot explode the
+	// fetch.
+	fetchLimit := limit
+	if b.reranker != nil && b.reranker.IsEnabled() {
+		if w := b.reranker.TopK(); w > fetchLimit {
+			fetchLimit = w
+		}
+		if fetchLimit > search.MaxLimit {
+			fetchLimit = search.MaxLimit
+		}
+	}
+
 	// ── 5. Execute vector search ───────────────────────────────
 	var results []assetsearch.VectorSearchResult
 	switch q.Mode {
@@ -202,7 +225,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			DenseVectorName:  semanticDenseVectorName,
 			SparseText:       q.Text,
 			SparseVectorName: semanticSparseVectorName,
-			Limit:            limit,
+			Limit:            fetchLimit,
 			MinScore:         hybridMinScore,
 			Source:           filter.Source,
 			Category:         filter.Category,
@@ -216,7 +239,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
 			QueryVector:    vec,
 			VectorName:     semanticDenseVectorName,
-			Limit:          limit,
+			Limit:          fetchLimit,
 			MinScore:       annMinScore,
 			Source:         filter.Source,
 			Category:       filter.Category,
@@ -462,6 +485,17 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		if rerankScore, ok := normalized[updated[i].AssetID]; ok {
 			updated[i].Score = reranker.MixedScore(updated[i].Score, rerankScore, weight)
 		}
+	}
+
+	// ── Canonical precision recipe ───────────────────────────
+	// Qdrant top_k → BGE → top 5: after blending, return only the
+	// semanticRerankTopResults most relevant assets. The final
+	// RankByScore in Search re-sorts; truncating here caps the semantic
+	// leg at the 5 best hits (the aggregator still trims the merged
+	// page to the requested size).
+	updated = search.RankByScore(updated)
+	if len(updated) > semanticRerankTopResults {
+		updated = updated[:semanticRerankTopResults]
 	}
 
 	return updated, nil

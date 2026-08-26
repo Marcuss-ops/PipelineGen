@@ -36,11 +36,6 @@
 //     "Wikipedia Contributors"; generated returns empty).
 package images
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-)
-
 // ImageSearchResult is the unified response DTO for territory-
 // separated search. Same shape for retrieved, generated, and
 // the aggregated /search?territory=all endpoints.

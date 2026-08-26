@@ -8,7 +8,7 @@ import (
 	"context"
 	"strings"
 
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"

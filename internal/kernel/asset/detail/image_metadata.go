@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 )
 
 // IsAIImageSource reports whether source identifies an AI/generated
@@ -88,7 +88,7 @@ func (b *CanonicalImageMetadataBuilder) WithBaseInfo(description, style, hash st
 	b.data["content_hash"] = hash
 	b.data["width"] = width
 	b.data["height"] = height
-	b.data["embedding_version_visual"] = defaults.VisualEmbeddingModelVersion
+	b.data["embedding_version_visual"] = coreembedding.VisualEmbeddingModelVersion
 	return b
 }
 

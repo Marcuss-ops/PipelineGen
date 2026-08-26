@@ -1,15 +1,14 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type resolverSearchFake struct{ searcher *resolverSearcherFake }

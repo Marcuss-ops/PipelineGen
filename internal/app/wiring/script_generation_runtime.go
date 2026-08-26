@@ -287,22 +287,24 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}),
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
 	})
-	// Shared worker pools: the generation gate capacity matches the certified
-	// NLP concurrency (VidRush extraction fans out to at most 4 concurrent
-	// scenes), and the TTS voiceover pool defaults to 4. Both are operator
-	// tunable via dedicated config env vars (VELOX_SCRIPTS_NLP_CONCURRENCY /
-	// VELOX_SCRIPTS_TTS_CONCURRENCY); the TTS pool falls back to the voiceover
-	// provider bound for backward compatibility. Docs publishing and the Rust
-	// final-audio render remain single-threaded.
+	// Shared worker pools: NLP/entity extraction and script text generation
+	// have independent gates and tunables. The TTS voiceover pool defaults to
+	// 4. Docs publishing and the Rust final-audio render remain single-threaded.
 	nlpConcurrency := cfg.Scripts.NLPConcurrency
 	if nlpConcurrency <= 0 {
 		nlpConcurrency = scriptgen.DefaultNLPConcurrency
 	}
-	ollamaGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
-	runner.SetGenerationGate(ollamaGate)
+	scriptGenerationConcurrency := cfg.Scripts.ScriptGenerationConcurrency
+	if scriptGenerationConcurrency <= 0 {
+		scriptGenerationConcurrency = 4
+	}
+	ollamaScriptGate := scriptgen.NewGenerationGateWithCapacity(scriptGenerationConcurrency)
+	ollamaNLPGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
+	runner.SetGenerationGate(ollamaScriptGate)
+	runner.SetNLPGenerationGate(ollamaNLPGate)
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
-		root.AI.SceneTextGenerator.SetSegmentConcurrency(nlpConcurrency)
-		root.AI.SceneTextGenerator.Engine.SetGenerationGate(ollamaGate)
+		root.AI.SceneTextGenerator.SetSegmentConcurrency(scriptGenerationConcurrency)
+		root.AI.SceneTextGenerator.Engine.SetGenerationGate(ollamaScriptGate)
 	}
 
 	ttsConcurrency := cfg.Scripts.TTSConcurrency
@@ -324,6 +326,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	runner.SetSerialMode(cfg.Scripts.SerialMode)
 	log.Info("script generation incremental VidRush pipeline wired (extraction + provider fan-out overlap generation)",
 		zap.Int("nlp_concurrency", nlpConcurrency),
+		zap.Int("script_generation_concurrency", scriptGenerationConcurrency),
 		zap.Int("tts_concurrency", ttsConcurrency),
 		zap.Bool("serial_mode", cfg.Scripts.SerialMode))
 

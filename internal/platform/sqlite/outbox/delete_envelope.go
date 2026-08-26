@@ -1,7 +1,6 @@
 package outbox
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
 
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"

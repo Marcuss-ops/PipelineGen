@@ -1,16 +1,15 @@
 // Package stockpipeline — run_orchestrator.go (Stock Cutover, July 2026).
 //
-// STATO ATTUALE: stockpipeline.Service.runOrchestratorResilient è il canonical
-// entrypoint per traffico produzione (stockpipeline.Service.HandleJob e
-// stockpipeline.Service.Run via runSyncPersist).
+// STATO ATTUALE: Service.runOrchestratorResilient è il canonical
+// entrypoint per traffico produzione (Service.HandleJob e
+// Service.Run via runSyncPersist).
 //
 // DEPRECATO: projectManifestToPipelineResult proietta il manifesto
-// nel legacy *stockpipeline.PipelineResult per il stockpipeline.ServiceRunner interface
+// nel legacy *PipelineResult per il ServiceRunner interface
 // (vedi manifest_projection.go).
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"fmt"
 	"strings"
@@ -25,17 +24,17 @@ import (
 )
 
 // runOrchestratorResilient is the canonical production entry point.
-// Calls stockpipeline.Orchestrator.RunResilient to obtain the *stockpipeline.RunSummary that pairs
+// Calls Orchestrator.RunResilient to obtain the *RunSummary that pairs
 // the typed *job.ArtifactManifest with the per-run FinalStatus.
 //
-// STATO ATTUALE: stockpipeline.Service.HandleJob (production broker traffic) uses
+// STATO ATTUALE: Service.HandleJob (production broker traffic) uses
 // this variant so FinalStatus surfaces in the result map.
-// stockpipeline.Service.runOrchestrator (manifest-only) remains for legacy callers.
+// Service.runOrchestrator (manifest-only) remains for legacy callers.
 //
 // Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
 // artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
 // manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
-func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, input *stockpipeline.RunInput, jobID string) (summary *stockpipeline.RunSummary, err error) {
+func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (summary *RunSummary, err error) {
 	var ownedRun *kernobs.Run
 	defer func() {
 		if ownedRun != nil {
@@ -43,10 +42,10 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 		}
 	}()
 	if s == nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil receiver")
+		return nil, fmt.Errorf("Service.runOrchestratorResilient: nil receiver")
 	}
 	if input == nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *stockpipeline.RunInput")
+		return nil, fmt.Errorf("Service.runOrchestratorResilient: nil *RunInput")
 	}
 	if kernobs.FromContext(ctx) == nil {
 		// The job runtime normally binds the canonical Run before entering
@@ -60,11 +59,11 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 	// resolved folder. This keeps Drive hierarchy creation inside stock.
 	if strings.TrimSpace(input.DriveFolderID) != "" && strings.TrimSpace(input.FolderName) != "" {
 		if s.folderCreator == nil {
-			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: folder creator is not wired")
+			return nil, fmt.Errorf("Service.runOrchestratorResilient: folder creator is not wired")
 		}
 		folderID, folderErr := s.folderCreator.GetOrCreateFolder(ctx, strings.TrimSpace(input.FolderName), strings.TrimSpace(input.DriveFolderID))
 		if folderErr != nil {
-			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: create stock root folder: %w", folderErr)
+			return nil, fmt.Errorf("Service.runOrchestratorResilient: create stock root folder: %w", folderErr)
 		}
 		input.DriveFolderID = folderID
 		input.DriveFolderResolved = true
@@ -85,10 +84,10 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 		finishServiceStockPhase(s.log, searchMetric, searchErr)
 	}
 	if searchErr != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: %w", searchErr)
+		return nil, fmt.Errorf("Service.runOrchestratorResilient: %w", searchErr)
 	}
 
-	cfg := stockpipeline.OrchestratorConfig{
+	cfg := OrchestratorConfig{
 		JobId:            jobID,
 		Lease:            input.FinalizationLease,
 		PolicyVersion:    "v1",
@@ -97,19 +96,19 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 	}
 	// Phase 2 (July 2026): wire SQLite-backed step store for
 	// crash-resume across process restarts. When db is nil (stock
-	// stockpipeline.Service routed via imageSvc, WireStockPipeline stubbed), the
+	// Service routed via imageSvc, WireStockPipeline stubbed), the
 	// orchestrator falls back to in-memory (test orchestrator default).
 	// PROSSIMO STEP: make DB required when WireStockPipeline is
 	// re-enabled.
 	if s.stepStore != nil {
 		cfg.StepStore = s.stepStore
 	}
-	planner := stockpipeline.NewDeterministicPlanner()
+	planner := NewDeterministicPlanner()
 	// Resolve the acquisition.SourceStager for the orchestrator.
-	// stockpipeline.StockStager implements acquisition.SourceStager via Prepare/Release
+	// StockStager implements acquisition.SourceStager via Prepare/Release
 	// adapter methods (stager_adapter.go).
 	stager := s.stagerForRun()
-	writer := stockpipeline.TransactionalAssetWriter(nil)
+	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {
 		writer = stockDispatcherWriter{dispatcher: s.dispatcher, termUpdater: s.clipsRepo}
 	}
@@ -117,13 +116,13 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 	if s.publisher != nil {
 		artifactPreparation = finalizer.NewArtifactPreparation(s.publisherPort, s.log)
 	}
-	var o *stockpipeline.Orchestrator
+	var o *Orchestrator
 	if s.runtimeMode == stockPipelineTestMode {
 		// Fixture services are intentionally routed through the fixture
 		// constructor. Its in-memory step store and noop resilience ports
 		// cannot leak into production because production services take the
 		// strict branch below.
-		o = stockpipeline.NewTestStockOrchestrator(cfg, planner, stager, s.cutter, s.renderer)
+		o = NewTestStockOrchestrator(cfg, planner, stager, s.cutter, s.renderer)
 	} else {
 		var constructErr error
 		o, constructErr = NewProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
@@ -141,12 +140,12 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 			},
 		})
 		if constructErr != nil {
-			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: construct production pipeline: %w", constructErr)
+			return nil, fmt.Errorf("Service.runOrchestratorResilient: construct production pipeline: %w", constructErr)
 		}
 	}
 	summary, err = o.RunResilient(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: orchestrator.RunResilient: %w", err)
+		return nil, fmt.Errorf("Service.runOrchestratorResilient: orchestrator.RunResilient: %w", err)
 	}
 	if s.log != nil {
 		s.log.Info("stock orchestrator resilient run succeeded",
@@ -160,7 +159,7 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 
 // runSyncPersist (July 2026) routes ALL sync paths through the
 // resilient orchestrator (RunResilient) with a synthetic broker
-// lease, so stockpipeline.StockFinalizeStep writes to media_assets via the
+// lease, so StockFinalizeStep writes to media_assets via the
 // single-TX spine. This is the canonical path for both
 // persist=true and persist=false sync-mode stock pipeline requests.
 //
@@ -169,11 +168,11 @@ func (s *stockpipeline.Service) runOrchestratorResilient(ctx context.Context, in
 // produces a distinct lease — the finalizer's CAS-fence won't
 // conflate two sync-mode calls that happen to share a jobID.
 //
-// The §12-1 P0 #2 gate (in stockpipeline.Orchestrator.RunResilient) fires
+// The §12-1 P0 #2 gate (in Orchestrator.RunResilient) fires
 // typed errors when either publisher or finalizer is nil — the
-// caller converts those to the stockpipeline.ServiceRunner error surface without
+// caller converts those to the ServiceRunner error surface without
 // special-casing.
-func (s *stockpipeline.Service) runSyncPersist(ctx context.Context, input *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error) {
+func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*PipelineResult, error) {
 	// Generate synthetic identifiers for sync-mode persistence.
 	// The lease uses deterministic JobID/WorkerID so the finalizer's
 	// CAS-fence (revision-match on jobs table) is still meaningful
@@ -190,7 +189,7 @@ func (s *stockpipeline.Service) runSyncPersist(ctx context.Context, input *stock
 	}
 
 	if s.jobCreator == nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: durable job creator is not wired")
+		return nil, fmt.Errorf("Service.runSyncPersist: durable job creator is not wired")
 	}
 	now := time.Now().UTC()
 	if err := s.jobCreator.Create(ctx, &job.Job{
@@ -200,7 +199,7 @@ func (s *stockpipeline.Service) runSyncPersist(ctx context.Context, input *stock
 		LeaseExpiry: &input.FinalizationLease.ExpiresAt,
 		CreatedAt:   now, UpdatedAt: now, Revision: 1,
 	}); err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: insert synthetic job: %w", err)
+		return nil, fmt.Errorf("Service.runSyncPersist: insert synthetic job: %w", err)
 	}
 
 	// Delegate to the canonical resilient path — runOrchestratorResilient
@@ -209,12 +208,12 @@ func (s *stockpipeline.Service) runSyncPersist(ctx context.Context, input *stock
 	// orchestrator construction lives in exactly one method.
 	summary, err := s.runOrchestratorResilient(ctx, input, jobID)
 	if err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: %w", err)
+		return nil, fmt.Errorf("Service.runSyncPersist: %w", err)
 	}
 
 	projected, err := projectManifestToPipelineResult(summary.Manifest)
 	if err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: %w", err)
+		return nil, fmt.Errorf("Service.runSyncPersist: %w", err)
 	}
 	return projected, nil
 }

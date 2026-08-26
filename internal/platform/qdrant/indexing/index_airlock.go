@@ -65,11 +65,9 @@
 package indexing
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"strings"
-
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"strings"
 )
 
 // assetToIndexDocumentNoValidate is the unguarded AssetData →
@@ -99,7 +97,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 
 	title := asset.Title
 	if title == "" {
-		title = assetpkg.MetadataString(asset.Metadata, "title")
+		title = domain.MetadataString(asset.Metadata, "title")
 	}
 	if title == "" {
 		title = asset.Name
@@ -110,33 +108,33 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	}
 	description := asset.Description
 	if description == "" {
-		description = assetpkg.MetadataString(asset.Metadata, "description")
+		description = domain.MetadataString(asset.Metadata, "description")
 	}
 	summary := asset.Summary
 	if summary == "" {
-		summary = assetpkg.MetadataString(asset.Metadata, "summary")
+		summary = domain.MetadataString(asset.Metadata, "summary")
 	}
 	if summary == "" {
-		summary = assetpkg.MetadataString(asset.Metadata, "clip_summary")
+		summary = domain.MetadataString(asset.Metadata, "clip_summary")
 	}
-	semanticSummary := assetpkg.MetadataString(asset.Metadata, "semantic_summary")
+	semanticSummary := domain.MetadataString(asset.Metadata, "semantic_summary")
 	sourceURL := asset.SourceURL
 	if sourceURL == "" {
-		sourceURL = assetpkg.MetadataString(asset.Metadata, "source_url")
+		sourceURL = domain.MetadataString(asset.Metadata, "source_url")
 	}
 	if sourceURL == "" {
 		sourceURL = asset.YouTubeURL
 	}
 	sourceVideoID := asset.SourceVideoID
 	if sourceVideoID == "" {
-		sourceVideoID = parseSourceVideoID(assetpkg.MetadataString(asset.Metadata, "source_url"), assetpkg.MetadataString(asset.Metadata, "source_video_id"))
+		sourceVideoID = parseSourceVideoID(domain.MetadataString(asset.Metadata, "source_url"), domain.MetadataString(asset.Metadata, "source_video_id"))
 	}
 	if sourceVideoID == "" {
 		sourceVideoID = parseSourceVideoID(asset.YouTubeURL, asset.YouTubeVideoID)
 	}
 	destination := asset.Destination
 	if destination == "" {
-		destination = assetpkg.MetadataString(asset.Metadata, "destination")
+		destination = domain.MetadataString(asset.Metadata, "destination")
 	}
 	// PR 6 (July 2026): removed the legacy fall-back to `string(asset.Source)`
 	// for destination / source_provider / origin. The pre-PR-6 airlock
@@ -147,46 +145,46 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	// explicitly via top-level AssetData fields or MetadataJSON.
 	sourceProvider := asset.SourceProvider
 	if sourceProvider == "" {
-		sourceProvider = assetpkg.MetadataString(asset.Metadata, "source_provider")
+		sourceProvider = domain.MetadataString(asset.Metadata, "source_provider")
 	}
 	if sourceProvider == "" {
-		sourceProvider = assetpkg.MetadataString(asset.Metadata, "origin_provider")
+		sourceProvider = domain.MetadataString(asset.Metadata, "origin_provider")
 	}
 	origin := asset.Origin
 	if origin == "" {
-		origin = assetpkg.MetadataString(asset.Metadata, "origin")
+		origin = domain.MetadataString(asset.Metadata, "origin")
 	}
 	event := asset.Event
 	if event == "" {
-		event = assetpkg.MetadataString(asset.Metadata, "event")
+		event = domain.MetadataString(asset.Metadata, "event")
 	}
 	round := asset.Round
 	if round == 0 {
-		round = assetpkg.MetadataInt(asset.Metadata, "round")
+		round = domain.MetadataInt(asset.Metadata, "round")
 	}
 	scene := asset.Scene
 	if scene == "" {
-		scene = assetpkg.MetadataString(asset.Metadata, "scene")
+		scene = domain.MetadataString(asset.Metadata, "scene")
 	}
 	subject := asset.Subject
 	if subject == "" {
-		subject = assetpkg.MetadataString(asset.Metadata, "subject")
+		subject = domain.MetadataString(asset.Metadata, "subject")
 	}
-	semanticTitle := assetpkg.MetadataString(asset.Metadata, "semantic_title")
+	semanticTitle := domain.MetadataString(asset.Metadata, "semantic_title")
 	if semanticTitle == "" {
 		semanticTitle = buildSemanticTitle(title, event, round, scene, subject)
 	}
-	embeddingText := assetpkg.MetadataString(asset.Metadata, "embedding_text")
-	topics := assetpkg.MetadataStringSlice(asset.Metadata, "topics")
-	speakers := assetpkg.MetadataStringSlice(asset.Metadata, "speakers")
-	mentionedPeople := assetpkg.MetadataStringSlice(asset.Metadata, "mentioned_people")
-	people := assetpkg.MetadataStringSlice(asset.Metadata, "people")
-	sourceTags := assetpkg.MetadataStringSlice(asset.Metadata, "source_tags")
-	clipTags := assetpkg.MetadataStringSlice(asset.Metadata, "clip_tags")
-	searchKeywords := assetpkg.MetadataStringSlice(asset.Metadata, "search_keywords")
+	embeddingText := domain.MetadataString(asset.Metadata, "embedding_text")
+	topics := domain.MetadataStringSlice(asset.Metadata, "topics")
+	speakers := domain.MetadataStringSlice(asset.Metadata, "speakers")
+	mentionedPeople := domain.MetadataStringSlice(asset.Metadata, "mentioned_people")
+	people := domain.MetadataStringSlice(asset.Metadata, "people")
+	sourceTags := domain.MetadataStringSlice(asset.Metadata, "source_tags")
+	clipTags := domain.MetadataStringSlice(asset.Metadata, "clip_tags")
+	searchKeywords := domain.MetadataStringSlice(asset.Metadata, "search_keywords")
 	entities := asset.Entities
 	if len(entities) == 0 {
-		entities = assetpkg.MetadataStringSlice(asset.Metadata, "entities")
+		entities = domain.MetadataStringSlice(asset.Metadata, "entities")
 	}
 	if len(entities) == 0 {
 		entities = mergeStringSlices(nil, people, speakers, mentionedPeople)
@@ -197,19 +195,19 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	}
 	policyVersion := asset.PolicyVersion
 	if policyVersion == "" {
-		policyVersion = assetpkg.MetadataString(asset.Metadata, "policy_version")
+		policyVersion = domain.MetadataString(asset.Metadata, "policy_version")
 	}
 	if policyVersion == "" {
 		policyVersion = asset.IndexVersion
 	}
-	drivePath := cleanDrivePath(assetpkg.MetadataString(asset.Metadata, "drive_path"))
+	drivePath := cleanDrivePath(domain.MetadataString(asset.Metadata, "drive_path"))
 	folderID := asset.FolderID
 	if folderID == "" {
-		folderID = assetpkg.MetadataString(asset.Metadata, "folder_id")
+		folderID = domain.MetadataString(asset.Metadata, "folder_id")
 	}
 	folderPath := asset.FolderPath
 	if folderPath == "" {
-		folderPath = assetpkg.MetadataString(asset.Metadata, "folder_path")
+		folderPath = domain.MetadataString(asset.Metadata, "folder_path")
 	}
 	// DriveLink is authoritative on AssetData. AssetStore hydrates it
 	// from media_assets.drive_link; do not fall back to metadata_json,
@@ -239,19 +237,19 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	// v1 reads `transcript` from metadata_json ONLY as a one-time
 	// bridge; producers that have an is_current row revert to the
 	// canonical slice and the single-string key becomes vestigial.
-	legacyTranscript := strings.TrimSpace(assetpkg.MetadataString(asset.Metadata, "transcript"))
-	indexingStatus := assetpkg.MetadataString(asset.Metadata, "indexing_status")
+	legacyTranscript := strings.TrimSpace(domain.MetadataString(asset.Metadata, "transcript"))
+	indexingStatus := domain.MetadataString(asset.Metadata, "indexing_status")
 	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
 	// folder metadata. Read from top-level AssetData first, fall
 	// back to metadata_json for backward compat with old callers
 	// that haven't yet surfaced these fields explicitly.
 	timestampDriveFolderLink := asset.TimestampDriveFolderLink
 	if timestampDriveFolderLink == "" {
-		timestampDriveFolderLink = assetpkg.MetadataString(asset.Metadata, "timestamp_drive_folder_link")
+		timestampDriveFolderLink = domain.MetadataString(asset.Metadata, "timestamp_drive_folder_link")
 	}
 	timestampFolderID := asset.TimestampFolderID
 	if timestampFolderID == "" {
-		timestampFolderID = assetpkg.MetadataString(asset.Metadata, "timestamp_folder_id")
+		timestampFolderID = domain.MetadataString(asset.Metadata, "timestamp_folder_id")
 	}
 
 	// EmbeddingArtifact population needs the dimensional vectors; resolve
@@ -263,7 +261,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		AssetID:        asset.ID,
 		WorkspaceID:    asset.WorkspaceID,
 		LifecycleState: domainAssetLifecycle(asset.LifecycleState),
-		SourceVersion:  detail.SourceVersion,
+		SourceVersion:  asset.SourceVersion,
 		ContentHash:    asset.ContentHash,
 		SearchText:     asset.SearchText, // legacy pass-through (BuildPayload entry); mapper receivers override via AssetToIndexDocument
 		Metadata: IndexedMetadata{
@@ -276,14 +274,14 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			Tags:             asset.Tags,
 			Source:           asset.Source,
 			MediaType:        asset.MediaType,
-			AssetRole:        firstNonEmpty(asset.AssetRole, assetpkg.MetadataString(asset.Metadata, "asset_role")),
-			NormalizedGroup:  firstNonEmpty(asset.NormalizedGroup, assetpkg.MetadataString(asset.Metadata, "normalized_group")),
+			AssetRole:        firstNonEmpty(asset.AssetRole, domain.MetadataString(asset.Metadata, "asset_role")),
+			NormalizedGroup:  firstNonEmpty(asset.NormalizedGroup, domain.MetadataString(asset.Metadata, "normalized_group")),
 			Namespace:        asset.Namespace,
 			AssetKind:        asset.AssetKind,
 			SourceType:       asset.SourceType,
 			SemanticRole:     asset.SemanticRole,
 			HasDialogue:      metadataBoolPtr(asset.Metadata, asset.HasDialogue),
-			AudioProfile:     firstNonEmpty(detail.AudioProfile, assetpkg.MetadataString(asset.Metadata, "audio_profile")),
+			AudioProfile:     domain.MetadataString(asset.Metadata, "audio_profile"),
 			Language:         asset.Language,
 			Category:         asset.Category,
 			Style:            asset.Style,
@@ -315,13 +313,13 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			ClipTags:         clipTags,
 			SearchKeywords:   searchKeywords,
 			Entities:         entities,
-			Hook:             assetpkg.MetadataString(asset.Metadata, "hook"),
-			SearchVisibility: assetpkg.MetadataString(asset.Metadata, "search_visibility"),
-			JobID:            firstNonEmpty(asset.JobID, assetpkg.MetadataString(asset.Metadata, "job_id")),
-			WorkflowID:       firstNonEmpty(asset.WorkflowID, assetpkg.MetadataString(asset.Metadata, "workflow_id")),
-			RunFingerprint:   firstNonEmpty(asset.RunFingerprint, assetpkg.MetadataString(asset.Metadata, "run_fingerprint")),
-			ChunkIndex:       intOrFallback(asset.ChunkIndex, assetpkg.MetadataInt(asset.Metadata, "chunk_index")),
-			TotalChunks:      intOrFallback(asset.TotalChunks, assetpkg.MetadataInt(asset.Metadata, "total_chunks")),
+			Hook:             domain.MetadataString(asset.Metadata, "hook"),
+			SearchVisibility: domain.MetadataString(asset.Metadata, "search_visibility"),
+			JobID:            firstNonEmpty(asset.JobID, domain.MetadataString(asset.Metadata, "job_id")),
+			WorkflowID:       firstNonEmpty(asset.WorkflowID, domain.MetadataString(asset.Metadata, "workflow_id")),
+			RunFingerprint:   firstNonEmpty(asset.RunFingerprint, domain.MetadataString(asset.Metadata, "run_fingerprint")),
+			ChunkIndex:       intOrFallback(asset.ChunkIndex, domain.MetadataInt(asset.Metadata, "chunk_index")),
+			TotalChunks:      intOrFallback(asset.TotalChunks, domain.MetadataInt(asset.Metadata, "total_chunks")),
 			PolicyVersion:    policyVersion,
 			DrivePath:        drivePath,
 			FolderID:         folderID,
@@ -352,16 +350,16 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			UpdatedAt:                asset.UpdatedAt,
 			DeletedAt:                asset.DeletedAt,
 			// ── Text track projection ──
-			OriginalLanguage:    assetpkg.MetadataString(asset.Metadata, "original_language"),
-			AvailableLanguages:  assetpkg.MetadataStringSlice(asset.Metadata, "available_languages"),
+			OriginalLanguage:    domain.MetadataString(asset.Metadata, "original_language"),
+			AvailableLanguages:  domain.MetadataStringSlice(asset.Metadata, "available_languages"),
 			TranscriptAvailable: metadataBool(asset.Metadata, "transcript_available"),
-			TextTracksVersion:   assetpkg.MetadataString(asset.Metadata, "text_tracks_version"),
+			TextTracksVersion:   domain.MetadataString(asset.Metadata, "text_tracks_version"),
 
 			// ── VLM visual summary block (FASE-9 + visual-summary reindex) ────
 			// Verbatim copy from AssetData (top-level first-class fields; the
 			// visual-summary reindex service populates these when it runs a
 			// new VLM pass; the payload builder emits them with omitempty).
-			VisualSummary:              detail.VisualSummary,
+			VisualSummary:              asset.VisualSummary,
 			VisibleActions:             asset.VisibleActions,
 			VisibleEntities:            asset.VisibleEntities,
 			VisualPreprocessingVersion: asset.VisualPreprocessingVersion,
@@ -408,17 +406,17 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 }
 
 // domainAssetLifecycle converts a media_assets.lifecycle_state string
-// to the canonical asset.LifecycleState. Empty → ACTIVE (legacy rows
+// to the canonical domain.LifecycleState. Empty → ACTIVE (legacy rows
 // post-migration 101 fall through to ACTIVE; canonical fallback).
 //
 // Lives in the acquire phase because the lifecycle state is the first
 // acquire-time normalisation: the wire shape MUST carry a non-empty
 // LifecycleState (godlike/07: a missing lifecycle state is treated as
 // an `ACTIVE` row at SQL-fetch time, not omitted at wire time).
-func domainAssetLifecycle(raw string) assetpkg.LifecycleState {
+func domainAssetLifecycle(raw string) domain.LifecycleState {
 	const fallback = "ACTIVE"
 	if raw == "" {
-		return assetpkg.LifecycleState(fallback)
+		return domain.LifecycleState(fallback)
 	}
-	return assetpkg.LifecycleState(raw)
+	return domain.LifecycleState(raw)
 }

@@ -28,7 +28,7 @@ import (
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/metadataexport"
 
@@ -216,7 +216,7 @@ func registerOutboxWorkers(
 	metadataExportHandler outboxevents.Handler,
 	jobs *JobsBundle,
 	stagingSvc staging.Store,
-	repo artifact.ArtifactStageRepository,
+	repo detail.ArtifactStageRepository,
 	imageRepo *imagesrepo.ImagesRepository,
 	drivePublisher delivery.Publisher,
 ) (*publishoutbox.Handler, *publishdrive.Handler, error) {

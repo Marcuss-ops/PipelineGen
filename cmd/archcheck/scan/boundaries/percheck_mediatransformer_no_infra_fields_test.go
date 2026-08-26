@@ -31,7 +31,7 @@
 //     `hasAnySubstring`).
 //
 //  5. Canonical-file-unreadable (the gate trip when the
-//     canonical processor.go is absent) still works.
+//     canonical detail/processor.go is absent) still works.
 package boundaries
 
 import (
@@ -44,12 +44,12 @@ import (
 )
 
 // writeFakeProcessorForWbTest scaffolds
-// <root>/internal/kernel/asset/processor.go with the supplied
+// <root>/internal/kernel/asset/detail/processor.go with the supplied
 // content. Mirrors the write-pattern from
 // percheck_asset_state_canonical_14_test.go.
 func writeFakeProcessorForWbTest(t *testing.T, root, content string) {
 	t.Helper()
-	full := filepath.Join(root, "internal", "kernel", "asset", "processor.go")
+	full := filepath.Join(root, "internal", "kernel", "asset", "detail", "processor.go")
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestScanMediaTransformerNoInfraFields_CanonicalFileUnreadable(t *testing.T)
 	rep := &report.Report{}
 	ScanMediaTransformerNoInfraFields(root, nil, rep)
 	if len(rep.Violations) == 0 {
-		t.Fatalf("missing canonical processor.go did NOT trip gate; expected ≥ 1 violation")
+		t.Fatalf("missing canonical detail/processor.go did NOT trip gate; expected ≥ 1 violation")
 	}
 	if rep.Violations[0].MatchedRule != "canonical_file_unreadable" {
 		t.Fatalf("canonical-file-unreadable matched rule = %q, want %q",

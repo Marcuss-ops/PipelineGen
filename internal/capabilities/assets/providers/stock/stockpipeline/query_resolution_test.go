@@ -1,7 +1,6 @@
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"errors"
 	"sort"
@@ -19,14 +18,14 @@ type queryResolutionLister struct {
 	maxActive int
 	calls     []string
 	completed []string
-	results   map[string][]stockpipeline.VideoInfo
+	results   map[string][]VideoInfo
 	errors    map[string]error
 	delays    map[string]time.Duration
 	delay     time.Duration
 	wait      bool
 }
 
-func (f *queryResolutionLister) ListChannel(ctx context.Context, channelURL string, _ int) ([]stockpipeline.VideoInfo, error) {
+func (f *queryResolutionLister) ListChannel(ctx context.Context, channelURL string, _ int) ([]VideoInfo, error) {
 	f.mu.Lock()
 	f.active++
 	if f.active > f.maxActive {
@@ -77,21 +76,21 @@ func (f *queryResolutionLister) snapshot() (maxActive int, calls, completed []st
 	return f.maxActive, append([]string(nil), f.calls...), append([]string(nil), f.completed...)
 }
 
-func newQueryResolutionService(lister stockpipeline.ChannelLister) *stockpipeline.Service {
-	return &stockpipeline.Service{
-		runtime:       &stockpipeline.RuntimeConfig{MaxResults: 25},
+func newQueryResolutionService(lister ChannelLister) *Service {
+	return &Service{
+		runtime:       &RuntimeConfig{MaxResults: 25},
 		log:           zap.NewNop(),
 		channelLister: lister,
 	}
 }
 
-func videoInfo(id string) stockpipeline.VideoInfo {
-	return stockpipeline.VideoInfo{ID: id, Title: id}
+func videoInfo(id string) VideoInfo {
+	return VideoInfo{ID: id, Title: id}
 }
 
 func TestResolveInputQueries_BoundedDeterministicAndDeduplicated(t *testing.T) {
 	lister := &queryResolutionLister{
-		results: map[string][]stockpipeline.VideoInfo{
+		results: map[string][]VideoInfo{
 			"query-a": {videoInfo("a"), videoInfo("shared")},
 			"query-b": {videoInfo("b"), videoInfo("shared")},
 			"query-c": {videoInfo("c")},
@@ -106,7 +105,7 @@ func TestResolveInputQueries_BoundedDeterministicAndDeduplicated(t *testing.T) {
 		},
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{
+	input := &RunInput{
 		SearchQueries: []string{"query-a", "query-b", "query-c", "query-d", "query-e"},
 		DirectURLs:    []string{" https://direct.example/video.mp4 ", "https://www.youtube.com/watch?v=shared"},
 	}
@@ -140,12 +139,12 @@ func TestResolveInputQueries_BoundedDeterministicAndDeduplicated(t *testing.T) {
 
 func TestResolveInputQueries_PropagatesParentCancellation(t *testing.T) {
 	lister := &queryResolutionLister{
-		results: make(map[string][]stockpipeline.VideoInfo),
+		results: make(map[string][]VideoInfo),
 		errors:  make(map[string]error),
 		wait:    true,
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{SearchQueries: []string{"a", "b", "c", "d"}}
+	input := &RunInput{SearchQueries: []string{"a", "b", "c", "d"}}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
@@ -177,12 +176,12 @@ func TestResolveInputQueries_PropagatesParentCancellation(t *testing.T) {
 func TestResolveInputQueries_PropagatesContextProviderErrorWithoutCancellingSiblings(t *testing.T) {
 	providerErr := context.DeadlineExceeded
 	lister := &queryResolutionLister{
-		results: map[string][]stockpipeline.VideoInfo{"good": {videoInfo("good")}},
+		results: map[string][]VideoInfo{"good": {videoInfo("good")}},
 		errors:  map[string]error{"bad": providerErr},
 		delay:   5 * time.Millisecond,
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{SearchQueries: []string{"bad", "good"}}
+	input := &RunInput{SearchQueries: []string{"bad", "good"}}
 
 	require.NoError(t, svc.resolveInputQueries(context.Background(), input))
 	require.Equal(t, []string{"https://www.youtube.com/watch?v=good"}, input.DirectURLs)
@@ -191,11 +190,11 @@ func TestResolveInputQueries_PropagatesContextProviderErrorWithoutCancellingSibl
 func TestResolveInputQueries_AllFailuresWithDirectURLRemainUsable(t *testing.T) {
 	providerErr := errors.New("provider unavailable")
 	lister := &queryResolutionLister{
-		results: make(map[string][]stockpipeline.VideoInfo),
+		results: make(map[string][]VideoInfo),
 		errors:  map[string]error{"bad": providerErr},
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{
+	input := &RunInput{
 		SearchQueries: []string{"bad"},
 		DirectURLs:    []string{" https://direct.example/video.mp4 ", "https://direct.example/video.mp4"},
 	}
@@ -207,11 +206,11 @@ func TestResolveInputQueries_AllFailuresWithDirectURLRemainUsable(t *testing.T) 
 func TestResolveInputQueries_AllFailuresReturnTypedError(t *testing.T) {
 	providerErr := errors.New("provider unavailable")
 	lister := &queryResolutionLister{
-		results: make(map[string][]stockpipeline.VideoInfo),
+		results: make(map[string][]VideoInfo),
 		errors:  map[string]error{"bad-a": providerErr, "bad-b": providerErr},
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{SearchQueries: []string{"bad-a", "bad-b"}}
+	input := &RunInput{SearchQueries: []string{"bad-a", "bad-b"}}
 
 	err := svc.resolveInputQueries(context.Background(), input)
 	require.ErrorIs(t, err, ErrStockPipelineAllQueriesFailed)
@@ -220,17 +219,17 @@ func TestResolveInputQueries_AllFailuresReturnTypedError(t *testing.T) {
 }
 
 func TestResolveInputQueries_NilInputsAreNoOp(t *testing.T) {
-	var svc *stockpipeline.Service
+	var svc *Service
 	require.NoError(t, svc.resolveInputQueries(context.Background(), nil))
 }
 
 func TestResolveInputQueries_HonorsPerQueryLimit(t *testing.T) {
 	lister := &queryResolutionLister{
-		results: make(map[string][]stockpipeline.VideoInfo),
+		results: make(map[string][]VideoInfo),
 		errors:  make(map[string]error),
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{
+	input := &RunInput{
 		SearchQueries:     []string{"a", "b"},
 		SearchQueryLimits: []int{1, 3},
 	}
@@ -246,11 +245,11 @@ func TestResolveInputQueries_DefaultsWhenLimitsMissing(t *testing.T) {
 	// A shorter limits slice (or no limits at all) must fall back to the
 	// runtime default (25) per query rather than zeroing the fan-out.
 	lister := &queryResolutionLister{
-		results: map[string][]stockpipeline.VideoInfo{"a": {videoInfo("a")}},
+		results: map[string][]VideoInfo{"a": {videoInfo("a")}},
 		errors:  make(map[string]error),
 	}
 	svc := newQueryResolutionService(lister)
-	input := &stockpipeline.RunInput{
+	input := &RunInput{
 		SearchQueries:     []string{"a", "b"},
 		SearchQueryLimits: []int{1}, // shorter than queries
 	}

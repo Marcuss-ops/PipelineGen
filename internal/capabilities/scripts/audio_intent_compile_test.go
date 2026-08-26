@@ -91,10 +91,10 @@ func TestCompileAudioWithIntents_FundamentalPlan(t *testing.T) {
 	// BGM: 4 deterministic loop events covering [0,75s) exactly.
 	bgm := eventsForRole(plan, audio.TrackBGM)
 	wantBGM := []audio.AudioEvent{
-		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 0, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
-		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 20_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
-		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 40_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
-		{EventID: "bgm-3", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 60_000_000, DurationUS: 15_000_000, SourceInUS: 0, SourceDurationUS: 15_000_000, GainDB: -24},
+		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 0, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 20_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 40_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-3", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 60_000_000, DurationUS: 15_000_000, SourceInUS: 0, SourceDurationUS: 15_000_000, GainDB: audio.BackgroundMusicGainDB},
 	}
 	if len(bgm) != len(wantBGM) {
 		t.Fatalf("bgm events = %+v, want %d", bgm, len(wantBGM))
@@ -108,9 +108,9 @@ func TestCompileAudioWithIntents_FundamentalPlan(t *testing.T) {
 	// SFX: whoosh with trims, impact/boom sized from their source assets.
 	sfx := eventsForRole(plan, audio.TrackSFX)
 	wantSFX := []audio.AudioEvent{
-		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx_whoosh", TimelineStartUS: 12_000_000, DurationUS: 900_000, SourceInUS: 250_000, SourceDurationUS: 900_000, GainDB: -8},
-		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx_impact", TimelineStartUS: 31_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: -5},
-		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx_boom", TimelineStartUS: 69_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: -3},
+		{EventID: "sfx-0", Type: audio.EventSFX, AssetID: "sfx_whoosh", TimelineStartUS: 12_000_000, DurationUS: 900_000, SourceInUS: 250_000, SourceDurationUS: 900_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-1", Type: audio.EventSFX, AssetID: "sfx_impact", TimelineStartUS: 31_000_000, DurationUS: 500_000, SourceInUS: 0, SourceDurationUS: 500_000, GainDB: audio.SoundEffectGainDB},
+		{EventID: "sfx-2", Type: audio.EventSFX, AssetID: "sfx_boom", TimelineStartUS: 69_000_000, DurationUS: 300_000, SourceInUS: 0, SourceDurationUS: 300_000, GainDB: audio.SoundEffectGainDB},
 	}
 	if len(sfx) != len(wantSFX) {
 		t.Fatalf("sfx events = %+v, want %d", sfx, len(wantSFX))
@@ -145,14 +145,14 @@ func TestCompileAudioWithIntents_FundamentalPlan(t *testing.T) {
 		t.Fatalf("automation = %+v, want 1 fade + 3 duck entries", plan.Automation)
 	}
 	fade := plan.Automation[0]
-	if fade.TargetTrackID != "bgm" || fade.AttackUS != 1_000_000 || fade.ReleaseUS != 1_800_000 || fade.GainDB != -24 {
+	if fade.TargetTrackID != "bgm" || fade.AttackUS != 1_000_000 || fade.ReleaseUS != 1_800_000 || fade.GainDB != audio.BackgroundMusicGainDB {
 		t.Fatalf("fade automation = %+v", fade)
 	}
 	wantDuckWindows := [][2]int64{{0, 20_000_000}, {25_000_000, 47_000_000}, {50_000_000, 68_000_000}}
 	for i, w := range wantDuckWindows {
 		d := plan.Automation[i+1]
-		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != -30 || d.AttackUS != 120_000 || d.ReleaseUS != 350_000 {
-			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at -30dB", i, d, w[0], w[1])
+		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != audio.BackgroundMusicGainDB || d.AttackUS != 120_000 || d.ReleaseUS != 350_000 {
+			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], audio.BackgroundMusicGainDB)
 		}
 	}
 

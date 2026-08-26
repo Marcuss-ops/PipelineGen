@@ -69,14 +69,12 @@ func DefaultVidRushBackpressure() VidRushBackpressure {
 	return VidRushBackpressure{}.resolved()
 }
 
-// GenerationGate is a capacity-bounded priority gate shared by scene
-// generation (high priority) and VidRush entity extraction (low priority)
-// when both use the same local Ollama model. A high-priority acquisition
-// jumps the queue ahead of waiting low-priority acquisitions, so text
-// generation is never starved by concurrent entity extraction; extraction
-// fills the remaining slots between generation calls instead of competing
-// with them. The default capacity is 1 (single-slot model); a capacity of N
-// admits N concurrent holders.
+// GenerationGate is a capacity-bounded priority gate. Production wiring uses
+// one instance for scene generation and a separate instance for VidRush entity
+// extraction; the priority API remains useful for callers that intentionally
+// share a provider gate. A high-priority acquisition jumps the queue ahead of
+// waiting low-priority acquisitions. The default capacity is 1 (single-slot
+// model); a capacity of N admits N concurrent holders.
 type GenerationGate struct {
 	mu       sync.Mutex
 	capacity int

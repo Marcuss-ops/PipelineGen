@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 
 	"github.com/stretchr/testify/require"

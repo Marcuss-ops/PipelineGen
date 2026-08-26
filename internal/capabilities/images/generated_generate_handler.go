@@ -9,8 +9,8 @@
 package images
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"errors"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"net/http"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -132,8 +132,8 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		// the full persisted text so operators can verify
 		// prompt_original / semantic_description / style / etc. without
 		// a separate GET.
-		"visual_embedding_dimensions": 768,             // VisualEmbeddingDim
-		"embedding_version_visual":    "2026-06-16-v1", // VisualEmbeddingModelVersion
+		"visual_embedding_dimensions": coreembedding.DimensionVisual, // canonical SigLIP dimension (registry SSOT)
+		"embedding_version_visual":    coreembedding.VisualEmbeddingModelVersion,
 		"metadata_json":               asset.MetadataJSON,
 		"delivery_mode":               mode,
 		"location": gin.H{

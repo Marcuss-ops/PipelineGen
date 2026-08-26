@@ -63,6 +63,7 @@ MODEL_REGISTRY = {
 		fmt.Fprintf(&b, "        \"dimensions\": %d,\n", m.Dimensions)
 		fmt.Fprintf(&b, "        \"license\": %q,\n", m.License)
 		fmt.Fprintf(&b, "        \"role\": %q,\n", m.Role)
+		fmt.Fprintf(&b, "        \"languages\": %d,\n", m.Languages)
 		fmt.Fprintf(&b, "        \"enabled\": %s,\n", pythonBool(m.Enabled))
 		b.WriteString("    },\n")
 	}

@@ -45,15 +45,15 @@ type OutboxEnqueuer interface {
 
 // MaterializationReport is the canonical return value.
 type MaterializationReport struct {
-	AssetID               string              `json:"asset_id"`
+	AssetID               string               `json:"asset_id"`
 	Kind                  detail.TextTrackKind `json:"kind"`
-	SourceLanguage        string              `json:"source_language"`
-	SourceTextHash        string              `json:"source_text_hash"`
-	CreatedLanguages      []string            `json:"created_languages"`
-	SkippedLanguages      []string            `json:"skipped_languages"`
-	RetranslatedLanguages []string            `json:"retranslated_languages"`
-	FailedLanguages       map[string]string   `json:"failed_languages"`
-	Duration              time.Duration       `json:"duration"`
+	SourceLanguage        string               `json:"source_language"`
+	SourceTextHash        string               `json:"source_text_hash"`
+	CreatedLanguages      []string             `json:"created_languages"`
+	SkippedLanguages      []string             `json:"skipped_languages"`
+	RetranslatedLanguages []string             `json:"retranslated_languages"`
+	FailedLanguages       map[string]string    `json:"failed_languages"`
+	Duration              time.Duration        `json:"duration"`
 }
 
 func (r *MaterializationReport) HasFailures() bool {

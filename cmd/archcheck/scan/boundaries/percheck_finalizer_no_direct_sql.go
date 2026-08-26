@@ -184,13 +184,14 @@ func ScanFinalizerNoDirectSQL(root string, pol *policy.Policy, r *report.Report)
 		inspectFinalizerNoSQLFile(root, path, r)
 		return nil
 	})
-	if err != nil {			r.Violations = append(r.Violations, report.Violation{
-				Package:     "internal/capabilities/assets/finalizer",
-				File:        finalizerNoSQLScanRoot,
-				Line:        0,
-				Rule:        finalizerNoSQLRule,
-				Severity:    string(report.SeverityError),
-				MatchedRule: "scan_root_unreadable",
+	if err != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			Package:     "internal/capabilities/assets/finalizer",
+			File:        finalizerNoSQLScanRoot,
+			Line:        0,
+			Rule:        finalizerNoSQLRule,
+			Severity:    string(report.SeverityError),
+			MatchedRule: "scan_root_unreadable",
 			Note:        finalizerNoSQLNote + " | cannot walk scan root: " + err.Error(),
 		})
 	}

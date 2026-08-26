@@ -1,7 +1,6 @@
 package overlays
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"fmt"
@@ -113,5 +112,3 @@ func (c *Cache) EnsureAsset(ctx context.Context, refURL, sha256Hex string) (stri
 	}
 	return c.Put("assets", sha256Hex, "asset.bin", bytes.NewReader(b))
 }
-
-

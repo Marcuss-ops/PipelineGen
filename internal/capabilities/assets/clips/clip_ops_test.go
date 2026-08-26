@@ -14,9 +14,9 @@
 package clips
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"net/http"
 	"net/http/httptest"
 	"strings"

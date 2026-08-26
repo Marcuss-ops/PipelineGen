@@ -10,7 +10,7 @@
 //
 // godlike/07 typed-error contract: every sentinel is a typed
 // errors.New(...). Callers probe via errors.Is(...) from any
-// seam. The wrapping chain in stockpipeline.NewProductionStockPipeline is "%w" so the typed
+// seam. The wrapping chain in NewProductionStockPipeline is "%w" so the typed
 // sentinel propagates verbatim through composition-root error
 // forwarding.
 //
@@ -26,33 +26,31 @@
 // expanded; see architecture/action-plans/2026-07-04-stock-architecture
 // -improvement.md and the commit body for the full honest scope
 // disclosure).
-package support
+package stockpipeline
 
-import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-)
+import ()
 
 import "errors"
 
 // Sentinel errors returned by the shared production/test validation ladder.
 var (
-	ErrStockPipelineNilCfg = errors.New("stockpipeline.NewProductionStockPipeline: cfg is required")
-	ErrStockPipelineNilLog = errors.New("stockpipeline.NewProductionStockPipeline: log is required")
+	ErrStockPipelineNilCfg = errors.New("NewProductionStockPipeline: cfg is required")
+	ErrStockPipelineNilLog = errors.New("NewProductionStockPipeline: log is required")
 	// F2.10: ErrStockPipelineNilDriveSvc RETIRED. The legacy
 	// DriveSvc surface (driveup.Admin + its upload/folder-resolution
 	// methods) was dropped entirely (override brutal). Every Drive
 	// write from the stock pipeline now routes through
 	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
-	ErrStockPipelineNilClipsRepo     = errors.New("stockpipeline.NewProductionStockPipeline: storage.ClipsRepo is required (production path)")
-	ErrStockPipelineNilAssetIndex    = errors.New("stockpipeline.NewProductionStockPipeline: storage.AssetIndex is required (production path)")
-	ErrStockPipelineNilDispatcher    = errors.New("stockpipeline.NewProductionStockPipeline: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
-	ErrStockPipelineNilCutter        = errors.New("stockpipeline.NewProductionStockPipeline: media.Cutter is required (PR6 port)")
-	ErrStockPipelineNilRenderer      = errors.New("stockpipeline.NewProductionStockPipeline: media.Renderer is required (PR6 port)")
-	ErrStockPipelineNilJobs          = errors.New("stockpipeline.NewProductionStockPipeline: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
-	ErrStockPipelineNilPublisher     = errors.New("stockpipeline.NewProductionStockPipeline: delivery.Publisher is required")
-	ErrStockPipelineNilPublisherPort = errors.New("stockpipeline.NewProductionStockPipeline: delivery.PublisherPort is required (godlike/06: wire drive.NewArtifactPublisherAdapter at the composition root)")
-	ErrStockPipelineNilFolderCreator = errors.New("stockpipeline.NewProductionStockPipeline: delivery.FolderCreator is required")
-	ErrStockPipelineNilStepStore     = errors.New("stockpipeline.NewProductionStockPipeline: Runtime.StepStore is required for durable stock state")
+	ErrStockPipelineNilClipsRepo     = errors.New("NewProductionStockPipeline: storage.ClipsRepo is required (production path)")
+	ErrStockPipelineNilAssetIndex    = errors.New("NewProductionStockPipeline: storage.AssetIndex is required (production path)")
+	ErrStockPipelineNilDispatcher    = errors.New("NewProductionStockPipeline: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
+	ErrStockPipelineNilCutter        = errors.New("NewProductionStockPipeline: media.Cutter is required (PR6 port)")
+	ErrStockPipelineNilRenderer      = errors.New("NewProductionStockPipeline: media.Renderer is required (PR6 port)")
+	ErrStockPipelineNilJobs          = errors.New("NewProductionStockPipeline: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+	ErrStockPipelineNilPublisher     = errors.New("NewProductionStockPipeline: delivery.Publisher is required")
+	ErrStockPipelineNilPublisherPort = errors.New("NewProductionStockPipeline: delivery.PublisherPort is required (godlike/06: wire drive.NewArtifactPublisherAdapter at the composition root)")
+	ErrStockPipelineNilFolderCreator = errors.New("NewProductionStockPipeline: delivery.FolderCreator is required")
+	ErrStockPipelineNilStepStore     = errors.New("NewProductionStockPipeline: Runtime.StepStore is required for durable stock state")
 
 	// P8 (July 2026): ErrStockPipelineNilYouTube + ErrStockPipelineNilClipIndexer +
 	// ErrStockPipelineNilMetadataWriter RETIRED. YouTube was never wired at
@@ -60,11 +58,11 @@ var (
 	// call sites in the stockpipeline package).
 
 	// Audit P0 (July 2026): LocalFS is REQUIRED — the composition root
-	// MUST inject a concrete stockpipeline.LocalFSPort (filesystem.NewLocal() or
+	// MUST inject a concrete LocalFSPort (filesystem.NewLocal() or
 	// filesystem.NewTempDirFS()). A nil LocalFS would previously
 	// fail-closed at the cache copy site; now it fails at construction
 	// time so the wiring gap is caught before the first stock run.
-	ErrStockPipelineNilLocalFS = errors.New("stockpipeline.NewProductionStockPipeline: SourceCache.LocalFS is required (audit P0: no implicit fallback to real filesystem — inject filesystem.NewLocal() or filesystem.NewTempDirFS())")
+	ErrStockPipelineNilLocalFS = errors.New("NewProductionStockPipeline: SourceCache.LocalFS is required (audit P0: no implicit fallback to real filesystem — inject filesystem.NewLocal() or filesystem.NewTempDirFS())")
 
 	// §12-4 (July 2026): stock pipeline no longer threads
 	// `*downloader.YTDLPDownloader` directly. Every yt-dlp / HTTP / Drive
@@ -73,7 +71,7 @@ var (
 	// wiring supplies an `*acquisition.FilesystemStager` (or future
 	// `*acquisition.YTDLPSourceStager`); nil routing is REJECTED at
 	// ctor time so a missed composition-root injection fails loud.
-	ErrStockPipelineNilSourceStager = errors.New("stockpipeline.NewProductionStockPipeline: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
+	ErrStockPipelineNilSourceStager = errors.New("NewProductionStockPipeline: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
 
 	// ErrStockProductionDBMissing surfaces when the stock pipeline is
 	// wired for production (Publisher + Finalizer) but no SQLite DB is
@@ -83,12 +81,12 @@ var (
 
 	// ErrStockProductionBatchRepositoryMissing surfaces when the stock
 	// pipeline is wired for production but the composition root did not
-	// supply a stockpipeline.StockBatchRepository adapter.
-	ErrStockProductionBatchRepositoryMissing = errors.New("stockpipeline: stockpipeline.StockBatchRepository is mandatory for production stock pipeline")
-	ErrStockProductionProjectionMissing      = errors.New("stockpipeline: stockpipeline.ProjectionPort is mandatory for production stock pipeline")
-	ErrStockProductionSourceProbeMissing     = errors.New("stockpipeline: stockpipeline.SourceDurationProbe is mandatory for production stock pipeline")
+	// supply a StockBatchRepository adapter.
+	ErrStockProductionBatchRepositoryMissing = errors.New("stockpipeline: StockBatchRepository is mandatory for production stock pipeline")
+	ErrStockProductionProjectionMissing      = errors.New("stockpipeline: ProjectionPort is mandatory for production stock pipeline")
+	ErrStockProductionSourceProbeMissing     = errors.New("stockpipeline: SourceDurationProbe is mandatory for production stock pipeline")
 
-	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewProductionStockPipeline: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
+	ErrStockPipelineNilFinalizer = errors.New("NewProductionStockPipeline: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
 
 	// ErrStockPipelineAllQueriesFailed surfaces when every text
 	// search query in resolveInputQueries fails to resolve to a

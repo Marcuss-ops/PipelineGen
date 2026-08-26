@@ -1,4 +1,4 @@
-package support
+package stockpipeline
 
 import (
 	"testing"

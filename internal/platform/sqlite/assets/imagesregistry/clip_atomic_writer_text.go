@@ -1,15 +1,14 @@
 package imagesregistry
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // CommitClipTextAndIndexEvent performs the canonical atomic localized

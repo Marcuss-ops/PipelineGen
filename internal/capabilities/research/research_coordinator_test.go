@@ -3,7 +3,7 @@
 // early stop at targetPool, provider fallback on error/timeout,
 // cross-provider dedup (URL + host/title), and RequiredTerms/ExcludedTerms
 // subject filtering (including diacritic-insensitive identity matching).
-package research
+package research_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	research "github.com/Marcuss-ops/PipelineGen/internal/capabilities/research"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -51,14 +52,14 @@ func floydHit(id string) scriptports.WebSearchHit {
 	}
 }
 
-func coordinatorForTest(providers ...scriptports.WebSearchProvider) *ResearchSearchCoordinator {
-	return NewResearchSearchCoordinator(
-		&SubjectIdentityAdapter{
+func coordinatorForTest(providers ...scriptports.WebSearchProvider) *research.ResearchSearchCoordinator {
+	return research.NewResearchSearchCoordinator(
+		&research.SubjectIdentityAdapter{
 			Resolve: func(subject string) scriptpkg.SubjectIdentity {
 				return usecase.NewSubjectIdentityResolver().Resolve(subject)
 			},
 		},
-		&QueryPlannerAdapter{
+		&research.QueryPlannerAdapter{
 			FullPlan: func(identity scriptpkg.SubjectIdentity, maxQueries int) []string {
 				return usecase.NewQueryPlanner().FullPlan(identity, maxQueries)
 			},

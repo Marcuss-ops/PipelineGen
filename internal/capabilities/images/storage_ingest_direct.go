@@ -1,17 +1,17 @@
 package images
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
 	"strings"
 
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
@@ -235,7 +235,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 				"drive_file_id":            driveFileID,
 				"delivery_status":          deliveryStatus,
 				"content_hash":             hash,
-				"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
+				"embedding_version_visual": coreembedding.VisualEmbeddingModelVersion,
 				"subject_id":               slug,
 			},
 		},

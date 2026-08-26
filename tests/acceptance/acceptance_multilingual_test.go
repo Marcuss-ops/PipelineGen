@@ -17,11 +17,9 @@
 package acceptance_test
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {

@@ -42,6 +42,23 @@ func TestBuildPlan_PropagatesExplicitVoiceoverFolderID(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_AutoUsesSmallModelForShortScripts(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Model:     "auto",
+		ModelAuto: true,
+		Source:    scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "short test"},
+		ScriptParams: scriptpkg.ScriptSpec{
+			TargetWords: 300,
+		},
+	})
+	if plan.Model != smallGemmaModel {
+		t.Fatalf("short auto script model = %q, want %q", plan.Model, smallGemmaModel)
+	}
+	if plan.Concurrency != 4 {
+		t.Fatalf("short auto script concurrency = %d, want 4", plan.Concurrency)
+	}
+}
+
 // buildPostprocessorListTestScenarios enumerates OutputSpec
 // variants that cover the conditional branches of
 // buildPostprocessorList (ExtractEntities / GenerateMetadata /

@@ -1,9 +1,5 @@
 package audioasset
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
 import "time"
 
 // AudioInput is the input to Processor.Generate. PR-VO-B1 (June 2026):

@@ -7,7 +7,7 @@
 // MUST use errors.Is(err, ErrStock*) to inspect the failure class.
 //
 // godlike/07 typed-error contract: every sentinel is a typed
-// errors.New(...). The wrapping chain in each stockpipeline.Step.Run is "%w: %v"
+// errors.New(...). The wrapping chain in each Step.Run is "%w: %v"
 // so the typed sentinel propagates verbatim through orchestrator
 // + composition-root error forwarding. Callers can errors.Is into
 // deeper sentinels like ErrConcurrentLeaseRefutation or
@@ -19,19 +19,14 @@
 // RunResilient ladder ~140 LoC" sub-file would have been empty
 // per godlike/07 no-fake-availability — RunResilient lives in
 // orchestrator.go today, not in orchestrator_steps.go; the 7
-// step file names in the spec implied splitting stockpipeline.StockFinalizeStep
+// step file names in the spec implied splitting StockFinalizeStep
 // into 3+ sub-step files which is an aggressive split of a single
-// stockpipeline.Step type rather than the natural 1-file-per-stockpipeline.Step unit; the
-// minimum-ripple 1-file-per-stockpipeline.Step split (6 step files + sentinels
+// Step type rather than the natural 1-file-per-Step unit; the
+// minimum-ripple 1-file-per-Step split (6 step files + sentinels
 // + slimmed orchestrator_steps.go = 8 files) is the canonical
 // interpretation; see the commit body for the full honest scope
 // disclosure).
-package support
-
-import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
+package stockpipeline
 
 import "errors"
 
@@ -66,7 +61,7 @@ var (
 	// ID must be non-empty" gate. Composition-time wiring gap.
 	ErrStockFnRequired = errors.New("stock.finalize: run fingerprint empty (policyVersion / inputs missing)")
 
-	// ErrStockStageSourcesAllFailed is raised when stockpipeline.StockStageSourcesStep.Run
+	// ErrStockStageSourcesAllFailed is raised when StockStageSourcesStep.Run
 	// was wired with a non-nil SourceStager AND had non-empty plans AND
 	// every source in the plan failed to stage (zero *assets.StagedAsset
 	// appended to the staged slice). This closes the godlike/07
@@ -76,13 +71,13 @@ var (
 	// successes still produce partial artifacts — only the all-failed
 	// case surfaces this sentinel. PR-STOCK-FAKE-AVAILABILITY-REMOVAL
 	// (Wave 1 P0 #2, deadline 2026-07-15).
-	ErrStockStageSourcesAllFailed = errors.New("stock.stage_sources: all sources failed to stage") // ErrStockExtractClipsCutterRequired is raised when stockpipeline.StockExtractClipsStep.Run
+	ErrStockStageSourcesAllFailed = errors.New("stock.stage_sources: all sources failed to stage") // ErrStockExtractClipsCutterRequired is raised when StockExtractClipsStep.Run
 	// ErrStockStageSourcesIncomplete is raised when at least one source
 	// stages successfully but one or more planned sources fail. A stock
 	// batch that requested multiple sources must not report SUCCEEDED with
 	// silently missing videos.
 	ErrStockStageSourcesIncomplete = errors.New("stock.stage_sources: one or more sources failed to stage")
-	// detects a nil stockpipeline.VideoCutter AND non-empty plans — the step has work to do
+	// detects a nil VideoCutter AND non-empty plans — the step has work to do
 	// but no cutter to do it with. This closes the godlike/07 no-fake-availability
 	// class where a nil cutter silently produced CutPaths=nil, cascading through
 	// compose→publish→finalize into an empty manifest.
@@ -90,15 +85,15 @@ var (
 	// Test-fixture compat: when plans is empty (no work to do), the nil-cutter
 	// path still returns nil (zero-clips → zero-cut-paths is the correct outcome).
 	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2, follow-up July 2026).
-	ErrStockExtractClipsCutterRequired = errors.New("stock.extract_clips: stockpipeline.VideoCutter nil but plans non-empty — cutter must be wired for production runs")
+	ErrStockExtractClipsCutterRequired = errors.New("stock.extract_clips: VideoCutter nil but plans non-empty — cutter must be wired for production runs")
 
 	// ErrStockExtractClipsLocalFSRequired is raised when executeCuts
-	// finds a nil stockpipeline.LocalFSPort — the step needs a filesystem to create
+	// finds a nil LocalFSPort — the step needs a filesystem to create
 	// the persistent workspace directory for cut outputs. This closes
 	// the godlike/07 no-fake-availability class where a nil LocalFS
 	// panic'd with nil-pointer dereference instead of surfacing a
 	// typed error. PR-STOCK-NOOPFS-REMOVAL (P0.1, July 2026).
-	ErrStockExtractClipsLocalFSRequired = errors.New("stock.extract_clips: stockpipeline.LocalFSPort nil — filesystem must be wired for production runs")
+	ErrStockExtractClipsLocalFSRequired = errors.New("stock.extract_clips: LocalFSPort nil — filesystem must be wired for production runs")
 
 	// ErrStockExtractClipsDurableStateFailed is raised when the extract
 	// step cannot persist its batch/group/artifact lifecycle state. A
@@ -107,7 +102,7 @@ var (
 	// says planned, extracting, or otherwise incomplete.
 	ErrStockExtractClipsDurableStateFailed = errors.New("stock.extract_clips: durable lifecycle state write failed")
 
-	// ErrStockComposeChunksAllFailed is raised when stockpipeline.StockComposeChunksStep.Run
+	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
 	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
 	// every chunk failed to render (zero string paths appended to the
 	// composed slice). Mirrors ErrStockStageSourcesAllFailed — the
@@ -117,10 +112,10 @@ var (
 	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2).
 	ErrStockComposeChunksAllFailed = errors.New("stock.compose_chunks: all chunks failed to render")
 
-	// ErrStockPublishStateLost is raised when stockpipeline.StockPublishStep.Run
+	// ErrStockPublishStateLost is raised when StockPublishStep.Run
 	// is wired with a non-nil ArtifactPreparation BUT state.ComposedPaths
 	// is empty — meaning the upstream compose step produced zero composed
-	// chunks (or the stockpipeline.RunState was lost on resume). This closes the
+	// chunks (or the RunState was lost on resume). This closes the
 	// godlike/07 no-fake-availability class where a production run
 	// (ArtifactPreparation wired) silently declared SUCCEEDED with zero
 	// uploaded chunks because the lenient "len(chunks) == 0 → return nil"
@@ -129,10 +124,10 @@ var (
 	// remain green. PR-STOCK-RESUME-STATE-LOSS (July 2026).
 	ErrStockPublishStateLost = errors.New("stock.publish: ArtifactPreparation wired but ComposedPaths empty — upstream state lost (likely resume-after-crash)")
 
-	// ErrStockFinalizeStateLost is raised when stockpipeline.StockFinalizeStep.Run
+	// ErrStockFinalizeStateLost is raised when StockFinalizeStep.Run
 	// is wired with a non-nil JobFinalizer BUT state.Published is empty —
 	// meaning the upstream publish step did not upload any chunks (or the
-	// stockpipeline.RunState was lost on resume). This closes the godlike/07
+	// RunState was lost on resume). This closes the godlike/07
 	// no-fake-availability class where a production run (JobFinalizer
 	// wired) silently declared SUCCEEDED without writing to media_assets
 	// because the lenient "len(Published) == 0 → return nil" guard masked
@@ -141,7 +136,7 @@ var (
 	// PR-STOCK-RESUME-STATE-LOSS (July 2026).
 	ErrStockFinalizeStateLost = errors.New("stock.finalize: JobFinalizer wired but Published empty — upstream state lost (likely resume-after-crash)")
 
-	// ErrFinalizerAbsent is raised when stockpipeline.StockFinalizeStep.Run reaches
+	// ErrFinalizerAbsent is raised when StockFinalizeStep.Run reaches
 	// Phase 3+4 without a JobFinalizer wired, closing the silent-success
 	// trap where the step previously returned nil ("test-fixture mode")
 	// even on production wiring gaps. The production symmetric gate
@@ -149,7 +144,7 @@ var (
 	// upstream enforcement of this invariant at boot time; this
 	// sentinel is the in-step body fail-closed (godlike/07
 	// no-fake-availability). Test fixtures MUST wire a stubJobFinalizer
-	// to satisfy the stockpipeline.StepRunner interface contract — there is no
+	// to satisfy the StepRunner interface contract — there is no
 	// longer a "test-fixture mode" silent-success skip path.
 	// PR-STOCK-FINALIZER-ABSENT-FAILCLOSED (July 2026).
 	ErrFinalizerAbsent = errors.New("stock.finalize: JobFinalizer absent")
@@ -161,16 +156,16 @@ var (
 	ErrStockResumeStateReadFailed = errors.New("stock: resume: canonical checkpoint state unreadable")
 
 	// ErrStockResumeStateInvalid is raised when the orchestrator
-	// cannot rehydrate the stockpipeline.RunState snapshot from a pre-completed
+	// cannot rehydrate the RunState snapshot from a pre-completed
 	// step's result_json, or when it cannot marshal the current
-	// stockpipeline.RunState to persist a checkpoint. This closes the silent-
+	// RunState to persist a checkpoint. This closes the silent-
 	// corruption class where a crash-resume proceeds with a malformed
 	// accumulator or where a checkpoint is silently dropped.
-	ErrStockResumeStateInvalid = errors.New("stock: resume: stockpipeline.RunState checkpoint invalid")
+	ErrStockResumeStateInvalid = errors.New("stock: resume: RunState checkpoint invalid")
 
 	// ErrStockManifestUnprojectable is raised when the resilient
 	// orchestrator produced a manifest that cannot be projected into
-	// the legacy *stockpipeline.PipelineResult: nil manifest, zero artifacts, or
+	// the legacy *PipelineResult: nil manifest, zero artifacts, or
 	// artifacts of which none are projectable (no video chunk and no
 	// metadata artifact). This closes the godlike/07 no-fake-
 	// availability class where a SUCCEEDED job silently returned

@@ -10,20 +10,18 @@
 //   - All transition types (TransitionSegment + 2 constants +
 //     TransitionRenderer func + Transition struct + TransitionRegistry
 //     interface) live ONLY in this file.
-//   - The 2 main ports these transitions support (stockpipeline.StockRenderer +
-//     stockpipeline.VideoCutter) live in render_ports.go (sister file).
-//   - The neutral DTOs (stockpipeline.RenderRequest / stockpipeline.RenderResult / etc.) live in
+//   - The 2 main ports these transitions support (StockRenderer +
+//     VideoCutter) live in render_ports.go (sister file).
+//   - The neutral DTOs (RenderRequest / RenderResult / etc.) live in
 //     render_dto.go (sister file).
 //
 // godlike/07 minimum-blast-radius: the transition catalog API is
 // STABLE — the composition root's TransitionRegistry implementation
 // and the infra renderer's catalog consumption both reference
 // these types by name. No surface-contract changes.
-package support
+package stockpipeline
 
-import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-)
+import ()
 
 // ── Transition Registry ────────────────────────────────────────────────
 
@@ -68,7 +66,7 @@ type Transition struct {
 }
 
 // TransitionRegistry exposes the catalogue of transitions available to
-// the stockpipeline.StockRenderer port. The application layer composes transitions
+// the StockRenderer port. The application layer composes transitions
 // via this interface; the infra implementation reads it during
 // filter_complex construction.
 //

@@ -12,10 +12,6 @@
 // imports this symbol via the canonical import path.
 package clipindexer
 
-import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
 import "errors"
 
 // ErrIndexClipDisabledButEventRequested is the canonical typed

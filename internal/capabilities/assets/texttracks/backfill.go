@@ -42,9 +42,9 @@
 package texttracks
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"go.uber.org/zap"
@@ -77,7 +77,7 @@ type MediaAssetLister interface {
 type BackfillService struct {
 	clips           MediaAssetLister
 	repo            detail.TextTrackRepository // Fase 5: used by tryAcquire to save acquired source tracks
-	cues            TimedCueWriter            // new field to save cues/segments to DB
+	cues            TimedCueWriter             // new field to save cues/segments to DB
 	subArtRepo      detail.SubtitleArtifactRepository
 	subMaterializer *SubtitleArtifactMaterializer
 	materializer    *Materializer

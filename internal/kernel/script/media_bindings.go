@@ -1,7 +1,6 @@
 package script
 
-import (
-)
+import ()
 
 // ImageBinding holds the metadata for an AI-generated scene image.
 // The LLM produces the prompt; the application layer fills in the

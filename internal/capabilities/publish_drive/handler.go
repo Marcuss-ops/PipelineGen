@@ -42,6 +42,7 @@ import (
 	"time"
 
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
@@ -129,7 +130,7 @@ type Handler struct {
 	// (fenced CAS for Mark* primitives). The handler uses
 	// MarkPublished to transition the row to PUBLISHED state
 	// with a JSON PublishedLocation payload.
-	repo artifact.ArtifactStageRepository
+	repo detail.ArtifactStageRepository
 
 	// publisher is the canonical Drive upload canal
 	// (delivery.Publisher interface; concrete =
@@ -150,7 +151,7 @@ type Handler struct {
 // NewHandler constructs the canonical FASE 3 Drive-upload
 // worker. godlike/07 fail-fast at construction: caller MUST
 // supply a non-nil repo + non-nil publisher + non-nil log.
-func NewHandler(repo artifact.ArtifactStageRepository, publisher delivery.Publisher, log *zap.Logger) (*Handler, error) {
+func NewHandler(repo detail.ArtifactStageRepository, publisher delivery.Publisher, log *zap.Logger) (*Handler, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("publish_drive.NewHandler: repo is required")
 	}
@@ -275,7 +276,7 @@ func (h *Handler) Handle(ctx context.Context, evt outboxevents.Event) error {
 	// success — see package doc for rationale).
 	markErr := h.repo.MarkPublished(ctx, payload.StageID, string(locationJSON), publishedAt)
 	if markErr != nil {
-		if errors.Is(markErr, artifact.ErrTerminalStateRejection) {
+		if errors.Is(markErr, detail.ErrTerminalStateRejection) {
 			h.log.Info("publish_drive: terminal-state fence observed (re-delivery, no-op)",
 				zap.String("stage_id", payload.StageID),
 				zap.String("event_key", evt.EventKey),

@@ -12,8 +12,6 @@ package images
 import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ImageFilter is the canonical filter for catalog search.

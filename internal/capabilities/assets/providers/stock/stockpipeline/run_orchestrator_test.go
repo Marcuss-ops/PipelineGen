@@ -1,22 +1,21 @@
 // Package stockpipeline — run_orchestrator_test.go (Stock Cutover, July 2026).
 //
-// HandleJob end-to-end tests: verify that stockpipeline.Service.HandleJob delegates
+// HandleJob end-to-end tests: verify that Service.HandleJob delegates
 // to runOrchestratorResilient and surfaces the orchestrator's typed
-// gate-fail error (ErrProductionCutterMissing) when the stockpipeline.Service has
+// gate-fail error (ErrProductionCutterMissing) when the Service has
 // unwired deps (nil cutter / renderer / finalizer).
 //
 // RETIRED (July 2026): the 6 runOrchestrator manifest-contract tests
-// (TestService_RunOrchestrator_*) and the stockpipeline.Service.Run legacy-signature
+// (TestService_RunOrchestrator_*) and the Service.Run legacy-signature
 // test (TestService_Run_LegacySignature_ReturnsPipelineResult) have
 // been removed. The manifest contract is now pinned by the resilient
 // tests in run_upload_indexing_test.go, orchestrator_resume_test.go,
 // and stock_fake_availability_test.go. The legacy runOrchestrator
-// method has been retired; stockpipeline.Service.Run now delegates to runSyncPersist
+// method has been retired; Service.Run now delegates to runSyncPersist
 // → runOrchestratorResilient.
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,25 +53,25 @@ func (r *recordingPublisher) ResolveFolder(_ context.Context, _ delivery.Publish
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// stockpipeline.Service.HandleJob end-to-end tests
+// Service.HandleJob end-to-end tests
 // ─────────────────────────────────────────────────────────────────────
 
 // TestService_HandleJob_DelegatesToRunOrchestratorResilient (Stock Cutover
 // §12-1 §F post-cleanup, July 2026) — after removing the duplicate
 // finalization block from HandleJob, the handler delegates entirely to
-// runOrchestratorResilient. When the test stockpipeline.Service has no cutter/renderer
-// wired, the orchestrator's RunResilient gate fires stockpipeline.ErrOrchestratorNilDeps
+// runOrchestratorResilient. When the test Service has no cutter/renderer
+// wired, the orchestrator's RunResilient gate fires ErrOrchestratorNilDeps
 // BEFORE any step body runs, closing the silent-success class. The
 // gate-fail-closed contract now lives inside the orchestrator, not in a
-// duplicate HandleJob-level stockpipeline.BuildFinalizationRequest with empty chunks.
+// duplicate HandleJob-level BuildFinalizationRequest with empty chunks.
 //
 // The Publisher remains untouched because the orchestrator never reaches
 // stock.publish (it fails at the entry gate before dispatching any steps).
 func TestService_HandleJob_DelegatesToRunOrchestratorResilient(t *testing.T) {
 	rec := &recordingPublisher{}
-	svc := &stockpipeline.Service{log: zap.NewNop(), publisher: rec}
+	svc := &Service{log: zap.NewNop(), publisher: rec}
 
-	payload, err := json.Marshal(&stockpipeline.StockRunPayload{
+	payload, err := json.Marshal(&StockRunPayload{
 		DirectURLs:    []string{"https://example.com/source.mp4"},
 		FolderID:      "wf-handle-1",
 		FolderName:    "demo",
@@ -117,9 +116,9 @@ func TestService_HandleJob_DelegatesToRunOrchestratorResilient(t *testing.T) {
 // single canonical fail-closed surface; HandleJob no longer has an
 // independent gate.
 func TestService_HandleJob_DelegatesToRunOrchestratorResilient_Companion(t *testing.T) {
-	svc := &stockpipeline.Service{log: zap.NewNop(), publisher: &recordingPublisher{}}
+	svc := &Service{log: zap.NewNop(), publisher: &recordingPublisher{}}
 
-	payload, _ := json.Marshal(&stockpipeline.StockRunPayload{
+	payload, _ := json.Marshal(&StockRunPayload{
 		DirectURLs:    []string{"https://example.com/src.mp4"},
 		FolderID:      "wf-fields",
 		ClipDuration:  5,
@@ -148,9 +147,9 @@ func TestService_HandleJob_DelegatesToRunOrchestratorResilient_Companion(t *test
 // duplicate-finalization cleanup.
 func TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreached(t *testing.T) {
 	rec := &recordingPublisher{}
-	svc := &stockpipeline.Service{log: zap.NewNop(), publisher: rec}
+	svc := &Service{log: zap.NewNop(), publisher: rec}
 
-	payload, _ := json.Marshal(&stockpipeline.StockRunPayload{
+	payload, _ := json.Marshal(&StockRunPayload{
 		DirectURLs:    []string{"https://example.com/src.mp4"},
 		FolderID:      "wf-no-drive",
 		ClipDuration:  5,

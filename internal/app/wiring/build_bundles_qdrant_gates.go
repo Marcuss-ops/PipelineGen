@@ -40,7 +40,6 @@
 package wiring
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

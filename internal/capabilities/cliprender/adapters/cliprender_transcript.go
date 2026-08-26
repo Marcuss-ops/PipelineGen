@@ -14,12 +14,12 @@ package adapters
 // at call time, never a silent no-op path.
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"os/exec"
 	"time"

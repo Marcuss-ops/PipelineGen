@@ -55,8 +55,6 @@
 package enrichment
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"errors"
 	"fmt"
 )

@@ -11,7 +11,7 @@ package images
 import (
 	"fmt"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,9 +67,9 @@ func assetToResultWithCache(a *detail.ImageAsset, cacheHit *bool, cacheSource, r
 		// godlike/07 fail-closed: empty Asset.Provider MUST NOT leak
 		// through the response — coerce to the canonical sentinel so
 		// callers see a stable string literal they can grep.
-		provider = string(domain.ProviderUnknown)
+		provider = string(detail.ProviderUnknown)
 	}
-	if provider == string(domain.ProviderUnknown) && retrievalProvider != "" && retrievalProvider != string(domain.ProviderUnknown) {
+	if provider == string(detail.ProviderUnknown) && retrievalProvider != "" && retrievalProvider != string(detail.ProviderUnknown) {
 		// Faithful ground-truth fallback: the service layer stamped
 		// a known Retrieval Provider for this row (e.g. "duckduckgo").
 		// Prefer it over the stale "unknown" so the response identifies

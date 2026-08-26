@@ -31,6 +31,22 @@ try:
 except ImportError:
     from scripts.tools.whisper_runtime import prepare_cuda_runtime
 
+# Canonical ASR model identity comes from the registry mirror
+# (scripts/services/model_registry_generated.py, generated from
+# internal/kernel/models by cmd/model-registry-gen). Do NOT hardcode
+# the Whisper model id here. VELOX_WHISPER_MODEL remains the explicit
+# operator override (validated by whisper_preflight.py); the registry
+# value is the default for transcription. Size aliases (tiny/base/...)
+# are accepted ONLY for fast language detection and explicit operator
+# overrides.
+try:
+    from scripts.services.model_registry_generated import WHISPER_MODEL_NAME
+except ModuleNotFoundError:  # direct execution from scripts/tools
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.services.model_registry_generated import (  # type: ignore[no-redef]
+        WHISPER_MODEL_NAME,
+    )
+
 # ---------------------------------------------------------------------------
 # Module-level model cache — whisper model is loaded ONCE per process,
 # shared across all transcribe() calls. Avoids reloading for batch mode.
@@ -160,9 +176,12 @@ def _segments_to_result(segments, info, elapsed: float) -> dict:
     }
 
 
-def transcribe(audio_path: str, model_size: str = "base", language: Optional[str] = None) -> dict:
+def transcribe(audio_path: str, model_size: str = WHISPER_MODEL_NAME, language: Optional[str] = None) -> dict:
     """Full transcription with language detection.
-    
+
+    Defaults to the canonical registry ASR model (WHISPER_MODEL_NAME);
+    explicit size aliases remain available for operator overrides.
+
     For Go integration: returns JSON with language, transcript, segments.
     """
     if not os.path.exists(audio_path):
@@ -176,7 +195,7 @@ def transcribe(audio_path: str, model_size: str = "base", language: Optional[str
     return _segments_to_result(segments, info, elapsed)
 
 
-def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = "base", language: Optional[str] = None) -> dict:
+def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = WHISPER_MODEL_NAME, language: Optional[str] = None) -> dict:
     """Transcribe raw PCM fed through a pipe — zero WAV on disk.
 
     The Go side decodes the source audio with FFmpeg straight to a
@@ -216,9 +235,11 @@ if __name__ == "__main__":
                     "Works for ANY audio/video file. Returns JSON for Go consumption."
     )
     parser.add_argument("file", nargs="?", help="Path to audio or video file (not required with --pcm-stdin)")
-    parser.add_argument("--model", default="tiny",
-                        help="Whisper model size: tiny (fastest, for detection), "
-                             "base/small/medium/large (slower, for transcription)")
+    parser.add_argument("--model", default=None,
+                        help="Whisper model (repo id or faster-whisper size alias). "
+                             "Default: canonical registry model "
+                             "(WHISPER_MODEL_NAME) for transcription, "
+                             "'tiny' (fastest) for language detection")
     parser.add_argument("--transcribe", action="store_true",
                         help="Full transcription (includes transcript in output). "
                              "Default: language detection only (faster)")
@@ -233,6 +254,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Centralized model selection: transcription uses the canonical
+    # registry ASR model by default; language detection stays on the
+    # fast 'tiny' size alias (deliberate, documented in the registry
+    # comment). An explicit --model overrides both.
+    model_size = args.model or (WHISPER_MODEL_NAME if args.transcribe else "tiny")
+
     if args.pcm_stdin:
         # prepare_cuda_runtime may re-exec this script (os.execve) to put
         # the CUDA lib dirs on LD_LIBRARY_PATH. The re-exec'd process
@@ -241,8 +268,8 @@ if __name__ == "__main__":
         # an already-consumed pipe (empty PCM).
         prepare_cuda_runtime()
         pcm = sys.stdin.buffer.read()
-        _log("Transcribing streaming PCM with model '%s'..." % args.model, args.json_only)
-        result = transcribe_pcm_stream(pcm, args.model, args.language)
+        _log("Transcribing streaming PCM with model '%s'..." % model_size, args.json_only)
+        result = transcribe_pcm_stream(pcm, model_size, args.language)
         if "error" in result:
             print(json.dumps(result))
             sys.exit(1)
@@ -279,11 +306,11 @@ if __name__ == "__main__":
 
     try:
         if args.transcribe:
-            _log(f"Transcribing with model '{args.model}'...", args.json_only)
-            result = transcribe(audio_path, args.model, args.language)
+            _log(f"Transcribing with model '{model_size}'...", args.json_only)
+            result = transcribe(audio_path, model_size, args.language)
         else:
-            _log(f"Detecting language with model '{args.model}'...", args.json_only)
-            result = detect_language(audio_path, args.model, args.language)
+            _log(f"Detecting language with model '{model_size}'...", args.json_only)
+            result = detect_language(audio_path, model_size, args.language)
     finally:
         if cleanup_path and os.path.exists(cleanup_path):
             os.unlink(cleanup_path)

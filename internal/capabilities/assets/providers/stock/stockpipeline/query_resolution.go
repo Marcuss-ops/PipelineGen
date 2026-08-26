@@ -1,7 +1,6 @@
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"context"
 	"fmt"
 	"strings"
@@ -21,7 +20,7 @@ const maxSearchQueryWorkers = 3
 // indexed slices let workers write without locks while the caller performs
 // deterministic ordered logging, URL deduplication, and error aggregation.
 type searchQueryResolution struct {
-	sources []stockpipeline.VideoSource
+	sources []VideoSource
 	err     error
 }
 
@@ -36,7 +35,7 @@ type searchQueryResolution struct {
 // typed ErrStockPipelineAllQueriesFailed is returned. Parent context
 // cancellation is propagated as-is; provider errors retain the existing
 // partial-success behavior and are only fatal when no usable URL remains.
-func (s *stockpipeline.Service) resolveInputQueries(ctx context.Context, input *stockpipeline.RunInput) error {
+func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) error {
 	if s == nil || input == nil || len(input.SearchQueries) == 0 {
 		return nil
 	}
@@ -169,7 +168,7 @@ func (s *stockpipeline.Service) resolveInputQueries(ctx context.Context, input *
 	// queries fail to resolve, return a typed error instead of
 	// silently clearing SearchQueries. Without this, the
 	// orchestrator hits the misleading "no sources to plan" error
-	// in stockpipeline.StockPlanStep.Run instead of surfacing the actual yt-dlp
+	// in StockPlanStep.Run instead of surfacing the actual yt-dlp
 	// failure (n-challenge, cookies, network).
 	if failed > 0 && failed == total && len(input.DirectURLs) == 0 {
 		return fmt.Errorf("%w: %d/%d queries failed, last error: %v",

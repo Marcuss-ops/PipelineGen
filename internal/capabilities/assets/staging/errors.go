@@ -29,7 +29,7 @@ import (
 	"regexp"
 	"strings"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── FS-only typed sentinels (staging-package-local) ──────────────────

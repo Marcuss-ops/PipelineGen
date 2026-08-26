@@ -58,7 +58,7 @@ import (
 	"fmt"
 	"time"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Compile-time assertion: *Repository satisfies the domain port.

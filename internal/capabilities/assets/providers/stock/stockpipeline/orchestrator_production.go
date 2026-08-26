@@ -1,7 +1,6 @@
-package support
+package stockpipeline
 
 import (
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"errors"
 	"reflect"
 
@@ -14,32 +13,32 @@ import (
 
 // ProductionPipelineDeps groups the execution ports for the live stock run.
 type ProductionPipelineDeps struct {
-	Planner  stockpipeline.ClipPlanner
+	Planner  ClipPlanner
 	Stager   acquisition.SourceStager
-	Cutter   stockpipeline.VideoCutter
-	Renderer stockpipeline.StockRenderer
-	Builder  stockpipeline.ManifestBuilder
+	Cutter   VideoCutter
+	Renderer StockRenderer
+	Builder  ManifestBuilder
 }
 
 // ProductionPersistenceDeps groups durable state and finalization ports.
 type ProductionPersistenceDeps struct {
-	Writer              stockpipeline.TransactionalAssetWriter
-	Projection          stockpipeline.ProjectionPort
+	Writer              TransactionalAssetWriter
+	Projection          ProjectionPort
 	StepStore           steps.Store
 	ArtifactPreparation finalization.ArtifactPreparationService
 	JobFinalizer        finalization.JobFinalizer
-	BatchRepository     stockpipeline.StockBatchRepository
+	BatchRepository     StockBatchRepository
 }
 
 // ProductionRuntimeDeps groups probing, filesystem, and observability ports.
 type ProductionRuntimeDeps struct {
-	SourceProbe stockpipeline.SourceDurationProbe
-	LocalFS     stockpipeline.LocalFSPort
+	SourceProbe SourceDurationProbe
+	LocalFS     LocalFSPort
 	Logger      *zap.Logger
 }
 
 // ProductionStockPipelineDeps is the complete dependency graph required by
-// the live stock pipeline. Unlike stockpipeline.NewTestStockOrchestrator, this bundle has no
+// the live stock pipeline. Unlike NewTestStockOrchestrator, this bundle has no
 // implicit defaults: every port that can affect a production verdict is
 // supplied by the composition root.
 type ProductionStockPipelineDeps struct {
@@ -68,9 +67,9 @@ var (
 // NewProductionStockOrchestrator is the sole strict runtime constructor. It validates
 // the entire dependency graph before returning an executable pipeline;
 // no nil dependency can reach RunResilient and no test noop can be mistaken
-// for a live capability. stockpipeline.NewTestStockOrchestrator is never called by this
+// for a live capability. NewTestStockOrchestrator is never called by this
 // constructor.
-func NewProductionStockOrchestrator(cfg stockpipeline.OrchestratorConfig, deps ProductionStockPipelineDeps) (*stockpipeline.Orchestrator, error) {
+func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStockPipelineDeps) (*Orchestrator, error) {
 	checks := []struct {
 		value any
 		err   error
@@ -97,13 +96,13 @@ func NewProductionStockOrchestrator(cfg stockpipeline.OrchestratorConfig, deps P
 	}
 
 	if cfg.MaxConcurrentJobs <= 0 {
-		cfg.MaxConcurrentJobs = stockpipeline.DefaultMaxConcurrentJobs
+		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
 	if cfg.JobId == "" {
-		cfg.JobId = stockpipeline.DefaultOrchestratorJobId
+		cfg.JobId = DefaultOrchestratorJobId
 	}
 	cfg.StrictDurationValidation = true
-	return &stockpipeline.Orchestrator{
+	return &Orchestrator{
 		cfg:                 cfg,
 		planner:             deps.Pipeline.Planner,
 		stager:              deps.Pipeline.Stager,
@@ -113,7 +112,7 @@ func NewProductionStockOrchestrator(cfg stockpipeline.OrchestratorConfig, deps P
 		writer:              deps.Persistence.Writer,
 		projection:          deps.Persistence.Projection,
 		stepStore:           deps.Persistence.StepStore,
-		dispatchSteps:       stockpipeline.DefaultStockSteps(),
+		dispatchSteps:       DefaultStockSteps(),
 		artifactPreparation: deps.Persistence.ArtifactPreparation,
 		jobFinalizer:        deps.Persistence.JobFinalizer,
 		sourceProbe:         deps.Runtime.SourceProbe,
