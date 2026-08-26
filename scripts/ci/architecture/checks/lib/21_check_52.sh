@@ -41,9 +41,10 @@ raw_wire_calls=$(rg -n --type go \
     -e '\.PrepareArtifactUpload\(' \
     -e '\.UploadArtifactFile\(' \
     -e '\.FinalizeArtifactUpload\(' \
-
+    --glob '!**/internal/platform/remote/jobbrokerclient/client.go' \
+    --glob '!**/internal/platform/remote/jobbrokerclient/client_test.go' \
     --glob '!**/*_test.go' \
-    internal/application internal/api 2>/dev/null \
+    internal/capabilities 2>/dev/null \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
