@@ -10,6 +10,7 @@
 package scraper
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"bytes"
 	"context"
 	"encoding/json"

@@ -42,12 +42,13 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"net/url"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )
@@ -122,7 +123,7 @@ func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort
 }
 
 // FetchSegmentSubtitles returns the canonical typed subtitle track for
-// [startSec, endSec] as an *asset.ResolvedTextBundle. The implementation
+// [startSec, endSec] as an *detail.ResolvedTextBundle. The implementation
 // composes:
 //   - subtitles_fetch.go::FetchFullVTT — yt-dlp --write-auto-subs
 //     download + cache lookup,
@@ -145,7 +146,7 @@ func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort
 // (the canonical "not found" signal — caller falls through to
 // Whisper). Returns a typed error on network failure, parse failure,
 // or missing cache configuration.
-func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error) {
+func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*detail.ResolvedTextBundle, error) {
 	if a.cacheDir == "" {
 		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: cacheDir is required")
 	}
@@ -184,12 +185,12 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 	if cueErr != nil {
 		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: parse cues: %w", cueErr)
 	}
-	cues := make([]asset.TimedCue, 0, len(entries))
+	cues := make([]detail.TimedCue, 0, len(entries))
 	for _, e := range entries {
 		if e.End <= float64(startSec) || e.Start >= float64(endSec) {
 			continue
 		}
-		cues = append(cues, asset.TimedCue{
+		cues = append(cues, detail.TimedCue{
 			StartMs: int64(e.Start * 1000),
 			EndMs:   int64(e.End * 1000),
 			Text:    e.Text,
@@ -204,12 +205,12 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 		return triggerWhisperFallback()
 	}
 
-	return &asset.ResolvedTextBundle{
+	return &detail.ResolvedTextBundle{
 		LanguageCode:       lang,
 		SourceLanguageCode: lang, // YT subtitle is original language
 		PlainText:          plain,
 		Cues:               cues,
-		SourceType:         asset.TextSourceYouTubeSubtitle,
+		SourceType:         detail.TextSourceYouTubeSubtitle,
 		IsOriginal:         true,
 		Provider:           "yt-dlp",
 		ModelName:          "yt-auto",

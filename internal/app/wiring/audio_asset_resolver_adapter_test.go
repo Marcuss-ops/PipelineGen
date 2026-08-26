@@ -7,6 +7,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"io"
 	"os"
@@ -16,11 +17,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
-// fakeAssetStore is a minimal in-memory asset.Store for the adapter tests.
+// fakeAssetStore is a minimal in-memory detail.Store for the adapter tests.
 // It returns the seeded Details for a requested id and is otherwise inert
 // (the adapter only ever calls Get).
 type fakeAssetStore struct {
@@ -47,7 +48,7 @@ func newTestAudioAdapter(t *testing.T, byID map[string]*asset.Details) *audioAss
 	canonical, err := drive.NewCanonicalAssetMaterializer(&testDriveReader{t: t}, t.TempDir(), nil)
 	require.NoError(t, err)
 	return &audioAssetSourceAdapter{
-		assets:    asset.NewService(&fakeAssetStore{byID: byID}, nil),
+		assets:    detail.NewService(&fakeAssetStore{byID: byID}, nil),
 		canonical: canonical,
 	}
 }

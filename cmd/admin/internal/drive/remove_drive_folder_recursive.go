@@ -32,6 +32,7 @@
 package drive
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
@@ -47,7 +48,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -483,7 +484,7 @@ func countAssetsInFolder(ctx context.Context, db *sql.DB, folderID string) (int,
 	var count int
 	err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM media_assets
-		 WHERE `+asset.SoftDeleteFilter()+`
+		 WHERE `+detail.SoftDeleteFilter()+`
 		 AND (folder_id = ? OR parent_folder_id = ?)`,
 		folderID, folderID).Scan(&count)
 	return count, err
@@ -495,7 +496,7 @@ func listAssetsInFolder(ctx context.Context, db *sql.DB, folderID string) ([]ass
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, COALESCE(name, '')
 		 FROM media_assets
-		 WHERE `+asset.SoftDeleteFilter()+`
+		 WHERE `+detail.SoftDeleteFilter()+`
 		 AND (folder_id = ? OR parent_folder_id = ?)
 		 ORDER BY name`,
 		folderID, folderID)
@@ -531,7 +532,7 @@ func listAssetsBySourceVideoIDs(ctx context.Context, db *sql.DB, raw string) ([]
 		args[i] = id
 	}
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, COALESCE(name, '') FROM media_assets WHERE `+asset.SoftDeleteFilter()+
+		`SELECT id, COALESCE(name, '') FROM media_assets WHERE `+detail.SoftDeleteFilter()+
 			` AND json_extract(COALESCE(metadata_json, '{}'), '$.source_video_id') IN (`+placeholders+") ORDER BY id", args...)
 	if err != nil {
 		return nil, err

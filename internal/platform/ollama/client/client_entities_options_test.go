@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +25,7 @@ func TestExtractEntitiesFromSegment_UsesBoundedOperationBudget(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "gemma4:e4b", 5)
-	result, err := c.ExtractEntitiesFromSegmentWithModel(context.Background(), asset.EntityExtractionRequest{
+	result, err := c.ExtractEntitiesFromSegmentWithModel(context.Background(), detail.EntityExtractionRequest{
 		SegmentText:  "A test segment.",
 		SegmentIndex: 3,
 		EntityCount:  5,

@@ -5,7 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
@@ -31,7 +31,7 @@ func NewClipRenderTranscriptResolver(log *zap.Logger) *ClipRenderTranscriptResol
 }
 
 // SetRepo attaches the canonical text-track repository.
-func (r *ClipRenderTranscriptResolver) SetRepo(repo asset.TextTrackRepository) { r.repo = repo }
+func (r *ClipRenderTranscriptResolver) SetRepo(repo detail.TextTrackRepository) { r.repo = repo }
 
 // SetAcquire attaches the canonical Whisper acquisition service (fallback).
 func (r *ClipRenderTranscriptResolver) SetAcquire(acquire *texttracks.AcquireService) {

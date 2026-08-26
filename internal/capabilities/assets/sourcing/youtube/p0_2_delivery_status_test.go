@@ -12,12 +12,13 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -85,35 +86,35 @@ func (s *stubTranscriber) Transcribe(ctx context.Context, audioPath string) (str
 }
 
 type stubTextTrackRepo struct {
-	tracks []asset.TextTrack
+	tracks []detail.TextTrack
 }
 
-func (s *stubTextTrackRepo) UpsertBatch(ctx context.Context, tracks []asset.TextTrack) error {
+func (s *stubTextTrackRepo) UpsertBatch(ctx context.Context, tracks []detail.TextTrack) error {
 	s.tracks = append(s.tracks, tracks...)
 	return nil
 }
 
-func (s *stubTextTrackRepo) Find(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (s *stubTextTrackRepo) Find(ctx context.Context, assetID string, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, error) {
 	return nil, nil
 }
 
-func (s *stubTextTrackRepo) ListByAsset(ctx context.Context, assetID string) ([]asset.TextTrack, error) {
+func (s *stubTextTrackRepo) ListByAsset(ctx context.Context, assetID string) ([]detail.TextTrack, error) {
 	return nil, nil
 }
 
-func (s *stubTextTrackRepo) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (s *stubTextTrackRepo) FindReady(ctx context.Context, assetID string, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, nil
 }
 
-func (s *stubTextTrackRepo) ListReadyLanguages(ctx context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+func (s *stubTextTrackRepo) ListReadyLanguages(ctx context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
 	return nil, nil
 }
 
-func (s *stubTextTrackRepo) FindCurrentForTranslation(ctx context.Context, assetID string, kind asset.TextTrackKind, sourceTextHash string, targetLanguageCode string, translationModel string, modelVersion string, promptVersion string) (*asset.TextTrack, error) {
+func (s *stubTextTrackRepo) FindCurrentForTranslation(ctx context.Context, assetID string, kind detail.TextTrackKind, sourceTextHash string, targetLanguageCode string, translationModel string, modelVersion string, promptVersion string) (*detail.TextTrack, error) {
 	return nil, nil
 }
 
-func (s *stubTextTrackRepo) InsertTranslationWithAuditPredecessor(ctx context.Context, track asset.TextTrack) error {
+func (s *stubTextTrackRepo) InsertTranslationWithAuditPredecessor(ctx context.Context, track detail.TextTrack) error {
 	return nil
 }
 

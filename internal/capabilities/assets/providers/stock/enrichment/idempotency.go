@@ -73,10 +73,11 @@
 package enrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
 // EnrichmentVersion is the canonical schema-version enum for the

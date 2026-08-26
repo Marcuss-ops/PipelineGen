@@ -13,6 +13,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"testing"
 
@@ -46,8 +47,8 @@ func TestRecovery_PreExistingFive_NoRetranslationOnResume(t *testing.T) {
 	)
 	src := "the source content for recovery test"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
@@ -62,7 +63,7 @@ func TestRecovery_PreExistingFive_NoRetranslationOnResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMaterializer(1st): %v", err)
 	}
-	rep1, err := m1.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, first5)
+	rep1, err := m1.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, first5)
 	if err != nil {
 		t.Fatalf("Materialize(1st): %v", err)
 	}
@@ -81,7 +82,7 @@ func TestRecovery_PreExistingFive_NoRetranslationOnResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMaterializer(2nd): %v", err)
 	}
-	rep2, err := m2.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, all6)
+	rep2, err := m2.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, all6)
 	if err != nil {
 		t.Fatalf("Materialize(2nd): %v", err)
 	}
@@ -110,8 +111,8 @@ func TestRecovery_FirstSix_AllCreated_NoSkipped(t *testing.T) {
 	)
 	src := "fresh asset — no translations yet"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestRecovery_FirstSix_AllCreated_NoSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMaterializer: %v", err)
 	}
-	rep, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript,
+	rep, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript,
 		[]string{"it", "es", "fr", "de", "pt-BR", "ru"})
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
@@ -149,8 +150,8 @@ func TestRecovery_NoDoubleMaterializeOnRestart(t *testing.T) {
 	)
 	src := "deterministic source 003"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -163,11 +164,11 @@ func TestRecovery_NoDoubleMaterializeOnRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMaterializer: %v", err)
 	}
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
 		t.Fatalf("Materialize(1st): %v", err)
 	}
 	callsAfter1 := tr.CallCount()
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript, []string{"it", "es", "fr"}); err != nil {
 		t.Fatalf("Materialize(2nd): %v", err)
 	}
 	if tr.CallCount() != callsAfter1 {

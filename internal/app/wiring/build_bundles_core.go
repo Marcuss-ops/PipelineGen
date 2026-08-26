@@ -42,7 +42,7 @@ import (
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/platform/images/chrome"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/disasterrecovery"
@@ -55,7 +55,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	_ = ctx
 	_ = cfg
 	assetsStore := imagesregistry.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
-	assetsSvc := asset.NewService(assetsStore, log)
+	assetsSvc := detail.NewService(assetsStore, log)
 	imageRepo := imagesrepo.NewImagesRepository(dbs.DualPool.Writer)
 	voiceoverRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 	monitorsRepo := monitors.NewMonitorsRepository(dbs.DualPool.Writer)

@@ -35,7 +35,7 @@ func makeBrainInfraFile(t *testing.T, root, relPath, content string) {
 
 func TestScanBrainInfraBan_BannedImportViolates(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/brain/core/core.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/brain/core/core.go",
 		`package core
 
 import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -81,7 +81,7 @@ func runFFmpeg() {
 
 func TestScanBrainInfraBan_TestFilesExempt(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/brain/normalizer/normalizer_test.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/brain/normalizer/normalizer_test.go",
 		`package normalizer
 
 import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
@@ -97,7 +97,7 @@ import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 
 func TestScanBrainInfraBan_CommentOnlyWarns(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/brain/core/doc.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/brain/core/doc.go",
 		`package core
 
 // NOTE: the brain must not import
@@ -117,7 +117,7 @@ func TestScanBrainInfraBan_CommentOnlyWarns(t *testing.T) {
 
 func TestScanBrainInfraBan_OtherPackageIgnored(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/assets/service.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/assets/service.go",
 		`package assets
 
 import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
@@ -127,7 +127,7 @@ import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 	ScanBrainInfraBan(root, &policy.Policy{}, r)
 
 	for _, v := range r.Violations {
-		if strings.Contains(v.File, "internal/application/assets/") {
+		if strings.Contains(v.File, "internal/capabilities/assets/") {
 			t.Errorf("assets package must be out of scope, got %+v", v)
 		}
 	}
@@ -135,7 +135,7 @@ import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 
 func TestScanBrainInfraBan_BannedCallViolates(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/brain/core/core.go",
+	makeBrainInfraFile(t, root, "internal/capabilities/brain/core/core.go",
 		`package core
 
 func callQdrant() {

@@ -81,12 +81,13 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
@@ -161,15 +162,15 @@ type AssetPublisherPort interface {
 // Future renditions (e.g. a per-language audio variant when the
 // voiceover fan-out lands) extend this switch — adding a case here
 // is the canonical way to opt new kinds in.
-func shouldPublishRendition(kind asset.RenditionKind) bool {
+func shouldPublishRendition(kind detail.RenditionKind) bool {
 	switch kind {
-	case asset.RenditionKindMaster,
-		asset.RenditionKindProxy,
-		asset.RenditionKindManifest:
+	case detail.RenditionKindMaster,
+		detail.RenditionKindProxy,
+		detail.RenditionKindManifest:
 		return true
-	case asset.RenditionKindMezzanine,
-		asset.RenditionKindThumbnail,
-		asset.RenditionKindStoryboard:
+	case detail.RenditionKindMezzanine,
+		detail.RenditionKindThumbnail,
+		detail.RenditionKindStoryboard:
 		return false
 	default:
 		// Forward-compat: unknown kinds default to SKIP. This makes
@@ -199,7 +200,7 @@ type PublishRenditionsReport struct {
 	// FilteredOut lists the kinds that were intentionally skipped
 	// (RenditionKindMezzanine, RenditionKindThumbnail,
 	// RenditionKindStoryboard). Useful for audit logs.
-	FilteredOut []asset.RenditionKind
+	FilteredOut []detail.RenditionKind
 
 	// CleanedUp lists the local paths the removeFn successfully
 	// removed. Distinct from Published: a publish can succeed but
@@ -223,7 +224,7 @@ type PublishRenditionsReport struct {
 // outcome DTO. LocalPath is preserved for audit; FileID is the
 // canonical Drive file ID returned by delivery.Publisher.Publish.
 type PublishedRenditionOutcome struct {
-	Kind      asset.RenditionKind
+	Kind      detail.RenditionKind
 	LocalPath string
 	Filename  string
 	FileID    string
@@ -267,7 +268,7 @@ func PublishRenditionsToYouTubeAsset(
 	channelID string,
 	videoID string,
 	assetID string,
-	renditions []asset.RenditionOutput,
+	renditions []detail.RenditionOutput,
 	removeFn func(localPath string) error,
 ) (PublishRenditionsReport, error) {
 	// ── setup-time fail-closed (godlike/07) ────────────────────────
@@ -398,7 +399,7 @@ func PublishRenditionsToYouTubeAssetOSRemove(
 	channelID string,
 	videoID string,
 	assetID string,
-	renditions []asset.RenditionOutput,
+	renditions []detail.RenditionOutput,
 ) (PublishRenditionsReport, error) {
 	return PublishRenditionsToYouTubeAsset(
 		ctx, publisher, channelID, videoID, assetID, renditions, os.Remove,

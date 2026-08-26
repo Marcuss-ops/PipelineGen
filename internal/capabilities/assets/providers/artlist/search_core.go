@@ -1,11 +1,12 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -18,7 +19,7 @@ import (
 // responsibility boundaries live in searcher_sqlite.go and searcher_cache.go.
 type SearchService struct {
 	service         *Service
-	assetRepo       asset.Repository
+	assetRepo       detail.Repository
 	dispatcher      Dispatcher
 	scraperSearcher Searcher
 	pixabaySearcher Searcher
@@ -28,7 +29,7 @@ type SearchService struct {
 	log             *zap.Logger
 }
 
-func (ss *SearchService) SetAssetRepo(r asset.Repository) {
+func (ss *SearchService) SetAssetRepo(r detail.Repository) {
 	ss.assetRepo = r
 }
 

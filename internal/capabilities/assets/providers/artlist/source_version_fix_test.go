@@ -13,6 +13,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 
@@ -21,7 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
@@ -32,8 +33,8 @@ import (
 // a content hash (e.g. download step succeeded but hash step was skipped).
 type emptyHashMediaProcessor struct{}
 
-func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
-	return &asset.ProcessResult{
+func (f *emptyHashMediaProcessor) Process(_ context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
+	return &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
@@ -152,4 +153,4 @@ func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 }
 
 // Compile-time: emptyHashMediaProcessor satisfies the Processor port.
-var _ asset.Processor = (*emptyHashMediaProcessor)(nil)
+var _ detail.Processor = (*emptyHashMediaProcessor)(nil)

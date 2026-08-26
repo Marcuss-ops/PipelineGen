@@ -49,8 +49,8 @@ inventory_scope: >-
 
 measurements:
   - current_symbol: "PipelineResult.StageDurations"
-    current_owner: "internal/application/scripts/adapters.PipelineResult"
-    current_writer: "PostProcessorRegistry.Run in internal/application/scripts/adapters/postprocessor_composite_run.go:128-186"
+    current_owner: "internal/capabilities/scripts/adapters.PipelineResult"
+    current_writer: "PostProcessorRegistry.Run in internal/capabilities/scripts/adapters/postprocessor_composite_run.go:128-186"
     current_storage: "In-memory map[string]int64; serialized JSON field stage_durations"
     current_metric: "none directly; copied into GenerationTimings.PostprocessMs"
     canonical_type: stage
@@ -61,8 +61,8 @@ measurements:
     removal_condition: "All script consumers read RunReport.Stages; parity covers success, failure, empty output, and repeated processors; no production code reads or writes StageDurations"
 
   - current_symbol: "PipelineResult.StageProgress"
-    current_owner: "internal/application/scripts/adapters.PipelineResult"
-    current_writer: "recordProcessorProgress in internal/application/scripts/adapters/postprocessor_progress.go"
+    current_owner: "internal/capabilities/scripts/adapters.PipelineResult"
+    current_writer: "recordProcessorProgress in internal/capabilities/scripts/adapters/postprocessor_progress.go"
     current_storage: "In-memory map[string]job.StageProgress; progress/event projection"
     current_metric: "job progress/events, not elapsed timing"
     canonical_type: stage
@@ -73,7 +73,7 @@ measurements:
     removal_condition: "All operator/API progress consumers distinguish progress from timing and use canonical stage status/counters"
 
   - current_symbol: "PostProcessResult.DurationMs"
-    current_owner: "internal/application/scripts/adapters.PostProcessResult"
+    current_owner: "internal/capabilities/scripts/adapters.PostProcessResult"
     current_writer: "PostProcessorRegistry.Run assigns ppResult.DurationMs in postprocessor_composite_run.go:185"
     current_storage: "In-memory result object; merged into PipelineResult and generation result projections"
     current_metric: "duration_ms result field"
@@ -85,7 +85,7 @@ measurements:
     removal_condition: "No consumer reads PostProcessResult.DurationMs and canonical StageReport parity is within max(5%, 50ms)"
 
   - current_symbol: "VidRushTimingMetrics.ObserveProcessorDuration"
-    current_owner: "internal/application/scripts/adapters/vidrush_timing.go"
+    current_owner: "internal/capabilities/scripts/adapters/vidrush_timing.go"
     current_writer: "PostProcessorRegistry.Run in postprocessor_composite_run.go:128-130"
     current_storage: "Prometheus collector registered by internal/platform/observability/metrics_vidrush.go"
     current_metric: "vidrush_processor_duration_seconds{processor}"
@@ -97,7 +97,7 @@ measurements:
     removal_condition: "Canonical observer is the sole timer; registry no longer accepts VidRushTimingMetrics; dashboards consume canonical stage projection"
 
   - current_symbol: "VidRushTimingMetrics.ObserveProviderDuration"
-    current_owner: "internal/application/scripts/adapters/vidrush_timing.go"
+    current_owner: "internal/capabilities/scripts/adapters/vidrush_timing.go"
     current_writer: "processor_clip_search.go:141; processor_internet_images.go:208; processor_vidrush_materialization.go:169-192"
     current_storage: "Prometheus collector; no durable per-operation row"
     current_metric: "vidrush_provider_duration_seconds{provider}"
@@ -109,7 +109,7 @@ measurements:
     removal_condition: "Every provider boundary is observed exactly once through a shared wrapper and no direct observeVidRushProviderDuration call remains"
 
   - current_symbol: "processmetrics.Metric"
-    current_owner: "internal/application/processmetrics"
+    current_owner: "internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)"
     current_writer: "RecorderImpl.Start/Handle.End; stockpipeline phase helpers"
     current_storage: "SQLite process_phase_metrics row via internal/platform/sqlite/processmetrics"
     current_metric: "none directly; durable process-phase record"
@@ -121,8 +121,8 @@ measurements:
     removal_condition: "All processmetrics readers use RunReport and canonical recorder; process_phase_metrics has zero production writes after parity"
 
   - current_symbol: "processmetrics.Metric.DurationMs"
-    current_owner: "internal/application/processmetrics"
-    current_writer: "Handle.End in internal/application/processmetrics/recorder.go:195"
+    current_owner: "internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)"
+    current_writer: "Handle.End in internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)/recorder.go:195"
     current_storage: "process_phase_metrics.duration_ms"
     current_metric: "durable phase duration column"
     canonical_type: stage
@@ -133,8 +133,8 @@ measurements:
     removal_condition: "No consumer depends on process_phase_metrics.duration_ms and stage/operation parity passes for all stock phases"
 
   - current_symbol: "processmetrics.Metric.QueueWaitMs"
-    current_owner: "internal/application/processmetrics"
-    current_writer: "Handle.SetQueueWait in internal/application/processmetrics/recorder.go:135-144"
+    current_owner: "internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)"
+    current_writer: "Handle.SetQueueWait in internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)/recorder.go:135-144"
     current_storage: "process_phase_metrics.queue_wait_ms"
     current_metric: "durable per-phase queue_wait_ms"
     canonical_type: wait_observation
@@ -145,7 +145,7 @@ measurements:
     removal_condition: "Queue wait is persisted once at attempt scope and phase rows no longer expose a competing queue_wait_ms"
 
   - current_symbol: "processmetrics.Metric.ItemsIn/ItemsOut/BytesIn/BytesOut/RetryCount"
-    current_owner: "internal/application/processmetrics"
+    current_owner: "internal/platform/sqlite/processmetrics (legacy processmetrics package deleted 2026-08-25; durable row surface)"
     current_writer: "Handle.SetItems, Handle.SetBytes, Handle.SetRetryCount"
     current_storage: "process_phase_metrics.items_in, items_out, bytes_in, bytes_out, retry_count"
     current_metric: "durable phase counters"
@@ -181,7 +181,7 @@ measurements:
     removal_condition: "All stock phase consumers read canonical reports and processmetrics recorder receives zero production calls"
 
   - current_symbol: "script generation timing fields"
-    current_owner: "internal/application/scripts/usecase"
+    current_owner: "internal/capabilities/scripts/usecase"
     current_writer: "generation_prepare.go, generation_engine.go, generate_one_usecase.go"
     current_storage: "GenerationTimings in result objects and script_generation_logs"
     current_metric: "SourceResolveMs, PlanBuildMs, EngineMs, PostprocessMs, TotalMs and related fields"
@@ -230,7 +230,7 @@ measurements:
 
   - current_symbol: "ScriptPhaseDuration"
     current_owner: "internal/platform/observability/metrics_scripts.go"
-    current_writer: "script phase metric call sites under internal/application/scripts"
+    current_writer: "script phase metric call sites under internal/capabilities/scripts"
     current_storage: "Prometheus histogram"
     current_metric: "script_phase_duration_seconds{phase,topic}"
     canonical_type: stage
@@ -421,7 +421,7 @@ measurements:
     removal_condition: "No report or runtime path derives attempt identity from retry_count and retry counter parity passes"
 
   - current_symbol: "retry backoff scheduling"
-    current_owner: "internal/application/jobs and retry helpers"
+    current_owner: "internal/capabilities/jobs and retry helpers"
     current_writer: "worker_finalize_paths.go and SQLiteStore.ScheduleRetry/requeue paths"
     current_storage: "jobs status/next availability fields and logs; no canonical aggregate column"
     current_metric: "none for retry_backoff_ms; outbox has jittered next_attempt_at"
@@ -661,7 +661,7 @@ measurements:
     removal_condition: "Dashboards and reports distinguish worker resource bytes from artifact/operation bytes"
 
   - current_symbol: "health and readiness duration_ms fields"
-    current_owner: "internal/application/system/health and internal/platform/health"
+    current_owner: "internal/capabilities/system/health and internal/platform/health"
     current_writer: "readyz checkers, drive_checker.go, jobs_checker.go, sqlite_checker.go"
     current_storage: "HTTP response maps/logs; no business-job persistence"
     current_metric: "duration_ms in health/readiness responses"
@@ -769,7 +769,7 @@ measurements:
     removal_condition: "CHILD_RUNS_LINKED=PASS and parent/child queries do not reconstruct identity from row order or retry_count"
 
   - current_symbol: "job artifacts and CompleteWithArtifacts results"
-    current_owner: "internal/application/jobs/finalizer and artifact adapters"
+    current_owner: "internal/capabilities/jobs/finalizer and artifact adapters"
     current_writer: "JobFinalizer.CompleteWithArtifacts and artifact writer/finalization flow"
     current_storage: "artifact staging/catalog rows, outbox events, result JSON"
     current_metric: "artifact counters/bytes and finalizer outcome counters"
@@ -925,7 +925,7 @@ measurements:
     removal_condition: "TTS_OBSERVED=PASS and no use case times Synthesize independently of the observed provider wrapper"
 
   - current_symbol: "semaphore and rate-limit waits"
-    current_owner: "internal/application/scripts/usecase/semaphore_usecase.go, voiceover/executor.go, image/search rate-limit helpers"
+    current_owner: "internal/capabilities/scripts/usecase/semaphore_usecase.go, voiceover/executor.go, image/search rate-limit helpers"
     current_writer: "channel acquire/select and retry.Sleep waits; no canonical interval recorder found"
     current_storage: "In-memory control flow and logs; no durable wait observation"
     current_metric: "none consistently"

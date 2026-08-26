@@ -1,6 +1,6 @@
 // Package semantic — NormalizeSearchText compatibility helper.
 // The real implementation was removed from remote (commit d61068b3); this minimal version satisfies the canonical contract
-// documented in `internal/infrastructure/ai/semantic/normalize_test.go`:
+// documented in `internal/capabilities/ai/semantic/normalize_test.go`:
 //
 //	NormalizeSearchText(parts ...string) string
 //

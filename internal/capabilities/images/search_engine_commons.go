@@ -11,6 +11,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -106,7 +107,7 @@ func (s *ImageStorageService) searchWikimediaCommons(ctx context.Context, query 
 			width, height = filePayload.Original.Width, filePayload.Original.Height
 		}
 		return retrieved.RetrievalSearchResult{
-			Provider: asset.ProviderWikimediaCommons, Origin: asset.ImageOriginRetrieved,
+			Provider: detail.ProviderWikimediaCommons, Origin: detail.ImageOriginRetrieved,
 			PreviewURL: imageURL, PageURL: pageURL, Title: page.Title,
 			Width: width, Height: height, License: licensePayload.License.Title,
 			Author: filePayload.Latest.User.Name,

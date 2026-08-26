@@ -1,5 +1,9 @@
 package cliprender
 
+import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+)
+
 // prepared.go owns the typed result of the parallel preparation phase:
 // the resolved asset identities, the materialized local artifacts, the
 // canonical transcript, the resolved output contract, and the wall-vs-work
@@ -39,8 +43,8 @@ type MaterializedAsset struct {
 }
 
 // Cue is a single timed subtitle cue (millisecond precision), mirroring the
-// canonical asset.TimedCue shape so the capability stays free of kernel/asset
-// imports. The wiring adapter maps []asset.TimedCue → []Cue.
+// canonical detail.TimedCue shape so the capability stays free of kernel/asset
+// imports. The wiring adapter maps []detail.TimedCue → []Cue.
 type Cue struct {
 	StartMs int64  `json:"start_ms"`
 	EndMs   int64  `json:"end_ms"`

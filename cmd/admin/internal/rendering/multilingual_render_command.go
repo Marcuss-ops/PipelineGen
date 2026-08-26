@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -236,10 +236,10 @@ type overlayAssets struct {
 
 func (o overlayAssets) ProfileVersion() string {
 	if o.BackgroundSHA256 == "" && o.WatermarkSHA256 == "" && o.ScalePercent == 100 {
-		return asset.RenderProfileFFmpegAss1080pV1
+		return detail.RenderProfileFFmpegAss1080pV1
 	}
 	return fmt.Sprintf("%s|bg=%s|wm=%s|wm_pos=%s|wm_opacity=%.6f|wm_margin=%d|fg_scale=%d",
-		asset.RenderProfileFFmpegAss1080pV1, o.BackgroundSHA256, o.WatermarkSHA256,
+		detail.RenderProfileFFmpegAss1080pV1, o.BackgroundSHA256, o.WatermarkSHA256,
 		o.Position, o.Opacity, o.MarginPX, o.ScalePercent)
 }
 

@@ -6,6 +6,9 @@
 // cold candidates that were evaluated but not materialized.
 package script
 
+import (
+)
+
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 // VisualPlan is the per-scene visual plan produced by the visual

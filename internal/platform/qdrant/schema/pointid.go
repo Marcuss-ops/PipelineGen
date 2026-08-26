@@ -42,7 +42,9 @@
 package schema
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/pkg/qdrantid"
+	"encoding/hex"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/google/uuid"
 )
 
@@ -81,4 +83,30 @@ var PipelineGenQdrantNamespace = uuid.MustParse("e5e9b4b1-2c8a-4f7d-9b3e-6c2d9a1
 // silently substitutes a non-canonical ID. The caller (AssetToPoint)
 // already validates non-emptiness of asset.ID; this symmetry lets the
 // canonical boundary propagate the empty case cleanly.
-var AssetIDToQdrantPointID = qdrantid.AssetIDToQdrantPointID
+//
+// The SHA-256 algorithm is delegated to internal/kernel/digest (the
+// digest SSOT); this function owns only the UUID-v8 wire shape.
+func AssetIDToQdrantPointID(assetID string) string {
+	if assetID == "" {
+		return ""
+	}
+	digestHex := digest.SHA256Bytes([]byte(assetID))
+	digestBytes, err := hex.DecodeString(digestHex)
+	if err != nil {
+		return ""
+	}
+	var b [16]byte
+	copy(b[:], digestBytes[:16])
+	b[6] = (b[6] & 0x0f) | 0x80
+	b[8] = (b[8] & 0x3f) | 0x80
+	return uuid.UUID(b).String()
+}
+
+// HexDigest exposes the canonical SHA-256 digest of the bare asset ID
+// for diagnostics and tests.
+func HexDigest(assetID string) string {
+	if assetID == "" {
+		return ""
+	}
+	return digest.SHA256Bytes([]byte(assetID))
+}

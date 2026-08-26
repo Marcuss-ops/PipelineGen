@@ -38,7 +38,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // goldenSinglePassTTS synthesizes audio and word boundaries in ONE pass
@@ -152,7 +152,7 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 			ID:       fmt.Sprintf("vo-golden-%d", i),
 			JobID:    "job-golden",
 			Text:     scene.text,
-			TextHash: TextHash(files.SHA256String(scene.text)),
+			TextHash: TextHash(digest.SHA256String(scene.text)),
 			Language: "it",
 			Voice:    "it-IT-DiegoNeural",
 			Filename: fmt.Sprintf("scene-%d.mp3", i),
@@ -202,8 +202,8 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 		assert.Equal(t, audio.BoundaryWord, artifact.BoundaryMode, "scene %d boundary_mode=word", i)
 		assert.Equal(t, "it", artifact.Language, "scene %d language=it", i)
 		assert.NotEmpty(t, artifact.Words, "scene %d words non-empty", i)
-		assert.Equal(t, files.SHA256String(scenes[i].text), artifact.TextSHA256, "scene %d text_sha256 exact", i)
-		assert.Equal(t, files.SHA256String("fake-mp3-bytes"), artifact.AudioSHA256, "scene %d audio_sha256 exact", i)
+		assert.Equal(t, digest.SHA256String(scenes[i].text), artifact.TextSHA256, "scene %d text_sha256 exact", i)
+		assert.Equal(t, digest.SHA256String("fake-mp3-bytes"), artifact.AudioSHA256, "scene %d audio_sha256 exact", i)
 
 		// SRT / VTT are projections of the SSOT.
 		assert.Contains(t, string(pub.files[srtName]), " --> ", "scene %d SRT must carry cue timestamps", i)

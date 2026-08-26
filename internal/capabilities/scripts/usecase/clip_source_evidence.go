@@ -1,10 +1,11 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -177,7 +178,7 @@ func buildClipEvidence(
 	sourceText string,
 	narrativeText string,
 	clipDetails map[string]scriptpkg.ClipDetail,
-	resolvedTracks map[string]*asset.TextTrack,
+	resolvedTracks map[string]*detail.TextTrack,
 ) *scriptpkg.ClipEvidence {
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {

@@ -16,6 +16,7 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -23,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -320,9 +321,9 @@ func (s *AssetStoreSQLite) List(ctx context.Context, filter asset.Filter) ([]*as
 // import graph clean (domain → infra never inverts) and lets the
 // composition root use one consistent prefix for asset-store +
 // service construction.
-func NewService(store *AssetStoreSQLite, log *zap.Logger) *asset.Service {
+func NewService(store *AssetStoreSQLite, log *zap.Logger) *detail.Service {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return asset.NewService(store, log)
+	return detail.NewService(store, log)
 }

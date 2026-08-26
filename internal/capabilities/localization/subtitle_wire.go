@@ -6,7 +6,7 @@ package localization
 //
 // godlike/06 SSOT (one canonical owner per fact): the plan references the
 // translated text ONLY by (SubtitleTrackID, SubtitleSHA256) — never the raw
-// text. The translation stays owned by asset.TextTrack; this wire fetches the
+// text. The translation stays owned by detail.TextTrack; this wire fetches the
 // content by those references, verifies the content hash, and produces the
 // ASS. The raw translated text is therefore never duplicated across DB /
 // request / render plan / document model.
@@ -16,10 +16,11 @@ package localization
 // ASS is written — Rust never burns subtitles from the wrong track.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ResolvedSubtitleTrack is the fetched translated text-track content that
@@ -28,7 +29,7 @@ import (
 type ResolvedSubtitleTrack struct {
 	TrackID      int64
 	LanguageCode string
-	Cues         []asset.TimedCue
+	Cues         []detail.TimedCue
 	TextHash     string
 }
 
@@ -57,7 +58,7 @@ type SubtitleCompileInput struct {
 	Language       string
 	StyleHash      string
 	TrackID        int64
-	Cues           []asset.TimedCue
+	Cues           []detail.TimedCue
 	ClipDurationMS int64
 	OutputDir      string
 }

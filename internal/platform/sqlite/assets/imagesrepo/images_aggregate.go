@@ -11,23 +11,23 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // FASE 6 (July 2026, image-territories action plan): ListImages is the
 // FASE 6 canonical replacement for ListImagesBySubject. Takes a
-// asset.RepositoryListFilter and returns asset.RepositoryImageRow
+// detail.RepositoryListFilter and returns detail.RepositoryImageRow
 // rows.
-func (r *ImagesRepository) ListImages(ctx context.Context, filter asset.RepositoryListFilter) ([]asset.RepositoryImageRow, error) {
+func (r *ImagesRepository) ListImages(ctx context.Context, filter detail.RepositoryListFilter) ([]detail.RepositoryImageRow, error) {
 	if r == nil {
 		return nil, nil
 	}
 	limit := filter.Limit
-	if limit <= 0 || limit > asset.MaxListImagesLimit {
-		if limit > asset.MaxListImagesLimit {
-			limit = asset.MaxListImagesLimit
+	if limit <= 0 || limit > detail.MaxListImagesLimit {
+		if limit > detail.MaxListImagesLimit {
+			limit = detail.MaxListImagesLimit
 		} else {
-			limit = asset.DefaultResolvedLimit
+			limit = detail.DefaultResolvedLimit
 		}
 	}
 
@@ -83,7 +83,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter asset.Reposito
 	}
 	defer rows.Close()
 
-	out := make([]asset.RepositoryImageRow, 0, limit)
+	out := make([]detail.RepositoryImageRow, 0, limit)
 	for rows.Next() {
 		var (
 			id, originStr, providerID, subjectID, previewURL, driveLink, fileHash sql.NullString
@@ -111,9 +111,9 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter asset.Reposito
 		if height.Valid {
 			h = int(height.Int64)
 		}
-		out = append(out, asset.RepositoryImageRow{
+		out = append(out, detail.RepositoryImageRow{
 			AssetID:       id.String,
-			Origin:        asset.ImageOrigin(originStr.String),
+			Origin:        detail.ImageOrigin(originStr.String),
 			Provider:      providerID.String,
 			Name:          name,
 			PreviewURL:    previewURL.String,

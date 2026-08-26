@@ -21,7 +21,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -95,7 +95,7 @@ func TestGenerateE2E_MissingTranscriptFailsClosed(t *testing.T) {
 
 	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
+		tracks: map[string]*detail.TextTrack{
 			"clip-valid:en": makeTrack("clip-valid", "en", "valid transcript"),
 		},
 	})
@@ -128,7 +128,7 @@ func TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback(t *t
 	clipResolver.AddClip(makeTestClip("clip-no-transcript", "Clip Without Transcript", 30*time.Second))
 
 	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
-	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*detail.TextTrack{}})
 	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      genericFallback,
 		WordCount:   9,

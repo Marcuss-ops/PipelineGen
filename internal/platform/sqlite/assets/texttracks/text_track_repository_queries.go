@@ -16,7 +16,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 const UpsertTextTrackSQL = `
@@ -51,7 +51,7 @@ ON CONFLICT(asset_id, language_code, text_kind) WHERE is_current = 1 DO UPDATE S
 `
 
 // UpsertBatch atomically inserts or updates a batch of text tracks.
-func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []asset.TextTrack) error {
+func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []detail.TextTrack) error {
 	if len(tracks) == 0 {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 
 		status := string(t.Status)
 		if status == "" {
-			status = string(asset.TextTrackReady)
+			status = string(detail.TextTrackReady)
 		}
 
 		if _, err = stmt.ExecContext(ctx,
@@ -182,7 +182,7 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 // (Materializer) populates source_track_id with the parent's
 // text-track row.id (the source-language track that produced this
 // translation) so a forensic dump can navigate the audit trail.
-func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx context.Context, track asset.TextTrack) error {
+func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx context.Context, track detail.TextTrack) error {
 	if track.AssetID == "" {
 		return fmt.Errorf("text_track_repository.InsertTranslationWithAuditPredecessor: AssetID is required")
 	}
@@ -280,7 +280,7 @@ func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx co
 
 	status := string(track.Status)
 	if status == "" {
-		status = string(asset.TextTrackReady)
+		status = string(detail.TextTrackReady)
 	}
 
 	if _, err = tx.ExecContext(ctx,

@@ -48,7 +48,7 @@ import (
 // extract the alphabet.
 func writeFakeMetadataKeyRegistry(t *testing.T, tempDir string, entries [][3]string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "kernel", "asset")
+	dir := filepath.Join(tempDir, "internal", "kernel", "asset", "detail")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir fake asset registry dir: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestScanMetadataKeys_CanonicalEmpty(t *testing.T) {
 	// Write the canonical file with ZERO entries
 	// (just a package decl + header — the scanner
 	// regex finds no {Key, Owner, Type} tuple).
-	dir := filepath.Join(tempDir, "internal", "kernel", "asset")
+	dir := filepath.Join(tempDir, "internal", "kernel", "asset", "detail")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

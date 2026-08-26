@@ -1,6 +1,7 @@
 package processor
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"os"
@@ -8,23 +9,23 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Compile-time assertion: Processor satisfies the new MediaTransformer port.
-var _ asset.MediaTransformer = (*Processor)(nil)
+var _ detail.MediaTransformer = (*Processor)(nil)
 
 // Transform runs the media transformation pipeline on the file at
 // input.LocalPath. It does NOT download, upload to Drive, or touch the
 // database. This is the canonical MediaTransformer implementation.
-func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) (*asset.TransformResult, error) {
+func (p *Processor) Transform(ctx context.Context, input *detail.TransformInput) (*detail.TransformResult, error) {
 	if input == nil {
-		err := fmt.Errorf("asset.TransformInput is required")
-		return &asset.TransformResult{Status: "failed", Error: err.Error()}, err
+		err := fmt.Errorf("detail.TransformInput is required")
+		return &detail.TransformResult{Status: "failed", Error: err.Error()}, err
 	}
 
-	result := &asset.TransformResult{
+	result := &detail.TransformResult{
 		ID:     input.ID,
 		Status: "failed",
 	}
@@ -54,7 +55,7 @@ func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) 
 		}
 		result.Renditions = renditions
 
-		mezzanine := p.findRendition(renditions, asset.RenditionKindMezzanine)
+		mezzanine := p.findRendition(renditions, detail.RenditionKindMezzanine)
 		if mezzanine == nil {
 			result.Error = "mezzanine rendition missing after processing"
 			return result, fmt.Errorf("%s", result.Error)
@@ -88,7 +89,7 @@ func (p *Processor) Transform(ctx context.Context, input *asset.TransformInput) 
 
 // setupDirectoriesFromTransform creates temp and save directories for a
 // TransformInput, mirroring setupDirectories but without SourceURL/Term.
-func (p *Processor) setupDirectoriesFromTransform(input *asset.TransformInput) (tmpDir, saveDir string) {
+func (p *Processor) setupDirectoriesFromTransform(input *detail.TransformInput) (tmpDir, saveDir string) {
 	tmpDir = filepath.Join(p.dataDir, p.tempDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		p.log.Error("failed to create temp directory; falling back to os.TempDir", zap.String("dir", tmpDir), zap.Error(err))
@@ -110,8 +111,8 @@ func (p *Processor) setupDirectoriesFromTransform(input *asset.TransformInput) (
 // transformToProcessInput builds a legacy ProcessInput from a TransformInput.
 // This is a temporary adapter while the legacy Process method still exists;
 // it will be removed once Process is retired.
-func transformToProcessInput(input *asset.TransformInput) *asset.ProcessInput {
-	return &asset.ProcessInput{
+func transformToProcessInput(input *detail.TransformInput) *detail.ProcessInput {
+	return &detail.ProcessInput{
 		ID:               input.ID,
 		Name:             input.Name,
 		LocalPath:        input.LocalPath,

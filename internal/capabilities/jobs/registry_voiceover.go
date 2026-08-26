@@ -1,5 +1,9 @@
 package jobs
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "time"
 
 // registerVoiceoverEntries registers all voiceover/subtitle job types

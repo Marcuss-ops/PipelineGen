@@ -20,6 +20,9 @@
 // ambiguity stays visible as a non-zero counter.
 package mediaregistry
 
+import (
+)
+
 import "context"
 
 // IdentityAuditReport is the identity-audit outcome. Both counters must be

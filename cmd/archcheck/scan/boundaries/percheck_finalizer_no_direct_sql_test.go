@@ -31,7 +31,7 @@ import (
 func TestScanFinalizerNoDirectSQL_LegacySQLTrip(t *testing.T) {
 	tmp := t.TempDir()
 	// Mirror the finalizer package layout.
-	finalizerDir := filepath.Join(tmp, "internal/application/assets/finalizer")
+	finalizerDir := filepath.Join(tmp, "internal/capabilities/assets/finalizer")
 	if err := os.MkdirAll(finalizerDir, 0o755); err != nil {
 		t.Fatalf("mkdir finalizer: %v", err)
 	}
@@ -60,7 +60,7 @@ func (LegacySQLProbe) Probe() string {
 	// Find the violation for our probe file.
 	found := false
 	for _, v := range r.Violations {
-		if v.Rule == finalizerNoSQLRule && v.File == "internal/application/assets/finalizer/asset_finalizer_legacy_test_target.go" {
+		if v.Rule == finalizerNoSQLRule && v.File == "internal/capabilities/assets/finalizer/asset_finalizer_legacy_test_target.go" {
 			found = true
 			if v.MatchedRule != "forbidden_sql_media_assets" {
 				t.Errorf("expected MatchedRule=forbidden_sql_media_assets; got %q", v.MatchedRule)
@@ -117,7 +117,7 @@ func (CanonicalAssetCommitterProbe) Commit() string {
 // accounting per godlike/07).
 func TestScanFinalizerNoDirectSQL_CommentOnlyIsResidueAccounted(t *testing.T) {
 	tmp := t.TempDir()
-	finalizerDir := filepath.Join(tmp, "internal/application/assets/finalizer")
+	finalizerDir := filepath.Join(tmp, "internal/capabilities/assets/finalizer")
 	if err := os.MkdirAll(finalizerDir, 0o755); err != nil {
 		t.Fatalf("mkdir finalizer: %v", err)
 	}
@@ -142,14 +142,14 @@ type CommentOnlyProbe struct{}
 	// `//` block. The scan should detect it as residue and WARN,
 	// not VIOLATE. Verify no violation for the comment file.
 	for _, v := range r.Violations {
-		if v.File == "internal/application/assets/finalizer/asset_finalizer_comment_test_target.go" {
+		if v.File == "internal/capabilities/assets/finalizer/asset_finalizer_comment_test_target.go" {
 			t.Errorf("comment-only line should not emit a violation; got=%+v", v)
 		}
 	}
 	// Verify the WARN bucket captured the residue.
 	foundWarn := false
 	for _, w := range r.Warnings {
-		if len(w) > 0 && w == finalizerNoSQLRule+" forbidden-sql: comment-only reference(s) to forbidden SQL patterns in internal/application/assets/finalizer/asset_finalizer_comment_test_target.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)" {
+		if len(w) > 0 && w == finalizerNoSQLRule+" forbidden-sql: comment-only reference(s) to forbidden SQL patterns in internal/capabilities/assets/finalizer/asset_finalizer_comment_test_target.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)" {
 			foundWarn = true
 			break
 		}

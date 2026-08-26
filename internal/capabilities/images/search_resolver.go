@@ -26,6 +26,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -65,17 +66,17 @@ func (r *Router) Dispatch(ctx context.Context, req SearchRequest) (SearchRespons
 		return SearchResponse{}, ErrNoServiceWired
 	}
 	switch req.Origin {
-	case "", asset.ImageOriginRetrieved:
+	case "", detail.ImageOriginRetrieved:
 		if r.retrieved == nil {
 			return SearchResponse{}, ErrRetrievedNotWired
 		}
 		return r.retrieved.Search(ctx, req)
-	case asset.ImageOriginGenerated:
+	case detail.ImageOriginGenerated:
 		if r.generated == nil {
 			return SearchResponse{}, ErrGeneratedNotWired
 		}
 		return r.generated.Search(ctx, req)
-	case asset.ImageOriginUploaded:
+	case detail.ImageOriginUploaded:
 		if r.catalog == nil {
 			return SearchResponse{}, ErrCatalogNotWired
 		}

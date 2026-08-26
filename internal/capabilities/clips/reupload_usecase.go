@@ -34,6 +34,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -44,7 +45,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -127,7 +128,7 @@ type ReuploadFolderRoot struct {
 // mirroring the canonical surface used by assets/lifecycle.Service
 // (F2.7 closure) and infrastructure/media/processor (F2.8).
 type ReuploadUseCase struct {
-	assetRepo   asset.Repository
+	assetRepo   detail.Repository
 	publisher   delivery.Publisher
 	dispatcher  ClipIndexDispatcherPort
 	folderRoots map[string]ReuploadFolderRoot
@@ -146,7 +147,7 @@ type ReuploadUseCase struct {
 // rather than silently at first reupload request. Mirrors
 // processor.NewProcessor (F2.8) and lifecycle.NewService (F2.7).
 func NewReuploadUseCase(
-	assetRepo asset.Repository,
+	assetRepo detail.Repository,
 	publisher delivery.Publisher,
 	dispatcher ClipIndexDispatcherPort,
 	folderRoots map[string]ReuploadFolderRoot,

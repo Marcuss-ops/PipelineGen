@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -29,7 +29,7 @@ func TestClipSourceBuilder_ChronologicalOrdering_ReordersByStartMs(t *testing.T)
 
 	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
 	builder.ConfigureTextTrackReader(&stubTextTrackReader{
-		tracks: map[string]*asset.TextTrack{
+		tracks: map[string]*detail.TextTrack{
 			"clip-a:en": makeTrack("clip-a", "en", "transcript clip-a"),
 			"clip-b:en": makeTrack("clip-b", "en", "transcript clip-b"),
 			"clip-c:en": makeTrack("clip-c", "en", "transcript clip-c"),

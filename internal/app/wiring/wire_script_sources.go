@@ -37,6 +37,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
@@ -44,7 +45,7 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -286,7 +287,7 @@ func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string,
 	rows, err := a.repo.DB().QueryContext(ctx,
 		`SELECT id, COALESCE(name,'') AS name, COALESCE(source,'') AS source, COALESCE(drive_file_id,'') AS drive_file_id
 		 FROM media_assets
-		 WHERE LOWER(name) LIKE ? AND `+asset.SoftDeleteFilter()+`
+		 WHERE LOWER(name) LIKE ? AND `+detail.SoftDeleteFilter()+`
 		 ORDER BY name
 		 LIMIT ?`,
 		ql, limit)

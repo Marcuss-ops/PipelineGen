@@ -7,11 +7,12 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -19,7 +20,7 @@ import (
 // ── SQL receivers (migrated from clips_core.go) ──────────────────────
 
 // UpsertFolder inserts or updates a clip_folders row.
-func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *asset.ClipFolder) error {
+func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *detail.ClipFolder) error {
 	now := time.Now()
 	// Compute search key: lowercase group + folder path, remove spaces
 	searchKey := strings.ToLower(folder.Group + " " + folder.FolderPath)
@@ -77,7 +78,7 @@ func (e sentinelError) Error() string { return string(e) }
 func stringError(s string) sentinelError { return sentinelError(s) }
 
 // GetFolder retrieves a clip folder by ID.
-func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*asset.ClipFolder, error) {
+func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*detail.ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE id = ? LIMIT 1"
 	row := s.db.QueryRowContext(ctx, query, id)
 
@@ -85,7 +86,7 @@ func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*asset.Cli
 }
 
 // GetFolderByVideoID retrieves a clip folder by video ID.
-func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
+func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID string) (*detail.ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE video_id = ? LIMIT 1"
 	row := s.db.QueryRowContext(ctx, query, videoID)
 
@@ -95,8 +96,8 @@ func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID strin
 // scanClipFolder reads one ClipFolder from a single-row scanner.
 func (s *AssetStoreSQLite) scanClipFolder(row interface {
 	Scan(dest ...any) error
-}) (*asset.ClipFolder, error) {
-	var folder asset.ClipFolder
+}) (*detail.ClipFolder, error) {
+	var folder detail.ClipFolder
 	var createdAt, updatedAt string
 	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
 		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
@@ -162,7 +163,7 @@ func (s *AssetStoreSQLite) CountByFolderID(ctx context.Context, folderID string)
 }
 
 // ListFolders returns all clip folders, optionally filtered by source.
-func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error) {
+func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error) {
 	query := buildClipFolderQuery(source) + " ORDER BY updated_at DESC"
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
@@ -175,7 +176,7 @@ func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*a
 	}
 	defer rows.Close()
 
-	var folders []*asset.ClipFolder
+	var folders []*detail.ClipFolder
 	for rows.Next() {
 		f, err := s.scanClipFolder(rows)
 		if err != nil {
@@ -200,7 +201,7 @@ func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*a
 // tokens (mirrors the legacy `if conditionSQL == "" { return ...;
 // nil }` short-circuit so a bare keyword like "  " matches nothing
 // rather than returning the full table).
-func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([]*asset.ClipFolder, error) {
+func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([]*detail.ClipFolder, error) {
 	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
 	keywords := strings.Fields(keyword)
 	if len(keywords) == 0 {
@@ -209,7 +210,7 @@ func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([
 
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*asset.ClipFolder{}, nil
+		return []*detail.ClipFolder{}, nil
 	}
 
 	query := buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
@@ -219,7 +220,7 @@ func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([
 	}
 	defer rows.Close()
 
-	var folders []*asset.ClipFolder
+	var folders []*detail.ClipFolder
 	for rows.Next() {
 		f, err := s.scanClipFolder(rows)
 		if err != nil {

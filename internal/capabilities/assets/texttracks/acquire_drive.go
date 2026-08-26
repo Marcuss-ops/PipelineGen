@@ -1,12 +1,12 @@
 package texttracks
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireCommand) (*AcquireResult, error) {
@@ -40,7 +40,7 @@ func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireComman
 		PlainText:    transcript.Text,
 		Cues:         transcript.Cues,
 		LanguageCode: transcript.DetectedLanguage,
-		SourceType:   asset.TextSourceWhisper,
+		SourceType:   detail.TextSourceWhisper,
 		SourcePath:   path,
 		Confidence:   transcript.Confidence,
 		Priority:     25,

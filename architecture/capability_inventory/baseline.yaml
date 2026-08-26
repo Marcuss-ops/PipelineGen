@@ -57,7 +57,7 @@ capability_ownership_map:
       - multilingual    # multilingual content operations
   - macro_owner: channels
     packages: []
-    note: "channels capability code is still in internal/application/channels/; dedicated capability package not yet on disk"
+    note: "channels capability lives in internal/capabilities/channels/ (migrated 2026-08-25; legacy internal/application/channels deleted)"
   - macro_owner: jobs
     packages:
       - jobs            # job orchestration, workers, module composition
@@ -88,18 +88,18 @@ gates_baseline:
     enforce_zero: false
     current_api_prod: 12
     current_app_prod: 84
-    scope: "internal/api/** + internal/application/** excluding *_test.go"
+    scope: "internal/** excluding *_test.go (migration-only roots internal/api + internal/application deleted 2026-08-25)"
     migration_owner: internal/app/build_*.go
   - gate_id: C2-C
     name: "no source-type switch outside Source Catalog"
     target_zero: true
-    enforce_zero: false
-    current: 25
+    enforce_zero: true
+    current: 0
     baseline_initial: 48
-    baseline_target: "0 by 2026-09-15"
+    baseline_target: "0 (reached 2026-08-26)"
     governance: "scripts/archcheck/gates/gate_c2_source_catalog_only_main.go + make verify-architecture"
-    scope: "internal/application/** + internal/api/** + internal/domain/**/*.go excluding *_test.go and the Source Catalog allowlist"
-    migration_owner: internal/application/assets/artifacts/source_resolver.go + internal/application/scripts/adapters/source_registry.go
+    scope: "internal/**/*.go excluding *_test.go and the Source Catalog allowlist (migration-only roots internal/application + internal/api + internal/domain deleted 2026-08-25)"
+    migration_owner: internal/capabilities/scripts/adapters/source_registry.go (canonical SourceRegistry; migration-only roots deleted 2026-08-26)
     enforcing_test: scripts/archcheck/gates/gate_c2_source_catalog_only.go
     ratchet_status: closed_at_step_C2-C
     walker_scope_rationale: "infrastructure adapters, pkg leaves and cmd tooling are outside the canonical source-dispatch scope"
@@ -108,8 +108,8 @@ gates_baseline:
     target_zero: true
     enforce_zero: false
     current: 0
-    scope: "internal/**/service.go excluding *_test.go and internal/application/jobs/**"
-    migration_owner: internal/application/jobs
+    scope: "internal/**/service.go excluding *_test.go (legacy internal/application/jobs root deleted 2026-08-25)"
+    migration_owner: internal/capabilities/jobs
   - gate_id: C2-E
     name: "route ≡ manifest ≡ ACTIVE_API_GENERATED.md"
     target_zero: true
@@ -118,7 +118,7 @@ gates_baseline:
     baseline_initial: 171
     baseline_target: "0 by 2026-09-15"
     governance: "cmd/admin/gen_api_docs.go writes routes.yaml + ACTIVE_API_GENERATED.md; make verify-architecture runs C2-E"
-    scope: "internal/api/** + cmd/server/main.go + docs/api/ACTIVE_API_GENERATED.md"
+    scope: "internal/**/*.go (legacy internal/api route surface deleted 2026-08-25) + cmd/server/main.go + docs/api/ACTIVE_API_GENERATED.md"
     migration_owner: internal/app/registry.go + scripts/admin/generate_routes_yaml.go + cmd/admin/gen_api_docs.go
     enforcing_test: scripts/archcheck/gates/gate_c2_route_manifest.go
     ratchet_status: closed_at_step_C2-E
@@ -132,5 +132,5 @@ gates_baseline:
     target_zero: true
     enforce_zero: false
     current: 0
-    scope: "internal/api/** + internal/application/**/*.go excluding *_test.go"
+    scope: "internal/**/*.go excluding *_test.go (migration-only roots internal/api + internal/application deleted 2026-08-25)"
     migration_owner: internal/app/bootstrap.go

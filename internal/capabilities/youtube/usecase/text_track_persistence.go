@@ -15,7 +15,7 @@
 // rules, no per-source decision logic, no policy gates. Helpers
 // here either:
 //   - convert a(n already-orchestrator-composed) bundle into a
-//     single asset.TextTrack row (bundleToTextTracks),
+//     single detail.TextTrack row (bundleToTextTracks),
 //   - convert a database row back to a bundle for the chain to
 //     use (cdbRowToBundle),
 //   - pull a default scalar (sourceOrProvided, sourceLangOf,
@@ -30,8 +30,9 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // bundleToTextTracks converts a non-empty bundle into a single
@@ -42,7 +43,7 @@ import (
 // bundle.LanguageCode, so the helper does NOT re-derive. The
 // "und"-on-empty fallback is a defensive guard that mirrors the
 // canonical hash factory input contract.
-func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind asset.TextTrackKind) []asset.TextTrack {
+func bundleToTextTracks(clipID string, bundle *detail.ResolvedTextBundle, kind detail.TextTrackKind) []detail.TextTrack {
 	if bundle == nil || bundle.IsEmpty() || bundle.PlainText == "" {
 		return nil
 	}
@@ -54,8 +55,8 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 	if srcLang == "" {
 		srcLang = lang
 	}
-	hash := asset.TextHash(bundle.PlainText, lang, kind)
-	return []asset.TextTrack{{
+	hash := detail.TextHash(bundle.PlainText, lang, kind)
+	return []detail.TextTrack{{
 		AssetID:            clipID,
 		LanguageCode:       lang,
 		TextKind:           kind,
@@ -67,9 +68,9 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 		ModelName:          bundle.ModelName,
 		ModelVersion:       bundle.ModelVersion,
 		TextHash:           hash,
-		SourceVersion:      asset.SourceVersion(hash, srcLang, lang, bundle.Provider, bundle.ModelName, bundle.ModelVersion, ""),
+		SourceVersion:      detail.SourceVersion(hash, srcLang, lang, bundle.Provider, bundle.ModelName, bundle.ModelVersion, ""),
 		Confidence:         bundle.Confidence,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 	}}
 }
 
@@ -83,8 +84,8 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 // before the DB probe (per centralisation discipline), so this
 // helper does NOT re-normalise. The DB-canonical LanguageCode
 // flows through verbatim.
-func cdbRowToBundle(row asset.TextTrack) *asset.ResolvedTextBundle {
-	return &asset.ResolvedTextBundle{
+func cdbRowToBundle(row detail.TextTrack) *detail.ResolvedTextBundle {
+	return &detail.ResolvedTextBundle{
 		LanguageCode:       row.LanguageCode,
 		SourceLanguageCode: row.SourceLanguageCode,
 		PlainText:          row.TextContent,
@@ -104,11 +105,11 @@ func cdbRowToBundle(row asset.TextTrack) *asset.ResolvedTextBundle {
 // = provided" default (godlike/07 honest lock: a missing source is
 // NEVER silently propagated; it is categorised as "provided" since
 // the orchestrator's caller supplied the literal payload).
-func sourceOrProvided(s string) asset.TextTrackSource {
+func sourceOrProvided(s string) detail.TextTrackSource {
 	if s == "" {
-		return asset.TextSourceProvided
+		return detail.TextSourceProvided
 	}
-	return asset.TextTrackSource(s)
+	return detail.TextTrackSource(s)
 }
 
 // sourceLangOf returns the source language code for a

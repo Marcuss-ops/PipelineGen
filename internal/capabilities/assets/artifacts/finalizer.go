@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type Finalizer struct {
@@ -322,8 +323,8 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	// functions. This prevents the "origin=generated" drift for
 	// retrieved images when enrichment falls back or is bypassed.
 	if assetType == "image" {
-		metadata["origin"] = string(asset.ClassifyImageOrigin(rec.Source, generator))
-		metadata["provider"] = string(asset.ClassifyImageProvider(rec.Source, generator))
+		metadata["origin"] = string(detail.ClassifyImageOrigin(rec.Source, generator))
+		metadata["provider"] = string(detail.ClassifyImageProvider(rec.Source, generator))
 	}
 	metadataJSON := f.metadata.MetadataMapToJSON(metadata)
 	rec.Metadata = metadataJSON

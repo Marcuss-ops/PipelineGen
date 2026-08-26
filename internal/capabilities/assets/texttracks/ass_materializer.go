@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -24,7 +24,7 @@ type SubtitleMaterializerInput struct {
 	LanguageCode    string
 	TextTrackID     int64
 	ClipDurationMs  int64
-	TimedCues       []asset.TimedCue
+	TimedCues       []detail.TimedCue
 	SubtitleStyleID string
 	ClipContentHash string
 	DriveFolderID   string
@@ -42,12 +42,12 @@ type SubtitleMaterializerOutput struct {
 }
 
 type SubtitleArtifactMaterializer struct {
-	repo      asset.SubtitleArtifactRepository
+	repo      detail.SubtitleArtifactRepository
 	root      string
 	publisher delivery.Publisher
 }
 
-func NewSubtitleArtifactMaterializer(repo asset.SubtitleArtifactRepository, rootPath string, publisher delivery.Publisher) *SubtitleArtifactMaterializer {
+func NewSubtitleArtifactMaterializer(repo detail.SubtitleArtifactRepository, rootPath string, publisher delivery.Publisher) *SubtitleArtifactMaterializer {
 	if rootPath == "" {
 		rootPath = "data/media/subtitles"
 	}
@@ -111,10 +111,10 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	// 4. Validate ASS file
 	vErr := validateASSFile(localPath, in.ClipDurationMs)
 	validationErrorStr := ""
-	status := asset.SubtitleStatusReady
+	status := detail.SubtitleStatusReady
 	if vErr != nil {
 		validationErrorStr = vErr.Error()
-		status = asset.SubtitleStatusFailed
+		status = detail.SubtitleStatusFailed
 	}
 
 	var lastCueEndMs int64
@@ -134,11 +134,11 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	}
 
 	// 5. Register in DB
-	art := &asset.SubtitleArtifact{
+	art := &detail.SubtitleArtifact{
 		AssetID:          in.AssetID,
 		TextTrackID:      in.TextTrackID,
 		LanguageCode:     in.LanguageCode,
-		Format:           asset.SubtitleFormatASS,
+		Format:           detail.SubtitleFormatASS,
 		LocalPath:        localPath,
 		LegacyFileMD5:    fileHash,
 		TextHash:         textHash,
@@ -157,11 +157,11 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	if err := m.repo.Upsert(ctx, art); err != nil {
 		return nil, fmt.Errorf("ass_materializer: db upsert: %w", err)
 	}
-	if status != asset.SubtitleStatusReady {
+	if status != detail.SubtitleStatusReady {
 		return output, nil
 	}
 	markFailed := func(cause error) (*SubtitleMaterializerOutput, error) {
-		art.Status = asset.SubtitleStatusFailed
+		art.Status = detail.SubtitleStatusFailed
 		art.ValidationError = cause.Error()
 		if persistErr := m.repo.Upsert(ctx, art); persistErr != nil {
 			return nil, fmt.Errorf("%w; persist failed status: %v", cause, persistErr)
@@ -214,7 +214,7 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 // absolute paths. Fail-closed: empty cues are a typed error, never an
 // empty/placeholder ASS (speech recognition is never regenerated just to
 // build subtitles).
-func CompileASSContent(cues []asset.TimedCue, styleID string) (string, error) {
+func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 	if len(cues) == 0 {
 		return "", fmt.Errorf("ass_materializer: timed_cues is empty")
 	}
@@ -262,7 +262,7 @@ func CompileASSContent(cues []asset.TimedCue, styleID string) (string, error) {
 
 // generateASSContent is the materializer's private convenience wrapper over
 // the canonical generator (kept for call-site symmetry with the old API).
-func (m *SubtitleArtifactMaterializer) generateASSContent(cues []asset.TimedCue, styleID string) string {
+func (m *SubtitleArtifactMaterializer) generateASSContent(cues []detail.TimedCue, styleID string) string {
 	content, err := CompileASSContent(cues, styleID)
 	if err != nil {
 		return ""

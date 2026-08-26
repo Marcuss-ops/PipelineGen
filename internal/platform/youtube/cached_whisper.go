@@ -12,7 +12,7 @@ import (
 	"time"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -52,9 +52,9 @@ func (w *CachedWhisperTranscriber) TranscribeAudio(ctx context.Context, localPat
 	return result.Text, nil
 }
 
-func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error) {
+func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Context, localPath string) (detail.TranscriptResult, error) {
 	if w == nil || w.inner == nil {
-		return asset.TranscriptResult{}, fmt.Errorf("cached whisper: not wired")
+		return detail.TranscriptResult{}, fmt.Errorf("cached whisper: not wired")
 	}
 	key, ok := whisperCacheKey(localPath, w.version)
 	claimed := false
@@ -99,7 +99,7 @@ func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Cont
 		if claimed {
 			w.releaseClaim(ctx, key, leaseID, err.Error())
 		}
-		return asset.TranscriptResult{}, err
+		return detail.TranscriptResult{}, err
 	}
 	if ok {
 		body, marshalErr := json.Marshal(result)
@@ -138,19 +138,19 @@ func (w *CachedWhisperTranscriber) releaseClaim(ctx context.Context, key capcach
 	}
 }
 
-func (w *CachedWhisperTranscriber) readCached(ctx context.Context, entry *capcache.Entry) (asset.TranscriptResult, error) {
+func (w *CachedWhisperTranscriber) readCached(ctx context.Context, entry *capcache.Entry) (detail.TranscriptResult, error) {
 	reader, err := w.cache.Open(ctx, entry)
 	if err != nil {
-		return asset.TranscriptResult{}, err
+		return detail.TranscriptResult{}, err
 	}
 	defer reader.Close()
 	body, err := io.ReadAll(reader)
 	if err != nil {
-		return asset.TranscriptResult{}, err
+		return detail.TranscriptResult{}, err
 	}
-	var result asset.TranscriptResult
+	var result detail.TranscriptResult
 	if err := json.Unmarshal(body, &result); err != nil {
-		return asset.TranscriptResult{}, err
+		return detail.TranscriptResult{}, err
 	}
 	return result, nil
 }

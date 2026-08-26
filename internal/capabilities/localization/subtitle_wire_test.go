@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // fakeSubtitleResolver returns a fixed track (or error), recording the
@@ -48,7 +48,7 @@ func matchingTrack() *ResolvedSubtitleTrack {
 	return &ResolvedSubtitleTrack{
 		TrackID:      202,
 		LanguageCode: "es",
-		Cues:         []asset.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hola"}},
+		Cues:         []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hola"}},
 		TextHash:     "subtitle-sha",
 	}
 }

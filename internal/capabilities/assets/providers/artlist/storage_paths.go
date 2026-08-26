@@ -1,11 +1,12 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -42,37 +43,37 @@ func (l *StorageLayout) BaseDir() string {
 }
 
 // RenditionDir returns the directory for a specific rendition kind.
-func (l *StorageLayout) RenditionDir(kind asset.RenditionKind) string {
+func (l *StorageLayout) RenditionDir(kind detail.RenditionKind) string {
 	return filepath.Join(l.BaseDir(), renditionSubdir(kind))
 }
 
 // MasterPath returns the path for the original master file.
 func (l *StorageLayout) MasterPath(filename string) string {
-	return filepath.Join(l.RenditionDir(asset.RenditionKindMaster), filename)
+	return filepath.Join(l.RenditionDir(detail.RenditionKindMaster), filename)
 }
 
 // MezzaninePath returns the path for the edited mezzanine file.
 func (l *StorageLayout) MezzaninePath(filename string) string {
-	return filepath.Join(l.RenditionDir(asset.RenditionKindMezzanine), filename)
+	return filepath.Join(l.RenditionDir(detail.RenditionKindMezzanine), filename)
 }
 
 // ProxyPath returns the path for the proxy file.
 func (l *StorageLayout) ProxyPath(filename string) string {
-	return filepath.Join(l.RenditionDir(asset.RenditionKindProxy), filename)
+	return filepath.Join(l.RenditionDir(detail.RenditionKindProxy), filename)
 }
 
 // ThumbnailPath returns the path for the thumbnail file.
 func (l *StorageLayout) ThumbnailPath(filename string) string {
-	return filepath.Join(l.RenditionDir(asset.RenditionKindThumbnail), filename)
+	return filepath.Join(l.RenditionDir(detail.RenditionKindThumbnail), filename)
 }
 
 // StoryboardPath returns the path for the storyboard file.
 func (l *StorageLayout) StoryboardPath(filename string) string {
-	return filepath.Join(l.RenditionDir(asset.RenditionKindStoryboard), filename)
+	return filepath.Join(l.RenditionDir(detail.RenditionKindStoryboard), filename)
 }
 
 // PathFor returns the directory for an arbitrary rendition kind.
-func (l *StorageLayout) PathFor(kind asset.RenditionKind, filename string) string {
+func (l *StorageLayout) PathFor(kind detail.RenditionKind, filename string) string {
 	return filepath.Join(l.RenditionDir(kind), filename)
 }
 
@@ -90,17 +91,17 @@ func sanitizeExternalAssetID(id string) string {
 }
 
 // renditionSubdir maps a RenditionKind to its on-disk subdirectory name.
-func renditionSubdir(kind asset.RenditionKind) string {
+func renditionSubdir(kind detail.RenditionKind) string {
 	switch kind {
-	case asset.RenditionKindMaster:
+	case detail.RenditionKindMaster:
 		return SubdirMaster
-	case asset.RenditionKindMezzanine:
+	case detail.RenditionKindMezzanine:
 		return SubdirMezzanine
-	case asset.RenditionKindProxy:
+	case detail.RenditionKindProxy:
 		return SubdirProxy
-	case asset.RenditionKindThumbnail:
+	case detail.RenditionKindThumbnail:
 		return SubdirThumbnail
-	case asset.RenditionKindStoryboard:
+	case detail.RenditionKindStoryboard:
 		return SubdirStoryboard
 	default:
 		return strings.ToLower(string(kind))
@@ -115,7 +116,7 @@ func DeriveExternalAssetID(clipID, sourceURL string) string {
 		return sanitizeExternalAssetID(clipID)
 	}
 	if strings.TrimSpace(sourceURL) != "" {
-		return hashutil.LegacyMD5String(sourceURL)[:12]
+		return checksum.LegacyMD5String(sourceURL)[:12]
 	}
 	return "unknown"
 }

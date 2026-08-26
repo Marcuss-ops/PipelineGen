@@ -17,6 +17,43 @@ package_hotspot_baselines:
   - date: "2026-08-15"
     change: "cmd/admin 111 → 115; cmd/archcheck/scan 42 → 70; internal/app 139 → 141"
     note: "Reconciled registered hotspot baselines with the working tree after the audio-only cutover and the Qdrant/mediaregistry/identity-audit wiring increments; the global max_files_per_package cap remains 65."
+  - date: "2026-08-26"
+    change: "stockpipeline 51 → 63; internal/platform/delivery 9 → 12; removed internal/application/images + internal/application/jobs hotspots (roots deleted, already in completed_migrations)"
+    note: |
+      P0-LEGACY-RATCHET activation: percheck_legacy_hotspot_growth no
+      longer filters by legacy-root membership. The registered hotspot
+      registry is itself the carry-forward debt surface, so every hotspot
+      now ratchets against its committed baseline regardless of the global
+      65-file cap (which only caught packages already above 65). This      is the re-baseline that makes the newly active ratchet green: baselines
+      are reconciled to the measured committed tree, then growth above them
+      fails closed. Completed legacy-root hotspots were dropped rather than
+      re-baselined to 0.
+  - date: "2026-08-26"
+    change: "internal/kernel/asset 71 → 39; new hotspot internal/kernel/asset/detail registered at 34"
+    note: |
+      kernel/asset hard cutover (P0 meta-package reduction, ≤40 files per
+      package): leaf domains (texttrack, render, image, clip, search,
+      store, taxonomy, source-catalog, artifact-stages) extracted into the
+      new internal/kernel/asset/detail package. Core keeps the Asset
+      model + state machine at 39 files; detail registered at 34 so the
+      ratchet tracks its growth from day one. 312 external importers were
+      retargeted asset.X → detail.X during the cutover.
+  - date: "2026-08-26"
+    change: "stockpipeline 63 → 50; new hotspot stockpipeline/support registered at 13"
+    note: |
+      stockpipeline split toward the original 51-file baseline (deadline
+      2026-09-30): the 52-file mutual-recursion cluster (planner,
+      orchestrator, steps, render, service, stager) stays in core, which
+      lands at 50 production files — under the 51 baseline. The
+      query/run/rounds/ports/errors/process/production/render-transitions
+      surface (13 files) was extracted to the sibling
+      internal/capabilities/assets/providers/stock/stockpipeline/support
+      package and registered so the ratchet tracks its growth from day
+      one. stock_test_helpers.go (test-only helpers misnamed as
+      production) was renamed to the _test.go surface, removing it from
+      the production count. The remaining 50-file core is the irreducible
+      SCC: reaching below ~44 without breaking type cycles would require
+      a semantic refactor of the interlocking step/orchestrator types.
 
 max_files_per_package:
   current: 65
@@ -37,6 +74,18 @@ max_files_per_package:
         consolidation point; splitting it now would fracture transactional
         cohesion. The cap will be revisited once the QDRANT-002 / asset-
         committer consolidation wave settles.
+    - date: "2026-08-26"
+      change: "canonicalized (no value change — P0-POLICY-CANONICAL)"
+      note: |
+        policy.yaml prose previously described a "40/65 regime" and
+        claimed both numbers were canonical, while only 65 was (and
+        remains) the executable value read by scan.ScanPackages.
+        Resolved: 65 is THE single executable hard ceiling; 40 is a
+        documented soft target for well-factored normal packages, not a
+        second enforced threshold. Stale cross-references to
+        ::max_files_per_package=40 in ownership/application.yaml,
+        ownership.generated.yaml and the 41_divider CI gate comment were
+        aligned to =65.
 
 # File-size cap history ------------------------------------------------------
 max_lines_per_file:

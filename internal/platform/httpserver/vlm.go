@@ -18,7 +18,7 @@
 // Removed here; the route now surfaces ErrVLMUnavailable.
 //
 // Companion infrastructure-side sentinel: ErrVLMDisabled in
-// internal/infrastructure/ai/vlm (different boundary -- VLM
+// internal/platform/ai/vlm (different boundary -- VLM
 // client pre-network failure mode). Both sentinels exist by design:
 // api.ErrVLMUnavailable is HTTP-bound (this file), VLM-side
 // ErrVLMDisabled surfaces before the network call. errors.Is can

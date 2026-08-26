@@ -41,6 +41,10 @@
 // voiceovers.id rows post-cutover.
 package verification
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "context"
 
 // VoiceoverProjectionReader is the capability-owned port for verifying the

@@ -7,16 +7,16 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount int, language string) *asset.EntityExtractionResult {
+func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount int, language string) *detail.EntityExtractionResult {
 	segment = strings.TrimSpace(segment)
 	if entityCount <= 0 {
 		entityCount = 2
 	}
-	result := &asset.EntityExtractionResult{
+	result := &detail.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  []string{},
 		EntitaSenzaTesto: make(map[string]string),

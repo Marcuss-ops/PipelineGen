@@ -379,11 +379,11 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 }
 
 // Task 3 (July 2026): exactly ONE production declaration of
-// AssetIDToQdrantPointID. Canonical implementation is UUID v5 SHA-1 in
-// internal/platform/qdrant/schema/pointid.go. All callers MUST
-// route through this single function; ad-hoc point ID generation is
-// forbidden. The aliases.go redirect `var ... = schema.AssetIDToQdrantPointID`
-// is NOT a declaration — the check only matches `func AssetIDToQdrantPointID`.
+// AssetIDToQdrantPointID. Canonical implementation is the UUID v8
+// SHA-256 derivation in internal/platform/qdrant/schema/pointid.go.
+// All callers MUST route through this single function; ad-hoc point
+// ID generation is forbidden. The check only matches
+// `func AssetIDToQdrantPointID`.
 const frozenAssetIDToQdrantPointIDSites = 1
 
 func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
@@ -402,7 +402,7 @@ func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
 		if readErr != nil {
 			return nil
 		}
-		if strings.Contains(string(src), "AssetIDToQdrantPointID") && strings.Contains(string(src), "var AssetIDToQdrantPointID") {
+		if strings.Contains(string(src), "AssetIDToQdrantPointID") && strings.Contains(string(src), "func AssetIDToQdrantPointID") {
 			matches++
 			matchFiles = append(matchFiles, path)
 		}

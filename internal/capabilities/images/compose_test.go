@@ -20,6 +20,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"testing"
@@ -115,8 +116,8 @@ func TestCompose_MockResolver_UnknownTerritory_ErrUnknownTerritory(t *testing.T)
 // territory key. Mirrors the routing.image_search_resolver_test.go
 // strong invariant in mock form.
 func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
-	stubRetr := &stubSearcher{rows: []ImageSearchResult{{AssetID: "r1", Origin: string(asset.ImageOriginRetrieved)}}}
-	stubGen := &stubSearcher{rows: []ImageSearchResult{{AssetID: "g1", Origin: string(asset.ImageOriginGenerated)}}}
+	stubRetr := &stubSearcher{rows: []ImageSearchResult{{AssetID: "r1", Origin: string(detail.ImageOriginRetrieved)}}}
+	stubGen := &stubSearcher{rows: []ImageSearchResult{{AssetID: "g1", Origin: string(detail.ImageOriginGenerated)}}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
 			TerritoryRetrieved: stubRetr,
@@ -140,8 +141,8 @@ func TestCompose_MockResolver_KnownTerritory_ReturnsStubSearcher(t *testing.T) {
 // verifies the *type-system* contract is reachable from this package).
 func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	stubAll := &stubSearcher{rows: []ImageSearchResult{
-		{AssetID: "r1", Origin: string(asset.ImageOriginRetrieved), Provider: "wikipedia"},
-		{AssetID: "g1", Origin: string(asset.ImageOriginGenerated), Provider: "flux"},
+		{AssetID: "r1", Origin: string(detail.ImageOriginRetrieved), Provider: "wikipedia"},
+		{AssetID: "g1", Origin: string(detail.ImageOriginGenerated), Provider: "flux"},
 	}}
 	mock := &mockImageSearchResolver{
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{
@@ -161,7 +162,7 @@ func TestCompose_MockResolver_AllTerritory_Hypothetical(t *testing.T) {
 	}
 	// Hard invariant: only OriginRetrieved or OriginGenerated allowed.
 	for i, r := range rows {
-		if r.Origin != string(asset.ImageOriginRetrieved) && r.Origin != string(asset.ImageOriginGenerated) {
+		if r.Origin != string(detail.ImageOriginRetrieved) && r.Origin != string(detail.ImageOriginGenerated) {
 			t.Errorf("row %d: unexpected origin %q (must be retrieved or generated)", i, r.Origin)
 		}
 	}

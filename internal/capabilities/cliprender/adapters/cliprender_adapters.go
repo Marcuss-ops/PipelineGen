@@ -4,7 +4,7 @@ package adapters
 // parallel preparation phase. The capability (internal/capabilities/cliprender)
 // owns the ports; THIS file (composition root) owns the mechanics:
 //
-//   - AssetResolver     → canonical asset registry (asset.Service)
+//   - AssetResolver     → canonical asset registry (detail.Service)
 //   - AssetMaterializer → local copy reuse + Drive download to scratch
 //
 // Every adapter is fail-closed: a missing dependency surfaces a typed error
@@ -19,7 +19,7 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"go.uber.org/zap"
 )
@@ -29,13 +29,13 @@ import (
 // ClipRenderAssetResolver maps a canonical asset_id to the capability's
 // AssetRef via the canonical asset registry.
 type ClipRenderAssetResolver struct {
-	assets *asset.Service
+	assets *detail.Service
 	log    *zap.Logger
 }
 
 // NewClipRenderAssetResolver wires the resolver with the canonical asset
 // service. log is required so each resolve call is observable.
-func NewClipRenderAssetResolver(assets *asset.Service, log *zap.Logger) (*ClipRenderAssetResolver, error) {
+func NewClipRenderAssetResolver(assets *detail.Service, log *zap.Logger) (*ClipRenderAssetResolver, error) {
 	if assets == nil {
 		return nil, errors.New("clip.render: asset registry not wired")
 	}

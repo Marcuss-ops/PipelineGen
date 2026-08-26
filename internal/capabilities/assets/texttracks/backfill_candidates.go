@@ -20,10 +20,11 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ListCandidates queries media_assets per the operator's filter.
@@ -75,7 +76,7 @@ func (s *BackfillService) ListCandidates(
 // re-implementing the lookup.
 func (s *BackfillService) IsAssetMissingForTargetSet(
 	ctx context.Context,
-	repo asset.TextTrackRepository,
+	repo detail.TextTrackRepository,
 	assetID string,
 	opts BackfillOptions,
 ) (bool, error) {

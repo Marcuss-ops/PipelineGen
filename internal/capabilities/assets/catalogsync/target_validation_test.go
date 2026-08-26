@@ -1,13 +1,14 @@
 package catalogsync
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func TestSyncAllRejectsConfiguredTargetWithoutPorts(t *testing.T) {
@@ -45,7 +46,7 @@ func (testDispatcher) EnqueueAndIndex(context.Context, *asset.Asset, string) err
 type testRepository struct{}
 
 func (testRepository) GetClip(context.Context, string) (*asset.Asset, error) { return nil, nil }
-func (testRepository) ListFolders(context.Context, string) ([]*asset.ClipFolder, error) {
+func (testRepository) ListFolders(context.Context, string) ([]*detail.ClipFolder, error) {
 	return nil, nil
 }
 func (testRepository) DeleteFolder(context.Context, string) error { return nil }

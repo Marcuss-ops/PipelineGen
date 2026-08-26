@@ -44,10 +44,11 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
@@ -83,7 +84,7 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 	duration int,
 	transcript string,
 	languageCode string,
-	cues []asset.TimedCue,
+	cues []detail.TimedCue,
 ) error {
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: the legacy Whisper
 	// invocation at this seam is RETIRED. The transcript is

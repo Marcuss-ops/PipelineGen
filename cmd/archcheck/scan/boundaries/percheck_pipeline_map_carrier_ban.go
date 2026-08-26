@@ -23,10 +23,10 @@
 // scanner policy (mirrors percheck_upsert_points_sole_owner
 // precedent):
 //   - the gate's target surface is exactly four files:
-//     1. internal/application/scripts/usecase/generation_prepare.go
-//     2. internal/application/scripts/usecase/generation_engine.go
-//     3. internal/application/scripts/usecase/generation_postprocess.go
-//     4. internal/application/scripts/usecase/generation_finalize.go
+//     1. internal/capabilities/scripts/usecase/generation_prepare.go
+//     2. internal/capabilities/scripts/usecase/generation_engine.go
+//     3. internal/capabilities/scripts/usecase/generation_postprocess.go
+//     4. internal/capabilities/scripts/usecase/generation_finalize.go
 //   - skip the scanner's own package prefix
 //     (cmd/archcheck/scan) so the regex self-match inside the
 //     scanner's docs/comments/strings doesn't trip the gate.
@@ -64,10 +64,10 @@ var pipelineMapCarrierBanSkipPathPrefixes = []string{
 // `GenerationResult`. Mapping the gate to a tight, finite
 // file list keeps the rule deterministic and reviewable.
 var pipelineMapCarrierBanTargets = []string{
-	"internal/application/scripts/usecase/generation_prepare.go",
-	"internal/application/scripts/usecase/generation_engine.go",
-	"internal/application/scripts/usecase/generation_postprocess.go",
-	"internal/application/scripts/usecase/generation_finalize.go",
+	"internal/capabilities/scripts/usecase/generation_prepare.go",
+	"internal/capabilities/scripts/usecase/generation_engine.go",
+	"internal/capabilities/scripts/usecase/generation_postprocess.go",
+	"internal/capabilities/scripts/usecase/generation_finalize.go",
 }
 
 // pipelineMapCarrierBanRule is the rule-family id.

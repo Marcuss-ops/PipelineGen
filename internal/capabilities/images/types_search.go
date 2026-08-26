@@ -15,12 +15,12 @@
 //
 // Field semantics:
 //   - AssetID: canonical identifier for the matching image asset.
-//     Today this maps to asset.ImageAsset.Hash (the
+//     Today this maps to detail.ImageAsset.Hash (the
 //     SHA256 of the file content). Future revisions may
 //     use a UUID; the docs are pinned to Hash for now.
-//   - Origin:  asset.ImageOrigin canonical constant
+//   - Origin:  detail.ImageOrigin canonical constant
 //     ("retrieved" | "generated" | "uploaded").
-//   - Provider: asset.ImageProvider constant
+//   - Provider: detail.ImageProvider constant
 //     ("wikipedia" | "duckduckgo" | "google-slides" |
 //     "flux" | "nvidia" | ...).
 //   - PreviewURL: external or relative URL for inline rendering.
@@ -35,6 +35,11 @@
 //   - Author: human-readable attribution (Wikipedia returns
 //     "Wikipedia Contributors"; generated returns empty).
 package images
+
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+)
 
 // ImageSearchResult is the unified response DTO for territory-
 // separated search. Same shape for retrieved, generated, and

@@ -6,7 +6,7 @@
 // The gate enforces TWO invariants in lockstep:
 //
 //	(Rule A) image_asset_literal_ban:   bans direct
-//	         `&asset.ImageAsset{...}` (and the
+//	         `&detail.ImageAsset{...}` (and the
 //	         domain-alias `&domainasset.ImageAsset{...}`)
 //	         literal instantiation anywhere outside the
 //	         canonical definition + canonical builder helper

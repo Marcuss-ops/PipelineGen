@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
@@ -18,7 +19,7 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -162,8 +163,8 @@ func buildDomainMediaServices(
 	// PayloadMapper, the TextTrackResolver here) shares the SAME
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
-	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
-	var _ asset.TextTrackRepository = (*texttracks.TextTrackRepositorySQLite)(nil)
+	// Compile-time pin: TextTrackRepositorySQLite satisfies detail.TextTrackRepository.
+	var _ detail.TextTrackRepository = (*texttracks.TextTrackRepositorySQLite)(nil)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
 	// resolver now consumes cfg.Media.Multilingual.RequireLanguageCertainty
 	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9

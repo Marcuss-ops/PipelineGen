@@ -11,6 +11,7 @@ package cliprender
 // path, or an unresolved block rejects the plan before any process starts.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/hex"
 	"encoding/json"
 	"errors"

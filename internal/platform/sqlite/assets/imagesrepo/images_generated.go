@@ -9,7 +9,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ListImagesByOriginDefaultLimit is the canonical default limit for
@@ -28,7 +28,7 @@ const ListImagesByOriginDefaultLimit = 200
 const ListImagesByOriginMaxLimit = 200
 
 // ListImagesByOrigin returns all image media_assets rows with the
-// specified origin (e.g. asset.ImageOriginGenerated), ordered by
+// specified origin (e.g. detail.ImageOriginGenerated), ordered by
 // created_at DESC. The default limit is 200; the hard cap is also
 // 200 (per PR-GENERATED-SEARCH-FIX spec, July 2026).
 //
@@ -46,7 +46,7 @@ const ListImagesByOriginMaxLimit = 200
 // *imgservice.Service is the application-layer envelope; the port
 // interface GeneratedSearchServicePort is the structural contract
 // for adapter injection.
-func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin asset.ImageOrigin, limit int) ([]asset.ImageAsset, error) {
+func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin detail.ImageOrigin, limit int) ([]detail.ImageAsset, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -66,7 +66,7 @@ func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin asset.
 	}
 	defer rows.Close()
 
-	images := make([]asset.ImageAsset, 0)
+	images := make([]detail.ImageAsset, 0)
 	for rows.Next() {
 		img, err := scanImageAssetFromRow(rows)
 		if err != nil {
@@ -87,14 +87,14 @@ func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin asset.
 // this row in via LEFT OUTER; CUTOVER (4C) will invert precedence.
 // CONTRACT (4D, deferred) will drop this standalone method once JOIN
 // reads become canonical.
-func (r *ImagesRepository) GetGeneratedDetails(ctx context.Context, assetID string) (*asset.GeneratedImageDetail, error) {
+func (r *ImagesRepository) GetGeneratedDetails(ctx context.Context, assetID string) (*detail.GeneratedImageDetail, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT asset_id, prompt_original, prompt_resolved, style_id, style_version,
 		       model, seed, generation_job_id, source_hash
 		FROM generated_image_details
 		WHERE asset_id = ?
 	`, assetID)
-	var d asset.GeneratedImageDetail
+	var d detail.GeneratedImageDetail
 	err := row.Scan(&d.AssetID, &d.PromptOriginal, &d.PromptResolved,
 		&d.StyleID, &d.StyleVersion, &d.Model, &d.Seed,
 		&d.GenerationJobID, &d.SourceHash)
@@ -110,14 +110,14 @@ func (r *ImagesRepository) GetGeneratedDetails(ctx context.Context, assetID stri
 // GetRetrievedDetails mirrors GetGeneratedDetails for the
 // retrieved_image_details row. Same (nil, nil) semantics for pre-FASE-4
 // legacy rows.
-func (r *ImagesRepository) GetRetrievedDetails(ctx context.Context, assetID string) (*asset.RetrievedImageDetail, error) {
+func (r *ImagesRepository) GetRetrievedDetails(ctx context.Context, assetID string) (*detail.RetrievedImageDetail, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT asset_id, source_image_url, source_page_url, license, author,
 		       search_query, retrieved_at, provider
 		FROM retrieved_image_details
 		WHERE asset_id = ?
 	`, assetID)
-	var d asset.RetrievedImageDetail
+	var d detail.RetrievedImageDetail
 	err := row.Scan(&d.AssetID, &d.SourceImageURL, &d.SourcePageURL,
 		&d.License, &d.Author, &d.SearchQuery, &d.RetrievedAt,
 		&d.Provider)

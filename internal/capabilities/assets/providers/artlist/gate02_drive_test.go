@@ -16,6 +16,7 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"sync"
 	"testing"
@@ -25,7 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
@@ -39,15 +40,15 @@ import (
 // items (no Processed increment, no dispatch).
 type driveFailureProcessor struct {
 	mu     sync.Mutex
-	inputs []*asset.ProcessInput
+	inputs []*detail.ProcessInput
 }
 
-func (f *driveFailureProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (f *driveFailureProcessor) Process(_ context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, input)
 	f.mu.Unlock()
 
-	return &asset.ProcessResult{
+	return &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
@@ -68,15 +69,15 @@ func (f *driveFailureProcessor) Process(_ context.Context, input *asset.ProcessI
 // must discriminate per item.
 type partialDriveProcessor struct {
 	mu     sync.Mutex
-	inputs []*asset.ProcessInput
+	inputs []*detail.ProcessInput
 }
 
-func (f *partialDriveProcessor) Process(_ context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (f *partialDriveProcessor) Process(_ context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, input)
 	f.mu.Unlock()
 
-	result := &asset.ProcessResult{
+	result := &detail.ProcessResult{
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
@@ -99,8 +100,8 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *asset.ProcessI
 }
 
 // Compile-time assertions: both processors satisfy the Processor port.
-var _ asset.Processor = (*driveFailureProcessor)(nil)
-var _ asset.Processor = (*partialDriveProcessor)(nil)
+var _ detail.Processor = (*driveFailureProcessor)(nil)
+var _ detail.Processor = (*partialDriveProcessor)(nil)
 
 // TestGate02_DriveFieldsPopulated verifies that every clip processed
 // through the happy-path pipeline has non-empty DriveFileID,

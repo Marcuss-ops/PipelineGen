@@ -14,6 +14,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -26,7 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Local port stubs (different package from application/clips) ───────────────
@@ -57,10 +58,10 @@ func (r *handlerClipsRepo) GetClip(_ context.Context, id string) (*asset.Asset, 
 	}
 	return nil, nil
 }
-func (r *handlerClipsRepo) ListFolders(_ context.Context, _ string) ([]*asset.ClipFolder, error) {
+func (r *handlerClipsRepo) ListFolders(_ context.Context, _ string) ([]*detail.ClipFolder, error) {
 	return nil, nil
 }
-func (r *handlerClipsRepo) GetFolder(_ context.Context, _ string) (*asset.ClipFolder, error) {
+func (r *handlerClipsRepo) GetFolder(_ context.Context, _ string) (*detail.ClipFolder, error) {
 	return nil, nil
 }
 func (r *handlerClipsRepo) GetFolderChildren(_ context.Context, _ string) ([]*asset.Asset, error) {

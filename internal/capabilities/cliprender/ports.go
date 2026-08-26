@@ -10,6 +10,7 @@ package cliprender
 // capability-owned type from this package.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 )
 

@@ -1,13 +1,14 @@
 package ingest
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type processingErrorRepo struct {
@@ -31,22 +32,22 @@ func (r *processingErrorRepo) Fail(context.Context, string, string, string) erro
 	r.fails++
 	return r.failErr
 }
-func (r *processingErrorRepo) Transition(context.Context, string, string, asset.ProcessingStatus, asset.ProcessingStatus) error {
+func (r *processingErrorRepo) Transition(context.Context, string, string, detail.ProcessingStatus, detail.ProcessingStatus) error {
 	return nil
 }
-func (r *processingErrorRepo) Get(context.Context, string, string) (*asset.ProcessingRecord, error) {
+func (r *processingErrorRepo) Get(context.Context, string, string) (*detail.ProcessingRecord, error) {
 	return nil, nil
 }
-func (r *processingErrorRepo) GetByAssetID(context.Context, string) ([]asset.ProcessingRecord, error) {
+func (r *processingErrorRepo) GetByAssetID(context.Context, string) ([]detail.ProcessingRecord, error) {
 	return nil, nil
 }
-func (r *processingErrorRepo) GetFailed(context.Context) ([]asset.ProcessingRecord, error) {
+func (r *processingErrorRepo) GetFailed(context.Context) ([]detail.ProcessingRecord, error) {
 	return nil, nil
 }
 func (r *processingErrorRepo) Delete(context.Context, string, string) error { return nil }
 func (r *processingErrorRepo) DeleteAll(context.Context, string) error      { return nil }
 
-var _ asset.ProcessingRepository = (*processingErrorRepo)(nil)
+var _ detail.ProcessingRepository = (*processingErrorRepo)(nil)
 
 func TestPersistProcessingStatePropagatesStartError(t *testing.T) {
 	cause := errors.New("start failed")

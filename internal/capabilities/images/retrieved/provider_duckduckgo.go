@@ -7,6 +7,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"strings"
 	"time"
@@ -39,7 +40,7 @@ func NewDuckDuckGoProvider(bridge StorageBridge, client httpDoer, log *zap.Logge
 	}
 }
 
-func (p *DuckDuckGoProvider) Name() asset.ImageProvider { return asset.ProviderDuckDuckGo }
+func (p *DuckDuckGoProvider) Name() detail.ImageProvider { return detail.ProviderDuckDuckGo }
 
 // Healthy always returns nil — DDG has no dedicated health endpoint
 // but requests will go out. The registry caller relies on per-query
@@ -62,7 +63,7 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 				continue
 			}
 			out = append(out, RetrievalSearchResult{
-				Provider: asset.ProviderDuckDuckGo, Origin: asset.ImageOriginRetrieved,
+				Provider: detail.ProviderDuckDuckGo, Origin: detail.ImageOriginRetrieved,
 				PreviewURL: imgURL, PageURL: imgURL, License: "Unknown", Author: "Unknown",
 			})
 		}
@@ -73,8 +74,8 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 		return nil, nil
 	}
 	return []RetrievalSearchResult{{
-		Provider:   asset.ProviderDuckDuckGo,
-		Origin:     asset.ImageOriginRetrieved,
+		Provider:   detail.ProviderDuckDuckGo,
+		Origin:     detail.ImageOriginRetrieved,
 		PreviewURL: imgURL,
 		PageURL:    imgURL,
 		License:    "Unknown",

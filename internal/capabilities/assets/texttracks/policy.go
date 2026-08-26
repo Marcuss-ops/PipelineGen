@@ -10,7 +10,7 @@
 package texttracks
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // MaterializationKey is the canonical key that determines
@@ -37,7 +37,7 @@ func (k MaterializationKey) IsEmpty() bool {
 // The k.SourceTextHash is preserved in the struct for
 // IdempotencyKey() construction but is not a per-language
 // skip component.
-func (k MaterializationKey) matches(t *asset.TextTrack) bool {
+func (k MaterializationKey) matches(t *detail.TextTrack) bool {
 	if t == nil {
 		return false
 	}
@@ -48,11 +48,11 @@ func (k MaterializationKey) matches(t *asset.TextTrack) bool {
 // ShouldSkip reports whether the materializer should skip
 // translating into targetLang because an existing READY track
 // already carries the same MaterializationKey.
-func ShouldSkip(existing *asset.TextTrack, key MaterializationKey) bool {
+func ShouldSkip(existing *detail.TextTrack, key MaterializationKey) bool {
 	if existing == nil {
 		return false
 	}
-	if existing.Status != asset.TextTrackReady {
+	if existing.Status != detail.TextTrackReady {
 		return false
 	}
 	return key.matches(existing)
@@ -61,11 +61,11 @@ func ShouldSkip(existing *asset.TextTrack, key MaterializationKey) bool {
 // ShouldRetranslate reports whether the materializer should
 // retranslate an existing READY track because its fingerprint
 // has drifted from the candidate key.
-func ShouldRetranslate(existing *asset.TextTrack, key MaterializationKey) bool {
+func ShouldRetranslate(existing *detail.TextTrack, key MaterializationKey) bool {
 	if existing == nil {
 		return false
 	}
-	if existing.Status != asset.TextTrackReady {
+	if existing.Status != detail.TextTrackReady {
 		return false
 	}
 	return !key.matches(existing)
@@ -80,7 +80,7 @@ func ShouldRetranslate(existing *asset.TextTrack, key MaterializationKey) bool {
 //	asset.text.translate:<asset_id>:<text_kind>:<source_text_hash>:<target_language>:<model_version>:<prompt_version>
 func IdempotencyKey(
 	assetID string,
-	kind asset.TextTrackKind,
+	kind detail.TextTrackKind,
 	sourceTextHash string,
 	targetLanguage string,
 	modelVersion string,

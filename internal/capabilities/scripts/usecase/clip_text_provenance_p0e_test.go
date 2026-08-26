@@ -75,6 +75,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 	"testing"
@@ -83,7 +84,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // p0eParagraphCase defines one row of the text-provenance matrix.
@@ -516,22 +517,22 @@ type metaBackedTranscriptReader struct {
 	transcripts map[string]string
 }
 
-func (r *metaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	if text, ok := r.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
-		return &asset.TextTrack{
+func (r *metaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
+	if text, ok := r.transcripts[assetID]; ok && kind == detail.TextTrackTranscript {
+		return &detail.TextTrack{
 			AssetID:       assetID,
 			LanguageCode:  languageCode,
-			TextKind:      asset.TextTrackTranscript,
+			TextKind:      detail.TextTrackTranscript,
 			TextContent:   text,
 			TextHash:      "p0e-stub-" + assetID,
 			SourceVersion: "v1",
-			Status:        asset.TextTrackReady,
+			Status:        detail.TextTrackReady,
 		}, nil, nil
 	}
 	return nil, nil, nil
 }
 
-func (r *metaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+func (r *metaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ detail.TextTrackKind) ([]string, error) {
 	if _, ok := r.transcripts[assetID]; ok {
 		return []string{"en"}, nil
 	}

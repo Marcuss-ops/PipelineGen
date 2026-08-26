@@ -10,6 +10,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	nethttp "net/http"
@@ -29,7 +30,7 @@ type RetrievalProvider interface {
 	// is unconfigured or produces no hits (NOT an error).
 	Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error)
 	// Name returns the ImageProvider taxonomy constant for this provider.
-	Name() asset.ImageProvider
+	Name() detail.ImageProvider
 	// Healthy reports whether the provider is reachable in the current
 	// environment (config presence + reachable probe). Used by the
 	// diagnostics surface to surface "SearXNG unavailable" state.

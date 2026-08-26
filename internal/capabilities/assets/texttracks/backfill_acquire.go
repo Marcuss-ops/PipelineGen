@@ -25,6 +25,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"net/url"
@@ -32,7 +33,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // tryAcquire is the Fase 5 helper: runs the AcquireService chain
@@ -54,12 +55,12 @@ func (s *BackfillService) tryAcquire(
 	// A metadata summary is an honest source only for the summary kind. It
 	// keeps an asset searchable when the binary source is unavailable without
 	// mislabelling descriptive text as a transcript.
-	if opts.TextKind == asset.TextTrackSummary && assetItem.ClipSummary() != "" {
+	if opts.TextKind == detail.TextTrackSummary && assetItem.ClipSummary() != "" {
 		acqResult = &AcquireResult{
 			AssetID:      assetItem.ID,
 			PlainText:    assetItem.ClipSummary(),
 			LanguageCode: opts.SourceLanguage,
-			SourceType:   asset.TextSourceProvided,
+			SourceType:   detail.TextSourceProvided,
 			Priority:     0,
 		}
 	} else {
@@ -88,16 +89,16 @@ func (s *BackfillService) tryAcquire(
 	if lang == "" {
 		lang = opts.SourceLanguage
 	}
-	hash := asset.TextHash(acqResult.PlainText, lang, opts.TextKind)
+	hash := detail.TextHash(acqResult.PlainText, lang, opts.TextKind)
 	srcType := acqResult.SourceType
 	// Convert the priority-2 "local_file" sentinel to the
-	// canonical asset.TextSourceProvided (local files are
+	// canonical detail.TextSourceProvided (local files are
 	// treated as user-provided provenance).
 	if srcType == "local_file" {
-		srcType = asset.TextSourceProvided
+		srcType = detail.TextSourceProvided
 	}
 	provider := providerFromSourceType(acqResult.SourceType)
-	track := asset.TextTrack{
+	track := detail.TextTrack{
 		AssetID:            assetItem.ID,
 		LanguageCode:       lang,
 		TextKind:           opts.TextKind,
@@ -107,15 +108,15 @@ func (s *BackfillService) tryAcquire(
 		IsOriginal:         true,
 		Provider:           provider,
 		TextHash:           hash,
-		SourceVersion:      asset.SourceVersion(hash, lang, lang, provider, "", "", ""),
+		SourceVersion:      detail.SourceVersion(hash, lang, lang, provider, "", "", ""),
 		Confidence:         acqResult.Confidence,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 	}
-	if err := s.repo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+	if err := s.repo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
 		return acqResult, fmt.Errorf("backfill: save acquired source track: %w", err)
 	}
 	if len(acqResult.Cues) > 0 && s.cues != nil {
-		if err := s.cues.ReplaceTranscriptCues(ctx, assetItem.ID, map[string][]asset.TimedCue{lang: acqResult.Cues}); err != nil {
+		if err := s.cues.ReplaceTranscriptCues(ctx, assetItem.ID, map[string][]detail.TimedCue{lang: acqResult.Cues}); err != nil {
 			return acqResult, fmt.Errorf("backfill: save acquired cues: %w", err)
 		}
 	}
@@ -223,13 +224,13 @@ func youtubeVideoID(raw string) string {
 // ONLY here (it's a pure mapping, not a decision). Tests can
 // pin the labels via backfill_acquire_test.go if it ever
 // materialises.
-func acquiredFromLabel(st asset.TextTrackSource) string {
+func acquiredFromLabel(st detail.TextTrackSource) string {
 	switch st {
-	case asset.TextSourceProvided:
+	case detail.TextSourceProvided:
 		return "local_file"
-	case asset.TextSourceYouTubeSubtitle:
+	case detail.TextSourceYouTubeSubtitle:
 		return "youtube_subtitle"
-	case asset.TextSourceWhisper:
+	case detail.TextSourceWhisper:
 		return "whisper"
 	default:
 		return string(st)
@@ -245,11 +246,11 @@ func acquiredFromLabel(st asset.TextTrackSource) string {
 // once for SourceVersion) AND the canonical MaterializationKey
 // builder in materializer.go DELIVER the same string for the
 // same source_type — no drift.
-func providerFromSourceType(st asset.TextTrackSource) string {
+func providerFromSourceType(st detail.TextTrackSource) string {
 	switch st {
-	case asset.TextSourceYouTubeSubtitle:
+	case detail.TextSourceYouTubeSubtitle:
 		return "youtube"
-	case asset.TextSourceWhisper:
+	case detail.TextSourceWhisper:
 		return "whisper"
 	default:
 		return ""

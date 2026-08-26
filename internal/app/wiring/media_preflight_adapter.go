@@ -6,7 +6,7 @@
 // THIS file (composition root) owns the mechanics:
 //
 //   - Translating GenerateRequest → MediaPreflightInput
-//   - Clip probing via asset.Service.Get (fast existence check)
+//   - Clip probing via detail.Service.Get (fast existence check)
 //   - BGM/SFX/watermark resolution via the already-wired audioAssetSourceAdapter
 //   - Clip audio verification via the same adapter
 //
@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // mediaPreflightAdapter implements MediaPreflight by translating
@@ -81,12 +81,12 @@ func (a *mediaPreflightAdapter) Run(ctx context.Context, req scriptgen.GenerateR
 
 // ────────────────────────────────────────────────────────────────────────
 // assetServiceClipProber implements scriptgen.ClipPreflighter by probing
-// the canonical asset.Service for a non-deleted row. A fast existence
+// the canonical detail.Service for a non-deleted row. A fast existence
 // check — no materialization, no Drive download.
 // ────────────────────────────────────────────────────────────────────────
 
 type assetServiceClipProber struct {
-	assets *asset.Service
+	assets *detail.Service
 }
 
 var _ scriptgen.ClipPreflighter = (*assetServiceClipProber)(nil)

@@ -1,6 +1,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -24,8 +25,8 @@ import (
 // asset row that would orphan Qdrant. See
 // internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
-	assetRepo     asset.Repository
-	processor     asset.Processor
+	assetRepo     detail.Repository
+	processor     detail.Processor
 	dispatcher    mutations.AssetMutationDispatcher
 	clipsFolderID string
 	remoteReader  RemoteAssetReader
@@ -48,7 +49,7 @@ type RemoteAssetReader interface {
 // path. Composition-root pre-rejection lives in the wiring site
 // (internal/api/assets/clips/handler.go NewHandler) which surfaces
 // a configure-time error if dispatcher is nil.
-func NewReprocessUseCase(repo asset.Repository, proc asset.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
+func NewReprocessUseCase(repo detail.Repository, proc detail.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
 	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}
 }
 
@@ -123,7 +124,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	if folderID == "" && (req.Source == "youtube" || req.Source == "youtube-manual") {
 		folderID = uc.clipsFolderID
 	}
-	processInput := &asset.ProcessInput{
+	processInput := &detail.ProcessInput{
 		ID:   clip.ID,
 		Name: clip.Name,
 		// Reprocess contract fix (August 2026): thread the clip's

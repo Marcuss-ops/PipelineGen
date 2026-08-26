@@ -1,6 +1,8 @@
 package indexing
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"path/filepath"
 	"testing"
@@ -93,8 +95,8 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 		t.Fatalf("FetchAsset embeddings not parsed: text=%d transcript=%d visual=%d audio=%d",
 			len(asset.TextVector), len(asset.TranscriptVector), len(asset.VisualVector), len(asset.AudioVector))
 	}
-	if asset.SourceVersion != "src-v1" {
-		t.Fatalf("FetchAsset source_version = %q, want src-v1", asset.SourceVersion)
+	if detail.SourceVersion != "src-v1" {
+		t.Fatalf("FetchAsset source_version = %q, want src-v1", detail.SourceVersion)
 	}
 	if asset.DriveFileID != "drive-file-smoke" || asset.DriveLink != "https://drive.google.com/file/d/drive-file-smoke/view" {
 		t.Fatalf("FetchAsset Drive location = (%q, %q), want canonical SQLite values", asset.DriveFileID, asset.DriveLink)

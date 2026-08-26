@@ -80,15 +80,15 @@ func imageAssetViolations(r *report.Report, rule string) []report.Violation {
 
 // TestRuleA_LiteralBanFailsProduction verifies that a .go file
 // OUTSIDE the canonical owner + canonical builder declares
-// `&asset.ImageAsset{...}` → Rule A violation (SeverityError).
+// `&detail.ImageAsset{...}` → Rule A violation (SeverityError).
 func TestRuleA_LiteralBanFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/random_factory.go": `package factory
-import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 // production code: ImageAsset literal in a non-canonical place
-func build() *asset.ImageAsset {
-	return &asset.ImageAsset{Origin: "x", Provider: "y", ContentHash: "z", Width: 1, Height: 1}
+func build() *detail.ImageAsset {
+	return &detail.ImageAsset{Origin: "x", Provider: "y", ContentHash: "z", Width: 1, Height: 1}
 }
 `,
 	})
@@ -113,7 +113,7 @@ func TestRuleA_DomainAliasLiteralFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/random_alias_factory.go": `package factory
-import domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 // domain-alias literal is also banned
 func build() *domainasset.ImageAsset {
 	return &domainasset.ImageAsset{Origin: "x"}
@@ -131,7 +131,7 @@ func build() *domainasset.ImageAsset {
 // TestRuleA_ExemptsCanonicalOwnerAndBuilder verifies the two
 // allow-listed files (canonical_metadata.go +
 // storage_ingest_direct.go) are exempt from Rule A even if
-// they declared `&asset.ImageAsset{`.
+// they declared `&detail.ImageAsset{`.
 func TestRuleA_ExemptsCanonicalOwnerAndBuilder(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
@@ -148,9 +148,9 @@ type ImageAsset struct {
 func (a *ImageAsset) ResetCanonical() *ImageAsset { return &ImageAsset{Origin: "x"} }
 `,
 		"internal/capabilities/images/workflow/storage_ingest_direct.go": `package images
-import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 // canonical builder — literal MAY appear here if the typed route promotes to a literal in the future
-func Build() *asset.ImageAsset { return &asset.ImageAsset{Origin: "x"} }
+func Build() *detail.ImageAsset { return &detail.ImageAsset{Origin: "x"} }
 `,
 	})
 	r := imageAssetTestReport()
@@ -168,8 +168,8 @@ func TestRuleA_ExemptsTestFiles(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/some_factory_test.go": `package factory_test
-import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-func Stub() *asset.ImageAsset { return &asset.ImageAsset{AssetID: "stub-id"} }
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+func Stub() *detail.ImageAsset { return &detail.ImageAsset{AssetID: "stub-id"} }
 `,
 	})
 	r := imageAssetTestReport()
@@ -187,7 +187,7 @@ func TestRuleA_CommentOnlyEmitsWarn(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/capabilities/images/workflow/notes.go": `package images
-// historically ` + "`&asset.ImageAsset{...}`" + ` was the direct literal path; now we route through canonical metadata.
+// historically ` + "`&detail.ImageAsset{...}`" + ` was the direct literal path; now we route through canonical metadata.
 func Note() {}
 `,
 	})
@@ -314,13 +314,13 @@ func TestBoth_RulesCoexistOnSameFile(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/application/scripts/usecase/leaky.go": `package usecase
-import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 type Envelope struct {
 	Ref string ` + "`json:\"ref\"`" + `
 	AssetID string ` + "`json:\"asset_id\"`" + `
 }
-func Build() *asset.ImageAsset {
-	return &asset.ImageAsset{Origin: "x", Provider: "y", Hash: "z"}
+func Build() *detail.ImageAsset {
+	return &detail.ImageAsset{Origin: "x", Provider: "y", Hash: "z"}
 }
 `,
 	})

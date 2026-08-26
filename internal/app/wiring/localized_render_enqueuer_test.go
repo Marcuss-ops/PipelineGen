@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── fakes ───────────────────────────────────────────────────────────
@@ -45,15 +46,15 @@ func (l *recordingLocalizer) snapshot() []LocalizeInput {
 }
 
 // recordingTrackRepo records UpsertBatch calls and satisfies the full
-// asset.TextTrackRepository interface.
+// detail.TextTrackRepository interface.
 type recordingTrackRepo struct {
 	mu     sync.Mutex
-	tracks []asset.TextTrack
-	ready  map[string][]asset.TimedCue
+	tracks []detail.TextTrack
+	ready  map[string][]detail.TimedCue
 	err    error
 }
 
-func (r *recordingTrackRepo) UpsertBatch(_ context.Context, tracks []asset.TextTrack) error {
+func (r *recordingTrackRepo) UpsertBatch(_ context.Context, tracks []detail.TextTrack) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.err != nil {
@@ -63,34 +64,34 @@ func (r *recordingTrackRepo) UpsertBatch(_ context.Context, tracks []asset.TextT
 	return nil
 }
 
-func (r *recordingTrackRepo) snapshot() []asset.TextTrack {
+func (r *recordingTrackRepo) snapshot() []detail.TextTrack {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]asset.TextTrack(nil), r.tracks...)
+	return append([]detail.TextTrack(nil), r.tracks...)
 }
 
-func (r *recordingTrackRepo) Find(context.Context, string, string, asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *recordingTrackRepo) Find(context.Context, string, string, detail.TextTrackKind) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (r *recordingTrackRepo) ListByAsset(context.Context, string) ([]asset.TextTrack, error) {
+func (r *recordingTrackRepo) ListByAsset(context.Context, string) ([]detail.TextTrack, error) {
 	return nil, nil
 }
-func (r *recordingTrackRepo) FindReady(_ context.Context, assetID, language string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r *recordingTrackRepo) FindReady(_ context.Context, assetID, language string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cues := r.ready[language]
 	if len(cues) == 0 {
 		return nil, nil, nil
 	}
-	return &asset.TextTrack{ID: 1, AssetID: assetID, LanguageCode: language, TextKind: asset.TextTrackTranscript, TextContent: cues[0].Text, TextHash: asset.TextHash(cues[0].Text, language, asset.TextTrackTranscript), Status: asset.TextTrackReady}, append([]asset.TimedCue(nil), cues...), nil
+	return &detail.TextTrack{ID: 1, AssetID: assetID, LanguageCode: language, TextKind: detail.TextTrackTranscript, TextContent: cues[0].Text, TextHash: detail.TextHash(cues[0].Text, language, detail.TextTrackTranscript), Status: detail.TextTrackReady}, append([]detail.TimedCue(nil), cues...), nil
 }
-func (r *recordingTrackRepo) ListReadyLanguages(context.Context, string, asset.TextTrackKind) ([]string, error) {
+func (r *recordingTrackRepo) ListReadyLanguages(context.Context, string, detail.TextTrackKind) ([]string, error) {
 	return nil, nil
 }
-func (r *recordingTrackRepo) FindCurrentForTranslation(context.Context, string, asset.TextTrackKind, string, string, string, string, string) (*asset.TextTrack, error) {
+func (r *recordingTrackRepo) FindCurrentForTranslation(context.Context, string, detail.TextTrackKind, string, string, string, string, string) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (r *recordingTrackRepo) InsertTranslationWithAuditPredecessor(context.Context, asset.TextTrack) error {
+func (r *recordingTrackRepo) InsertTranslationWithAuditPredecessor(context.Context, detail.TextTrack) error {
 	return nil
 }
 
@@ -98,30 +99,30 @@ func (r *recordingTrackRepo) InsertTranslationWithAuditPredecessor(context.Conte
 // ReplaceTranscriptCues (the last write wins, mirroring the replace semantic).
 type recordingCueWriter struct {
 	mu     sync.Mutex
-	byLang map[string]map[string][]asset.TimedCue
+	byLang map[string]map[string][]detail.TimedCue
 	err    error
 }
 
-func (w *recordingCueWriter) ReplaceTranscriptCues(_ context.Context, assetID string, byLang map[string][]asset.TimedCue) error {
+func (w *recordingCueWriter) ReplaceTranscriptCues(_ context.Context, assetID string, byLang map[string][]detail.TimedCue) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.err != nil {
 		return w.err
 	}
 	if w.byLang == nil {
-		w.byLang = make(map[string]map[string][]asset.TimedCue)
+		w.byLang = make(map[string]map[string][]detail.TimedCue)
 	}
 	w.byLang[assetID] = byLang
 	return nil
 }
 
-func (w *recordingCueWriter) last(assetID string) map[string][]asset.TimedCue {
+func (w *recordingCueWriter) last(assetID string) map[string][]detail.TimedCue {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.byLang[assetID]
 }
 
-var _ asset.TextTrackRepository = (*recordingTrackRepo)(nil)
+var _ detail.TextTrackRepository = (*recordingTrackRepo)(nil)
 var _ texttracks.TimedCueWriter = (*recordingCueWriter)(nil)
 var _ localizedLocalizer = (*recordingLocalizer)(nil)
 
@@ -143,7 +144,7 @@ func testEnqueuerInput() scriptgeneration.LocalizedRenderInput {
 }
 
 func newTestEnqueuerAdapter(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter) *localizedRenderEnqueuerAdapter {
-	t.ready = map[string][]asset.TimedCue{
+	t.ready = map[string][]detail.TimedCue{
 		"en": {{StartMs: 0, EndMs: 1200, Text: "DB English subtitle"}},
 		"es": {{StartMs: 0, EndMs: 1200, Text: "DB Spanish subtitle"}},
 		"it": {{StartMs: 0, EndMs: 1200, Text: "DB Italian subtitle"}},
@@ -333,7 +334,7 @@ func TestLocalizedRenderEnqueuer_ConcurrentLanguagesDontClobberCues(t *testing.T
 	}
 }
 
-func keys(m map[string][]asset.TimedCue) []string {
+func keys(m map[string][]detail.TimedCue) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

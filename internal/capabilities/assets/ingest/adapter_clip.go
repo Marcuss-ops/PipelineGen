@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -33,10 +34,10 @@ type clipStoreAdapter struct {
 	// Pure-narrow write — the locations + processing writes below
 	// stay on their respective narrow typed ports (asset_locations +
 	// asset processing) and are NOT subject to the dispatcher SSOT.
-	repo       asset.Repository
-	querySvc   *asset.Service
-	locations  asset.LocationRepository
-	processing asset.ProcessingRepository
+	repo       detail.Repository
+	querySvc   *detail.Service
+	locations  detail.LocationRepository
+	processing detail.ProcessingRepository
 	dispatcher mutations.AssetMutationDispatcher
 }
 
@@ -51,10 +52,10 @@ type clipStoreAdapter struct {
 // godoc for the runtime contract).
 func NewClipStoreAdapter(
 	db *sql.DB,
-	repo asset.Repository,
-	querySvc *asset.Service,
-	locations asset.LocationRepository,
-	processing asset.ProcessingRepository,
+	repo detail.Repository,
+	querySvc *detail.Service,
+	locations detail.LocationRepository,
+	processing detail.ProcessingRepository,
 	dispatcher mutations.AssetMutationDispatcher,
 ) lifecycle.AssetRecordStore {
 	return &clipStoreAdapter{
@@ -165,7 +166,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	return nil
 }
 
-func persistProcessingState(ctx context.Context, processing asset.ProcessingRepository, rec *artifacts.MediaRecord, step string) error {
+func persistProcessingState(ctx context.Context, processing detail.ProcessingRepository, rec *artifacts.MediaRecord, step string) error {
 	if processing == nil {
 		return fmt.Errorf("clip store adapter: processing repository not configured")
 	}

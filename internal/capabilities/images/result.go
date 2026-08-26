@@ -8,7 +8,7 @@
 // modification, no ingest.
 //
 // These types are intentionally thin wrappers over the canonical
-// asset.ImageAsset (defined in internal/domain/asset): a catalog
+// detail.ImageAsset (defined in internal/domain/asset): a catalog
 // query returns either a fully-populated asset (when callers need
 // full metadata) or an AssetSummary (when callers only need
 // preview info).
@@ -17,7 +17,7 @@ package images
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // CatalogSearchResult is the canonical result of a catalog search.
@@ -25,7 +25,7 @@ import (
 type CatalogSearchResult struct {
 	// Assets are the matched image assets, ordered by relevance
 	// (catalog-internal scoring) and then by ID.
-	Assets []asset.ImageAsset
+	Assets []detail.ImageAsset
 
 	// TotalCount is the unbounded match count (independent of
 	// Limit on the request). Used by paginating callers.
@@ -46,7 +46,7 @@ type CatalogSearchResult struct {
 // catalog listings return when full metadata is unnecessary.
 //
 // NOTE: AssetSummary only carries fields that exist on
-// asset.ImageAsset today. Style / Author / UpdatedAt are derived
+// detail.ImageAsset today. Style / Author / UpdatedAt are derived
 // from MetadataJSON in a follow-up step (tracked separately under
 // catalog-followups in architecture/issues.yaml; this is NOT the
 // territory-split concern that PR-GENERATED-SEARCH-FIX closed).
@@ -55,8 +55,8 @@ type AssetSummary struct {
 	SubjectID   string              // canonical subject ID (slug)
 	SlugID      string              // alias for SubjectID (kept by callers)
 	PathRel     string              // relative file path on disk
-	Origin      asset.ImageOrigin   // territory classification
-	Provider    asset.ImageProvider // sub-classification (wikipedia, flux, etc.)
+	Origin      detail.ImageOrigin   // territory classification
+	Provider    detail.ImageProvider // sub-classification (wikipedia, flux, etc.)
 	Description string
 	License     string
 	CreatedAt   time.Time
@@ -72,10 +72,10 @@ type AssetSummary struct {
 	// PR-GENERATED-SEARCH-FIX).
 }
 
-// SummaryFromAsset projects an asset.ImageAsset down to an
+// SummaryFromAsset projects an detail.ImageAsset down to an
 // AssetSummary. Used internally by catalog search; exposed for
 // testability + callers that pre-project their own asset slice.
-func SummaryFromAsset(a asset.ImageAsset) AssetSummary {
+func SummaryFromAsset(a detail.ImageAsset) AssetSummary {
 	return AssetSummary{
 		Hash:        a.Hash,
 		SubjectID:   a.SubjectID,
@@ -92,7 +92,7 @@ func SummaryFromAsset(a asset.ImageAsset) AssetSummary {
 }
 
 // SummariesFromAssets projects a slice in-place.
-func SummariesFromAssets(assets []asset.ImageAsset) []AssetSummary {
+func SummariesFromAssets(assets []detail.ImageAsset) []AssetSummary {
 	out := make([]AssetSummary, 0, len(assets))
 	for _, a := range assets {
 		out = append(out, SummaryFromAsset(a))

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
-func testCues() []asset.TimedCue {
-	return []asset.TimedCue{
+func testCues() []detail.TimedCue {
+	return []detail.TimedCue{
 		{StartMs: 0, EndMs: 3280, Text: "hello"},
 		{StartMs: 3280, EndMs: 6000, Text: "world"},
 	}

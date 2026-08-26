@@ -30,6 +30,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"os"
 	"path/filepath"
@@ -41,7 +42,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Stubs ──────────────────────────────────────────────────────────────
@@ -68,12 +69,12 @@ func (c *countingTranscriber) TranscribeAudio(_ context.Context, _ string) (stri
 	return c.text, c.err
 }
 
-func (c *countingTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (asset.TranscriptResult, error) {
+func (c *countingTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (detail.TranscriptResult, error) {
 	atomic.AddInt32(&c.calls, 1)
 	if c.err != nil {
-		return asset.TranscriptResult{}, c.err
+		return detail.TranscriptResult{}, c.err
 	}
-	return asset.TranscriptResult{Text: c.text, DetectedLanguage: "en"}, nil
+	return detail.TranscriptResult{Text: c.text, DetectedLanguage: "en"}, nil
 }
 
 // compile-time assertion: countingTranscriber satisfies WhisperTranscriberPort.
@@ -94,7 +95,7 @@ var _ youtubeports.WhisperTranscriberPort = (*countingTranscriber)(nil)
 //     FetchSegmentSubtitles).
 type noSubtitleFetcher struct{}
 
-func (noSubtitleFetcher) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*asset.ResolvedTextBundle, error) {
+func (noSubtitleFetcher) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*detail.ResolvedTextBundle, error) {
 	return nil, ErrSubtitleUnavailable
 }
 
@@ -105,7 +106,7 @@ func (noSubtitleFetcher) SliceSubtitles(_ context.Context, _ string, _, _ int, _
 // compile-time assertion: noSubtitleFetcher satisfies SubtitleFetcherPort.
 var _ youtubeports.SubtitleFetcherPort = (*noSubtitleFetcher)(nil)
 
-// noRowsRepo satisfies asset.TextTrackRepository and ALWAYS
+// noRowsRepo satisfies detail.TextTrackRepository and ALWAYS
 // returns "no rows" for every read method. This is the
 // canonical "priority 1 (DB) miss + priority 2 (DB READY)
 // miss" stub so the resolver falls through to priority 3-5.
@@ -116,17 +117,17 @@ var _ youtubeports.SubtitleFetcherPort = (*noSubtitleFetcher)(nil)
 // down the priority chain.
 type noRowsRepo struct{}
 
-func (noRowsRepo) UpsertBatch(_ context.Context, _ []asset.TextTrack) error { return nil }
-func (noRowsRepo) Find(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, error) {
+func (noRowsRepo) UpsertBatch(_ context.Context, _ []detail.TextTrack) error { return nil }
+func (noRowsRepo) Find(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (noRowsRepo) ListByAsset(_ context.Context, _ string) ([]asset.TextTrack, error) {
-	return []asset.TextTrack{}, nil
+func (noRowsRepo) ListByAsset(_ context.Context, _ string) ([]detail.TextTrack, error) {
+	return []detail.TextTrack{}, nil
 }
-func (noRowsRepo) FindReady(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (noRowsRepo) FindReady(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return nil, nil, nil
 }
-func (noRowsRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (noRowsRepo) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return []string{}, nil
 }
 
@@ -137,24 +138,24 @@ func (noRowsRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTr
 // mirror the null-write contract from
 // internal/application/scripts/usecase/multilingual_persistence_p1f_test.go::p1fStubRepo
 // and internal/application/assets/texttracks/materializer_test.go::fakeTextTrackRepo.
-func (noRowsRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+func (noRowsRepo) FindCurrentForTranslation(_ context.Context, _ string, _ detail.TextTrackKind, _, _, _, _, _ string) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (noRowsRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+func (noRowsRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ detail.TextTrack) error {
 	return nil
 }
 
 // compile-time assertion: noRowsRepo satisfies TextTrackRepository.
-var _ asset.TextTrackRepository = (*noRowsRepo)(nil)
+var _ detail.TextTrackRepository = (*noRowsRepo)(nil)
 
-// readyTrackRepo satisfies asset.TextTrackRepository and ALWAYS
+// readyTrackRepo satisfies detail.TextTrackRepository and ALWAYS
 // returns a READY track from FindReady. This is the canonical
 // "priority 1+2 (DB) HIT" stub so the resolver short-circuits
 // at priority 2 (DB READY lookup) and NEVER reaches priority 5
 // (Whisper fallback).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the stub returns a real
-// *asset.TextTrack with TextTrackReady status, a non-empty
+// *detail.TextTrack with TextTrackReady status, a non-empty
 // transcript, and the requested language code. ListReadyLanguages
 // also returns the matching language code so the resolver's
 // branch logic is exercised end-to-end.
@@ -164,20 +165,20 @@ var _ asset.TextTrackRepository = (*noRowsRepo)(nil)
 // "transcript already READY" path.
 type readyTrackRepo struct {
 	langCode string
-	track    *asset.TextTrack
+	track    *detail.TextTrack
 }
 
-func (r readyTrackRepo) UpsertBatch(_ context.Context, _ []asset.TextTrack) error { return nil }
-func (r readyTrackRepo) Find(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r readyTrackRepo) UpsertBatch(_ context.Context, _ []detail.TextTrack) error { return nil }
+func (r readyTrackRepo) Find(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, error) {
 	return r.track, nil
 }
-func (r readyTrackRepo) ListByAsset(_ context.Context, _ string) ([]asset.TextTrack, error) {
-	return []asset.TextTrack{*r.track}, nil
+func (r readyTrackRepo) ListByAsset(_ context.Context, _ string) ([]detail.TextTrack, error) {
+	return []detail.TextTrack{*r.track}, nil
 }
-func (r readyTrackRepo) FindReady(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r readyTrackRepo) FindReady(_ context.Context, _ string, _ string, _ detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return r.track, nil, nil
 }
-func (r readyTrackRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+func (r readyTrackRepo) ListReadyLanguages(_ context.Context, _ string, _ detail.TextTrackKind) ([]string, error) {
 	return []string{r.langCode}, nil
 }
 
@@ -189,15 +190,15 @@ func (r readyTrackRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.
 // the null-write contract of p1fStubRepo / fakeTextTrackRepo
 // (this stub tracks no audit predecessor — the tests inspect
 // only the priority-2 short-circuit at FindReady).
-func (r readyTrackRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+func (r readyTrackRepo) FindCurrentForTranslation(_ context.Context, _ string, _ detail.TextTrackKind, _, _, _, _, _ string) (*detail.TextTrack, error) {
 	return nil, nil
 }
-func (r readyTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+func (r readyTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ detail.TextTrack) error {
 	return nil
 }
 
 // compile-time assertion: readyTrackRepo satisfies TextTrackRepository.
-var _ asset.TextTrackRepository = (*readyTrackRepo)(nil)
+var _ detail.TextTrackRepository = (*readyTrackRepo)(nil)
 
 // alwaysHitCache always returns a hit at Step 2. The
 // orchestrator short-circuits BEFORE the resolver.
@@ -415,13 +416,13 @@ func TestAcquireSegmentText_TranscriptReady_TranscriberNotInvoked(t *testing.T) 
 	// Build a READY TextTrack that the resolver will return
 	// at priority 2. This is the canonical "transcript already
 	// READY in the DB" surface.
-	readyTrack := &asset.TextTrack{
+	readyTrack := &detail.TextTrack{
 		AssetID:      "yt_fase1c_ready",
 		LanguageCode: "en",
-		TextKind:     asset.TextTrackTranscript,
+		TextKind:     detail.TextTrackTranscript,
 		TextContent:  "DB-cached transcript from previous extraction",
-		Status:       asset.TextTrackReady,
-		SourceType:   asset.TextSourceProvided,
+		Status:       detail.TextTrackReady,
+		SourceType:   detail.TextSourceProvided,
 	}
 	repo := &readyTrackRepo{langCode: "en", track: readyTrack}
 

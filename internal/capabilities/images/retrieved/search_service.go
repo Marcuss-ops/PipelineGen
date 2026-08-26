@@ -23,7 +23,7 @@ package retrieved
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // SearchServicePort is the structural port that the parent
@@ -35,11 +35,11 @@ type SearchServicePort interface {
 	// falls back to the configured retrieval providers in
 	// canonical order (Wikipedia → SearXNG → DuckDuckGo →
 	// Drive). Mirrors the parent images.service.go façade.
-	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error)
+	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*detail.ImageAsset, error)
 
 	// SearchWebImage performs an EXTERNAL web search (today:
 	// DuckDuckGo only). Single-result, no fallback chain.
-	SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error)
+	SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*detail.ImageAsset, error)
 }
 
 // SearchServiceAdapter wraps a SearchServicePort so callers
@@ -78,7 +78,7 @@ func (a *SearchServiceAdapter) Search(ctx context.Context, req SearchRequest) (S
 		return SearchResponse{SubService: a.Name()}, nil
 	}
 	return SearchResponse{
-		Assets:     []asset.ImageAsset{*img},
+		Assets:     []detail.ImageAsset{*img},
 		SubService: a.Name(),
 	}, nil
 }

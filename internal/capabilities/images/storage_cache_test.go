@@ -1,6 +1,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"errors"
@@ -22,14 +23,14 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type stubRetrievalProvider struct {
-	name asset.ImageProvider
+	name detail.ImageProvider
 }
 
 func (p stubRetrievalProvider) Search(_ context.Context, _ string, _ retrieved.RetrievalSearchOptions) ([]retrieved.RetrievalSearchResult, error) {
 	return nil, nil
 }
 
-func (p stubRetrievalProvider) Name() asset.ImageProvider { return p.name }
+func (p stubRetrievalProvider) Name() detail.ImageProvider { return p.name }
 
 func (p stubRetrievalProvider) Healthy(context.Context) error { return nil }
 
@@ -123,7 +124,7 @@ func seedCachedImage(t *testing.T, db *sql.DB, id, hash, sourceQuery string, cre
 		"",
 		"",
 		metadata,
-		string(asset.ProviderWikipedia),
+		string(detail.ProviderWikipedia),
 		createdAt.UTC().Format(time.RFC3339),
 		createdAt.UTC().Format(time.RFC3339),
 	)
@@ -170,8 +171,8 @@ func TestImageSearchCacheKey_NormalizesQueryLanguageAndPolicy(t *testing.T) {
 func TestRetrievalPolicySignature_ReflectsProviderOrder(t *testing.T) {
 	svc := &ImageStorageService{
 		retrievalRegistry: retrieved.NewRetrievalProviderRegistry(zap.NewNop(), []retrieved.RetrievalProvider{
-			stubRetrievalProvider{name: asset.ProviderWikipedia},
-			stubRetrievalProvider{name: asset.ProviderDrive},
+			stubRetrievalProvider{name: detail.ProviderWikipedia},
+			stubRetrievalProvider{name: detail.ProviderDrive},
 		}),
 	}
 	if got := svc.retrievalPolicySignature(); got != "wikipedia,drive" {
@@ -214,7 +215,7 @@ func TestSearchAndDownload_UsesSemanticCacheHitAndAvoidsCollision(t *testing.T) 
 			}),
 		},
 		retrievalRegistry: retrieved.NewRetrievalProviderRegistry(zap.NewNop(), []retrieved.RetrievalProvider{
-			stubRetrievalProvider{name: asset.ProviderWikipedia},
+			stubRetrievalProvider{name: detail.ProviderWikipedia},
 		}),
 	}
 
@@ -225,7 +226,7 @@ func TestSearchAndDownload_UsesSemanticCacheHitAndAvoidsCollision(t *testing.T) 
 	if animal1 == nil || animal1.Asset == nil {
 		t.Fatal("animal query returned nil detailed result")
 	}
-	if !animal1.CacheHit || animal1.CacheSource != "database" || animal1.RetrievalProvider != string(asset.ProviderWikipedia) {
+	if !animal1.CacheHit || animal1.CacheSource != "database" || animal1.RetrievalProvider != string(detail.ProviderWikipedia) {
 		t.Fatalf("animal detailed cache trace wrong: %+v", animal1)
 	}
 	if animal1.Asset.Hash != "hash-animal" {
@@ -253,7 +254,7 @@ func TestSearchAndDownload_UsesSemanticCacheHitAndAvoidsCollision(t *testing.T) 
 	if car == nil || car.Asset == nil {
 		t.Fatal("car query returned nil detailed result")
 	}
-	if !car.CacheHit || car.CacheSource != "database" || car.RetrievalProvider != string(asset.ProviderWikipedia) {
+	if !car.CacheHit || car.CacheSource != "database" || car.RetrievalProvider != string(detail.ProviderWikipedia) {
 		t.Fatalf("car detailed cache trace wrong: %+v", car)
 	}
 	if car.Asset.Hash != "hash-car" {

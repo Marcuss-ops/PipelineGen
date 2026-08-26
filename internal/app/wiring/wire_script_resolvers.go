@@ -201,7 +201,7 @@ func buildScriptSourceResolvers(
 		// resolver as its dumb merge/dedup searcher for the fallback path.
 		coordinator := research.NewResearchSearchCoordinator(identityAdapter, plannerAdapter, providers, log)
 		coordinator.SetTargetPool(cfg.External.ResearchTargetPoolSize)
-		researchResolver.SetSearchCoordinator(&researchCoordinatorAdapter{coordinator: coordinator})
+		researchResolver.SetSearchCoordinator(usecase.NewResearchCoordinatorAdapter(coordinator))
 		// Fold the provider policy into the research cache fingerprint so
 		// SearXNG-only and SearXNG+DDG deployments never share cache entries.
 		researchResolver.SetResearchPolicyVersion(researchPolicyVersion(cfg))

@@ -20,6 +20,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"errors"
@@ -29,12 +30,12 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Compile-time port assertions ──────────────────────────────────────
 var (
-	_ asset.Processor                   = (*fakeReprocessProcessor)(nil)
+	_ detail.Processor                   = (*fakeReprocessProcessor)(nil)
 	_ mutations.AssetMutationDispatcher = (*fakeReprocessDispatcher)(nil)
 	_ RemoteAssetReader                 = (*fakeReprocessReader)(nil)
 )
@@ -44,13 +45,13 @@ var (
 // fakeReprocessProcessor records the ProcessInput it receives so tests
 // can assert which flags reached the processor.
 type fakeReprocessProcessor struct {
-	lastInput *asset.ProcessInput
+	lastInput *detail.ProcessInput
 	callCount int
-	result    *asset.ProcessResult
+	result    *detail.ProcessResult
 	err       error
 }
 
-func (p *fakeReprocessProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (p *fakeReprocessProcessor) Process(ctx context.Context, input *detail.ProcessInput) (*detail.ProcessResult, error) {
 	p.lastInput = input
 	p.callCount++
 	if p.err != nil {
@@ -59,7 +60,7 @@ func (p *fakeReprocessProcessor) Process(ctx context.Context, input *asset.Proce
 	if p.result != nil {
 		return p.result, nil
 	}
-	return &asset.ProcessResult{
+	return &detail.ProcessResult{
 		Status:        "processed",
 		LocalPath:     "out/result.mp4",
 		LegacyFileMD5: "result-hash",
@@ -179,7 +180,7 @@ func TestReprocessExecute_UploadDriveFalse_SetsSkipPublish(t *testing.T) {
 	t.Parallel()
 	clip, _ := driveBackedClip(t, "clip-upfalse")
 	proc := &fakeReprocessProcessor{
-		result: &asset.ProcessResult{
+		result: &detail.ProcessResult{
 			Status: "processed", LocalPath: "out/result.mp4", LegacyFileMD5: "new-hash",
 		},
 	}
@@ -357,7 +358,7 @@ func TestReprocessExecute_PersistsDriveIdentityFromResult(t *testing.T) {
 	t.Parallel()
 	clip, _ := driveBackedClip(t, "clip-driveid")
 	proc := &fakeReprocessProcessor{
-		result: &asset.ProcessResult{
+		result: &detail.ProcessResult{
 			Status:        "processed",
 			LocalPath:     "out/result.mp4",
 			LegacyFileMD5: "result-hash",
@@ -401,7 +402,7 @@ func TestReprocessExecute_EmptyDriveFieldsDoNotClobber(t *testing.T) {
 	t.Parallel()
 	clip, _ := driveBackedClip(t, "clip-driveempty")
 	proc := &fakeReprocessProcessor{
-		result: &asset.ProcessResult{
+		result: &detail.ProcessResult{
 			Status:        "processed",
 			LocalPath:     "out/result.mp4",
 			LegacyFileMD5: "result-hash",

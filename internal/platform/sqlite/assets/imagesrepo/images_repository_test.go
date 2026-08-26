@@ -20,7 +20,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // AGENTS.md driver lock (mattn/go-sqlite3)
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // testDB opens an in-memory SQLite with the minimum schema needed for
@@ -132,7 +132,7 @@ func TestUpsertGeneratedDetailsRoundTrip(t *testing.T) {
 	repo := NewImagesRepository(db)
 	insertMediaAsset(t, db, "img-1", "hash-1")
 
-	first := &asset.GeneratedImageDetail{
+	first := &detail.GeneratedImageDetail{
 		AssetID:         "img-1",
 		PromptOriginal:  "castle",
 		PromptResolved:  "castle, cinematic lighting",
@@ -158,7 +158,7 @@ func TestUpsertGeneratedDetailsRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip fields wrong: %+v", got)
 	}
 
-	second := &asset.GeneratedImageDetail{
+	second := &detail.GeneratedImageDetail{
 		AssetID:         "img-1",
 		PromptOriginal:  "castle-v2",
 		PromptResolved:  "castle, anime",
@@ -188,7 +188,7 @@ func TestUpsertRetrievedDetailsRoundTrip(t *testing.T) {
 	repo := NewImagesRepository(db)
 	insertMediaAsset(t, db, "img-2", "hash-2")
 
-	first := &asset.RetrievedImageDetail{
+	first := &detail.RetrievedImageDetail{
 		AssetID:        "img-2",
 		SourceImageURL: "https://example.com/a.jpg",
 		License:        "CC-BY",
@@ -203,7 +203,7 @@ func TestUpsertRetrievedDetailsRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip mismatch: %+v err=%v", got, err)
 	}
 
-	second := &asset.RetrievedImageDetail{
+	second := &detail.RetrievedImageDetail{
 		AssetID:        "img-2",
 		SourceImageURL: "https://example.com/b.jpg",
 		License:        "CC-BY-SA",
@@ -227,7 +227,7 @@ func TestGeneratedDetailsDeleteCascade(t *testing.T) {
 	repo := NewImagesRepository(db)
 	insertMediaAsset(t, db, "img-4", "hash-4")
 
-	if err := repo.UpsertGeneratedDetails(context.Background(), &asset.GeneratedImageDetail{
+	if err := repo.UpsertGeneratedDetails(context.Background(), &detail.GeneratedImageDetail{
 		AssetID: "img-4", SourceHash: "hash-4", StyleID: "cinematic",
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -250,7 +250,7 @@ func TestRetrievedDetailsDeleteCascade(t *testing.T) {
 	repo := NewImagesRepository(db)
 	insertMediaAsset(t, db, "img-5", "hash-5")
 
-	if err := repo.UpsertRetrievedDetails(context.Background(), &asset.RetrievedImageDetail{
+	if err := repo.UpsertRetrievedDetails(context.Background(), &detail.RetrievedImageDetail{
 		AssetID: "img-5", SourceImageURL: "https://example.com/c.jpg",
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -272,12 +272,12 @@ func TestUpsertAssetIDEmptyReturnsError(t *testing.T) {
 	db := testDB(t)
 	repo := NewImagesRepository(db)
 
-	if err := repo.UpsertGeneratedDetails(context.Background(), &asset.GeneratedImageDetail{
+	if err := repo.UpsertGeneratedDetails(context.Background(), &detail.GeneratedImageDetail{
 		AssetID: "", SourceHash: "hash",
 	}); err == nil {
 		t.Fatal("expected error on empty AssetID, got nil")
 	}
-	if err := repo.UpsertRetrievedDetails(context.Background(), &asset.RetrievedImageDetail{
+	if err := repo.UpsertRetrievedDetails(context.Background(), &detail.RetrievedImageDetail{
 		AssetID: "", SourceImageURL: "https://example.com",
 	}); err == nil {
 		t.Fatal("expected error on empty AssetID (retrieved), got nil")
@@ -345,7 +345,7 @@ func seedFullImageAsset(t *testing.T, db *sql.DB, id, hash string) {
 // scanner concrete type. Same physical row, scanned via *sql.Row
 // (returned by QueryRowContext) and via *sql.Rows (returned by
 // QueryContext + rows.Next), MUST decode to byte-equal
-// *asset.ImageAsset values. Failing this test means the helper is no
+// *detail.ImageAsset values. Failing this test means the helper is no
 // longer SQL-agnostic — exactly the kind of regression the DRY
 // refactor exists to prevent.
 func TestScanImageAssetFromRow_RowVsRowsEquivalence(t *testing.T) {
@@ -579,7 +579,7 @@ func TestListImagesByOrigin_Empty(t *testing.T) {
 	db := testDB(t)
 	repo := NewImagesRepository(db)
 
-	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	got, err := repo.ListImagesByOrigin(context.Background(), detail.ImageOriginGenerated, 200)
 	if err != nil {
 		t.Fatalf("ListImagesByOrigin (empty): %v", err)
 	}
@@ -599,7 +599,7 @@ func TestListImagesByOrigin_OneRow(t *testing.T) {
 	repo := NewImagesRepository(db)
 	seedFullImageAsset(t, db, "img-gen-1", "hash-gen-1")
 
-	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	got, err := repo.ListImagesByOrigin(context.Background(), detail.ImageOriginGenerated, 200)
 	if err != nil {
 		t.Fatalf("ListImagesByOrigin: %v", err)
 	}
@@ -609,8 +609,8 @@ func TestListImagesByOrigin_OneRow(t *testing.T) {
 	if got[0].Hash != "hash-gen-1" {
 		t.Errorf("Hash mismatch: got %q, want %q", got[0].Hash, "hash-gen-1")
 	}
-	if got[0].Origin != asset.ImageOriginGenerated {
-		t.Errorf("Origin mismatch: got %q, want %q", got[0].Origin, asset.ImageOriginGenerated)
+	if got[0].Origin != detail.ImageOriginGenerated {
+		t.Errorf("Origin mismatch: got %q, want %q", got[0].Origin, detail.ImageOriginGenerated)
 	}
 	if got[0].Description != "Image of img-gen-1" {
 		t.Errorf("Description mismatch: got %q", got[0].Description)
@@ -644,7 +644,7 @@ func TestListImagesByOrigin_MultipleRowsOrderedDesc(t *testing.T) {
 		}
 	}
 
-	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	got, err := repo.ListImagesByOrigin(context.Background(), detail.ImageOriginGenerated, 200)
 	if err != nil {
 		t.Fatalf("ListImagesByOrigin: %v", err)
 	}
@@ -687,7 +687,7 @@ func TestListImagesByOrigin_Limit200Cap(t *testing.T) {
 		}
 	}
 
-	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 300)
+	got, err := repo.ListImagesByOrigin(context.Background(), detail.ImageOriginGenerated, 300)
 	if err != nil {
 		t.Fatalf("ListImagesByOrigin (over-cap): %v", err)
 	}
@@ -725,7 +725,7 @@ func TestListImagesByOrigin_DifferentOriginsIsolated(t *testing.T) {
 		}
 	}
 
-	got, err := repo.ListImagesByOrigin(context.Background(), asset.ImageOriginGenerated, 200)
+	got, err := repo.ListImagesByOrigin(context.Background(), detail.ImageOriginGenerated, 200)
 	if err != nil {
 		t.Fatalf("ListImagesByOrigin (generated only): %v", err)
 	}
@@ -733,7 +733,7 @@ func TestListImagesByOrigin_DifferentOriginsIsolated(t *testing.T) {
 		t.Fatalf("expected 2 generated rows, got %d (filter broken)", len(got))
 	}
 	for _, row := range got {
-		if row.Origin != asset.ImageOriginGenerated {
+		if row.Origin != detail.ImageOriginGenerated {
 			t.Errorf("row %q has non-generated origin %q (filter broken)", row.Hash, row.Origin)
 		}
 	}

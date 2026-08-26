@@ -1,6 +1,6 @@
 application_capabilities:
   - name: assets
-    path: internal/application/assets
+    path: internal/capabilities/assets
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
@@ -25,7 +25,7 @@ application_capabilities:
       - { symbol: "internal/platform/sqlite/assets", file_line: "providers/artlist/service_test.go:22", is_test: true }
       - { symbol: "internal/platform/sqlite/assets", file_line: "providers/artlist/solar_panel_integration_test.go:16", is_test: true }
       - { symbol: "internal/platform/sqlite/assets", file_line: "providers/stock/stockpipeline/service.go:18", is_test: false }
-      - { symbol: "internal/platform/sqlite/assets", file_line: "reconciliation/voiceover/service.go:13", is_test: false }
+      - { symbol: "internal/platform/sqlite/assets", file_line: "../voiceover/sync/service.go:13", is_test: false, note: "moved to internal/capabilities/voiceover/sync (voiceover owner unification)" }
       - { symbol: "internal/platform/sqlite/assets", file_line: "searchqueries/usecase.go:13", is_test: false }
       - { symbol: "internal/platform/sqlite/assets", file_line: "lifecycle/service.go: TBD", is_test: false, note: "refresh required" }
       - { symbol: "internal/platform/sqlite/assets", file_line: "ingest/service.go: TBD", is_test: false, note: "refresh required" }
@@ -44,7 +44,7 @@ application_capabilities:
       - { symbol: "internal/platform/drive", file_line: "providers/stock/stockpipeline/service.go:21", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "providers/stock/stockpipeline/util.go:10", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "providers/artlist/ports.go:25", is_test: false }
-      - { symbol: "internal/platform/drive", file_line: "reconciliation/voiceover/service.go:14", is_test: false }
+      - { symbol: "internal/platform/drive", file_line: "../voiceover/sync/service.go:14", is_test: false, note: "moved to internal/capabilities/voiceover/sync (voiceover owner unification)" }
       - { symbol: "internal/platform/drive", file_line: "assettree/service.go:9", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "assetop/reconcile.go:6", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "assetop/reconcile.go:7", is_test: false }
@@ -53,18 +53,18 @@ application_capabilities:
       - { symbol: "internal/platform/sqlite/assets/channels", file_line: "channels/module_test.go:14", is_test: true }
       - { symbol: "internal/platform/sqlite/assets", file_line: "assetop/.../TBD", is_test: false, note: "refresh required" }
   - name: books
-    path: internal/application/books
+    path: internal/capabilities/books
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/platform/drive", file_line: "service.go:21", is_test: false }
   - name: channels
-    path: internal/application/channels
+    path: internal/capabilities/channels
     has_build_signature: true
     direct_register_calls: []
     concrete_constructors: []
   - name: clips
-    path: internal/application/clips
+    path: internal/capabilities/clips
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
@@ -75,13 +75,13 @@ application_capabilities:
       - { symbol: "internal/platform/drive", file_line: "download.go:11", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "file_url.go (mock)", is_test: true, note: "production uses pkg/urlutil" }
   - name: generation
-    path: internal/application/generation
+    path: internal/capabilities/generation
     state: retired
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: images
-    path: internal/application/images
+    path: internal/capabilities/images
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:

@@ -15,7 +15,7 @@ import (
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // fakePhashCache is an in-memory artifact cache that stores opaque bytes
@@ -149,7 +149,7 @@ func TestProcess_WarmRunSkipsFrameExtraction(t *testing.T) {
 	// processed-video SHA → normalize + pHash both cache-hit on the warm run.
 	run := func() {
 		localPath := writeStagedFileForTest(t, "staged-bytes")
-		result, err := p.Process(context.Background(), &asset.ProcessInput{
+		result, err := p.Process(context.Background(), &detail.ProcessInput{
 			ID:        "clip-phash-warm",
 			Name:      "phash warm",
 			LocalPath: localPath,

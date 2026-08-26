@@ -27,10 +27,11 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // fetchWhisperTranscriptRaw performs the canonical Phase-1.b typed
@@ -48,9 +49,9 @@ func fetchWhisperTranscriptRaw(
 	ctx context.Context,
 	transcriber youtubeports.WhisperTranscriberPort,
 	audioPath string,
-) (asset.TranscriptResult, error) {
+) (detail.TranscriptResult, error) {
 	if transcriber == nil {
-		return asset.TranscriptResult{}, nil
+		return detail.TranscriptResult{}, nil
 	}
 	return transcriber.TranscribeAudioWithDetection(ctx, audioPath)
 }

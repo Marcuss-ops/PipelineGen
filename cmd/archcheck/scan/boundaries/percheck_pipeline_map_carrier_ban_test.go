@@ -43,7 +43,7 @@ func makeFileForPipelineMapCarrierBanTest(t *testing.T, root, relPath, content s
 // a struct field inside one of the four pipeline files).
 func TestScanPipelineMapCarrierBan_TypedFieldTripsGate(t *testing.T) {
 	root := t.TempDir()
-	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_postprocess.go",
+	makeFileForPipelineMapCarrierBanTest(t, root, "internal/capabilities/scripts/usecase/generation_postprocess.go",
 		`package usecase
 
 type ProcessedGeneration struct {
@@ -69,7 +69,7 @@ type ProcessedGeneration struct {
 // pipeline carrier).
 func TestScanPipelineMapCarrierBan_TrackEventInlineMetadataExempt(t *testing.T) {
 	root := t.TempDir()
-	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_postprocess.go",
+	makeFileForPipelineMapCarrierBanTest(t, root, "internal/capabilities/scripts/usecase/generation_postprocess.go",
 		`package usecase
 
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -96,7 +96,7 @@ func Note(p *PreparedGeneration, tracker *usecase.ProgressTracker) {
 // !productionOnly mode.
 func TestScanPipelineMapCarrierBan_CommentOnlyResidue_Warned(t *testing.T) {
 	root := t.TempDir()
-	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_prepare.go",
+	makeFileForPipelineMapCarrierBanTest(t, root, "internal/capabilities/scripts/usecase/generation_prepare.go",
 		`package usecase
 
 // the legacy PipelineState map[string]any anti-pattern was banned here in v0.
@@ -117,7 +117,7 @@ func Note() {}
 // bucket.
 func TestScanPipelineMapCarrierBan_ProductionOnlySilencesWarn(t *testing.T) {
 	root := t.TempDir()
-	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_prepare.go",
+	makeFileForPipelineMapCarrierBanTest(t, root, "internal/capabilities/scripts/usecase/generation_prepare.go",
 		`package usecase
 
 // map[string]any discuss in godoc only.
@@ -158,7 +158,7 @@ type X struct {
 // not over-eager.
 func TestScanPipelineMapCarrierBan_InScopeNonViolationRegularField(t *testing.T) {
 	root := t.TempDir()
-	makeFileForPipelineMapCarrierBanTest(t, root, "internal/application/scripts/usecase/generation_prepare.go",
+	makeFileForPipelineMapCarrierBanTest(t, root, "internal/capabilities/scripts/usecase/generation_prepare.go",
 		`package usecase
 
 import "time"

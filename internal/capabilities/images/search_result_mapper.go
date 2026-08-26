@@ -11,28 +11,28 @@ package images
 import (
 	"fmt"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"github.com/gin-gonic/gin"
 )
 
-// assetToResult projects an asset.ImageAsset to a unified
+// assetToResult projects an detail.ImageAsset to a unified
 // ImageSearchResult. Shared by RetrievedSearch + TerritorySearch
 // (territory=all) handlers.
 //
-// Direct field access (not getters): asset.ImageAsset is a
+// Direct field access (not getters): detail.ImageAsset is a
 // value type exported struct with public fields; no getter
 // indirection. StyleID/Author come from MetadataJSON today
 // (forward-pointer for direct structure fields).
 //
-// Accepts a *domain.ImageAsset because the service-layer
+// Accepts a *detail.ImageAsset because the service-layer
 // SearchAndDownload / ListImagesBySubject methods return
 // pointers; nil is handled by callers (returns empty DTO list).
-func assetToResult(a *domain.ImageAsset) ImageSearchResult {
+func assetToResult(a *detail.ImageAsset) ImageSearchResult {
 	return assetToResultWithCache(a, nil, "", "")
 }
 
-// assetToResultWithCache projects an asset.ImageAsset (plus cache-
+// assetToResultWithCache projects an detail.ImageAsset (plus cache-
 // provenance fields) into the unified ImageSearchResult DTO.
 // Shared by RetrievedSearch + TerritorySearch (territory=all).
 //
@@ -58,7 +58,7 @@ func assetToResult(a *domain.ImageAsset) ImageSearchResult {
 // that materialises ImageSearchResult.Provider. Adding a new
 // territory surface MUST reuse this mapper (not re-roll the
 // projection loop) so the response shape stays byte-stable.
-func assetToResultWithCache(a *domain.ImageAsset, cacheHit *bool, cacheSource, retrievalProvider string) ImageSearchResult {
+func assetToResultWithCache(a *detail.ImageAsset, cacheHit *bool, cacheSource, retrievalProvider string) ImageSearchResult {
 	if a == nil {
 		return ImageSearchResult{}
 	}
@@ -96,7 +96,7 @@ func boolPtr(v bool) *bool {
 
 // previewURLForAsset picks the best URL for an asset: prefer
 // PathRel when set, else fall back to SourceURL.
-func previewURLForAsset(a domain.ImageAsset) string {
+func previewURLForAsset(a detail.ImageAsset) string {
 	if a.PathRel != "" {
 		return a.PathRel
 	}
@@ -108,7 +108,7 @@ func previewURLForAsset(a domain.ImageAsset) string {
 // PathRel but no DriveFolderID or DriveLink — the link is derived from
 // the file ID, and folder_id is empty (images upload directly to the
 // configured Drive root folder, no subfolder hierarchy).
-func imageDriveBlock(a *domain.ImageAsset) gin.H {
+func imageDriveBlock(a *detail.ImageAsset) gin.H {
 	if a == nil {
 		return gin.H{
 			"path":      "",

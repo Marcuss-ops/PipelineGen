@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -46,7 +46,7 @@ type OutboxEnqueuer interface {
 // MaterializationReport is the canonical return value.
 type MaterializationReport struct {
 	AssetID               string              `json:"asset_id"`
-	Kind                  asset.TextTrackKind `json:"kind"`
+	Kind                  detail.TextTrackKind `json:"kind"`
 	SourceLanguage        string              `json:"source_language"`
 	SourceTextHash        string              `json:"source_text_hash"`
 	CreatedLanguages      []string            `json:"created_languages"`
@@ -67,7 +67,7 @@ func (r *MaterializationReport) TotalProcessed() int {
 
 // Materializer is the canonical application-layer service.
 type Materializer struct {
-	repo        asset.TextTrackRepository
+	repo        detail.TextTrackRepository
 	translator  translation.TranslationPort
 	outbox      OutboxEnqueuer
 	resolverCfg ResolverConfig
@@ -86,7 +86,7 @@ type Materializer struct {
 }
 
 func NewMaterializer(
-	repo asset.TextTrackRepository,
+	repo detail.TextTrackRepository,
 	translator translation.TranslationPort,
 	outbox OutboxEnqueuer,
 	resolverCfg ResolverConfig,
@@ -145,7 +145,7 @@ func (m *Materializer) Materialize(
 	assetID string,
 	sourceLanguageCode string,
 	sourceTextHash string,
-	kind asset.TextTrackKind,
+	kind detail.TextTrackKind,
 	targetLanguagesOverride []string,
 ) (*MaterializationReport, error) {
 	start := time.Now()
@@ -291,13 +291,13 @@ func (m *Materializer) Materialize(
 func (m *Materializer) materializeOne(
 	ctx context.Context,
 	resolver *Resolver,
-	source *asset.TextTrack,
+	source *detail.TextTrack,
 	targetLang string,
 	report *MaterializationReport,
 ) error {
 	// (Step 4) Lookup-before-translate gate. The port computes the
 	// 5-tuple SHA-256 translation_key internally via
-	// asset.TranslationKey (godlike/06 SSOT — one canonical
+	// detail.TranslationKey (godlike/06 SSOT — one canonical
 	// formula owner). If a READY + is_current=1 row already
 	// exists for this exact 6-tuple (asset + kind + target lang +
 	// source_text_hash + translation_model + model_version +
@@ -398,7 +398,7 @@ func (m *Materializer) materializeOne(
 			modelVersion = "ollama-server-default"
 		}
 	}
-	translationKey := asset.TranslationKey(
+	translationKey := detail.TranslationKey(
 		report.SourceTextHash,
 		targetLang,
 		translationModel,
@@ -413,12 +413,12 @@ func (m *Materializer) materializeOne(
 	// (the InsertTranslationWithAuditPredecessor began with a
 	// targeted UPDATE).
 	confidence := translated.Confidence
-	newTrack := asset.TextTrack{
+	newTrack := detail.TextTrack{
 		AssetID:            report.AssetID,
 		LanguageCode:       targetLang,
 		TextKind:           report.Kind,
 		TextContent:        translated.TranslatedText,
-		SourceType:         asset.TextSourceTranslation,
+		SourceType:         detail.TextSourceTranslation,
 		SourceLanguageCode: report.SourceLanguage,
 		IsOriginal:         false,
 		Provider:           translated.UsedProvider,
@@ -443,7 +443,7 @@ func (m *Materializer) materializeOne(
 		TranslationKey: translationKey,
 		IsCurrent:      true,
 		Confidence:     &confidence,
-		Status:         asset.TextTrackReady,
+		Status:         detail.TextTrackReady,
 	}
 	if confidence == 0 {
 		newTrack.Confidence = nil
@@ -476,7 +476,7 @@ func (m *Materializer) materializeOne(
 func (m *Materializer) emitAssetIndexRequested(
 	ctx context.Context,
 	assetID string,
-	kind asset.TextTrackKind,
+	kind detail.TextTrackKind,
 ) error {
 	payload, err := json.Marshal(map[string]string{
 		"asset_id": assetID,

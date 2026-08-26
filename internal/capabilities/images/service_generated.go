@@ -16,7 +16,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -29,7 +29,7 @@ var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides i
 // GenerateSmartImage delegates synchronous AI image generation to the
 // held GenerationService. Returns ErrImageGenNotImplemented when the
 // Gen sub-service is nil.
-func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
 	if s == nil || s.Gen == nil {
 		return nil, ErrImageGenNotImplemented
 	}
@@ -84,6 +84,6 @@ func (s *Service) RegisterHandler(jobsSvc *jobs.Service) error {
 
 // UploadBatchMetadata uploads metadata for a batch of generated images
 // via the Meta sub-service.
-func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, imageAssets []*asset.ImageAsset) {
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, imageAssets []*detail.ImageAsset) {
 	s.Meta.UploadBatchMetadata(ctx, genID, slug, style, prompt, generator, imageAssets)
 }

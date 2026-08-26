@@ -1,14 +1,15 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ImageAssetToAsset converts an image domain DTO to the canonical asset shape
 // used by clips/API callers.
-func ImageAssetToAsset(item *asset.ImageAsset) *asset.Asset {
+func ImageAssetToAsset(item *detail.ImageAsset) *asset.Asset {
 	if item == nil {
 		return nil
 	}

@@ -1,11 +1,12 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
@@ -167,6 +168,6 @@ func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (
 	return r.GetClipByDriveFileID(ctx, fileID)
 }
 
-func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
+func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*detail.ClipFolder, error) {
 	return r.GetFolderByVideoID(ctx, videoID)
 }

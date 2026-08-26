@@ -9,6 +9,7 @@
 package usecase
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

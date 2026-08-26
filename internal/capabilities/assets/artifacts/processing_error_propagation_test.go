@@ -1,12 +1,13 @@
 package artifacts
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type processingTestCommitter struct{}
@@ -49,7 +50,7 @@ func (r *registryProcessingErrorRepo) GetFailed(context.Context) ([]asset.Proces
 func (r *registryProcessingErrorRepo) Delete(context.Context, string, string) error { return nil }
 func (r *registryProcessingErrorRepo) DeleteAll(context.Context, string) error      { return nil }
 
-var _ asset.ProcessingRepository = (*registryProcessingErrorRepo)(nil)
+var _ detail.ProcessingRepository = (*registryProcessingErrorRepo)(nil)
 
 func TestClipsRegistryUpsertMediaPropagatesProcessingError(t *testing.T) {
 	cause := errors.New("registry complete failed")

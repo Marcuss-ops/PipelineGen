@@ -25,6 +25,7 @@
 package adapters
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -34,7 +35,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Service is the shared state container consumed by the adapters-level
@@ -55,18 +56,18 @@ type Service struct {
 	segmentsSvc   *usecase.SegmentsService
 	videoPipeline youtubeports.VideoPipelinePort
 	ollama        youtubeports.OllamaClientPort
-	assetRepo     asset.Repository
+	assetRepo     detail.Repository
 }
 
 // ServiceDeps is the PR1.6/1.7 constructor envelope for Service.
 // Log is mandatory (composition root supplies a real logger).
 // AssetRepo is required by dispatchOrIndex (the canonical
-// asset.Repository.Upsert writer); passing a nil AssetRepo is a
+// detail.Repository.Upsert writer); passing a nil AssetRepo is a
 // hard-fail at the first dispatchOrIndex call rather than a silent
 // fall-through.
 type ServiceDeps struct {
 	Log       *zap.Logger
-	AssetRepo asset.Repository
+	AssetRepo detail.Repository
 }
 
 // NewService constructs a Service from a ServiceDeps envelope. Only
@@ -82,7 +83,7 @@ func NewService(deps ServiceDeps) *Service {
 
 // dispatchOrIndex is the canonical PR1.6 single-writer entry point for
 // the YouTube extraction pipeline: it routes the supplied clip
-// through asset.Repository.Upsert and returns the typed error when
+// through detail.Repository.Upsert and returns the typed error when
 // no AssetRepo is wired (composition-time contract: a missing writer
 // is a hard fail, not a silent fall-through to the legacy
 // outbox/clipsRepo paths). The hash argument is reserved for

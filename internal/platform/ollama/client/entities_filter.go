@@ -5,11 +5,11 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtractionResult, limit int, language string) *asset.EntityExtractionResult {
+func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtractionResult, limit int, language string) *detail.EntityExtractionResult {
 	if result == nil {
 		return nil
 	}

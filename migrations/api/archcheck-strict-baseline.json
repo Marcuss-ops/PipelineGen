@@ -41,7 +41,7 @@
         "internal/capabilities/assets/providers/",
         "internal/recommendation/",
         "internal/app/",
-        "pkg/idempotency/",
+        "internal/kernel/idempotency/",
         "cmd/admin/",
         "internal/api/assets/soundeffect/",
         "internal/api/images/",

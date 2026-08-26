@@ -46,14 +46,14 @@
 //   - For each extracted frame, Go issues an HTTP POST to the Python
 //     VLM endpoint with the frame's absolute path; the response is
 //     aggregated into one VisualSummary row (deterministic dedup of
-//     actions + entities, capped at asset.MaxVisibleItems; longest
+//     actions + entities, capped at detail.MaxVisibleItems; longest
 //     RawDescription becomes the caption, truncated at
-//     asset.MaxVisualSummaryChars).
+//     detail.MaxVisualSummaryChars).
 //
 //   - The aggregated row is upserted via the canonical
 //     VisualSummaryRepository (internal/platform/sqlite/assets/
 //     visual_summary_repository.go). SourceHash is computed via the
-//     canonical asset.ComputeSourceHash, so the supersede gate
+//     canonical detail.ComputeSourceHash, so the supersede gate
 //     (ReindexVerifier/CLI) can short-circuit identical re-runs.
 //
 //   - The CLI (cmd/admin/reindex_visual_summary.go) reads the row
@@ -71,7 +71,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Defaults (audit-stable; godlike/06 SSOT) ──────────────────────
@@ -186,8 +186,8 @@ type VLMJobConfig struct {
 // List*); the service only writes + reads back for the supersede
 // gate. Smaller surface = easier mocking in unit tests.
 type VisualSummaryRepositoryWriter interface {
-	Upsert(ctx context.Context, summary asset.VisualSummary) error
-	Get(ctx context.Context, assetID string) (*asset.VisualSummary, error)
+	Upsert(ctx context.Context, summary detail.VisualSummary) error
+	Get(ctx context.Context, assetID string) (*detail.VisualSummary, error)
 }
 
 // ── VisualSummaryService (orchestrator) ───────────────────────────
@@ -247,8 +247,8 @@ func NewVisualSummaryService(
 //  3. Extract frames via the FrameSampler port (frame_sampler.go).
 //  4. For each frame, call vlm.Infer (or skip if cfg.SkipVLMCall).
 //  5. Aggregate responses (vlm_aggregator.go).
-//  6. Build asset.VisualSummary + compute SourceHash via
-//     asset.ComputeSourceHash (canonical owner).
+//  6. Build detail.VisualSummary + compute SourceHash via
+//     detail.ComputeSourceHash (canonical owner).
 //  7. Supersede gate: existing row's SourceHash matches prospective
 //     SourceHash → return existing row, skip upsert.
 //  8. Upsert via repo.Upsert.
@@ -257,7 +257,7 @@ func NewVisualSummaryService(
 // or LocalPath surfaces ErrVLMJobConfigAssetIDRequired /
 // ErrVLMJobConfigLocalPathRequired BEFORE any ffmpeg / HTTP / DB
 // call.
-func (s *VisualSummaryService) RunJob(ctx context.Context, cfg VLMJobConfig) (*asset.VisualSummary, error) {
+func (s *VisualSummaryService) RunJob(ctx context.Context, cfg VLMJobConfig) (*detail.VisualSummary, error) {
 	if strings.TrimSpace(cfg.AssetID) == "" {
 		return nil, ErrVLMJobConfigAssetIDRequired
 	}
@@ -333,7 +333,7 @@ func (s *VisualSummaryService) RunJob(ctx context.Context, cfg VLMJobConfig) (*a
 	text, actions, entities := AggregateVLMResponses(responses)
 	// Step 6: build + SourceHash.
 	now := time.Now().UTC()
-	summary := asset.VisualSummary{
+	summary := detail.VisualSummary{
 		AssetID:              cfg.AssetID,
 		VisualSummaryText:    text,
 		VisibleActions:       actions,
@@ -345,7 +345,7 @@ func (s *VisualSummaryService) RunJob(ctx context.Context, cfg VLMJobConfig) (*a
 		ModelVersion:         cfg.ModelVersion,
 		SampledAt:            now.Format(time.RFC3339),
 	}
-	summary.SourceHash = asset.ComputeSourceHash(
+	summary.SourceHash = detail.ComputeSourceHash(
 		summary.VisibleActions,
 		summary.VisibleEntities,
 		summary.ModelName,

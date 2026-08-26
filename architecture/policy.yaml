@@ -10,13 +10,18 @@
 
 # File size and population caps.
 #
-# Package-size regime:
-#   normal package:      ≤ 40 production .go files
-#   registered hotspot:  temporarily > 40 (tracked in architecture/package_hotspots.json,
-#                         each with owner + deadline + target subzones)
-#   emergency ceiling:   NEVER exceed 65 (this executable value)
+# Package-size regime (P0-POLICY-CANONICAL, resolved 2026-08-26):
 #
-# The 40/65 regime makes both numbers canonical. History in policy.history.yaml.
+#   max_files_per_package below is THE single executable value — the
+#   hard ceiling enforced by cmd/archcheck (scan.ScanPackages). A package
+#   exceeding it is a pkg_size violation; registered hotspots stay
+#   within their own baseline/deadline contract (architecture/package_hotspots.json).
+#
+#   40 is a soft target for well-factored normal packages, NOT a second
+#   executable threshold: packages above 40 but at/below 65 are legal
+#   and are only flagged when they are unregistered growth or breach the
+#   hotspot baseline. The 65 cap is the only number the scanner reads.
+#   History in policy.history.yaml.
 max_files_per_package: 65
 # File line cap. Files exceeding this limit are reported as violations
 # (exceptions must be named per-file in architecture/policy.history.yaml).
@@ -71,7 +76,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, errors, observability, embedding, semanticdoc, digest, media, stocksupply, assembly, delivery, primitives, transcript
+kernel_subzones: asset, job, script, event, errors, observability, embedding, semanticdoc, digest, media, stocksupply, assembly, delivery, primitives, transcript, idempotency
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -158,11 +163,25 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 # Each on-disk subzone maps to exactly one technology concern. Ownership is
 # exclusive: a platform adapter belongs to one subzone only.
 #
+# P1-PLATFORM-ALIGNMENT keep/migrate/absorb decisions (resolved 2026-08-26):
+#
+#   KEEP   cas            — content-addressed storage (SHA-256 keyed blob store)
+#   KEEP   media          — Rust media execution executor (rustexec/VideoProcessor)
+#   KEEP   renderinggen   — RenderingGen queue client (HTTP → external overlay render)
+#   KEEP   observability  — metrics owner (Prometheus collectors, run records)
+#   KEEP   ollama         — Ollama client, prompts, types, generator adapters
+#   ABSORB ffmpeg         — into platform/media/rustexec (VideoProcessor subsumes FFmpeg)
+#   ABSORB nvidia         — into platform/overlays (gpu_gate) + app/workerruntime
+#   KEEP   embeddings     — embedding adapters (HTTP, Python, Ollama) [earlier wave]
+#   KEEP   overlays       — GPU gate, render cache, media contract prober [earlier wave]
+#   KEEP   httpserver     — HTTP server/router (migrated from api/ 2026-08-25)
+#
 # On-disk subzones (governed by policy):
 #
 #   config         — config loading, decoding (multilingual, scripts, worker)
 #   sqlite         — connection pool, migration runner, PRAGMA policy
 #   drive          — Google Drive publisher, reader, location verifier
+#   ai             — VLM visual analysis, reranker scoring, content classifier
 #   qdrant         — Qdrant collection schemas, transport, verification
 #   process        — process-level health, readiness probes, worker caps
 #   filesystem     — SQLite-backed folder memory, file staging helpers
@@ -174,12 +193,10 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #   media          — Rust media execution executor (rustexec/VideoProcessor)
 #   renderinggen   — RenderingGen queue client (HTTP → external overlay render)
 #   delivery       — delivery registry, startup validators, transport contracts
+#   observability  — metrics owner (Prometheus collectors, run records)
+#   ollama         — Ollama client, prompts, types, generator adapters
 #
-# Deferred migrations (remaining api-root cutovers; infrastructure/ is deleted as of 2026-08-24):
-#
-#   httpserver     — HTTP server/router lives in internal/api/ (Gin).
-#                     No standalone package yet. Target: platform/httpserver
-#                     after api root migration.
+# Absorbed concerns (no standalone package — do not create one):
 #
 #   ffmpeg         — FFmpeg execution lives in platform/media/rustexec/.
 #                     No standalone ffmpeg package needed; subsumed by
@@ -188,7 +205,7 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 #   nvidia         — GPU/NVIDIA capability probing lives in
 #                     platform/overlays/gpu_gate.go and app/workerruntime.
 #                     No standalone nvidia package needed.
-platform_subzones: config, sqlite, drive, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery, observability, ollama
+platform_subzones: config, sqlite, drive, ai, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery, observability, ollama
 
 # CANONICAL LAYOUT (binding): target_internal_roots
 #

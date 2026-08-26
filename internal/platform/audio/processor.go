@@ -1,6 +1,7 @@
 package audioasset
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,7 +18,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 )
 
 // Processor — PR-VO-B1 (June 2026): the previous direct Drive
@@ -426,7 +427,7 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	// Compute hash.
 	if result.LocalPath != "" {
-		if hash, hashErr := hashutil.LegacyMD5File(result.LocalPath); hashErr != nil {
+		if hash, hashErr := checksum.LegacyMD5File(result.LocalPath); hashErr != nil {
 			p.log.Warn("hash computation failed", zap.Error(hashErr))
 		} else {
 			result.LegacyFileMD5 = hash

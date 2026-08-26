@@ -1,18 +1,19 @@
 package images
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/json"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func TestAssetToResultWithCache_ExposesTraceFields(t *testing.T) {
 	hit := true
-	res := assetToResultWithCache(&asset.ImageAsset{
+	res := assetToResultWithCache(&detail.ImageAsset{
 		Hash:     "hash-1",
-		Origin:   asset.ImageOriginRetrieved,
-		Provider: asset.ProviderWikipedia,
+		Origin:   detail.ImageOriginRetrieved,
+		Provider: detail.ProviderWikipedia,
 		PathRel:  "images/hash-1.jpg",
 	}, &hit, "database", "wikipedia")
 
@@ -54,13 +55,13 @@ func TestAssetToResultWithCache_ExposesTraceFields(t *testing.T) {
 func TestAssetToResultWithCache_ProviderFallbackToRetrievalProvider(t *testing.T) {
 	cases := []struct {
 		name             string
-		assetProvider    asset.ImageProvider
+		assetProvider    detail.ImageProvider
 		retrievalSrc     string
 		wantResponseProv string
 	}{
 		{
 			name:             "ProviderUnknown_FallsBackToDuckDuckGo",
-			assetProvider:    asset.ProviderUnknown,
+			assetProvider:    detail.ProviderUnknown,
 			retrievalSrc:     "duckduckgo",
 			wantResponseProv: "duckduckgo",
 		},
@@ -72,40 +73,40 @@ func TestAssetToResultWithCache_ProviderFallbackToRetrievalProvider(t *testing.T
 		},
 		{
 			name:             "ProviderUnknown_FallsBackToWikipedia",
-			assetProvider:    asset.ProviderUnknown,
+			assetProvider:    detail.ProviderUnknown,
 			retrievalSrc:     "wikipedia",
 			wantResponseProv: "wikipedia",
 		},
 		{
 			name:             "ProviderUnknown_FallsBackToDrive",
-			assetProvider:    asset.ProviderUnknown,
+			assetProvider:    detail.ProviderUnknown,
 			retrievalSrc:     "drive",
 			wantResponseProv: "drive",
 		},
 		{
 			name:             "UnknownAndUnknown_StaysUnknown_FailClosed",
-			assetProvider:    asset.ProviderUnknown,
-			retrievalSrc:     string(asset.ProviderUnknown),
-			wantResponseProv: string(asset.ProviderUnknown),
+			assetProvider:    detail.ProviderUnknown,
+			retrievalSrc:     string(detail.ProviderUnknown),
+			wantResponseProv: string(detail.ProviderUnknown),
 		},
 		{
 			name:             "UnknownAndEmpty_StaysEmpty_FailClosed",
-			assetProvider:    asset.ProviderUnknown,
+			assetProvider:    detail.ProviderUnknown,
 			retrievalSrc:     "",
-			wantResponseProv: string(asset.ProviderUnknown),
+			wantResponseProv: string(detail.ProviderUnknown),
 		},
 		{
 			name:             "CanonicalProviderWins_NoFallback",
-			assetProvider:    asset.ProviderWikipedia,
+			assetProvider:    detail.ProviderWikipedia,
 			retrievalSrc:     "duckduckgo",
 			wantResponseProv: "wikipedia",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := assetToResultWithCache(&asset.ImageAsset{
+			res := assetToResultWithCache(&detail.ImageAsset{
 				Hash:     "hash-fb-" + tc.name,
-				Origin:   asset.ImageOriginRetrieved,
+				Origin:   detail.ImageOriginRetrieved,
 				Provider: tc.assetProvider,
 			}, nil, "database", tc.retrievalSrc)
 			if res.Provider != tc.wantResponseProv {

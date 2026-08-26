@@ -7,9 +7,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/reconciliation/voiceover"
+	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/lessons"
+	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -74,10 +75,10 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	}
 	canonicalCommitter := newCanonicalAssetCommitter(params.dbs.DualPool.Writer, params.outbox.EventsRepo, params.log)
 	if params.repos != nil && params.repos.ClipsRepo != nil {
-		wireCanonicalAssetStore(params.repos.ClipsRepo.AssetStoreSQLite, canonicalCommitter)
+		mediacommitadapters.WireCanonicalAssetStore(params.repos.ClipsRepo.AssetStoreSQLite, canonicalCommitter)
 	}
 	if params.repos != nil {
-		wireCanonicalImageCommitter(params.repos.ImageRepo, canonicalCommitter)
+		mediacommitadapters.WireCanonicalImageCommitter(params.repos.ImageRepo, canonicalCommitter)
 	}
 	voCommitter := canonicalCommitter
 	voiceoverRepo, voiceoverProcessItem, audioProcessor, publishPool, err := buildVoiceoverPipeline(params.ctx, params.cfg, params.dbs, params.log,
@@ -178,9 +179,9 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	)
 	params.log.Info("Lessons service initialized", zap.Bool("enabled", params.cfg.Lessons.Enabled))
 
-	var vosyncSvc *voiceoverreconcile.Service
+	var vosyncSvc *voicesync.Service
 	if voFolder := params.cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
-		vosyncSvc = voiceoverreconcile.NewService(params.drive.DriveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
+		vosyncSvc = voicesync.NewService(params.drive.DriveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
 		params.log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 

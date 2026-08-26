@@ -66,15 +66,16 @@
       "path": "internal/capabilities/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
-      "baseline_files": 51,
+      "baseline_files": 50,
       "baseline": {
-        "files": 51,
+        "files": 50,
         "max_loc": 11473
       },
       "current": {
-        "files": 63,
+        "files": 50,
         "max_loc": 579
       },
+      "note": "Split 2026-08-26 (63 â†’ 50): the 52-file mutual-recursion cluster (planner, orchestrator, steps, render, service) stays in core; support/query/run/rounds/ports/errors/process/production/render-transitions extracted to the sibling support sub-package (13 files, registered separately). Core at 50 production files, under the 51 baseline; support ratchets from 13.",
       "target_packages": [
         "internal/capabilities/assets/stock/ingest",
         "internal/capabilities/assets/stock/finalize",
@@ -87,16 +88,16 @@
       "path": "internal/kernel/asset",
       "owner": "kernel asset model decomposition",
       "deadline": "2026-09-30",
-      "baseline_files": 71,
+      "baseline_files": 39,
       "baseline": {
-        "files": 71,
+        "files": 39,
         "max_loc": 0
       },
       "current": {
-        "files": 71,
+        "files": 39,
         "max_loc": 0
       },
-      "note": "Measured production-file baseline corrected to the scanner result (70); decomposition remains tracked as a governed hotspot with no unrecorded growth.",
+      "note": "Split 2026-08-26 (71 Ã¢â€ â€™ 39): leaf domains (texttrack, render, image, clip, search, store, taxonomy, source-catalog, artifact-stages) extracted to internal/kernel/asset/detail; core keeps the Asset model + state machine. Ratchet enforces non-increasing debt from this committed count.",
       "target_packages": [
         "internal/kernel/asset/metadata",
         "internal/kernel/asset/render",
@@ -104,61 +105,19 @@
       ]
     },
     {
-      "path": "internal/application/images",
-      "owner": "internal/application/images",
-      "deadline": "2026-10-15",
-      "baseline_files": 54,
-      "baseline": {
-        "files": 54,
-        "max_loc": 6760
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "target_packages": [
-        "internal/capabilities/images/workflow",
-        "internal/capabilities/images/generation",
-        "internal/capabilities/images/delivery",
-        "internal/capabilities/images/persistence"
-      ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/images (54 → 0); zero production imports remain."
-    },
-    {
-      "path": "internal/application/jobs",
-      "owner": "internal/application/jobs",
-      "deadline": "2026-09-15",
-      "baseline_files": 44,
-      "baseline": {
-        "files": 44,
-        "max_loc": 5218
-      },
-      "current": {
-        "files": 0,
-        "max_loc": 0
-      },
-      "target_packages": [
-        "internal/capabilities/jobs/queue",
-        "internal/capabilities/jobs/worker",
-        "internal/capabilities/jobs/policy",
-        "internal/capabilities/jobs/outbox"
-      ],
-      "note": "DONE 2026-08-24: fully migrated to capabilities/jobs (44 → 0); outbox/policy in capabilities, persistence in platform/sqlite."
-    },
-    {
       "path": "internal/platform/delivery",
       "owner": "Asset-delivery URL signing + destination registry (migrated from infrastructure)",
       "deadline": "2026-12-31",
-      "baseline_files": 9,
+      "baseline_files": 12,
       "baseline": {
-        "files": 9,
+        "files": 12,
         "max_loc": 0
       },
       "current": {
         "files": 12,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure→platform consolidation. 9 production files; canonical owner for asset-delivery URL signing + destination registry.",
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 12 production files; canonical owner for asset-delivery URL signing + destination registry. Re-baselined 2026-08-26 (9 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 12) when the P0-LEGACY-RATCHET gate was activated.",
       "target_packages": [
         "internal/platform/delivery/signing",
         "internal/platform/delivery/registry"
@@ -177,7 +136,7 @@
         "files": 5,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure→platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
       "target_packages": [
         "internal/platform/embeddings/http",
         "internal/platform/embeddings/ollama"
@@ -203,7 +162,43 @@
         "internal/platform/sqlite/assets/imagesregistry",
         "internal/platform/sqlite/assets/txmutation"
       ],
-      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructure→platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
+      "note": "Migrated from platform/sqlite/assets as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 51 root files + 13 subpackages; target is decomposition to sub-40 files."
+    },
+    {
+      "path": "internal/kernel/asset/detail",
+      "owner": "kernel asset detail domains (leaf extraction from internal/kernel/asset)",
+      "deadline": "2026-09-30",
+      "baseline_files": 34,
+      "baseline": {
+        "files": 34,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 34,
+        "max_loc": 0
+      },
+      "note": "New package created 2026-08-26 by the kernel/asset hard cutover (71 Ã¢â€ â€™ 39 core + 34 detail). Registered so the ratchet tracks its growth from day one.",
+      "target_packages": [
+        "internal/kernel/asset/detail"
+      ]
+    },
+    {
+      "path": "internal/capabilities/assets/providers/stock/stockpipeline/support",
+      "owner": "stock pipeline support surface (query/run/rounds/ports/errors extracted from stockpipeline core)",
+      "deadline": "2026-09-30",
+      "baseline_files": 13,
+      "baseline": {
+        "files": 13,
+        "max_loc": 0
+      },
+      "current": {
+        "files": 13,
+        "max_loc": 0
+      },
+      "note": "New package created 2026-08-26 by the stockpipeline split (63 â†’ 50 core + 13 support). Registered so the ratchet tracks its growth from day one.",
+      "target_packages": [
+        "internal/capabilities/assets/providers/stock/stockpipeline/support"
+      ]
     }
   ],
   "root_migrations": [],
@@ -296,7 +291,7 @@
       "owner": "jobs migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files → 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
       "targets": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/worker",
@@ -309,7 +304,7 @@
       "owner": "images migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files → 0). Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 0). Zero production imports remain.",
       "targets": [
         "internal/capabilities/images/workflow",
         "internal/capabilities/images/generation",
@@ -364,7 +359,7 @@
       "owner": "application use-case migration owner",
       "completed_at": "2026-08-25",
       "status": "COMPLETED",
-      "resolution": "Root deleted from filesystem (2026-08-25). All use-case orchestration migrated to internal/capabilities (jobs→capabilities/jobs, images→capabilities/images, mediamemory→capabilities/mediamemory, search→capabilities/assets/search, qdrant→capabilities/reconciliation+platform/qdrant, scripts→capabilities/scripts). Zero production Go files remain; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
+      "resolution": "Root deleted from filesystem (2026-08-25). All use-case orchestration migrated to internal/capabilities (jobsÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/jobs, imagesÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/images, mediamemoryÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/mediamemory, searchÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/assets/search, qdrantÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/reconciliation+platform/qdrant, scriptsÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/scripts). Zero production Go files remain; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
       "targets": [
         "internal/capabilities"
       ]

@@ -1,6 +1,6 @@
 application_capabilities:
   - name: jobs
-    path: internal/application/jobs
+    path: internal/capabilities/jobs
     has_build_signature: false
     direct_register_calls:
       - { symbol: "appjobs.Compose()", file_line: "types.go:192 (composition-root only)", is_test: false }
@@ -44,27 +44,29 @@ application_capabilities:
       - { symbol: "internal/platform/qdrant", file_line: "outbox/ports.go TBD", is_test: false, note: "refresh required" }
       - { symbol: "internal/platform/qdrant", file_line: "outbox/ports.go TBD2", is_test: false, note: "refresh required" }
   - name: lessons
-    path: internal/application/lessons
+    path: internal/capabilities/lessons
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/platform/drive", file_line: "service.go:15", is_test: false }
       - { symbol: "internal/platform/drive", file_line: "generator.go:12", is_test: false }
   - name: mediasearch
-    path: internal/application/mediasearch
+    path: internal/capabilities/mediasearch
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/platform/qdrant", file_line: "service.go:30 (comment ref; no actual import)", is_test: false, note: "exclude at gate" }
   - name: middleware
-    path: internal/application/middleware
+    path: internal/capabilities/middleware
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/platform/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required" }
       - { symbol: "internal/platform/sqlite (requestlog impl)", file_line: "requestlog/... : TBD", is_test: false, note: "refresh required second site" }
   - name: qdrant
-    path: internal/application/qdrant
+    path: internal/capabilities/qdrant
+    state: retired
+    note: "retired with the application root; Qdrant is a platform projection (internal/platform/qdrant)"
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
@@ -82,13 +84,13 @@ application_capabilities:
       - { symbol: "internal/platform/qdrant", file_line: "reconciler/ports.go:123", is_test: false }
       - { symbol: "internal/platform/qdrant", file_line: "legacyaudit/seed_uuid_test.go:11", is_test: true }
   - name: scriptassets
-    path: internal/application/scriptassets
+    path: internal/capabilities/scriptassets
     has_build_signature: true
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/platform/sqlite (module_test.go imports)", file_line: "module_test.go:14", is_test: true }
   - name: scripts
-    path: internal/application/scripts
+    path: internal/capabilities/scripts
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
@@ -100,22 +102,24 @@ application_capabilities:
       - { symbol: "internal/platform/drive", file_line: "usecase/documents_usecase_test.go:12", is_test: true }
       - { symbol: "internal/platform/drive", file_line: "usecase/flow_helpers.go:19", is_test: false }
   - name: search
-    path: internal/application/search
+    path: internal/capabilities/search
+    state: retired
+    note: "retired with the application root"
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: system
-    path: internal/application/system
+    path: internal/capabilities/system
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: translation
-    path: internal/application/translation
+    path: internal/capabilities/translation
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: voiceover
-    path: internal/capabilities/voiceover/service
+    path: internal/capabilities/voiceover
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:
@@ -123,18 +127,20 @@ application_capabilities:
       - { symbol: "internal/platform/sqlite/assets", file_line: "persistence/repository.go:43", is_test: false }
       - { symbol: "internal/platform/sqlite/assets", file_line: "jobs/<X>: TBD", is_test: false, note: "refresh required" }
       - { symbol: "internal/platform/sqlite/assets", file_line: "groups_resolver_test.go:14", is_test: true }
+      - { symbol: "internal/platform/sqlite/assets/channels", file_line: "sync/service.go:13", is_test: false, note: "voiceover Drive sync (unified owner)" }
+      - { symbol: "internal/platform/drive", file_line: "sync/service.go:14", is_test: false, note: "voiceover Drive sync (unified owner)" }
   - name: workerdoctor
-    path: internal/application/workerdoctor
+    path: internal/capabilities/workerdoctor
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: workflow
-    path: internal/application/workflow
+    path: internal/capabilities/workflow
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: youtube
-    path: internal/application/youtube
+    path: internal/capabilities/youtube
     has_build_signature: false
     direct_register_calls: []
     concrete_constructors:

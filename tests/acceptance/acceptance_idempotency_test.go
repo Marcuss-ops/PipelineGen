@@ -14,6 +14,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"testing"
 
@@ -56,12 +57,12 @@ func TestIdempotency_DoubleMaterialize_SameSourceHash_NoRetranslate(t *testing.T
 
 	assetID := "asset-idem-002"
 	srcLang := "en"
-	kind := asset.TextTrackTranscript
+	kind := detail.TextTrackTranscript
 	srcContent := "original transcript text"
 	srcHash := sha256Hex(srcContent)
 	targets := []string{"it", "es", "fr", "de"}
 
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{newSourceTrack(assetID, srcLang, string(kind), srcContent)}); err != nil {
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{newSourceTrack(assetID, srcLang, string(kind), srcContent)}); err != nil {
 		t.Fatalf("seed source track: %v", err)
 	}
 	m := newMaterializer(t, repo, tr, ob)
@@ -125,11 +126,11 @@ func TestIdempotency_TranslatorStub_NotCalledOnDedup(t *testing.T) {
 	const (
 		assetID = "asset-idem-004"
 		srcLang = "en"
-		kind    = asset.TextTrackTranscript
+		kind    = detail.TextTrackTranscript
 	)
 	src := "det-d-004"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{newSourceTrack(assetID, srcLang, string(kind), src)}); err != nil {
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{newSourceTrack(assetID, srcLang, string(kind), src)}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	m := newMaterializer(t, repo, tr, ob)

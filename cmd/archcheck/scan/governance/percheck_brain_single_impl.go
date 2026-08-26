@@ -3,16 +3,16 @@
 // Forward-prevention gate: every canonical brain component MUST have
 // exactly one production implementation. The canonical components are:
 //
-//   - PhraseNormalizer         → internal/application/brain/normalizer
-//   - VisualIntentResolver     → internal/application/brain/intent
-//   - CandidateRanker (port)   → internal/application/brain/ranker
+//   - PhraseNormalizer         → internal/capabilities/brain/normalizer
+//   - VisualIntentResolver     → internal/capabilities/brain/intent
+//   - CandidateRanker (port)   → internal/capabilities/brain/ranker
 //     CandidateRanker (impl)   → internal/app/wiring (composition-root
 //     wiring; the MediaMemory-backed adapter lives there to avoid the
 //     brain <-> mediamemory architectural import cycle)
-//   - SceneVisualPlanner       → internal/application/brain/planner
+//   - SceneVisualPlanner       → internal/capabilities/brain/planner
 //   - SearchFanOut             → internal/capabilities/assets/search
 //
-// The MediaMemoryResolutionPort lives in internal/application/brain
+// The MediaMemoryResolutionPort lives in internal/capabilities/brain
 // but is implemented by the MediaMemory cascade in
 // internal/capabilities/mediamemory; it is therefore not listed as a
 // brain-package component here.
@@ -49,10 +49,10 @@ type canonicalBrainComponent struct {
 // are the SOLE allowed production entrypoints; any extra constructor
 // implementing the same component trips the gate.
 var brainComponents = []canonicalBrainComponent{
-	{Name: "PhraseNormalizer", PkgPath: "internal/application/brain/normalizer", Constructors: []string{"NewDefaultNormalizer"}},
-	{Name: "VisualIntentResolver", PkgPath: "internal/application/brain/intent", Constructors: []string{"NewDefaultResolver"}},
+	{Name: "PhraseNormalizer", PkgPath: "internal/capabilities/brain/normalizer", Constructors: []string{"NewDefaultNormalizer"}},
+	{Name: "VisualIntentResolver", PkgPath: "internal/capabilities/brain/intent", Constructors: []string{"NewDefaultResolver"}},
 	{Name: "CandidateRanker", PkgPath: "internal/app/wiring", Constructors: []string{"NewMediaMemoryRankerAdapter"}},
-	{Name: "SceneVisualPlanner", PkgPath: "internal/application/brain/planner", Constructors: []string{"NewDefaultPlanner"}},
+	{Name: "SceneVisualPlanner", PkgPath: "internal/capabilities/brain/planner", Constructors: []string{"NewDefaultPlanner"}},
 	{Name: "SearchFanOut", PkgPath: "internal/capabilities/assets/search", Constructors: []string{"NewSearchFanOut"}},
 	// EmbeddingChannelRegistry is canonical but its production constructor
 	// has not been extracted to internal/capabilities/assets/search yet. Include

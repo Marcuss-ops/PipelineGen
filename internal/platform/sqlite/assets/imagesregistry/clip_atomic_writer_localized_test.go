@@ -52,6 +52,7 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"errors"
@@ -63,7 +64,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -238,20 +239,20 @@ func makeClipAssetForTest(clipID, videoID, fileHash string) youtubetypes.ClipAss
 // makeTrackForTest builds a canonical TextTrack row with hashes
 // populated via the canonical factory (the writer does NOT
 // recompute — it reads TextHash + SourceVersion verbatim).
-func makeTrackForTest(clipID, lang, content string, kind asset.TextTrackKind, src asset.TextTrackSource) asset.TextTrack {
-	hash := asset.TextHash(content, lang, kind)
-	return asset.TextTrack{
+func makeTrackForTest(clipID, lang, content string, kind detail.TextTrackKind, src detail.TextTrackSource) detail.TextTrack {
+	hash := detail.TextHash(content, lang, kind)
+	return detail.TextTrack{
 		AssetID:            clipID,
 		LanguageCode:       lang,
 		TextKind:           kind,
 		TextContent:        content,
 		SourceType:         src,
 		SourceLanguageCode: lang,
-		IsOriginal:         src == asset.TextSourceProvided || src == asset.TextSourceWhisper || src == asset.TextSourceYouTubeSubtitle,
+		IsOriginal:         src == detail.TextSourceProvided || src == detail.TextSourceWhisper || src == detail.TextSourceYouTubeSubtitle,
 		Provider:           "test",
 		TextHash:           hash,
-		SourceVersion:      asset.SourceVersion(hash, lang, lang, "test", "", "", ""),
-		Status:             asset.TextTrackReady,
+		SourceVersion:      detail.SourceVersion(hash, lang, lang, "test", "", "", ""),
+		Status:             detail.TextTrackReady,
 	}
 }
 
@@ -272,16 +273,16 @@ func TestCommitClipTextAndIndexEvent_HappyPath(t *testing.T) {
 
 	cmd := localized.CommitLocalizedClipCommand{
 		Clip: clipAsset,
-		TextTracks: []asset.TextTrack{
-			makeTrackForTest(clipID, "en", "Hello everyone", asset.TextTrackTranscript, asset.TextSourceProvided),
-			makeTrackForTest(clipID, "it", "Benvenuti a tutti", asset.TextTrackTranscript, asset.TextSourceProvided),
+		TextTracks: []detail.TextTrack{
+			makeTrackForTest(clipID, "en", "Hello everyone", detail.TextTrackTranscript, detail.TextSourceProvided),
+			makeTrackForTest(clipID, "it", "Benvenuti a tutti", detail.TextTrackTranscript, detail.TextSourceProvided),
 		},
 		TimedTracks: []localized.TimedTextTrack{
 			{
 				LanguageCode: "en",
-				TextKind:     asset.TextTrackTranscript,
-				SourceType:   asset.TextSourceProvided,
-				Cues: []asset.TimedCue{
+				TextKind:     detail.TextTrackTranscript,
+				SourceType:   detail.TextSourceProvided,
+				Cues: []detail.TimedCue{
 					{StartMs: 0, EndMs: 2200, Text: "Hello everyone"},
 					{StartMs: 2200, EndMs: 5100, Text: "Welcome to the video"},
 				},
@@ -373,15 +374,15 @@ func TestCommitClipTextAndIndexEvent_RollbackOnBadCue(t *testing.T) {
 
 	cmd := localized.CommitLocalizedClipCommand{
 		Clip: clipAsset,
-		TextTracks: []asset.TextTrack{
-			makeTrackForTest(clipID, "en", "Hello", asset.TextTrackTranscript, asset.TextSourceProvided),
+		TextTracks: []detail.TextTrack{
+			makeTrackForTest(clipID, "en", "Hello", detail.TextTrackTranscript, detail.TextSourceProvided),
 		},
 		TimedTracks: []localized.TimedTextTrack{
 			{
 				LanguageCode: "en",
-				TextKind:     asset.TextTrackTranscript,
-				SourceType:   asset.TextSourceProvided,
-				Cues: []asset.TimedCue{
+				TextKind:     detail.TextTrackTranscript,
+				SourceType:   detail.TextSourceProvided,
+				Cues: []detail.TimedCue{
 					// VALID first cue (seq=1).
 					{StartMs: 0, EndMs: 2200, Text: "Hello"},
 					// INVALID second cue: end < start. The writer
@@ -437,8 +438,8 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady(t *testing.T) {
 		Clip: clipAsset,
 		// NO transcript-origin track in TextTracks. The policy
 		// validator MUST short-circuit before BeginTx.
-		TextTracks: []asset.TextTrack{
-			makeTrackForTest(clipID, "en", "Howdy", asset.TextTrackTitle, asset.TextSourceProvided),
+		TextTracks: []detail.TextTrack{
+			makeTrackForTest(clipID, "en", "Howdy", detail.TextTrackTitle, detail.TextSourceProvided),
 		},
 		TimedTracks:            []localized.TimedTextTrack{},
 		IndexEvent:             youtubeports.IndexEventPayload{},
@@ -450,7 +451,7 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady(t *testing.T) {
 	var typed *localized.ErrClipLocaleNotReady
 	require.True(t, errors.As(err, &typed), "error MUST be errors.As-probeable as *localized.ErrClipLocaleNotReady; got %T %v", err, err)
 	require.Equal(t, clipID, typed.AssetID)
-	require.Equal(t, asset.TextTrackTranscript, typed.MissingKind)
+	require.Equal(t, detail.TextTrackTranscript, typed.MissingKind)
 	require.Contains(t, typed.Error(), "no transcript-origin READY track")
 
 	// Assert every surface is empty (the policy validator runs
@@ -492,8 +493,8 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady_MissingLang(t *testing.T) {
 
 	cmd := localized.CommitLocalizedClipCommand{
 		Clip: clipAsset,
-		TextTracks: []asset.TextTrack{
-			makeTrackForTest(clipID, "en", "Hello", asset.TextTrackTranscript, asset.TextSourceProvided),
+		TextTracks: []detail.TextTrack{
+			makeTrackForTest(clipID, "en", "Hello", detail.TextTrackTranscript, detail.TextSourceProvided),
 		},
 		TimedTracks:                    []localized.TimedTextTrack{},
 		IndexEvent:                     youtubeports.IndexEventPayload{},
@@ -535,15 +536,15 @@ func TestCommitClipTextAndIndexEvent_IdempotentOnReplay(t *testing.T) {
 
 	cmd := localized.CommitLocalizedClipCommand{
 		Clip: clipAsset,
-		TextTracks: []asset.TextTrack{
-			makeTrackForTest(clipID, "en", "Hello everyone", asset.TextTrackTranscript, asset.TextSourceProvided),
+		TextTracks: []detail.TextTrack{
+			makeTrackForTest(clipID, "en", "Hello everyone", detail.TextTrackTranscript, detail.TextSourceProvided),
 		},
 		TimedTracks: []localized.TimedTextTrack{
 			{
 				LanguageCode: "en",
-				TextKind:     asset.TextTrackTranscript,
-				SourceType:   asset.TextSourceProvided,
-				Cues: []asset.TimedCue{
+				TextKind:     detail.TextTrackTranscript,
+				SourceType:   detail.TextSourceProvided,
+				Cues: []detail.TimedCue{
 					{StartMs: 0, EndMs: 2200, Text: "Hello everyone"},
 				},
 			},
@@ -621,18 +622,18 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 
 	cmd := localized.CommitLocalizedClipCommand{
 		Clip: clipAsset,
-		TextTracks: []asset.TextTrack{
+		TextTracks: []detail.TextTrack{
 			// English transcript only.
-			makeTrackForTest(clipID, "en", "Hello", asset.TextTrackTranscript, asset.TextSourceProvided),
+			makeTrackForTest(clipID, "en", "Hello", detail.TextTrackTranscript, detail.TextSourceProvided),
 		},
 		TimedTracks: []localized.TimedTextTrack{
 			{
 				// ITALIAN cues, but no Italian text track in TextTracks
 				// above. The writer's match-by-key must reject this.
 				LanguageCode: "it",
-				TextKind:     asset.TextTrackTranscript,
-				SourceType:   asset.TextSourceProvided,
-				Cues: []asset.TimedCue{
+				TextKind:     detail.TextTrackTranscript,
+				SourceType:   detail.TextSourceProvided,
+				Cues: []detail.TimedCue{
 					{StartMs: 0, EndMs: 2200, Text: "Ciao"},
 				},
 			},
@@ -692,15 +693,15 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 	makeCmd := func(clipAsset youtubetypes.ClipAsset, content string) localized.CommitLocalizedClipCommand {
 		return localized.CommitLocalizedClipCommand{
 			Clip: clipAsset,
-			TextTracks: []asset.TextTrack{
-				makeTrackForTest(clipID, "en", content, asset.TextTrackTranscript, asset.TextSourceProvided),
+			TextTracks: []detail.TextTrack{
+				makeTrackForTest(clipID, "en", content, detail.TextTrackTranscript, detail.TextSourceProvided),
 			},
 			TimedTracks: []localized.TimedTextTrack{
 				{
 					LanguageCode: "en",
-					TextKind:     asset.TextTrackTranscript,
-					SourceType:   asset.TextSourceProvided,
-					Cues: []asset.TimedCue{
+					TextKind:     detail.TextTrackTranscript,
+					SourceType:   detail.TextSourceProvided,
+					Cues: []detail.TimedCue{
 						{StartMs: 0, EndMs: 2200, Text: content},
 					},
 				},

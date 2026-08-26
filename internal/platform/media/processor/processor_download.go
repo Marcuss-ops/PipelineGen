@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	artlist_dl "github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
@@ -38,7 +38,7 @@ import (
 //     → ArtlistDownloader or yt-dlp
 //  3. Non-Artlist HLS (.m3u8) → FFmpeg RemuxHLS
 //  4. Everything else → yt-dlp
-func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput, rawPath string) (actualPath string, err error) {
+func (p *Processor) downloadStep(ctx context.Context, input *detail.ProcessInput, rawPath string) (actualPath string, err error) {
 	// Rule 1: Direct progressive media — HTTP download.
 	if p.httpDL != nil && artlist_dl.IsDirectMediaURL(input.SourceURL) {
 		p.log.Info("using HTTP downloader for direct URL", zap.String("id", input.ID), zap.String("url", input.SourceURL))

@@ -15,12 +15,13 @@
 package metadata
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 	"testing"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // stubBuilder is a test double for ClipMetadataBuilder.
@@ -55,7 +56,7 @@ func (s *stubWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, clipID
 	return s.returnErr
 }
 
-func (s *stubWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, _ []asset.TextTrack) error {
+func (s *stubWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, _ []detail.TextTrack) error {
 	return s.UpdateClipMetadataAndRequestIndex(context.Background(), clipID, m)
 }
 
@@ -322,7 +323,7 @@ func TestComposeCanonicalClipEnrichment_MapsFields(t *testing.T) {
 		t.Fatalf("expected 1 transcript text track, got %d", len(out.TextTracks))
 	}
 	tr := out.TextTracks[0]
-	if tr.TextKind != asset.TextTrackTranscript || tr.TextContent != "hello world" || tr.LanguageCode != "en" || !tr.IsOriginal {
+	if tr.TextKind != detail.TextTrackTranscript || tr.TextContent != "hello world" || tr.LanguageCode != "en" || !tr.IsOriginal {
 		t.Errorf("transcript text track not composed correctly: %+v", tr)
 	}
 }

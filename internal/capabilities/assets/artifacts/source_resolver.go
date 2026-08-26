@@ -5,7 +5,9 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+
 )
 
 var ErrSourceCatalogDependencyUnavailable = errors.New("artifacts: source catalog dependency unavailable")
@@ -60,12 +62,12 @@ func (c *SourceCatalog) Resolve(source string) (SourceRepo, bool) {
 
 // Normalize resolves a source alias through the kernel source catalog.
 func (c *SourceCatalog) Normalize(source string) string {
-	return asset.DefaultSourceCatalog().Canonical(source)
+	return detail.DefaultSourceCatalog().Canonical(source)
 }
 
 // MediaType returns the canonical media type for a source.
 func (c *SourceCatalog) MediaType(source string) string {
-	def, ok := asset.DefaultSourceCatalog().Definition(source)
+	def, ok := detail.DefaultSourceCatalog().Definition(source)
 	if !ok {
 		return ""
 	}
@@ -87,7 +89,7 @@ func (c *SourceCatalog) Names() []string {
 
 // CanonicalSource delegates source identity to the kernel-owned catalog.
 func CanonicalSource(source string) string {
-	return asset.DefaultSourceCatalog().Canonical(source)
+	return detail.DefaultSourceCatalog().Canonical(source)
 }
 
 // IsValidSource reports whether source or alias is registered by the kernel

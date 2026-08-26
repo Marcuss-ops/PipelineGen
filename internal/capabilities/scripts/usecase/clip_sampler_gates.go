@@ -39,7 +39,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -408,7 +408,7 @@ func (subtitleReadyGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 		return false, fmt.Sprintf("database lookup failed for %s: %v", in.Candidate.ClipID, err)
 	}
 
-	if asset.RequiresSubtitles(source) {
+	if detail.RequiresSubtitles(source) {
 		if hasReadySubtitle == 0 {
 			return false, fmt.Sprintf("clip source %q requires subtitles but no READY ASS artifact exists", source)
 		}

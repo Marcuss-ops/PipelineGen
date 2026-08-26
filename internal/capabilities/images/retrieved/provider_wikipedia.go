@@ -9,6 +9,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"fmt"
 	"strings"
@@ -47,7 +48,7 @@ func NewWikipediaProvider(bridge StorageBridge, client httpDoer, log *zap.Logger
 	}
 }
 
-func (p *WikipediaProvider) Name() asset.ImageProvider { return asset.ProviderWikipedia }
+func (p *WikipediaProvider) Name() detail.ImageProvider { return detail.ProviderWikipedia }
 
 func (p *WikipediaProvider) Healthy(ctx context.Context) error {
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -78,7 +79,7 @@ func (p *WikipediaProvider) Search(ctx context.Context, query string, opts Retri
 			pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
 		}
 		return []RetrievalSearchResult{{
-			Provider: asset.ProviderWikipedia, Origin: asset.ImageOriginRetrieved,
+			Provider: detail.ProviderWikipedia, Origin: detail.ImageOriginRetrieved,
 			PreviewURL: imgURL, PageURL: pageURL, Title: wikiTitle,
 			License: "CC-BY-SA-4.0", Author: "Wikipedia Contributors",
 		}}, nil

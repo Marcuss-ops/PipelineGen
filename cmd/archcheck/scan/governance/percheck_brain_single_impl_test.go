@@ -26,7 +26,7 @@ func makeBrainSingleImplFile(t *testing.T, root, relPath, content string) {
 
 func TestScanBrainSingleImpl_OneImplPasses(t *testing.T) {
 	root := t.TempDir()
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/normalizer.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/normalizer.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
@@ -44,12 +44,12 @@ func NewDefaultNormalizer() PhraseNormalizer { return nil }
 
 func TestScanBrainSingleImpl_DuplicateConstructorsViolate(t *testing.T) {
 	root := t.TempDir()
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/a.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/a.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
 `)
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/b.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/b.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
@@ -71,12 +71,12 @@ func NewDefaultNormalizer() PhraseNormalizer { return nil }
 
 func TestScanBrainSingleImpl_AdaptersSubdirIgnored(t *testing.T) {
 	root := t.TempDir()
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/normalizer.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/normalizer.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
 `)
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/adapters/second.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/adapters/second.go",
 		`package adapters
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
@@ -94,12 +94,12 @@ func NewDefaultNormalizer() PhraseNormalizer { return nil }
 
 func TestScanBrainSingleImpl_TestFilesIgnored(t *testing.T) {
 	root := t.TempDir()
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/normalizer.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/normalizer.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
 `)
-	makeBrainSingleImplFile(t, root, "internal/application/brain/normalizer/normalizer_test.go",
+	makeBrainSingleImplFile(t, root, "internal/capabilities/brain/normalizer/normalizer_test.go",
 		`package normalizer
 
 func NewDefaultNormalizer() PhraseNormalizer { return nil }
@@ -118,7 +118,7 @@ func NewDefaultNormalizer() PhraseNormalizer { return nil }
 func TestScanBrainSingleImpl_ZeroImplWarns(t *testing.T) {
 	root := t.TempDir()
 	// No files in the canonical package.
-	if err := os.MkdirAll(filepath.Join(root, "internal/application/brain/normalizer"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "internal/capabilities/brain/normalizer"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 

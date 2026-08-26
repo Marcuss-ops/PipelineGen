@@ -11,7 +11,7 @@ import (
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/register"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/soundeffect"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -30,7 +30,7 @@ func WireAssets(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
-	textTrackRepo asset.TextTrackRepository,
+	textTrackRepo detail.TextTrackRepository,
 	jobs *JobsBundle,
 	lifecycle driveutil.FileLifecycle,
 	providerRegistry *providers.Registry,
@@ -58,7 +58,7 @@ func WireAssets(
 		}
 	}
 
-	var assetRepo asset.Repository
+	var assetRepo detail.Repository
 	if deps.Core.Services.Assets != nil {
 		assetRepo = deps.Core.Services.Assets.Repository()
 	}
@@ -268,7 +268,7 @@ func buildRegisterBundle(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
-	textTrackRepo asset.TextTrackRepository,
+	textTrackRepo detail.TextTrackRepository,
 	lifecycle driveutil.FileLifecycle,
 	driveUploader *driveutil.Uploader,
 	providerRegistry *providers.Registry,

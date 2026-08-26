@@ -7,6 +7,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"encoding/json"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -113,7 +114,7 @@ func isLikelyNonEntityWord(name string) bool {
 	return false
 }
 
-func populateEntityImage(img *ScriptEntityImage, imgAsset *asset.ImageAsset, forcedSource string) {
+func populateEntityImage(img *ScriptEntityImage, imgAsset *detail.ImageAsset, forcedSource string) {
 	img.ImageHash = imgAsset.Hash
 	img.ImageURL = imgAsset.SourceURL
 	img.PathRel = imgAsset.PathRel

@@ -8,6 +8,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -40,7 +41,7 @@ func (s *retrievedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 		// the row is exact-match of the upstream-sourced candidate.
 		out = append(out, ImageSearchResult{
 			AssetID:       "",
-			Origin:        string(asset.ImageOriginRetrieved),
+			Origin:        string(detail.ImageOriginRetrieved),
 			Provider:      string(h.Provider),
 			Name:          h.Title,
 			PreviewURL:    h.PreviewURL,

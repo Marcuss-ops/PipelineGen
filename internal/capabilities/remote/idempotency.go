@@ -22,7 +22,7 @@
 //
 //	URL-safe character set; case-insensitive per RFC 7230).
 //
-// Format: ptrutil-style `hashutil.SHA256String(jobID + ":" + artifactID + ":" + sha256Hex)`.
+// Format: ptrutil-style `digest.SHA256String(jobID + ":" + artifactID + ":" + sha256Hex)`.
 //
 // The ":"-separator avoids the sha256 hex's "all-valid" character
 // overlap with the asset/job ID collation — the canonical ArtifactID
@@ -40,7 +40,7 @@ package remote
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -49,10 +49,10 @@ import (
 // the typed-factory pattern. Future production callers SHOULD
 // migrate to:
 //
-//	derive := MakeArtifactIdempotencyKey(hashutil.HashFunc)
+//	derive := MakeArtifactIdempotencyKey(digest.HashFunc)
 //	service := &ArtifactService{derive: derive, ...} // field injection
 //
-// (composition root wires the derive using hashutil.HashFunc
+// (composition root wires the derive using digest.HashFunc
 // or a test fake per the Commit D spec literal "Aggiungi un test
 // unit con fake `HashFunc`").
 //
@@ -69,7 +69,7 @@ import (
 //     this. The DEPRECATED note directs future migrations.
 //
 //  2. Default-priming: the package-init `defaultArtifactKey`
-//     (MakeArtifactIdempotencyKey(hashutil.SHA256String)) is
+//     (MakeArtifactIdempotencyKey(digest.SHA256String)) is
 //     the byte-stable production default the free function
 //     delegates to. Removing the free function would force the
 //     composition root to inject the derive into every caller
@@ -90,7 +90,7 @@ import (
 // same remote-side dedup slot.
 //
 // Algorithm: SHA-256 of "jobID:artifactID:sha256Hex" (colon-separated
-// concatenation), hex-encoded. The domain-owned hashutil.SHA256String
+// concatenation), hex-encoded. The domain-owned digest.SHA256String
 // implementation is the default leaf; callers may inject any compatible
 // HashFunc through MakeArtifactIdempotencyKey.
 //
@@ -104,7 +104,7 @@ import (
 //
 // Empty-input edge case: an empty input triple would silently
 // collapse ALL uploads onto a single dedup slot (because
-// hashutil.SHA256String("::") is a valid 64-char hex). Per
+// digest.SHA256String("::") is a valid 64-char hex). Per
 // godlike/07 no-fake-availability, we surface the empty-key
 // marker (empty string) instead. Callers MUST check
 // IsValidIdempotencyKey(key) AND handle the empty case as a
@@ -128,14 +128,14 @@ func ArtifactIdempotencyKey(jobID, artifactID, sha256Hex string) string {
 type ArtifactIdempotencyKeyFunc func(jobID, artifactID, sha256Hex string) string
 
 // MakeArtifactIdempotencyKey is the canonical constructor binding a
-// domain/remote/hashutil.HashFunc to the artifact-idempotency-key
+// domain/remote/digest.HashFunc to the artifact-idempotency-key
 // derivation. Returns a Pure + Deterministic + Header-safe closure.
 //
 // godlike/07 fail-closed: nil hash panics at construction time
 // (composition root MUST inject a non-nil HashFunc,
 // or a test fake for unit-test isolation per Commit D spec literal
 // "Aggiungi un test unit con fake `HashFunc`").
-func MakeArtifactIdempotencyKey(hash hashutil.HashFunc) ArtifactIdempotencyKeyFunc {
+func MakeArtifactIdempotencyKey(hash digest.HashFunc) ArtifactIdempotencyKeyFunc {
 	if hash == nil {
 		panic("MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
@@ -156,7 +156,7 @@ func MakeArtifactIdempotencyKey(hash hashutil.HashFunc) ArtifactIdempotencyKeyFu
 // New code SHOULD prefer MakeArtifactIdempotencyKey + struct-field injection for
 // explicit hash customisation (testable with fake HashFunc per the
 // Commit D spec).
-var defaultArtifactKey = MakeArtifactIdempotencyKey(hashutil.SHA256String)
+var defaultArtifactKey = MakeArtifactIdempotencyKey(digest.SHA256String)
 
 // IsValidIdempotencyKey returns true if `key` is a well-formed
 // X-Idempotency-Key header value: either the empty marker (64-char

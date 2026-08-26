@@ -22,6 +22,7 @@ package localization
 // RenderPlan + executor as every other render.
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"

@@ -18,12 +18,13 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
 
@@ -79,14 +80,14 @@ func (s *stubRemoveFn) remove(localPath string) error {
 
 // ── test fixtures (canonical 6 renditions layered per Step 9) ───────────────
 
-func mkRenditions() []asset.RenditionOutput {
-	return []asset.RenditionOutput{
-		{Kind: asset.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 1024},
-		{Kind: asset.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: "hash_mezz_64chars_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SizeBytes: 1024},
-		{Kind: asset.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 512},
-		{Kind: asset.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: "hash_thumb_64chars_dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", SizeBytes: 64},
-		{Kind: asset.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: "hash_story_64chars_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", SizeBytes: 128},
-		{Kind: asset.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff", SizeBytes: 256},
+func mkRenditions() []detail.RenditionOutput {
+	return []detail.RenditionOutput{
+		{Kind: detail.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 1024},
+		{Kind: detail.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: "hash_mezz_64chars_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SizeBytes: 1024},
+		{Kind: detail.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 512},
+		{Kind: detail.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: "hash_thumb_64chars_dddddddddddddddddddddddddddddddddddddddddddddddddddddddd", SizeBytes: 64},
+		{Kind: detail.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: "hash_story_64chars_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", SizeBytes: 128},
+		{Kind: detail.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff", SizeBytes: 256},
 	}
 }
 
@@ -95,16 +96,16 @@ func mkRenditions() []asset.RenditionOutput {
 func TestShouldPublishRendition_PerKindMapping(t *testing.T) {
 	cases := []struct {
 		name string
-		kind asset.RenditionKind
+		kind detail.RenditionKind
 		want bool
 	}{
-		{"master → publish", asset.RenditionKindMaster, true},
-		{"proxy/preview → publish", asset.RenditionKindProxy, true},
-		{"manifest → publish", asset.RenditionKindManifest, true},
-		{"mezzanine → skip (redundant)", asset.RenditionKindMezzanine, false},
-		{"thumbnail → skip (out of spec)", asset.RenditionKindThumbnail, false},
-		{"storyboard → skip (out of spec)", asset.RenditionKindStoryboard, false},
-		{"unknown future kind → fail-safe skip", asset.RenditionKind("vo_xml_track_v1"), false},
+		{"master → publish", detail.RenditionKindMaster, true},
+		{"proxy/preview → publish", detail.RenditionKindProxy, true},
+		{"manifest → publish", detail.RenditionKindManifest, true},
+		{"mezzanine → skip (redundant)", detail.RenditionKindMezzanine, false},
+		{"thumbnail → skip (out of spec)", detail.RenditionKindThumbnail, false},
+		{"storyboard → skip (out of spec)", detail.RenditionKindStoryboard, false},
+		{"unknown future kind → fail-safe skip", detail.RenditionKind("vo_xml_track_v1"), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,14 +158,14 @@ func TestPublishRenditionsToYouTubeAsset_HappyPath_ThreePublishes_ThreeCleanups(
 	}
 
 	// Filtered kinds are exactly mezzanine/thumbnail/storyboard.
-	filtered := map[asset.RenditionKind]bool{}
+	filtered := map[detail.RenditionKind]bool{}
 	for _, k := range report.FilteredOut {
 		filtered[k] = true
 	}
-	for _, want := range []asset.RenditionKind{
-		asset.RenditionKindMezzanine,
-		asset.RenditionKindThumbnail,
-		asset.RenditionKindStoryboard,
+	for _, want := range []detail.RenditionKind{
+		detail.RenditionKindMezzanine,
+		detail.RenditionKindThumbnail,
+		detail.RenditionKindStoryboard,
 	} {
 		if !filtered[want] {
 			t.Errorf("expected filtered kind missing: %s", want)
@@ -211,29 +212,29 @@ func TestPublishRenditionsToYouTubeAsset_ThreadsSizeAndContentHash(t *testing.T)
 	// Build a per-Kind lookup so we can assert each call carried
 	// the canonical RenditionOutput.SizeBytes + LegacyFileMD5 + LocalPath
 	// (the Step 9 thread).
-	byKind := map[asset.RenditionKind]delivery.PublishRequest{}
+	byKind := map[detail.RenditionKind]delivery.PublishRequest{}
 	for _, c := range pub.calls {
 		// The locator is LocalPath here (Filenames are unique in
 		// the fixture set; using Kind + LocalPath gives a precise
 		// mapping without depending on Filename uniqueness).
 		switch c.LocalPath {
 		case "/tmp/master.mp4":
-			byKind[asset.RenditionKindMaster] = c
+			byKind[detail.RenditionKindMaster] = c
 		case "/tmp/preview.mp4":
-			byKind[asset.RenditionKindProxy] = c
+			byKind[detail.RenditionKindProxy] = c
 		case "/tmp/manifest.json":
-			byKind[asset.RenditionKindManifest] = c
+			byKind[detail.RenditionKindManifest] = c
 		}
 	}
 
 	wantCases := []struct {
-		kind      asset.RenditionKind
+		kind      detail.RenditionKind
 		sizeBytes int64
 		hash      string
 	}{
-		{asset.RenditionKindMaster, 1024, "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{asset.RenditionKindProxy, 512, "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
-		{asset.RenditionKindManifest, 256, "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+		{detail.RenditionKindMaster, 1024, "hash_master_64chars_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{detail.RenditionKindProxy, 512, "hash_proxy_64chars_ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+		{detail.RenditionKindManifest, 256, "hash_manifest_64chars_fffffffffffffffffffffffffffffffffffffffffffffffffffff"},
 	}
 	for _, w := range wantCases {
 		got, ok := byKind[w.kind]

@@ -10,6 +10,10 @@
 // exist and have diverged.
 package fixture
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 type assetShim struct {
 	Status         string
 	LifecycleState string

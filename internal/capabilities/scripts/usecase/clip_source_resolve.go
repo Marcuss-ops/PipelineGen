@@ -15,11 +15,12 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -36,7 +37,7 @@ type clipContextRecord struct {
 	id           string
 	clip         *asset.Asset
 	transcript   string
-	track        *asset.TextTrack
+	track        *detail.TextTrack
 	metadataText string
 }
 
@@ -128,12 +129,12 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
 	// resolveTranscript is called EXACTLY ONCE per clip.
-	// The signature is (string, *asset.TextTrack, error) —
+	// The signature is (string, *detail.TextTrack, error) —
 	// transcript string first, resolved track second,
 	// error third. The resolved transcript feeds both
 	// the assembled source text (via appendClipSourceText)
 	// and the per-clip ClipDetail.Transcript (via
-	// appendClipDetail). The resolved *asset.TextTrack
+	// appendClipDetail). The resolved *detail.TextTrack
 	// feeds the 3 new fingerprint fields (via the
 	// resolvedTracks accumulator + buildClipEvidence).
 	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)

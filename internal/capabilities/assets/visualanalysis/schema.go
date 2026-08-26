@@ -5,12 +5,13 @@
 package visualanalysis
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -115,7 +116,7 @@ func (d Document) Validate() error {
 	if d.Asset.ProposedAssetID == "" {
 		return fmt.Errorf("visual analysis: proposed_asset_id is required")
 	}
-	if d.Asset.Source != string(asset.SourceAIGenerated) || d.Asset.AssetRole != asset.AssetRoleStock || d.Asset.MediaType != "video" {
+	if d.Asset.Source != string(detail.SourceAIGenerated) || d.Asset.AssetRole != detail.AssetRoleStock || d.Asset.MediaType != "video" {
 		return fmt.Errorf("visual analysis: invalid AI stock identity")
 	}
 	if d.Asset.DurationMs <= 0 || d.Asset.Width <= 0 || d.Asset.Height <= 0 || d.Asset.FPS <= 0 {
@@ -124,7 +125,7 @@ func (d Document) Validate() error {
 	if d.Asset.HasDialogue {
 		return fmt.Errorf("visual analysis: dialogue assets require the speech pipeline")
 	}
-	if !strings.HasPrefix(d.Asset.FolderPath, "Stock/AI/") || d.Asset.NormalizedGroup != asset.NormalizedGroupStock {
+	if !strings.HasPrefix(d.Asset.FolderPath, "Stock/AI/") || d.Asset.NormalizedGroup != detail.NormalizedGroupStock {
 		return fmt.Errorf("visual analysis: invalid Stock/AI routing")
 	}
 	last := int64(-1)
@@ -154,20 +155,20 @@ func (d Document) Validate() error {
 	return nil
 }
 
-func (d Document) VisualAnalysis() asset.VisualAnalysis {
-	events := make([]asset.VisualEvent, len(d.TimedEvents))
+func (d Document) VisualAnalysis() detail.VisualAnalysis {
+	events := make([]detail.VisualEvent, len(d.TimedEvents))
 	for i, e := range d.TimedEvents {
 		text := e.ActionEN
 		if text == "" {
 			text = e.EventEN
 		}
-		events[i] = asset.VisualEvent{StartMs: e.StartMs, EndMs: e.EndMs, Text: text}
+		events[i] = detail.VisualEvent{StartMs: e.StartMs, EndMs: e.EndMs, Text: text}
 	}
-	return asset.VisualAnalysis{Summary: d.Visual.SummaryEN, Events: events}
+	return detail.VisualAnalysis{Summary: d.Visual.SummaryEN, Events: events}
 }
 
-func (d Document) Metadata() asset.AIStockMetadata {
-	return asset.AIStockMetadata{AssetRole: d.Asset.AssetRole, NormalizedGroup: d.Asset.NormalizedGroup, FolderPath: d.Asset.FolderPath, VisualSummary: d.Visual.SummaryEN, Subjects: d.Visual.Subjects, Actions: d.Visual.Actions, HasDialogue: d.Asset.HasDialogue, HasNativeAudio: d.Asset.HasAudio, AudioProfile: asset.AudioProfile(d.Asset.AudioProfile)}
+func (d Document) Metadata() detail.AIStockMetadata {
+	return detail.AIStockMetadata{AssetRole: d.Asset.AssetRole, NormalizedGroup: d.Asset.NormalizedGroup, FolderPath: d.Asset.FolderPath, VisualSummary: d.Visual.SummaryEN, Subjects: d.Visual.Subjects, Actions: d.Visual.Actions, HasDialogue: d.Asset.HasDialogue, HasNativeAudio: d.Asset.HasAudio, AudioProfile: detail.AudioProfile(d.Asset.AudioProfile)}
 }
 
 func DriveFileID(ref string) (string, error) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -64,9 +64,9 @@ func (w *countingWhisper) TranscribeAudio(ctx context.Context, path string) (str
 	result, err := w.TranscribeAudioWithDetection(ctx, path)
 	return result.Text, err
 }
-func (w *countingWhisper) TranscribeAudioWithDetection(context.Context, string) (asset.TranscriptResult, error) {
+func (w *countingWhisper) TranscribeAudioWithDetection(context.Context, string) (detail.TranscriptResult, error) {
 	w.calls++
-	return asset.TranscriptResult{Text: "cached transcript", DetectedLanguage: "en"}, nil
+	return detail.TranscriptResult{Text: "cached transcript", DetectedLanguage: "en"}, nil
 }
 
 func TestCachedWhisperUsesSourceBytesNotLocalPath(t *testing.T) {

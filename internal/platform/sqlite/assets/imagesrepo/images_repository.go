@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -36,7 +36,7 @@ type ImagesRepository struct {
 // ImageCommitFunc is the composition-root supplied canonical write path.
 // ImagesRepository keeps this narrow callback to avoid importing application
 // contracts into the infrastructure package.
-type ImageCommitFunc func(context.Context, *asset.ImageAsset) (int64, error)
+type ImageCommitFunc func(context.Context, *detail.ImageAsset) (int64, error)
 
 // NewImagesRepository constructs the canonical repository.
 func NewImagesRepository(db *sql.DB) *ImagesRepository {
@@ -78,7 +78,7 @@ func normalizeTags(tags []string) string {
 }
 
 // scanImageAssetFromRow is the canonical (godlike/06 SSOT) helper that
-// scans a single image row into *asset.ImageAsset. Replaces the
+// scans a single image row into *detail.ImageAsset. Replaces the
 // pre-B6 byte-equivalent duplication between scanImageAsset
 // (*sql.Row-shaped) and scanImageAssetRows (Rows-shaped). Both old
 // helpers are gone; this single typed-(structural-interface) helper
@@ -98,8 +98,8 @@ func normalizeTags(tags []string) string {
 // *sql.Row and *sql.Rows paths.
 func scanImageAssetFromRow(s interface {
 	Scan(dest ...any) error
-}) (*asset.ImageAsset, error) {
-	var img asset.ImageAsset
+}) (*detail.ImageAsset, error) {
+	var img detail.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name, origin, provider sql.NullString
 	var url, driveLink sql.NullString
@@ -121,8 +121,8 @@ func scanImageAssetFromRow(s interface {
 	img.Hash = fileHash.String
 	img.PathRel = localPath.String
 	img.DriveFileID = driveFileID.String
-	img.Origin = asset.ImageOrigin(origin.String)
-	img.Provider = asset.ImageProvider(provider.String)
+	img.Origin = detail.ImageOrigin(origin.String)
+	img.Provider = detail.ImageProvider(provider.String)
 	if driveFileID.String != "" && !strings.Contains(img.SourceURL, "drive.google.com/") {
 		img.SourceURL = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID.String)
 	}

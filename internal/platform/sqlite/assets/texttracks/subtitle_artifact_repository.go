@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
@@ -25,9 +25,9 @@ func NewSubtitleArtifactRepository(db *sql.DB, log *zap.Logger) (*SubtitleArtifa
 	return &SubtitleArtifactRepositorySQLite{db: db, log: log}, nil
 }
 
-var _ asset.SubtitleArtifactRepository = (*SubtitleArtifactRepositorySQLite)(nil)
+var _ detail.SubtitleArtifactRepository = (*SubtitleArtifactRepositorySQLite)(nil)
 
-func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asset.SubtitleArtifact) error {
+func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *detail.SubtitleArtifact) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 	return nil
 }
 
-func (r *SubtitleArtifactRepositorySQLite) FindCurrent(ctx context.Context, assetID string, languageCode string, format asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
+func (r *SubtitleArtifactRepositorySQLite) FindCurrent(ctx context.Context, assetID string, languageCode string, format detail.SubtitleFormat) (*detail.SubtitleArtifact, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, asset_id, text_track_id, language_code, format,
 		       local_path, drive_file_id, drive_url, file_hash, text_hash,
@@ -145,7 +145,7 @@ func (r *SubtitleArtifactRepositorySQLite) FindCurrent(ctx context.Context, asse
 	return scanSubtitleArtifact(row)
 }
 
-func (r *SubtitleArtifactRepositorySQLite) ListByAsset(ctx context.Context, assetID string) ([]asset.SubtitleArtifact, error) {
+func (r *SubtitleArtifactRepositorySQLite) ListByAsset(ctx context.Context, assetID string) ([]detail.SubtitleArtifact, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, asset_id, text_track_id, language_code, format,
 		       local_path, drive_file_id, drive_url, file_hash, text_hash,
@@ -161,7 +161,7 @@ func (r *SubtitleArtifactRepositorySQLite) ListByAsset(ctx context.Context, asse
 	}
 	defer rows.Close()
 
-	var list []asset.SubtitleArtifact
+	var list []detail.SubtitleArtifact
 	for rows.Next() {
 		art, err := scanSubtitleArtifact(rows)
 		if err != nil {
@@ -186,8 +186,8 @@ type subtitleScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanSubtitleArtifact(s subtitleScanner) (*asset.SubtitleArtifact, error) {
-	var art asset.SubtitleArtifact
+func scanSubtitleArtifact(s subtitleScanner) (*detail.SubtitleArtifact, error) {
+	var art detail.SubtitleArtifact
 	var (
 		formatStr    string
 		statusStr    string
@@ -209,8 +209,8 @@ func scanSubtitleArtifact(s subtitleScanner) (*asset.SubtitleArtifact, error) {
 		}
 		return nil, err
 	}
-	art.Format = asset.SubtitleFormat(formatStr)
-	art.Status = asset.SubtitleArtifactStatus(statusStr)
+	art.Format = detail.SubtitleFormat(formatStr)
+	art.Status = detail.SubtitleArtifactStatus(statusStr)
 	art.IsCurrent = isCurrentInt == 1
 	if t, err := time.Parse(time.RFC3339, createdStr); err == nil {
 		art.CreatedAt = t

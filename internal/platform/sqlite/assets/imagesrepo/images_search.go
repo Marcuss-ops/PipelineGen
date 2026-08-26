@@ -9,12 +9,12 @@ package imagesrepo
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // GetImageByHash recupera un'immagine tramite il suo hash.
 // FASE 1B: reads origin + provider first-class columns (migration 115).
-func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*asset.ImageAsset, error) {
+func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*detail.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -27,7 +27,7 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*as
 
 // GetByID recupera un'immagine tramite il suo ID stringa.
 // FASE 1B: reads origin + provider columns (migration 115).
-func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAsset, error) {
+func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*detail.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -46,7 +46,7 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 
 // GetByDriveFileID recupera un'immagine tramite Drive file ID.
 // FASE 1B: reads origin + provider columns (migration 115).
-func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.ImageAsset, error) {
+func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*detail.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -65,7 +65,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 //
 // ListImagesBySubject recupera tutte le immagini per un soggetto.
 // FASE 1B: reads origin + provider columns (migration 115).
-func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
+func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]detail.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -79,7 +79,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 	}
 	defer rows.Close()
 
-	images := make([]asset.ImageAsset, 0)
+	images := make([]detail.ImageAsset, 0)
 	for rows.Next() {
 		img, err := scanImageAssetFromRow(rows)
 		if err != nil {
@@ -92,7 +92,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 
 // ListAll lists all image assets.
 // FASE 1B: reads origin + provider columns (migration 115).
-func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
+func (r *ImagesRepository) ListAll(ctx context.Context) ([]*detail.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -105,7 +105,7 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, er
 	}
 	defer rows.Close()
 
-	images := make([]*asset.ImageAsset, 0)
+	images := make([]*detail.ImageAsset, 0)
 	for rows.Next() {
 		img, err := scanImageAssetFromRow(rows)
 		if err != nil {

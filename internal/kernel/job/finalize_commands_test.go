@@ -16,6 +16,7 @@
 package job
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/json"
 	"testing"
 	"time"

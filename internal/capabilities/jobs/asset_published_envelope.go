@@ -54,6 +54,10 @@
 // indexing seam.
 package jobs
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 // AssetPublishedSchemaVersion is the canonical, EXACT string the
 // AssetPublishedHandler accepts. Producers MUST send the literal
 // schema-version value. Mismatch is TERMINAL.

@@ -1,11 +1,12 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func (r *ClipsRepository) CountAll(ctx context.Context) (int64, error) {
@@ -141,7 +142,7 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 
 	var out []*asset.Asset
 	for rows.Next() {
-		m, err := asset.ScanCanonicalAssetRowsPublic(rows)
+		m, err := detail.ScanCanonicalAssetRowsPublic(rows)
 		if err != nil {
 			return nil, fmt.Errorf("clips.List scan: %w", err)
 		}
@@ -206,6 +207,6 @@ func inClause(n int, col string, notOpt ...string) string {
 	return col + " " + op + " (" + strings.Join(placeholders, ",") + ")"
 }
 
-type AdvancedSearchRequest = asset.AdvancedSearchRequest
-type AdvancedSearchResult = asset.AdvancedSearchResult
-type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord
+type AdvancedSearchRequest = detail.AdvancedSearchRequest
+type AdvancedSearchResult = detail.AdvancedSearchResult
+type SegmentEmbeddingRecord = detail.SegmentEmbeddingRecord

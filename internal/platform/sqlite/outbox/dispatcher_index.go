@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
 // EnqueueAndIndex persists the asset and delegates the index-request outbox

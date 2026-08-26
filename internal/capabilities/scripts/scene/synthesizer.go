@@ -20,6 +20,7 @@
 package scene
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"encoding/json"
 	"fmt"
 	"strings"

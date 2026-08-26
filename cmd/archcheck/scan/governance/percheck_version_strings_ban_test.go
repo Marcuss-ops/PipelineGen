@@ -49,7 +49,7 @@ func versionStringsViolations(r *report.Report) []report.Violation {
 func TestVersionStrings_HardcodedPipelineVersionFails(t *testing.T) {
 	dir := t.TempDir()
 	versionStringsWriteTree(t, dir, map[string]string{
-		"internal/application/brain/core/core.go": `package core
+		"internal/capabilities/brain/core/core.go": `package core
 const BrainVersion = "brain-v1"
 `,
 	})
@@ -101,7 +101,7 @@ const ModelVersion = "2026-06-16-v1"
 func TestVersionStrings_TestFilesExempted(t *testing.T) {
 	dir := t.TempDir()
 	versionStringsWriteTree(t, dir, map[string]string{
-		"internal/application/brain/core/core_test.go": `package core
+		"internal/capabilities/brain/core/core_test.go": `package core
 const BrainVersion = "brain-v1"
 `,
 	})

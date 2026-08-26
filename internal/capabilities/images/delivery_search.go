@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // CatalogSearch is the read-only search surface. Handlers
@@ -42,7 +42,7 @@ type CatalogSearch interface {
 	// CountByOrigin returns how many registered assets belong
 	// to each territory. Used by the /api/system/doctor and
 	// admin dashboards.
-	CountByOrigin(ctx context.Context) (map[asset.ImageOrigin]int, error)
+	CountByOrigin(ctx context.Context) (map[detail.ImageOrigin]int, error)
 }
 
 // Compile-time assertion: *InMemoryCatalogSearch satisfies the
@@ -56,12 +56,12 @@ var _ CatalogSearch = (*InMemoryCatalogSearch)(nil)
 // SQLite-backed surface wired in service.go's NewService
 // composition root.
 type InMemoryCatalogSearch struct {
-	assets []asset.ImageAsset
+	assets []detail.ImageAsset
 }
 
 // NewInMemoryCatalogSearch constructs an InMemoryCatalogSearch
 // from a fixed asset slice.
-func NewInMemoryCatalogSearch(assets []asset.ImageAsset) *InMemoryCatalogSearch {
+func NewInMemoryCatalogSearch(assets []detail.ImageAsset) *InMemoryCatalogSearch {
 	return &InMemoryCatalogSearch{assets: assets}
 }
 
@@ -72,7 +72,7 @@ func (i *InMemoryCatalogSearch) Search(_ context.Context, filter ImageFilter) (C
 	if i == nil {
 		return CatalogSearchResult{}, nil
 	}
-	filtered := make([]asset.ImageAsset, 0, len(i.assets))
+	filtered := make([]detail.ImageAsset, 0, len(i.assets))
 	for _, a := range i.assets {
 		if matchesFilter(a, filter) {
 			filtered = append(filtered, a)
@@ -109,8 +109,8 @@ func (i *InMemoryCatalogSearch) Search(_ context.Context, filter ImageFilter) (C
 }
 
 // CountByOrigin returns the per-territory counts.
-func (i *InMemoryCatalogSearch) CountByOrigin(_ context.Context) (map[asset.ImageOrigin]int, error) {
-	out := make(map[asset.ImageOrigin]int)
+func (i *InMemoryCatalogSearch) CountByOrigin(_ context.Context) (map[detail.ImageOrigin]int, error) {
+	out := make(map[detail.ImageOrigin]int)
 	if i == nil {
 		return out, nil
 	}
@@ -123,11 +123,11 @@ func (i *InMemoryCatalogSearch) CountByOrigin(_ context.Context) (map[asset.Imag
 // matchesFilter is the in-memory predicate for Search.
 //
 // Step 9 contract: this predicate consumes fields that exist on
-// asset.ImageAsset today. Style/LicenseRequired filtering can
+// detail.ImageAsset today. Style/LicenseRequired filtering can
 // come back in a follow-up step once MetadataJSON parsing is
 // added at a higher layer (catalog does NOT parse JSON — that's
 // the parent's responsibility).
-func matchesFilter(a asset.ImageAsset, f ImageFilter) bool {
+func matchesFilter(a detail.ImageAsset, f ImageFilter) bool {
 	if len(f.Origines) > 0 {
 		found := false
 		for _, o := range f.Origines {
@@ -154,7 +154,7 @@ func matchesFilter(a asset.ImageAsset, f ImageFilter) bool {
 	}
 	// SlugID is the canonical identity for asset subjects (SubjectID
 	// is its same-row equivalent in some callers). Both fields
-	// exist on asset.ImageAsset today — match either.
+	// exist on detail.ImageAsset today — match either.
 	if f.Slug != "" && a.SlugID != f.Slug && a.SubjectID != f.Slug {
 		return false
 	}

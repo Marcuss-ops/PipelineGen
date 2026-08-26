@@ -143,7 +143,7 @@ Operators can override the cadence and batch with
 The policy is covered by deterministic tests in:
 
 ```text
-internal/application/images/entitycatalog/state_policy_test.go
+internal/capabilities/images/entitycatalog/state_policy_test.go
 ```
 
 The tests verify:
@@ -157,6 +157,6 @@ The tests verify:
 - unknown transition events fail closed.
 
 The application integration test in
-`internal/application/scripts/adapters/entity_image_catalog_integration_test.go`
+`internal/capabilities/scripts/adapters/entity_image_catalog_integration_test.go`
 continues to verify fallback and refresh behavior for fresh, stale and broken
 pools.

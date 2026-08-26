@@ -4,7 +4,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - CommitLocalizedClipCommand shape lives here (cross-cutting:
-//     combines youtubedto.ClipAsset + asset.TextTrack + asset.TimedCue).
+//     combines youtubedto.ClipAsset + detail.TextTrack + detail.TimedCue).
 //   - LocalizedClipWriter port lives here (the application-layer
 //     surface every concrete adapter MUST satisfy).
 //   - ErrClipLocaleNotReady typed error lives here (canonical
@@ -24,7 +24,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // LocalizedClipWriter is the application-layer port for the
@@ -67,7 +67,7 @@ type CommitLocalizedClipCommand struct {
 	// in asset_text_tracks — one row per (asset_id,
 	// language_code, text_kind). Empty slice is allowed
 	// (callers MAY skip the asset_text_tracks upsert).
-	TextTracks []asset.TextTrack
+	TextTracks []detail.TextTrack
 
 	// TimedTracks bundle the per-cue timings to persist in
 	// asset_text_track_segments — one row per (track_id,
@@ -113,9 +113,9 @@ type CommitLocalizedClipCommand struct {
 // resolver can re-order cues without breaking uniqueness).
 type TimedTextTrack struct {
 	LanguageCode string
-	TextKind     asset.TextTrackKind
-	SourceType   asset.TextTrackSource
-	Cues         []asset.TimedCue
+	TextKind     detail.TextTrackKind
+	SourceType   detail.TextTrackSource
+	Cues         []detail.TimedCue
 }
 
 // ErrClipLocaleNotReady is returned pre-tx (no rows written) when
@@ -136,7 +136,7 @@ type TimedTextTrack struct {
 type ErrClipLocaleNotReady struct {
 	AssetID      string
 	Reason       string
-	MissingKind  asset.TextTrackKind
+	MissingKind  detail.TextTrackKind
 	MissingCodes []string // populated only for RequireAllLanguagesBeforeVideo
 }
 

@@ -91,7 +91,7 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 //	title + tags + category + description
 //
 // Tags are joined with spaces. Follows the MergeMetadataSearchText
-// precedent from internal/infrastructure/ai/semantic/semantic.go.
+// precedent from internal/capabilities/ai/semantic.
 func artlistStrategy(input appsearchtext.SearchTextInput) string {
 	return joinNonEmpty(" ",
 		input.Title,

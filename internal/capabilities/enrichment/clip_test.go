@@ -1,30 +1,31 @@
 package enrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"testing"
 )
 
 type clipTracks struct {
-	ready  *asset.TextTrack
-	cues   []asset.TimedCue
-	writes [][]asset.TextTrack
+	ready  *detail.TextTrack
+	cues   []detail.TimedCue
+	writes [][]detail.TextTrack
 }
 
-func (r *clipTracks) FindReady(context.Context, string, string, asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+func (r *clipTracks) FindReady(context.Context, string, string, detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
 	return r.ready, r.cues, nil
 }
-func (r *clipTracks) UpsertBatch(_ context.Context, t []asset.TextTrack) error {
+func (r *clipTracks) UpsertBatch(_ context.Context, t []detail.TextTrack) error {
 	r.writes = append(r.writes, t)
 	return nil
 }
 
 type clipWhisper struct{ calls int }
 
-func (w *clipWhisper) TranscribeAudioWithDetection(context.Context, string) (asset.TranscriptResult, error) {
+func (w *clipWhisper) TranscribeAudioWithDetection(context.Context, string) (detail.TranscriptResult, error) {
 	w.calls++
-	return asset.TranscriptResult{Text: "hello", DetectedLanguage: "en", Cues: []asset.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hello"}}}, nil
+	return detail.TranscriptResult{Text: "hello", DetectedLanguage: "en", Cues: []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hello"}}}, nil
 }
 
 type clipSubs struct{ calls int }
@@ -55,8 +56,8 @@ func TestClipServiceOrderAndReuse(t *testing.T) {
 	if w.calls != 1 || s.calls != 1 || d.calls != 1 || r.calls != 1 || !got.TranscriptCreated || !got.DescriptionCreated || !got.SummaryCreated {
 		t.Fatalf("unexpected result %+v calls %d %d %d %d", got, w.calls, s.calls, d.calls, r.calls)
 	}
-	tr.ready = &asset.TextTrack{AssetID: "a", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "existing", Status: asset.TextTrackReady}
-	tr.cues = []asset.TimedCue{{StartMs: 0, EndMs: 1000, Text: "existing"}}
+	tr.ready = &detail.TextTrack{AssetID: "a", LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextContent: "existing", Status: detail.TextTrackReady}
+	tr.cues = []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "existing"}}
 	_, err = svc.Process(context.Background(), ClipInput{AssetID: "a", LocalPath: "/clip.mp4", Language: "en"})
 	if err != nil {
 		t.Fatal(err)

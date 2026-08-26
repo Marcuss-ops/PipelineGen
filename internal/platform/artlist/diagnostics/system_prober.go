@@ -55,6 +55,7 @@
 package diagnostics
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"bytes"
 	"context"
 	"database/sql"
@@ -149,7 +150,7 @@ type AdminSystemProber struct {
 	ProbeFolderAccess func(ctx context.Context, rootID string) error
 	ProbeFolderRootID string
 
-	// Renderer (asset.Processor) — used by ffmpeg_binary probe in
+	// Renderer (detail.Processor) — used by ffmpeg_binary probe in
 	// Commit 2. The interface is declared in system_prober_ffmpeg.go
 	// (Pattern 0: keep interface with its sole consumer); same-package
 	// resolution makes the cross-file reference transparent at compile

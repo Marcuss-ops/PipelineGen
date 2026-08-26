@@ -8,6 +8,7 @@
 package wiring
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
@@ -26,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/reconciliation/voiceover"
+	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
@@ -53,7 +54,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
@@ -76,7 +77,7 @@ import (
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
-	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // IOpaqueStartFunc is the opaque type for deferred initialisation closures
@@ -162,7 +163,7 @@ type RepoBundle struct {
 	ScriptsRepo        *sqlitescripts.ScriptRepository
 	ImageRepo          *imagesrepo.ImagesRepository
 	ClipsRepo          *assets.ClipsRepository
-	Assets             *asset.Service
+	Assets             *detail.Service
 	MonitorsRepo       *monitors.MonitorsRepository
 	VoiceoverRepo      *assets.VoiceoversRepository
 	CatalogRepo        *catalog.Repository
@@ -178,8 +179,8 @@ type RepoBundle struct {
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): added
 	// so the cutover wiring
 	// (`root.Repos.TextTrackRepo`) compiles.
-	TextTrackRepo        asset.TextTrackRepository
-	SubtitleArtifactRepo asset.SubtitleArtifactRepository
+	TextTrackRepo        detail.TextTrackRepository
+	SubtitleArtifactRepo detail.SubtitleArtifactRepository
 }
 
 // SearchBundle holds the asset metadata search/index pair and resolver.
@@ -215,7 +216,7 @@ type ProcessQdrantBundle struct {
 // continue to resolve via Go field promotion (zero refactoring in callers).
 type ProcessBundle struct {
 	ProcessQdrantBundle
-	MediaProcessor     asset.Processor
+	MediaProcessor     detail.Processor
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
 }
@@ -282,7 +283,7 @@ type DomainBundle struct {
 	// in BuildTextTrackBundle is a no-op at runtime.
 	SubtitleFetcher youtubeports.SubtitleFetcherPort
 
-	VoiceoverSync                *voiceoverreconcile.Service
+	VoiceoverSync                *voicesync.Service
 	ImageService                 *imgservice.Service
 	IngestService                *ingest.Service
 	BooksService                 *books.Service

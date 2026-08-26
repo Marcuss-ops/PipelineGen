@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type TimedCueWriter interface {
-	ReplaceTranscriptCues(context.Context, string, map[string][]asset.TimedCue) error
+	ReplaceTranscriptCues(context.Context, string, map[string][]detail.TimedCue) error
 }
 
 type FolderPathWriter interface {
@@ -42,7 +42,7 @@ func NewCueRepairService(writer TimedCueWriter) (*CueRepairService, error) {
 	}
 	return &CueRepairService{writer: writer}, nil
 }
-func (s *CueRepairService) Repair(ctx context.Context, assetID string, cues map[string][]asset.TimedCue) error {
+func (s *CueRepairService) Repair(ctx context.Context, assetID string, cues map[string][]detail.TimedCue) error {
 	if s == nil || s.writer == nil {
 		return fmt.Errorf("texttracks: timed cue writer is not configured")
 	}

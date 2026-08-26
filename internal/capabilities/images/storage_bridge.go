@@ -19,6 +19,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/retrieved"
 )
@@ -43,7 +44,7 @@ func (s *ImageStorageService) SearchBySlug(ctx context.Context, slug string, lim
 	}
 	out := make([]string, 0, len(assets))
 	for i := range assets {
-		// assets is a slice of value-typed asset.ImageAsset; we
+		// assets is a slice of value-typed detail.ImageAsset; we
 		// iterate by index to avoid the value-vs-pointer nil-check
 		// pitfall. (Pre-Step-8 helper that pre-existed separately.)
 		if assets[i].PathRel != "" {

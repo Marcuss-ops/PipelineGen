@@ -76,6 +76,7 @@
 package usecase_test
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 	"testing"
@@ -84,7 +85,7 @@ import (
 	"go.uber.org/zap"
 
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/stretchr/testify/assert"
@@ -507,22 +508,22 @@ type p2cMetaBackedTranscriptReader struct {
 	transcripts map[string]string
 }
 
-func (r *p2cMetaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	if text, ok := r.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
-		return &asset.TextTrack{
+func (r *p2cMetaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
+	if text, ok := r.transcripts[assetID]; ok && kind == detail.TextTrackTranscript {
+		return &detail.TextTrack{
 			AssetID:       assetID,
 			LanguageCode:  languageCode,
-			TextKind:      asset.TextTrackTranscript,
+			TextKind:      detail.TextTrackTranscript,
 			TextContent:   text,
 			TextHash:      "p2c-stub-" + assetID,
 			SourceVersion: "v1",
-			Status:        asset.TextTrackReady,
+			Status:        detail.TextTrackReady,
 		}, nil, nil
 	}
 	return nil, nil, nil
 }
 
-func (r *p2cMetaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+func (r *p2cMetaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ detail.TextTrackKind) ([]string, error) {
 	if _, ok := r.transcripts[assetID]; ok {
 		return []string{"en"}, nil
 	}

@@ -1,7 +1,7 @@
 // percheck_image_asset_invariants_rule_a.go (split-image-asset-invariants,
 // July 2026): Rule A — `image_asset_literal_ban`.
 //
-// Sub-rule that bans direct `&asset.ImageAsset{...}` (and the
+// Sub-rule that bans direct `&detail.ImageAsset{...}` (and the
 // domain-alias `&domainasset.ImageAsset{...}`) literal
 // instantiation anywhere outside the canonical definition +
 // canonical builder helper + test stub files.
@@ -16,8 +16,8 @@
 // Rationale (godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY):
 // the canonical pipeline for building ImageAsset metadata is
 // `asset.CanonicalMediaMetadata` → `json.Marshal` →
-// `&asset.ImageAsset{ MetadataJSON: ... }`. A direct literal
-// `&asset.ImageAsset{Origin: ..., Provider: ..., Hash: ..., Width: ...,
+// `&detail.ImageAsset{ MetadataJSON: ... }`. A direct literal
+// `&detail.ImageAsset{Origin: ..., Provider: ..., Hash: ..., Width: ...,
 // Height: ..., ...}` (the 5 territory-bearing fields inline) bypasses
 // the canonical metadata_json path AND risks a generation-path
 // cross-invariant violation (Origin=generated must imply
@@ -30,7 +30,7 @@
 //   - canonical SOLE owner (imageAssetCanonicalOwnerPath in shared)
 //   - canonical SOLE builder (imageAssetCanonicalBuilderPath in shared)
 //   - all *_test.go files (test stubs legitimately need
-//     `&asset.ImageAsset{AssetID: "stub", ...}` fixtures)
+//     `&detail.ImageAsset{AssetID: "stub", ...}` fixtures)
 //
 // Comment-only WARN policy (godlike/07 residue accounting):
 // identical to percheck_voiceover_alias_ban.go's precedent.
@@ -56,11 +56,11 @@ const imageAssetLiteralBanID = "image_asset_literal_ban"
 
 // imageAssetLiterals are the two substrings Rule A scans for.
 // Both prefixes must end with `{` for the substring match to
-// disambiguate a struct literal `&asset.ImageAsset{` from a
-// bare type-name reference `*asset.ImageAsset` (which is
+// disambiguate a struct literal `&detail.ImageAsset{` from a
+// bare type-name reference `*detail.ImageAsset` (which is
 // legitimately used as a typed signature in function args).
 var imageAssetLiterals = []string{
-	"&asset.ImageAsset{",
+	"&detail.ImageAsset{",
 	"&domainasset.ImageAsset{",
 }
 
@@ -68,7 +68,7 @@ var imageAssetLiterals = []string{
 // failures. The message references the canonical metadata_json
 // SSOT + the generation-path cross-invariant so future agents
 // reading the CI failure have the full context inline.
-const imageAssetRuleANote = "forbidden `&asset.ImageAsset{...}` literal outside canonical SOLE owner + canonical builder; godlike/06 SSOT requires routing through asset.CanonicalMediaMetadata → JSON marshal → &asset.ImageAsset{MetadataJSON: ...} to enforce the generated-path cross-invariant (Origin=generated ↔ Provider=ProviderGoogleSlides); PR-CANONICAL-IMAGE-ASSET-INVARIANTS forward-prevention gate"
+const imageAssetRuleANote = "forbidden `&detail.ImageAsset{...}` literal outside canonical SOLE owner + canonical builder; godlike/06 SSOT requires routing through asset.CanonicalMediaMetadata → JSON marshal → &detail.ImageAsset{MetadataJSON: ...} to enforce the generated-path cross-invariant (Origin=generated ↔ Provider=ProviderGoogleSlides); PR-CANONICAL-IMAGE-ASSET-INVARIANTS forward-prevention gate"
 
 // imageAssetLiteralBanRule is the registry-resident Rule A
 // implementation. The struct is unexported so future agents

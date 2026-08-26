@@ -7,7 +7,7 @@
 //	existing row
 //	  → canonical taxonomy (mediaregistry.ResolveTaxonomy SSOT, via
 //	    CanonicalIdentityResolver.BackfillTaxonomy)
-//	  → search_text (asset.ComposerRegistry SSOT, per-source strategy)
+//	  → search_text (detail.ComposerRegistry SSOT, per-source strategy)
 //	  → missing embeddings (outbox EnqueueReindex force=true → the worker
 //	    generates embeddings + upserts Qdrant)
 //
@@ -42,7 +42,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -204,7 +204,7 @@ func RunRepairStockMetadata(args []string) error {
 		report.TaxonomyUnknown = tax.TaxonomyUnknown
 	}
 
-	// ── Phase 2: search_text repair (asset.ComposerRegistry SSOT).
+	// ── Phase 2: search_text repair (detail.ComposerRegistry SSOT).
 	// Composes search_text from the row's existing fields for the target
 	// sources when the column is empty.
 	if !deps.SkipSearchText {
@@ -285,14 +285,14 @@ func printRepairStockMetadataReport(r repairStockMetadataReport) {
 
 // backfillSearchText composes search_text for rows of the target sources
 // where the column is empty, using the canonical per-source
-// asset.ComposerRegistry. It never overwrites a populated search_text.
+// detail.ComposerRegistry. It never overwrites a populated search_text.
 //
 // Returns (matched, updated, error). matched counts rows with empty
 // search_text (always computed, also in dry-run); updated counts rows whose
 // search_text was actually written (apply only). The composed text is
 // bounded to 1024 bytes (the legacy search_text cap) at a word boundary.
 func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit int, apply bool) (int, int, error) {
-	registry := asset.NewComposerRegistry()
+	registry := detail.NewComposerRegistry()
 	placeholders := make([]string, len(sources))
 	args := make([]any, len(sources))
 	for i, s := range sources {
@@ -355,7 +355,7 @@ func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit
 		var tags []string
 		_ = json.Unmarshal([]byte(c.tagsJSON), &tags)
 
-		input := asset.SearchTextInput{
+		input := detail.SearchTextInput{
 			AssetID:     c.id,
 			Source:      c.source,
 			Title:       title,

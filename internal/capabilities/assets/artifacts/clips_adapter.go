@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type ClipsRegistry struct {
@@ -23,15 +24,15 @@ type ClipsRegistry struct {
 	// Pure-narrow write — the locations + processing writes below
 	// stay on their respective narrow typed ports (asset_locations +
 	// asset processing) and are NOT subject to the dispatcher SSOT.
-	assets asset.Repository
+	assets detail.Repository
 	// committer is the canonical persistence.AssetCommitter SSOT
 	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
 	committer  persistence.AssetCommitter
-	querySvc   *asset.Service
-	locations  asset.LocationRepository
-	processing asset.ProcessingRepository
+	querySvc   *detail.Service
+	locations  detail.LocationRepository
+	processing detail.ProcessingRepository
 }
 
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
@@ -40,10 +41,10 @@ type ClipsRegistry struct {
 // invariant).
 func NewClipsRegistry(
 	db *sql.DB,
-	assets asset.Repository,
-	querySvc *asset.Service,
-	locations asset.LocationRepository,
-	processing asset.ProcessingRepository,
+	assets detail.Repository,
+	querySvc *detail.Service,
+	locations detail.LocationRepository,
+	processing detail.ProcessingRepository,
 	committer persistence.AssetCommitter,
 ) *ClipsRegistry {
 	return &ClipsRegistry{
@@ -155,7 +156,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	return nil
 }
 
-func persistMediaProcessingState(ctx context.Context, processing asset.ProcessingRepository, rec *MediaRecord, step string) error {
+func persistMediaProcessingState(ctx context.Context, processing detail.ProcessingRepository, rec *MediaRecord, step string) error {
 	if processing == nil {
 		return fmt.Errorf("clips registry: processing repository not configured")
 	}

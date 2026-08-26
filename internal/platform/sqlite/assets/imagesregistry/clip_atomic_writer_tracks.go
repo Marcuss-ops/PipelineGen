@@ -21,13 +21,14 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // localizedClipTextsToTextTracks converts payload-provided
@@ -42,31 +43,31 @@ import (
 // of asset_text_tracks on other write paths) reuse this same function.
 // Provenance (source_type, is_original) is derived once here and never
 // re-derived inline at the call sites.
-func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.LocalizedClipText) []asset.TextTrack {
+func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.LocalizedClipText) []detail.TextTrack {
 	if len(texts) == 0 {
 		return nil
 	}
-	var tracks []asset.TextTrack
+	var tracks []detail.TextTrack
 	for _, t := range texts {
 		lang := t.LanguageCode
 		if lang == "" {
 			lang = "en"
 		}
-		srcType := asset.TextTrackSource(t.SourceType)
+		srcType := detail.TextTrackSource(t.SourceType)
 		if srcType == "" {
-			srcType = asset.TextSourceProvided
+			srcType = detail.TextSourceProvided
 		}
 		isOriginal := t.IsOriginal
-		if srcType == asset.TextSourceProvided {
+		if srcType == detail.TextSourceProvided {
 			isOriginal = true
 		}
 
 		type entry struct {
-			kind    asset.TextTrackKind
+			kind    detail.TextTrackKind
 			content string
 		}
 		entries := []entry{
-			{asset.TextTrackTranscript, t.Transcript},
+			{detail.TextTrackTranscript, t.Transcript},
 			{"description", t.Description},
 			{"summary", t.Summary},
 			{"title", t.Title},
@@ -79,7 +80,7 @@ func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.Localize
 			if t.Confidence > 0 {
 				confidence = &t.Confidence
 			}
-			tracks = append(tracks, asset.TextTrack{
+			tracks = append(tracks, detail.TextTrack{
 				AssetID:            clipID,
 				LanguageCode:       lang,
 				TextKind:           e.kind,
@@ -90,7 +91,7 @@ func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.Localize
 				ModelName:          t.ModelName,
 				ModelVersion:       t.ModelVersion,
 				Confidence:         confidence,
-				Status:             asset.TextTrackReady,
+				Status:             detail.TextTrackReady,
 			})
 		}
 	}
@@ -114,7 +115,7 @@ func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.Localize
 func upsertTextTracksReturningIDsInTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	tracks []asset.TextTrack,
+	tracks []detail.TextTrack,
 	nowStr string,
 ) (map[string]int64, error) {
 	trackIDByKey := make(map[string]int64, len(tracks))
@@ -169,7 +170,7 @@ RETURNING id`
 		}
 		status := string(t.Status)
 		if status == "" {
-			status = string(asset.TextTrackReady)
+			status = string(detail.TextTrackReady)
 		}
 
 		var id int64
@@ -214,6 +215,6 @@ RETURNING id`
 // helpers. Both clip_atomic_writer_tracks.go (RETURNING-id) and
 // clip_atomic_writer_cues.go (segments BATCH INSERT) call this
 // exact function. No caller inlines a hand-rolled key.
-func textTrackKey(language string, kind asset.TextTrackKind, source asset.TextTrackSource) string {
+func textTrackKey(language string, kind detail.TextTrackKind, source detail.TextTrackSource) string {
 	return strings.Join([]string{language, string(kind), string(source)}, "|")
 }

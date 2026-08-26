@@ -8,6 +8,7 @@
 package wiring
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
@@ -146,7 +147,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// CLI's 5-priority chain (priority 5: Whisper fallback).
 	// The adapter spawns scripts/bridges/whisper_transcriber.py
 	// via subprocess and parses its JSON output into the
-	// typed asset.TranscriptResult. The concrete instance
+	// typed detail.TranscriptResult. The concrete instance
 	// satisfies BOTH the infrastructure-layer interface
 	// AND the application-layer youtubeports.WhisperTranscriberPort
 	// (structural subset). DefaultTimeout is left at 0 — the

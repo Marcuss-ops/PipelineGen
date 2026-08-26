@@ -13,11 +13,11 @@ current:
     - id: P0-GOVERNANCE-SNAPSHOT
       note: "DONE 2026-08-24: Strict baseline regenerated from HEAD 90233a7c1, stale hotspot removed (infrastructure/database/sqlite/assets), package_hotspots counts realigned."
     - id: P0-POLICY-CANONICAL
-      note: "Make policy.yaml executable and unambiguous: resolve the 40-file normal target versus 65-file emergency ceiling, validate subject_bindings, and align platform_subzones."
+      note: "DONE 2026-08-26: policy.yaml now declares max_files_per_package=65 as the single executable hard ceiling with 40 demoted to a documented soft target (no second enforced threshold). Stale ::max_files_per_package=40 cross-refs in ownership/application.yaml, ownership.generated.yaml and the 41_divider CI gate comment aligned to =65. subject_bindings validated (no Go refs remain; stale-prose ban intact). platform_subzones already aligned (see P1-PLATFORM-ALIGNMENT DONE)."
     - id: P0-LEGACY-REGISTRY
       note: "DONE 2026-08-23: root_migrations contains only existing legacy roots and every hotspot target is under kernel, capabilities, or platform; completed roots are history-only."
     - id: P0-LEGACY-RATCHET
-      note: "Enforce non-increasing production files in legacy roots; CI rejects new production files/packages except explicit expiring removal-only exceptions."
+      note: "DONE 2026-08-26: percheck_legacy_hotspot_growth now ratchets every registered hotspot (no legacy-root filter); baselines reconciled (stockpipeline 51→63, delivery 9→12), completed legacy hotspots dropped. percheck_legacy_root_new_code remains a hard gate for any re-added legacy file."
     - id: P1-APP-CAPABILITIES
       note: "Eliminate internal/app/capabilities; move each file to its capability owner or platform adapter, leaving app with construction and wiring."
     - id: P1-APP-OVERLAYS
@@ -27,11 +27,11 @@ current:
     - id: P1-CAPABILITY-OWNERSHIP
       note: "Publish package-to-macro-capability ownership map; every capability support package gets exactly one macro owner and an Archcheck check."
     - id: P1-PLATFORM-ALIGNMENT
-      note: "Align platform policy and filesystem; decide keep/migrate/absorb for cas, embeddings, media, overlays, renderinggen, httpserver, observability, ffmpeg, ollama, and nvidia."
+      note: "DONE 2026-08-26: keep/migrate/absorb resolved for cas/media/renderinggen/observability/ollama (KEEP at platform/) and ffmpeg/nvidia (ABSORB into media/rustexec + overlays/workerruntime). embeddings/overlays/httpserver already KEEP from earlier waves. Recorded in policy.yaml::platform_subzones."
     - id: P1-UTILITY-ROUTE
       note: "DONE 2026-08-23: UtilityModule deleted. GET /internal/slug absorbed into System module (handler.go + module.go). 11 HTTP modules reduced to 10."
     - id: P1-OBSERVABILITY
-      note: "Establish platform/observability as the metrics owner; infrastructure observability becomes compatibility-only."
+      note: "DONE 2026-08-26: platform/observability is the sole metrics owner (28 files: Prometheus collectors, run records, progress-ratio). kernel/observability holds only the shared cross-capability Run/Stage/Operation contract. No infrastructure duplicate remains."
     - id: P1-SCRIPTS-CUTOVER
       note: "DONE 2026-08-24: application/scripts fully migrated to capabilities/scripts; legacy path no longer exists on disk. Semantic contracts in kernel/script, provider mechanics in platform."
     - id: P1-JOBS-CUTOVER
@@ -41,7 +41,7 @@ current:
     - id: P1-VOICEOVER-CUTOVER
       note: "Migrate application/voiceover to capabilities/voiceover; keep audio semantics in capabilities/audio and provider mechanics in platform."
     - id: P1-PLATFORM-ADAPTERS
-      note: "IN PROGRESS: Collapse infrastructure/platform duplicates. DONE: drive, delivery, embeddings, SQLite. REMAINING: filesystem/files, checksum/hash, Qdrant, AI transport, observability."
+      note: "DONE 2026-08-26: drive, delivery, embeddings, SQLite, filesystem/files (hash/MD5 folded into checksum), Qdrant (schema under platform/qdrant, DR adapter under capabilities/maintenance), AI transport (platform/ai declared as subzone), observability (platform/observability sole metrics owner). No infrastructure duplicates remain."
     - id: P1-API-CUTOVER
       note: "Move HTTP transport and handlers out of api; generic server/router/middleware to platform/httpserver and business handlers beside capabilities."
     - id: P2-DOMAIN-DISSOLUTION
@@ -53,19 +53,6 @@ current:
     registry: architecture/package_hotspots.json
     baseline: docs/migrations/archcheck-strict-baseline.json
     verification: make verify-architecture
-- id: WAVE-21-PR-G-SCRIPTS-SUBPKG
-  status: in_progress
-  owner: scripts-capability
-  deadline: '2026-09-30T00:00:00Z'
-  rationale: Reschedule the scripts capability split to 2026-09-30 because 56 files remain in CUTOVER after the 2026-08-01 deadline; preserve the existing public contracts and registry-driven composition while completing the redistribution.
-  count:
-    baseline_initial: 64
-    current: 56
-    target_zero: 0
-  cross_refs:
-    package: internal/application/scripts
-    pr_g_phase: BACKFILL (August 2026) — generation now owns a parity-covered plan builder while the legacy usecase implementation remains active as a compatibility path; root facade and remaining callers are unchanged pending CUTOVER.
-    backfill_increment: generation/plan_builder.go mirrors the legacy plan contract and is covered by package-local tests; CUTOVER is deferred until full parity and consumer migration.
 - id: WAVE-22-PR-D-SERVICE-DEPS-CAP
   status: in_progress
   owner: api-composition
@@ -73,18 +60,6 @@ current:
   rationale: Reduce wide API dependency bags through canonical bundles and composition adapters rather than duplicate wiring.
   cross_refs:
     gate: percheck_api_module_deps_max_8
-- id: WAVE-22-C2-C-SOURCE-CATALOG
-  status: in_progress
-  owner: source-catalog
-  deadline: '2026-09-15T00:00:00Z'
-  rationale: Move source catalog ownership to the canonical typed registry and retire remaining duplicate declarations.
-  count:
-    baseline_initial: 48
-    current: 25
-    target_zero: 0
-  cross_refs:
-    gate: scripts/archcheck/gates/gate_c2_source_catalog_only_main.go
-    verify_target: make verify-architecture
 - id: WAVE-22-C2-E-ROUTE-MANIFEST
   status: in_progress
   owner: api-routing
@@ -108,11 +83,4 @@ current:
     policy: architecture/policy.yaml#hard_gates
     runner: cmd/archcheck/runner.go
     documents: cmd/archcheck/scan/documents.go
-- id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
-  status: in_progress
-  owner: channels-capability
-  deadline: '2026-09-30T00:00:00Z'
-  rationale: Complete remaining monitor conformance through application-owned ports and adapters wired only at the composition root; channels capability conformance is already canonical.
-  cross_refs:
-    package: internal/application/assets/monitor
 issues: []

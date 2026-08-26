@@ -1,17 +1,17 @@
 deprecations:
     - id: PR-QDRANT-WIRE-MIRROR
-      owner_capability: internal/platform/qdrant + internal/application/qdrant/dr
+      owner_capability: internal/platform/qdrant + internal/capabilities/maintenance
       exact_symbol: |
         Shared aliases: qdrantdr.SnapshotDescription, RetentionConfig,
         RetentionResult, and LocatorCleanupReport.
         Application projection: dr.VerifyReport from schema.SwitchReport.
-        Adapter: internal/platform/qdrant/maintenance/dr_adapter.go.
-      file: internal/platform/qdrant/qdrantdr/types.go + internal/application/qdrant/dr/types.go + internal/platform/qdrant/schema/collection_types.go + internal/platform/qdrant/maintenance/dr_adapter.go
+        Adapter: internal/capabilities/maintenance/dr_adapter.go.
+      file: internal/platform/qdrant/qdrantdr/types.go + internal/platform/qdrant/dr/types.go + internal/platform/qdrant/schema/collection_types.go + internal/capabilities/maintenance/dr_adapter.go
       file_line: shared types ~24-82; aliases ~19-29; adapter ~50-220
       replacement: |
         Single canonical pure-types package at internal/platform/qdrant/qdrantdr/
-        (dependency-free pure-data leaf package). Infrastructure/qdrant and
-        application/qdrant/dr alias the shared SnapshotDescription,
+        (dependency-free pure-data leaf package). platform/qdrant and
+        capabilities/maintenance alias the shared SnapshotDescription,
         RetentionConfig, RetentionResult, and LocatorCleanupReport directly.
         VerifyReport remains a deliberate narrower application projection of
         the infrastructure SwitchReport and is not part of this consolidation.

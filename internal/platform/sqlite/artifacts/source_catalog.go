@@ -1,11 +1,12 @@
 package artifactsinfra
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -128,7 +129,7 @@ func voiceoverRecordToAsset(rec *assets.Record) *asset.Asset {
 	return clip
 }
 
-func imageAssetToAsset(item *asset.ImageAsset) *asset.Asset {
+func imageAssetToAsset(item *detail.ImageAsset) *asset.Asset {
 	if item == nil {
 		return nil
 	}

@@ -1,12 +1,13 @@
 package artlist
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 	"gopkg.in/yaml.v3"
 )
 
@@ -166,7 +167,7 @@ type RunTagItem struct {
 	// Populated by stageProcessBatch and consumed by stagePersistResults
 	// to persist asset_locations + asset_renditions via the canonical
 	// AssetFinalizerTx.
-	Renditions []asset.RenditionOutput `json:"-"`
+	Renditions []detail.RenditionOutput `json:"-"`
 }
 
 // RunTagResponse represents the result of the full tag pipeline.

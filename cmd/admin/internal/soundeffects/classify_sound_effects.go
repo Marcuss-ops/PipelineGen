@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+
 )
 
 // runClassifySoundEffects backfills semantic SFX taxonomy and re-emits the
@@ -64,7 +66,7 @@ func RunClassifySoundEffects(args []string) error {
 			return fmt.Errorf("load sound effect %s: %w", id, err)
 		}
 		oldFamily := clip.GetMetadataString("sfx_category")
-		taxonomy := asset.ClassifySoundEffect(clip.Name, oldFamily, clip.Tags)
+		taxonomy := detail.ClassifySoundEffect(clip.Name, oldFamily, clip.Tags)
 		searchText := strings.Join([]string{
 			clip.Name,
 			taxonomy.Family,

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	policy "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	scan "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/structure"
@@ -29,6 +30,9 @@ func TestReportContract(t *testing.T) {
 	projectRoot := filepath.Dir(filepath.Dir(pkgDir))
 	tmpDir := t.TempDir()
 	binPath := filepath.Join(tmpDir, "archcheck_report_contract_test")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
 	build := exec.Command("go", "build", "-o", binPath, ".")
 	build.Dir = pkgDir
 	if out, err := build.CombinedOutput(); err != nil {

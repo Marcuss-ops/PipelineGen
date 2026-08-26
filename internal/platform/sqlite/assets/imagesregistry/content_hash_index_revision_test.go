@@ -11,13 +11,14 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -34,9 +35,9 @@ func TestComputeIndexRevision_FoldsTextTracksButKeepsContentHashDistinct(t *test
 		t.Fatalf("ComputeIndexRevision(base, nil) = %q, want %q", got, base)
 	}
 
-	tracks := []asset.TextTrack{
-		{LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextHash: "sha256:en"},
-		{LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextHash: "sha256:it"},
+	tracks := []detail.TextTrack{
+		{LanguageCode: "en", TextKind: detail.TextTrackTranscript, TextHash: "sha256:en"},
+		{LanguageCode: "it", TextKind: detail.TextTrackTranscript, TextHash: "sha256:it"},
 	}
 	rev := ComputeIndexRevision(base, tracks)
 	if rev == base || rev == "" {
@@ -44,7 +45,7 @@ func TestComputeIndexRevision_FoldsTextTracksButKeepsContentHashDistinct(t *test
 	}
 
 	// Determinism: reversed order must produce the same revision.
-	reversed := []asset.TextTrack{tracks[1], tracks[0]}
+	reversed := []detail.TextTrack{tracks[1], tracks[0]}
 	if got := ComputeIndexRevision(base, reversed); got != rev {
 		t.Fatalf("ComputeIndexRevision must be order-stable: %q != %q", got, rev)
 	}

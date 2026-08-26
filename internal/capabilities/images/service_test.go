@@ -3,7 +3,7 @@ package images
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -249,16 +249,16 @@ func TestMeaningfulLookupTokens_EmptyInput(t *testing.T) {
 }
 
 func TestIsAIImageSource(t *testing.T) {
-	if !asset.IsAIImageSource("google-flow") {
+	if !detail.IsAIImageSource("google-flow") {
 		t.Fatal("expected google-flow to be treated as AI source")
 	}
-	if !asset.IsAIImageSource("flux-2-klein") {
+	if !detail.IsAIImageSource("flux-2-klein") {
 		t.Fatal("expected flux-2-klein to be treated as AI source")
 	}
-	if asset.IsAIImageSource("https://example.com/image.jpg") {
+	if detail.IsAIImageSource("https://example.com/image.jpg") {
 		t.Fatal("expected direct image URL to not be treated as AI source")
 	}
-	if asset.IsAIImageSource("duckduckgo") {
+	if detail.IsAIImageSource("duckduckgo") {
 		t.Fatal("expected duckduckgo to not be treated as AI source")
 	}
 }

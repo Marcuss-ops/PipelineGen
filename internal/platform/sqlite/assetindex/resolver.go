@@ -6,7 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -109,7 +111,7 @@ func (r *Resolver) resolveFromDB(ctx context.Context, source, sourceID string) (
 // Mirrors artifacts.CanonicalSource for the subset of sources
 // this package knows about.
 func canonicalSource(source string) string {
-	return asset.DefaultSourceCatalog().Canonical(source)
+	return detail.DefaultSourceCatalog().Canonical(source)
 }
 
 // resolveClipFromDB retrieves a clip from the appropriate clips repository

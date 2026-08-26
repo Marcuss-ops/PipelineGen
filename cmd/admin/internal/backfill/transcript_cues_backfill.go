@@ -1,6 +1,7 @@
 package backfill
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"flag"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 )
 
@@ -53,7 +54,7 @@ func RunTranscriptCuesBackfill(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: parse VTT: %w", id, err)
 		}
-		cues := make([]asset.TimedCue, 0, len(entries))
+		cues := make([]detail.TimedCue, 0, len(entries))
 		maxMs := int64(end-start) * 1000
 		for _, e := range entries {
 			s := int64((e.Start - float64(start)) * 1000)
@@ -65,16 +66,16 @@ func RunTranscriptCuesBackfill(args []string) error {
 				en = maxMs
 			}
 			if en > s {
-				cues = append(cues, asset.TimedCue{StartMs: s, EndMs: en, Text: e.Text})
+				cues = append(cues, detail.TimedCue{StartMs: s, EndMs: en, Text: e.Text})
 			}
 		}
 		tracks, err := root.Repos.TextTrackRepo.ListByAsset(cli.CmdContext(), id)
 		if err != nil {
 			return err
 		}
-		byLang := make(map[string][]asset.TimedCue, len(tracks))
+		byLang := make(map[string][]detail.TimedCue, len(tracks))
 		for _, track := range tracks {
-			if track.TextKind != asset.TextTrackTranscript || track.Status != asset.TextTrackReady || !track.IsCurrent {
+			if track.TextKind != detail.TextTrackTranscript || track.Status != detail.TextTrackReady || !track.IsCurrent {
 				continue
 			}
 			byLang[track.LanguageCode] = texttracks.CuesWithText(cues, track.TextContent)

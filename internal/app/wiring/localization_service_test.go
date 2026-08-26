@@ -5,6 +5,7 @@ package wiring
 // LocalizationConfigFromConfig (deterministic deployment facts).
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -36,7 +37,7 @@ func (f fakeServiceSourceResolver) ResolveSource(_ context.Context, assetID stri
 // fakeServiceTrackResolver returns a READY track ref per (asset, language).
 type fakeServiceTrackResolver struct{}
 
-func (fakeServiceTrackResolver) ResolveTrack(_ context.Context, _ string, language string, _ asset.TextTrackKind) (*localization.TrackRef, error) {
+func (fakeServiceTrackResolver) ResolveTrack(_ context.Context, _ string, language string, _ detail.TextTrackKind) (*localization.TrackRef, error) {
 	if language == "missing" {
 		return nil, errors.New("no READY track")
 	}
@@ -50,7 +51,7 @@ type fakeServiceSubtitleResolver struct{}
 func (fakeServiceSubtitleResolver) ResolveSubtitleTrack(_ context.Context, trackID int64, expected string) (*localization.ResolvedSubtitleTrack, error) {
 	return &localization.ResolvedSubtitleTrack{
 		TrackID:  trackID,
-		Cues:     []asset.TimedCue{{StartMs: 0, EndMs: 1000, Text: "cue"}},
+		Cues:     []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "cue"}},
 		TextHash: expected,
 	}, nil
 }

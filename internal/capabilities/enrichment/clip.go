@@ -1,18 +1,19 @@
 package enrichment
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Transcriber is the real Whisper port. Empty text is not a successful
 // enrichment and is never persisted.
 type Transcriber interface {
-	TranscribeAudioWithDetection(context.Context, string) (asset.TranscriptResult, error)
+	TranscribeAudioWithDetection(context.Context, string) (detail.TranscriptResult, error)
 }
 
 // SubtitleWriter owns deterministic ASS creation, validation and Drive
@@ -22,7 +23,7 @@ type SubtitleWriter interface {
 }
 type SubtitleInput struct {
 	AssetID, Filename, Language string
-	Track                       asset.TextTrack
+	Track                       detail.TextTrack
 	DurationMs                  int64
 	DriveFolderID               string
 	ContentHash                 string
@@ -41,8 +42,8 @@ type DescriptionOutput struct {
 }
 
 type TrackWriter interface {
-	FindReady(context.Context, string, string, asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error)
-	UpsertBatch(context.Context, []asset.TextTrack) error
+	FindReady(context.Context, string, string, detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error)
+	UpsertBatch(context.Context, []detail.TextTrack) error
 }
 type ClipReindexer interface {
 	RequestAsset(context.Context, string) error
@@ -80,7 +81,7 @@ func (s *ClipService) Process(ctx context.Context, in ClipInput) (ClipResult, er
 		return ClipResult{}, errors.New("clip enrichment: asset_id, local_path and language are required")
 	}
 	result := ClipResult{AssetID: in.AssetID}
-	track, cues, err := s.tracks.FindReady(ctx, in.AssetID, in.Language, asset.TextTrackTranscript)
+	track, cues, err := s.tracks.FindReady(ctx, in.AssetID, in.Language, detail.TextTrackTranscript)
 	if err != nil {
 		return result, fmt.Errorf("read transcript: %w", err)
 	}
@@ -98,9 +99,9 @@ func (s *ClipService) Process(ctx context.Context, in ClipInput) (ClipResult, er
 		if lang == "" {
 			lang = in.Language
 		}
-		track = &asset.TextTrack{AssetID: in.AssetID, LanguageCode: lang, TextKind: asset.TextTrackTranscript, TextContent: strings.TrimSpace(out.Text), SourceType: asset.TextSourceWhisper, SourceLanguageCode: lang, IsOriginal: true, Provider: "whisper", TextHash: asset.TextHash(out.Text, lang, asset.TextTrackTranscript), Status: asset.TextTrackReady, IsCurrent: true, Confidence: out.Confidence}
+		track = &detail.TextTrack{AssetID: in.AssetID, LanguageCode: lang, TextKind: detail.TextTrackTranscript, TextContent: strings.TrimSpace(out.Text), SourceType: detail.TextSourceWhisper, SourceLanguageCode: lang, IsOriginal: true, Provider: "whisper", TextHash: detail.TextHash(out.Text, lang, detail.TextTrackTranscript), Status: detail.TextTrackReady, IsCurrent: true, Confidence: out.Confidence}
 		cues = out.Cues
-		if err := s.tracks.UpsertBatch(ctx, []asset.TextTrack{*track}); err != nil {
+		if err := s.tracks.UpsertBatch(ctx, []detail.TextTrack{*track}); err != nil {
 			return result, fmt.Errorf("persist transcript: %w", err)
 		}
 		result.TranscriptCreated = true
@@ -119,14 +120,14 @@ func (s *ClipService) Process(ctx context.Context, in ClipInput) (ClipResult, er
 	if strings.TrimSpace(desc.Description) == "" {
 		return result, errors.New("clip enrichment: semantic provider returned empty description")
 	}
-	description := asset.TextTrack{AssetID: in.AssetID, LanguageCode: track.LanguageCode, TextKind: asset.TextTrackDescription, TextContent: strings.TrimSpace(desc.Description), SourceType: asset.TextSourceVisualAnalysis, SourceLanguageCode: track.LanguageCode, IsOriginal: true, Provider: desc.Provider, ModelName: desc.Model, ModelVersion: desc.Version, TextHash: asset.TextHash(desc.Description, track.LanguageCode, asset.TextTrackDescription), Status: asset.TextTrackReady, IsCurrent: true}
-	if err := s.tracks.UpsertBatch(ctx, []asset.TextTrack{description}); err != nil {
+	description := detail.TextTrack{AssetID: in.AssetID, LanguageCode: track.LanguageCode, TextKind: detail.TextTrackDescription, TextContent: strings.TrimSpace(desc.Description), SourceType: detail.TextSourceVisualAnalysis, SourceLanguageCode: track.LanguageCode, IsOriginal: true, Provider: desc.Provider, ModelName: desc.Model, ModelVersion: desc.Version, TextHash: detail.TextHash(desc.Description, track.LanguageCode, detail.TextTrackDescription), Status: detail.TextTrackReady, IsCurrent: true}
+	if err := s.tracks.UpsertBatch(ctx, []detail.TextTrack{description}); err != nil {
 		return result, fmt.Errorf("persist description: %w", err)
 	}
 	result.DescriptionCreated = true
 	if strings.TrimSpace(desc.Summary) != "" {
-		summary := asset.TextTrack{AssetID: in.AssetID, LanguageCode: track.LanguageCode, TextKind: asset.TextTrackSummary, TextContent: strings.TrimSpace(desc.Summary), SourceType: asset.TextSourceVisualAnalysis, SourceLanguageCode: track.LanguageCode, IsOriginal: true, Provider: desc.Provider, ModelName: desc.Model, ModelVersion: desc.Version, TextHash: asset.TextHash(desc.Summary, track.LanguageCode, asset.TextTrackSummary), Status: asset.TextTrackReady, IsCurrent: true}
-		if err := s.tracks.UpsertBatch(ctx, []asset.TextTrack{summary}); err != nil {
+		summary := detail.TextTrack{AssetID: in.AssetID, LanguageCode: track.LanguageCode, TextKind: detail.TextTrackSummary, TextContent: strings.TrimSpace(desc.Summary), SourceType: detail.TextSourceVisualAnalysis, SourceLanguageCode: track.LanguageCode, IsOriginal: true, Provider: desc.Provider, ModelName: desc.Model, ModelVersion: desc.Version, TextHash: detail.TextHash(desc.Summary, track.LanguageCode, detail.TextTrackSummary), Status: detail.TextTrackReady, IsCurrent: true}
+		if err := s.tracks.UpsertBatch(ctx, []detail.TextTrack{summary}); err != nil {
 			return result, fmt.Errorf("persist summary: %w", err)
 		}
 		result.SummaryCreated = true

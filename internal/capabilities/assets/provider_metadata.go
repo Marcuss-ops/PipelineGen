@@ -1,5 +1,9 @@
 package assets
 
+import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
 import "context"
 
 // TagSource classifies where a tag comes from so provider, semantic,

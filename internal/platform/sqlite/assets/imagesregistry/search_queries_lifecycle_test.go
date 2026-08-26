@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // newLifecycleTestDB creates an in-memory SQLite with the media_assets
@@ -109,7 +109,7 @@ func TestSearchClipsAdvanced_ExcludesDeleteRequested(t *testing.T) {
 	s := NewAssetStoreSQLite(db, zap.NewNop())
 	ctx := context.Background()
 
-	res, err := s.SearchClipsAdvanced(ctx, asset.AdvancedSearchRequest{
+	res, err := s.SearchClipsAdvanced(ctx, detail.AdvancedSearchRequest{
 		Q:     "boxing",
 		Limit: 50,
 	})
@@ -180,7 +180,7 @@ func TestSearchClipsAdvanced_ExcludesAllNonSearchableStates(t *testing.T) {
 	}
 
 	s := NewAssetStoreSQLite(db, zap.NewNop())
-	res, err := s.SearchClipsAdvanced(context.Background(), asset.AdvancedSearchRequest{
+	res, err := s.SearchClipsAdvanced(context.Background(), detail.AdvancedSearchRequest{
 		Q:     "boxing",
 		Limit: 50,
 	})
@@ -251,7 +251,7 @@ func TestSearchClipsAdvanced_ExcludesUnclassified(t *testing.T) {
 
 	s := NewAssetStoreSQLite(db, zap.NewNop())
 
-	res, err := s.SearchClipsAdvanced(context.Background(), asset.AdvancedSearchRequest{
+	res, err := s.SearchClipsAdvanced(context.Background(), detail.AdvancedSearchRequest{
 		Limit:               50,
 		ExcludeUnclassified: true,
 	})
@@ -267,7 +267,7 @@ func TestSearchClipsAdvanced_ExcludesUnclassified(t *testing.T) {
 
 	// Control: with the gate off, the artifact IS present (the gate is the
 	// discriminator, not the lifecycle/search_text incidental filters).
-	resAll, err := s.SearchClipsAdvanced(context.Background(), asset.AdvancedSearchRequest{Limit: 50})
+	resAll, err := s.SearchClipsAdvanced(context.Background(), detail.AdvancedSearchRequest{Limit: 50})
 	require.NoError(t, err)
 	foundAll := make(map[string]bool)
 	for _, c := range resAll.Clips {

@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ErrTextTrackNotReady is the canonical typed error returned by
@@ -51,7 +51,7 @@ type ErrTextTrackNotReady struct {
 	// MissingKind is the TextTrackKind the lookup was for. The
 	// canonical Fase 4 caller passes TextTrackTranscript
 	// (clip builders always want a transcript).
-	MissingKind asset.TextTrackKind
+	MissingKind detail.TextTrackKind
 }
 
 // Error implements the error interface. The string form is

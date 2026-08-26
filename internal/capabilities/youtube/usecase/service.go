@@ -34,6 +34,7 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -42,7 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/shared/portutil"
 )
 
@@ -71,10 +72,10 @@ type ServiceCoreDeps struct {
 // delegates asset mutation through this cluster (no setters, no
 // fallback paths).
 type ServiceAssetDeps struct {
-	AssetRepo         asset.Repository
+	AssetRepo         detail.Repository
 	AssetDestResolver asset.Resolver
 	LifecycleService  *lifecycle.Service
-	MediaProcessor    asset.Processor
+	MediaProcessor    detail.Processor
 }
 
 // ServiceVideoDeps is the video-pipeline cluster: the
@@ -123,11 +124,11 @@ type ServiceAdapterDeps struct {
 type Service struct {
 	cfg               youtubetypes.RuntimeConfig
 	log               *zap.Logger
-	mediaProcessor    asset.Processor
+	mediaProcessor    detail.Processor
 	videoPipeline     youtubeports.VideoPipelinePort
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
-	assetRepo         asset.Repository
+	assetRepo         detail.Repository
 
 	// Capability services (PR5 — June 2026; P0.3: MetadataService retired).
 	cache      youtubeports.CachePort

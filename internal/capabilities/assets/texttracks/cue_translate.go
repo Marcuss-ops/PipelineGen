@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -57,11 +57,11 @@ func NewCueTranslator(translator translation.TranslationPort, sourceLang, ollama
 // Any individual cue failure aborts the whole language (no partial timing).
 // The returned ConcurrencyStats reconstructs the real parallelism of the
 // per-cue fan-out (configured vs observed workers + queue latency).
-func (t *CueTranslator) Translate(ctx context.Context, cues []asset.TimedCue, targetLang string) ([]asset.TimedCue, observability.ConcurrencyStats, error) {
+func (t *CueTranslator) Translate(ctx context.Context, cues []detail.TimedCue, targetLang string) ([]detail.TimedCue, observability.ConcurrencyStats, error) {
 	if t == nil || t.translator == nil {
 		return nil, observability.ConcurrencyStats{}, fmt.Errorf("texttracks.CueTranslator: translator is not configured")
 	}
-	out := make([]asset.TimedCue, len(cues))
+	out := make([]detail.TimedCue, len(cues))
 	tracker := &observability.ConcurrencyTracker{}
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(t.concurrency)
@@ -82,7 +82,7 @@ func (t *CueTranslator) Translate(ctx context.Context, cues []asset.TimedCue, ta
 			if err != nil {
 				return fmt.Errorf("cue %d (%q): %w", i+1, cue.Text, err)
 			}
-			out[i] = asset.TimedCue{StartMs: cue.StartMs, EndMs: cue.EndMs, Text: translated}
+			out[i] = detail.TimedCue{StartMs: cue.StartMs, EndMs: cue.EndMs, Text: translated}
 			return nil
 		})
 	}

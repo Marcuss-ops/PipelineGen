@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 const imageSearchCacheKeyVersion = "v2"
@@ -47,8 +47,8 @@ func (s *ImageStorageService) retrievalPolicySignature() string {
 // selectBestCachedImageAsset picks the best semantic match among the
 // already-cached images for a subject. The selector prefers a strong
 // provenance-query match rather than the first row ordered by hash.
-func selectBestCachedImageAsset(query string, images []asset.ImageAsset) (*asset.ImageAsset, int) {
-	var best *asset.ImageAsset
+func selectBestCachedImageAsset(query string, images []detail.ImageAsset) (*detail.ImageAsset, int) {
+	var best *detail.ImageAsset
 	bestScore := 0
 
 	for i := range images {
@@ -69,11 +69,11 @@ func selectBestCachedImageAsset(query string, images []asset.ImageAsset) (*asset
 // accidentally reusing an asset produced by another retrieval source. The
 // provider column is canonical; source_name is retained as a compatibility
 // fallback for older rows written before provider was populated.
-func filterCachedImagesByProvider(images []asset.ImageAsset, provider asset.ImageProvider) []asset.ImageAsset {
+func filterCachedImagesByProvider(images []detail.ImageAsset, provider detail.ImageProvider) []detail.ImageAsset {
 	if provider == "" {
 		return images
 	}
-	out := make([]asset.ImageAsset, 0, len(images))
+	out := make([]detail.ImageAsset, 0, len(images))
 	for _, img := range images {
 		if img.Provider == provider || img.ImageMetadata().SourceName == string(provider) {
 			out = append(out, img)
@@ -84,7 +84,7 @@ func filterCachedImagesByProvider(images []asset.ImageAsset, provider asset.Imag
 
 const minCachedImageScore = 80
 
-func scoreCachedImageAsset(query string, img asset.ImageAsset) int {
+func scoreCachedImageAsset(query string, img detail.ImageAsset) int {
 	meta := img.ImageMetadata()
 	candidates := []string{
 		meta.SourceQuery,
@@ -104,7 +104,7 @@ func scoreCachedImageAsset(query string, img asset.ImageAsset) int {
 	return best
 }
 
-func betterCachedImageCandidate(a, b asset.ImageAsset) bool {
+func betterCachedImageCandidate(a, b detail.ImageAsset) bool {
 	if a.CreatedAt.After(b.CreatedAt) {
 		return true
 	}

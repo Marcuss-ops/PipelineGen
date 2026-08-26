@@ -28,6 +28,7 @@
 package sqlite
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"database/sql"
 	"fmt"

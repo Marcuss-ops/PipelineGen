@@ -1,12 +1,13 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
@@ -22,7 +23,7 @@ import (
 
 // Upsert is the canonical low-level write path that ALL production
 // callers eventually flow into (via AssetStoreSQLite.Save). It is
-// public because the canonical asset.Repository wrapper calls it;
+// public because the canonical detail.Repository wrapper calls it;
 // the narrow API surface for callers is Upsert only.
 //
 // QDRANT-asset-mutation isolation (June 2026): Upsert itself

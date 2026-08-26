@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // AllowedNarrativeClipViewJSONFields is the canonical allow-list
@@ -120,7 +120,7 @@ var (
 func NewNarrativeClipViewForSlot(
 	slotRef string,
 	candidate ClipCandidate,
-	visualSummary *asset.VisualSummary,
+	visualSummary *detail.VisualSummary,
 	transcript string,
 	durationMs int64,
 ) (*NarrativeClipView, error) {

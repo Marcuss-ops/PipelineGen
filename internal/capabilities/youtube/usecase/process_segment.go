@@ -41,11 +41,12 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
@@ -69,7 +70,7 @@ type ProcessYouTubeSegmentUseCase struct {
 
 // AcquireStockTranscript exposes the existing resolver for the transcript-
 // first stock planner. It never downloads video bytes.
-func (u *ProcessYouTubeSegmentUseCase) AcquireStockTranscript(ctx context.Context, videoID string, durationMs int64) (*asset.ResolvedTextBundle, error) {
+func (u *ProcessYouTubeSegmentUseCase) AcquireStockTranscript(ctx context.Context, videoID string, durationMs int64) (*detail.ResolvedTextBundle, error) {
 	if u == nil || u.media.TextTrackResolver == nil {
 		return nil, nil
 	}
@@ -168,7 +169,7 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// Drive upload (Step 8) + canonical ClipAsset Writer commit (Step 9).
 	//
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
-	// returned *asset.ResolvedTextBundle is the canonical
+	// returned *detail.ResolvedTextBundle is the canonical
 	// transcript bundle acquired by the 5-priority chain
 	// (TextTrackResolver). It is threaded into Step 10 so Step 10
 	// does NOT re-invoke Whisper on the same audio file. The

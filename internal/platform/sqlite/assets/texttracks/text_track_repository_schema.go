@@ -37,12 +37,12 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"go.uber.org/zap"
 )
 
 // TextTrackRepositorySQLite is the SQLite-backed implementation of
-// asset.TextTrackRepository.
+// detail.TextTrackRepository.
 type TextTrackRepositorySQLite struct {
 	db  *sql.DB
 	log *zap.Logger
@@ -60,7 +60,7 @@ func NewTextTrackRepository(db *sql.DB, log *zap.Logger) (*TextTrackRepositorySQ
 }
 
 // Compile-time interface assertion: *TextTrackRepositorySQLite
-// must satisfy asset.TextTrackRepository. If a method signature
+// must satisfy detail.TextTrackRepository. If a method signature
 // drifts, this line fails to compile and surfaces the regression
 // before runtime.
-var _ asset.TextTrackRepository = (*TextTrackRepositorySQLite)(nil)
+var _ detail.TextTrackRepository = (*TextTrackRepositorySQLite)(nil)

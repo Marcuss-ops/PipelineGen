@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // e2eSubtitleResolver echoes the expected SHA256 as the track's TextHash so
@@ -27,7 +27,7 @@ type e2eSubtitleResolver struct{}
 func (e2eSubtitleResolver) ResolveSubtitleTrack(_ context.Context, trackID int64, expectedSHA256 string) (*ResolvedSubtitleTrack, error) {
 	return &ResolvedSubtitleTrack{
 		TrackID:  trackID,
-		Cues:     []asset.TimedCue{{StartMs: 0, EndMs: 1000, Text: "localized cue"}},
+		Cues:     []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "localized cue"}},
 		TextHash: expectedSHA256,
 	}, nil
 }

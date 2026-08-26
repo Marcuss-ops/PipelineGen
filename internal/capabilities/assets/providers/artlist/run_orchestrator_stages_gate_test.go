@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -49,13 +49,13 @@ type panickingMediaProcessor_MustNotBeCalled struct {
 	processCalls atomic.Int32
 }
 
-var _ asset.Processor = (*panickingMediaProcessor_MustNotBeCalled)(nil)
+var _ detail.Processor = (*panickingMediaProcessor_MustNotBeCalled)(nil)
 
 var errProcessorShouldNotBeCalled = errors.New(
 	"panickingMediaProcessor_MustNotBeCalled: Process was invoked — the gate-block short-circuit did NOT short-circuit (a godlike/07 regression). The orchestrator MUST return early after gateBlockShortCircuit fires so mediaProcessor.Process is NEVER invoked on a typed gate block",
 )
 
-func (p *panickingMediaProcessor_MustNotBeCalled) Process(_ context.Context, _ *asset.ProcessInput) (*asset.ProcessResult, error) {
+func (p *panickingMediaProcessor_MustNotBeCalled) Process(_ context.Context, _ *detail.ProcessInput) (*detail.ProcessResult, error) {
 	p.processCalls.Add(1)
 	return nil, errProcessorShouldNotBeCalled
 }
@@ -111,7 +111,7 @@ func TestStageProcessBatch_GateBlockShortCircuit_AcquisitionMode(t *testing.T) {
 			Name:   "stub",
 			Status: "",
 		},
-		processInput: &asset.ProcessInput{
+		processInput: &detail.ProcessInput{
 			ID:        "clip-mode-block",
 			Name:      "stub",
 			SourceURL: "https://artlist.io/clip/123",
@@ -224,7 +224,7 @@ func TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor(t *tes
 			ClipID: "clip-unrelated",
 			Name:   "stub",
 		},
-		processInput: &asset.ProcessInput{
+		processInput: &detail.ProcessInput{
 			ID:        "clip-unrelated",
 			Name:      "stub",
 			SourceURL: "https://artlist.io/clip/456",

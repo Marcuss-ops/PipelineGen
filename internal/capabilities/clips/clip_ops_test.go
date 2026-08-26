@@ -10,6 +10,7 @@
 package clips
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"io"
 	"testing"
@@ -17,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Port stubs (minimal happy-defaults) ──────────────────────────────────────
@@ -57,10 +58,10 @@ func (r *stubRepo) GetClip(_ context.Context, id string) (*asset.Asset, error) {
 	}
 	return nil, nil
 }
-func (r *stubRepo) ListFolders(_ context.Context, _ string) ([]*asset.ClipFolder, error) {
+func (r *stubRepo) ListFolders(_ context.Context, _ string) ([]*detail.ClipFolder, error) {
 	return nil, nil
 }
-func (r *stubRepo) GetFolder(_ context.Context, _ string) (*asset.ClipFolder, error) {
+func (r *stubRepo) GetFolder(_ context.Context, _ string) (*detail.ClipFolder, error) {
 	return nil, nil
 }
 func (r *stubRepo) GetFolderChildren(_ context.Context, _ string) ([]*asset.Asset, error) {
@@ -108,9 +109,9 @@ func (r *testVoiceoverRepo) Upsert(_ context.Context, _ *ClipVoiceoverRecordDTO)
 	return nil
 }
 
-type testImagesRepo struct{ images []*asset.ImageAsset }
+type testImagesRepo struct{ images []*detail.ImageAsset }
 
-func (r *testImagesRepo) ListAll(_ context.Context) ([]*asset.ImageAsset, error) {
+func (r *testImagesRepo) ListAll(_ context.Context) ([]*detail.ImageAsset, error) {
 	if r == nil {
 		return nil, nil
 	}

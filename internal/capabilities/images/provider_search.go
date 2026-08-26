@@ -1,6 +1,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"sort"
@@ -62,7 +63,7 @@ func (p *resolverSearchProvider) searchUncached(ctx context.Context, req provide
 	}
 	hits, err := searcher.Search(ctx, ImageFilter{
 		SubjectID: strings.TrimSpace(req.Query),
-		Origins:   []asset.ImageOrigin{asset.ImageOriginRetrieved},
+		Origins:   []detail.ImageOrigin{detail.ImageOriginRetrieved},
 		Tags:      append([]string(nil), req.Filters.Tags...),
 		Limit:     req.Limit,
 	})

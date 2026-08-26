@@ -51,6 +51,7 @@
 package imagesregistry
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"database/sql"
 	"fmt"
@@ -60,7 +61,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -216,7 +217,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 	ctx context.Context,
 	clipID string,
 	m youtubetypes.CanonicalClipMetadata,
-	textTracks []asset.TextTrack,
+	textTracks []detail.TextTrack,
 ) error {
 	if len(textTracks) == 0 {
 		return w.UpdateClipMetadataAndRequestIndex(ctx, clipID, m)

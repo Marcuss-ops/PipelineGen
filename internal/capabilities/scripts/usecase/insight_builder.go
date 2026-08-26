@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
@@ -46,7 +46,7 @@ func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitie
 		ArtlistPhrases:   []string{},
 	}
 
-	var analysis asset.FullEntityAnalysis
+	var analysis detail.FullEntityAnalysis
 	if err := json.Unmarshal([]byte(strings.TrimSpace(entitiesJSON)), &analysis); err == nil {
 		for _, segment := range analysis.SegmentEntities {
 			insights.ImportantWords = sliceutil.AppendUniqueStrings(insights.ImportantWords, segment.ParoleImportanti...)

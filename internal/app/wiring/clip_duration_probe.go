@@ -11,7 +11,7 @@ import (
 
 	mediaexec "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ClipProber is the canonical media probe port used to measure an asset's
@@ -29,7 +29,8 @@ func renderAssetSHA256(a *asset.Asset) (string, error) {
 	if candidate := strings.TrimSpace(a.LegacyFileMD5()); len(candidate) == 64 && !strings.Contains(candidate, ":") {
 		return candidate, nil
 	}
-	return fileutil.SHA256File(a.LocalPath())
+	sha, _, err := digest.SHA256File(a.LocalPath())
+	return sha, err
 }
 
 // renderAssetDurationSeconds returns the certified asset total duration. It

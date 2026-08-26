@@ -20,7 +20,7 @@ package retrieved
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"io"
 )
 
@@ -37,12 +37,12 @@ type IngestServicePort interface {
 		filename, sourceURL, description string,
 		tags []string,
 		skipDrive, skipMetadata bool,
-	) (*asset.ImageAsset, error)
+	) (*detail.ImageAsset, error)
 
 	// UploadToStyleDrive uploads an already-ingested asset to
 	// the per-style Drive folder. Used by the Drive-territory
 	// pipeline.
-	UploadToStyleDrive(ctx context.Context, asset *asset.ImageAsset, style string) (string, string, error)
+	UploadToStyleDrive(ctx context.Context, asset *detail.ImageAsset, style string) (string, string, error)
 }
 
 // IngestServiceAdapter wraps an IngestServicePort for callers

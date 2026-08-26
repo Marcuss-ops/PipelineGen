@@ -3,7 +3,7 @@
 // follow-up, July 2026).
 //
 // godlike/06 SSOT: Renderer is the 1-method port AdminSystemProber
-// needs from the asset.Processor cross-cutting dependency to probe
+// needs from the detail.Processor cross-cutting dependency to probe
 // FFmpeg binary presence/version. The interface is declared here
 // (next to its sole consumer probeFFmpeg) per Pattern 0 +
 // godlike/06's "smallest-port-possible" discipline; the canonical
@@ -17,6 +17,7 @@
 package diagnostics
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"os/exec"
 	"strings"
@@ -33,10 +34,10 @@ import (
 const FFmpegVersionProbeTimeout = 2 * time.Second
 
 // Renderer is the minimal interface AdminSystemProber needs from the
-// asset.Processor cross-cutting dependency to probe FFmpeg binary
+// detail.Processor cross-cutting dependency to probe FFmpeg binary
 // presence/version. The concrete is ffmpeg.NewProcessor; we declare a
 // narrow 1-method port here to keep the SystemProber decoupled from
-// the cross-cutting asset.Processor surface (godlike/06 Pattern 0:
+// the cross-cutting detail.Processor surface (godlike/06 Pattern 0:
 // smallest-port-possible). Wired in Commit 2 (ffmpeg_binary probe).
 //
 // Pattern 0 placement: the interface is declared next to its sole

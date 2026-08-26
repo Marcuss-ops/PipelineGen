@@ -10,6 +10,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strconv"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -42,7 +43,7 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 
 	var searchResult *SearchResult
 	var err error
-	provider := asset.ImageProvider(c.Query("provider"))
+	provider := detail.ImageProvider(c.Query("provider"))
 	limit := 1
 	if rawLimit := c.Query("limit"); rawLimit != "" {
 		parsed, parseErr := strconv.Atoi(rawLimit)

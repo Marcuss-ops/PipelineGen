@@ -10,6 +10,7 @@
 package drive
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"encoding/json"
 	"errors"
 	"fmt"

@@ -53,13 +53,14 @@
 package operator
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -67,7 +68,7 @@ import (
 // All HTTP methods hang off this struct; sub-router entry points are
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
-	assetService  *asset.Service
+	assetService  *detail.Service
 	readModel     AssetInventoryReader
 	indexVerifier IndexVerifier
 	jobService    job.Service
@@ -89,7 +90,7 @@ type OperatorOptions struct {
 // Dependencies holds the pre-built dependencies for the operator handler.
 type Dependencies struct {
 	*OperatorOptions
-	AssetService  *asset.Service
+	AssetService  *detail.Service
 	ReadModel     AssetInventoryReader
 	IndexVerifier IndexVerifier
 	JobService    job.Service

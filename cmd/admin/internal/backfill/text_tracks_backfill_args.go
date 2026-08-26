@@ -4,11 +4,12 @@
 package backfill
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // parseTextTracksBackfillArgs is the pure, testable flag parser.
@@ -119,13 +120,13 @@ func splitLanguages(csv string) (string, []string, error) {
 // CLI self-contained (the application-layer
 // texttracks.isKnownTextTrackKind is unexported). The set
 // MUST match the canonical list in jobs.go::isKnownTextTrackKind.
-func isKnownTextTrackKind(k asset.TextTrackKind) bool {
+func isKnownTextTrackKind(k detail.TextTrackKind) bool {
 	switch k {
-	case asset.TextTrackTranscript,
-		asset.TextTrackDescription,
-		asset.TextTrackSummary,
-		asset.TextTrackTitle,
-		asset.TextTrackKeywords:
+	case detail.TextTrackTranscript,
+		detail.TextTrackDescription,
+		detail.TextTrackSummary,
+		detail.TextTrackTitle,
+		detail.TextTrackKeywords:
 		return true
 	}
 	return false

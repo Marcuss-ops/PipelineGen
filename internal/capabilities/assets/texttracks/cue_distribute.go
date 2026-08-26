@@ -3,7 +3,7 @@ package texttracks
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // CuesWithText keeps canonical source timing while projecting an already
@@ -16,9 +16,9 @@ import (
 // godlike/06 SSOT: this is the SOLE canonical owner of the full-text→cues
 // distribution formula. cmd/admin and the multilingual renderer MUST call
 // this helper rather than re-deriving the word-slicing logic inline.
-func CuesWithText(timing []asset.TimedCue, text string) []asset.TimedCue {
+func CuesWithText(timing []detail.TimedCue, text string) []detail.TimedCue {
 	words := strings.Fields(text)
-	out := make([]asset.TimedCue, len(timing))
+	out := make([]detail.TimedCue, len(timing))
 	for i, cue := range timing {
 		start := i * len(words) / len(timing)
 		end := (i + 1) * len(words) / len(timing)

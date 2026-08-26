@@ -18,6 +18,7 @@
 package indexing
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sort"
 	"strings"
 
@@ -29,11 +30,11 @@ import (
 //
 // godlike/06 SSOT aggregation rules:
 //   - VisibleActions = union/dedup of VisualObjects across frames
-//     (capped at asset.MaxVisibleItems=32, deterministic sort order).
+//     (capped at detail.MaxVisibleItems=32, deterministic sort order).
 //   - VisibleEntities = union/dedup of TextOnScreen across frames
 //     (same cap + sort order).
 //   - VisualSummaryText = the LONGEST RawDescription across frames
-//     (truncated to asset.MaxVisualSummaryChars=512).
+//     (truncated to detail.MaxVisualSummaryChars=512).
 //
 // Why "longest": empirical inspection of the canonical Python VLM
 // responses shows shorter descriptions are partial captions of a
@@ -67,15 +68,15 @@ func AggregateVLMResponses(frames []*VLMInferenceResponse) (text string, actions
 		}
 	}
 	actions = sortedKeys(actionSet)
-	if len(actions) > asset.MaxVisibleItems {
-		actions = actions[:asset.MaxVisibleItems]
+	if len(actions) > detail.MaxVisibleItems {
+		actions = actions[:detail.MaxVisibleItems]
 	}
 	entities = sortedKeys(entitySet)
-	if len(entities) > asset.MaxVisibleItems {
-		entities = entities[:asset.MaxVisibleItems]
+	if len(entities) > detail.MaxVisibleItems {
+		entities = entities[:detail.MaxVisibleItems]
 	}
-	if len(longestRaw) > asset.MaxVisualSummaryChars {
-		longestRaw = longestRaw[:asset.MaxVisualSummaryChars]
+	if len(longestRaw) > detail.MaxVisualSummaryChars {
+		longestRaw = longestRaw[:detail.MaxVisualSummaryChars]
 	}
 	return longestRaw, actions, entities
 }

@@ -16,10 +16,11 @@ package ports
 import (
 	"context"
 	"errors"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Domain DTOs (canonical shape at the application–infra seam) ────────────
@@ -115,16 +116,16 @@ type SearchLiveResult struct {
 type ClipStorePort interface {
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
-	GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error)
+	GetFolder(ctx context.Context, folderID string) (*detail.ClipFolder, error)
 	Upsert(ctx context.Context, m *asset.Asset) error
-	UpsertFolder(ctx context.Context, f *asset.ClipFolder) error
+	UpsertFolder(ctx context.Context, f *detail.ClipFolder) error
 	DeleteClip(ctx context.Context, id string) error
 	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
 	// PR3-Wave14 PR5 / PG-003 (June 2026): the youtube handler used to
 	// reach through *assets.ClipsRepository for advanced search + counts;
 	// now those flow through the port so the handler depends only on
 	// application-layer contracts.
-	SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error)
+	SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error)
 	CountClips(ctx context.Context) (int, error)
 }
 
@@ -149,10 +150,10 @@ type DriveFolderManagerPort interface {
 }
 
 type FolderMemoryPort interface {
-	LoadManifest(manifestPath string) (*asset.ClipManifest, error)
-	SaveManifest(manifestPath string, manifest *asset.ClipManifest) error
-	UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error
-	ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats
+	LoadManifest(manifestPath string) (*detail.ClipManifest, error)
+	SaveManifest(manifestPath string, manifest *detail.ClipManifest) error
+	UpdateManifestTXT(folder *detail.ClipFolder, manifest *detail.ClipManifest) error
+	ComputeManifestStats(manifest *detail.ClipManifest) detail.ClipFolderStats
 }
 
 type OllamaClientPort interface {
@@ -172,16 +173,16 @@ type ClipIndexerPort interface {
 type SubtitleFetcherPort interface {
 	SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error
 	// FetchSegmentSubtitles returns the canonical typed subtitle track
-	// for [startSec, endSec]: plaintext + per-cue timings (asset.TimedCue)
+	// for [startSec, endSec]: plaintext + per-cue timings (detail.TimedCue)
 	// + detected language code. The implementation probes manual
 	// subtitles first then auto-generated fallback; nil/empty result is
 	// a valid "not found" (NOT an error). Fetch errors are typed (network
 	// failure, parse error, etc.) and propagated verbatim.
 	//
-	// godlike/06 SSOT: returns *asset.ResolvedTextBundle so the resolver
+	// godlike/06 SSOT: returns *detail.ResolvedTextBundle so the resolver
 	// can forward the typed result without re-parsing the VTT inline.
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a.
-	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
+	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*detail.ResolvedTextBundle, error)
 }
 
 type WhisperTranscriberPort interface {
@@ -203,7 +204,7 @@ type WhisperTranscriberPort interface {
 	// TextTrackResolver.AcquireSegmentText (priority 5) calls
 	// this method so the resolver can apply the
 	// RequireLanguageCertainty policy gate.
-	TranscribeAudioWithDetection(ctx context.Context, audioPath string) (asset.TranscriptResult, error)
+	TranscribeAudioWithDetection(ctx context.Context, audioPath string) (detail.TranscriptResult, error)
 }
 
 type ClipFilesPort interface {
@@ -316,7 +317,7 @@ type ClipMetadataWriter interface {
 	// UpdateClipMetadataAndRequestIndex (the text track upsert is
 	// skipped). This preserves backward compatibility with callers
 	// that don't carry text tracks.
-	UpdateClipMetadataTextsAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, textTracks []asset.TextTrack) error
+	UpdateClipMetadataTextsAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, textTracks []detail.TextTrack) error
 }
 
 // ── ffprobe validation port (audit 2026-07-03 BLOCKER #3) ───────────────

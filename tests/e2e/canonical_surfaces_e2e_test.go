@@ -33,6 +33,7 @@
 package e2e
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"encoding/json"
 	"strings"
@@ -121,7 +122,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 
 	t.Run("ClipIdentity", func(t *testing.T) {
 		// YouTube identity.
-		ytID, err := asset.NewYouTubeClipIdentity(asset.YouTubeClipIdentityParams{
+		ytID, err := detail.NewYouTubeClipIdentity(detail.YouTubeClipIdentityParams{
 			VideoID:     "vdC5GXxS-qU",
 			StartSec:    146,
 			EndSec:      155,
@@ -141,7 +142,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 			"ClipIdentity YouTube: IndexEventKey must contain AssetID")
 
 		// Stock identity.
-		stockID, err := asset.NewStockClipIdentity(
+		stockID, err := detail.NewStockClipIdentity(
 			"abc123def4567890", 0,
 			"sha256:stock-e2e-content-hash-000000000000",
 			"multilingual-e5-base", "v1", "media_assets_current",
@@ -166,7 +167,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 
 	t.Run("ClipSemanticMetadata", func(t *testing.T) {
 		// YouTube metadata.
-		ytMeta := asset.ClipSemanticMetadata{
+		ytMeta := detail.ClipSemanticMetadata{
 			AssetID:         "yt_vdC5GXxS-qU_146_155_v1",
 			Title:           "Broner yells at Pacquiao",
 			Description:     "Broner interrupts the press conference and yells at Pacquiao.",
@@ -212,7 +213,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 		}
 
 		// Stock metadata.
-		stockMeta := asset.ClipSemanticMetadata{
+		stockMeta := detail.ClipSemanticMetadata{
 			AssetID:                  "planner:abc123def4567890:0",
 			Title:                    "Pacquiao Round 7 Training",
 			Description:              "Pacquiao trains with intensity in the ring during round 7.",
@@ -278,7 +279,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 
 	t.Run("AssetPersistenceWriter_EnvelopeEquivalence", func(t *testing.T) {
 		// Build YouTube identity + metadata.
-		ytIdentity, err := asset.NewYouTubeClipIdentity(asset.YouTubeClipIdentityParams{
+		ytIdentity, err := detail.NewYouTubeClipIdentity(detail.YouTubeClipIdentityParams{
 			VideoID:     "vdC5GXxS-qU",
 			StartSec:    146,
 			EndSec:      155,
@@ -289,7 +290,7 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 			Collection:  "media_assets_current",
 		})
 		require.NoError(t, err)
-		ytMeta := asset.ClipSemanticMetadata{
+		ytMeta := detail.ClipSemanticMetadata{
 			AssetID:         ytIdentity.AssetID,
 			Title:           "Broner yells at Pacquiao",
 			Description:     "Broner interrupts the press conference and yells at Pacquiao.",
@@ -320,13 +321,13 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 		ytReq := buildYouTubePersistRequest(ytIdentity, ytMeta, ytDest)
 
 		// Build Stock identity + metadata.
-		stockIdentity, err := asset.NewStockClipIdentity(
+		stockIdentity, err := detail.NewStockClipIdentity(
 			"abc123def4567890", 0,
 			"sha256:stock-e2e-content-hash-000000000000",
 			"multilingual-e5-base", "v1", "media_assets_current",
 		)
 		require.NoError(t, err)
-		stockMeta := asset.ClipSemanticMetadata{
+		stockMeta := detail.ClipSemanticMetadata{
 			AssetID:                  stockIdentity.AssetID,
 			Title:                    "Pacquiao Round 7 Training",
 			Description:              "Pacquiao trains with intensity in the ring during round 7.",
@@ -590,8 +591,8 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 // DriveDestination). This is the canonical adapter pattern that the
 // infrastructure-layer concrete writer will implement.
 func buildYouTubePersistRequest(
-	id asset.ClipIdentity,
-	meta asset.ClipSemanticMetadata,
+	id detail.ClipIdentity,
+	meta detail.ClipSemanticMetadata,
 	dest delivery.DriveDestination,
 ) persistence.PersistAndIndexRequest {
 	return persistence.PersistAndIndexRequest{
@@ -618,8 +619,8 @@ func buildYouTubePersistRequest(
 // DriveDestination). This is the canonical adapter pattern that the
 // AssetTxFinalizer callers will use.
 func buildStockPersistRequest(
-	id asset.ClipIdentity,
-	meta asset.ClipSemanticMetadata,
+	id detail.ClipIdentity,
+	meta detail.ClipSemanticMetadata,
 	dest delivery.DriveDestination,
 ) persistence.PersistAndIndexRequest {
 	filename := dest.PathLeafName
@@ -652,7 +653,7 @@ func buildStockPersistRequest(
 // composeYouTubeClipSearchText in process_segment_helpers.go — the
 // E2E test owns its own composition to avoid importing the
 // application-layer helper (clean architecture).
-func composeYouTubeSearchText(meta asset.ClipSemanticMetadata) string {
+func composeYouTubeSearchText(meta detail.ClipSemanticMetadata) string {
 	var parts []string
 	if meta.Title != "" {
 		parts = append(parts, meta.Title)
@@ -726,11 +727,11 @@ func verifyEnvelopeShape(t *testing.T, envelope map[string]any, label string) {
 
 // buildIndexEnvelopeJSON constructs a canonical v1 index envelope JSON
 // for the Stock outbox event. Uses the canonical
-// asset.BuildIndexEventKey for the idempotency_key format (godlike/06
+// detail.BuildIndexEventKey for the idempotency_key format (godlike/06
 // SSOT — one canonical owner per fact).
 func buildIndexEnvelopeJSON(t *testing.T, assetID, sourceVersion string) string {
 	t.Helper()
-	idemKey := asset.BuildIndexEventKey(
+	idemKey := detail.BuildIndexEventKey(
 		assetID, sourceVersion,
 		"multilingual-e5-base", "v1", "media_assets_current",
 	)
@@ -749,7 +750,7 @@ func buildIndexEnvelopeJSON(t *testing.T, assetID, sourceVersion string) string 
 // buildStockMetadataJSON constructs a metadata_json blob for the Stock
 // media_assets row. Mirrors the production merged-ArtifactMetadata
 // shape from the stock finalizer.
-func buildStockMetadataJSON(t *testing.T, req persistence.PersistAndIndexRequest, meta asset.ClipSemanticMetadata) string {
+func buildStockMetadataJSON(t *testing.T, req persistence.PersistAndIndexRequest, meta detail.ClipSemanticMetadata) string {
 	t.Helper()
 	m := map[string]any{
 		"title":           meta.Title,

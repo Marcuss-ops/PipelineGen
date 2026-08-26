@@ -32,6 +32,7 @@
 package youtube
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
@@ -39,7 +40,7 @@ import (
 
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube/usecase"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // Service is the YouTubeRegistrar implementation. 8-port surface
@@ -55,7 +56,7 @@ type Service struct {
 	indexDisp     IndexDispatcherPort
 	enrichment    EnrichmentPort
 	log           sourcing.Logger
-	textTrackRepo asset.TextTrackRepository
+	textTrackRepo detail.TextTrackRepository
 
 	// requireDrive, when true, causes Register to return an error if the
 	// Drive Publisher fails (P0.2, July 2026). Set at construction via
@@ -75,7 +76,7 @@ type ServiceDeps struct {
 	IndexDisp     IndexDispatcherPort
 	Enrichment    EnrichmentPort
 	Log           sourcing.Logger
-	TextTrackRepo asset.TextTrackRepository
+	TextTrackRepo detail.TextTrackRepository
 }
 
 // NewService creates a YouTubeRegistrar service. deps.IndexDisp is REQUIRED
@@ -234,24 +235,24 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	if lang == "" {
 		lang = "und"
 	}
-	hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
-	track := asset.TextTrack{
+	hash := detail.TextHash(transcript, lang, detail.TextTrackTranscript)
+	track := detail.TextTrack{
 		AssetID:            clipID,
 		LanguageCode:       lang,
-		TextKind:           asset.TextTrackTranscript,
+		TextKind:           detail.TextTrackTranscript,
 		TextContent:        transcript,
-		SourceType:         asset.TextSourceWhisper,
+		SourceType:         detail.TextSourceWhisper,
 		SourceLanguageCode: lang,
 		IsOriginal:         true,
 		Provider:           "",
 		ModelName:          "tiny",
 		ModelVersion:       "",
 		TextHash:           hash,
-		SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
+		SourceVersion:      detail.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
 		IsCurrent:          true,
-		Status:             asset.TextTrackReady,
+		Status:             detail.TextTrackReady,
 	}
-	if err := s.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+	if err := s.textTrackRepo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
 		return nil, fmt.Errorf("failed to save transcript to DB: %w", err)
 	}
 

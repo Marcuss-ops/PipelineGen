@@ -6,18 +6,18 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // testImageGenSvc satisfies ImageGenService via fixed 4-string signature.
 // Compile = assertion: drift back to 5-arg `extra interface{}` breaks build.
 type testImageGenSvc struct{}
 
-func (*testImageGenSvc) SearchAndDownload(_ context.Context, _, _, _, _ string) (*asset.ImageAsset, error) {
-	return &asset.ImageAsset{SourceURL: "test://stub"}, nil
+func (*testImageGenSvc) SearchAndDownload(_ context.Context, _, _, _, _ string) (*detail.ImageAsset, error) {
+	return &detail.ImageAsset{SourceURL: "test://stub"}, nil
 }
 
-func (*testImageGenSvc) GenerateSceneImage(_ context.Context, _, _, _ string, _, _ []string, _, _ int, _ string, _ bool) (*asset.ImageAsset, error) {
+func (*testImageGenSvc) GenerateSceneImage(_ context.Context, _, _, _ string, _, _ []string, _, _ int, _ string, _ bool) (*detail.ImageAsset, error) {
 	return nil, nil
 }
 

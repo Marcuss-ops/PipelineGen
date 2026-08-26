@@ -35,6 +35,7 @@
 package texttracks
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -46,7 +47,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ErrNoSourceAcquired is the canonical typed error when the
@@ -63,16 +64,16 @@ var ErrNoSourceAcquired = errors.New("texttracks: no source transcript acquired 
 // texttracks package hermetic — the youtube package is heavier
 // and the backfill path doesn't need its full surface.
 type SubtitlesPort interface {
-	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
+	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*detail.ResolvedTextBundle, error)
 }
 
 // WhisperPort is the narrow interface the AcquireService uses
 // for Whisper fallback (priority 5). The concrete adapter is the
 // canonical WhisperTranscriberPort from youtube/ports
 // (TranscribeAudioWithDetection returns the typed
-// asset.TranscriptResult with Text, DetectedLanguage, Confidence).
+// detail.TranscriptResult with Text, DetectedLanguage, Confidence).
 type WhisperPort interface {
-	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
+	TranscribeAudioWithDetection(ctx context.Context, localPath string) (detail.TranscriptResult, error)
 }
 
 // DrivePort is the narrow Drive read surface used only when the registered
@@ -100,9 +101,9 @@ type AcquireCommand struct {
 type AcquireResult struct {
 	AssetID      string                `json:"asset_id"`
 	PlainText    string                `json:"plain_text"`
-	Cues         []asset.TimedCue      `json:"cues,omitempty"`
+	Cues         []detail.TimedCue      `json:"cues,omitempty"`
 	LanguageCode string                `json:"language_code"`
-	SourceType   asset.TextTrackSource `json:"source_type"`
+	SourceType   detail.TextTrackSource `json:"source_type"`
 	SourcePath   string                `json:"source_path,omitempty"` // for priority 2 (local file path)
 	Confidence   *float64              `json:"confidence,omitempty"`  // for priority 5 (Whisper)
 	Priority     int                   `json:"priority"`              // 2..5 — which level won
@@ -279,7 +280,7 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 				PlainText:    det.Text,
 				Cues:         det.Cues, // Whisper now returns per-segment timing!
 				LanguageCode: lang,
-				SourceType:   asset.TextSourceWhisper,
+				SourceType:   detail.TextSourceWhisper,
 				Confidence:   det.Confidence,
 				Priority:     5,
 				DurationMs:   time.Since(start).Milliseconds(),
@@ -360,9 +361,9 @@ func (s *AcquireService) acquireFromLocalFile(ctx context.Context, cmd AcquireCo
 			continue
 		}
 		// Priority 2 source_type: "local_file" (Fase 5 convention;
-		// maps to asset.TextTrackSource at the caller). The
+		// maps to detail.TextTrackSource at the caller). The
 		// BackfillService converts this to the canonical
-		// asset.TextSourceProvided on save (local files are
+		// detail.TextSourceProvided on save (local files are
 		// treated as user-provided provenance).
 		lang := cmd.Language
 		if lang == "" {

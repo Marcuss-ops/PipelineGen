@@ -70,13 +70,11 @@ const digestSHA256AllowlistStaleRule = "percheck_digest_sha256_ban_allowlist_sta
 const digestSHA256ImportPath = `"crypto/sha256"`
 
 // digestSHA256SSOTRoot is the ONLY package authorized to import
-// crypto/sha256 for application hashing (godlike/06 SSOT).
+// crypto/sha256 for application hashing (godlike/06 SSOT). The
+// pure primitive lives directly in internal/kernel/digest (the
+// former leaf mirror pkg/digest was removed when its only consumers
+// pkg/idempotency and pkg/qdrantid moved under internal/).
 const digestSHA256SSOTRoot = "internal/kernel/digest/"
-
-// The pure primitive is exposed from pkg/digest so leaf packages do not need
-// to import internal/. internal/kernel/digest remains the semantic contract
-// and compatibility facade for the target tree.
-const digestSHA256LeafSSOTRoot = "pkg/digest/"
 
 // digestSHA256AllowlistFile is the on-disk SSOT for grandfathered
 // imports still in migration. Path is repo-relative (resolved against
@@ -264,7 +262,7 @@ func digestSHA256InScope(relSlash string) bool {
 // SSOT root (internal/kernel/digest/) or a permanent TLS/protocol
 // exemption.
 func digestSHA256Exempt(relSlash string) bool {
-	if strings.HasPrefix(relSlash, digestSHA256SSOTRoot) || strings.HasPrefix(relSlash, digestSHA256LeafSSOTRoot) {
+	if strings.HasPrefix(relSlash, digestSHA256SSOTRoot) {
 		return true
 	}
 	return hasAnyPathPrefix(relSlash, digestSHA256PermanentExemptPrefixes)

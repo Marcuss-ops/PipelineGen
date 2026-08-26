@@ -65,9 +65,10 @@
 package indexing
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
 
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 )
 
@@ -262,7 +263,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		AssetID:        asset.ID,
 		WorkspaceID:    asset.WorkspaceID,
 		LifecycleState: domainAssetLifecycle(asset.LifecycleState),
-		SourceVersion:  asset.SourceVersion,
+		SourceVersion:  detail.SourceVersion,
 		ContentHash:    asset.ContentHash,
 		SearchText:     asset.SearchText, // legacy pass-through (BuildPayload entry); mapper receivers override via AssetToIndexDocument
 		Metadata: IndexedMetadata{
@@ -282,7 +283,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			SourceType:       asset.SourceType,
 			SemanticRole:     asset.SemanticRole,
 			HasDialogue:      metadataBoolPtr(asset.Metadata, asset.HasDialogue),
-			AudioProfile:     firstNonEmpty(asset.AudioProfile, assetpkg.MetadataString(asset.Metadata, "audio_profile")),
+			AudioProfile:     firstNonEmpty(detail.AudioProfile, assetpkg.MetadataString(asset.Metadata, "audio_profile")),
 			Language:         asset.Language,
 			Category:         asset.Category,
 			Style:            asset.Style,
@@ -360,7 +361,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			// Verbatim copy from AssetData (top-level first-class fields; the
 			// visual-summary reindex service populates these when it runs a
 			// new VLM pass; the payload builder emits them with omitempty).
-			VisualSummary:              asset.VisualSummary,
+			VisualSummary:              detail.VisualSummary,
 			VisibleActions:             asset.VisibleActions,
 			VisibleEntities:            asset.VisibleEntities,
 			VisualPreprocessingVersion: asset.VisualPreprocessingVersion,

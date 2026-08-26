@@ -17,7 +17,7 @@
 // loop now calls `c.resolveTranscript(ctx, ...)` EXACTLY ONCE
 // (previously called twice — once in appendClipSourceText, once
 // in appendClipDetail). The resolved transcript string +
-// *asset.TextTrack are captured in the per-clip accumulator;
+// *detail.TextTrack are captured in the per-clip accumulator;
 // the append helpers receive the pre-resolved transcript via
 // a parameter (no second round-trip). The resolved track feeds
 // the 3 new ClipEvidence fingerprint fields (LanguageCode,
@@ -47,13 +47,14 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
@@ -75,7 +76,7 @@ type ClipSourceBuilder struct {
 	// — there is no `metadata_json[\\"transcript\\"]` /
 	// `metadata_json[\\"clean_transcript\\"]` fallback path.
 	textTrackReader   ports.TextTrackReader
-	subtitleArtifacts asset.SubtitleArtifactRepository
+	subtitleArtifacts detail.SubtitleArtifactRepository
 }
 
 type ClipGenerationOptions struct {
@@ -149,7 +150,7 @@ func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 
 // ConfigureSubtitleArtifactRepository wires the canonical READY ASS lookup
 // used to enrich clip evidence before the Google Doc is rendered.
-func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r asset.SubtitleArtifactRepository) {
+func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r detail.SubtitleArtifactRepository) {
 	c.subtitleArtifacts = r
 }
 
@@ -159,7 +160,7 @@ func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r asset.Subtitle
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the per-clip
 // loop calls c.resolveTranscript EXACTLY ONCE per clip and threads
-// the resolved transcript + *asset.TextTrack through the
+// the resolved transcript + *detail.TextTrack through the
 // accumulator. The 3 new ClipEvidence fingerprint fields
 // (LanguageCode, TextTrackVersion, TranscriptHash) are populated
 // by buildClipEvidence from the FIRST non-nil resolved track
@@ -240,7 +241,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		// post-loop buildClipEvidence call reads the
 		// FIRST non-nil entry to populate the evidence-level
 		// fingerprint.
-		resolvedTracks      = make(map[string]*asset.TextTrack, len(records))
+		resolvedTracks      = make(map[string]*detail.TextTrack, len(records))
 		sourceTextWriter    strings.Builder
 		narrativeTextWriter strings.Builder
 	)
@@ -309,7 +310,7 @@ func (c *ClipSourceBuilder) enrichClipSubtitle(ctx context.Context, details map[
 			zap.Int("artifact_count", len(artifacts)))
 	}
 	for _, artifact := range artifacts {
-		if artifact.Format != asset.SubtitleFormatASS || artifact.Status != asset.SubtitleStatusReady || !artifact.IsCurrent {
+		if artifact.Format != detail.SubtitleFormatASS || artifact.Status != detail.SubtitleStatusReady || !artifact.IsCurrent {
 			continue
 		}
 		if strings.TrimSpace(artifact.DriveURL) == "" || strings.TrimSpace(artifact.DriveFileID) == "" {

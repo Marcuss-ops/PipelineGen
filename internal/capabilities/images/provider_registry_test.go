@@ -1,6 +1,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"testing"
@@ -35,8 +36,8 @@ func TestGenerationRegistry_DefaultsToGoogleSlidesNanoBananaPro(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Provider != asset.ProviderGoogleSlides {
-		t.Fatalf("provider = %q, want %q", result.Provider, asset.ProviderGoogleSlides)
+	if result.Provider != detail.ProviderGoogleSlides {
+		t.Fatalf("provider = %q, want %q", result.Provider, detail.ProviderGoogleSlides)
 	}
 	if result.Model != CanonicalGoogleSlidesModel {
 		t.Fatalf("model = %q, want %q", result.Model, CanonicalGoogleSlidesModel)
@@ -57,13 +58,13 @@ func TestGenerationRegistry_NotWired(t *testing.T) {
 func TestGenerationRegistry_ExposesOnlyGoogleSlides(t *testing.T) {
 	registry := NewDefaultProviderRegistry(zap.NewNop(), nil)
 	providers := registry.Providers()
-	if len(providers) != 1 || providers[0].Name() != asset.ProviderGoogleSlides {
+	if len(providers) != 1 || providers[0].Name() != detail.ProviderGoogleSlides {
 		t.Fatalf("providers = %+v", providers)
 	}
-	if registry.ProviderByName(asset.ProviderGoogleSlides) == nil {
+	if registry.ProviderByName(detail.ProviderGoogleSlides) == nil {
 		t.Fatal("google-slides provider missing")
 	}
-	if registry.ProviderByName(asset.ImageProvider("removed-provider")) != nil {
+	if registry.ProviderByName(detail.ImageProvider("removed-provider")) != nil {
 		t.Fatal("removed provider must not resolve")
 	}
 }
@@ -74,7 +75,7 @@ func TestGenerationRegistry_DiagnosticsOnlyGoogleSlides(t *testing.T) {
 	if len(diagnostics) != 1 {
 		t.Fatalf("diagnostics entries = %d, want 1", len(diagnostics))
 	}
-	if _, ok := diagnostics[asset.ProviderGoogleSlides]; !ok {
+	if _, ok := diagnostics[detail.ProviderGoogleSlides]; !ok {
 		t.Fatal("google-slides diagnostics entry missing")
 	}
 }

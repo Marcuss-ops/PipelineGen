@@ -1,11 +1,12 @@
 package usecase
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 type recordingSearchPort struct {
@@ -24,11 +25,11 @@ func (f *recordingSearchPort) SearchByText(_ context.Context, query string, limi
 }
 
 type stubTextTrackReader struct {
-	tracks map[string]*asset.TextTrack
+	tracks map[string]*detail.TextTrack
 }
 
-func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
-	if kind != asset.TextTrackTranscript {
+func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, kind detail.TextTrackKind) (*detail.TextTrack, []detail.TimedCue, error) {
+	if kind != detail.TextTrackTranscript {
 		return nil, nil, nil
 	}
 	key := assetID + ":" + languageCode
@@ -38,8 +39,8 @@ func (s *stubTextTrackReader) FindReady(_ context.Context, assetID, languageCode
 	return nil, nil, nil
 }
 
-func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
-	if kind != asset.TextTrackTranscript {
+func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, kind detail.TextTrackKind) ([]string, error) {
+	if kind != detail.TextTrackTranscript {
 		return nil, nil
 	}
 	var langs []string
@@ -54,18 +55,18 @@ func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID stri
 	return langs, nil
 }
 
-func makeTrack(assetID, language, text string) *asset.TextTrack {
+func makeTrack(assetID, language, text string) *detail.TextTrack {
 	hash := fmt.Sprintf("%x", len(text))
-	return &asset.TextTrack{
+	return &detail.TextTrack{
 		AssetID:       assetID,
 		LanguageCode:  language,
-		TextKind:      asset.TextTrackTranscript,
+		TextKind:      detail.TextTrackTranscript,
 		TextContent:   text,
-		SourceType:    asset.TextSourceProvided,
+		SourceType:    detail.TextSourceProvided,
 		ModelVersion:  "test",
 		TextHash:      hash,
 		SourceVersion: "test",
-		Status:        asset.TextTrackReady,
+		Status:        detail.TextTrackReady,
 	}
 }
 

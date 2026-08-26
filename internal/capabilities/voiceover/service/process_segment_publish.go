@@ -11,8 +11,8 @@
 package voiceover
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	files "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -263,7 +263,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		words = remapped
 		durationUS = post.DurationUS
 	}
-	audioSHA, err := files.HashFile(uploadPath, sha256.New())
+	audioSHA, _, err := digest.SHA256File(uploadPath)
 	if err != nil {
 		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))
 	}
@@ -271,7 +271,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		tts.Provider,
 		string(cmd.Language),
 		out.Voice,
-		files.SHA256String(cmd.Text),
+		digest.SHA256String(cmd.Text),
 		audioSHA,
 		durationUS,
 		words,

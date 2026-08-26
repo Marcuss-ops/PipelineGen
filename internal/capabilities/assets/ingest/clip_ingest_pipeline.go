@@ -48,6 +48,7 @@
 package ingest
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"errors"
 	"fmt"
@@ -58,7 +59,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ── Port interfaces (godlike/06 SSOT) ────────────────────────────────────────
@@ -94,19 +95,19 @@ type ArtifactStore interface {
 // internal/infrastructure/youtube/whisper_transcriber.go via the
 // application-layer facade.
 type Transcriber interface {
-	Transcribe(ctx context.Context, media NormalizedMedia) (asset.TranscriptResult, error)
+	Transcribe(ctx context.Context, media NormalizedMedia) (detail.TranscriptResult, error)
 }
 
 // ClipEnricher attaches semantic + visual metadata to a freshly-stored
 // asset.
 type ClipEnricher interface {
-	Enrich(ctx context.Context, assetID string, media NormalizedMedia, transcript asset.TranscriptResult) error
+	Enrich(ctx context.Context, assetID string, media NormalizedMedia, transcript detail.TranscriptResult) error
 }
 
 // TextTrackTranslator localizes the source-language text tracks into
 // registered target languages.
 type TextTrackTranslator interface {
-	Translate(ctx context.Context, assetID string, transcript asset.TranscriptResult) ([]asset.TextTrack, error)
+	Translate(ctx context.Context, assetID string, transcript detail.TranscriptResult) ([]detail.TextTrack, error)
 }
 
 // SearchTextComposer composes the BM25 + vector-search text envelope.
@@ -142,9 +143,9 @@ type ClipIngestContext struct {
 	Source              string
 	NormalizedMedia     NormalizedMedia
 	ContentHash         string
-	Transcript          asset.TranscriptResult
+	Transcript          detail.TranscriptResult
 	EnrichmentArtifacts map[string]any
-	Translations        []asset.TextTrack
+	Translations        []detail.TextTrack
 }
 
 // ClipIngestResult is the Ingest return shape. FinalState is one of the

@@ -15,6 +15,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -134,7 +135,7 @@ func (r *ImageSearchResolverImpl) ExistingImages(ctx context.Context, subject st
 	}
 	return r.repo.ListImages(ctx, ImageFilter{
 		SubjectID: subjectID,
-		Origins:   []asset.ImageOrigin{asset.ImageOriginRetrieved},
+		Origins:   []detail.ImageOrigin{detail.ImageOriginRetrieved},
 		Limit:     ResolvedLimit(limit),
 	})
 }
@@ -155,7 +156,7 @@ func (s *retrievedProviderSearcher) Search(ctx context.Context, filter ImageFilt
 	out := make([]ImageSearchResult, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, ImageSearchResult{
-			Origin:        string(asset.ImageOriginRetrieved),
+			Origin:        string(detail.ImageOriginRetrieved),
 			Provider:      string(h.Provider),
 			Name:          h.Title,
 			PreviewURL:    h.PreviewURL,

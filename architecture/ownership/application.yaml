@@ -265,18 +265,18 @@ domain_asset:
 # domain_core_ports (REMOVED — internal/core/ no longer exists)
 
 # ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
-  owner: internal/application/jobs
+  owner: internal/capabilities/jobs
   rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
   target_subdirs:
     - jobs/assets         # worker asset ops (renamed from old application/workerassets)
     - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)
 
 application_scripts:
-  owner: internal/application/scripts
+  owner: internal/capabilities/scripts
   rationale: Script-generation orchestration. Production files owned by
     1 root facade + 6 capability-bounded subpackage. Each subpackage
     exposes ≤ 17 production files (well under policy.yaml
-    ::max_files_per_package=40). The 53-production-file mega-package
+    ::max_files_per_package=65). The 53-production-file mega-package
     state (June 2026) is being unwound in PR-G (4-phase migration
     EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
   target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
@@ -292,18 +292,13 @@ application_scripts:
   pr_g_status: in_progress (PR-G.1 EXPAND landed 2026-06-27;
     PR-G.2 BACKFILL started 2026-08-05; generation plan builder is parity-covered;
     legacy usecase path remains until CUTOVER; deadline 2026-09-30)
-  current_drift: internal/application/scriptflow/ directory eliminated
-    (flat-merged into internal/application/scripts/). The 5 pre-existing
-    aspirational subdirs in the older target_subdirs list (batch,
-    documents, generate, jobs, scenes) were NEVER materialised on disk
-    and have been dropped from the canonical list. The 6 NEW subpackage
-    entries above replace them.
+  current_drift: "migration complete (2026-08-25): the legacy internal/application/scripts/ root was deleted; the capability now lives flat in internal/capabilities/scripts/ (adapters/ + usages). The PR-G aspirational subpackages (curation, generation, persistence, postprocess, source, usecases) were never fully materialised on disk and are superseded by the flat layout."
   cross_refs:
     plan: architecture/current.yaml#id-21 (Wave 21 PR-G.1 EXPAND block)
-    policy: architecture/policy.yaml::max_files_per_package=40
+    policy: architecture/policy.yaml::max_files_per_package=65
 
 application_assets:
-  owner: internal/application/assets
+  owner: internal/capabilities/assets
   rationale: Catalog, indexing, classification, providers registry, association & realtime search.
   target_subdirs:
     - assets/catalog
@@ -331,7 +326,7 @@ application_assets:
   #          removed; migration_phase=CONTRACT; synchronous-with-
   #          backfill closure; replacement=channels.Service via canonical
   #          POST /channels/bulk-upsert).
-  # The internal/application/assets/monitor/ capability consumes
+  # The internal/capabilities/assets/monitor/ capability consumes
   # channels.Service (ListEnabled / ClaimDue / MarkChecked / UpdateCursor)
   # exclusively; per-video discovery state (the legacy discovery-state
   # SQL surface) is CONTRACT-phase superseded by media_assets discovery
@@ -348,7 +343,7 @@ application_assets:
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
 
 application_images:
-  owner: internal/application/images
+  owner: internal/capabilities/images
   target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
 
 application_voiceover:
@@ -356,11 +351,11 @@ application_voiceover:
   target_subdirs: [voiceover/service, voiceover/sync]
 
 application_books:
-  owner: internal/application/books
+  owner: internal/capabilities/books
   rationale: Books + lessons; produces Markdown/PDF deliverables.
   target_subdirs: [books]
 
 application_lessons:
-  owner: internal/application/lessons
+  owner: internal/capabilities/lessons
   rationale: Lesson generation; produces Markdown/PDF deliverables.
   target_subdirs: [lessons]

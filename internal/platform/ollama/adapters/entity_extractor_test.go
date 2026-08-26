@@ -3,7 +3,7 @@ package adapters
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -42,11 +42,11 @@ func TestIsContainedEntityFragment_SuppressesModelTokenFragments(t *testing.T) {
 
 // TestEntityResultFromAnalysis_ConsolidatesEntitiesPhrasesWordsFromSingleResult
 // certifies the SceneAnalysis single-pass boundary: one LLM response (one
-// asset.EntityExtractionResult) carries named entities, important phrases, and
+// detail.EntityExtractionResult) carries named entities, important phrases, and
 // important words together, and the adapter projects all three categories from
 // that single result — never via three independent extraction requests.
 func TestEntityResultFromAnalysis_ConsolidatesEntitiesPhrasesWordsFromSingleResult(t *testing.T) {
-	analysis := &asset.EntityExtractionResult{
+	analysis := &detail.EntityExtractionResult{
 		FrasiImportanti:  []string{"the Apollo program"},
 		ParoleImportanti: []string{"solar wind", "samples"},
 		NomiSpeciali:     []string{"PERSON: Ada Lovelace", "PLACE: London"},

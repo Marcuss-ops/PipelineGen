@@ -11,7 +11,7 @@
 // row, an asset_locations row, or the canonical
 // asset.index.requested outbox event MUST route through this port.
 //
-// The `internal/application/assets/finalizer` package is the
+// The `internal/capabilities/assets/finalizer` package is the
 // "processor" in scope: it hosts the `AssetTxFinalizer` that
 // orchestrates the asset commit per-PublishedArtifact. The
 // `AssetTxFinalizer` has a `WithCommitter` method that delegates
@@ -70,7 +70,7 @@ const finalizerNoSQLCanonicalOwner = "internal/platform/sqlite/assets/asset_comm
 // finalizerNoSQLScanRoot is the package scanned by the gate.
 // Every Go file under this root (except tests + the canonical
 // SSOT) is inspected for forbidden SQL patterns.
-const finalizerNoSQLScanRoot = "internal/application/assets/finalizer"
+const finalizerNoSQLScanRoot = "internal/capabilities/assets/finalizer"
 
 // finalizerNoSQLForbiddenPatterns lists the SQL patterns that
 // the gate bans from the finalizer package. The match is
@@ -184,14 +184,13 @@ func ScanFinalizerNoDirectSQL(root string, pol *policy.Policy, r *report.Report)
 		inspectFinalizerNoSQLFile(root, path, r)
 		return nil
 	})
-	if err != nil {
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/application/assets/finalizer",
-			File:        finalizerNoSQLScanRoot,
-			Line:        0,
-			Rule:        finalizerNoSQLRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "scan_root_unreadable",
+	if err != nil {			r.Violations = append(r.Violations, report.Violation{
+				Package:     "internal/capabilities/assets/finalizer",
+				File:        finalizerNoSQLScanRoot,
+				Line:        0,
+				Rule:        finalizerNoSQLRule,
+				Severity:    string(report.SeverityError),
+				MatchedRule: "scan_root_unreadable",
 			Note:        finalizerNoSQLNote + " | cannot walk scan root: " + err.Error(),
 		})
 	}
@@ -205,6 +204,9 @@ func inspectFinalizerNoSQLFile(root, absPath string, r *report.Report) {
 	if err != nil {
 		relPath = absPath
 	}
+	// Normalize to forward slashes so the emitted File field and
+	// the canonical-path comparisons are platform-independent.
+	relPath = filepath.ToSlash(relPath)
 	// Defense-in-depth: skip the canonical SSOT (it lives in a
 	// different package but the guard makes the intent explicit).
 	if relPath == finalizerNoSQLCanonicalOwner {
@@ -221,7 +223,7 @@ func inspectFinalizerNoSQLFile(root, absPath string, r *report.Report) {
 	f, err := os.Open(absPath)
 	if err != nil {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/application/assets/finalizer",
+			Package:     "internal/capabilities/assets/finalizer",
 			File:        relPath,
 			Line:        0,
 			Rule:        finalizerNoSQLRule,
@@ -258,7 +260,7 @@ func inspectFinalizerNoSQLFile(root, absPath string, r *report.Report) {
 		// Extract the table name from the regex match.
 		table := strings.ToLower(strings.TrimSpace(m[2]))
 		r.Violations = append(r.Violations, report.Violation{
-			Package: "internal/application/assets/finalizer",
+			Package: "internal/capabilities/assets/finalizer",
 			File:    relPath,
 			Line:    lineNo,
 			Rule:    finalizerNoSQLRule,

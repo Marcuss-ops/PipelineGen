@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"os"
@@ -10,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/multilingual"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -54,7 +55,7 @@ func processOneClip(
 	cueTranslator *texttracks.CueTranslator,
 	rec *multilingual.Recorder,
 	clips *sqassets.ClipsRepository,
-	trackRepo asset.TextTrackRepository,
+	trackRepo detail.TextTrackRepository,
 	cfg *config.Config,
 	id, srcLang string,
 	targetLangs []string,
@@ -113,7 +114,7 @@ func processOneClip(
 		Source:                      string(item.Source),
 		SourceLanguage:              srcLang,
 		TargetLanguages:             targetLangs,
-		TextKind:                    asset.TextTrackTranscript,
+		TextKind:                    detail.TextTrackTranscript,
 		SkipSubtitleMaterialization: true, // the renderer generates ASS from its own per-cue cues
 	})
 	if err != nil {
@@ -137,7 +138,7 @@ func processOneClip(
 	counters.TranslateFullText = int64(len(bf.CreatedLangs) + len(bf.Retranslated))
 
 	// 3. Read the timed source cues (the single source of truth for timing).
-	srcTrack, srcCues, err := trackRepo.FindReady(ctx, id, srcLang, asset.TextTrackTranscript)
+	srcTrack, srcCues, err := trackRepo.FindReady(ctx, id, srcLang, detail.TextTrackTranscript)
 	if err != nil {
 		return nil, multilingual.RunMetrics{}, nil, fmt.Errorf("multilingual-render: %s: read source track: %w", id, err)
 	}
@@ -157,7 +158,7 @@ func processOneClip(
 		transcriptStatus = "generated"
 	}
 
-	byLang := map[string][]asset.TimedCue{srcLang: srcCues}
+	byLang := map[string][]detail.TimedCue{srcLang: srcCues}
 	translationStatus := map[string]string{srcLang: "source"}
 	translateMS := map[string]int64{srcLang: 0}
 	var sumTranslateMS int64
@@ -170,7 +171,7 @@ func processOneClip(
 	// buildAndSubmit generates the ASS for one language from in-memory cues and
 	// submits its render to the pool. Returns the report row (render fields are
 	// filled after Wait from the per-language render result).
-	buildAndSubmit := func(lang string, cues []asset.TimedCue, priority int, textReadyAt time.Time) langReport {
+	buildAndSubmit := func(lang string, cues []detail.TimedCue, priority int, textReadyAt time.Time) langReport {
 		rep := langReport{
 			Language:    lang,
 			Transcript:  transcriptStatus,
@@ -179,7 +180,7 @@ func processOneClip(
 			Priority:    priority,
 			TextReadyAt: formatTS(textReadyAt),
 		}
-		track, tErr := trackRepo.Find(ctx, id, lang, asset.TextTrackTranscript)
+		track, tErr := trackRepo.Find(ctx, id, lang, detail.TextTrackTranscript)
 		if tErr != nil || track == nil {
 			rep.ASSStatus = "failed"
 			rep.RenderStatus = "failed"
@@ -260,7 +261,7 @@ func processOneClip(
 	// submitReusable is the fast path: when the translated TextTrack and the
 	// variant fingerprint already match, do not call the translator or build a
 	// new ASS file. RenderOne still performs its own authoritative cache check.
-	submitReusable := func(lang string, track *asset.TextTrack, priority int, textReadyAt time.Time) langReport {
+	submitReusable := func(lang string, track *detail.TextTrack, priority int, textReadyAt time.Time) langReport {
 		translationVersion := track.ModelVersion
 		if translationVersion == "" {
 			translationVersion = track.SourceVersion
@@ -299,7 +300,7 @@ func processOneClip(
 		// its variant is already READY, the whole language is reused: no
 		// translation, no ASS generation, no Rust process, no Drive upload.
 		if !force {
-			if readyTrack, readyCues, readyErr := trackRepo.FindReady(ctx, id, lang, asset.TextTrackTranscript); readyErr == nil && readyTrack != nil && len(readyCues) > 0 {
+			if readyTrack, readyCues, readyErr := trackRepo.FindReady(ctx, id, lang, detail.TextTrackTranscript); readyErr == nil && readyTrack != nil && len(readyCues) > 0 {
 				translationVersion := readyTrack.ModelVersion
 				if translationVersion == "" {
 					translationVersion = readyTrack.SourceVersion

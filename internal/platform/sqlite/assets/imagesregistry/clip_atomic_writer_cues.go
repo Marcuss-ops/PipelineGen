@@ -30,7 +30,7 @@ import (
 	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // insertTextTrackSegmentsInTx performs the BATCH INSERT of
@@ -80,7 +80,7 @@ ON CONFLICT(track_id, sequence_no) DO UPDATE SET
 		// Sort cues ascending by StartMs so sequence_no is
 		// monotonic. Use SliceStable so equal-start cues preserve
 		// caller order (deterministic behaviour across retries).
-		sortedCues := append([]asset.TimedCue(nil), tt.Cues...)
+		sortedCues := append([]detail.TimedCue(nil), tt.Cues...)
 		sort.SliceStable(sortedCues, func(i, j int) bool {
 			if sortedCues[i].StartMs != sortedCues[j].StartMs {
 				return sortedCues[i].StartMs < sortedCues[j].StartMs

@@ -8,6 +8,7 @@
 package images
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -52,7 +53,7 @@ type GeneratedImage struct {
 	Width      int
 	Height     int
 	PromptUsed string
-	Provider   asset.ImageProvider
+	Provider   detail.ImageProvider
 	Model      string
 	SourceHash string
 	OutputPath string

@@ -66,7 +66,7 @@ const SlotDocument SlotKind = "document"
 func TestSlotStrings_DistinctLiteralFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	slotStringsWriteTree(t, dir, map[string]string{
-		"internal/application/brain/types.go": `package brain
+		"internal/capabilities/brain/types.go": `package brain
 var PrimaryVideoSlot = "primary_video"
 `,
 	})
@@ -103,7 +103,7 @@ const DocumentDestination = "document"
 func TestSlotStrings_GenericWithSlotContextFails(t *testing.T) {
 	dir := t.TempDir()
 	slotStringsWriteTree(t, dir, map[string]string{
-		"internal/application/brain/planner/planner.go": `package planner
+		"internal/capabilities/brain/planner/planner.go": `package planner
 var FallbackSlots = map[string]string{"document": "lower_third"}
 `,
 	})
@@ -119,7 +119,7 @@ var FallbackSlots = map[string]string{"document": "lower_third"}
 func TestSlotStrings_TestFilesExempted(t *testing.T) {
 	dir := t.TempDir()
 	slotStringsWriteTree(t, dir, map[string]string{
-		"internal/application/brain/types_test.go": `package brain
+		"internal/capabilities/brain/types_test.go": `package brain
 var TestSlot = "primary_video"
 `,
 	})

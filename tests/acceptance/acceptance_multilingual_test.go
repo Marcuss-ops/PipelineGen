@@ -17,6 +17,7 @@
 package acceptance_test
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"testing"
 
@@ -40,16 +41,16 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 	srcTranscriptHash := sha256Hex(srcTranscript)
 	srcDescHash := sha256Hex(srcDesc)
 
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), srcTranscript),
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackDescription), srcDesc),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), srcTranscript),
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackDescription), srcDesc),
 	}); err != nil {
 		t.Fatalf("seed source tracks: %v", err)
 	}
 
 	m := newMaterializer(t, repo, tr, ob)
 
-	repT, err := m.Materialize(ctx, assetID, srcLang, srcTranscriptHash, asset.TextTrackTranscript, targetLangs)
+	repT, err := m.Materialize(ctx, assetID, srcLang, srcTranscriptHash, detail.TextTrackTranscript, targetLangs)
 	if err != nil {
 		t.Fatalf("Materialize(Transcript): %v", err)
 	}
@@ -57,7 +58,7 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 		t.Fatalf("CreatedLanguages(transcript) = %d, want %d", len(repT.CreatedLanguages), len(targetLangs))
 	}
 
-	repD, err := m.Materialize(ctx, assetID, srcLang, srcDescHash, asset.TextTrackDescription, targetLangs)
+	repD, err := m.Materialize(ctx, assetID, srcLang, srcDescHash, detail.TextTrackDescription, targetLangs)
 	if err != nil {
 		t.Fatalf("Materialize(Description): %v", err)
 	}
@@ -76,7 +77,7 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 	dCount := 0
 	for _, trk := range allT {
 		switch trk.TextKind {
-		case asset.TextTrackTranscript:
+		case detail.TextTrackTranscript:
 			tCount++
 			if trk.LanguageCode != srcLang {
 				if trk.SourceTextHash != srcTranscriptHash {
@@ -86,11 +87,11 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 				if !trk.IsCurrent {
 					t.Errorf("transcript[%s].is_current = false, want true", trk.LanguageCode)
 				}
-				if trk.Status != asset.TextTrackReady {
+				if trk.Status != detail.TextTrackReady {
 					t.Errorf("transcript[%s].status = %q, want READY", trk.LanguageCode, trk.Status)
 				}
 			}
-		case asset.TextTrackDescription:
+		case detail.TextTrackDescription:
 			dCount++
 			if trk.LanguageCode != srcLang {
 				if trk.SourceTextHash != srcDescHash {
@@ -124,14 +125,14 @@ func TestMultilingual_AssetIndexRequestedFiresOncePerKind(t *testing.T) {
 	src := "the show must go on"
 	srcHash := sha256Hex(src)
 
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{
-		newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src),
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{
+		newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src),
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript,
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript,
 		[]string{"it", "es", "fr", "de", "pt", "ru", "ja", "zh", "ko", "ar"}); err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -164,17 +165,17 @@ func TestMultilingual_SourceSegmentsAreReadOnly(t *testing.T) {
 	)
 	src := "the source text must remain unchanged after fan-out"
 	srcHash := sha256Hex(src)
-	if err := repo.UpsertBatch(ctx, []asset.TextTrack{newSourceTrack(assetID, srcLang, string(asset.TextTrackTranscript), src)}); err != nil {
+	if err := repo.UpsertBatch(ctx, []detail.TextTrack{newSourceTrack(assetID, srcLang, string(detail.TextTrackTranscript), src)}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	m := newMaterializer(t, repo, tr, ob)
-	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript,
+	if _, err := m.Materialize(ctx, assetID, srcLang, srcHash, detail.TextTrackTranscript,
 		[]string{"it", "es", "fr", "de"}); err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
 
-	sourceAfter, _, _ := repo.FindReady(ctx, assetID, srcLang, asset.TextTrackTranscript)
+	sourceAfter, _, _ := repo.FindReady(ctx, assetID, srcLang, detail.TextTrackTranscript)
 	if sourceAfter == nil {
 		t.Fatalf("source track missing after Materialize")
 	}

@@ -10,6 +10,7 @@
 package multilingual
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
@@ -148,7 +149,7 @@ type RenderReport struct {
 // multilingual-specific concerns. Codec/profile/output contract decisions
 // belong solely to clip.render.
 type Renderer struct {
-	repo       asset.RenderVariantRepository
+	repo       detail.RenderVariantRepository
 	publisher  delivery.Publisher
 	ffmpegPath string // required only for subtitleVisible frame extraction
 	log        *zap.Logger
@@ -165,7 +166,7 @@ type Renderer struct {
 // NewRenderer constructs the canonical renderer. Fail-closed: repo and
 // publisher are mandatory. ffmpegPath is optional — it is needed only when
 // subtitleVisible verification is enabled.
-func NewRenderer(repo asset.RenderVariantRepository, publisher delivery.Publisher, ffmpegPath string, log *zap.Logger) (*Renderer, error) {
+func NewRenderer(repo detail.RenderVariantRepository, publisher delivery.Publisher, ffmpegPath string, log *zap.Logger) (*Renderer, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("multilingual.NewRenderer: variant repo is required")
 	}
@@ -203,17 +204,17 @@ func (r *Renderer) IsReusable(ctx context.Context, sourceClipID, sourceSHA256, l
 		return false
 	}
 	if renderProfileVersion == "" {
-		renderProfileVersion = asset.RenderProfileFFmpegAss1080pV1
+		renderProfileVersion = detail.RenderProfileFFmpegAss1080pV1
 	}
-	fingerprint := asset.RenderVariantContentFingerprint(sourceSHA256, transcriptSHA256, language, subtitleStyleVersion, renderProfileVersion)
+	fingerprint := detail.RenderVariantContentFingerprint(sourceSHA256, transcriptSHA256, language, subtitleStyleVersion, renderProfileVersion)
 	existing, err := r.repo.FindByFingerprint(ctx, sourceClipID, language, fingerprint)
-	if err == nil && existing != nil && existing.Status == asset.RenderVariantReady {
+	if err == nil && existing != nil && existing.Status == detail.RenderVariantReady {
 		return true
 	}
 	// Read legacy model-sensitive rows during the migration window.
-	legacy := asset.RenderVariantFingerprint(sourceSHA256, transcriptSHA256, language, translationVersion, subtitleStyleVersion, renderProfileVersion)
+	legacy := detail.RenderVariantFingerprint(sourceSHA256, transcriptSHA256, language, translationVersion, subtitleStyleVersion, renderProfileVersion)
 	existing, err = r.repo.FindByFingerprint(ctx, sourceClipID, language, legacy)
-	return err == nil && existing != nil && existing.Status == asset.RenderVariantReady
+	return err == nil && existing != nil && existing.Status == detail.RenderVariantReady
 }
 
 // RenderAll fans out across languages with a bounded concurrency. Order of
@@ -324,9 +325,9 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 	}
 	profileVersion := in.RenderProfileVersion
 	if profileVersion == "" {
-		profileVersion = asset.RenderProfileFFmpegAss1080pV1
+		profileVersion = detail.RenderProfileFFmpegAss1080pV1
 	}
-	fingerprint := asset.RenderVariantContentFingerprint(
+	fingerprint := detail.RenderVariantContentFingerprint(
 		in.SourceSHA256, in.TranscriptSHA256, in.Language,
 		in.SubtitleStyleVersion, profileVersion,
 	)
@@ -347,7 +348,7 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 			res.RenderMS = time.Since(start).Milliseconds()
 			return res
 		}
-		legacy := asset.RenderVariantFingerprint(in.SourceSHA256, in.TranscriptSHA256, in.Language, in.TranslationVersion, in.SubtitleStyleVersion, profileVersion)
+		legacy := detail.RenderVariantFingerprint(in.SourceSHA256, in.TranscriptSHA256, in.Language, in.TranslationVersion, in.SubtitleStyleVersion, profileVersion)
 		if existing, err := r.repo.FindByFingerprint(ctx, in.SourceClipID, in.Language, legacy); err == nil && existing != nil {
 			res.Status = "reused"
 			res.Validation = "ok"
@@ -433,7 +434,7 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 	}
 	res.UploadCompletedAt = time.Now()
 
-	variant := &asset.RenderVariant{
+	variant := &detail.RenderVariant{
 		SourceClipID:         in.SourceClipID,
 		LanguageCode:         in.Language,
 		Fingerprint:          fingerprint,
@@ -448,7 +449,7 @@ func (r *Renderer) RenderOne(ctx context.Context, in VariantInput) VariantResult
 		DriveLink:            pub.WebViewLink,
 		DurationMs:           durationMs,
 		SizeBytes:            pub.SizeBytes,
-		Status:               asset.RenderVariantReady,
+		Status:               detail.RenderVariantReady,
 		IsCurrent:            true,
 	}
 	if err := r.repo.Upsert(ctx, variant); err != nil {

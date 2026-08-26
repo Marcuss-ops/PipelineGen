@@ -12,6 +12,7 @@
 package adapters_test
 
 import (
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"context"
 	"reflect"
 	"testing"

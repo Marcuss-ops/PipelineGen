@@ -16,6 +16,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"errors"
 	"fmt"
@@ -99,7 +100,7 @@ func (r *RetrievalProviderRegistry) SearchProvider(ctx context.Context, provider
 	if r == nil {
 		return nil, nil
 	}
-	name := asset.ImageProvider(provider)
+	name := detail.ImageProvider(provider)
 	p := r.SearchByName(name)
 	if p == nil {
 		return nil, fmt.Errorf("retrieval provider %q is not registered", provider)
@@ -110,7 +111,7 @@ func (r *RetrievalProviderRegistry) SearchProvider(ctx context.Context, provider
 // SearchByName returns the provider matched by a given ImageProvider
 // constant, or nil when the registry has no such provider registered.
 // Used by tests + diagnostics for explicit-provider lookups.
-func (r *RetrievalProviderRegistry) SearchByName(name asset.ImageProvider) RetrievalProvider {
+func (r *RetrievalProviderRegistry) SearchByName(name detail.ImageProvider) RetrievalProvider {
 	if r == nil {
 		return nil
 	}
@@ -137,8 +138,8 @@ func (r *RetrievalProviderRegistry) Providers() []RetrievalProvider {
 // Diagnostics runs Healthy probes on every registered provider and
 // returns a per-provider summary. Used by images.DiagnosticsService
 // for the /api/system/doctor surface.
-func (r *RetrievalProviderRegistry) Diagnostics(ctx context.Context) map[asset.ImageProvider]error {
-	out := make(map[asset.ImageProvider]error, len(r.providers))
+func (r *RetrievalProviderRegistry) Diagnostics(ctx context.Context) map[detail.ImageProvider]error {
+	out := make(map[detail.ImageProvider]error, len(r.providers))
 	if r == nil {
 		return out
 	}

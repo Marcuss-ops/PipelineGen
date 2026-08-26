@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/shared/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -177,9 +177,9 @@ func TestSanitizeFilename(t *testing.T) {
 }
 
 func TestSHA256String(t *testing.T) {
-	h1 := hashutil.SHA256String("hello world")
-	h2 := hashutil.SHA256String("hello world")
-	h3 := hashutil.SHA256String("different text")
+	h1 := digest.SHA256String("hello world")
+	h2 := digest.SHA256String("hello world")
+	h3 := digest.SHA256String("different text")
 
 	assert.Equal(t, h1, h2, "same input should produce same hash")
 	assert.NotEqual(t, h1, h3, "different input should produce different hash")

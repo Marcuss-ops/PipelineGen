@@ -1,6 +1,7 @@
 package retrieved
 
 import (
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -61,16 +62,16 @@ func TestDuckDuckGoProviderReturnsRetrievedCandidate(t *testing.T) {
 		t.Fatalf("Search returned %d results, want 1", len(results))
 	}
 	got := results[0]
-	if got.Provider != asset.ProviderDuckDuckGo {
-		t.Fatalf("provider = %q, want %q", got.Provider, asset.ProviderDuckDuckGo)
+	if got.Provider != detail.ProviderDuckDuckGo {
+		t.Fatalf("provider = %q, want %q", got.Provider, detail.ProviderDuckDuckGo)
 	}
-	if got.Origin != asset.ImageOriginRetrieved {
-		t.Fatalf("origin = %q, want %q", got.Origin, asset.ImageOriginRetrieved)
+	if got.Origin != detail.ImageOriginRetrieved {
+		t.Fatalf("origin = %q, want %q", got.Origin, detail.ImageOriginRetrieved)
 	}
 	if got.PreviewURL != bridge.url || got.PageURL != bridge.url {
 		t.Fatalf("candidate URLs = (%q, %q), want %q", got.PreviewURL, got.PageURL, bridge.url)
 	}
-	if got.Provider == asset.ProviderGoogleSlides || got.Origin == asset.ImageOriginGenerated {
+	if got.Provider == detail.ProviderGoogleSlides || got.Origin == detail.ImageOriginGenerated {
 		t.Fatal("DuckDuckGo candidate crossed into generated territory")
 	}
 }

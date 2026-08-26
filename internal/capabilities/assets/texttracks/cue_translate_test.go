@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // suffixTranslator appends a target-language marker to every input, so the
@@ -24,7 +24,7 @@ func (s suffixTranslator) Translate(_ context.Context, cmd translation.Translati
 }
 
 func TestCueTranslator_PreservesOneToOneTiming(t *testing.T) {
-	src := []asset.TimedCue{
+	src := []detail.TimedCue{
 		{StartMs: 0, EndMs: 2400, Text: "hello"},
 		{StartMs: 2400, EndMs: 6280, Text: "world"},
 		{StartMs: 6280, EndMs: 8680, Text: "again"},
@@ -53,7 +53,7 @@ func TestCueTranslator_PreservesOneToOneTiming(t *testing.T) {
 
 func TestCueTranslator_NilTranslatorFailsClosed(t *testing.T) {
 	ct := NewCueTranslator(nil, "en", "gemma4:e4b", 1, nil)
-	if _, _, err := ct.Translate(context.Background(), []asset.TimedCue{{StartMs: 0, EndMs: 1, Text: "x"}}, "it"); err == nil {
+	if _, _, err := ct.Translate(context.Background(), []detail.TimedCue{{StartMs: 0, EndMs: 1, Text: "x"}}, "it"); err == nil {
 		t.Fatalf("expected error for nil translator, got nil")
 	} else if !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,9 +72,9 @@ func (s delayedTranslator) Translate(ctx context.Context, cmd translation.Transl
 }
 
 func TestCueTranslator_ObservesRealConcurrency(t *testing.T) {
-	cues := make([]asset.TimedCue, 4)
+	cues := make([]detail.TimedCue, 4)
 	for i := range cues {
-		cues[i] = asset.TimedCue{StartMs: int64(i * 1000), EndMs: int64(i*1000 + 900), Text: "hello"}
+		cues[i] = detail.TimedCue{StartMs: int64(i * 1000), EndMs: int64(i*1000 + 900), Text: "hello"}
 	}
 	ct := NewCueTranslator(delayedTranslator{d: 20 * time.Millisecond}, "en", "gemma4:e4b", 2, nil)
 	got, stats, err := ct.Translate(context.Background(), cues, "it")
