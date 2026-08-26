@@ -6,7 +6,7 @@ package config
 type RerankerConfig struct {
 	Enabled   bool    `yaml:"enabled" default:"false"`
 	URL       string  `yaml:"url" default:"http://127.0.0.1:8091/rerank"`
-	Model     string  `yaml:"model" default:"BAAI/bge-reranker-v2-m3"`
+	Model     string  `yaml:"model"`
 	TopK      int     `yaml:"top_k" default:"30"`
 	TimeoutMs int     `yaml:"timeout_ms" default:"150"`
 	Weight    float64 `yaml:"weight" default:"0.35"`

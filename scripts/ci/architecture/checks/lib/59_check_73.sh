@@ -33,8 +33,7 @@
 #
 # Authorized SSOT owners:
 #   - internal/platform/config/video.go        (CanonicalVideoProfile + EncoderPolicy)
-#   - pkg/defaults/video.go                    (canonical default values)
-#   - internal/application/mediaexec/types.go  (media exec canonical profile)
+#   - mediaexec/types.go  (media exec canonical profile)
 #   - internal/capabilities/cliprender/        (clip render contract)
 #   - rust/pipelinegen-muscles/src/            (Rust encoder boundary)
 #   - internal/platform/config/video_canonical_test.go (canonical-profile tests)
@@ -53,11 +52,8 @@ echo "=== Check 73: hardcoded media-parameter gate (30fps / encoder / pix_fmt) =
 fps30_go=$(rg -n --type go \
     -e '[Ff][Pp][Ss]\s*:\s*30\b' \
     --glob '!**/*_test.go' \
-    --glob '!internal/platform/config/video.go' \
     --glob '!internal/platform/config/video_canonical_test.go' \
-    --glob '!pkg/defaults/video.go' \
     --glob '!internal/capabilities/cliprender/*' \
-    --glob '!internal/application/mediaexec/types.go' \
     --glob '!tests/fixtures/*' \
     --glob '!RenderingGen/*' \
     --glob '!Chronon3d/*' \
@@ -84,7 +80,6 @@ encoder_hardcoded=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!internal/platform/config/video.go' \
     --glob '!internal/platform/config/video_canonical_test.go' \
-    --glob '!internal/application/mediaexec/types.go' \
     --glob '!tests/fixtures/*' \
     --glob '!RenderingGen/*' \
     --glob '!Chronon3d/*' \
@@ -115,8 +110,6 @@ yuv420p_hardcoded=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!internal/platform/config/video.go' \
     --glob '!internal/platform/config/video_canonical_test.go' \
-    --glob '!pkg/defaults/video.go' \
-    --glob '!internal/application/mediaexec/types.go' \
     --glob '!internal/capabilities/cliprender/*' \
     --glob '!tests/fixtures/*' \
     --glob '!RenderingGen/*' \
@@ -156,11 +149,9 @@ if [ -n "$violations" ]; then
     echo "Fix: route every FPS, codec, pixel-format, and encoder-policy value through:"
     echo "  - VideoContract (AssemblyReadyVideoContract)"
     echo "  - internal/platform/config/video.go::{CanonicalVideoProfile,EncoderPolicy}"
-    echo "  - pkg/defaults/video.go::DefaultVideoConfig"
     echo ""
     echo "The canonical assembly-ready FPS is 24 (not 30). Authorized owners only:"
     echo "  - video.go (platform config SSOT)"
-    echo "  - pkg/defaults/video.go (canonical defaults)"
     echo "  - cliprender/ (clip contract)"
     echo "  - mediaexec/types.go (media exec profile)"
     echo "  - pipelinegen-muscles/src/ (Rust encoder boundary)"

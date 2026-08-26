@@ -15,6 +15,21 @@ import argparse
 import json
 import sys
 import hashlib
+from pathlib import Path
+
+try:
+    from scripts.services.model_registry_generated import (
+        TEXT_MODEL_DIMENSIONS,
+        TEXT_MODEL_NAME,
+        TEXT_MODEL_VERSION,
+    )
+except ModuleNotFoundError:  # direct execution from scripts/bridges
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.services.model_registry_generated import (  # type: ignore[no-redef]
+        TEXT_MODEL_DIMENSIONS,
+        TEXT_MODEL_NAME,
+        TEXT_MODEL_VERSION,
+    )
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -32,13 +47,13 @@ args = parser.parse_args()
 # runtime provenance, while the hash covers the complete vector-space
 # contract.
 CONTRACT_FIELDS = (
-    "v1", "intfloat/multilingual-e5-base", "2026-06-26-v1", "768",
+    "v1", TEXT_MODEL_NAME, TEXT_MODEL_VERSION, str(TEXT_MODEL_DIMENSIONS),
     "l2", "Cosine", "query: ", "passage: ", "v3",
 )
 CONTRACT_HASH = hashlib.sha256("|".join(CONTRACT_FIELDS).encode()).hexdigest()
 
 try:
-    model = SentenceTransformer("intfloat/multilingual-e5-base")
+    model = SentenceTransformer(TEXT_MODEL_NAME)
     # E5 requires 'query:' prefix for retrieval queries or 'passage:' for documents
     # Default to 'query:' for one-shot usage
     prefix = "query: "
@@ -48,8 +63,8 @@ try:
     print(json.dumps({
         "embedding": embedding,
         "dimensions": len(embedding),
-        "model": "intfloat/multilingual-e5-base",
-        "model_version": "2026-06-26-v1",
+        "model": TEXT_MODEL_NAME,
+        "model_version": TEXT_MODEL_VERSION,
         "contract_hash": CONTRACT_HASH,
         "error": "",
     }))

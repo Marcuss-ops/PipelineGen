@@ -17,23 +17,22 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // Canonical string constants for the multilingual E5 text model.
-//
-// These are the values the Python sidecar (scripts/services/embedding_server)
-// actually loads and reports. The document vectors in production were
-// produced by this model (audit: "canonical temporaneo = multilingual-e5-base"),
-// so these — not adapter-local model literals — are the truth.
+// Model identity facts are owned by internal/kernel/models; these aliases
+// preserve the embedding contract API while preventing a second literal
+// definition.
 const (
 	// ModelIDMultilingualE5 is the canonical text model id.
-	ModelIDMultilingualE5 = "intfloat/multilingual-e5-base"
+	ModelIDMultilingualE5 = models.CanonicalTextModelID
 	// ModelRevisionMultilingualE5 is the pinned model revision reported by
 	// the sidecar (scripts/services/embedding_server/__init__.py:
 	// TEXT_MODEL_VERSION).
-	ModelRevisionMultilingualE5 = "2026-06-26-v1"
+	ModelRevisionMultilingualE5 = models.CanonicalTextModelRevision
 	// DimensionText is the canonical text vector dimensionality.
-	DimensionText = 768
+	DimensionText = models.CanonicalTextModelDimensions
 	// NormalizationL2 marks L2-normalized vectors.
 	NormalizationL2 = "l2"
 	// DistanceCosine is the Qdrant distance metric for the text channels.
@@ -47,6 +46,22 @@ const (
 	// SemanticDocumentVersionV3 tracks the canonical search-text version
 	// (mirrors schema.CurrentSearchTextVersion).
 	SemanticDocumentVersionV3 = "v3"
+)
+
+// Canonical string constants for the SigLIP visual model.
+//
+// These anchor the Qdrant "visual" named vector and the
+// media_assets.metadata_json.embedding_version_visual payload field.
+// Bumping VisualEmbeddingModelVersion is a schema migration that changes
+// the Qdrant collection shape; don't change without planning a v4.
+const (
+	// VisualEmbeddingModelID is the canonical SigLIP model id.
+	VisualEmbeddingModelID = models.CanonicalVisualModelID
+	// VisualEmbeddingModelVersion pins the SigLIP model version baked
+	// into media_assets.metadata_json.embedding_version_visual.
+	VisualEmbeddingModelVersion = models.CanonicalVisualModelRevision
+	// DimensionVisual is the canonical SigLIP vector dimensionality.
+	DimensionVisual = models.CanonicalVisualModelDimensions
 )
 
 // Contract is the runtime/indexing identity of the text embedding channel.

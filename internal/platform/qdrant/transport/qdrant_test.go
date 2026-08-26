@@ -723,7 +723,7 @@ func TestIndexSchema_GetDense(t *testing.T) {
 	spec = s.GetDense("visual")
 	require.NotNil(t, spec)
 	assert.Equal(t, 768, spec.Dimensions)
-	assert.Equal(t, "siglip-so400m-patch14-384", spec.Model)
+	assert.Equal(t, "google/siglip-so400m-patch14-384", spec.Model)
 
 	assert.Nil(t, s.GetDense("bm25_text"), "bm25_text is sparse, not dense")
 	assert.Nil(t, s.GetDense("nonexistent"))

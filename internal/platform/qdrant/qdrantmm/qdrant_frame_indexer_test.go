@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
@@ -130,7 +131,7 @@ func TestFrameQdrantIndexer_IndexKeyframeWritesCanonicalPoint(t *testing.T) {
 		"asset-abc-001",
 		"it",
 		vec,
-		"siglip-so400m-patch14-384",
+		models.SigLIP.ID,
 	); err != nil {
 		t.Fatalf("IndexKeyframe: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestFrameQdrantIndexer_IndexKeyframeWritesCanonicalPoint(t *testing.T) {
 	if pmap["language"] != "it" {
 		t.Fatalf("payload.language=%v, want it", pmap["language"])
 	}
-	if pmap["embedding_version"] != "siglip-so400m-patch14-384" {
+	if pmap["embedding_version"] != models.SigLIP.ID {
 		t.Fatalf("payload.embedding_version=%v, want model name", pmap["embedding_version"])
 	}
 }
@@ -258,6 +259,9 @@ func TestFrameIndexSchema_CanonicalShape(t *testing.T) {
 	}
 	if v.Distance != "Cosine" || !v.Normalized {
 		t.Fatalf("expected Cosine+normalized, got distance=%q normalized=%v", v.Distance, v.Normalized)
+	}
+	if v.Model != models.SigLIP.ID {
+		t.Fatalf("expected canonical SigLIP model %q, got %q", models.SigLIP.ID, v.Model)
 	}
 	// Payload index keys present.
 	requiredKeys := []string{"frame_id", "video_id", "asset_id", "ts_ms", "language", "embedding_version"}

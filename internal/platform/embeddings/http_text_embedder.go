@@ -24,7 +24,9 @@ import (
 	"net/http"
 	"time"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // HTTPTextEmbedder calls a Python embedding sidecar server's /embed
@@ -44,7 +46,7 @@ type HTTPTextEmbedder struct {
 // URL. The default 10-second timeout is appropriate for E5 inference
 // (typically 50–200ms per query); tune in production if Qdrant-backed
 // batch jobs need longer deadlines.
-func NewHTTPTextEmbedder(serverURL string) coreembedding.Embedder {
+func NewHTTPTextEmbedder(serverURL string) coreasset.Embedder {
 	return &HTTPTextEmbedder{
 		serverURL:  serverURL,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
@@ -59,16 +61,15 @@ func NewHTTPTextEmbedder(serverURL string) coreembedding.Embedder {
 // instead of []float32. The sidecar returns the canonical envelope
 // {"embedding": [...], "dimensions": 768, "model": "<name>",
 // "model_version": "<version>", "error": ""}. Graceful fallback: when
-// the sidecar is not yet updated and returns only {"embedding": [...]},
-// we set Model="" and ModelVersion="" (the trade-off
-// documented in the QDRANT-001b closure ticket).
+// the sidecar is not yet updated or omits provenance, the query fails
+// closed instead of sending an unverified vector to Qdrant.
 //
 // Error wrapping includes the original HTTP status code and body so
 // production observability can correlate embedder failures with
 // Qdrant upsert health.
-func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembedding.EmbeddingResult, error) {
+func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreasset.EmbeddingResult, error) {
 	if text == "" {
-		return coreembedding.EmbeddingResult{}, nil
+		return coreasset.EmbeddingResult{}, nil
 	}
 
 	payload, err := json.Marshal(map[string]string{
@@ -76,31 +77,32 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembeddin
 		"type": "query", // E5 model prefix for queries (vs "passage" for index)
 	})
 	if err != nil {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("marshal embedder request: %w", err)
+		return coreasset.EmbeddingResult{}, fmt.Errorf("marshal embedder request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		e.serverURL+"/embed", bytes.NewReader(payload))
 	if err != nil {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("create embedder request: %w", err)
+		return coreasset.EmbeddingResult{}, fmt.Errorf("create embedder request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := e.httpClient.Do(req)
 	if err != nil {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("embedder request failed: %w", err)
+		return coreasset.EmbeddingResult{}, fmt.Errorf("embedder request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("read embedder response: %w", readErr)
+		return coreasset.EmbeddingResult{}, fmt.Errorf("read embedder response: %w", readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("embedder returned status %d: %s", resp.StatusCode, string(body))
+		return coreasset.EmbeddingResult{}, fmt.Errorf("embedder returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// QDRANT-001b: try canonical envelope first, fall back to legacy raw vector.
+	// QDRANT-001b: accept only the canonical envelope; provenance is
+	// required so the query vector cannot drift from the indexed space.
 	var envelope struct {
 		Embedding    []float64 `json:"embedding"`
 		Dimensions   int       `json:"dimensions"`
@@ -115,42 +117,60 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreembeddin
 			Embedding []float64 `json:"embedding"`
 		}
 		if err2 := json.Unmarshal(body, &legacy); err2 != nil {
-			return coreembedding.EmbeddingResult{}, fmt.Errorf("parse embedder response: %w (body: %s)", err, string(body))
+			return coreasset.EmbeddingResult{}, fmt.Errorf("parse embedder response: %w (body: %s)", err, string(body))
 		}
-		out := make([]float32, len(legacy.Embedding))
-		for i, v := range legacy.Embedding {
-			out[i] = float32(v)
-		}
-		return coreembedding.EmbeddingResult{
-			Vector:     out,
-			Dimensions: len(out),
-		}, nil
+		return coreasset.EmbeddingResult{}, fmt.Errorf("legacy embedding response has no canonical model metadata: %w", err)
 	}
 
 	if envelope.Error != "" {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar error: %s", envelope.Error)
+		return coreasset.EmbeddingResult{}, fmt.Errorf("sidecar error: %s", envelope.Error)
 	}
 
 	if len(envelope.Embedding) == 0 {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf("sidecar returned empty embedding vector")
+		return coreasset.EmbeddingResult{}, fmt.Errorf("sidecar returned empty embedding vector")
 	}
 
 	// QDRANT-001b: validate declared dimensions match actual vector length.
 	if envelope.Dimensions > 0 && envelope.Dimensions != len(envelope.Embedding) {
-		return coreembedding.EmbeddingResult{}, fmt.Errorf(
+		return coreasset.EmbeddingResult{}, fmt.Errorf(
 			"dimension mismatch: declared %d, actual embedding length %d",
 			envelope.Dimensions, len(envelope.Embedding))
+	}
+
+	// The query embedder is part of the canonical text contract. Reject
+	// responses from another model, revision, vector size, or contract hash
+	// before the vector can reach Qdrant.
+	if err := validateCanonicalTextEnvelope(envelope.Model, envelope.ModelVersion, envelope.ContractHash, len(envelope.Embedding)); err != nil {
+		return coreasset.EmbeddingResult{}, err
 	}
 
 	out := make([]float32, len(envelope.Embedding))
 	for i, v := range envelope.Embedding {
 		out[i] = float32(v)
 	}
-	return coreembedding.EmbeddingResult{
+	return coreasset.EmbeddingResult{
 		Vector:       out,
 		Dimensions:   envelope.Dimensions,
 		Model:        envelope.Model,
 		ModelVersion: envelope.ModelVersion,
 		ContractHash: envelope.ContractHash,
 	}, nil
+}
+
+func validateCanonicalTextEnvelope(modelID, revision, contractHash string, dimensions int) error {
+	got := coreembedding.Contract{
+		ModelID:       modelID,
+		ModelRevision: revision,
+		Dimension:     dimensions,
+	}
+	if modelID != models.E5.ID || revision != models.E5.Revision || dimensions != models.E5.Dimensions || contractHash != coreembedding.CanonicalText.Hash() {
+		return &coreembedding.MismatchError{
+			Component:    coreembedding.ComponentQuery,
+			Expected:     coreembedding.CanonicalText,
+			Got:          got,
+			ExpectedHash: coreembedding.CanonicalText.Hash(),
+			GotHash:      contractHash,
+		}
+	}
+	return nil
 }

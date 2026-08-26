@@ -96,8 +96,6 @@ echo "=== Check 8: forbid post-Setup SetOutboxHandler / SetMediasearchHandler (T
 postSetupSetters=$(rg -n --type go \
     -e '\.SetOutboxHandler\(' \
     -e '\.SetMediasearchHandler\(' \
-    --glob '!**/internal/api/server.go' \
-    --glob '!**/internal/api/routes.go' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
@@ -139,7 +137,7 @@ nilDispatcher=$(rg -nU --type go \
     --glob '!**/*_test.go' \
     --glob '!**/cmd/admin/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/app/|internal/platform/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
+    | grep -Ev '^\./(internal/app/|internal/platform/sqlite/outbox/|internal/capabilities/assets/providers/|tests/fixtures/zero_legacy/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -176,25 +174,13 @@ assetUpserts=$(rg -n --type go \
     -e '\.Upsert\(ctx,' \
     --glob '!**/cmd/admin/**' \
     --glob '!**/internal/platform/sqlite/**' \
-    --glob '!**/internal/application/assets/ingest/**' \
-    --glob '!**/internal/application/jobs/assets/**' \
-    --glob '!**/internal/application/assets/artifacts/**' \
     --glob '!**/internal/capabilities/assets/providers/**' \
-    --glob '!**/internal/application/voiceover/**' \
-    --glob '!**/internal/application/channels/**' \
-    --glob '!**/internal/application/images/**' \
-    --glob '!**/internal/application/youtube/**' \
-    --glob '!**/internal/application/clips/**' \
-    --glob '!**/internal/application/assets/searchqueries/**' \
-    --glob '!**/internal/application/assets/catalogsync/**' \
-    --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
-    --glob '!**/internal/infrastructure/ai/autotag/**' \
     --glob '!**/internal/platform/sqlite/assetindex/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/application/mediamemory/|internal/application/indexing/|internal/application/assets/reconciliation/voiceover/|internal/application/assets/texttracks/|internal/application/assets/sourcing/youtube/|internal/platform/drive/)' \
+    | grep -Ev '^\./(internal/platform/drive/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -249,23 +235,10 @@ all_ips=$(rg -n --type go \
     --glob '!tests/fixtures/zero_legacy/**' \
     --glob '!**/cmd/admin/**' \
     --glob '!**/internal/platform/sqlite/**' \
-    --glob '!**/internal/application/assets/ingest/**' \
-    --glob '!**/internal/application/jobs/assets/**' \
-    --glob '!**/internal/application/assets/artifacts/**' \
     --glob '!**/internal/capabilities/assets/providers/**' \
-    --glob '!**/internal/application/voiceover/**' \
-    --glob '!**/internal/application/channels/**' \
-    --glob '!**/internal/application/images/**' \
-    --glob '!**/internal/application/youtube/**' \
-    --glob '!**/internal/application/clips/**' \
-    --glob '!**/internal/application/assets/searchqueries/**' \
-    --glob '!**/internal/application/assets/catalogsync/**' \
-    --glob '!**/internal/api/assets/**' \
     --glob '!**/internal/app/**' \
-    --glob '!**/internal/infrastructure/ai/autotag/**' \
     --glob '!**/internal/platform/sqlite/assetindex/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./internal/infrastructure/files/foldermemory/' \
     || true)
 literal_ips=$(printf '%s\n' "$all_ips" \
     | awk -F: '
@@ -499,7 +472,7 @@ legacyStatusKey=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
-    | grep -Ev '^\./(internal/api/|internal/capabilities/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/platform/sqlite/assets/)' \
+    | grep -Ev '^\./(internal/capabilities/assets/providers/artlist/|internal/platform/sqlite/assets/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i

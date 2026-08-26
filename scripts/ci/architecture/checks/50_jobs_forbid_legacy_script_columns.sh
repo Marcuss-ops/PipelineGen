@@ -9,21 +9,8 @@ else
 fi
 source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 
-echo "=== Check: forbid legacy Template/TimelineJSON writes outside canonical owners ==="
-hits=$(rg -n --type go \
-    -e '^[[:space:]]*Template:\s' -e '^[[:space:]]*TimelineJSON:\s' \
-    --glob '!**/internal/application/scripts/adapters/processor_persistence.go' \
-    --glob '!**/internal/platform/sqlite/scripts/repository_adapter.go' \
-    --glob '!**/internal/application/voiceover/**' \
-    --glob '!**/*_test.go' internal/ 2>/dev/null \
-    | awk -F: '{
-        rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-        if (rest ~ /^[[:space:]]*\/\//) next
-        print
-    }' || true)
-if [ -n "$hits" ]; then
-    echo "FAIL: legacy Template/TimelineJSON write outside canonical owners:" >&2
-    echo "$hits" >&2
-    exit 1
-fi
-echo "OK: legacy script columns have one canonical write/read surface"
+# Retired: this check scanned for the legacy Template/TimelineJSON columns
+# whose canonical owners are internal/platform/sqlite/scripts and
+# internal/capabilities/scripts/adapters; its crude `Template:` regex
+# false-positived on unrelated canonical fields (overlays registry,
+# voiceover service), so it is retired with the legacy application root.

@@ -25,9 +25,6 @@ legacyStatusKey=$(rg -n --type go \
     -e '"status":\s*\w+\.' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
-    --glob '!**/internal/api/jobs/**' \
-    --glob '!**/internal/api/script/**' \
-    --glob '!**/internal/api/assets/clips/**' \
     --glob '!**/internal/capabilities/assets/providers/**' \
     --glob '!**/internal/platform/sqlite/assets/**' \
     . 2>/dev/null \

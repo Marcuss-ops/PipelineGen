@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"go.uber.org/zap"
@@ -27,11 +28,13 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 	}
 
 	remote := map[string]any{
-		"audio_mode":       "FINAL_AUDIO_COPY",
-		"audio_source":     "certified_final_audio",
-		"scenes":           remoteClipTimingScenes(result),
-		"background_music": req.BackgroundMusic,
-		"sound_effects":    req.SoundEffects,
+		"audio_mode":               "FINAL_AUDIO_COPY",
+		"audio_source":             "certified_final_audio",
+		"scenes":                   remoteClipTimingScenes(result),
+		"background_music":         req.BackgroundMusic,
+		"background_music_catalog": remoteBackgroundMusicCatalog(),
+		"sound_effects":            req.SoundEffects,
+		"sound_effect_catalog":     remoteSoundEffectCatalog(),
 	}
 	if result != nil && result.FinalAudio != nil {
 		remote["final_audio"] = map[string]any{
@@ -65,6 +68,42 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 		return nil
 	}
 	return out
+}
+
+func remoteBackgroundMusicCatalog() map[string]map[string]string {
+	ids := []string{"1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX", "1riijLdDzpL9yXhT-RX-OrRVD67jagq8D", "1BiVWCTGOLnaeLmg8lTSSuDzo_gWWz0jq", "1fi2huRNuHFzNyvie8SajoZMdw27wl5ke", "1lEqAxjNWFXe3UpKNOpJrA2EU9izLPML2", "1OmVstjygP2SsX7748ylyzGDdmYxcrE8C"}
+	out := make(map[string]map[string]string, len(ids))
+	for i, id := range ids {
+		alias := "bgm" + strconv.Itoa(i+1)
+		out[alias] = map[string]string{"asset_id": alias, "name": "Background Music " + strconv.Itoa(i+1), "drive_file_id": id, "url": "velox-drive://" + id, "drive_link": "https://drive.google.com/file/d/" + id + "/view?usp=drive_link"}
+	}
+	return out
+}
+
+// remoteSoundEffectCatalog is the stable alias-to-Drive mapping exposed in
+// the final payload. The remote assembler may select whop1..whop6 directly;
+// the generation job keeps the list empty unless an effect is explicitly
+// selected in the request.
+func remoteSoundEffectCatalog() map[string]map[string]string {
+	const driveBase = "https://drive.google.com/file/d/"
+	ids := map[string]string{
+		"whop1": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+		"whop2": "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+		"whop3": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+		"whop4": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+		"whop5": "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+		"whop6": "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
+	}
+	catalog := make(map[string]map[string]string, len(ids))
+	for alias, id := range ids {
+		catalog[alias] = map[string]string{
+			"asset_id":      alias,
+			"drive_file_id": id,
+			"url":           "velox-drive://" + id,
+			"drive_link":    driveBase + id + "/view?usp=drive_link",
+		}
+	}
+	return catalog
 }
 
 func remoteClipTimingScenes(result *GenerateResult) []map[string]any {

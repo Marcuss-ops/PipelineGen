@@ -22,8 +22,6 @@ echo "=== Check 8: forbid post-Setup SetOutboxHandler / SetMediasearchHandler (T
 postSetupSetters=$(rg -n --type go \
     -e '\.SetOutboxHandler\(' \
     -e '\.SetMediasearchHandler\(' \
-    --glob '!**/internal/api/server.go' \
-    --glob '!**/internal/api/routes.go' \
     --glob '!**/cmd/admin/qdrant_readiness_checks_routes.go' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \

@@ -14,8 +14,7 @@
     "embeddings": {
       "text": "intfloat/multilingual-e5-base",
       "transcript": "intfloat/multilingual-e5-base",
-      "visual": "siglip-so400m-patch14-384",
-      "audio": "clap-htsat-fused"
+      "visual": "google/siglip-so400m-patch14-384"
     },
     "deferred_to_followup": [
       "v3-payload-indexes.json (16 payload indexes from DefaultV3Schema.PayloadIndexes; Qdrant PUT /collections does not accept them inline so they must be applied via separate PUT /collections/<name>/index calls)",
@@ -34,10 +33,6 @@
     },
     "visual": {
       "size": 768,
-      "distance": "Cosine"
-    },
-    "audio": {
-      "size": 512,
       "distance": "Cosine"
     }
   },

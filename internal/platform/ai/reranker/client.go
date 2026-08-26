@@ -15,7 +15,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // Candidate represents a single search result to be reranked.
@@ -56,6 +59,9 @@ type Config struct {
 
 // WithDefaults returns a copy with sensible defaults applied.
 func (c Config) WithDefaults() Config {
+	if strings.TrimSpace(c.Model) == "" {
+		c.Model = models.Reranker.ID
+	}
 	if c.TopK <= 0 {
 		c.TopK = 30
 	}
@@ -83,14 +89,17 @@ type Client struct {
 
 // NewClient creates a new reranker client.
 func NewClient(cfg Config) *Client {
+	resolved := cfg.WithDefaults()
 	return &Client{
-		cfg:     cfg.WithDefaults(),
-		http:    &http.Client{Timeout: cfg.WithDefaults().Timeout()},
-		enabled: cfg.Enabled,
+		cfg:     resolved,
+		http:    &http.Client{Timeout: resolved.Timeout()},
+		enabled: resolved.Enabled && resolved.Model == models.Reranker.ID,
 	}
 }
 
-// IsEnabled returns whether the reranker is available.
+// IsEnabled returns whether the reranker is available. A configured model
+// outside the canonical registry is treated as unavailable rather than
+// silently creating a second reranking contract.
 func (c *Client) IsEnabled() bool {
 	return c != nil && c.enabled && c.cfg.URL != ""
 }

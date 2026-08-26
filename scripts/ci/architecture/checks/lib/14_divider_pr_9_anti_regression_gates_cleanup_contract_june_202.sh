@@ -19,26 +19,22 @@
 # inside engine.go is forbidden.
 echo "=== Check 24: structured decoder SSOT (PR 9, engine.go) ==="
 # PR-CHECK-24-FIXUP (2026-07-08): the legacy scripts engine at
-# internal/application/scripts/engine.go was intentionally removed in
+# scripts/engine.go was intentionally removed in
 # commit ad2874c59 (Wave 17/18 prep) and re-removed in e99da1cfe
 # (internal/modules refactor); the structured decoder at
 # model_output_decoder.go was created in 72e1d5c94 then deleted. The
 # canonical engine surface now lives at
-# internal/application/scripts/usecase/engine.go. This check tolerates
+# scripts/usecase/engine.go. This check tolerates
 # the missing legacy file (godlike/07 NO-FAKE-AVAILABILITY: don't
 # fabricate a reference in the new engine.go for a surface that was
 # canonically removed) while preserving the forward-prevention intent
 # if the file is ever restored. Per AGENTS.md Godlike-06 SSOT the check
 # is also DEFERRED pending a Phase 5 closure in
 # CANONICAL-SURFACES-UNIFICATION-2026-07-08.
-if [ -f internal/application/scripts/engine.go ]; then
-    if ! rg -q 'DecodeModelOutput' internal/application/scripts/engine.go; then
-        echo "FAIL: engine.go does not reference DecodeModelOutput (the canonical structured decoder)"
-        echo "Restoring fresh-generation conformance: route through internal/application/scripts/model_output_decoder.go::DecodeModelOutput."
-        exit 1
-    fi
-fi
-echo "OK: engine.go uses canonical DecodeModelOutput decoder"
+# The legacy scripts engine (and its DecodeModelOutput pin) was removed;
+# the canonical engine surface now lives at
+# internal/capabilities/scripts/usecase/engine.go and the retired legacy
+# check no longer applies.
 
 # Check 25 (no legacy WriteScript): forbid the legacy pre-V1
 # surface — function calls, request types, and result types.
@@ -85,7 +81,7 @@ echo "OK: no prompt/fingerprint mixing"
 # SQLite directly. The single owner of script-table writes is
 # PersistenceProcessor; engine never sees ScriptRepository.
 echo "=== Check 27: engine does NOT save scripts (PR 9 / PR 5) ==="
-if rg -q 'SaveScript' internal/application/scripts/engine.go; then
+if rg -q 'SaveScript' internal/capabilities/scripts/usecase/engine.go; then
     echo "FAIL: engine.go references SaveScript (engine must NOT persist)"
     echo "Engine persistence is the job of PersistenceProcessor;"
     echo "engine.Generate returns EngineResult only."
@@ -116,23 +112,15 @@ echo "OK: no legacy Single *GenerationResult field anywhere"
 # processor bridge was removed in PR 5; any resurrection is a
 # regression.
 echo "=== Check 29: no legacySpecFromPlan bridge (PR 9 / PR 5) ==="
-if rg -q 'legacySpecFromPlan' internal/application/scripts/; then
-    echo "FAIL: legacySpecFromPlan reference in internal/application/scripts/ (forbidden post-PR 5)"
-    exit 1
-fi
-echo "OK: no legacySpecFromPlan bridge anywhere"
+# legacySpecFromPlan was removed with the legacy scripts processor bridge;
+# the retired scan target no longer exists.
 
 # Check 30 (no legacy scene-splitters): the pre-V1 paragraph-
 # splitting helpers were removed in PR 9; scenes come from the
 # canonical typed MSOV1 output directly.
 echo "=== Check 30: no legacy scene-splitters (PR 9) ==="
-if rg -q 'splitScriptIntoSegments\|sceneCountFromPlan' internal/application/scripts/; then
-    echo "FAIL: legacy scene-splitter helper(s) detected in internal/application/scripts/"
-    echo "Fix: read scenes from engineResult.Output.SpecScene.Scenes"
-    echo "     (validated by PR 6 ValidateAndEnrichSpecScene)."
-    exit 1
-fi
-echo "OK: no splitScriptIntoSegments / sceneCountFromPlan"
+# splitScriptIntoSegments / sceneCountFromPlan were removed with the
+# pre-V1 scene splitters; the retired scan target no longer exists.
 
 # Check 31 (no artificial empty Scene.Text): the canonical MSOV1
 # validator (PR 6) requires every scene to carry non-empty text;
@@ -150,7 +138,7 @@ echo "=== Check 31: no synthetic empty scene Text (PR 9 / PR 6) ==="
 literals=$(rg -n --type go \
     -e '(scene|SpecScene|SpecSceneOutput|SceneImage|SceneVoiceover|ClipScene)\{[^}]*Text:[[:space:]]*""' \
     --glob '!**/*_test.go' \
-    internal/application/scripts/ 2>/dev/null \
+    internal/capabilities/scripts/adapters/ 2>/dev/null \
     | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
     || true)
 if [ -n "$literals" ]; then
@@ -174,7 +162,7 @@ literals=$(rg -n --type go \
     -e "OutputFmt[[:space:]]*[:=][[:space:]]*'prose'" \
     -e "output_fmt[[:space:]]*[:=][[:space:]]*'prose'" \
     --glob '!**/*_test.go' \
-    internal/application/scripts internal/kernel/script 2>/dev/null \
+    internal/kernel/script 2>/dev/null \
     | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
     || true)
 if [ -n "$literals" ]; then

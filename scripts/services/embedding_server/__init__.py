@@ -76,6 +76,21 @@ print(
     f"gpu_required={DEVICE_SELECTION.require_gpu}"
 )
 
+# Model identity facts come from the canonical registry mirror
+# (scripts/services/model_registry_generated.py, generated from
+# internal/kernel/models by cmd/model-registry-gen). Do NOT hardcode
+# model names/versions here.
+from scripts.services.model_registry_generated import (  # noqa: E402
+    CLAP_MODEL_NAME,
+    CLAP_MODEL_VERSION,
+    TEXT_MODEL_DIMENSIONS,
+    TEXT_MODEL_NAME,
+    TEXT_MODEL_VERSION,
+    VISUAL_MODEL_NAME,
+    VISUAL_MODEL_DIMENSIONS,
+    VISUAL_MODEL_VERSION,
+)
+
 print("Loading NLP model (en_core_web_sm)...")
 nlp = spacy.load("en_core_web_sm")
 nlp_it = None
@@ -85,15 +100,14 @@ try:
 except Exception as e:
     print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
 
-print("Loading SentenceTransformer model (intfloat/multilingual-e5-base)...")
+print(f"Loading SentenceTransformer model ({TEXT_MODEL_NAME})...")
 model = SentenceTransformer(
-    "intfloat/multilingual-e5-base", device=DEVICE_SELECTION.effective
+    TEXT_MODEL_NAME, device=DEVICE_SELECTION.effective
 )
 TEXT_MODEL_DEVICE = assert_model_device(model, DEVICE_SELECTION, "text embedding")
-TEXT_MODEL_NAME = "intfloat/multilingual-e5-base"
-TEXT_MODEL_VERSION = "2026-06-26-v1"
+
 TEXT_CONTRACT_VERSION = "v1"
-TEXT_CONTRACT_DIMENSION = 768
+TEXT_CONTRACT_DIMENSION = TEXT_MODEL_DIMENSIONS
 TEXT_CONTRACT_NORMALIZATION = "l2"
 TEXT_CONTRACT_DISTANCE = "Cosine"
 TEXT_QUERY_PREFIX = "query: "
@@ -106,17 +120,15 @@ TEXT_CONTRACT_HASH = hashlib.sha256("|".join((
     TEXT_SEMANTIC_DOCUMENT_VERSION,
 )).encode()).hexdigest()
 siglip_model = None
-VISUAL_MODEL_NAME = "google/siglip-so400m-patch14-384"
-VISUAL_MODEL_VERSION = "2026-06-26-v1"
 if os.environ.get("SKIP_SIGLIP", "").lower() in ("1", "true", "yes"):
     if DEVICE_SELECTION.requested == "cuda" or DEVICE_SELECTION.require_gpu:
         raise RuntimeError("SigLIP cannot be skipped while GPU mode is explicit or required")
     print("SKIP_SIGLIP set — skipping SigLIP model load (visual endpoints will return 501)")
 else:
     try:
-        print("Loading SigLIP model (google/siglip-so400m-patch14-384, 768d)...")
+        print(f"Loading SigLIP model ({VISUAL_MODEL_NAME}, {VISUAL_MODEL_DIMENSIONS}d)...")
         siglip_model = SentenceTransformer(
-            "google/siglip-so400m-patch14-384", device=DEVICE_SELECTION.effective
+            VISUAL_MODEL_NAME, device=DEVICE_SELECTION.effective
         )
         VISUAL_MODEL_DEVICE = assert_model_device(siglip_model, DEVICE_SELECTION, "visual embedding")
         print(f"SigLIP model loaded, embedding dimension: {siglip_model.get_sentence_embedding_dimension()}")
@@ -126,17 +138,15 @@ else:
         print(f"SigLIP model not loaded (visual endpoints will return 501): {e}")
 
 clap_model = None
-CLAP_MODEL_NAME = "laion/clap-htsat-fused"
-CLAP_MODEL_VERSION = "2026-06-26-v1"
 if os.environ.get("SKIP_CLAP", "").lower() in ("1", "true", "yes"):
     if DEVICE_SELECTION.requested == "cuda" or DEVICE_SELECTION.require_gpu:
         raise RuntimeError("CLAP cannot be skipped while GPU mode is explicit or required")
     print("SKIP_CLAP set — skipping CLAP model load (audio endpoints will return 501)")
 else:
     try:
-        print("Loading CLAP model (laion/clap-htsat-fused)...")
+        print(f"Loading CLAP model ({CLAP_MODEL_NAME})...")
         clap_model = SentenceTransformer(
-            "laion/clap-htsat-fused", device=DEVICE_SELECTION.effective
+            CLAP_MODEL_NAME, device=DEVICE_SELECTION.effective
         )
         AUDIO_MODEL_DEVICE = assert_model_device(clap_model, DEVICE_SELECTION, "audio embedding")
     except Exception as e:

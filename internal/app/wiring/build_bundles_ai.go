@@ -11,6 +11,7 @@ import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"context"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 
 	"os"
 	"strings"
@@ -53,14 +54,14 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
 
 	// Dedicated embedding client: uses a separate model (the canonical
-	// intfloat/multilingual-e5-base by default, configurable via
-	// OLLAMA_EMBED_MODEL / ollama_embed_model). Ollama returns 500 when a
+	// the canonical E5 registry entry by default, configurable via
+	// OLLAMA_EMBED_MODEL / ollama_embed_model. Ollama returns 500 when a
 	// chat model (gemma4:e4b) is used for /api/embeddings — the embed model
-	// MUST be an embedding model. Fall back to OllamaModel for backward
-	// compat when unset.
+	// MUST be an embedding model. An empty manually-assembled config is
+	// resolved to the registry entry rather than falling back to the chat model.
 	embedModel := cfg.External.OllamaEmbedModel
 	if embedModel == "" {
-		embedModel = cfg.External.OllamaModel
+		embedModel = models.E5.ID
 	}
 	ollamaEmbedClient := client.NewClient(cfg.External.OllamaURL, embedModel, cfg.External.OllamaTimeoutSeconds)
 	log.Info("embedding client configured",

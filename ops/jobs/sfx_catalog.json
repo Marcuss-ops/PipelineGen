@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "canonical": true,
+  "description": "Canonical short sound-effects catalog. Use the alias as asset_id in sound_effects.",
+  "assets": {
+    "whop1": {
+      "asset_id": "whop1",
+      "drive_file_id": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+      "url": "velox-drive://1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+      "drive_link": "https://drive.google.com/file/d/1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX/view?usp=drive_link"
+    },
+    "whop2": {
+      "asset_id": "whop2",
+      "drive_file_id": "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+      "url": "velox-drive://1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+      "drive_link": "https://drive.google.com/file/d/1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2/view?usp=drive_link"
+    },
+    "whop3": {
+      "asset_id": "whop3",
+      "drive_file_id": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+      "url": "velox-drive://1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+      "drive_link": "https://drive.google.com/file/d/1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC/view?usp=drive_link"
+    },
+    "whop4": {
+      "asset_id": "whop4",
+      "drive_file_id": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+      "url": "velox-drive://1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+      "drive_link": "https://drive.google.com/file/d/1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L/view?usp=drive_link"
+    },
+    "whop5": {
+      "asset_id": "whop5",
+      "drive_file_id": "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+      "url": "velox-drive://127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+      "drive_link": "https://drive.google.com/file/d/127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY/view?usp=drive_link"
+    },
+    "whop6": {
+      "asset_id": "whop6",
+      "drive_file_id": "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
+      "url": "velox-drive://1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
+      "drive_link": "https://drive.google.com/file/d/1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK/view?usp=drive_link"
+    }
+  }
+}

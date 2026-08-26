@@ -61,6 +61,7 @@ import (
 	"time"
 
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 )
 
 // Canonical SigLIP text-encoder dimension. Mirrors the Qdrant v3
@@ -69,7 +70,7 @@ import (
 // so400m patch14-384, 768 dims, Cosine, normalized). The HTTP
 // sidecar MUST return vectors of exactly this length; any deviation
 // trips the fail-closed dimension-mismatch guard per godlike/07.
-const SigLIPTextDimension = 768
+const SigLIPTextDimension = models.CanonicalVisualModelDimensions
 
 // Canonical sidecar endpoint for SigLIP-text queries. Semantically
 // paired with /embed_visual_from_image (see
@@ -115,8 +116,8 @@ var _ searchpkg.ChannelEncoder = (*SigLIPTextEmbedder)(nil)
 //     (composition roots that pass empty URL signal "channel not wired at
 //     sidecar level" and the EmbeddingChannelRegistry gates accordingly).
 //   - expectedModelIdentity="" skips the model identity check (test
-//     paths only; production SHOULD pass the canonical
-//     "siglip-so400m-patch14-384" from the IndexSchema).
+//     paths only; production SHOULD pass models.SigLIP.ID from the
+//     canonical registry via the IndexSchema).
 type SigLIPTextEmbedder struct {
 	serverURL             string
 	httpClient            *http.Client
@@ -125,8 +126,8 @@ type SigLIPTextEmbedder struct {
 
 // NewSigLIPTextEmbedder creates a SigLIPTextEmbedder pointing at
 // the given sidecar URL. expectedModelIdentity is the canonical
-// model name from IndexSchema (validated via modelNameMatches to
-// handle vendor-prefix variants like "google/siglip-..."). Zero
+// full model ID from the registry/IndexSchema (validated via
+// modelNameMatches to handle legacy vendor-prefix variants). Zero
 // timeout defaults to 30s.
 func NewSigLIPTextEmbedder(serverURL, expectedModelIdentity string) searchpkg.ChannelEncoder {
 	return &SigLIPTextEmbedder{
@@ -142,13 +143,14 @@ func NewSigLIPTextEmbedder(serverURL, expectedModelIdentity string) searchpkg.Ch
 // from a sibling-utility package (godlike/06 SSOT: leaf-only imports
 // from internal/platform/embeddings/).
 func siglipModelNameMatches(sidecarModel, schemaModel string) bool {
-	if sidecarModel == schemaModel {
-		return true
+	return modelBaseName(sidecarModel) == modelBaseName(schemaModel)
+}
+
+func modelBaseName(modelID string) string {
+	if idx := strings.LastIndex(modelID, "/"); idx >= 0 {
+		return modelID[idx+1:]
 	}
-	if idx := strings.LastIndex(sidecarModel, "/"); idx >= 0 {
-		return sidecarModel[idx+1:] == schemaModel
-	}
-	return false
+	return modelID
 }
 
 // EmbedTextQuery is the canonical search.ChannelEncoder port
@@ -176,7 +178,7 @@ func (s *SigLIPTextEmbedder) EmbedTextQuery(ctx context.Context, text string) ([
 
 	payload, err := json.Marshal(map[string]string{
 		"text":  text,
-		"model": "siglip-so400m-patch14-384",
+		"model": models.SigLIP.ID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("siglip text embedder: marshal: %w", err)

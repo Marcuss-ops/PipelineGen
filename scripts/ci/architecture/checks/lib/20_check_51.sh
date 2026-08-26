@@ -61,9 +61,6 @@
 echo "=== Check 51: forbid raw-string Enqueue(...) callers (P0 C4, July 2026) ==="
 raw_string_enqueues=$(rg -n --type go \
     -e '\.Enqueue\s*\(\s*[^,]+,\s*"[a-z][a-zA-Z0-9._]*"' \
-    --glob '!**/internal/application/jobs/service.go' \
-    --glob '!**/internal/application/jobs/dispatcher.go' \
-    --glob '!**/internal/application/jobs/dispatcher_test.go' \
     --glob '!**/internal/domain/job/service.go' \
     --glob '!**/*_test.go' \
     internal/ 2>/dev/null \
